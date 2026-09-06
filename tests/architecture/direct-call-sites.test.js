@@ -356,13 +356,15 @@ describe('current direct side-effect call baseline', () => {
     const genericStart = source.indexOf('async function runRollingGenericStorageSinkRecovery');
     const genericEnd = source.indexOf('async function runRollingStorageSinkRecovery', genericStart);
     const generic = source.slice(genericStart, genericEnd);
-    const postSubmitSelection = generic.lastIndexOf('await selectPendingRollingStorageSinkPick');
+    const postSubmitSelection = generic.lastIndexOf('await selectPending(');
     const directPlayerRouting = generic.lastIndexOf('await resumeRollingPendingUnassigned');
-    const protectedStorageRetry = generic.lastIndexOf('await retryRollingProtectedStorage');
+    const protectedStorageRetry = generic.lastIndexOf('await retryStorage(');
     const legacyStart = source.indexOf('async function runRollingLegacyStorageSinkRecovery');
     const legacyEnd = source.indexOf('async function loadRollingGenericStorageSinkContexts', legacyStart);
     const legacy = source.slice(legacyStart, legacyEnd);
     expect(genericStart).toBeGreaterThan(-1);
+    expect(generic).toContain('const selectPending = options.selectPending || selectPendingRollingStorageSinkPick;');
+    expect(generic).toContain('const retryStorage = options.retryStorage || retryRollingProtectedStorage;');
     expect(generic).toContain('nextGenericStorageSinkContext(loaded.contexts)');
     expect(generic).not.toContain('Number(right.targetRating || 0) - Number(left.targetRating || 0)');
     expect(postSubmitSelection).toBeGreaterThan(-1);
@@ -371,7 +373,7 @@ describe('current direct side-effect call baseline', () => {
     expect(protectedStorageRetry).toBeGreaterThan(directPlayerRouting);
     expect(legacy).toContain('pickSelected: true');
     expect(legacy).toMatch(/await selectPendingRollingStorageSinkPick\([\s\S]*?attempts: 10,[\s\S]*?forceFresh: true/);
-    expect(generic).toMatch(/await selectPendingRollingStorageSinkPick\([\s\S]*?attempts: 10,[\s\S]*?forceFresh: true/);
+    expect(generic).toMatch(/await selectPending\([\s\S]*?attempts: 10,[\s\S]*?forceFresh: true/);
     expect(legacy).toContain('const consumedRoutingRefs = rollingSubmissionConsumptionRefs(result, plan);');
     expect(generic).toContain('const consumedRoutingRefs = rollingSubmissionConsumptionRefs(result, plan);');
     expect(legacy).toContain('{ attempts: 1, forceFresh: true, quietMissing: true, failOnUnexpected: true }');

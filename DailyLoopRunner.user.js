@@ -2238,7 +2238,7 @@
     }
     const storageFree = input2.storageFree === null || input2.storageFree === void 0 ? Number.NaN : Number(input2.storageFree);
     const requiredCount = Math.max(1, Number(input2.requiredCount || 4) || 4);
-    if (trigger === "primary-fodder-shortage" && String(input2.reasonCode || "") === "SQUAD_RATING_EXCESS" && Number.isFinite(storageFree) && storageFree < requiredCount) {
+    if (trigger === "primary-fodder-shortage" && ["SQUAD_RATING_EXCESS", "PROVISIONS_LAST_BATCH_AT_RISK"].includes(String(input2.reasonCode || "")) && Number.isFinite(storageFree) && storageFree < requiredCount) {
       return ROLLING_PROVISIONS_RECOVERY_MODES.RATING_EXCESS_STORAGE_PRESSURE;
     }
     return ROLLING_PROVISIONS_RECOVERY_MODES.NORMAL;
@@ -30093,7 +30093,7 @@
       if (storageRecoveryPriority === "storage-pressure-only") {
         const decision2 = await storageDecision();
         if (!decision2.run) {
-          if (context.source === "primary-rating-excess" && provisionsEnabled) {
+          if (["primary-rating-excess", "primary-provisions-preflight"].includes(context.source) && provisionsEnabled) {
             const provisions2 = await runRecovery(
               "provisions",
               ROLLING_UPGRADE_PHASES.RECOVER_PROVISIONS,
@@ -30656,13 +30656,14 @@
                 code: runway.reasonCode || "SQUAD_RATING_EXCESS"
               }
             };
-            const recovery = runway.reasonCode === "SQUAD_RATING_EXCESS" ? await recoverStorageBlocked({
+            const recovery = ["SQUAD_RATING_EXCESS", "PROVISIONS_LAST_BATCH_AT_RISK"].includes(runway.reasonCode) ? await recoverStorageBlocked({
               trigger: "storage-pressure",
               provisionsTrigger: "primary-fodder-shortage",
-              source: "primary-rating-excess",
+              source: runway.reasonCode === "PROVISIONS_LAST_BATCH_AT_RISK" ? "primary-provisions-preflight" : "primary-rating-excess",
               plan: recoveryPlan,
               runway
             }) : {
+              kind: "provisions",
               value: await recoverProvisions({
                 trigger: "primary-fodder-shortage",
                 source: "primary-runway-forecast",
@@ -30698,28 +30699,13 @@
               recoveryReasonCode: reasonCode(failure2) || "PROVISIONS_PREFLIGHT_SHORTAGE"
             };
             await emit8(options, "primary-runway-unavailable", result.details.primaryRunway);
-            return finishRecoveryFailure(
-              failure2,
-              "primary runway Provisions material is unavailable; the current squad was preserved",
-              "PROVISIONS_PREFLIGHT_SHORTAGE"
-            );
-          }
-          if (runway?.status === "recover" && primaryRunwayProvisionsAttempted) {
+          } else if (runway?.status === "recover" && primaryRunwayProvisionsAttempted) {
             result.details.primaryRunway = {
               ...runway,
               recoveryReason: "the bounded Provisions preflight did not restore the forecast runway",
               recoveryReasonCode: "PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED"
             };
             await emit8(options, "primary-runway-unavailable", result.details.primaryRunway);
-            return finishRecoveryFailure(
-              {
-                status: "unavailable",
-                reason: "the forecast primary runway remains exhausted after bounded Provisions recovery; the current squad was preserved",
-                reasonCode: "PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED"
-              },
-              "primary runway remains exhausted after bounded Provisions recovery",
-              "PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED"
-            );
           }
           resetPressureEvent();
           plan = planned;
@@ -41402,6 +41388,15 @@
         setPanelState();
       }
     });
+    function resetRunScopedSubmissionState() {
+      const cleared = {
+        consumedItemIds: state.consumedItemIds.size,
+        pendingConsumedDuplicateSignals: state.pendingConsumedDuplicateSignals.size
+      };
+      state.consumedItemIds.clear();
+      state.pendingConsumedDuplicateSignals.clear();
+      return cleared;
+    }
     const tradeOperationCoordinator = createOperationCoordinator({
       externalBusy: () => ({
         busy: state.running || state.refreshing || state.scanningPicks || state.loadingLoops,
@@ -53967,9 +53962,12 @@
       }
       if (!selection.ok) {
         logSelectionDiagnostics(`${loopDef.name} ${activeDef.name}`, selection, priorityPiles);
+        const requiredCount = (activeDef.requirements || []).reduce((sum, requirement2) => sum + Number(requirement2.count || 0), 0);
+        const selectedCount = selection.selected?.length || 0;
+        log(`${loopDef.name}: ${activeDef.name} recovery material selected ${selectedCount}/${requiredCount}; missing ${Math.max(0, requiredCount - selectedCount)} eligible card(s)`);
         return {
           status: "unavailable",
-          reason: selection.missing?.reason || `${activeDef.name} has insufficient eligible recovery material`,
+          reason: selection.missing?.reason || `${activeDef.name} has insufficient eligible recovery material (${selectedCount}/${requiredCount})`,
           reasonCode: selection.missing?.code || "RECOVERY_MATERIAL_SHORTAGE",
           details: selection.missing?.code === "MINIMUM_PILE_COUNT_SHORTAGE" ? {
             minimumPileCounts: selection.plan?.details?.minimumPileCounts || options.minimumPileCounts || {},
@@ -57001,6 +56999,49 @@
       )) : 1;
       return rollingStorageSinkPressureRequirement(runtime, { reserveSlots });
     }
+    function forecastRollingProvisionsSupply(loopDef, runtime, beforeSnapshot, afterSnapshot) {
+      const definition = latestRollingCapability(loopDef, "rollingProvisionsUpgrade");
+      if (loopDef.rollingProvisionsShortageRecoveryEnabled !== true || !rollingCapabilityAvailable(definition)) return { status: "ready" };
+      const priorityPiles = resolveRollingRecoveryPriorityPiles(loopDef, { recoveryMode: "normal" });
+      const recoveryDef = rollingRecoveryDef(definition, loopDef, {
+        inventoryFirst: true,
+        priorityPiles,
+        minRating: ROLLING_PROVISIONS_RATING_RANGE.min,
+        maxRating: rollingProvisionsMaxRating(loopDef)
+      });
+      const protection = rollingRecoveryProtection(runtime, runtime.primaryDuplicateRefs || []);
+      const requirements = selectionRequirements({
+        ...recoveryDef,
+        protectedItemIds: [
+          ...recoveryDef.protectedItemIds || [],
+          ...protection.protectedItemIds,
+          ...protection.softProtectedItems.map((ref) => Number(ref.id || 0)).filter(Boolean)
+        ],
+        protectedDefinitionIds: [...recoveryDef.protectedDefinitionIds || [], ...protection.protectedDefinitionIds]
+      }, priorityPiles);
+      const fsuPolicy = {
+        ...getFsuSettings(),
+        protectFsuLockedPlayers: (recoveryDef.runtimePickOptions?.protectFsuLockedPlayers ?? getPickRuntimeOptions().protectFsuLockedPlayers) === true
+      };
+      const select2 = (inventorySnapshot) => selectInventoryPlayers2({
+        inventorySnapshot,
+        requirements,
+        priorityPiles,
+        fsuPolicy,
+        consumedItemIds: [...state.consumedItemIds]
+      });
+      const before = select2(beforeSnapshot);
+      const after = select2(afterSnapshot);
+      const atRisk = before.ok === true && after.ok !== true;
+      return {
+        status: atRisk ? "recover" : "ready",
+        reasonCode: atRisk ? "PROVISIONS_LAST_BATCH_AT_RISK" : null,
+        reason: atRisk ? "current primary squad would consume the last feasible Provisions batch" : null,
+        requiredCount: requirements.reduce((sum, requirement2) => sum + Number(requirement2.count || 0), 0),
+        beforeCount: before.selected?.length || 0,
+        afterCount: after.selected?.length || 0
+      };
+    }
     async function forecastRollingPrimaryRunway(loopDef, runtime, plan, options = {}) {
       if (loopDef.rollingProvisionsShortageRecoveryEnabled !== true) {
         return { status: "ready", reasonCode: "PROVISIONS_SHORTAGE_RECOVERY_DISABLED" };
@@ -57016,8 +57057,9 @@
           reasonCode: "PRIMARY_RUNWAY_CONTEXT_UNAVAILABLE"
         };
       }
+      const currentSnapshot = ledger.inventorySnapshot();
       const projectedSnapshot = removeInventorySelection(
-        ledger.inventorySnapshot(),
+        currentSnapshot,
         selection,
         { includeSignals: true }
       );
@@ -57028,6 +57070,16 @@
           reason: "current primary selection could not be deducted from the inventory snapshot",
           reasonCode: "PRIMARY_RUNWAY_SNAPSHOT_MISMATCH"
         };
+      }
+      const provisionsSupply = forecastRollingProvisionsSupply(
+        loopDef,
+        runtime,
+        currentSnapshot,
+        projectedSnapshot
+      );
+      if (provisionsSupply.status === "recover") {
+        log(`${loopDef.name}: Provisions supply preflight ${provisionsSupply.beforeCount}/${provisionsSupply.requiredCount} -> ${provisionsSupply.afterCount}/${provisionsSupply.requiredCount} after the current squad; ${options.recoveryAttempted === true ? "bounded recovery already attempted; retaining the verified current plan" : "planning Provisions before losing the last feasible batch"}`);
+        return { ...provisionsSupply, details: { provisionsSupply } };
       }
       const requiredSpecialSourceFilter = createRollingRequiredSpecialSourceFilter({
         constraintIndexes: rollingRequiredSpecialConstraintIndexes(model),
@@ -57100,7 +57152,7 @@
         projectedReasonCode: runway.reasonCode
       };
       if (runway.status === "recover") {
-        const action2 = options.recoveryAttempted === true ? "the bounded Provisions preflight did not restore the full runway; preserving the current squad" : "planning Provisions before submitting the current squad";
+        const action2 = options.recoveryAttempted === true ? "the bounded Provisions preflight did not restore the full runway; submitting the current verified squad once before refreshing inventory" : "planning Provisions before submitting the current squad";
         log(`${loopDef.name}: ${runway.forecastDepth}-squad primary runway forecast reaches ${runway.projectedRating || "?"}/${runway.targetRating || "?"} at projected squad ${runway.triggerDepth || "?"}, above the +${runway.maxAboveTarget} cap; ${action2}`);
         return {
           ...runway,
@@ -57490,7 +57542,8 @@
       };
       const pending = await findUnassignedPlayerPick(pickDef, Number(options.attempts || 1), {
         quietMissing: options.quietMissing !== false,
-        failOnUnexpected: options.failOnUnexpected === true
+        failOnUnexpected: options.failOnUnexpected === true,
+        forceFresh: options.forceFresh === true
       });
       if (!pending) {
         return {
@@ -58348,9 +58401,15 @@
       }
       return { status: "skipped" };
     }
-    async function runRollingGenericStorageSinkRecovery(loopDef, runtime, capability) {
+    async function runRollingGenericStorageSinkRecovery(loopDef, runtime, capability, options = {}) {
+      const selectPending = options.selectPending || selectPendingRollingStorageSinkPick;
+      const loadContexts = options.loadContexts || loadRollingGenericStorageSinkContexts;
+      const planSquad = options.planSquad || planRollingGenericStorageSinkSquad;
+      const validateHeadroom = options.validateHeadroom || validateRollingStorageSinkHeadroom;
+      const submitSquad = options.submitSquad || submitRollingStorageSinkSquad;
+      const retryStorage = options.retryStorage || retryRollingProtectedStorage;
       if (capability.rewardKind === "player-pick") {
-        const pendingSelection = await selectPendingRollingStorageSinkPick(
+        const pendingSelection = await selectPending(
           loopDef,
           runtime,
           { status: "resolved", loop: capability.loop },
@@ -58358,7 +58417,7 @@
         );
         if (pendingSelection.status !== "missing") return pendingSelection;
       }
-      const loaded = await loadRollingGenericStorageSinkContexts(loopDef, capability);
+      const loaded = await loadContexts(loopDef, capability);
       if (loaded.status !== "ready") return loaded;
       const context = nextGenericStorageSinkContext(loaded.contexts);
       if (!context) {
@@ -58379,12 +58438,12 @@
         runtime,
         pressure.pendingRefs
       );
-      let squadPlan = await planRollingGenericStorageSinkSquad(loopDef, runtime, context, {
+      let squadPlan = await planSquad(loopDef, runtime, context, {
         minimumPressureConsumption: pressure.minimumConsumption,
         pendingStorageRefs: consumablePendingStorageRefs
       });
       if (!squadPlan.ok) return { status: "unavailable", ...squadPlan };
-      let headroom = validateRollingStorageSinkHeadroom(runtime, squadPlan, {
+      let headroom = validateHeadroom(runtime, squadPlan, {
         reservePickResult
       });
       if (!headroom.ok) return { status: "unavailable", ...headroom };
@@ -58413,7 +58472,7 @@
               pressure.pendingRefs
             );
             log(`${loopDef.name}: ${loaded.sinkDef.name} refreshed Storage pressure after duplicate materialization; required:${pressure.minimumConsumption}, pending:${pressure.pendingStorageItems}, free:${pressure.currentFree}`);
-            squadPlan = await planRollingGenericStorageSinkSquad(loopDef, runtime, context, {
+            squadPlan = await planSquad(loopDef, runtime, context, {
               minimumPressureConsumption: pressure.minimumConsumption,
               pendingStorageRefs: consumablePendingStorageRefs
             });
@@ -58425,13 +58484,13 @@
                 reasonCode: squadPlan.reasonCode || "RECOVERY_MATERIAL_SHORTAGE"
               };
             }
-            headroom = validateRollingStorageSinkHeadroom(runtime, squadPlan, {
+            headroom = validateHeadroom(runtime, squadPlan, {
               reservePickResult
             });
             if (!headroom.ok) return { status: "blocked", submitted: false, ...headroom };
             plan = squadPlan.plans[0];
           }
-          return submitRollingStorageSinkSquad(
+          return submitSquad(
             loopDef,
             runtime,
             loaded.sinkDef,
@@ -58477,7 +58536,7 @@
       );
       if (!completion.confirmed) {
         log(`${loaded.sinkDef.name}: final challenge submitted, but the Set is not confirmed complete; continuing without assuming a Player Pick reward (${completion.error || `${completion.incompleteChallengeIds.length} incomplete challenge(s)`})`);
-        return {
+        if (capability.rewardKind !== "player-pick") return {
           status: "submitted",
           submitted: true,
           reason: `${loaded.sinkDef.name} final challenge submitted; Set completion was not confirmed, continuing Rolling`,
@@ -58490,7 +58549,7 @@
         };
       }
       if (capability.rewardKind === "player-pick") {
-        const selected2 = await selectPendingRollingStorageSinkPick(
+        const selected2 = await selectPending(
           loopDef,
           runtime,
           { status: "resolved", loop: capability.loop },
@@ -58511,7 +58570,7 @@
         const routed2 = await resumeRollingPendingUnassigned(loopDef, runtime);
         if (routed2.status !== "ready") return routed2;
       }
-      const routed = await retryRollingProtectedStorage(loopDef, runtime);
+      const routed = await retryStorage(loopDef, runtime);
       return routed.status === "ready" ? { status: "submitted", submitted: true, details: { submittedRating: context.targetRating, headroom } } : routed;
     }
     async function runRollingStorageSinkRecovery(loopDef, runtime, definition, options = {}) {
@@ -59675,12 +59734,12 @@
             return recovery;
           },
           shouldRunStorageRecovery: async ({ source } = {}) => {
-            if (source !== "primary-rating-excess") return { run: true };
+            if (!["primary-rating-excess", "primary-provisions-preflight"].includes(source)) return { run: true };
             const pressure = rollingRatingExcessStorageRequirement(loopDef, runtime);
             if (!pressure.ok || Number(pressure.minimumConsumption || 0) > 0) {
               return { run: true };
             }
-            const reason = "primary squad rating exceeds target, but current Storage has no pressure to recover";
+            const reason = "primary fodder recovery requested, but current Storage has no pressure to recover";
             log(`${loopDef.name}: ${reason}; skipping Storage Sink recovery`);
             return {
               run: false,
@@ -60381,7 +60440,7 @@
             } else if (event === "recovery") {
               log(`${loopDef.name}: recovery ${payload.kind} progressed (${payload.trigger || "unspecified"}); cycle ${payload.cycleRecoveries.total}/${payload.budgets?.total || "budgeted"}`);
             } else if (event === "primary-runway-unavailable") {
-              log(`${loopDef.name}: projected ${payload.forecastDepth || ROLLING_PRIMARY_RUNWAY_FORECAST_DEPTH}-squad low-fodder runway is exhausted and Provisions could not restore it (${payload.recoveryReasonCode || "PROVISIONS_PREFLIGHT_SHORTAGE"}); preserving the current verified squad without submission`);
+              log(`${loopDef.name}: projected ${payload.forecastDepth || ROLLING_PRIMARY_RUNWAY_FORECAST_DEPTH}-squad low-fodder runway is exhausted and Provisions could not restore it (${payload.recoveryReasonCode || "PROVISIONS_PREFLIGHT_SHORTAGE"}); submitting the current verified squad once, then refreshing inventory before the next forecast`);
             } else if (event === "progress") {
               log(`${loopDef.name}: primary completions ${payload.completions}; opened ${payload.packsOpened}; bootstrap ${payload.bootstrapSubmissions}`);
             }
@@ -60483,6 +60542,11 @@
     }
     async function startLoop() {
       if (state.running) return;
+      const clearedRunState = resetRunScopedSubmissionState();
+      const clearedRunStateCount = Object.values(clearedRunState).reduce((total, count) => total + count, 0);
+      if (clearedRunStateCount > 0) {
+        log(`New Loop start cleared prior-run submission identity caches: consumed:${clearedRunState.consumedItemIds}, pending duplicate signals:${clearedRunState.pendingConsumedDuplicateSignals}`);
+      }
       let loopDef = null;
       let rounds = CFG.maxRounds;
       let fsuReadiness = null;

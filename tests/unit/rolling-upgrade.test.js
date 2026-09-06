@@ -193,16 +193,16 @@ describe('Rolling Upgrade configuration contracts', () => {
       .toEqual(ROLLING_UNASSIGNED_FIRST_RECOVERY_PILES);
   });
 
-  it('uses Storage-pressure Provisions material only for a rating excess near full Storage', () => {
+  it.each(['SQUAD_RATING_EXCESS', 'PROVISIONS_LAST_BATCH_AT_RISK'])('reserves Provisions Storage headroom for %s', (reasonCode) => {
     expect(resolveRollingProvisionsRecoveryMode({
       trigger: 'primary-fodder-shortage',
-      reasonCode: 'SQUAD_RATING_EXCESS',
+      reasonCode,
       storageFree: 1,
       requiredCount: 4,
     })).toBe(ROLLING_PROVISIONS_RECOVERY_MODES.RATING_EXCESS_STORAGE_PRESSURE);
     expect(resolveRollingProvisionsRecoveryMode({
       trigger: 'primary-fodder-shortage',
-      reasonCode: 'SQUAD_RATING_EXCESS',
+      reasonCode,
       storageFree: 4,
       requiredCount: 4,
     })).toBe(ROLLING_PROVISIONS_RECOVERY_MODES.NORMAL);

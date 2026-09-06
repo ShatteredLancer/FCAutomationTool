@@ -86,7 +86,7 @@ export function resolveRollingProvisionsRecoveryMode(input = {}) {
     : Number(input.storageFree);
   const requiredCount = Math.max(1, Number(input.requiredCount || 4) || 4);
   if (trigger === 'primary-fodder-shortage'
-    && String(input.reasonCode || '') === 'SQUAD_RATING_EXCESS'
+    && ['SQUAD_RATING_EXCESS', 'PROVISIONS_LAST_BATCH_AT_RISK'].includes(String(input.reasonCode || ''))
     && Number.isFinite(storageFree)
     && storageFree < requiredCount) {
     return ROLLING_PROVISIONS_RECOVERY_MODES.RATING_EXCESS_STORAGE_PRESSURE;

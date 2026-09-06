@@ -118,4 +118,39 @@ describe('inventory and Unassigned characterization', () => {
     ]);
     expect(signal.duplicateId).toBe(230);
   });
+
+  it('clears prior-run submission identities without discarding reward recovery evidence', async () => {
+    const { api } = await loadUserscript();
+    const reusedItem = makePlayer({ id: 240, definitionId: 140, rating: 84, rareflag: 1 });
+    const explicitlyProtected = makePlayer({ id: 241, definitionId: 141, rating: 84, rareflag: 1 });
+    const loan = makePlayer({ id: 242, definitionId: 142, rating: 84, rareflag: 1, loans: 1 });
+
+    api.state.consumedItemIds.add(reusedItem.id);
+    api.state.pendingConsumedDuplicateSignals.set('id:40', {
+      id: 40,
+      definitionId: 140,
+      duplicateId: reusedItem.id,
+      pile: 'unassigned',
+    });
+    api.state.assumedTotwItemIds.add(243);
+    api.state.recentRewardItems = [makePlayer({ id: 243, rating: 86, rareflag: 3 })];
+
+    expect(api.rollingBaseProtectionReasons(reusedItem, {}, 'club'))
+      .toContain('consumed-this-run');
+
+    expect(api.resetRunScopedSubmissionState()).toEqual({
+      consumedItemIds: 1,
+      pendingConsumedDuplicateSignals: 1,
+    });
+
+    expect(api.rollingBaseProtectionReasons(reusedItem, {}, 'club'))
+      .not.toContain('consumed-this-run');
+    expect(api.state.pendingConsumedDuplicateSignals.size).toBe(0);
+    expect(api.state.assumedTotwItemIds).toEqual(new Set([243]));
+    expect(api.state.recentRewardItems).toHaveLength(1);
+    expect(api.rollingBaseProtectionReasons(explicitlyProtected, {
+      protectedItemIds: [explicitlyProtected.id],
+    }, 'club')).toContain('protected-id');
+    expect(api.rollingBaseProtectionReasons(loan, {}, 'club')).toContain('loan');
+  });
 });

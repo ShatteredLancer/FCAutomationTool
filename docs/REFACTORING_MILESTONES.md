@@ -1,5 +1,11 @@
 # Daily Loop Runner 架构重构与里程碑
 
+当前开发修正（2026-09-06）：`error1.txt` 的 17:51 重启已经清空上一轮 consumed 缓存，Unassigned 为 0；实际主阵最低仍为 `87/84`，超过 `+1` 上限，普通 Provisions 仅有三张合规 87–88 材料且没有现成奖励包，最终 `RECOVERY_MATERIAL_SHORTAGE` 属于真实资源不足后的安全停止，不能归因于未领取 Pick 或一概归因于缓存。三阵评分预测此前没有检查补给材料本身能否延续：现在主阵提交前额外用同一不可变快照和 requirements selector 检查提交前后的一组安全 Provisions；从可行变为不足时返回 `PROVISIONS_LAST_BATCH_AT_RISK`，优先开已有补给包，否则按原容量策略制作并立即处理 Provisions，重新对账/选材。该预检不授权新的特殊卡例外、不提高配置评分上限；每主周期仍只允许一次有界 Provisions 预检，不能用未来随机开包结果保证无限 Rolling。已经不足四张的库存不能靠更新脚本恢复材料。
+
+同期 Pick 修正：Storage Sink 包装层现在传递调用方的 `forceFresh`，确实失效 Purchased/Unassigned 缓存后检查精确奖励身份。最终 Challenge 已确认提交但可重复 Set 状态已重置时，仍执行有界、精确匹配的 Pick 检查，不再在观察奖励前提前返回；未匹配奖励不猜测领取，已完成 Storage 消耗不重做。新增测试覆盖缓存延迟、Set 重置后的 selected/missing/blocked、最后一组材料预警与保护排除；真实 Web App 仍需验证这两条恢复链。恢复缺料日志同时输出 selected/required，避免把 `1x` 缺口误读为完整配方。
+
+当前开发修正：Rolling 的三阵 runway 预测本身会在第三阵超过目标 `+1` 时提前触发 Provisions；重复点击 Start 后恢复仍可能失败，是因为全局 `consumedItemIds` 和其派生的待清理 duplicate signal 跨顶层运行保留，令新 Inventory Ledger 把当前 Club/Storage 卡误标为 `consumed-this-run`，随后恢复保护投影又把这些卡转成 `protected-id`。现在每次新的顶层 Loop 启动都会清空这两项仅属于上一轮提交事务的内存身份缓存，再执行 preflight 和 Inventory 初始化；持久化的 duplicate materialization、pending primary reward、pending Required Special reward journal 以及尚待物化的临时 TOTW/recent reward 证据均保留，评分、Required Special、FSU/Lock/Evolution/Active Squad 和显式 protected id 保护不变。若三阵预警触发但当前 Provisions 没有安全候选，当前已完成全部验证且仍在 `+1` 上限内的主阵允许提交一次，之后必须重新开包、对账并预测；这不放宽下一阵的当前评分门槛，下一阵实际超限或缺 Required Special 仍立即停止。
+
 当前开发修正：Rolling 在每套已验证主阵提交前，从不可变 Inventory Ledger snapshot 精确扣除该阵的 item/signal，复用当前 Challenge 的 Required Special matcher、唯一 definition、FSU/Lock/Evolution/Active Squad 和评分 Selection Policy 预演下一阵。只有下一阵最低合法评分明确超过目标 `+1` 时，才在当前阵尚未提交前优先打开已有 Provisions 奖励，否则制作至多一批 Provisions 并重新读取库存；无法组成安全 Provisions 阵时记录 `PROVISIONS_PREFLIGHT_SHORTAGE`，只提交当前已验证合法阵容一次，避免循环恢复或放宽保护。该预测仅在 `rollingProvisionsShortageRecoveryEnabled` 显式开启时运行，不恢复默认关闭的 surplus crafting。
 
 当前开发修正：EA 后台 SBC 提交返回空 `status:0` / `UTServerErrorVO code:0` 时，不再直接按 `unknown` 停止，也不盲目重发。Runner 等待 3 秒后强制刷新 My Packs 与 Unassigned，从新的 Challenge list 读取同一 Challenge，并重新对账 Rolling Inventory Ledger；仅当 Challenge/Set identity 与完成次数未变、没有新增或减少 Pack、全部精确提交 item 仍留在原 pile，且整套提交 validator 重新通过时允许重试一次。任一证据变化、刷新失败、Challenge 已切换或第二次仍为 status 0 都停止，不发送额外提交。
@@ -79,8 +85,9 @@ pressure 与 maintenance 仍使用专用 Storage-first 及净释放校验。Prov
 扣除精确 item/duplicate signal；不猜测尚未打开的主包内容。主包、Provisions 奖励或其它
 已确认库存变更完成对账后，旧预测立即失效并基于新 snapshot 重算。任一预测阵最低评分
 超过目标 `+1` 时提前规划 Provisions；没有现成奖励且无法组成安全 Provisions 阵，或一次
-有界 Provisions 恢复后仍无法恢复三阵 runway 时，以 `RECOVERY_MATERIAL_SHORTAGE` 或
-`PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED` 停止，保留当前已验证主阵且不提交。
+有界 Provisions 恢复后仍无法恢复三阵 runway 时，记录 `RECOVERY_MATERIAL_SHORTAGE` 或
+`PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED`，但只允许提交当前已验证且仍在 `+1` 上限内的主阵一次；
+主奖励和库存对账后必须重新预测，下一阵实际超限时仍停止。
 
 `0.8.48` 发布记录：Rolling 主阵评分求解结果高于 EA 目标评分时，只保留规划结果，
 不再先清空、保存或改写当前 EA 阵容。当前主阵只有在 Storage 容量已知、无待释放

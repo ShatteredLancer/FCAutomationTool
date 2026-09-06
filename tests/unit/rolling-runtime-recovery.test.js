@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadUserscript, makePlayer } from '../helpers/load-userscript.js';
+import { createInventorySnapshot } from '../../src/domain/contracts.js';
 import {
   createDuplicateSubmissionManifest,
   createDuplicateMaterializationTransaction,
@@ -98,6 +99,136 @@ function installInventoryRecoveryService(window, inventoryPiles, onMove) {
 }
 
 describe('Rolling runtime recovery helpers', () => {
+  it.each(['selected', 'missing', 'blocked'])('observes the final Pick after a repeatable Set resets (%s)', async (pickStatus) => {
+    const { api, window } = await loadUserscript({ pageReady: true, fastTimers: true });
+    window.services.SBC.requestChallengesForSet = () => successfulObservable({
+      success: true, data: { challenges: [{ id: 501, completed: false }] },
+    });
+    const context = { set: { id: 500 }, challengeId: 501, targetRating: 89, model: { constraints: [] } };
+    const selectPending = vi.fn()
+      .mockResolvedValueOnce({ status: 'missing' })
+      .mockResolvedValueOnce({ status: pickStatus });
+    const submitSquad = vi.fn(async () => ({ status: 'submitted', submitted: true }));
+    const retryStorage = vi.fn(async () => ({ status: 'ready' }));
+    const runtime = { coordinator: {
+      reconcile: async () => ({ ok: true }),
+      getLedger: () => ({
+        classifiedEntries: () => [],
+        summary: () => ({ capacities: { storage: { free: 0 } } }),
+      }),
+    } };
+    const result = await api.runRollingGenericStorageSinkRecovery({ name: 'Rolling' }, runtime, {
+      rewardKind: 'player-pick', loop: { name: 'Pressure Pick' },
+    }, {
+      selectPending, submitSquad, retryStorage,
+      loadContexts: async () => ({
+        status: 'ready', sinkDef: { name: 'Pressure Pick' }, contexts: [context],
+        incompleteCount: 1, totalChallengeCount: 1, completedCount: 0,
+      }),
+      planSquad: async () => ({
+        ok: true, plans: [{ selection: { selected: [], stats: {} } }], pileCounts: {},
+        storageItemsConsumed: 11, details: { sourceOrder: ['storage'], maxClubPerSquad: 3 },
+      }),
+      validateHeadroom: () => ({ ok: true, projectedFree: 11, requiredFree: 1 }),
+    });
+    expect(submitSquad).toHaveBeenCalledOnce();
+    expect(selectPending).toHaveBeenCalledTimes(2);
+    expect(selectPending.mock.calls[1][3]).toMatchObject({ forceFresh: true, failOnUnexpected: true });
+    expect(result.status).toBe(pickStatus === 'blocked' ? 'blocked' : 'submitted');
+    expect(retryStorage).toHaveBeenCalledTimes(pickStatus === 'selected' ? 1 : 0);
+  });
+
+  it('invalidates Unassigned before discovering a delayed Storage sink Pick', async () => {
+    const { api, window, inventoryPiles } = await loadUserscript({ pageReady: true, fastTimers: true });
+    const pick = { id: 901, resourceId: 902, name: 'Item Pick', isPlayerPickItem: () => true };
+    const reset = vi.fn(() => { inventoryPiles.unassigned.splice(0, 0, pick); });
+    window.repositories.Item.unassigned = { reset };
+    window.services.Item.requestUnassignedItems = () => successfulObservable();
+    const result = await api.selectPendingRollingStorageSinkPick({ dryRun: true }, {}, {
+      status: 'resolved',
+      loop: { name: 'Pressure Pick', sbcSetIds: [903], pickItemResourceIds: [902] },
+    }, { forceFresh: true, attempts: 1 });
+    expect(reset).toHaveBeenCalled();
+    expect(result.status).toBe('planned');
+  });
+
+  it.each([
+    [4, 3, 'recover'],
+    [8, 4, 'ready'],
+    [3, 2, 'ready'],
+    [4, 4, 'ready'],
+  ])('checks the last Provisions batch before the main squad (%i -> %i)', async (before, after, status) => {
+    const { api } = await loadUserscript();
+    const items = Array.from({ length: before }, (_, index) => ({
+      id: 100 + index, definitionId: 200 + index, rating: 87, rareflag: 1,
+      type: 'player', tier: 'gold', rare: true, special: false, pile: 'club', endTime: -1,
+    }));
+    const snapshot = (club) => createInventorySnapshot({ piles: { club } });
+    const runtime = { coordinator: { getLedger: () => ({
+      classifiedEntries: () => items.map((item) => ({ item, pile: 'club', classification: {} })),
+    }) } };
+    const loop = {
+      rollingProvisionsShortageRecoveryEnabled: true,
+      rollingProvisionsUpgrade: {
+        name: 'Provisions', activityResolved: true, sbcSetIds: [1300],
+        requirements: [{ count: 4, tier: 'gold', playerOnly: true }],
+      },
+    };
+    expect(api.forecastRollingProvisionsSupply(loop, runtime, snapshot(items), snapshot(items.slice(0, after))))
+      .toMatchObject({ status, beforeCount: Math.min(4, before), afterCount: Math.min(4, after), requiredCount: 4 });
+  });
+
+  it('runs the last-batch check before the rating forecast without mutating inventory', async () => {
+    const { api } = await loadUserscript();
+    const snapshot = createInventorySnapshot({ piles: { club: Array.from({ length: 4 }, (_, index) => ({
+      id: 100 + index, definitionId: 200 + index, rating: 87, type: 'player', rareflag: 1,
+    })) } });
+    const before = JSON.stringify(snapshot);
+    const result = await api.forecastRollingPrimaryRunway({
+      name: 'Rolling', rollingProvisionsShortageRecoveryEnabled: true,
+      rollingProvisionsUpgrade: {
+        name: 'Provisions', activityResolved: true, sbcSetIds: [1300],
+        requirements: [{ count: 4, tier: 'gold', playerOnly: true }],
+      },
+    }, { coordinator: { getLedger: () => ({
+      inventorySnapshot: () => snapshot,
+      classifiedEntries: () => snapshot.piles.club.map((item) => ({ item, pile: 'club', classification: {} })),
+    }) } }, {
+      activeLoopDef: {}, fill: { model: { targetRating: 84 }, selection: { selected: [snapshot.piles.club[0]] } },
+    });
+    expect(result).toMatchObject({ status: 'recover', reasonCode: 'PROVISIONS_LAST_BATCH_AT_RISK', beforeCount: 4, afterCount: 3 });
+    expect(JSON.stringify(snapshot)).toBe(before);
+  });
+
+  it.each(['protected', 'required-special', 'other-special', 'duplicate-definition', 'over-cap', 'pending-signal'])('does not count %s as a fourth Provisions card', async (rejection) => {
+    const { api } = await loadUserscript();
+    const cards = Array.from({ length: 4 }, (_, index) => ({
+      id: 100 + index, definitionId: 200 + index, rating: 87, type: 'player', rareflag: 1,
+    }));
+    if (rejection === 'duplicate-definition') cards[3].definitionId = cards[0].definitionId;
+    if (rejection === 'over-cap') cards[3].rating = 89;
+    if (rejection === 'required-special') cards[3].rareflag = 3;
+    const snapshot = createInventorySnapshot({ piles: { club: cards } });
+    const runtime = {
+      primaryDuplicateRefs: rejection === 'pending-signal' ? [snapshot.piles.club[3].ref] : [],
+      coordinator: { getLedger: () => ({ classifiedEntries: () => snapshot.piles.club.map((item, index) => ({
+        item, pile: 'club', classification: {
+          protected: index === 3 && rejection === 'protected',
+          requiredSpecial: index === 3 && rejection === 'required-special',
+          otherSpecial: index === 3 && rejection === 'other-special',
+        },
+      })) }) },
+    };
+    const result = api.forecastRollingProvisionsSupply({
+      rollingProvisionsShortageRecoveryEnabled: true,
+      rollingProvisionsUpgrade: {
+        activityResolved: true, sbcSetIds: [1300],
+        requirements: [{ count: 4, tier: 'gold', playerOnly: true, allowSpecial: true }],
+      },
+    }, runtime, snapshot, createInventorySnapshot({ piles: { club: cards.slice(1) } }));
+    expect(result).toMatchObject({ status: 'ready', beforeCount: 3 });
+  });
+
   function primaryLoop(overrides = {}) {
     return {
       id: 'rolling-upgrade-composite-860-850',

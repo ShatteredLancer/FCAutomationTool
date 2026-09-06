@@ -472,7 +472,7 @@ export async function runRollingUpgradeWorkflow(options = {}) {
         // not a reason to craft an unrelated Storage Sink. If the user has
         // enabled shortage recovery, let Provisions add lower-rated material
         // and replan; otherwise preserve the explicit no-pressure stop.
-        if (context.source === 'primary-rating-excess' && provisionsEnabled) {
+        if (['primary-rating-excess', 'primary-provisions-preflight'].includes(context.source) && provisionsEnabled) {
           const provisions = await runRecovery(
             'provisions',
             ROLLING_UPGRADE_PHASES.RECOVER_PROVISIONS,
@@ -1095,15 +1095,17 @@ export async function runRollingUpgradeWorkflow(options = {}) {
               code: runway.reasonCode || 'SQUAD_RATING_EXCESS',
             },
           };
-          const recovery = runway.reasonCode === 'SQUAD_RATING_EXCESS'
+          const recovery = ['SQUAD_RATING_EXCESS', 'PROVISIONS_LAST_BATCH_AT_RISK'].includes(runway.reasonCode)
             ? await recoverStorageBlocked({
                 trigger: 'storage-pressure',
                 provisionsTrigger: 'primary-fodder-shortage',
-                source: 'primary-rating-excess',
+                source: runway.reasonCode === 'PROVISIONS_LAST_BATCH_AT_RISK'
+                  ? 'primary-provisions-preflight' : 'primary-rating-excess',
                 plan: recoveryPlan,
                 runway,
               })
             : {
+                kind: 'provisions',
                 value: await recoverProvisions({
                   trigger: 'primary-fodder-shortage',
                   source: 'primary-runway-forecast',
@@ -1140,28 +1142,18 @@ export async function runRollingUpgradeWorkflow(options = {}) {
             recoveryReasonCode: reasonCode(failure) || 'PROVISIONS_PREFLIGHT_SHORTAGE',
           };
           await emit(options, 'primary-runway-unavailable', result.details.primaryRunway);
-          return finishRecoveryFailure(
-            failure,
-            'primary runway Provisions material is unavailable; the current squad was preserved',
-            'PROVISIONS_PREFLIGHT_SHORTAGE',
-          );
+          // The current squad has already passed the normal rating and
+          // submission validators. A forecast-only shortage must not discard
+          // that verified progress: submit this squad once, then refresh the
+          // reward and inventory before forecasting the next one.
         }
-        if (runway?.status === 'recover' && primaryRunwayProvisionsAttempted) {
+        else if (runway?.status === 'recover' && primaryRunwayProvisionsAttempted) {
           result.details.primaryRunway = {
             ...runway,
             recoveryReason: 'the bounded Provisions preflight did not restore the forecast runway',
             recoveryReasonCode: 'PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED',
           };
           await emit(options, 'primary-runway-unavailable', result.details.primaryRunway);
-          return finishRecoveryFailure(
-            {
-              status: 'unavailable',
-              reason: 'the forecast primary runway remains exhausted after bounded Provisions recovery; the current squad was preserved',
-              reasonCode: 'PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED',
-            },
-            'primary runway remains exhausted after bounded Provisions recovery',
-            'PROVISIONS_PREFLIGHT_RUNWAY_EXHAUSTED',
-          );
         }
         resetPressureEvent();
         plan = planned;
