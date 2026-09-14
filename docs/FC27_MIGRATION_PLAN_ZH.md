@@ -2,7 +2,7 @@
 
 调研日期：2026-09-14。仓库基线：`0558f7b`，Runner `0.8.64`。
 
-状态：迁移实施尚未开始；已按用户决定采用 FC27 首个正式版本 `27.0.0`，并将产品更名为 `FC Automation Tool`、登录后自动浏览器检查纳入计划。本文只记录方案，不代表已经修改版本、安装身份或获准执行账号操作。引用的线上信息以调研日可访问版本为准；FC27 Web App 的真实接口验收尚未发生。
+状态：已按用户确认实施上线前 P0/P1/FSU F0/B0 的离线准备；逐项结果、文件与剩余边界见 [上线前实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。正式版本仍规划为 `27.0.0`，产品更名为 `FC Automation Tool`；当前生产版本、安装身份、远程仓库未改。离线准备完成不代表真实 FC27 兼容或账号操作授权，FC27 Web App 的真实接口验收尚未发生。
 
 ## 1. 结论与路线选择
 
@@ -264,9 +264,9 @@ FSU Local `26.09` origin 保持字节不变，但维护实现可以基于它演�
 | FC27 后续更新 | 修复如 `27.0.1`，功能如 `27.1.0` | 同一产品持续升级，发行说明列出已支持与未支持模块 |
 | 下一赛季 | FC28 从 `28.0.0` 开始 | 重新通过赛季能力验收，不仅更换版本号 |
 
-`package.json` 继续是应用版本唯一来源；实施升版时同步 `package-lock.json`，由构建注入运行时版本并生成 userscript/meta，不手写第二份版本号。FSU 的 upstream/local version、FSU bridge API、配置 schema 和当前运行赛季各自独立，不能用 `27.0.0` 代替能力握手。本文不改变当前 Runner `0.8.64` 或 FSU Local `26.09.6`。
+`package.json` 继续是应用版本唯一来源；实施升版时同步 `package-lock.json`，由构建注入运行时版本并生成 userscript/meta，不手写第二份版本号。FSU 的 upstream/local version、FSU bridge API、配置 schema 和当前运行赛季各自独立，不能用 `27.0.0` 代替能力握手。上线前准备提交使用 Runner 维护版 `0.8.65`，历史归档仍为 `0.8.64`，FSU Local 保持 `26.09.6`。
 
-现有 `.github/workflows/release-assets.yml` 发布步骤无条件使用 `--latest`，因此还不能直接用于上述测试渠道。首次预发布前必须增加预发布识别、标记 prerelease 且不设为 latest，并验证旧季维护发布不会夺取 FC27 latest。Tampermonkey 对预发布版本的排序、测试转正式的安装/更新行为要实测，不能以 npm 的版本比较替代。验收前使用固定版本链接显式安装测试包。
+原 `.github/workflows/release-assets.yml` 的无条件 `--latest` 已由上线前准备中的通道校验替代：预发布不进入 latest，旧季维护版不能夺取较新稳定版的 latest；当前明确阻断 >=27 的正式发布，直到 P5 完成。新增 Preview workflow 仅上传隔离 artifact，没有发布权限。通道算法已单测，远程 workflow 未实际触发。Tampermonkey 对预发布版本的排序、测试转正式的安装/更新行为仍要实测，不能以 npm 的版本比较替代。
 
 #### 更名范围与拟改文件
 
@@ -361,7 +361,7 @@ FSU 最小模式不执行 SBC 提交、开包、交易或自动移动实体。EA
 
 | 阶段 | 可完成事项 | 验收 |
 | --- | --- | --- |
-| F0，Web App 未开放 | 提取最小 core、设计桥、赛季/账号 key、冻结旧增强入口、构建与 fake tests | 删除模拟环境中的旧 SBC/市场/Evo Controller 后 core 仍能初始化；核心读取能力缺失则明确 not-ready；零 EA mutation |
+| F0，Web App 未开放 | 已完成离线 core/桥、赛季/账号 key、独立构建与 fake tests；旧增强不进入新核心依赖图 | 无旧 Controller 环境可初始化；精确校验、属性变化、并发/超时/账号切换有测试；实际 EA/GM 接线仍在 F1/F2，当前生产 mod 不改 |
 | F1，FC27 Web App 可登录 | 在未启用旧 FSU 增强的页面只读观测 EA Item/Club Service、DTO、factory、分页与响应；适配最小读取路径 | 取得真实脱敏 fixture；准确区分 Gold/Special/Holo/Evo/loan；无旧 `/fc26/` 业务请求；无猜测 `/27/` 数据源依赖 |
 | F2，与 Runner 联调 | 读策略、锁卡、库存与定向校验；验证准确实体交给 Runner | 缺失/属性变化阻断；无关旧 UI 类缺失不影响；FC26 缓存不会进入 FC27；FSU 不自行提交 |
 | F3，首发稳定后 | 依证据恢复持久缓存或少量常用增强 | 不改变桥合同；新增缓存需恢复 provisional 和完整失效测试；不以功能数量替代可靠性 |
@@ -395,7 +395,7 @@ F0 可与 Runner P1 一起推进，F1/F2 是 Runner P2/P3 的依赖。先让最�
 
 | 步骤 | 自动检查内容 | 产出与停止条件 |
 | --- | --- | --- |
-| B0 环境准备 | 核对浏览器版本、控制工具、专用目录和扩展；确认旧 Runner、旧 FSU 增强及其它自动任务禁用 | 工具连接测试；未连接成功不声称已经检查 EA 页面；此步可在开服前完成 |
+| B0 环境准备 | 已建立独立 Playwright 工具、专用目录、固定只读探针和网络摘要；Chrome 离线 smoke 已通过 | 未登录 EA；真实扩展组合与旧任务禁用须上线后执行交互检查，不能以离线 smoke 声称已兼容 EA |
 | B1 用户登录后建基线 | 确认真实 Web App 已就绪、运行赛季、账号上下文与页面版本 | 脱敏环境摘要；维护页、身份未知、登录过期立即停止，不尝试提交探测 |
 | B2 原生页面只读检查 | 按白名单查看库存、挑战列表/详情和已确认无写副作用的预览；读取 DOM、可见积分及运行时对象结构 | EA 原生基线：item/pile/eligibility/积分/奖励字段、Repository/DAO/Controller 的存在性与来源；未知字段保持未知 |
 | B3 请求与模型关联 | 观察上述操作自然产生的请求/响应、时间和页面状态；比对积分预览与对应 DTO、实体 | 精确 request/response 关联和最小字段样本；不靠时间接近把其他插件请求归属给 FSU |
@@ -413,7 +413,7 @@ Cookie、Authorization、会话 token、密码、真实账号/persona 标识不�
 
 HAR 是请求/响应证据的补充或浏览器控制不可用时的备用路径；它不能完整表示页面内方法、FSU GM 设置、DAO 状态和回调时序，也不能单独证明一次消耗是否完成。无法连接自动控制时，由用户提供已脱敏 HAR、相关截图及有界诊断导出，仍按同一证据标准分析，不因缺工具猜测接口。
 
-后续拟新增 `scripts/browser-inspection/` 下的独立启动/连接与只读采集工具、版本化采集白名单和脱敏测试，并将最小样本纳入 `tests/fixtures/fc27/`。这些是计划路径，本次没有创建工具、安装依赖、连接浏览器或登录账号。真实合同仍必须等 FC27 Web App 可访问后确认。
+已新增离线证据合同 `src/fc27/prelaunch-contract.js` 及单元测试，只投影固定白名单字段，不再遍历任意对象做通用脱敏。`scripts/browser-inspection/` 已具备专用浏览器启动和只读探针，开发依赖单独锁定于 `tools/browser-inspection/`；实际 Chrome 的本地合成页面验证通过，未登录 EA。真实 DTO、积分字段、接口时序仍必须等 FC27 Web App 可访问后确认。
 
 ## 9. 分阶段交付
 
@@ -421,9 +421,9 @@ HAR 是请求/响应证据的补充或浏览器控制不可用时的备用路径
 
 | 阶段 | 工作 | 交付与验收门禁 | 粗估 |
 | --- | --- | --- | --- |
-| P0 冻结与设计收口 | 确认 FC26 tag/维护分支；记录当前测试与 bundle；按 `27.0.0` / FC Automation Tool 方案列出仓库、安装、数据和渠道迁移清单；锁定首版范围 | 完整基线验证；列出 FC26 专属依赖；得到用户对减法范围的确认；确认仓库目标名与改名窗口、浏览器采集授权边界 | 1-2 人日 |
-| P1 瘦身骨架 | 新 FC27 composition、品牌与独立构建入口；隔离预发布渠道；Trade/Builder/FC26 业务不进入默认 import；赛季/账号与配置 schema；启动 FSU F0 和浏览器 B0 | 未识别赛季零 EA mutation；新默认包没有旧业务；旧更新地址不失效；FC26 回归基线不被改坏；FSU core 不依赖旧 UI 类 | Runner 2-3 人日，FSU 另列 |
-| P2 上线只读勘察 | 用户登录后执行 B1-B5；读取 FC27 item、SBC、积分预览、奖励、pile；完成 FSU F1/F2；采集脱敏 fixture | Streamlined/Traditional/unsupported 精确识别；积分与页面预览一致；本地 FSU 策略/库存/定向校验可用；未知条件禁用；零 mutation；无凭证泄漏 | Runner 2-4 人日，需 Web App |
+| P0 冻结与设计收口 | FC26 本地归档 tag/维护分支、基线检查、功能处理与迁移清单 | Complete（本地）；生产产物不变，完整回归通过；未 push/远程改名 | 1-2 人日 |
+| P1 瘦身骨架 | 独立 Preview composition/build、依赖白名单、上下文/schema、白名单配置迁移、发布隔离、FSU F0/B0 | Complete（离线骨架）；未知身份及所有 FC27 Live 操作仍阻断；生产入口保持不变，实际账号/GM 与安装 UI 在 P2/P5 接线验收 | Runner 2-3 人日，FSU 另列 |
+| P2 上线只读勘察 | 用户登录后执行 B1-B5；读取 FC27 item、SBC、积分预览、奖励、pile；完成 FSU F1/F2；采集脱敏 fixture | 等待 FC27 Web App：当前仅有离线证据合同，不能宣称真实接口可用 | Runner 2-4 人日，需 Web App |
 | P3 积分 MVP | 单挑战 Preview、单次/分批贡献、材料保护、超额预算、journal 与重载恢复 | 小额受控测试确认消耗/进度；模拟丢响应不重交；同 definition 多实体与高价值卡保护通过 | 4-6 人日 |
 | P4 奖励与连续循环 | Pack/Pick 处理、单步补料、容量预留、保守预算、Stop/Start 续跑 | 先覆盖已确认奖励，再多轮循环；手动领 Pick 后可续跑；没有未对账状态就开下一包的路径 | 3-5 人日 |
 | P5 传统能力与发布收口 | 只开放已支持传统合同；精简配置/Profile；文档、架构、体量与真实页矩阵；单独完成仓库改名和安装迁移验收后发布 `27.0.0` | 全验证通过；旧链接、新资产和 FSU 更新渠道可用；未知化学/条件保持 unsupported；安装/GM 迁移/预发布转正式/跨账号/插件组合测试完成；新旧实例不并发写入 | 3-5 人日 |
@@ -483,15 +483,15 @@ Player SBC 长期部分投入默认仅手动预览/明确批准，不让重复�
 
 ## 12. 当前可立即开展与必须等待的工作
 
-已经确定并记录的方向：产品更名为 `FC Automation Tool`，FC27 首个正式版本为 `27.0.0`，原仓库计划改名为 `ShatteredLancer/FCAutomationTool` 并在正式发布前独立验收；主取证流程为用户登录专用浏览器后自动检查，HAR 仅作为补充/备用。这里只完成文档，不代表这些实现或远程改名已获准启动或已经交付。
+已经确定并记录的方向：产品更名为 `FC Automation Tool`，FC27 首个正式版本为 `27.0.0`，原仓库计划改名为 `ShatteredLancer/FCAutomationTool` 并在正式发布前独立验收；主取证流程为用户登录专用浏览器后自动检查，HAR 仅作为补充/备用。用户已确认先实施第 1 项的上线前离线准备，具体完成状态见 [实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)；远程改名和账号操作仍未执行。
 
-后续获准实施后现在可做：确认首版减法范围、冻结 FC26 基线、分析构建依赖、建立 FC27 入口与只读能力门禁、提取本地 FSU Runner-support core 并建立桥协议、设计契约和脱敏 fixture 格式、配置迁移测试、移出默认不需要的功能，以及更名/版本/渠道迁移和 B0 浏览器检查工具准备。
+已实施：FC26 本地基线归档、新入口/只读门禁与依赖白名单、独立 FSU Runner-support core、配置迁移存储与保护 review、发布通道隔离、B0 浏览器探针及相关测试。旧季业务不进入 Preview，但尚未从生产源码删除；真实功能替换验收后才清理旧路径。
 
 必须等待真实 Web App：积分表与资格来源、贡献 API/返回时序、允许的提交 pile、partial/overflow/repeat 语义、奖励链、Holo/Evo 实体身份、新 FSU/Enhancer 并发行为。
 
 EA 已公布 Community API，但本次官方说明只列 FUT.GG、FUTBIN、FUTWIZ 三个获准合作方，并表示暂不开放更多网站 [S4]；没有公开 SBC 写 API 的证据。因此不能把“改用官方 API”作为当前可执行方案，也不能因第三方得到访问权就假定 Runner 得到授权。自动化仍需用户了解 EA 规则与账号风险，不作无风险保证。
 
-推荐下一步只批准 **P0 + P1 + FSU F0 + 浏览器 B0**，再在 FC27 Web App 开放并由用户登录后进行 P2、FSU F1/F2 与浏览器 B1-B5；B6 的真实消耗须另行明确授权。关键方向是“保留可靠底座、减少默认业务、自行解决 FSU 首发时间差、按真实积分合同重建”，不是再扩展旧三阵预测。
+下一实机步骤是在 FC27 Web App 开放并由用户登录后进行 P2、FSU F1/F2 与浏览器 B1-B5；B6 的真实消耗须另行明确授权。上线前可继续维护这些离线门禁和 fixtures，不需要再在“离线准备”和“未上线的完整业务适配”之间二选一。
 
 ## 13. 资料与审计入口
 
@@ -521,4 +521,4 @@ EA 已公布 Community API，但本次官方说明只列 FUT.GG、FUTBIN、FUTWI
 - [应用版本来源](../package.json)、[发布身份校验](../scripts/check-dist.mjs)、[Release workflow](../.github/workflows/release-assets.yml)、[热加载脚本](../DailyLoopRunnerHotReload.user.js)。
 - [FSU Local 发布校验](../scripts/build-fsu-release-assets.mjs)、[FSU 维护配置](../FSU_mod/fsu-mod.config.json)、[Issue/Security 入口](../.github/ISSUE_TEMPLATE/config.yml)。
 
-本文只维护迁移方案；没有修改运行逻辑、实际版本、安装身份、配置或发布资产，没有创建分支/tag、重命名远程仓库或本地目录，也没有修改 Git remote、安装浏览器工具或执行 FC27 账号操作。
+本文同时维护方案和实施状态。上线前准备新增了隔离代码、测试、浏览器开发工具、本地归档引用与 CI 通道门禁，但没有改变现有 FC26 运行逻辑或产物，也没有升版、改名远程仓库/本地目录、修改 remote、发布 Release 或执行 EA 账号操作。

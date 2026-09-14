@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  group: release-publication
   cancel-in-progress: false
 
 jobs:
@@ -53,6 +53,24 @@ jobs:
           git rev-parse --verify "$tag^{commit}" | Out-Null
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "tag=$tag" -Encoding utf8
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "version=$version" -Encoding utf8
+
+      - name: Validate stable and preview channel isolation
+        id: channel
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $releases = gh release list --limit 100 --json tagName,isLatest | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify current latest release' }
+          $latest = @($releases | Where-Object { $_.isLatest })
+          if ($latest.Count -gt 1) { throw 'Ambiguous latest release' }
+          if ($latest.Count -eq 0 -and @($releases).Count -gt 0) { throw 'Latest release not found in bounded listing' }
+          $latestTag = if ($latest.Count -eq 1) { $latest[0].tagName } else { '' }
+          $policy = node scripts/release-channel.mjs $env:RELEASE_VERSION $latestTag | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Release channel is not approved' }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "prerelease=$($policy.prerelease.ToString().ToLowerInvariant())" -Encoding utf8
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "latest=$($policy.latest.ToString().ToLowerInvariant())" -Encoding utf8
 
       - name: Package release assets
         shell: pwsh
@@ -118,8 +136,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.channel.outputs.prerelease }}
+          MAKE_LATEST: ${{ steps.channel.outputs.latest }}
         run: |
-          gh release edit $env:RELEASE_TAG --draft=false --latest
+          gh release edit $env:RELEASE_TAG --draft=false "--prerelease=$env:IS_PRERELEASE" "--latest=$env:MAKE_LATEST"
           if ($LASTEXITCODE -ne 0) { throw 'Failed to publish release' }
 
       - name: Write release summary

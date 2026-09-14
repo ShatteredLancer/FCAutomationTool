@@ -1,5 +1,7 @@
 # FSU Club Cache Optimization and Integration Guide
 
+FC27 离线 Runner-support core 位于 `FSU_mod/src/runner-support/core.js`，不进入当前 `26.09_mod` 生产构建。它复用锁卡/设置解析并通过注入 provider 测试精确校验与 readiness；EA/GM 接线仍须 F1/F2 实机证据。状态见 [FC27 实施记录](../docs/FC27_PRELAUNCH_PROGRESS_ZH.md)，不能将 fake provider 的成功视作本文件定义的 EA 权威校验。
+
 本文是 FSU `26.09` Club 加载优化、Daily Loop Runner 集成和第三方插件交互的维护事实来源。它记录当前已经实现并验证的行为，也记录仍待验证的风险和未来优化方向。
 
 适用组件：

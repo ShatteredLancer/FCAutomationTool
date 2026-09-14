@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const roots = ['src', 'scripts', 'tests'];
+const roots = ['src', 'scripts', 'tests', 'FSU_mod/src'];
 const files = ['DailyLoopRunnerHotReload.user.js', 'vitest.config.js'];
 
 async function collect(directory) {

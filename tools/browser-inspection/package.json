@@ -1,0 +1,10 @@
+{
+  "name": "fcat-browser-inspection-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development-only browser inspection dependencies, never bundled in the userscript.",
+  "license": "MIT",
+  "devDependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

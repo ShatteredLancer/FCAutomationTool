@@ -1,0 +1,42 @@
+name: FC27 offline preparation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/fc27/**'
+      - 'src/adapters/browser/fc27-inspection.js'
+      - 'FSU_mod/src/**'
+      - 'scripts/*fc27*'
+      - 'scripts/browser-inspection/**'
+      - 'tools/browser-inspection/**'
+      - 'tests/**/fc27*'
+      - '.github/workflows/fc27-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npx eslint FSU_mod/src
+      - run: node scripts/build-fc27-preview.mjs
+      - run: node scripts/build-fc27-fsu-core.mjs
+      - run: npm ci --prefix tools/browser-inspection
+      - run: node scripts/browser-inspection/run.mjs --self-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FC27-read-only-preview
+          path: |
+            dist/fc27-preview/
+            artifacts/fc27-browser/self-test.json
+          retention-days: 14

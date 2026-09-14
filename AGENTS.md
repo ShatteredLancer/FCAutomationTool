@@ -1150,6 +1150,8 @@ Agent 完成任务时应说明：
 
 ## 16. 当前架构边界与后续项
 
+FC27 上线前准备另见 [FC27 实施记录](docs/FC27_PRELAUNCH_PROGRESS_ZH.md)。`src/fc27` 和 `FSU_mod/src/runner-support` 当前只进入隔离 Preview/core 构建，不得因新增目录存在就宣称 FC27 已兼容，或将其接入 FC26 生产入口。修改这些模块除完整 `npm run verify` 外，执行 `node scripts/verify-fc27-prelaunch.mjs`；浏览器工具先 `npm ci --prefix tools/browser-inspection`，再加 `--browser` 执行无 EA 的离线 smoke。真实 EA/GM provider、安装迁移和正式 27 发布仍须对应实机/发布门禁。
+
 核心架构重构已在 `0.5.12` 收尾。以下是明确保留的运行时边界和独立后续功能，不应误判为需要机械拆分的未完成工作：
 
 - `src/userscript-entry.js` 仍包含运行时 composition、缓存合并、评分候选安全策略桥、真实页面副作用回调和页面语义 helper；内置 Loop、schema、展示/运行参数规则、strategy 分发、SBC 导航同步、Unassigned 确认、Claim Rewards 编排以及评分候选构建/计划回解已迁出。

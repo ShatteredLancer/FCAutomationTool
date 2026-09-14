@@ -5,7 +5,7 @@ export default [
     ignores: [
       'artifacts/**',
       'dist/**',
-      'FSU_mod/**',
+      'FSU_mod/*.js',
       'node_modules/**',
       'reports/**',
       'DailyLoopRunner.user.js',
@@ -37,7 +37,15 @@ export default [
     },
   },
   {
-    files: ['src/userscript-entry.js', 'DailyLoopRunnerHotReload.user.js'],
+    files: ['FSU_mod/src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest', sourceType: 'module',
+      globals: { setTimeout: 'readonly', clearTimeout: 'readonly' },
+    },
+    rules: { 'no-undef': ['error', { typeof: true }] },
+  },
+  {
+    files: ['src/userscript-entry.js', 'src/fc27/userscript-entry.js', 'DailyLoopRunnerHotReload.user.js'],
     languageOptions: {
       globals: {
         ...globals.browser,
