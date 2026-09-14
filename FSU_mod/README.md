@@ -21,7 +21,7 @@
 从最新 GitHub Release 安装：
 
 ```text
-https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/FSU-Local.user.js
+https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.user.js
 ```
 
 维护版保留原版的 `@name` 和 `@namespace`，必须作为原版 FSU 的就地更新安装。Tampermonkey 中只应存在一个启用的 `【FSU】EAFC FUT WEB 增强器`；安装确认页应显示版本升级到 `26.09.6`，而不是新增第二个 FSU 脚本。

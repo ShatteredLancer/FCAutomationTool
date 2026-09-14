@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ShatteredLancer/DailyLoopRunner.git"
+    "url": "https://github.com/ShatteredLancer/FCAutomationTool.git"
   },
   "engines": {
     "node": ">=22 <25"
@@ -38,3 +38,4 @@
     "vitest": "^4.1.10"
   }
 }
+

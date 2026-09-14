@@ -1,6 +1,6 @@
 # FC26 Daily Loop Runner
 
-[![Verify](https://github.com/ShatteredLancer/DailyLoopRunner/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/DailyLoopRunner/actions/workflows/verify.yml)
+[![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Daily Loop Runner 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具，用于编排 SBC、开包、Unassigned 处理、Player Pick、动态 SBC 扫描和可复用 Workflow/Profile。
@@ -20,7 +20,7 @@ Daily Loop Runner 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具
 
 安装最新正式版：
 
-<https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/DailyLoopRunner.user.js>
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js>
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
@@ -126,3 +126,4 @@ npm run verify
 ## License
 
 DailyLoopRunner 使用 [MIT License](LICENSE)。FSU 上游和本地修改保留其独立 MIT 声明，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。
+

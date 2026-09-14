@@ -1,5 +1,5 @@
 diff --git a/FSU.user.js b/FSU.user.js
-index dd554ab..086e6c3 100644
+index dd554ab..035d53f 100644
 --- a/FSU.user.js
 +++ b/FSU.user.js
 @@ -3,5 +3,8 @@
@@ -10,8 +10,8 @@ index dd554ab..086e6c3 100644
 +// @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
  // @author       Futcd_kcka
 +// @contributor  ShatteredLancer
-+// @homepageURL  https://github.com/ShatteredLancer/DailyLoopRunner/tree/main/FSU_mod
-+// @supportURL   https://github.com/ShatteredLancer/DailyLoopRunner/issues
++// @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool/tree/main/FSU_mod
++// @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
  // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 @@ -20,2 +23,4 @@
  // @grant        GM_setValue
@@ -22,8 +22,8 @@ index dd554ab..086e6c3 100644
  // @run-at       document-end
 -// @downloadURL https://update.greasyfork.org/scripts/431044/%E3%80%90FSU%E3%80%91EAFC%20FUT%20WEB%20%E5%A2%9E%E5%BC%BA%E5%99%A8.user.js
 -// @updateURL https://update.greasyfork.org/scripts/431044/%E3%80%90FSU%E3%80%91EAFC%20FUT%20WEB%20%E5%A2%9E%E5%BC%BA%E5%99%A8.meta.js
-+// @downloadURL  https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/FSU-Local.user.js
-+// @updateURL    https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/FSU-Local.meta.js
++// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.user.js
++// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.meta.js
  // ==/UserScript==
 @@ -261,3 +266,35 @@
          };

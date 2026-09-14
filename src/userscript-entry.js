@@ -1,12 +1,12 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         FC26 Daily Loop Runner
-// @namespace    https://github.com/ShatteredLancer/DailyLoopRunner
+// @namespace    https://github.com/ShatteredLancer/FCAutomationTool
 // @version      __DLR_VERSION__
 // @description  Automates configurable SBC, pack, Unassigned and Player Pick workflows in the EA FC Web App.
-// @homepageURL  https://github.com/ShatteredLancer/DailyLoopRunner
-// @supportURL   https://github.com/ShatteredLancer/DailyLoopRunner/issues
-// @updateURL    https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/DailyLoopRunner.meta.js
-// @downloadURL  https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/DailyLoopRunner.user.js
+// @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
+// @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
+// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.meta.js
+// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js
 // @license      MIT
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -22911,3 +22911,4 @@ function updateLoopControls() {
     }
   }, 500);
 })();
+

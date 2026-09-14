@@ -5,8 +5,8 @@
 // @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
 // @author       Futcd_kcka
 // @contributor  ShatteredLancer
-// @homepageURL  https://github.com/ShatteredLancer/DailyLoopRunner/tree/main/FSU_mod
-// @supportURL   https://github.com/ShatteredLancer/DailyLoopRunner/issues
+// @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool/tree/main/FSU_mod
+// @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.ea.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -35,8 +35,8 @@
 // @connect      pages.dev
 // @license      MIT
 // @run-at       document-end
-// @downloadURL  https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/FSU-Local.user.js
-// @updateURL    https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/FSU-Local.meta.js
+// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.user.js
+// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.meta.js
 // ==/UserScript==
 
 

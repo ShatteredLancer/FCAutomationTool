@@ -17,10 +17,10 @@ const expected = {
   name: '【FSU】EAFC FUT WEB 增强器',
   namespace: 'https://futcd.com/',
   version: config.localVersion,
-  homepageURL: 'https://github.com/ShatteredLancer/DailyLoopRunner/tree/main/FSU_mod',
-  supportURL: 'https://github.com/ShatteredLancer/DailyLoopRunner/issues',
-  downloadURL: `https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/${config.releaseUserFile}`,
-  updateURL: `https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/${config.releaseMetaFile}`,
+  homepageURL: 'https://github.com/ShatteredLancer/FCAutomationTool/tree/main/FSU_mod',
+  supportURL: 'https://github.com/ShatteredLancer/FCAutomationTool/issues',
+  downloadURL: `https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/${config.releaseUserFile}`,
+  updateURL: `https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/${config.releaseMetaFile}`,
   license: config.upstreamLicense,
 };
 for (const [key, value] of Object.entries(expected)) {
@@ -44,3 +44,4 @@ if (checkOnly) {
   for (const [outputPath, text] of outputs) await writeFile(outputPath, text, 'utf8');
   console.log(`Built ${config.releaseUserFile} and ${config.releaseMetaFile} v${config.localVersion}`);
 }
+

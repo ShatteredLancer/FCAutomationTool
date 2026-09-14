@@ -1,5 +1,6 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/ShatteredLancer/DailyLoopRunner/security/advisories/new
+    url: https://github.com/ShatteredLancer/FCAutomationTool/security/advisories/new
     about: Report vulnerabilities privately; do not include secrets in public issues.
+

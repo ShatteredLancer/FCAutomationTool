@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         FC Automation Tool Preview
-// @namespace    https://github.com/ShatteredLancer/DailyLoopRunner/preview
+// @namespace    https://github.com/ShatteredLancer/FCAutomationTool/preview
 // @version      __DLR_VERSION__
 // @description  Prelaunch read-only environment inspection. No EA account mutations.
 // @license      MIT
@@ -19,3 +19,4 @@ const state = Object.freeze({
   environment: inspectFc27Environment(unsafeWindow, 'web-app'),
 });
 console.info('[FC Automation Tool Preview]', state);
+
