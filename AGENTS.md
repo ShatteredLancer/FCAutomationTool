@@ -182,7 +182,7 @@ esbuild, bundle=true, format=iife, target=chrome120
 
 `package.json` 是 Runner 版本的唯一来源。`src/userscript-entry.js` 中的 `__DLR_VERSION__` 由构建注入，运行时显示读取打包后的 package version；禁止在源码或生成脚本中维护第二份手写版本号。升级版本时必须同步 `package-lock.json`，再由构建刷新生成产物。
 
-`FC26 FC Automation Tool` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `FCAutomationToolHotReload.user.js`。
+`FC26 Daily Loop Runner` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `FCAutomationToolHotReload.user.js`。
 
 FSU Local 的维护输入是 `FSU_mod/fsu-mod.config.json`。上游 `26.09` 原文件必须保持字节不变，`upstreamVersion` 不得因本地修改变化；本地改动只提升独立的 `localVersion`，并重新生成 patch、manifest、`FSU-Local.user.js` 和 `FSU-Local.meta.js`。`npm run check:fsu-patch` 必须证明 patch 可从 immutable origin 重放到 manifest 记录的 modified SHA256；直接编辑 manifest hash 或发布产物不算修复。
 

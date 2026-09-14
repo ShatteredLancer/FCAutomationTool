@@ -32,6 +32,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Block unreviewed renamed assets
+        run: node scripts/check-release-readiness.mjs
       - run: npm run verify
       - name: Verify committed compatibility userscript
         run: git diff --exit-code -- FCAutomationTool.user.js

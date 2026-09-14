@@ -24,7 +24,7 @@ FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工�
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js>
 
-Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 FC Automation Tool - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
+Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
 进入 EA FC Web App 后等待启动扫描完成。面板日志出现 `Ready v...` 后才能运行 Loop。首次扫描可能需要读取当前 SBC Challenge；后续 Incremental scan 会复用仍有效的逐 SBC 缓存。
 

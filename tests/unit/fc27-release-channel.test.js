@@ -7,6 +7,14 @@ describe('release channel isolation', () => {
     const workflow = await readFile(new URL('../../.github/workflows/release-assets.yml', import.meta.url), 'utf8');
     expect(workflow).toContain('group: release-publication');
     expect(workflow).toContain('node scripts/release-channel.mjs');
+    expect(workflow).toContain('node scripts/check-release-readiness.mjs');
+    const readiness = await readFile(new URL('../../scripts/check-release-readiness.mjs', import.meta.url), 'utf8');
+    expect(readiness).toContain("throw new Error('RENAME_RELEASE_NOT_APPROVED:");
+    const preview = await readFile(new URL('../../.github/workflows/fc27-preview.yml', import.meta.url), 'utf8');
+    expect(preview).toContain('fetch-depth: 0');
+    expect(preview).toContain('branches: [main]');
+    expect(preview).toContain('node scripts/verify-fc27-prelaunch.mjs');
+    expect(preview).toContain('contents: read');
     expect(workflow).toContain('"--latest=$env:MAKE_LATEST"');
     expect(workflow).toContain('"--prerelease=$env:IS_PRERELEASE"');
   });

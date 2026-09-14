@@ -1,5 +1,7 @@
 # FC Automation Tool 改名记录
 
+发布前剩余边界、FSU Local 版本问题与浏览器实机步骤见 [收尾清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)。
+
 2026-09-14：仓库为 `ShatteredLancer/FCAutomationTool`，用户已将本地目录和工作区切换至 `C:\Workspace\FCAutomationTool`。
 
 - 当前文件：`FCAutomationTool.loops.json`、`FCAutomationTool.user.js`、`FCAutomationToolHotReload.user.js`。

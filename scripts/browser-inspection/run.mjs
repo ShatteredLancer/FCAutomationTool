@@ -5,19 +5,15 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { collectPageReport, createNetworkSummary, pageKind } from './probe.mjs';
+import { inspectionOptions } from './options.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const requireTools = createRequire(path.join(root, 'tools/browser-inspection/package.json'));
-const args = process.argv.slice(2);
-const selfTest = args.includes('--self-test');
-const interactive = args.includes('--interactive');
-const browserIndex = args.indexOf('--browser');
-const executable = browserIndex < 0 ? null : args[browserIndex + 1];
-if (args.includes('--help') || (!selfTest && !interactive)) {
+const { help, selfTest, executable } = inspectionOptions(process.argv.slice(2));
+if (help) {
   console.log('node scripts/browser-inspection/run.mjs --self-test|--interactive [--browser <executable>]');
   console.log('Interactive mode uses a dedicated profile. Login is manual. Enter captures fixed read-only fields; q closes.');
 } else {
-  if (selfTest && interactive) throw new Error('Choose one inspection mode');
   const { chromium } = requireTools('playwright-core');
   const candidates = executable ? [executable] : process.platform === 'win32' ? [
     path.join(process.env.PROGRAMFILES || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),

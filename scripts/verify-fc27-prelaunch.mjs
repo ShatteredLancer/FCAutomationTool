@@ -9,7 +9,7 @@ for (const script of ['scripts/check-fc26-baseline.mjs', 'scripts/build-fc27-pre
 execFileSync(process.execPath, ['node_modules/eslint/bin/eslint.js', 'FSU_mod/src'], { cwd: root, stdio: 'inherit' });
 execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run',
   'tests/unit/fc27-prelaunch-contract.test.js', 'tests/unit/fc27-preferences.test.js',
-  'tests/unit/fc27-browser-inspection.test.js', 'tests/unit/fc27-release-channel.test.js',
+  'tests/unit/fc27-browser-inspection.test.js', 'tests/unit/fc27-browser-options.test.js', 'tests/unit/fc27-release-channel.test.js',
   'tests/contracts/fc27-fsu-core.test.js', 'tests/contracts/fc27-preview.test.js'], { cwd: root, stdio: 'inherit' });
 if (process.argv.includes('--browser')) {
   execFileSync(process.execPath, ['scripts/browser-inspection/run.mjs', '--self-test'], { cwd: root, stdio: 'inherit' });
