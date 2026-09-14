@@ -34,7 +34,7 @@ jobs:
       - run: npm ci
       - run: npm run verify
       - name: Verify committed compatibility userscript
-        run: git diff --exit-code -- DailyLoopRunner.user.js
+        run: git diff --exit-code -- FCAutomationTool.user.js
       - run: npm run build:profiles
 
       - name: Validate release tag
@@ -75,15 +75,15 @@ jobs:
       - name: Package release assets
         shell: pwsh
         run: |
-          Compress-Archive -Path 'dist\profiles\*' -DestinationPath 'dist\DailyLoopRunner.profiles.zip' -Force
-          Copy-Item -LiteralPath 'dist\profiles\manifest.json' -Destination 'dist\DailyLoopRunner.profiles.manifest.json' -Force
+          Compress-Archive -Path 'dist\profiles\*' -DestinationPath 'dist\FCAutomationTool.profiles.zip' -Force
+          Copy-Item -LiteralPath 'dist\profiles\manifest.json' -Destination 'dist\FCAutomationTool.profiles.manifest.json' -Force
           Copy-Item -LiteralPath 'FSU_mod\fsu-mod-manifest.json' -Destination 'dist\FSU-Local.manifest.json' -Force
           $assets = @(
-            'dist\DailyLoopRunner.user.js',
-            'dist\DailyLoopRunner.meta.js',
-            'DailyLoopRunner.loops.json',
-            'dist\DailyLoopRunner.profiles.zip',
-            'dist\DailyLoopRunner.profiles.manifest.json',
+            'dist\FCAutomationTool.user.js',
+            'dist\FCAutomationTool.meta.js',
+            'FCAutomationTool.loops.json',
+            'dist\FCAutomationTool.profiles.zip',
+            'dist\FCAutomationTool.profiles.manifest.json',
             'dist\FSU-Local.user.js',
             'dist\FSU-Local.meta.js',
             'dist\FSU-Local.manifest.json'
@@ -118,11 +118,11 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           $assets = @(
-            'dist/DailyLoopRunner.user.js',
-            'dist/DailyLoopRunner.meta.js',
-            'DailyLoopRunner.loops.json',
-            'dist/DailyLoopRunner.profiles.zip',
-            'dist/DailyLoopRunner.profiles.manifest.json',
+            'dist/FCAutomationTool.user.js',
+            'dist/FCAutomationTool.meta.js',
+            'FCAutomationTool.loops.json',
+            'dist/FCAutomationTool.profiles.zip',
+            'dist/FCAutomationTool.profiles.manifest.json',
             'dist/FSU-Local.user.js',
             'dist/FSU-Local.meta.js',
             'dist/FSU-Local.manifest.json',
@@ -155,6 +155,6 @@ jobs:
           | Tag | ``${{ steps.version.outputs.tag }}`` |
           | FSU upstream | ``$($manifest.upstreamVersion)`` |
           | FSU Local | ``$($manifest.localVersion)`` |
-          | Update metadata | ``DailyLoopRunner.meta.js`` |
+          | Update metadata | ``FCAutomationTool.meta.js`` |
           | Checksums | ``SHA256SUMS`` |
           "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8

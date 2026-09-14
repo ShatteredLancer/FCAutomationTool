@@ -48,7 +48,7 @@ jobs:
         run: npm run build:profiles
       - name: Check generated compatibility userscript is committed
         id: compatibility
-        run: git diff --exit-code -- DailyLoopRunner.user.js
+        run: git diff --exit-code -- FCAutomationTool.user.js
       - name: Upload Profile library preview
         uses: actions/upload-artifact@v4
         with:

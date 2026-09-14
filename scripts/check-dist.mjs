@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = (await readFile(path.join(root, 'src', 'userscript-entry.js'), 'utf8')).replace(/^\uFEFF/, '');
-const rootBuild = await readFile(path.join(root, 'DailyLoopRunner.user.js'), 'utf8');
-const built = await readFile(path.join(root, 'dist', 'DailyLoopRunner.user.js'), 'utf8');
-const meta = await readFile(path.join(root, 'dist', 'DailyLoopRunner.meta.js'), 'utf8');
+const rootBuild = await readFile(path.join(root, 'FCAutomationTool.user.js'), 'utf8');
+const built = await readFile(path.join(root, 'dist', 'FCAutomationTool.user.js'), 'utf8');
+const meta = await readFile(path.join(root, 'dist', 'FCAutomationTool.meta.js'), 'utf8');
 const packageInfo = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const packageLock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
 const metadataPattern = /^(\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==)/;
@@ -35,11 +35,11 @@ function metadataValue(key) {
 
 const expectedFields = {
   name: 'FC26 Daily Loop Runner',
-  namespace: 'https://github.com/ShatteredLancer/DailyLoopRunner',
-  homepageURL: 'https://github.com/ShatteredLancer/DailyLoopRunner',
-  supportURL: 'https://github.com/ShatteredLancer/DailyLoopRunner/issues',
-  updateURL: 'https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/DailyLoopRunner.meta.js',
-  downloadURL: 'https://github.com/ShatteredLancer/DailyLoopRunner/releases/latest/download/DailyLoopRunner.user.js',
+  namespace: 'https://github.com/ShatteredLancer/FCAutomationTool',
+  homepageURL: 'https://github.com/ShatteredLancer/FCAutomationTool',
+  supportURL: 'https://github.com/ShatteredLancer/FCAutomationTool/issues',
+  updateURL: 'https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.meta.js',
+  downloadURL: 'https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js',
   license: 'MIT',
 };
 for (const [key, expected] of Object.entries(expectedFields)) {

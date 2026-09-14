@@ -1,4 +1,4 @@
-# DailyLoopRunner Profile Library
+# FCAutomationTool Profile Library
 
 This directory is the source library for downloadable Workflow/Loop Profiles.
 
@@ -50,4 +50,4 @@ npm run check:profiles
 npm run build:profiles
 ```
 
-The build writes importable `*.loops.json` files and `manifest.json` to `dist/profiles/`. GitHub Actions validates Profile changes on every push and pull request. A tagged release includes the current library as `DailyLoopRunner.profiles.zip`. Published releases are immutable, so every Profile library update that must be distributed requires a new package version and matching release tag.
+The build writes importable `*.loops.json` files and `manifest.json` to `dist/profiles/`. GitHub Actions validates Profile changes on every push and pull request. A tagged release includes the current library as `FCAutomationTool.profiles.zip`. Published releases are immutable, so every Profile library update that must be distributed requires a new package version and matching release tag.

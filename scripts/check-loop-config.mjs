@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { loadUserscript } from '../tests/helpers/load-userscript.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const json = JSON.parse(await readFile(path.join(root, 'DailyLoopRunner.loops.json'), 'utf8'));
+const json = JSON.parse(await readFile(path.join(root, 'FCAutomationTool.loops.json'), 'utf8'));
 const { api } = await loadUserscript();
 const config = api.normalizeLoopConfig(json);
 
-api.validateLoopConfig(config, 'DailyLoopRunner.loops.json');
+api.validateLoopConfig(config, 'FCAutomationTool.loops.json');
 api.validateLoopConfig({
   loops: api.LOOP_DEFS,
   recoveryRecipes: api.RECOVERY_RECIPES,

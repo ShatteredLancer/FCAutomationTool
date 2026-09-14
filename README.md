@@ -1,9 +1,11 @@
-# FC26 Daily Loop Runner
+# FC Automation Tool
+
+当前完整脚本仍为 FC26 业务，FC27 仅有离线 Preview。新名 Release 资产尚未发布，下方新名安装链接须待发布后使用。详见 [改名记录](docs/RENAME_STATUS_ZH.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Daily Loop Runner 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具，用于编排 SBC、开包、Unassigned 处理、Player Pick、动态 SBC 扫描和可复用 Workflow/Profile。
+FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具，用于编排 SBC、开包、Unassigned 处理、Player Pick、动态 SBC 扫描和可复用 Workflow/Profile。
 
 项目优先保证材料和库存安全：身份、材料要求、库存去向或提交状态无法确认时会停止，而不是继续猜测。
 
@@ -20,9 +22,9 @@ Daily Loop Runner 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具
 
 安装最新正式版：
 
-<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js>
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js>
 
-Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
+Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 FC Automation Tool - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
 进入 EA FC Web App 后等待启动扫描完成。面板日志出现 `Ready v...` 后才能运行 Loop。首次扫描可能需要读取当前 SBC Challenge；后续 Incremental scan 会复用仍有效的逐 SBC 缓存。
 
@@ -30,8 +32,8 @@ Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络�
 
 正式版通过 GitHub Release 提供：
 
-- `DailyLoopRunner.meta.js`：Tampermonkey 版本检查
-- `DailyLoopRunner.user.js`：完整脚本
+- `FCAutomationTool.meta.js`：Tampermonkey 版本检查
+- `FCAutomationTool.user.js`：完整脚本
 - `SHA256SUMS`：发布资产校验和
 
 Tampermonkey 按自身的更新检查间隔读取 `releases/latest`。只有 `@version` 增加且 Release 完整发布后才会更新；也可以在 Tampermonkey 中手动检查脚本更新。
@@ -121,9 +123,9 @@ npm ci
 npm run verify
 ```
 
-修改 `src/` 后运行 `npm run build`。不要手工编辑根目录生成的 `DailyLoopRunner.user.js` 或 `dist/`。贡献规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+修改 `src/` 后运行 `npm run build`。不要手工编辑根目录生成的 `FCAutomationTool.user.js` 或 `dist/`。贡献规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## License
 
-DailyLoopRunner 使用 [MIT License](LICENSE)。FSU 上游和本地修改保留其独立 MIT 声明，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。
+FCAutomationTool 使用 [MIT License](LICENSE)。FSU 上游和本地修改保留其独立 MIT 声明，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。
 

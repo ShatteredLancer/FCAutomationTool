@@ -15,7 +15,7 @@ npm ci
 npm run verify
 ```
 
-Do not edit `DailyLoopRunner.user.js` or files under `dist/` manually. Edit
+Do not edit `FCAutomationTool.user.js` or files under `dist/` manually. Edit
 `src/` and run `npm run build`. FSU Local changes must update the origin/mod
 patch chain through `npm run build:fsu-patch` and pass replay verification.
 

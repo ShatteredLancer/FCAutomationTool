@@ -1,4 +1,6 @@
-# Daily Loop Runner AI Agent Engineering Guide
+# FC Automation Tool AI Agent Engineering Guide
+
+当前文件与目录更名状态见 [改名记录](docs/RENAME_STATUS_ZH.md)。文件名与安装身份应区分；FC26 运行时仍保留原显示名，FC27 首版为用户明确选择的全新安装。FSU 身份不变。
 
 本文件是 AI agent 和维护者处理本仓库任务时的首要工程说明。它描述当前真实实现，而不是最终理想状态。
 
@@ -12,7 +14,7 @@
 
 ## 1. 项目目标与安全原则
 
-Daily Loop Runner 是 EA FC Web App 的 Tampermonkey 自动化脚本，运行时依赖 EA 页面模型、FSU 和 FC26 Enhancer。它处理高价值账号库存，因此正确性优先于继续运行。
+FC Automation Tool 是 EA FC Web App 的 Tampermonkey 自动化脚本，运行时依赖 EA 页面模型、FSU 和 FC26 Enhancer。它处理高价值账号库存，因此正确性优先于继续运行。
 
 必须遵守：
 
@@ -99,7 +101,7 @@ npm run verify
 - Node 22，至少应使用与当前依赖兼容的现代 Node 版本。
 - `npm ci` 必须基于已提交的 `package-lock.json` 安装精确依赖。
 - 如果修改 `package.json` 依赖，必须同步更新并提交 `package-lock.json`。
-- Python 不是 npm 依赖，也不是构建和测试必需项；只有运行 `StartLoopRunnerDevServer.ps1` 热加载时才需要 `python -m http.server`。
+- Python 不是 npm 依赖，也不是构建和测试必需项；只有运行 `StartFCAutomationToolDevServer.ps1` 热加载时才需要 `python -m http.server`。
 - Tampermonkey、FSU 和 FC26 Enhancer 是浏览器运行时依赖，不由 npm 安装。
 
 主要 npm 命令：
@@ -131,7 +133,7 @@ src/**
 
 ### 3.2 外部配置
 
-`DailyLoopRunner.loops.json` 是可选外部配置，包含：
+`FCAutomationTool.loops.json` 是可选外部配置，包含：
 
 - `loops`
 - `recoveryRecipes`
@@ -145,9 +147,9 @@ src/**
 以下文件由构建生成：
 
 ```text
-DailyLoopRunner.user.js
-dist/DailyLoopRunner.user.js
-dist/DailyLoopRunner.meta.js
+FCAutomationTool.user.js
+dist/FCAutomationTool.user.js
+dist/FCAutomationTool.meta.js
 dist/FSU-Local.user.js
 dist/FSU-Local.meta.js
 dist/profiles/*
@@ -166,9 +168,9 @@ scripts/build-userscript.mjs
         v
 esbuild, bundle=true, format=iife, target=chrome120
         |
-        +--> DailyLoopRunner.user.js
-        +--> dist/DailyLoopRunner.user.js
-        +--> dist/DailyLoopRunner.meta.js
+        +--> FCAutomationTool.user.js
+        +--> dist/FCAutomationTool.user.js
+        +--> dist/FCAutomationTool.meta.js
 ```
 
 `scripts/check-dist.mjs` 验证：
@@ -180,13 +182,13 @@ esbuild, bundle=true, format=iife, target=chrome120
 
 `package.json` 是 Runner 版本的唯一来源。`src/userscript-entry.js` 中的 `__DLR_VERSION__` 由构建注入，运行时显示读取打包后的 package version；禁止在源码或生成脚本中维护第二份手写版本号。升级版本时必须同步 `package-lock.json`，再由构建刷新生成产物。
 
-`FC26 Daily Loop Runner` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `DailyLoopRunnerHotReload.user.js`。
+`FC26 FC Automation Tool` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `FCAutomationToolHotReload.user.js`。
 
 FSU Local 的维护输入是 `FSU_mod/fsu-mod.config.json`。上游 `26.09` 原文件必须保持字节不变，`upstreamVersion` 不得因本地修改变化；本地改动只提升独立的 `localVersion`，并重新生成 patch、manifest、`FSU-Local.user.js` 和 `FSU-Local.meta.js`。`npm run check:fsu-patch` 必须证明 patch 可从 immutable origin 重放到 manifest 记录的 modified SHA256；直接编辑 manifest hash 或发布产物不算修复。
 
 FSU 修改版必须保留上游脚本身份：`@name` 固定为 `【FSU】EAFC FUT WEB 增强器`，`@namespace` 固定为 `https://futcd.com/`。Tampermonkey 以脚本身份隔离 GM 存储；不得为了显示 Local 品牌、切换发布地址或区分本地版本而修改这两个字段，否则会重置 `build`、`set`、Lock 和其它用户配置。维护版只允许通过独立版本号、description、homepage/support URL 和 GitHub update/download URL 表明来源。
 
-DailyLoopRunner、仓库内原创文档/脚本和 FSU Local 修改均按 MIT 发布。第三方代码必须保留其原始作者、许可证和 notice；不得仅因为仓库采用 MIT 就删除第三方归属，也不得把第三方商标或在线服务描述为本项目资产。许可证边界以 `LICENSE`、`FSU_mod/LICENSE` 和 `THIRD_PARTY_NOTICES.md` 为准。
+FCAutomationTool、仓库内原创文档/脚本和 FSU Local 修改均按 MIT 发布。第三方代码必须保留其原始作者、许可证和 notice；不得仅因为仓库采用 MIT 就删除第三方归属，也不得把第三方商标或在线服务描述为本项目资产。许可证边界以 `LICENSE`、`FSU_mod/LICENSE` 和 `THIRD_PARTY_NOTICES.md` 为准。
 
 新增或删除 Loop strategy 时，禁止只修改 schema 或只在 entry 注入 runner。`src/domain/strategies.js` 是 strategy 清单来源，必须同步贯通 `src/config/loop-schema.js`、`src/workflows/dispatch.js`、entry runner 注入、strategy dispatch 测试、架构 runner-map 测试和对应 Workflow/contract coverage。凡是 schema 接受但 dispatch 无法执行的 strategy 都属于发布阻断错误。
 
@@ -626,7 +628,7 @@ Dynamic SBC 缓存只能缓存只读 Challenge 快照，不能缓存“可运行
 
 主面板 Profile 选择器只能激活 Profile 的 Saved/last-known-good，不得隐式保存或应用 Draft。内置 Starter Profile 在 Store 归一化时只补缺，不得覆盖同 ID 的现有用户 Profile。旧版缺失 `preset`、名称仍为 `Default`、没有动态绑定且 Draft/Saved/last-known-good 均严格等于其旧 base 的 Default 可以先补齐官方标记再随当前 built-in rebase；任何内容被修改过的同名旧 Profile 必须保持冲突保护。Built-in、Default 和 `Bronze/Silver Inventory Only` 的 `One-click Daily Loop` 固定为 Daily Bronze -> Daily Silver -> Daily Common -> Daily Rare 四步，不得隐式追加 Rare Pack 回收；`Daily + Rare Pack Recycling` 可以追加 Rare Gold Premium/Baseline 第 5 步，`Daily + Rare Pack to 5x80+` 可以追加 quantity-first Common Gold Premium、Rare-only 填充的第 5 步，两者都必须保持 `useRoundsAsCompletions:false` 与最多一次库存 fallback，且不得互相覆盖。独立 Rare Pack Loop 在所有配置中仍保留。旧 Starter 的稳定 ID/preset 保留兼容；只有名称和配置均未被用户修改的旧官方 `Daily + Rare Pack to 2x84+` Profile 才能自动迁移显示名，自定义副本不得覆盖。`Bronze/Silver Inventory Only` Starter 只能把使用铜/银 `targetDuplicate` 或 requirements 的 supported Loop 设为 `inventory-only`，并把其余 supported/container Loop 显式设为 `normal`，使它与主面板全局 `Inventory only` 区分；不得给 unsupported/intrinsic strategy 写入非法配置。旧 `starter-inventory-only` 仅在保持原始名称、preset 和未修改配置时自动迁移，用户自定义副本必须保留。主面板不得恢复 `Dry run` 或 `Show MVP loops` 控件；Dry Run 仅由 Builder/Profile 中的 Loop 配置启用，MVP/验证 Loop 保留在配置和 Builder 中但始终从主 Loop 下拉列表隐藏。主面板保留 `Refresh caches` 和 `Scan SBCs` 作为库存缓存恢复与 Dynamic SBC 绑定刷新入口；`Scan SBCs` 必须提供 Incremental、Full rescan 和 Clear cache 三种只读模式。JSON 验证/导入和 recap 模拟预览只放在 Builder/开发入口，不恢复为主面板按钮。
 
-可发布 Profile 的源目录固定为 `profiles/`。每个 `*.profile.json` 文件名必须与 kebab-case `id` 一致，且只能二选一引用官方 `preset` 或提供完整 `config`；新增文件必须通过 `npm run check:profiles`，并由 `npm run build:profiles` 生成 `dist/profiles/*.loops.json` 和 manifest。禁止上传带 `discovered`、`discoveryIdentity` 或 `discovered-player-pick-*` 的动态 Pick 快照。`.github/workflows/release-assets.yml` 只在新版本 Release 发布时上传 userscript、完整 Loop 配置和 `DailyLoopRunner.profiles.zip`；已发布 Release 不得因 Profile-only 合并而覆盖资产，需分发的 Profile 变化必须提升 package 版本并创建新 tag。
+可发布 Profile 的源目录固定为 `profiles/`。每个 `*.profile.json` 文件名必须与 kebab-case `id` 一致，且只能二选一引用官方 `preset` 或提供完整 `config`；新增文件必须通过 `npm run check:profiles`，并由 `npm run build:profiles` 生成 `dist/profiles/*.loops.json` 和 manifest。禁止上传带 `discovered`、`discoveryIdentity` 或 `discovered-player-pick-*` 的动态 Pick 快照。`.github/workflows/release-assets.yml` 只在新版本 Release 发布时上传 userscript、完整 Loop 配置和 `FCAutomationTool.profiles.zip`；已发布 Release 不得因 Profile-only 合并而覆盖资产，需分发的 Profile 变化必须提升 package 版本并创建新 tag。
 
 Reward Alerts 的三个测试入口必须保持解耦：Preview 只展示本地 Toast/烟花，不调用 `GM_notification` 或网络；Desktop test 实际调用本机系统通知；ntfy test 实际发送远程测试消息。不要为了减少按钮数量把真实通知副作用合并进 Preview。
 
@@ -735,7 +737,7 @@ Builder 激活必须先物化当前 Profile：静态 configured loops 经过内�
 | Provision stage 顺序或 partial Pick 错误 | Provision orchestration/config | `runProvisionCraftLoop()`、`runProvisionPreCraftPlayerPick()`、`craftingUpgrades` |
 | One-click 阶段跳过或恢复错误 | Sequence Workflow | `runDailySequence()`、`src/workflows/sequence.js` |
 | 日志卡顿、重复日志栏 | UI renderer/entry panel | `src/ui/log-renderer.js`、`installPanel()` |
-| 热加载使用旧代码 | 构建和本地服务 | `scripts/build-userscript.mjs`、`StartLoopRunnerDevServer.ps1`、Hot Reload userscript |
+| 热加载使用旧代码 | 构建和本地服务 | `scripts/build-userscript.mjs`、`StartFCAutomationToolDevServer.ps1`、Hot Reload userscript |
 
 ## 7. Loop 配置规则
 
@@ -1110,7 +1112,7 @@ Dry run 必须在副作用前停止：
 启动服务：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ".\StartLoopRunnerDevServer.ps1"
+powershell -ExecutionPolicy Bypass -File ".\StartFCAutomationToolDevServer.ps1"
 ```
 
 开发循环：

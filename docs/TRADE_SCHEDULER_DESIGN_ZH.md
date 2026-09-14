@@ -2,7 +2,7 @@
 
 > 文档状态：TS0-TS15 已完成，`v0.7.91` 已发布；本文件作为 v1 历史基线保留
 > 最后更新：2026-08-12
-> 适用仓库：DailyLoopRunner  
+> 适用仓库：FCAutomationTool
 > 功能边界：定时自动买入、定时批量挂牌、交易任务调度、逐项回执与诊断
 > 后继设计：已确认的新范围见 [TRADE_SCHEDULER_V2_DESIGN_ZH.md](TRADE_SCHEDULER_V2_DESIGN_ZH.md)，在对应里程碑完成前不代表当前运行行为
 
@@ -73,11 +73,11 @@ Enhancer 没有公开 Trader/Bulk Listing 调用接口：
 
 FSU 的 Bulk Auction 同样调用 `services.Item.list()`，并提供价格限制、错误映射、取消和列表刷新方面的参考。Trade Scheduler 不读取 FSU 的价格缓存、运行标志或 UI，也不要求 FSU 已安装。
 
-DailyLoopRunner 的现有 SBC 功能仍可继续使用 FSU 筛选和锁卡能力，但新的交易子系统必须保持独立。
+FCAutomationTool 的现有 SBC 功能仍可继续使用 FSU 筛选和锁卡能力，但新的交易子系统必须保持独立。
 
 ### 3.4 价格来源
 
-当前 `src/reward/player-prices.js` 直接通过 DailyLoopRunner HTTP Adapter 请求：
+当前 `src/reward/player-prices.js` 直接通过 FCAutomationTool HTTP Adapter 请求：
 
 1. FUT.GG。
 2. FUT.GG 失败或为空时回退 FUTNext。
@@ -88,7 +88,7 @@ FUTNext 请求地址当前为：
 https://enhancer-api.futnext.com/players/prices
 ```
 
-域名包含 `enhancer-api` 不代表依赖已安装的 Enhancer。请求由 DailyLoopRunner/Tampermonkey 直接发出。
+域名包含 `enhancer-api` 不代表依赖已安装的 Enhancer。请求由 FCAutomationTool/Tampermonkey 直接发出。
 
 FSU 和 Enhancer 都允许用户选择自己的价格来源，但 Trade Scheduler 不继承它们的设置。新功能必须提供独立、可诊断的 Price Provider 配置。
 
@@ -118,7 +118,7 @@ Enhancer 的评分搜索实际流程为：从 FUTNext 获取指定评分的 defi
 
 | ID | 决策 | 状态 |
 | --- | --- | --- |
-| D1 | Trade Scheduler 位于 DailyLoopRunner 仓库，但作为与 Loop Runner、Batch Open 并列的独立子系统。 | Resolved |
+| D1 | Trade Scheduler 位于 FCAutomationTool 仓库，但作为与 Loop Runner、Batch Open 并列的独立子系统。 | Resolved |
 | D2 | Trade Job 不进入 Loop/Workflow JSON，也不复用 SBC `rounds` 语义。 | Resolved |
 | D3 | 买入后不提供 destination 配置：默认发 Club；Club 重复发 Transfer List。 | Resolved |
 | D4 | Club 重复且 Transfer List 已满时停止 Buy Job，保留当前卡并报告阻塞。 | Resolved |
@@ -778,14 +778,14 @@ Scope:
 - [x] 调研 FSU Bulk Auction。
 - [x] 确认 EA 交易执行接口。
 - [x] 确认 EA 不支持直接评分范围搜索。
-- [x] 确认 DailyLoopRunner 当前直接访问 FUT.GG/FUTNext。
+- [x] 确认 FCAutomationTool 当前直接访问 FUT.GG/FUTNext。
 - [x] 固定买入后 Club/重复 Transfer 路由。
 - [x] 固定评分通道和单响应最低价策略。
 - [x] 固定 Trade Scheduler 与 Loop/Workflow 的边界。
 
 Tests: 不适用，文档阶段。
 
-Live validation: 使用 Enhancer/FSU 已安装源码进行静态行为交叉验证；尚未由 DailyLoopRunner 发起交易。
+Live validation: 使用 Enhancer/FSU 已安装源码进行静态行为交叉验证；尚未由 FCAutomationTool 发起交易。
 
 Next: 解决第 19 节首轮 Open decisions，然后开始 TS1。
 
@@ -1289,9 +1289,9 @@ Commit/Version: Documentation draft on repository version `0.7.31`.
 
 Automated tests: Not run; no runtime code changed.
 
-Live setup: Static inspection of installed Enhancer `26.1.6.2`, retained Enhancer versions `26.1.5.6-26.1.6.2`, local FSU `26.09`, and DailyLoopRunner source.
+Live setup: Static inspection of installed Enhancer `26.1.6.2`, retained Enhancer versions `26.1.5.6-26.1.6.2`, local FSU `26.09`, and FCAutomationTool source.
 
-Observed result: Enhancer and FSU both use EA `services.Item.list`; Enhancer rating filtering resolves external definition IDs and injects one ID into each EA market search; DailyLoopRunner prices call FUT.GG and FUTNext directly.
+Observed result: Enhancer and FSU both use EA `services.Item.list`; Enhancer rating filtering resolves external definition IDs and injects one ID into each EA market search; FCAutomationTool prices call FUT.GG and FUTNext directly.
 
 Diagnostics: No EA transaction was executed.
 
@@ -1307,7 +1307,7 @@ Commit/Version: Uncommitted working tree on repository version `0.7.31`.
 
 Automated tests: `npm run verify` passed: 115 test files and 743 tests; syntax, ESLint, config/Profile validation, architecture audit, build, dist and FSU release checks also passed.
 
-Live setup: Pending. The Console commands in TS1 must be run after EA Web App and DailyLoopRunner are ready.
+Live setup: Pending. The Console commands in TS1 must be run after EA Web App and FCAutomationTool are ready.
 
 Observed result: Trade contracts, disarmed import behavior, explicit card class, Fake/EA adapters, FUTNext rating catalog, platform-isolated price quotes, error classification and circuit breaker are implemented. Existing Player Pick price-loading behavior remains covered by compatibility tests.
 
@@ -1325,7 +1325,7 @@ Commit/Version: Uncommitted working tree on repository version `0.7.31`.
 
 Automated tests: After the live-shape fix, `npm run verify` passed: 115 test files and 744 tests; all other verification stages passed.
 
-Live setup: EA Web App on PC with DailyLoopRunner `0.7.31`; artifact `trade-ts1-diagnostics-2026-08-06T12-10-47-903Z.json`; Console reported no errors.
+Live setup: EA Web App on PC with FCAutomationTool `0.7.31`; artifact `trade-ts1-diagnostics-2026-08-06T12-10-47-903Z.json`; Console reported no errors.
 
 Observed result: `runtimeReady` and `canTrade` were true; Trade Access was allowed; all required EA methods and 13 allowlisted search criteria fields were present; Transfer List was 11/100. FUTNext returned 50 definition IDs for each of ratings 84 and 85. FUT.GG returned HTTP 403 and Auto correctly fell back to five FUTNext quotes. A Club item resolved successfully and read-only `requestMarketData()` returned HTTP 200 with price limits 700-10000.
 
@@ -1343,7 +1343,7 @@ Commit/Version: Uncommitted working tree on repository version `0.7.31`.
 
 Automated tests: Unchanged from round 1: 115 test files and 744 tests passed.
 
-Live setup: EA Web App on PC after reloading the rebuilt DailyLoopRunner `0.7.31` userscript.
+Live setup: EA Web App on PC after reloading the rebuilt FCAutomationTool `0.7.31` userscript.
 
 Observed result: `runtimeReady: true`, `canTrade: true`, Trade Access allowed at level 2, coins read as a finite value, and Transfer List remained 11/100 with 89 free slots. The 13 criteria fields and required Trade methods remained available.
 

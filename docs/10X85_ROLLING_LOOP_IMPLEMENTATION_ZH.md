@@ -4,11 +4,11 @@
 >
 > 最后更新：2026-08-17
 >
-> 规划基线：DailyLoopRunner `v0.7.91`，Git `0be883d`
+> 规划基线：FCAutomationTool `v0.7.91`，Git `0be883d`
 >
 > 实施基线：Git `c533519`
 >
-> 当前候选：DailyLoopRunner `v0.8.19`
+> 当前候选：FCAutomationTool `v0.8.19`
 >
 > 功能可见性：动态扫描成功后作为可选 Loop 显示；真实页面验收和最终发布门禁仍由 RL-8 跟踪
 
@@ -1119,5 +1119,5 @@ RL-0 锁定的当前行为和已确认缺口：
 - Recap 和运行内存有界。
 - `npm run verify` 完整通过。
 - 真实页面验收完成并记录证据。
-- 生成的 `DailyLoopRunner.user.js` 与源码一致。
+- 生成的 `FCAutomationTool.user.js` 与源码一致。
 - 本文档的 Milestone、提交和验收记录已更新。

@@ -7,8 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = path.join(root, 'src', 'userscript-entry.js');
 const packageInfo = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const outputPaths = [
-  path.join(root, 'DailyLoopRunner.user.js'),
-  path.join(root, 'dist', 'DailyLoopRunner.user.js'),
+  path.join(root, 'FCAutomationTool.user.js'),
+  path.join(root, 'dist', 'FCAutomationTool.user.js'),
 ];
 const source = (await readFile(sourcePath, 'utf8')).replace(/^\uFEFF/, '');
 const metadataMatch = source.match(/^(\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==)\s*/);
@@ -49,6 +49,6 @@ for (const outputPath of outputPaths) {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, output, 'utf8');
 }
-await writeFile(path.join(root, 'dist', 'DailyLoopRunner.meta.js'), `${metadata}\n`, 'utf8');
-console.log(`Built DailyLoopRunner.user.js and dist/DailyLoopRunner.user.js v${version}`);
-console.log('Built dist/DailyLoopRunner.meta.js');
+await writeFile(path.join(root, 'dist', 'FCAutomationTool.meta.js'), `${metadata}\n`, 'utf8');
+console.log(`Built FCAutomationTool.user.js and dist/FCAutomationTool.user.js v${version}`);
+console.log('Built dist/FCAutomationTool.meta.js');

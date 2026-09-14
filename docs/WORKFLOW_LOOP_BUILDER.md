@@ -276,7 +276,7 @@ Validation errors are grouped by JSON path and link to the corresponding visual 
 
 Export always emits the existing top-level configuration shape so files remain compatible with the development server and older manual workflows.
 
-Reusable repository Profiles live in `profiles/*.profile.json`. A descriptor references an official preset or embeds one complete validated `config`. `npm run check:profiles` rejects invalid configuration and stale Dynamic SBC snapshots; `npm run build:profiles` emits importable `.loops.json` files plus a manifest under `dist/profiles/`. GitHub Actions packages these outputs into `DailyLoopRunner.profiles.zip` for Releases.
+Reusable repository Profiles live in `profiles/*.profile.json`. A descriptor references an official preset or embeds one complete validated `config`. `npm run check:profiles` rejects invalid configuration and stale Dynamic SBC snapshots; `npm run build:profiles` emits importable `.loops.json` files plus a manifest under `dist/profiles/`. GitHub Actions packages these outputs into `FCAutomationTool.profiles.zip` for Releases.
 
 ## 15. Built-in update conflicts
 

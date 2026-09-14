@@ -8,7 +8,7 @@ export default [
       'FSU_mod/*.js',
       'node_modules/**',
       'reports/**',
-      'DailyLoopRunner.user.js',
+      'FCAutomationTool.user.js',
     ],
   },
   {
@@ -45,7 +45,7 @@ export default [
     rules: { 'no-undef': ['error', { typeof: true }] },
   },
   {
-    files: ['src/userscript-entry.js', 'src/fc27/userscript-entry.js', 'DailyLoopRunnerHotReload.user.js'],
+    files: ['src/userscript-entry.js', 'src/fc27/userscript-entry.js', 'FCAutomationToolHotReload.user.js'],
     languageOptions: {
       globals: {
         ...globals.browser,

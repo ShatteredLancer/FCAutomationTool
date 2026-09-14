@@ -5,8 +5,8 @@
 // @description  Automates configurable SBC, pack, Unassigned and Player Pick workflows in the EA FC Web App.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
-// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.meta.js
-// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js
+// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.meta.js
+// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js
 // @license      MIT
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -49,12 +49,12 @@
       "build:fsu-release": "node scripts/build-fsu-release-assets.mjs",
       "check:fsu-patch": "node scripts/check-fsu-patch.mjs",
       "check:fsu-release": "node scripts/build-fsu-release-assets.mjs --check",
-      "check:dist": "node --check dist/DailyLoopRunner.user.js && node scripts/check-dist.mjs",
+      "check:dist": "node --check dist/FCAutomationTool.user.js && node scripts/check-dist.mjs",
       "check:profiles": "node scripts/build-profile-library.mjs --check",
       "check:config": "node scripts/check-loop-config.mjs",
       "check:architecture": "node scripts/audit-architecture.mjs --check",
       "lint:syntax": "node scripts/check-syntax.mjs",
-      "lint:undef": "eslint src scripts tests DailyLoopRunnerHotReload.user.js eslint.config.js vitest.config.js",
+      "lint:undef": "eslint src scripts tests FCAutomationToolHotReload.user.js eslint.config.js vitest.config.js",
       test: "vitest run",
       "test:watch": "vitest",
       "test:contracts": "vitest run tests/contracts",

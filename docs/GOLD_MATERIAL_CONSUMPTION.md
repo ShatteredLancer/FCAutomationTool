@@ -1,6 +1,6 @@
 # Gold Material Consumption Model
 
-本文档定义 Daily Loop Runner 对普通金卡、稀有金卡和特殊卡的统一分类，以及不同 SBC/Loop 应如何决定资格和消耗顺序。目标是避免把“EA 接受什么卡”和“Runner 想优先消耗什么卡”混成一个字段。
+本文档定义 FC Automation Tool 对普通金卡、稀有金卡和特殊卡的统一分类，以及不同 SBC/Loop 应如何决定资格和消耗顺序。目标是避免把“EA 接受什么卡”和“Runner 想优先消耗什么卡”混成一个字段。
 
 ## 1. 为什么 Common/Rare Bug 反复出现
 

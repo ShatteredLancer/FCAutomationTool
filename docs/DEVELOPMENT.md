@@ -1,4 +1,4 @@
-# DailyLoopRunner Development and Release
+# FCAutomationTool Development and Release
 
 ## Requirements
 
@@ -29,9 +29,9 @@ The detailed dependency and safety rules are in [`AGENTS.md`](../AGENTS.md).
 
 Do not manually edit:
 
-- `DailyLoopRunner.user.js`
-- `dist/DailyLoopRunner.user.js`
-- `dist/DailyLoopRunner.meta.js`
+- `FCAutomationTool.user.js`
+- `dist/FCAutomationTool.user.js`
+- `dist/FCAutomationTool.meta.js`
 - `dist/FSU-Local.user.js`
 - `dist/FSU-Local.meta.js`
 - `dist/profiles/*`
@@ -61,10 +61,10 @@ CI additionally checks that the generated root compatibility userscript is commi
 
 ## Local Hot Reload
 
-Install `DailyLoopRunnerHotReload.user.js`, then run:
+Install `FCAutomationToolHotReload.user.js`, then run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ".\StartLoopRunnerDevServer.ps1"
+powershell -ExecutionPolicy Bypass -File ".\StartFCAutomationToolDevServer.ps1"
 ```
 
 After source changes:

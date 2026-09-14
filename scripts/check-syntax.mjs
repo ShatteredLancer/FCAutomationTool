@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const roots = ['src', 'scripts', 'tests', 'FSU_mod/src'];
-const files = ['DailyLoopRunnerHotReload.user.js', 'vitest.config.js'];
+const files = ['FCAutomationToolHotReload.user.js', 'vitest.config.js'];
 
 async function collect(directory) {
   for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {

@@ -1,6 +1,6 @@
 # EA Player Item Rarity Evidence
 
-This document records the runtime evidence used by DailyLoopRunner for Player
+This document records the runtime evidence used by FCAutomationTool for Player
 Item rarity and event-card decisions. It separates EA contracts from observed
 FC26 data and compatibility-only probes so that a plausible method name cannot
 silently become a submission policy.
@@ -70,7 +70,7 @@ FSU 26.09, or the installed FC26 Enhancer:
 - `isFOF` / `isFof`
 - `isFUTTIES` / `isFutties`
 
-DailyLoopRunner must not call these methods on Player Items or use their return
+FCAutomationTool must not call these methods on Player Items or use their return
 values for eligibility, protection, routing, Active Squad handling, or submit
 validation. In particular, the observed `isFOF() === true` result on a normal
 card proves that the runtime member cannot mean "Festival of Football card".
@@ -87,7 +87,7 @@ it means First Owner; EA uses item ownership data for that concept.
 Therefore a raw group ID cannot identify a card subtype outside the live EA SBC
 requirement matcher. The former `TOTW_GROUP_IDS = [45]` rule was invalid.
 
-## Signals DailyLoopRunner may use
+## Signals FCAutomationTool may use
 
 1. Canonical normal/rare/special status comes from explicit `rareflag` and the
    verified EA rarity contract. Explicit metadata is authoritative over

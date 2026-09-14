@@ -1,6 +1,6 @@
 # 10x85+ Rolling Loop 使用与流程指南
 
-> 适用版本：DailyLoopRunner `v0.8.40`
+> 适用版本：FCAutomationTool `v0.8.40`
 >
 > 最后更新：2026-08-22
 >

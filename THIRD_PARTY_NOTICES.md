@@ -18,7 +18,7 @@ The original author, metadata attribution, and MIT notice are retained. See
 
 ## Runtime Services
 
-DailyLoopRunner can request player metadata or prices from FUT.GG, FUTBIN, and
+FCAutomationTool can request player metadata or prices from FUT.GG, FUTBIN, and
 FUTNext, and can optionally send reward messages to ntfy.sh. These services
 are not bundled with or operated by this project and remain subject to their
 own terms and privacy policies.

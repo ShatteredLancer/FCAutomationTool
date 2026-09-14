@@ -1,7 +1,7 @@
 # EA FC Web App 错误码记录
 
 本文记录从 EA FC Web App 当前客户端脚本中确认过的 `UtasErrorCode` 映射，以及
-DailyLoopRunner 处理这些错误时应遵循的边界。它不是 EA 官方公开 API 文档；EA
+FCAutomationTool 处理这些错误时应遵循的边界。它不是 EA 官方公开 API 文档；EA
 更新 Web App build 后必须重新核对映射。
 
 ## 当前确认范围

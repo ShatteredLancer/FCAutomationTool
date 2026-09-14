@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 async function loadDefinitions() {
   const { api } = await loadUserscript();
-  const externalConfig = JSON.parse(await readFile(path.join(root, 'DailyLoopRunner.loops.json'), 'utf8'));
+  const externalConfig = JSON.parse(await readFile(path.join(root, 'FCAutomationTool.loops.json'), 'utf8'));
   return { api, builtIn: api.LOOP_DEFS, external: externalConfig.loops, externalConfig };
 }
 

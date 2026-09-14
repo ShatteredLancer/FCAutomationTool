@@ -1,4 +1,4 @@
-# Daily Loop Runner 故障排查
+# FC Automation Tool 故障排查
 
 ## 1. 出错后的第一步
 
@@ -158,7 +158,7 @@ Recap 只在本次会话实际获得 Rare Gold 或 Special 时显示。以下情
 
 ## 12. 提交 Issue 的最小信息
 
-- DailyLoopRunner 版本。
+- FCAutomationTool 版本。
 - FSU upstream/local 版本。
 - Enhancer Enabled/Disabled。
 - Active Profile 和 Loop。

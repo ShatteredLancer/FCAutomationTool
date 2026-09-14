@@ -40,7 +40,7 @@ TS9-TS12 已在 `0.7.84` 完成自动与实机验证。正式版 `v0.7.91` 在�
 
 共同前置条件：
 
-1. 安装当前仓库根目录生成的候选 `DailyLoopRunner.user.js`，刷新后确认 Ready 版本与候选一致。
+1. 安装当前仓库根目录生成的候选 `FCAutomationTool.user.js`，刷新后确认 Ready 版本与候选一致。
 2. 保持 Scheduler paused 且 Automatic execution locked，所有 Job unarmed；确认 Recovery 为空、Circuit closed、Lease/Coordinator idle。
 3. 停止 Loop/Batch/SBC/开包和其它市场操作，关闭 Enhancer Trader 或其它会改 Transfer 的工具，只保留一个 EA Web App 标签页。
 4. 在整个 Preview、执行和对账期间不要手动领取、挂牌、重挂或清理 Transfer 项。
@@ -73,7 +73,7 @@ V2-5 两项实机验证均已通过，手动 Re-list All 可按本节安全边�
 
 ## V2-6 定时 Re-list All 集中验证
 
-本节保留 V2-6 集中验收步骤和证据，普通使用不需要重复 campaign。安装仓库根目录最新构建的 `DailyLoopRunner.user.js` 后必须对 EA Web App 执行一次 F5，不能只关闭并重新打开 Runner/Scheduler 窗口；同一版本号下 Tampermonkey 可以覆盖脚本文件，但已打开标签页仍会继续执行旧内存代码。刷新后确认 `Ready v0.7.91`；关闭 Enhancer Trader 和其它交易自动化，并在运行前确认 Recovery 为空、Circuit closed、Lease/Coordinator idle。
+本节保留 V2-6 集中验收步骤和证据，普通使用不需要重复 campaign。安装仓库根目录最新构建的 `FCAutomationTool.user.js` 后必须对 EA Web App 执行一次 F5，不能只关闭并重新打开 Runner/Scheduler 窗口；同一版本号下 Tampermonkey 可以覆盖脚本文件，但已打开标签页仍会继续执行旧内存代码。刷新后确认 `Ready v0.7.91`；关闭 Enhancer Trader 和其它交易自动化，并在运行前确认 Recovery 为空、Circuit closed、Lease/Coordinator idle。
 
 ### A. 定时空 Unsold
 
@@ -116,7 +116,7 @@ A-D 已于 2026-08-13 全部通过。A 覆盖定时空 Unsold，B 覆盖真实 U
 
 ## TS8 一次性双卡验证记录
 
-以下步骤是候选 `0.7.70` 已完成的 V8 campaign，仅作为历史审计材料，不需要在普通使用前重复执行。该章节中的固定请求预算、精确确认口令和旧版 Console 调试入口均已废弃；当前版本请以本文后面的 Request Pacing、结构化审批和 Recovery 说明为准。复核旧 campaign 时安装仓库根目录的 `DailyLoopRunner.user.js`，刷新并确认对应版本日志。关闭 Enhancer Trader 和其它自动交易工具，清空或处理正常可移动的 Unassigned，停止所有 Loop/Batch/SBC 操作，并保证 Transfer List 有足够空间。
+以下步骤是候选 `0.7.70` 已完成的 V8 campaign，仅作为历史审计材料，不需要在普通使用前重复执行。该章节中的固定请求预算、精确确认口令和旧版 Console 调试入口均已废弃；当前版本请以本文后面的 Request Pacing、结构化审批和 Recovery 说明为准。复核旧 campaign 时安装仓库根目录的 `FCAutomationTool.user.js`，刷新并确认对应版本日志。关闭 Enhancer Trader 和其它自动交易工具，清空或处理正常可移动的 Unassigned，停止所有 Loop/Batch/SBC 操作，并保证 Transfer List 有足够空间。
 
 ### 基线
 
@@ -383,7 +383,7 @@ Step 7 的候选回填已在 `0.7.84` 修复：Planner 最多报价 16 个已排
 
 ### 共同准备
 
-1. 安装根目录构建的 `DailyLoopRunner.user.js`，只刷新 EA Web App 一次，确认日志为 `Ready v0.7.91`。关闭 Enhancer Trader 和其它自动交易工具；FSU 可以保持启用。
+1. 安装根目录构建的 `FCAutomationTool.user.js`，只刷新 EA Web App 一次，确认日志为 `Ready v0.7.91`。关闭 Enhancer Trader 和其它自动交易工具；FSU 可以保持启用。
 2. 处理正常可移动的 Unassigned；Transfer List 至少保留 8 个空位。准备 4 张愿意以低价挂牌的可交易 Common Gold，其中至少 1 张已在 Transfer List 中自然到期并显示 inactive。
 3. Trade Scheduler 中点击 `Disable scheduling`。确认 Circuit=`closed`、Scheduler=`paused`、Automatic execution=`locked`、Recovery 无待处理项，Lease/Coordinator 空闲。
 4. 在 Jobs 页设置 `Global minimum retained coins`，建议为当前金币减去本轮最多愿意支出的 4000，点击 `Save reserve`。
@@ -557,6 +557,6 @@ Price Quote 是当前页面内存缓存，刷新页面后为空是正常现象�
 
 发布前运行 `npm run verify`，确认版本、测试文件数、测试数量、userscript 构建结果和 FSU 资源检查均通过。`0.7.91` 的本地结果为 338 个 JavaScript 文件、160 个测试文件和 1055 个测试全部通过；提交 `980d609` 和发布准备提交 `a0ccf3a` 的 GitHub Actions Verify 均已通过。
 
-`v0.7.91` 已于 2026-08-12 发布并设为 latest。Release 包含 Runner/FSU userscript 与 metadata、Loop/Profile 资产和 `SHA256SUMS`；下载后的 `DailyLoopRunner.meta.js` 报告版本 `0.7.91`，`DailyLoopRunner.user.js` 与发布 checksum 一致。正式版通过 GitHub Release 的 `DailyLoopRunner.user.js` 安装；不要混用旧 Validation 脚本。
+`v0.7.91` 已于 2026-08-12 发布并设为 latest。Release 包含 Runner/FSU userscript 与 metadata、Loop/Profile 资产和 `SHA256SUMS`；下载后的 `FCAutomationTool.meta.js` 报告版本 `0.7.91`，`FCAutomationTool.user.js` 与发布 checksum 一致。正式版通过 GitHub Release 的 `FCAutomationTool.user.js` 安装；不要混用旧 Validation 脚本。
 
 出现交易行为异常时，先在 UI 中 Stop、关闭实时执行并解除 Job 武装，再安装上一份已验证版本或等待诊断调查。不要用回滚掩盖未确认的 EA 状态；首先保存最小证据包。

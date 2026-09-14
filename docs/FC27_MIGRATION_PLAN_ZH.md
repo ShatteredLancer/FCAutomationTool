@@ -2,6 +2,8 @@
 
 调研日期：2026-09-14。仓库基线：`0558f7b`，Runner `0.8.64`。
 
+更新：用户已选择 FC27 全新安装，不要求旧配置迁移。仓库、目录和文件改名状态以 [改名记录](RENAME_STATUS_ZH.md) 为准，以下旧迁移顺序保留为历史设计。
+
 状态：已按用户确认实施上线前 P0/P1/FSU F0/B0 的离线准备；逐项结果、文件与剩余边界见 [上线前实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。正式版本仍规划为 `27.0.0`，产品更名为 `FC Automation Tool`；当前生产版本、安装身份、远程仓库未改。离线准备完成不代表真实 FC27 兼容或账号操作授权，FC27 Web App 的真实接口验收尚未发生。
 
 ## 1. 结论与路线选择
@@ -518,7 +520,7 @@ EA 已公布 Community API，但本次官方说明只列 FUT.GG、FUTBIN、FUTWI
 - [AGENTS.md](../AGENTS.md)、[REFACTORING_MILESTONES.md](REFACTORING_MILESTONES.md)、[FSU Club 集成合同](../FSU_mod/FSU_CLUB_CACHE_INTEGRATION.md)。
 - [入口与运行时桥](../src/userscript-entry.js)、[物品与库存契约](../src/domain/contracts.js)、[策略注册](../src/domain/strategies.js)。
 - [持久 key](../src/config/runtime.js)、[SBC Adapter 与 cacheScope](../src/adapters/ea/sbc.js)、[构建脚本](../scripts/build-userscript.mjs)。
-- [应用版本来源](../package.json)、[发布身份校验](../scripts/check-dist.mjs)、[Release workflow](../.github/workflows/release-assets.yml)、[热加载脚本](../DailyLoopRunnerHotReload.user.js)。
+- [应用版本来源](../package.json)、[发布身份校验](../scripts/check-dist.mjs)、[Release workflow](../.github/workflows/release-assets.yml)、[热加载脚本](../FCAutomationToolHotReload.user.js)。
 - [FSU Local 发布校验](../scripts/build-fsu-release-assets.mjs)、[FSU 维护配置](../FSU_mod/fsu-mod.config.json)、[Issue/Security 入口](../.github/ISSUE_TEMPLATE/config.yml)。
 
 本文同时维护方案和实施状态。上线前准备新增了隔离代码、测试、浏览器开发工具、本地归档引用与 CI 通道门禁，但没有改变现有 FC26 运行逻辑或产物，也没有升版、改名远程仓库/本地目录、修改 remote、发布 Release 或执行 EA 账号操作。

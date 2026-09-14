@@ -24,7 +24,7 @@
 (function () {
   'use strict';
 
-  const SCRIPT_URL = 'http://127.0.0.1:8765/DailyLoopRunner.user.js';
+  const SCRIPT_URL = 'http://127.0.0.1:8765/FCAutomationTool.user.js';
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   function log(message) {

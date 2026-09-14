@@ -1,4 +1,4 @@
-# Daily Loop Runner 架构重构与里程碑
+# FC Automation Tool 架构重构与里程碑
 
 FC27 上线前独立准备已开始，范围及逐项验证见 [FC27 实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。新 Preview/FSU core 使用独立依赖白名单，当前不替换 FC26 生产入口；本文件的 M0-M9 历史状态不表示 FC27 实机兼容。
 
@@ -12,14 +12,14 @@ FC27 上线前独立准备已开始，范围及逐项验证见 [FC27 实施记�
 
 当前开发修正：EA 后台 SBC 提交返回空 `status:0` / `UTServerErrorVO code:0` 时，不再直接按 `unknown` 停止，也不盲目重发。Runner 等待 3 秒后强制刷新 My Packs 与 Unassigned，从新的 Challenge list 读取同一 Challenge，并重新对账 Rolling Inventory Ledger；仅当 Challenge/Set identity 与完成次数未变、没有新增或减少 Pack、全部精确提交 item 仍留在原 pile，且整套提交 validator 重新通过时允许重试一次。任一证据变化、刷新失败、Challenge 已切换或第二次仍为 status 0 都停止，不发送额外提交。
 
-本文档用于追踪 Daily Loop Runner 从单文件、流程型实现迁移到可测试、可组合架构的全过程。
+本文档用于追踪 FC Automation Tool 从单文件、流程型实现迁移到可测试、可组合架构的全过程。
 
 当前基线：
 
 - Userscript 版本：`0.8.64`
 - Git 基线：`main` Rolling runway preflight + evidence-gated ambiguous background-submit retry
-- 运行产物：`DailyLoopRunner.user.js`
-- 配置：内置 `LOOP_DEFS` 和 `DailyLoopRunner.loops.json`
+- 运行产物：`FCAutomationTool.user.js`
+- 配置：内置 `LOOP_DEFS` 和 `FCAutomationTool.loops.json`
 
 本文档是重构工作的状态来源。实施过程中应更新里程碑状态、验收记录和发现的问题，不在聊天记录或临时日志中维护另一套进度。
 
@@ -452,10 +452,10 @@ tests/
   fixtures/
 scripts/
 dist/
-  DailyLoopRunner.user.js
+  FCAutomationTool.user.js
 ```
 
-Tampermonkey 继续只安装单个 `dist/DailyLoopRunner.user.js`。源码多文件通过 esbuild 打包，不依赖 Tampermonkey `@require`。
+Tampermonkey 继续只安装单个 `dist/FCAutomationTool.user.js`。源码多文件通过 esbuild 打包，不依赖 Tampermonkey `@require`。
 
 ## 5. Milestone 总览
 
@@ -515,7 +515,7 @@ Tampermonkey 继续只安装单个 `dist/DailyLoopRunner.user.js`。源码多文
 
 - 建立 `src/userscript-entry.js`。
 - 先迁移常量、日志、配置和无副作用工具函数。
-- esbuild 生成 `dist/DailyLoopRunner.user.js`。
+- esbuild 生成 `dist/FCAutomationTool.user.js`。
 - 保留当前热加载方式，但热加载目标切到构建产物。
 - 增加构建产物一致性检查，避免忘记重新构建。
 
@@ -703,7 +703,7 @@ M7 完成后应删除或降级为声明式 Workflow 的旧函数：
 - `npm run test:contracts`
 - `npm run test:architecture`
 - `npm run build`
-- `node --check dist/DailyLoopRunner.user.js`
+- `node --check dist/FCAutomationTool.user.js`
 - JSON 配置解析和 built-in/external config 一致性检查
 - `git diff --check`
 - 所有 MVP、完整 Loop、暂停恢复和容量边界真实页面验证通过
@@ -746,7 +746,7 @@ Status: In Progress
 
 当前进度（2026-07-28）：
 
-- `84x10`、`2x84+ Upgrade` 和 `84+ TOTW Upgrade` 已迁移为纯动态会话 Loop。扫描器直接把当前 Set、单 Challenge、Pack reward、人数、评分和特殊卡条件与 `src/config/upgrade-policies.js` 的通用安全策略组合，不再要求 `loops.js` / `DailyLoopRunner.loops.json` 存在具体活动模板。Daily Rare 的 source-exhausted fallback 改为按 `2x84-upgrade` family 唯一解析；零匹配返回 unavailable，多匹配停止并输出候选。旧 Profile 中的 `2x84-fodder`、`auto-totw-upgrade`、`84x10-mvp`、`84x10` 仍可作为兼容模板被扫描覆盖，但新内置配置不再发布这些 ID。
+- `84x10`、`2x84+ Upgrade` 和 `84+ TOTW Upgrade` 已迁移为纯动态会话 Loop。扫描器直接把当前 Set、单 Challenge、Pack reward、人数、评分和特殊卡条件与 `src/config/upgrade-policies.js` 的通用安全策略组合，不再要求 `loops.js` / `FCAutomationTool.loops.json` 存在具体活动模板。Daily Rare 的 source-exhausted fallback 改为按 `2x84-upgrade` family 唯一解析；零匹配返回 unavailable，多匹配停止并输出候选。旧 Profile 中的 `2x84-fodder`、`auto-totw-upgrade`、`84x10-mvp`、`84x10` 仍可作为兼容模板被扫描覆盖，但新内置配置不再发布这些 ID。
 - 其余 activity-bound built-in 暂不按同样方式删除。Daily Bronze/Silver/Common/Rare、Bronze/Silver/Gold Upgrade、5x80+ crafting 的静态定义承载的是工作流角色、库存路由、来源包、阶段顺序和 recovery policy，不只是当前 EA Set identity；这些对象已经动态覆盖 Set/Challenge/Reward 身份。要继续全动态化，需先引入按业务角色生成 Workflow/Stage 的模型，不能只删除模板。
 
 - 开发快照完成第二阶段内置 SBC identity 迁移：新增 `src/config/activity-discovery.js`，支持 Daily Bronze/Silver/Common/Rare、Bronze/Silver/Gold、Common Gold crafting、2x84、TOTW 和高评分 x10 family；Daily/MVP、Inventory Exhaustion、Provision crafting、84x10 嵌套恢复和 9 个 Unassigned Recovery recipe 均声明 session-only binding。扫描只覆盖 EA 事实，旧名称/ID 暂时保留兼容 fallback。
@@ -911,7 +911,7 @@ Scope: 建立 `src/userscript-entry.js`，抽出 runtime 配置、对象工具�
 
 Tests: `npm run verify` 全部通过；根目录与 `dist` 产物字节一致，metadata 和版本均为 `0.4.43`。
 
-Live validation: 热加载仍使用根目录 `DailyLoopRunner.user.js`，路径和 metadata 未改变。
+Live validation: 热加载仍使用根目录 `FCAutomationTool.user.js`，路径和 metadata 未改变。
 
 Known gaps: 大部分业务仍在单一 entry 文件内，后续按 M2-M7 迁移。
 

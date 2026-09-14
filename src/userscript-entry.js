@@ -5,8 +5,8 @@
 // @description  Automates configurable SBC, pack, Unassigned and Player Pick workflows in the EA FC Web App.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
-// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.meta.js
-// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js
+// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.meta.js
+// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js
 // @license      MIT
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
