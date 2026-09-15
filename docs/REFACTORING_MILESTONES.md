@@ -2,6 +2,8 @@
 
 FC27 上线前收尾与上线后阶段门禁见 [接续清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)。离线通过不关闭实机 Pending 项。
 
+2026-09-15：新增 [Android Companion APK 备用方案](ANDROID_COMPANION_APK_FALLBACK_ZH.md)，仅记录 FC26 静态检查与后续验证计划。默认不启用，不表示 Android 适配、重打包或 FC27 SBC 已实现。
+
 FC27 上线前独立准备已开始，范围及逐项验证见 [FC27 实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。新 Preview/FSU core 使用独立依赖白名单，当前不替换 FC26 生产入口；本文件的 M0-M9 历史状态不表示 FC27 实机兼容。
 
 当前开发修正（2026-09-06）：`error1.txt` 的 17:51 重启已经清空上一轮 consumed 缓存，Unassigned 为 0；实际主阵最低仍为 `87/84`，超过 `+1` 上限，普通 Provisions 仅有三张合规 87–88 材料且没有现成奖励包，最终 `RECOVERY_MATERIAL_SHORTAGE` 属于真实资源不足后的安全停止，不能归因于未领取 Pick 或一概归因于缓存。三阵评分预测此前没有检查补给材料本身能否延续：现在主阵提交前额外用同一不可变快照和 requirements selector 检查提交前后的一组安全 Provisions；从可行变为不足时返回 `PROVISIONS_LAST_BATCH_AT_RISK`，优先开已有补给包，否则按原容量策略制作并立即处理 Provisions，重新对账/选材。该预检不授权新的特殊卡例外、不提高配置评分上限；每主周期仍只允许一次有界 Provisions 预检，不能用未来随机开包结果保证无限 Rolling。已经不足四张的库存不能靠更新脚本恢复材料。

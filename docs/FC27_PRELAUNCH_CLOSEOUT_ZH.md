@@ -35,6 +35,8 @@ node scripts/verify-fc27-prelaunch.mjs --browser
 
 ## 开服后接续
 
+若 Web App 无法满足 SBC 需求，经用户确认后才评估 [Android Companion APK 备用方案](ANDROID_COMPANION_APK_FALLBACK_ZH.md)。目前只完成 FC26 APK 静态检查，FC27 包、设备、重打包和 A0-A3 实机门禁均未验证；不自动切换路线。
+
 1. B1：用户手动登录专用浏览器，只读确认真实赛季、平台、页面根对象。首份报告记录工具 commit、浏览器版本、插件版本；不上传 profile、cookies、token 或未经脱敏的 HAR。
 2. B2-B5 / F1：按所需字段逐项扩充采集白名单，核实 EA 库存实体、SBC 条件、积分预览、奖励与响应时序。原始证据本地保管，脱敏 fixture 入库；未经证实的 SBC 积分规则不写入业务模型。
 3. F2：独立实现最小 FSU provider，真实 readiness、保护配置、item/definition 定向验证全部通过；不要求全部旧 FSU 增强功能恢复。

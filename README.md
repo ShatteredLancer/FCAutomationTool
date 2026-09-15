@@ -105,6 +105,7 @@ ntfy token 保存在 Tampermonkey 的 GM 隔离存储中，不写入 EA 页面 l
 
 ## 文档
 
+- [Android Companion APK 备用方案（尚未启用）](docs/ANDROID_COMPANION_APK_FALLBACK_ZH.md)
 - [用户手册](docs/USER_GUIDE_ZH.md)
 - [10x85+ Rolling Loop 使用与流程指南](docs/10X85_ROLLING_LOOP_GUIDE_ZH.md)
 - [10x85+ Rolling Loop 设计与实施追踪](docs/10X85_ROLLING_LOOP_IMPLEMENTATION_ZH.md)
