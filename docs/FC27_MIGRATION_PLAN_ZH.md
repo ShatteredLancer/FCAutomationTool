@@ -1,10 +1,10 @@
 # FC27 迁移评估与实施计划
 
-调研日期：2026-09-14。仓库基线：`0558f7b`，Runner `0.8.64`。
+调研日期：2026-09-14。初始调研基线：`0558f7b`，Runner `0.8.64`。当前实施状态不绑定一个会随提交立即过期的 `main` 哈希，以 Git HEAD、`package.json`、[改名记录](RENAME_STATUS_ZH.md)和[上线前收尾清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)共同为准。
 
-更新：用户已选择 FC27 全新安装，不要求旧配置迁移。仓库、目录和文件改名状态以 [改名记录](RENAME_STATUS_ZH.md) 为准，以下旧迁移顺序保留为历史设计。
+更新：用户已选择 FC27 全新安装，不要求旧配置迁移。仓库、目录和文件已经历改名；不同工作机的本地目录可以不同，实际状态以 [改名记录](RENAME_STATUS_ZH.md) 为准。下文仍保留的旧迁移顺序属于历史设计，不表示步骤尚未执行。
 
-状态：已按用户确认实施上线前 P0/P1/FSU F0/B0 的离线准备；逐项结果、文件与剩余边界见 [上线前实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。正式版本仍规划为 `27.0.0`，产品更名为 `FC Automation Tool`；当前生产版本、安装身份、远程仓库未改。离线准备完成不代表真实 FC27 兼容或账号操作授权，FC27 Web App 的真实接口验收尚未发生。
+状态：已按用户确认实施上线前 P0/P1/FSU F0/B0 的离线准备；逐项结果、文件与剩余边界见 [上线前实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)。正式版本仍规划为 `27.0.0`，产品和远程仓库已更名为 `FC Automation Tool` / `ShatteredLancer/FCAutomationTool`；完整脚本仍执行 FC26 业务，新名 Release 尚未发布。当前生产 metadata 处于“旧 `@name`、新 `@namespace`/更新地址”的未批准过渡状态，必须在发布前完成安装身份决策和实测。离线准备完成不代表真实 FC27 兼容或账号操作授权，FC27 Web App 的真实接口验收尚未发生。
 
 ## 1. 结论与路线选择
 
@@ -260,7 +260,7 @@ FSU Local `26.09` origin 保持字节不变，但维护实现可以基于它演�
 
 | 发布阶段 | 版本约定 | 边界 |
 | --- | --- | --- |
-| FC26 归档 | 当前 `0.8.64` | 不为改名直接升至 27；如确需旧脚本赛季阻断或迁移入口，可另发 `0.8.65` 等维护版 |
+| FC26 归档 | 历史基线 `0.8.64`；离线准备 `0.8.65` | `0.8.65` 尚未发布，不能把改名后的过渡 metadata 当作已批准维护版 |
 | FC27 隔离测试 | `27.0.0-alpha.N`、`27.0.0-beta.N`、`27.0.0-rc.N` | 显式安装测试渠道；按阶段开放能力，不覆盖稳定渠道 |
 | FC27 首个正式版 | `27.0.0`，tag `v27.0.0` | 达到首版范围及真实页面验收后发布，不因 Web App 开放就直接宣称稳定 |
 | FC27 后续更新 | 修复如 `27.0.1`，功能如 `27.1.0` | 同一产品持续升级，发行说明列出已支持与未支持模块 |
@@ -268,29 +268,31 @@ FSU Local `26.09` origin 保持字节不变，但维护实现可以基于它演�
 
 `package.json` 继续是应用版本唯一来源；实施升版时同步 `package-lock.json`，由构建注入运行时版本并生成 userscript/meta，不手写第二份版本号。FSU 的 upstream/local version、FSU bridge API、配置 schema 和当前运行赛季各自独立，不能用 `27.0.0` 代替能力握手。上线前准备提交使用 Runner 维护版 `0.8.65`，历史归档仍为 `0.8.64`，FSU Local 保持 `26.09.6`。
 
-原 `.github/workflows/release-assets.yml` 的无条件 `--latest` 已由上线前准备中的通道校验替代：预发布不进入 latest，旧季维护版不能夺取较新稳定版的 latest；当前明确阻断 >=27 的正式发布，直到 P5 完成。新增 Preview workflow 仅上传隔离 artifact，没有发布权限。通道算法已单测，远程 workflow 未实际触发。Tampermonkey 对预发布版本的排序、测试转正式的安装/更新行为仍要实测，不能以 npm 的版本比较替代。
+原 `.github/workflows/release-assets.yml` 的无条件 `--latest` 已由上线前准备中的通道校验替代：预发布不进入 latest，旧季维护版不能夺取较新稳定版的 latest。当前 `check-release-readiness.mjs` 进一步阻断全部正式 Release，直到安装身份、新旧资产、FSU Local 版本和 P5 门禁完成。新增 Preview workflow 仅上传隔离 artifact，没有发布权限。通道算法已单测；远程 Actions 的实际结果另行核对。Tampermonkey 对预发布版本的排序、测试转正式的安装/更新行为仍要实测，不能以 npm 的版本比较替代。
 
-#### 更名范围与拟改文件
+#### 更名范围、已执行状态与剩余决策
 
-同仓库延续 Git 历史，目标仓库名为 `ShatteredLancer/FCAutomationTool`。准备期间保留旧仓库名，在 `27.0.0` 正式发布前单独完成仓库改名与验收，不把远程改名和业务重构合成一个未经验证的步骤。仓库所有者与 userscript namespace 不随之更换；MIT 许可证和第三方归属保持不变。
+仓库已在保留 Git 历史和所有者的前提下更名为 `ShatteredLancer/FCAutomationTool`，文件与构建链也已采用新前缀。改名不等于 FC27 兼容或安装迁移已验收。MIT 许可证和第三方归属保持不变；Runner userscript namespace 的最终选择仍是发布前待批准事项。
 
 | 层面 | 目标 | 实施时核对位置 |
 | --- | --- | --- |
 | 产品展示 | `FC Automation Tool`；版本/赛季单独展示 | 面板、通知、日志导出、README 与使用文档 |
 | GitHub 仓库 | `ShatteredLancer/DailyLoopRunner` 改为 `ShatteredLancer/FCAutomationTool` | 原仓库 Settings、各 clone 的 `origin`、`package.json` repository、README 徽章、Issue/Security 链接与发布地址 |
-| 本地工作目录 | 可改为 `C:\Workspace\FCAutomationTool`，不要求与远程同一时刻更名 | 编辑器工作区、终端、热加载服务、快捷方式和自动任务中的绝对路径；不重新初始化 Git |
-| 生产 userscript | `@name FC Automation Tool`；沿用现有 GitHub namespace | `src/userscript-entry.js` 或新 FC27 entry 的 metadata，`scripts/check-dist.mjs` 的身份断言 |
-| 包与资产 | npm 名拟为 `fc-automation-tool`；资产拟为 `FCAutomationTool.user.js`、`FCAutomationTool.meta.js` | `package.json`、lockfile、`scripts/build-userscript.mjs`、构建/校验与 Release workflow |
-| 开发与可选配置 | 热加载、Profile 和配置下载名称与新产品一致 | `DailyLoopRunnerHotReload.user.js`、`StartLoopRunnerDevServer.ps1`、Profile 构建和发布清单、安装链接 |
+| 本地工作目录 | 各工作机可自行改名，不规定唯一绝对路径 | 编辑器工作区、终端、热加载服务、快捷方式和自动任务中的绝对路径；不重新初始化 Git |
+| 生产 userscript | FC27 目标 `@name FC Automation Tool`；namespace 最终决策待批准 | `src/userscript-entry.js` 或新 FC27 entry 的 metadata，`scripts/check-dist.mjs` 的身份断言 |
+| 包与资产 | 新文件名已采用 `FCAutomationTool.user.js`、`FCAutomationTool.meta.js`；npm 包名仍为 `fc26-daily-loop-runner` | `package.json`、lockfile、`scripts/build-userscript.mjs`、构建/校验与 Release workflow |
+| 开发与可选配置 | 热加载、Profile 和配置下载名称已采用新产品前缀 | `FCAutomationToolHotReload.user.js`、`StartFCAutomationToolDevServer.ps1`、Profile 构建和发布清单、安装链接 |
 | 历史与内部标识 | 仅在有必要时迁移，不全仓机械替换 `DLR` | 持久 key、旧 fixture、历史文档、FSU 桥与兼容合同；修改处有明确映射与测试 |
 
 生产新资产使用新文件名，旧安装的更新地址不得静默改发新身份脚本。过渡期默认在后续稳定 Release 中继续提供冻结的 FC26 旧名 `.user.js/.meta.js` 资产，保持旧 `/releases/latest/download/DailyLoopRunner.*` 链接可解析；这是附带旧季归档资产，不是把旧业务打入 FC27。若后续停止附带，须先由旧身份维护版本迁往长期可访问的旧季地址并验收，不能直接删链接。已发布 Release 不覆盖，所有调整通过新版本/tag 交付。
 
-#### 仓库改名、链接兼容与执行顺序
+#### 仓库改名、链接兼容与历史执行顺序
 
-在 GitHub 对现有仓库执行 Rename，不另建空仓库搬源码，不转移所有者，不重写提交/tag 历史。GitHub 官方说明仓库网页与旧地址的 clone/fetch/push 会重定向，Issues、Stars 等随原仓库保留 [S13]；仍须主动更新当前维护的链接，不能把重定向当作所有外部集成都兼容的证明。
+以下六步保留为改名审计记录：步骤 1、2、4 和文件/构建侧改名已经执行，步骤 3 的 FSU Local 版本迁移和步骤 6 的正式发布验收仍未完成。本节描述执行逻辑，不应再被解读为当前待办清单。
 
-需要区别三类标识：仓库 URL 是当前位置，userscript `@namespace` 是安装身份，GM/配置 key 是数据身份。新主页、反馈、下载和更新地址改用 `https://github.com/ShatteredLancer/FCAutomationTool`；Runner 的 `@namespace` 保留 `https://github.com/ShatteredLancer/DailyLoopRunner` 这个稳定标识，不因它看起来像旧网址就替换。新 `@name` 仍按下一节执行安装迁移，保留 namespace 不代表自动继承全部 GM 数据。FSU 的原始名称与 `https://futcd.com/` namespace 均不变。
+改名采用 GitHub Rename，不另建空仓库搬源码，不转移所有者，不重写提交/tag 历史。GitHub 官方说明仓库网页与旧地址的 clone/fetch/push 会重定向，Issues、Stars 等随原仓库保留 [S13]；仍须主动更新当前维护的链接，不能把重定向当作所有外部集成都兼容的证明。
+
+需要区别三类标识：仓库 URL 是当前位置，userscript `@namespace` 是安装身份，GM/配置 key 是数据身份。主页、反馈、下载和更新地址已经改用 `https://github.com/ShatteredLancer/FCAutomationTool`；同时，改名提交也把 Runner `@namespace` 从旧仓库 URL 改成了新仓库 URL，而 `@name` 仍为 `FC26 Daily Loop Runner`。这偏离了初始“保留旧 namespace”的设计，当前由 Release 总阻断保护，不能视为已批准安装迁移。发布前必须明确选择并实测旧 FC26 升级或 FC27 全新安装的身份组合，再同步 metadata、`check-dist.mjs`、README 和资产。FSU 的原始名称与 `https://futcd.com/` namespace 均不变。
 
 1. **准备基线与迁移窗口。** 在 P0 记录 FC26 最终 tag、分支、Release 资产及 SHA256，检查目标仓库名可用；清点硬编码 URL、外部集成与旧下载入口。需要仓库管理员明确执行/授权远程 Rename；本文记录计划不等于已授权改名。
 2. **先准备代码和兼容资产。** 更新新入口的主页/反馈/更新地址、`package.json` repository、构建与发布校验、README 徽章及安装说明、`.github/ISSUE_TEMPLATE/config.yml` 的安全报告链接。同步检查 `.github/workflows/*` 中的名称、资产清单和仓库限制，预发布渠道仍不得进入 latest；旧名 FC26 资产按上一节保留。
@@ -303,7 +305,9 @@ FSU Local `26.09` origin 保持字节不变，但维护实现可以基于它演�
 
 任何关键更新入口或身份迁移未通过时暂停正式发布，保留已发布资产与用户配置，不通过覆盖 Release、删旧资产或再次改 namespace 补救。必要回退先核对新旧仓库名占用、重定向和外部引用，再由管理员执行；不能保证把仓库改回旧名就自动恢复所有外部状态。
 
-#### 安装与配置迁移顺序
+#### 历史方案：安装与配置迁移顺序
+
+用户后来选择 FC27 全新安装，因此旧版配置导出/导入不再是首发前置条件。以下顺序仅保留为历史设计及未来可选迁移参考；正式安装仍必须禁用旧脚本、重新确认保护配置，并证明新旧实例不会并发写入。
 
 改变 `@name` 可能被脚本管理器识别为新安装，不能保证原 GM 数据自动继承。按一次显式迁移设计，并实测全新安装、旧版升级、重复导入、中断恢复和测试版转正式版：
 
@@ -423,12 +427,12 @@ HAR 是请求/响应证据的补充或浏览器控制不可用时的备用路径
 
 | 阶段 | 工作 | 交付与验收门禁 | 粗估 |
 | --- | --- | --- | --- |
-| P0 冻结与设计收口 | FC26 本地归档 tag/维护分支、基线检查、功能处理与迁移清单 | Complete（本地）；生产产物不变，完整回归通过；未 push/远程改名 | 1-2 人日 |
+| P0 冻结与设计收口 | FC26 本地归档 tag/维护分支、基线检查、功能处理与迁移清单 | Complete（原实施工作区）；归档 refs 未 push，仓库改名已在后续步骤完成 | 1-2 人日 |
 | P1 瘦身骨架 | 独立 Preview composition/build、依赖白名单、上下文/schema、白名单配置迁移、发布隔离、FSU F0/B0 | Complete（离线骨架）；未知身份及所有 FC27 Live 操作仍阻断；生产入口保持不变，实际账号/GM 与安装 UI 在 P2/P5 接线验收 | Runner 2-3 人日，FSU 另列 |
 | P2 上线只读勘察 | 用户登录后执行 B1-B5；读取 FC27 item、SBC、积分预览、奖励、pile；完成 FSU F1/F2；采集脱敏 fixture | 等待 FC27 Web App：当前仅有离线证据合同，不能宣称真实接口可用 | Runner 2-4 人日，需 Web App |
 | P3 积分 MVP | 单挑战 Preview、单次/分批贡献、材料保护、超额预算、journal 与重载恢复 | 小额受控测试确认消耗/进度；模拟丢响应不重交；同 definition 多实体与高价值卡保护通过 | 4-6 人日 |
 | P4 奖励与连续循环 | Pack/Pick 处理、单步补料、容量预留、保守预算、Stop/Start 续跑 | 先覆盖已确认奖励，再多轮循环；手动领 Pick 后可续跑；没有未对账状态就开下一包的路径 | 3-5 人日 |
-| P5 传统能力与发布收口 | 只开放已支持传统合同；精简配置/Profile；文档、架构、体量与真实页矩阵；单独完成仓库改名和安装迁移验收后发布 `27.0.0` | 全验证通过；旧链接、新资产和 FSU 更新渠道可用；未知化学/条件保持 unsupported；安装/GM 迁移/预发布转正式/跨账号/插件组合测试完成；新旧实例不并发写入 | 3-5 人日 |
+| P5 传统能力与发布收口 | 只开放已支持传统合同；精简配置/Profile；文档、架构、体量与真实页矩阵；完成安装身份与资产验收后发布 `27.0.0` | 全验证通过；旧链接、新资产和 FSU 更新渠道可用；未知化学/条件保持 unsupported；全新安装/预发布转正式/跨账号/插件组合测试完成；新旧实例不并发写入 | 3-5 人日 |
 | P6 按需求扩展 | Trade、新 Builder、Gallery 只读信息、长期 Player SBC 目标规划、更多奖励类型 | 每个独立设计、预算、验收，不为“功能对齐 FC26”默认全部恢复 | 另估 |
 
 Runner 核心原估 15-25 人日；加入本地 FSU 首发支持并考虑重叠工作后，组合工程原暂按约 20-30 人日、4-6 周有效工作时间安排。本次增加安装迁移、渠道隔离和浏览器采集工具，暂留额外 2-4 人日，合计约 22-34 人日，在 P0/P2 按真实依赖重估。不是“开服当天全功能可用”的承诺。可以先交付 P2 只读兼容组合，再交付 P3 小范围可提交组合，最后开放连续运行；不需要等上游 FSU 27 才开始。
@@ -485,7 +489,7 @@ Player SBC 长期部分投入默认仅手动预览/明确批准，不让重复�
 
 ## 12. 当前可立即开展与必须等待的工作
 
-已经确定并记录的方向：产品更名为 `FC Automation Tool`，FC27 首个正式版本为 `27.0.0`，原仓库计划改名为 `ShatteredLancer/FCAutomationTool` 并在正式发布前独立验收；主取证流程为用户登录专用浏览器后自动检查，HAR 仅作为补充/备用。用户已确认先实施第 1 项的上线前离线准备，具体完成状态见 [实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)；远程改名和账号操作仍未执行。
+已经确定并记录的方向：产品和远程仓库已更名为 `FC Automation Tool` / `ShatteredLancer/FCAutomationTool`，FC27 首个正式版本为 `27.0.0`；主取证流程为用户登录专用浏览器后自动检查，HAR 仅作为补充/备用。上线前离线准备和改名已经完成，具体状态见[实施记录](FC27_PRELAUNCH_PROGRESS_ZH.md)与[收尾清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)；EA 账号操作、真实 FC27 接口验收和正式 Release 尚未执行。
 
 已实施：FC26 本地基线归档、新入口/只读门禁与依赖白名单、独立 FSU Runner-support core、配置迁移存储与保护 review、发布通道隔离、B0 浏览器探针及相关测试。旧季业务不进入 Preview，但尚未从生产源码删除；真实功能替换验收后才清理旧路径。
 
@@ -523,4 +527,4 @@ EA 已公布 Community API，但本次官方说明只列 FUT.GG、FUTBIN、FUTWI
 - [应用版本来源](../package.json)、[发布身份校验](../scripts/check-dist.mjs)、[Release workflow](../.github/workflows/release-assets.yml)、[热加载脚本](../FCAutomationToolHotReload.user.js)。
 - [FSU Local 发布校验](../scripts/build-fsu-release-assets.mjs)、[FSU 维护配置](../FSU_mod/fsu-mod.config.json)、[Issue/Security 入口](../.github/ISSUE_TEMPLATE/config.yml)。
 
-本文同时维护方案和实施状态。上线前准备新增了隔离代码、测试、浏览器开发工具、本地归档引用与 CI 通道门禁，但没有改变现有 FC26 运行逻辑或产物，也没有升版、改名远程仓库/本地目录、修改 remote、发布 Release 或执行 EA 账号操作。
+本文同时维护方案和实施状态。上线前准备新增了隔离代码、测试、浏览器开发工具、本地归档引用与 CI 通道门禁；仓库和文件已改名，应用版本已升至未发布的 `0.8.65`，但完整脚本的 FC26 业务逻辑未被替换。当前没有正式 Release 或 EA 账号操作，Runner 安装身份与 FSU Local 升版仍由发布门禁阻断，后续状态以[收尾清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)为准。

@@ -184,6 +184,8 @@ esbuild, bundle=true, format=iife, target=chrome120
 
 `FC26 Daily Loop Runner` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `FCAutomationToolHotReload.user.js`。
 
+当前 `0.8.65` 是未发布的改名过渡状态：完整脚本仍使用旧 `@name`，但源码和构建断言已改为新 Runner namespace 及新名 update/download 资产。`scripts/check-release-readiness.mjs` 因此继续阻断全部正式 Release。在 [FC27 上线前收尾清单](docs/FC27_PRELAUNCH_CLOSEOUT_ZH.md)明确身份组合并完成 Tampermonkey、新旧资产和 FSU Local 升版验收前，不得删除阻断、创建发布 tag，或把当前 metadata 描述成已批准的生产安装迁移。
+
 FSU Local 的维护输入是 `FSU_mod/fsu-mod.config.json`。上游 `26.09` 原文件必须保持字节不变，`upstreamVersion` 不得因本地修改变化；本地改动只提升独立的 `localVersion`，并重新生成 patch、manifest、`FSU-Local.user.js` 和 `FSU-Local.meta.js`。`npm run check:fsu-patch` 必须证明 patch 可从 immutable origin 重放到 manifest 记录的 modified SHA256；直接编辑 manifest hash 或发布产物不算修复。
 
 FSU 修改版必须保留上游脚本身份：`@name` 固定为 `【FSU】EAFC FUT WEB 增强器`，`@namespace` 固定为 `https://futcd.com/`。Tampermonkey 以脚本身份隔离 GM 存储；不得为了显示 Local 品牌、切换发布地址或区分本地版本而修改这两个字段，否则会重置 `build`、`set`、Lock 和其它用户配置。维护版只允许通过独立版本号、description、homepage/support URL 和 GitHub update/download URL 表明来源。

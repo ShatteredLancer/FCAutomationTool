@@ -1,6 +1,6 @@
 # FC Automation Tool
 
-当前完整脚本仍为 FC26 业务，FC27 仅有离线 Preview。新名 Release 资产尚未发布，下方新名安装链接须待发布后使用。详见 [改名记录](docs/RENAME_STATUS_ZH.md)。
+当前完整脚本仍为 FC26 业务，FC27 仅有离线 Preview。新名 Release 资产尚未发布，`FCAutomationTool.user.js/.meta.js` 的 `releases/latest` 地址当前不是可用安装入口。详见 [改名记录](docs/RENAME_STATUS_ZH.md)和[上线前收尾清单](docs/FC27_PRELAUNCH_CLOSEOUT_ZH.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -20,9 +20,11 @@ FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工�
 - FSU `26.09`，或本仓库维护的 [FSU Local](FSU_mod/README.md)
 - FC26 Enhancer 可选；Runner 支持与其共存，但核心安全策略来自 FSU
 
-安装最新正式版：
+当前公开的冻结 FC26 正式版为 `0.8.60`，仅供继续使用旧季版本或回退：
 
-<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.user.js>
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js>
+
+`0.8.65` 是未发布的 FC27 上线前准备版本；正式 `FCAutomationTool.user.js` 安装入口须等安装身份、FSU Local 版本和 Release 资产通过验收后再启用。不要手工拼接尚不存在的新名 Release 地址。
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
@@ -30,7 +32,12 @@ Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络�
 
 ## 自动更新
 
-正式版通过 GitHub Release 提供：
+正式版通过 GitHub Release 提供。当前已发布的冻结 FC26 使用旧名资产：
+
+- `DailyLoopRunner.meta.js`：现有 FC26 Tampermonkey 版本检查
+- `DailyLoopRunner.user.js`：现有 FC26 完整脚本
+
+FC27 正式发布后才启用新名资产：
 
 - `FCAutomationTool.meta.js`：Tampermonkey 版本检查
 - `FCAutomationTool.user.js`：完整脚本

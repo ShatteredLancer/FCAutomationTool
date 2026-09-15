@@ -6,8 +6,8 @@
 
 | 项目 | 状态 | 证据与边界 |
 | --- | --- | --- |
-| 仓库、目录、文件更名 | Complete | `FCAutomationTool` 仓库与工作区、新文件及构建链，见改名记录 |
-| 安装身份与显示名核对 | Complete（审计） | 完整脚本仍为 `FC26 Daily Loop Runner`；Hot Reload 仍为旧季开发安装，文件名不决定 Tampermonkey 身份 |
+| 仓库、文件与构建链更名 | Complete | 远程仓库、新文件及构建链已采用 `FCAutomationTool`；本地绝对路径按工作机分别记录，不作为全局完成条件 |
+| Runner 安装身份与显示名 | **Pending（发布阻断）** | 完整脚本仍为 `FC26 Daily Loop Runner`，但 namespace 和 update/download URL 已改为新仓库/新资产。必须明确 FC26 升级与 FC27 全新安装的身份组合并完成 Tampermonkey 实测后，才能把审计标为 Complete |
 | npm 包名 | 保留 | `fc26-daily-loop-runner` 当前仍供 FC26 构建；正式新入口切换时同步 package/lock，不以改包名代替赛季适配 |
 | Release 门禁 | Complete（离线） | `check-release-readiness.mjs` 暂停全部正式资产发布；>=27 通道门禁继续保留，Preview artifact 不受影响 |
 | FSU 改地址未升版本 | 已识别，发布阻断 | 既有改名提交更改了维护源 metadata，但 Local 仍为 `26.09.6`。不得按相同版本发布；实际发布前独立升 Local 版本、重建 patch/manifest、验收更新。不可变 origin 和上游身份不动 |
@@ -16,7 +16,7 @@
 | 浏览器与插件组合 | Pending（人工） | 本地 headless smoke 不能证明 Tampermonkey/FSU 扩展加载成功，不启动交互登录替代用户验收 |
 | 全新安装决定 | Complete（范围） | FC27 不继承旧 journal、库存、授权或凭证；白名单 preferences 模块保留为可选能力，不要求旧版导出桥 |
 
-远程核对：2026-09-15 `git ls-remote origin refs/heads/main` 确认远程已是 `a2b2882c3a3121a3f2ff9699335d13cb9215e524`，此前“改名提交尚未推送”的状态已过时。本轮没有重复 push，也没有创建 tag。
+远程核对：改名提交 `a2b2882c3a3121a3f2ff9699335d13cb9215e524` 已进入 `origin/main`，此前“改名提交尚未推送”的状态已过时。这里记录稳定的改名提交身份，不把会随每次提交变化的 `origin/main` 头部哈希写成长期事实。本轮没有创建 Release tag。
 
 旧名称清单：历史 Git blob 路径、CHANGELOG、旧季安装名、内部协议和存储 key、FSU 上游身份均允许保留。不能为了搜索结果为零而修改历史证据或清空配置。README 中的误写 `FC26 FC Automation Tool` 已纠正。
 
@@ -36,12 +36,12 @@ node scripts/verify-fc27-prelaunch.mjs --browser
 ## 开服后接续
 
 1. B1：用户手动登录专用浏览器，只读确认真实赛季、平台、页面根对象。首份报告记录工具 commit、浏览器版本、插件版本；不上传 profile、cookies、token 或未经脱敏的 HAR。
-2. B2 / F1：按所需字段逐项扩充采集白名单，核实 EA 库存实体、SBC 条件与响应时序。原始证据本地保管，脱敏 fixture 入库；未经证实的 SBC 积分规则不写入业务模型。
+2. B2-B5 / F1：按所需字段逐项扩充采集白名单，核实 EA 库存实体、SBC 条件、积分预览、奖励与响应时序。原始证据本地保管，脱敏 fixture 入库；未经证实的 SBC 积分规则不写入业务模型。
 3. F2：独立实现最小 FSU provider，真实 readiness、保护配置、item/definition 定向验证全部通过；不要求全部旧 FSU 增强功能恢复。
-4. P2：建立纯快照与规划器，用真实 fixture 加失败测试；积分、资格、特殊卡条件未知则停止。
-5. P3：只读 Dry Run 与 EA 页面核对。禁止通过跳过最后 submit 来假装 Dry Run，因为 save、move、open 已有副作用。
-6. P4：经用户确认的低价值单次事务；覆盖响应丢失、部分成功、重复卡、未领取 Pick、容量未知、Stop 与重启。证据不足不重试。
-7. P5：新身份全新安装，人工禁用旧脚本；确认保护、GM、资产更新、异常停止和实机合同后发布 `27.0.0`。解除发布阻断必须有文档证据与测试，不因开服自动解除。
+4. P2 上线只读勘察：汇总 B1-B5 与 F1/F2 证据，建立真实快照和失败 fixture；积分、资格、特殊卡条件未知则停止，不执行账号写操作。
+5. P3 积分 MVP：先用纯规划器和只读 Dry Run 与 EA 页面核对，再经用户确认执行低价值单次/分批贡献；覆盖超额预算、journal、响应丢失、部分成功、重复实体、Stop 与重启。禁止通过跳过最后 submit 来假装 Dry Run，因为 save、move、open 已有副作用。
+6. P4 奖励与连续循环：在单次事务对账稳定后接入 Pack/Pick、容量预留、单步补料和有界续跑；证据不足不重试，也不进入下一奖励或提交。
+7. P5 传统能力与发布收口：只开放已证实的传统合同，以新身份全新安装并人工禁用旧脚本；确认保护、GM、资产更新、异常停止和实机合同后发布 `27.0.0`。解除发布阻断必须有文档证据与测试，不因开服自动解除。
 
 建议首版范围：只读检查、库存/保护、明确支持条件的单次 SBC 与奖励对账；连续 Rolling、补给规划、交易和定时调度分别验收，不自动继承旧季支持声明。此范围是建议而非新增业务授权，正式实现前结合接口证据与用户优先级确认。
 

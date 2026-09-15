@@ -14,7 +14,7 @@
 
 ## 基线与版本
 
-现有 `package.json` 仍是应用版本唯一来源，本批准备工作升为维护版本 `0.8.65`，历史归档保持 `0.8.64`。Preview 使用相同构建版本，明确命名为 Preview，目标赛季另记为 27；这不是 `27.0.0` 首发，也不伪造 FSU 27 上游版本。准备期不改生产安装身份、仓库名或 remote；实际更名按主计划的独立验收窗口执行。
+现有 `package.json` 仍是应用版本唯一来源，本批准备工作升为维护版本 `0.8.65`，历史归档保持 `0.8.64`。Preview 使用相同构建版本，明确命名为 Preview，目标赛季另记为 27；这不是 `27.0.0` 首发，也不伪造 FSU 27 上游版本。本段最初记录的是改名前准备边界；其后仓库、文件、Runner namespace 和更新地址已经变更，但没有发布。当前安装身份偏差与发布阻断以[收尾清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)为准。
 
 FC26 历史使用 Git 引用保留，不在主目录复制一整套源码。基线检查：`node scripts/check-fc26-baseline.mjs`。新工作区可按记录的 commit 恢复归档引用，不依赖未推送的本地 tag 才能验证产物。
 
@@ -67,8 +67,8 @@ node scripts/browser-inspection/run.mjs --interactive
 
 ## 明确未完成的发布接线
 
-- 本批提交版本为 `0.8.65`，同步 lockfile 并重新构建生产脚本；未改生产 userscript `@name` 或远程仓库名，不创建正式 Release tag。
-- 未将 FSU core 拼入当前 `26.09_mod` 或伪造 FC27 inventory provider；因此当前 FSU Local 的 origin、patch、manifest 和发布资产保持不变。真正 EA/GM 接线在 F1/F2 完成证据采集后进行。
+- 本批提交版本为 `0.8.65`，同步 lockfile 并重新构建生产脚本；生产 userscript `@name` 仍为旧名。后续改名提交修改了远程仓库、Runner namespace、更新地址和资产文件名，但没有创建正式 Release tag，因此不代表安装迁移已完成。
+- 未将 FSU core 拼入当前 `26.09_mod` 或伪造 FC27 inventory provider。后续改名提交调整了 FSU Local 的维护地址，而 Local version 仍为 `26.09.6`；该组合不得发布，真正 EA/GM 接线和独立升版仍待 F1/F2 证据与发布验收。
 - 未启用正式 FC27 发布。现有 Release 增加 prerelease/latest 策略，并明确拒绝主版本 >=27，直到 P5 安装/资产/版本迁移门禁完成后才能解除；Preview 只生成隔离的 CI artifact。
 - 配置迁移当前是可测试的存储/校验模块，保护字段仅保存在 `protectionReview`；不自动把缺省值当生效策略。旧安装导出桥、确认 UI 和真实 GM 行为仍须 P5 验收。
 
