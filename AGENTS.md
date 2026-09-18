@@ -4,6 +4,8 @@
 
 本文件是 AI agent 和维护者处理本仓库任务时的首要工程说明。它描述当前真实实现，而不是最终理想状态。
 
+2026-09-18 发布结果：`v27.0.0` 已在提交 `40463dc` 正式发布为只读 latest，FSU Local `26.09.8` 随附；CI、七项资产及四个 latest 下载地址已通过校验。不得重写 tag 或替换已发布资产；Live 与真实 SBC 验收仍 Pending。证据见 [发布与交付结果](docs/FC27_LIVE_ADAPTATION_ZH.md#发布与交付结果)。
+
 2026-09-18 首版发布授权：用户明确确认将 `fc-automation-tool@27.0.0` 按只读首版发布，取代此前阻断全部 Release 的安排。`liveEnabled:false` 必须保留，真实 SBC 验收继续延期。`scripts/fc27-readonly-release.json` 只授权精确版本和 Runner/FSU SHA256 组合；`check-release-readiness.mjs` 验证安装/更新证据、FSU 重放和产物一致性，未来版本、改动后的脚本或 Live 均不能沿用此批准。默认入口为 `src/fc27/production-entry.js`，全新身份 `FC Automation Tool` / 新仓库 namespace；旧源、Loops/Profile、Rolling、交易仅作 FC26 回归，不表示新版支持。范围见 [27.0.0 说明](docs/releases/27.0.0.md)，证据见 [验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
 
 2026-09-18 FSU 路线修正：用户确认原 `26.09.6` 在 FC27 大部分功能可用；专用浏览器已观察到原版运行时初始化且 Club 为 ready，但该观察未独立确认实际安装版本，不能用本地产物版本替代安装证据。FSU 后续必须基于既有 mod 查漏补缺，优先原有一键填阵/价格函数的最小修复，保留界面、设置与已验证缓存合同。当前本地修订为 `26.09.8`，包含 FUT.GG 价格季节绑定和 Home Controller 延迟初始化修复；一键填阵仍需登录后的真实 Challenge 验证。独立 FC27 FSU Preview 降为历史研究原型，不再默认安装、扩展或作为 Runner 适配前置条件；不得以静态耦合风险推断原版整体不可用。新 Runner 的 FC27 架构计划不因此取消，实际填阵/保存/提交仍需相应验证与授权。最新边界见 [FSU 本地支持](FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
@@ -1160,7 +1162,7 @@ Agent 完成任务时应说明：
 
 ## 16. 当前架构边界与后续项
 
-FC27 历史准备另见 [实施记录](docs/FC27_PRELAUNCH_PROGRESS_ZH.md)。当前正式入口只包含经过依赖白名单审查的 FC27 模块和少量共享纯逻辑/事务模块；`FSU_mod/src/runner-support` 独立原型仍不进入生产，也不替代既有 FSU。修改 FC27 除完整 `npm run verify` 外，执行 `node scripts/verify-fc27-prelaunch.mjs --browser`（先安装 tools/browser-inspection 依赖）。真实 EA Provider/GM 只读与安装证据已取得，但真实 SBC 业务验收和正式 27 发布仍待完成，不得混淆。
+FC27 历史准备另见 [实施记录](docs/FC27_PRELAUNCH_PROGRESS_ZH.md)。当前正式入口只包含经过依赖白名单审查的 FC27 模块和少量共享纯逻辑/事务模块；`FSU_mod/src/runner-support` 独立原型仍不进入生产，也不替代既有 FSU。修改 FC27 除完整 `npm run verify` 外，执行 `node scripts/verify-fc27-prelaunch.mjs --browser`（先安装 tools/browser-inspection 依赖）。真实 EA Provider/GM 只读与安装证据已取得，正式只读 `27.0.0` 已发布；真实 SBC 业务验收及 Live 开放仍待完成，不得混淆。
 
 核心架构重构已在 `0.5.12` 收尾。以下是明确保留的运行时边界和独立后续功能，不应误判为需要机械拆分的未完成工作：
 

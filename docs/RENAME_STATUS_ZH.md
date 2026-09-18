@@ -9,7 +9,7 @@
 - 根目录和 dist 的 `FCAutomationTool.user.js`、`.meta.js`、manifest 已同步；更新指向新仓库同名 Release 资产。FSU Local 仍为原名/namespace，版本 `26.09.8`，本次没有改 FSU。
 - 真实 Tampermonkey 已验证新身份安装、与 Acceptance 的 GM 隔离、刷新持久化及双标签互斥。FC27 不迁移旧安装数据。
 - 旧 `FCAutomationToolHotReload.user.js` 仅支持 FC26，已阻止在 FC27 执行或误载新版 bundle。FC27 必须直接安装到 Tampermonkey，不能通过页面 eval 代替 GM 隔离。
-- 新名 Release 尚未发布；本地版本和身份完成不等于开放 Live。真实低价值 SBC 验收按用户要求延期，发布总门禁为 `FC27_LIVE_ACCEPTANCE_PENDING`。已发布 FC26 资产保持不变，不为新安装提供旧名别名。
+- 新名 Release `v27.0.0` 已正式发布并成为 latest，七项资产与 Runner/FSU 四个更新下载地址均实下载校验通过。真实低价值 SBC 验收按用户要求延期，`FC27_LIVE_ACCEPTANCE_PENDING` 只表示业务 Pending，Live 仍关闭。已发布 FC26 资产保持不变，不为新安装提供旧名别名。见 [发布与交付结果](FC27_LIVE_ADAPTATION_ZH.md#发布与交付结果)。
 
 以下 2026-09-14 的过渡身份状态是历史记录，由本节取代；更新渠道证据边界以[最新记录](FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-正式入口与发布资产准备)为准。
 

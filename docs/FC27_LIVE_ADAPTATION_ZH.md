@@ -13,7 +13,17 @@
 
 首次远程 CI 发现合成运行时的指纹 Map 使用未归一化 CRLF、与生产方法校验的 LF 输入不一致，14 项测试失败；干净检出复现后仅修测试夹具，并添加 LF/CRLF 与未知源码拒绝回归。浏览器 smoke 同时改为关闭持锁页后有界观察原生锁实际释放，再断言日志保留；没有修改生产脚本或放宽互斥。修正后干净检出 34 项相关测试、完整套件及浏览器通过。原提交 `675d937` 不打发布 tag，以后续 CI 通过的修正提交为发布目标。
 
-当前执行状态：本地验证完成，准备提交与远程发布；实际提交、Release 和下载结果在下方追加记录。以下“全部 Release 阻断”是此前的历史安排，已被本次明确的只读发布授权取代。
+当前执行状态：已完成正式发布及实际 GitHub 下载核验。以下“全部 Release 阻断”和“本地未发布”是此前的历史状态，已由本次只读发布结果取代；Live 与真实业务 Pending 不变。
+
+### 发布与交付结果
+
+- Release：[FC Automation Tool v27.0.0 (Read-only)](https://github.com/ShatteredLancer/FCAutomationTool/releases/tag/v27.0.0)，2026-09-18 19:26:30（UTC+8）发布，Release ID `391420267`；非 draft、非 prerelease，已成为 latest。
+- 发布提交为 `40463dcc775c3874f1241712c53b36ed2987dfbb`；annotated tag `v27.0.0` 已推送。功能/发布准备提交 `675d937` 与测试修正一并包含在标签中。
+- [完整 CI](https://github.com/ShatteredLancer/FCAutomationTool/actions/runs/35339129561)、[FC27 专项和浏览器 CI](https://github.com/ShatteredLancer/FCAutomationTool/actions/runs/35339129578)、[正式发布工作流](https://github.com/ShatteredLancer/FCAutomationTool/actions/runs/35339412407) 全部成功。
+- 实际从版本固定下载地址取得全部七项资产，每个文件 SHA256 均与本地打包产物一致；`SHA256SUMS` 本身也一致。Runner 为 `e28912e954aaa3cb2c64d3255d7e555baee993588f87291cb9d87cc7b674d508`，FSU Local `26.09.8` 为 `95d49b111f8340f22633ecfb93e98ec461efaf87a6cc545e032381b296478627`。
+- Runner/FSU 各自 `.meta.js`、`.user.js` 的四个 `releases/latest/download` 地址均实下载并通过相同校验；公开资产清单恰为七项，Release 正文与固定发布说明一致。下载文件保存在忽略目录 `artifacts/release-v27.0.0-delivery`。
+- 本次验证 GitHub 交付，不重做或冒充新的 Tampermonkey 自动升级。既有安装/受控更新 fixture 中 `published:false` 和 `githubDeliveryVerified:false` 保留当时观测；本节补充发布后的证据，产物字节未变。
+- 不移动 tag、不替换已发布资产。后续代码、功能开放及修复使用新版本和新的批准/安装证据；真实 SBC 保存、提交、奖励及中断恢复仍等安全库存充足后独立验收。
 
 ## 2026-09-18 正式入口与发布资产准备
 
