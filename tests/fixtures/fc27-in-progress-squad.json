@@ -1,0 +1,13 @@
+{
+  "source": "native-web-app-reviewed-dao-get-2026-09-17",
+  "season": "27",
+  "setId": 1,
+  "challengeId": 2,
+  "status": "IN_PROGRESS",
+  "slotCount": 11,
+  "simpleBrickIndices": [0, 1, 4, 5, 6, 7, 8, 9, 10],
+  "customBrickIndices": [],
+  "requiredPlayerCount": 2,
+  "liveExecutionEnabled": false,
+  "notVerified": ["complete-inventory", "item-safety", "account-scope", "fsu-provider", "save-submit"]
+}

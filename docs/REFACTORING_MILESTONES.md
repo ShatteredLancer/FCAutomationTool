@@ -1,5 +1,17 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-09-18 阶段提交：保存原 FSU 最小价格补丁和隔离 FC27 只读工具/研究成果，Runner 保持 `0.8.65`，未启用 FC27 自动执行或正式发布。原 FSU readiness 记录不包含已独立确认的安装版本，已修正 fixture 来源说明；`26.09.7` 仍待实机验收。旧 FSU 冻结检查会阻断当前专项预发布命令，后续需明确维护边界并补回归，不能引用原型时期的通过记录声称现已全绿。具体范围与验证见 [上线后记录](FC27_LIVE_ADAPTATION_ZH.md)。
+
+2026-09-18 FSU `26.09.7` 局部兼容修复：原 mod 的 FUT.GG 价格查询和登录时探测统一读取 `info.base.year`/当前 EA 赛季；赛季未知时不请求旧地址。新增源码回归测试，重放 `26.09` patch 并重建 FSU Local 资产。未修改一键填阵、Club 缓存、选材、保存或提交路径；真实 FC27 价格请求和一键填阵仍待登录后的页面验证。
+
+2026-09-18 价格修复前的路线调整：用户要求基于已有 `26.09.6` 查漏补缺，不另建 FSU。专用浏览器已恢复原版路线，FC27 上初始化及 Club ready 通过，原价格/一键填阵函数和开关存在；实际安装版本证据的限制见上文。独立 Preview 停止功能扩展并退出默认安装；保留研究代码，不作为升级前置条件。该次路线调整只更新检查工具和文档，随后的 `26.09.7` 才修改 mod/patch/版本；具体业务修复必须沿原函数复现后最小实施，见 [FSU 当前路线](../FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+
+2026-09-17 最新 FSU 实机增量：Tampermonkey 5.5.0 / 独立 Preview .2 的安装、独立 GM 自检键跨刷新保留、面板/桥及 41 人 Club 读取通过；首屏 25 张 EA 均价正常，真实 FUT.GG GM 请求为 403。策略/锁卡业务验收、只读配阵和写阵仍未完成。完整 verify 227 文件/2,183 测试通过。用户已批准只读配阵，随后提出独立 FSU 实现带来的上游维护风险；本次停在未保存策略的边界，原 FSU/patch/生产资产不变。见 [FSU 当前状态](../FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+
+2026-09-17 FSU 后续：独立 Preview 完成策略/锁卡 UI、bridge 冷启动、传统只读预览接线、EA 均价/FC27 FUT.GG 价格表与上游候选检查。真实 GM 安装、实际一键填阵和卡面价格未验收，FC26 生产输入未修改。详见 [FSU FC27 支持状态](../FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+
+2026-09-17：FC27 原生只读检查已取得 A Brace 槽位、账号作用域，以及 41/41 fresh Club 球员和两卡精确定向复核。partial 缓存与 provisional fresh 快照保持分离；真实 GM/完整保护策略、规划接线与 Live 未完成。自动化采集与五步状态见 [上线后适配记录](FC27_LIVE_ADAPTATION_ZH.md)。本次只读工具/隔离核心不接入 FC26 生产入口。
+
 FC27 上线前收尾与上线后阶段门禁见 [接续清单](FC27_PRELAUNCH_CLOSEOUT_ZH.md)。离线通过不关闭实机 Pending 项。
 
 2026-09-15：新增 [Android Companion APK 备用方案](ANDROID_COMPANION_APK_FALLBACK_ZH.md)，仅记录 FC26 静态检查与后续验证计划。默认不启用，不表示 Android 适配、重打包或 FC27 SBC 已实现。

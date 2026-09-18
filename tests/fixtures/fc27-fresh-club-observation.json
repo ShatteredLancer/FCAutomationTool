@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-17",
+  "season": "27",
+  "source": "native-owned-request-inspection",
+  "cachedEntriesBefore": 16,
+  "cachedPlayersAfter": 8,
+  "fresh": {
+    "status": "observed",
+    "reason": "FRESH_CLUB_INSPECTED",
+    "inventoryStatus": "provisional",
+    "complete": true,
+    "players": 41,
+    "expectedPlayers": 41,
+    "targetedCount": 2,
+    "targetedValidationVerified": true,
+    "requests": 5,
+    "safety": { "knownRatings": 41, "knownActiveTrade": 41, "knownRarity": 41 },
+    "gmPolicyVerified": false,
+    "liveExecutionEnabled": false
+  }
+}

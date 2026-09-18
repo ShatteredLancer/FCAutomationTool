@@ -1,0 +1,18 @@
+{
+  "source": "native-web-app-read-only-2026-09-17",
+  "season": "27",
+  "extensionsDisabled": true,
+  "clubPlayers": 41,
+  "freshClubComplete": true,
+  "targetedRefs": 2,
+  "targetedValidationVerified": true,
+  "requests": 5,
+  "marketAverageKnown": 39,
+  "marketAverageMissing": 2,
+  "cachedPlayers": 11,
+  "cachedMarketAveragePositive": 11,
+  "marketAverageGetterReviewed": true,
+  "futGgPublicProbeHttpStatus": 403,
+  "gmInstallationVerified": false,
+  "liveExecutionEnabled": false
+}

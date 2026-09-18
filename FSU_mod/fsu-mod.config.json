@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "upstreamVersion": "26.09",
-  "localVersion": "26.09.6",
+  "localVersion": "26.09.7",
   "upstreamSource": "https://update.greasyfork.org/scripts/431044/%E3%80%90FSU%E3%80%91EAFC%20FUT%20WEB%20%E5%A2%9E%E5%BC%BA%E5%99%A8.user.js",
   "upstreamLicense": "MIT",
   "originFile": "【FSU】EAFC FUT WEB 增强器-26.09_origin.user.js",

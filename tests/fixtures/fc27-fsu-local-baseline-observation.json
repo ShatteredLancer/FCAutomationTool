@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "scriptVersion": null,
+  "provenance": {
+    "installedVersionVerified": false,
+    "historicalRouteBaselineVersion": "26.09.6",
+    "previouslyRecordedLocalArtifactVersion": "26.09.7",
+    "note": "Runtime presence and readiness were observed; the installed script version was not independently confirmed."
+  },
+  "source": "dedicated-chrome-real-tampermonkey-unmodified-local-fsu",
+  "runtime": {
+    "season": 27,
+    "info": true,
+    "events": true,
+    "preview": false,
+    "initialized": true,
+    "clubReady": true,
+    "clubCacheStatus": "ready",
+    "priceFunction": true,
+    "fillCriteriaFunction": true,
+    "fillFunction": true,
+    "settings": { "cardPrice": true, "autoFill": true },
+    "priceElements": 0
+  },
+  "fillExecuted": false,
+  "priceSuccessVerified": false,
+  "submissionExecuted": false
+}

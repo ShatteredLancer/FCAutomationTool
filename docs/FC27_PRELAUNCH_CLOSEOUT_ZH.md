@@ -1,5 +1,9 @@
 # FC27 上线前收尾与开服接续
 
+2026-09-18 FSU 路线修正优先于下文历史“禁止启用旧 FSU / 独立实现 provider”安排：用户要求以既有 `26.09.6` 查漏补缺，专用浏览器原版初始化与 Club ready 已通过。允许在原 FSU 上做受控只读兼容检查；不因此允许旧 Runner 自动化或未批准的保存/提交。独立 Preview 不再作为前置条件，见 [FSU 当前路线](../FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+
+2026-09-17 更新：Web App 已能登录并显示传统 SBC，工作顺序调整为传统只读验证优先。新增 Agent 持续会话和自动保存报告，不再要求用户反复按 Enter 或复制输出；具体已完成项、实机发现和剩余门禁见 [上线后适配记录](FC27_LIVE_ADAPTATION_ZH.md)。下文 2026-09-15 的人工流程保留为历史基线，不是当前推荐的用户操作清单。
+
 2026-09-15。范围是离线准备收尾，不是 FC27 业务兼容验收。不自动登录 EA、不运行旧业务，不创建 Release。
 
 ## 收尾清单
@@ -10,7 +14,7 @@
 | Runner 安装身份与显示名 | **Pending（发布阻断）** | 完整脚本仍为 `FC26 Daily Loop Runner`，但 namespace 和 update/download URL 已改为新仓库/新资产。必须明确 FC26 升级与 FC27 全新安装的身份组合并完成 Tampermonkey 实测后，才能把审计标为 Complete |
 | npm 包名 | 保留 | `fc26-daily-loop-runner` 当前仍供 FC26 构建；正式新入口切换时同步 package/lock，不以改包名代替赛季适配 |
 | Release 门禁 | Complete（离线） | `check-release-readiness.mjs` 暂停全部正式资产发布；>=27 通道门禁继续保留，Preview artifact 不受影响 |
-| FSU 改地址未升版本 | 已识别，发布阻断 | 既有改名提交更改了维护源 metadata，但 Local 仍为 `26.09.6`。不得按相同版本发布；实际发布前独立升 Local 版本、重建 patch/manifest、验收更新。不可变 origin 和上游身份不动 |
+| FSU 版本与更新验收 | 已升版，仍阻断发布 | 改名时曾改地址但未升版本；2026-09-18 已随最小价格修复升至 `26.09.7` 并重建 patch/manifest。真实安装版本、更新渠道和业务验收仍未完成，旧冻结检查也尚未适配新维护边界。不可变 origin 和上游身份不动 |
 | Preview CI | Complete（配置） | main push 和 PR 执行；完整历史供冻结检查使用；统一专项验证入口。远程运行成功与否须另看 Actions |
 | 浏览器参数 | Complete（离线） | 缺失路径、未知参数、重复/冲突模式在启动前拒绝；无参数只显示帮助 |
 | 浏览器与插件组合 | Pending（人工） | 本地 headless smoke 不能证明 Tampermonkey/FSU 扩展加载成功，不启动交互登录替代用户验收 |
@@ -31,7 +35,7 @@ node scripts/verify-fc27-prelaunch.mjs --browser
 
 交互验收需用户明确启动：`node scripts/browser-inspection/run.mjs --interactive`。使用专用 profile，不使用日常浏览器目录、不公开 CDP 端口。用户检查能否安装/启用 Tampermonkey；受管理 Chrome/Edge 如限制扩展，先解决浏览器策略，不能绕过安全限制。禁止启用旧 Runner 或旧 FSU 26 自动化来测试 FC27。
 
-当前 Enter 报告只包含固定根对象字段存在性与赛季，以及采集瞬间的有界网络状态计数；不代表完整登录网络轨迹。输出不含请求头、响应体和账号信息。`artifacts/fc27-browser/self-test.json` 仅是离线 fixture 报告，不是 EA 证据。安装扩展、GM 隔离和页面注入能力须人工记录插件版本及结果，不能从普通页面的根对象缺失判定扩展一定未安装。
+当前 Enter 报告只包含固定根对象字段存在性与赛季，以及交互会话期间累计的有界网络状态计数；监听器在浏览器启动后挂载，并覆盖同一页面导航和新建标签页，直到输入 `q` 才释放，因此登录、刷新和进入 SBC 页面后的请求不会因按键时序被漏掉。网络摘要覆盖官方 `ea.com`/`easports.com` 域名，并单独计数官方域上的失败请求；它仍不代表完整登录网络轨迹。输出不含请求头、响应体、URL、失败文本和账号信息。`artifacts/fc27-browser/self-test.json` 仅是离线 fixture 报告，不是 EA 证据。安装扩展、GM 隔离和页面注入能力须人工记录插件版本及结果，不能从普通页面的根对象缺失判定扩展一定未安装。
 
 ## 开服后接续
 

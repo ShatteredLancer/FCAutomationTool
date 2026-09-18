@@ -15,7 +15,10 @@ function readJson(storage, key) {
 function readPolicy(storage, context) {
   const value = readJson(storage, contextKey(context, 'fsu-policy'));
   if (value?.schema !== 1 || value?.reviewed !== true) return null;
-  const policy = value.policy;
+  return normalizeReviewedPolicy(value.policy);
+}
+
+export function normalizeReviewedPolicy(policy) {
   if (!policy || ['onlyUntradeable', 'excludeEvolution', 'protectFsuLockedPlayers', 'protectActiveSquad', 'storageFirst']
     .some(key => typeof policy[key] !== 'boolean')) return null;
   if (!Number.isInteger(policy.maxRating) || policy.maxRating < 1 || policy.maxRating > 99
@@ -41,8 +44,9 @@ export function readLegacyPolicyReview(storage) {
   } : null });
 }
 
-export function createRunnerSupportCore({ readContext, storage, inventory, timeoutMs = 15000 }) {
+export function createRunnerSupportCore({ readContext, storage, inventory, timeoutMs = 15000, refreshTimeoutMs = 180000 }) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw new TypeError('Invalid timeout');
+  if (!Number.isInteger(refreshTimeoutMs) || refreshTimeoutMs < 1 || refreshTimeoutMs > 300000) throw new TypeError('Invalid refresh timeout');
   let busy = false;
   function inspect() {
     let context;
@@ -72,7 +76,9 @@ export function createRunnerSupportCore({ readContext, storage, inventory, timeo
   async function runRead(method, refs) {
     if (busy) throw new Error('FSU_BUSY');
     const initial = inspect();
-    if (initial.descriptor.status !== 'ready') throw new Error('FSU_NOT_READY');
+    const coldRefresh = method === 'refreshClub' && initial.policy && initial.locks
+      && typeof inventory?.refreshClub === 'function' && typeof inventory?.validateClubPlayers === 'function';
+    if (initial.descriptor.status !== 'ready' && !coldRefresh) throw new Error('FSU_NOT_READY');
     busy = true;
     let timer;
     let timedOut = false;
@@ -83,12 +89,17 @@ export function createRunnerSupportCore({ readContext, storage, inventory, timeo
         return inventory[method](refs);
       });
       const result = await Promise.race([pending, new Promise((_, reject) => {
-        timer = setTimeout(() => { timedOut = true; reject(new Error('FSU_READ_TIMEOUT')); }, timeoutMs);
+        timer = setTimeout(() => { timedOut = true; reject(new Error('FSU_READ_TIMEOUT')); },
+          method === 'refreshClub' ? refreshTimeoutMs : timeoutMs);
       })]);
       if (!sameScope(initial.context, readContext()) || !sameScope(initial.context, result?.context)) {
         throw new Error('FSU_SCOPE_CHANGED');
       }
       if (!BRIDGE_CAPABILITIES.every(key => inspect().descriptor.capabilities[key])) throw new Error('FSU_CAPABILITY_CHANGED');
+      const current = inspect();
+      if (JSON.stringify({ policy: initial.policy, locks: initial.locks }) !== JSON.stringify({ policy: current.policy, locks: current.locks })) {
+        throw new Error('FSU_POLICY_CHANGED');
+      }
       if (method === 'refreshClub') {
         if (result.status !== 'refreshed') throw new Error('FSU_REFRESH_UNCONFIRMED');
         return Object.freeze({ status: 'refreshed' });
@@ -115,6 +126,7 @@ export function createRunnerSupportCore({ readContext, storage, inventory, timeo
     describe: () => inspect().descriptor,
     getPolicy: () => inspect().policy ?? null,
     getLocks: () => inspect().locks ?? null,
+    getClubSnapshot: () => inspect().descriptor.status === 'ready' ? inventory?.getSnapshot?.() ?? null : null,
     getClubState: () => {
       const value = inspect();
       return Object.freeze({ status: value.state?.status === 'ready' ? 'ready'

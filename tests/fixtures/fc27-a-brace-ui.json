@@ -1,0 +1,14 @@
+{
+  "source": "user-screenshot-2026-09-17",
+  "evidenceKind": "visible-ui-only",
+  "name": "A Brace",
+  "setId": null,
+  "challengeId": null,
+  "playerCount": 2,
+  "minimumOverall": 65,
+  "maximumOverall": 74,
+  "fillableSlots": 2,
+  "blockedSlots": 9,
+  "challengeReward": { "name": "Silver Pack", "count": 1, "untradeable": true, "packId": null },
+  "runtimeContractVerified": false
+}

@@ -45,6 +45,12 @@ export default [
     rules: { 'no-undef': ['error', { typeof: true }] },
   },
   {
+    files: ['FSU_mod/src/fc27-userscript-entry.js'],
+    languageOptions: { globals: { document: 'readonly', console: 'readonly', unsafeWindow: 'readonly',
+      GM_getValue: 'readonly', GM_setValue: 'readonly', GM_xmlhttpRequest: 'readonly',
+      GM_info: 'readonly', crypto: 'readonly', __FSU_PREVIEW_VERSION__: 'readonly' } },
+  },
+  {
     files: ['src/userscript-entry.js', 'src/fc27/userscript-entry.js', 'FCAutomationToolHotReload.user.js'],
     languageOptions: {
       globals: {

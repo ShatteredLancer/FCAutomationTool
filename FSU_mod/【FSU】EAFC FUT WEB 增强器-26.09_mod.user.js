@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         【FSU】EAFC FUT WEB 增强器
 // @namespace    https://futcd.com/
-// @version      26.09.6
+// @version      26.09.7
 // @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
 // @author       Futcd_kcka
 // @contributor  ShatteredLancer
@@ -1692,8 +1692,11 @@
                 throw error;
             }
         }
-
-
+        // 价格服务必须绑定当前 EA 赛季；未知时宁可不请求，也不能回退到旧赛季。
+        const getPriceSeason = () => {
+            const value = Number(info.base?.year ?? globalThis.APP_YEAR_SHORT);
+            return Number.isInteger(value) && value >= 20 && value <= 99 ? String(value) : null;
+        };
         //25.01 新的获取价格接口
         events.getPriceForUrl = async (data) => {
             console.log(data)
@@ -1701,10 +1704,12 @@
                 let priceJson = {};
                 // 1 futgg 2 代理futgg模式 3 futnext
                 if([1, 2].includes(info.apiPlatform)){
+                    const season = getPriceSeason();
+                    if (!season) throw new Error("PRICE_SEASON_UNVERIFIED");
                     let params = data.join("%2C")
                     let baseUrl = info.apiPlatform === 2 ? `${info.apiProxy}?futggapi=` : "https://www.fut.gg/api/fut/";
                     let platform = info.base.platform === "pc" ? `&platform=${info.base.platform}` : "";
-                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/26/?ids=${params}${platform}`);
+                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/${season}/?ids=${params}${platform}`);
                     const originalJson = JSON.parse(response);
                     _.map(originalJson.data, i => {
                         if (i.price !== null || i.isExtinct || i.isSbc || i.isObjective || i.premiumSeasonPassLevel !== null || i.standardSeasonPassLevel !== null) {
@@ -2198,9 +2203,15 @@
                 }
 
                 //26.04 自动切换价格获取接口的脚本
+                const season = getPriceSeason();
+                if (!season) {
+                    info.apiPlatform = 3;
+                    console.warn("apiPlatform: season unavailable; using FutNext fallback");
+                    return;
+                }
                 GM_xmlhttpRequest({
                     method: 'GET',
-                    url: `https://www.fut.gg/api/fut/player-prices/26/?ids=${_.random(20000, 39999)}`,
+                    url: `https://www.fut.gg/api/fut/player-prices/${season}/?ids=${_.random(20000, 39999)}`,
                     anonymous: false, // 关键：利用当前页面的已存 Cookie
                     headers: {
                         'Accept': 'application/json',
@@ -9017,7 +9028,6 @@
                             pageSize = 200;
                             console.log("[FSU club load] EA capped larger requests; using page size:200");
                         }
-
                         const validationExpectedCount = expectedCount;
                         const pageCount = Math.ceil(validationExpectedCount / pageSize);
                         for(let page = 0; page < pageCount; page++){

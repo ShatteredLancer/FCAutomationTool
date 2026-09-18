@@ -1,12 +1,12 @@
 diff --git a/FSU.user.js b/FSU.user.js
-index dd554ab..035d53f 100644
+index dd554ab..fd5d267 100644
 --- a/FSU.user.js
 +++ b/FSU.user.js
 @@ -3,5 +3,8 @@
  // @namespace    https://futcd.com/
 -// @version      26.09
 -// @description  EAFCFUT模式SBC任务便捷操作增强器👍👍👍，模拟开包、额外信息展示、近期低价自动查询、一键挂出球员、跳转FUTBIN、快捷搜索、拍卖行优化等等...👍👍👍
-+// @version      26.09.6
++// @version      26.09.7
 +// @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
  // @author       Futcd_kcka
 +// @contributor  ShatteredLancer
@@ -93,7 +93,40 @@ index dd554ab..035d53f 100644
              "notice.ldataerror":["球员数据加载失败 请重刷新页面加载 否则核心功能无法使用","球員資料載入失敗 請重重新整理頁面載入 否則核心功能無法使用","Player data loading failed, please refresh the page to load, otherwise the core functions cannot be used"],
 +            "notice.ldataloading":["球员数据正在后台加载，请稍后再使用库存填充功能","球員資料正在背景載入，請稍後再使用庫存填充功能","Player data is loading in the background. Please retry the inventory action shortly."],
              "loadingclose.ldata":["正在读取球员数据（%1/%2）请耐心等待","正在讀取球員資料（%1/%2）請耐心等待","Reading player data (%1/%2) please be patient"],
-@@ -6815,14 +6873,6 @@
+@@ -1636,4 +1694,7 @@
+         }
+-
+-
++        // 价格服务必须绑定当前 EA 赛季；未知时宁可不请求，也不能回退到旧赛季。
++        const getPriceSeason = () => {
++            const value = Number(info.base?.year ?? globalThis.APP_YEAR_SHORT);
++            return Number.isInteger(value) && value >= 20 && value <= 99 ? String(value) : null;
++        };
+         //25.01 新的获取价格接口
+@@ -1645,2 +1706,4 @@
+                 if([1, 2].includes(info.apiPlatform)){
++                    const season = getPriceSeason();
++                    if (!season) throw new Error("PRICE_SEASON_UNVERIFIED");
+                     let params = data.join("%2C")
+@@ -1648,3 +1711,3 @@
+                     let platform = info.base.platform === "pc" ? `&platform=${info.base.platform}` : "";
+-                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/26/?ids=${params}${platform}`);
++                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/${season}/?ids=${params}${platform}`);
+                     const originalJson = JSON.parse(response);
+@@ -2142,5 +2205,11 @@
+                 //26.04 自动切换价格获取接口的脚本
++                const season = getPriceSeason();
++                if (!season) {
++                    info.apiPlatform = 3;
++                    console.warn("apiPlatform: season unavailable; using FutNext fallback");
++                    return;
++                }
+                 GM_xmlhttpRequest({
+                     method: 'GET',
+-                    url: `https://www.fut.gg/api/fut/player-prices/26/?ids=${_.random(20000, 39999)}`,
++                    url: `https://www.fut.gg/api/fut/player-prices/${season}/?ids=${_.random(20000, 39999)}`,
+                     anonymous: false, // 关键：利用当前页面的已存 Cookie
+@@ -6815,14 +6884,6 @@
                      (e) => {
 -                        services.Club.clubDao.clubRepo.items.reset();
                          events.waitForClickShieldToHide(() => {
@@ -111,7 +144,7 @@ index dd554ab..035d53f 100644
 +                                console.error("[FSU club load] manual reload failed", error);
 +                            });
                          });
-@@ -6848,74 +6898,2323 @@
+@@ -6848,74 +6909,2322 @@
          };
 -        events.reloadPlayers = async(e) =>{
 -            GM_setValue("players",JSON.stringify({}));
@@ -2270,7 +2303,6 @@ index dd554ab..035d53f 100644
 +                            pageSize = 200;
 +                            console.log("[FSU club load] EA capped larger requests; using page size:200");
 +                        }
-+
 +                        const validationExpectedCount = expectedCount;
 +                        const pageCount = Math.ceil(validationExpectedCount / pageSize);
 +                        for(let page = 0; page < pageCount; page++){
@@ -2493,7 +2525,7 @@ index dd554ab..035d53f 100644
              });
 +            return info.base.reloadPlayersPromise;
          }
-@@ -8254,2 +10553,11 @@
+@@ -8254,2 +10563,11 @@
          events.playerListFillSquad = (challenge,list,type) => {
 +            if(!events.requireClubReady("squad fill")) return false;
 +            events.emitClubDiagnostic?.("log", "squad-fill-input", `squad fill received ${list?.length || 0} player(s)`, {
@@ -2505,7 +2537,7 @@ index dd554ab..035d53f 100644
 +                input:Array.from(list || []).map(item => events.summarizeFillDiagnosticItem?.(item))
 +            });
              events.showLoader();
-@@ -8285,4 +10593,13 @@
+@@ -8285,4 +10603,13 @@
              })
 +            events.emitClubDiagnostic?.("log", "squad-fill-mapped", `squad fill mapped ${playerlist.filter(Boolean).length} player(s)`, {
 +                challenge:{ id:challenge?.id, setId:challenge?.setId, name:challenge?.name },
@@ -2519,19 +2551,19 @@ index dd554ab..035d53f 100644
 +                squad:Array.from(challenge?.squad?.getPlayers?.() || []).map(slot => events.summarizeFillDiagnosticItem?.(slot?.item || slot))
 +            });
              //events.hideLoader();
-@@ -8293,2 +10610,3 @@
+@@ -8293,2 +10620,3 @@
          events.getTemplate = async function(e,type,sId){
 +            if(!events.requireClubReady("SBC template fill")) return false;
              e.setInteractionState(0);
-@@ -8851,2 +11169,3 @@
+@@ -8851,2 +11179,3 @@
          events.getRatingPlayers = (squad,ratings) => {
 +            if(!events.requireClubReady("rating squad fill")) return [];
              const assignPlayer = (playerlist, shortlist, Exclusionlist, index, pos) => {
-@@ -10012,2 +12331,3 @@
+@@ -10012,2 +12341,3 @@
          events.fastSBC = async (id,cId) => {
 +            if(!events.requireClubReady("Fast SBC")) return false;
              let controller = events.getCurrent(),
-@@ -10230,5 +12550,32 @@
+@@ -10230,5 +12560,32 @@
              function valuablePlayerTips(left,controller,e) {
 -                
 -                const preciousCount = left.getView().slotViews.slice(0, 11).reduce((acc, view) => {
@@ -2567,11 +2599,11 @@ index dd554ab..035d53f 100644
 +
 +                    return acc + (priceItem.classList.contains("precious") ? 1 : 0);
                  }, 0);
-@@ -11813,2 +14160,3 @@
+@@ -11813,2 +14170,3 @@
          UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
 +            events.markClubCacheDirty("SBC submission started");
              let r = originalSubmitChallenge.apply(this, arguments);
-@@ -14402,2 +16750,34 @@
+@@ -14402,2 +16760,34 @@
                              (e) => {
 +                                const unassigned = Array.from(repositories.Item.getUnassignedItems() || []);
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-start", `one-click fill started with ${unassigned.length} Unassigned item(s)`, {
@@ -2606,14 +2638,14 @@ index dd554ab..035d53f 100644
 +                                    return false;
 +                                }
                                  let playerList = [], removeIds = [];
-@@ -14408,3 +16788,5 @@
+@@ -14408,3 +16798,5 @@
                                      getCriteria = events.ignorePlayerToCriteria(getCriteria);
 -                                    playerList = events.getItemBy(2,getCriteria,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
 +                                    const candidates = events.getItemBy(2,getCriteria,unassigned);
 +                                    playerList = candidates.slice(0,criteriaNumber);
 +                                    events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill broad criteria selected ${playerList.length}/${criteriaNumber}`, events.collectOneFillDiagnostic?.(getCriteria, candidates, playerList, unassigned));
                                  }else{
-@@ -14417,6 +16799,6 @@
+@@ -14417,6 +16809,6 @@
                                          getCriteria["lock"] = false;
 -                                        let result = events.getItemBy(2, getCriteria, repositories.Item.getUnassignedItems());
 -
@@ -2622,18 +2654,18 @@ index dd554ab..035d53f 100644
                                          console.log(cropping,_.map(cropping,"rating"))
 +                                        events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill criterion selected ${cropping.length}/${i.c}`, events.collectOneFillDiagnostic?.(getCriteria, result, cropping, unassigned));
                                          removeIds = removeIds.concat(cropping.map( i => {return i.databaseId}))
-@@ -14425,2 +16807,6 @@
+@@ -14425,2 +16817,6 @@
                                  }
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-selected", `one-click fill selected ${playerList.length} player(s)`, {
 +                                    challenge:{ id:thisController?._challenge?.id, setId:thisController?._challenge?.setId, name:thisController?._challenge?.name },
 +                                    selected:playerList.map(item => events.summarizeFillDiagnosticItem?.(item))
 +                                });
                                  if(playerList.length){
-@@ -14451,2 +16837,3 @@
+@@ -14451,2 +16847,3 @@
                          (e) => {
 +                            if(!events.requireClubReady("duplicate squad fill")) return false;
                              const dupIds = _.map(
-@@ -15733,2 +18120,2 @@
+@@ -15733,2 +18130,2 @@
      main()
 -})();
 \ No newline at end of file

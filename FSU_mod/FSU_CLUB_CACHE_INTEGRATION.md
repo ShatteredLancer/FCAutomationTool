@@ -1,10 +1,20 @@
 # FSU Club Cache Optimization and Integration Guide
 
+2026-09-18 当前方向：用户确认原 `26.09.6` 在 FC27 大部分功能可用，维护改为原版最小兼容修复。未修改原版已实机初始化完成、Club ready，原填阵/价格函数与开关存在。独立 Preview 停止扩展且不再默认安装，下文原 FSU scoped capture、provisional 与提交前精确校验合同继续保留，不用另一套库存服务替代。readiness 实机通过不等于所有选材/写阵/价格功能已验收。
+
+2026-09-17 最新验收：真实 Tampermonkey 5.5.0 / 独立 Preview .2 安装及面板/桥已通过，独立 GM 诊断键刷新后保留，真实面板取得 41 名 Club 球员及首屏 25 张 EA 均价；FUT.GG GM 请求为 403。只验证了安装诊断键，不等于策略/锁卡 key 与全 readiness 已验收；策略仍未保存，桥正确保持 not-ready。后续只读配阵已获用户授权但尚未执行，写操作门禁不变。
+
+2026-09-17 后续：独立 FC27 Preview 已组合真实 GM 注入入口、作用域策略/锁卡 UI、冷启动 bridge 刷新、传统只读规划及价格表。修正 core 原先要求库存 ready 才能 cold refresh 的闭环；全量刷新有独立 180 秒上限，单请求仍有 15/16 秒上限。没有改动下文 FC26 生产源/patch。实机再次取得 41/41 球员、两卡精确复核及 39 张 EA 市场均价；真实 GM 安装、一键填阵写入和卡面价格仍待验收。维护入口、上游检查与明确边界见 [FC27 本地支持](FC27_LOCAL_SUPPORT_ZH.md)。
+
+2026-09-17 FC27：独立 `runner-support/native-provider.js` 已接入真实账号/Persona/SKU、partial 缓存和 fresh Club 读取。自有 EA 请求实机确认 41/41 球员，两卡按 item ID、definition ID、安全指纹定向回读通过；当时缓存仅 16 个条目、8 个球员。fresh 结果保持 provisional，真实 FSU GM/锁卡/保护策略与 Live 仍待验收，不安装全局 bridge。本轮没有修改 `26.09_mod`，不把旧季 readiness 声明为新季已验证。五步状态见 [上线后适配记录](../docs/FC27_LIVE_ADAPTATION_ZH.md)。
+
+FC27 的查询 Adapter 使用经源码指纹校验的独立 `UTHttpRequest`：Stats GET、Club search POST（只读查询），只接受自有请求/Observable 的响应，不使用全局捕获或合并缓存，不读写认证信息。串行、800ms 最小间隔、超时/429 停止；最多 250/页、20,000 人，前后 Stats 与唯一 item 数一致。生成的 fresh 实体不注入 EA Club Repository，也不清除旧实体。此方案仅进入独立 core，不改变下文 FC26 的 scoped XHR、hasAllItems bypass 与缓存清理合同。
+
 FC27 离线 Runner-support core 位于 `FSU_mod/src/runner-support/core.js`，不进入当前 `26.09_mod` 生产构建。它复用锁卡/设置解析并通过注入 provider 测试精确校验与 readiness；EA/GM 接线仍须 F1/F2 实机证据。状态见 [FC27 实施记录](../docs/FC27_PRELAUNCH_PROGRESS_ZH.md)，不能将 fake provider 的成功视作本文件定义的 EA 权威校验。
 
 本文是 FSU `26.09` Club 加载优化、Daily Loop Runner 集成和第三方插件交互的维护事实来源。它记录当前已经实现并验证的行为，也记录仍待验证的风险和未来优化方向。
 
-适用组件：
+下文缓存实机证据的历史适用组件（当前维护版本与 FC27 边界见 [本地支持记录](FC27_LOCAL_SUPPORT_ZH.md)）：
 
 - FSU 上游基线：`26.09`
 - FSU Local：`26.09.6`，Release 资产 `FSU-Local.user.js`
@@ -568,7 +578,7 @@ FSU 本体仍是外部单文件脚本，目前没有完整 Node 单元测试框�
 
 ## 15. 发布、补丁和回滚
 
-当前已验证 FSU 文件：
+历史已验证 FSU 文件（以下旧 hash 不代表当前 `26.09.7`；当前产物以 manifest 和 patch replay 为准）：
 
 ```text
 FSU_mod\【FSU】EAFC FUT WEB 增强器-26.09_mod.user.js

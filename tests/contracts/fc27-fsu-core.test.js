@@ -78,11 +78,15 @@ describe('offline FSU Runner-support core', () => {
   });
   it('builds independently without evaluating old FSU enhancement code', async () => {
     const result = await buildFsuCore();
-    expect(result.inputs).toHaveLength(4);
+    expect(result.inputs).toHaveLength(10);
+    expect(result.inputs).toEqual(expect.arrayContaining([
+      'src/adapters/ea/fc27-club-read.js', 'FSU_mod/src/runner-support/club-inventory.js',
+    ]));
     const sandbox = {};
     vm.runInNewContext(result.source, sandbox);
     const core = sandbox.FSURunnerSupportCore.createRunnerSupportCore({ readContext: () => scope, storage: { get: () => null } });
     expect(core.describe().status).toBe('not-ready');
+    expect(sandbox.FSURunnerSupportCore.createNativeRunnerSupport).toBeTypeOf('function');
     expect(result.source).not.toMatch(/\.prototype\s*=|\/fc26\/|GM_xmlhttpRequest/);
   });
   it('rejects failed refresh and stale provider scope', async () => {

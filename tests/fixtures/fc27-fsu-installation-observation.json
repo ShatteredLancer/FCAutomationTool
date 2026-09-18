@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-17",
+  "source": "dedicated-chrome-real-tampermonkey",
+  "installation": {
+    "schema": 1,
+    "manager": "Tampermonkey",
+    "managerVersion": "5.5.0",
+    "scriptVersion": "26.09.6.27.2",
+    "gmWriteRead": true,
+    "previousLoad": true,
+    "reason": null
+  },
+  "season": 27,
+  "panelPresent": true,
+  "bridgePresent": true,
+  "policyReviewed": false,
+  "clubPlayers": 41,
+  "displayedRows": 25,
+  "displayedEaAverages": 25,
+  "ggReason": "PRICE_HTTP_403",
+  "displayedGgQuotes": 0,
+  "accountMutations": false
+}

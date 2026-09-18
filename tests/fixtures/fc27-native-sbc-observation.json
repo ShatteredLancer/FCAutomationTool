@@ -1,0 +1,27 @@
+{
+  "source": "native-web-app-passive-observation-2026-09-17",
+  "browserVersion": "152.0.7977.83",
+  "extensionsDisabled": true,
+  "season": "27",
+  "homeStructure": ["ut-tile-hub-sbc", "ut-tile-hub-objective"],
+  "set": {
+    "id": 1,
+    "name": "Intro to SBCs",
+    "repeats": 0,
+    "timesCompleted": 0,
+    "awards": [{ "type": "pack", "value": 528, "count": 1 }],
+    "challenges": [{
+      "id": 2,
+      "name": "A Brace",
+      "status": "IN_PROGRESS",
+      "eligibilityOperation": "AND",
+      "eligibilityRequirements": [
+        { "count": 2, "scope": 0, "kvPairs": { "_collection": { "26": [65] } } },
+        { "count": 2, "scope": 0, "kvPairs": { "_collection": { "28": [74] } } }
+      ],
+      "awards": [{ "type": "pack", "value": 200, "count": 1, "tradable": false }]
+    }]
+  },
+  "eligibilityKeys": { "PLAYER_MIN_OVR": 26, "PLAYER_MAX_OVR": 28 },
+  "notVerified": ["slot-layout", "reward-untradeability", "complete-inventory", "item-safety", "account-scope", "fsu-provider", "save-submit"]
+}

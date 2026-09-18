@@ -1,0 +1,25 @@
+name: Inspect FSU Upstream
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect candidate and dry-run legacy patch
+        run: node scripts/fsu-upstream.mjs
+      - name: Upload review candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: fsu-upstream-review
+          path: artifacts/fsu-upstream/
+          retention-days: 14
+          if-no-files-found: error
