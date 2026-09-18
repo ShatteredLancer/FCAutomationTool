@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { FC27_TRADITIONAL_WEB_LOCK } from '../../src/fc27/traditional-lock.js';
 
 export async function exerciseTraditionalPersistence(context, directory) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -83,6 +84,11 @@ export async function exerciseTraditionalPersistence(context, directory) {
     });
     await first.waitForFunction(() => globalThis.persistenceSmoke.holding, {}, { timeout: 10000 });
     await first.close();
+    // Page closure can resolve before the browser process releases its Web Lock.
+    await second.waitForFunction(async name => {
+      const { held } = await navigator.locks.query();
+      return !held.some(lock => lock.name === name);
+    }, FC27_TRADITIONAL_WEB_LOCK, { timeout: 10000 });
     const afterClose = await second.evaluate(async () => {
       const state = globalThis.persistenceSmoke;
       return state.provider.exclusive(state.scope, async () => (await state.provider.journal.read(state.scope)).phase);

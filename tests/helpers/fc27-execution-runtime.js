@@ -89,10 +89,12 @@ export function executionRuntime() {
     PurchaseDisplayGroup: { MYPACKS: 'mypacks' }, HttpRequestMethod: { GET: 'GET', POST: 'POST', PUT: 'PUT' },
     ItemType: { PLAYER: 'player' }, ItemPile: { CLUB: 7, EVOLUTION: 9 },
     ItemRarity: { NONE: 0, RARE: 1 }, LimitedUseType: { NONE: 0 }, AuctionTradeStateEnum: { ACTIVE: 'active', INACTIVE: 'inactive' } };
+  // Git may check this synthetic runtime out with CRLF; adapters hash normalized source.
+  const normalizeSource = source => source.replace(/\r\n/g, '\n');
   const hashes = new Map([...FC27_CLUB_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS, ...FC27_SBC_CACHE_METHODS].map(([path, hash]) => [
-    Function.prototype.toString.call(path.split('.').reduce((value, key) => value[key], root)), hash,
+    normalizeSource(Function.prototype.toString.call(path.split('.').reduce((value, key) => value[key], root))), hash,
   ]));
   root.crypto = { subtle: { digest: vi.fn(async (_algorithm, bytes) => Uint8Array.from(Buffer.from(
-    hashes.get(new TextDecoder().decode(bytes)) ?? '0'.repeat(64), 'hex')).buffer) } };
+    hashes.get(normalizeSource(new TextDecoder().decode(bytes))) ?? '0'.repeat(64), 'hex')).buffer) } };
   return { root, state, calls, set, challenge, user };
 }

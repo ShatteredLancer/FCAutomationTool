@@ -4,9 +4,22 @@ import { createFc27TraditionalProvider, projectFc27Submission, projectFc27OwnedP
 import { createFc27TransactionTransport } from '../../src/adapters/ea/fc27-transaction-transport.js';
 import { createTraditionalTransaction } from '../../src/fc27/traditional-transaction.js';
 import { createFc27TransactionPersistence } from '../../src/adapters/browser/fc27-transaction-persistence.js';
+import { FC27_CLUB_READ_METHODS } from '../../src/adapters/ea/fc27-club-read.js';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1000000); });
 afterEach(() => vi.useRealTimers());
+it.each(['\n', '\r\n'])('keeps the synthetic method digest stable for %j source line endings', async eol => {
+  const { root } = executionRuntime();
+  for (const [path, expected] of FC27_CLUB_READ_METHODS) {
+    const method = path.split('.').reduce((value, key) => value[key], root);
+    const source = Function.prototype.toString.call(method).replace(/\r?\n/g, eol);
+    const digest = await root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
+    expect(Buffer.from(digest).toString('hex')).toBe(expected);
+  }
+  const unknown = await root.crypto.subtle.digest('SHA-256', new TextEncoder().encode('unreviewed source'));
+  expect(Buffer.from(unknown).toString('hex')).toBe('0'.repeat(64));
+});
+
 async function settle(promise) {
   const observed = promise.then(value => ({ value }), error => ({ error }));
   await vi.runAllTimersAsync();
