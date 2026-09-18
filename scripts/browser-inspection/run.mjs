@@ -78,6 +78,8 @@ if (help) {
       await exerciseRunnerPanel(page, out);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');
       await exerciseTraditionalPersistence(context, out);
+      const { exerciseProductionLivePanel } = await import('./production-live-smoke.mjs');
+      await exerciseProductionLivePanel(context, out);
     } else if (agent) {
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       await runAgentSession({ context, terminal, root, withExtensions });

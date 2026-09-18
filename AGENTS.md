@@ -4,11 +4,13 @@
 
 本文件是 AI agent 和维护者处理本仓库任务时的首要工程说明。它描述当前真实实现，而不是最终理想状态。
 
+2026-09-18 Live 授权更新：用户明确要求“打开 live 限制”，本地 `27.0.1` 默认入口开放现有单次传统 SBC 执行；下方 `27.0.0` 硬关闭约束只描述已发布版本。构建通过 `__FCAT_LIVE_ENABLED__` 将同一执行模式注入入口并写入 manifest，不能出现运行时/manifest 不一致。每次必须先生成并 fresh 校验计划，再由用户在面板确认一次；不开放 Rolling、开包、移动、Pick 或交易，不放宽任何材料/事务保护。允许本地执行不代表真实业务已验收或获准公开发布；历史只读发布许可不可复用，`releaseEligible:false` 和业务 Pending 保留。当前任务不授权 Agent 代用户消费卡片，也不修改已发布 tag/资产。
+
 2026-09-18 发布结果：`v27.0.0` 已在提交 `40463dc` 正式发布为只读 latest，FSU Local `26.09.8` 随附；CI、七项资产及四个 latest 下载地址已通过校验。不得重写 tag 或替换已发布资产；Live 与真实 SBC 验收仍 Pending。证据见 [发布与交付结果](docs/FC27_LIVE_ADAPTATION_ZH.md#发布与交付结果)。
 
 2026-09-18 首版发布授权：用户明确确认将 `fc-automation-tool@27.0.0` 按只读首版发布，取代此前阻断全部 Release 的安排。`liveEnabled:false` 必须保留，真实 SBC 验收继续延期。`scripts/fc27-readonly-release.json` 只授权精确版本和 Runner/FSU SHA256 组合；`check-release-readiness.mjs` 验证安装/更新证据、FSU 重放和产物一致性，未来版本、改动后的脚本或 Live 均不能沿用此批准。默认入口为 `src/fc27/production-entry.js`，全新身份 `FC Automation Tool` / 新仓库 namespace；旧源、Loops/Profile、Rolling、交易仅作 FC26 回归，不表示新版支持。范围见 [27.0.0 说明](docs/releases/27.0.0.md)，证据见 [验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
 
-2026-09-18 FSU 路线修正：用户确认原 `26.09.6` 在 FC27 大部分功能可用；专用浏览器已观察到原版运行时初始化且 Club 为 ready，但该观察未独立确认实际安装版本，不能用本地产物版本替代安装证据。FSU 后续必须基于既有 mod 查漏补缺，优先原有一键填阵/价格函数的最小修复，保留界面、设置与已验证缓存合同。当前本地修订为 `26.09.8`，包含 FUT.GG 价格季节绑定和 Home Controller 延迟初始化修复；一键填阵仍需登录后的真实 Challenge 验证。独立 FC27 FSU Preview 降为历史研究原型，不再默认安装、扩展或作为 Runner 适配前置条件；不得以静态耦合风险推断原版整体不可用。新 Runner 的 FC27 架构计划不因此取消，实际填阵/保存/提交仍需相应验证与授权。最新边界见 [FSU 本地支持](FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+2026-09-18 FSU 路线修正：用户确认原 `26.09.6` 在 FC27 大部分功能可用；专用浏览器已观察到原版运行时初始化且 Club 为 ready，但该观察未独立确认实际安装版本，不能用本地产物版本替代安装证据。FSU 后续必须基于既有 mod 查漏补缺，优先原有一键填阵/价格函数的最小修复，保留界面、设置与已验证缓存合同。当前本地修订为 `26.09.9`，包含 FUT.GG 价格季节绑定、Home Controller 延迟初始化和 FC27 对话框按钮兼容修复；一键填阵仍需登录后的真实 Challenge 验证。独立 FC27 FSU Preview 降为历史研究原型，不再默认安装、扩展或作为 Runner 适配前置条件；不得以静态耦合风险推断原版整体不可用。新 Runner 的 FC27 架构计划不因此取消，实际填阵/保存/提交仍需相应验证与授权。最新边界见 [FSU 本地支持](FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
 
 开始任何代码任务前，先读取：
 
@@ -134,7 +136,7 @@ src/userscript-entry.js
 src/**
 ```
 
-`src/fc27/production-entry.js` 复用已验证的 FC27 只读准备、隔离 Journal/锁和单次事务基础设施；依赖白名单由构建强制校验，Live 仍关闭。`src/userscript-entry.js` 是保留的 FC26 入口，包含 Runtime Adapter 组合、命令实现、页面编排和仍未完全拆出的 helper。内置 `LOOP_DEFS`、配置展示和 schema 校验已经迁入 `src/config`；这些旧季源和测试不因新默认构建而删除。
+`src/fc27/production-entry.js` 复用 FC27 只读准备、隔离 Journal/锁和单次事务基础设施；依赖白名单由构建强制校验，本地 `27.0.1` 按最新授权开放用户逐次确认的单次 Live，真实业务验收仍 Pending。`src/userscript-entry.js` 是保留的 FC26 入口，包含 Runtime Adapter 组合、命令实现、页面编排和仍未完全拆出的 helper。内置 `LOOP_DEFS`、配置展示和 schema 校验已经迁入 `src/config`；这些旧季源和测试不因新默认构建而删除。
 
 不要假设入口已经完全薄化。当前它仍约数千行，是主要集成层，修改前必须搜索调用方和架构测试基线。
 

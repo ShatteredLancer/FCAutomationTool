@@ -5,6 +5,24 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### FSU Local 26.09.9
+
+- Restore FC27 confirmation/cancel buttons in the FSU SBC squad import popup.
+  Keep the FC26 `dialogOptions` contract, preserve custom FSU actions and Escape
+  cancellation, and leave squad selection, inventory, save, and submit behavior unchanged.
+
+### 27.0.1 Local Live Candidate
+
+- Enable user-confirmed, single traditional SBC execution in the local Runner.
+  Preparation remains read-only; each save/submit needs a fresh plan and explicit
+  one-time confirmation. Keep exact item checks, policy protection, journal,
+  cross-tab exclusion and ambiguous-result stops unchanged.
+- Bind runtime and manifest execution mode to one build constant; preserve
+  the read-only Acceptance entry and immutable 27.0.0 release approval.
+- Verify Live confirmation/cancel/shortage controls with synthetic browser tests.
+  Real EA business acceptance and public publication remain pending. No Rolling,
+  pack opening, item moves, Player Picks or trading are enabled.
+
 ## [27.0.0] - 2026-09-18
 
 ### Read-only First Release

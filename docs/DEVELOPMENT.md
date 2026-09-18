@@ -1,6 +1,6 @@
 # FCAutomationTool Development and Release
 
-Current version: `fc-automation-tool@27.0.0`, approved explicitly as a read-only first release. Live remains hard-disabled and real low-value SBC acceptance is deferred. `scripts/fc27-readonly-release.json` pins this exact Runner/FSU artifact pair; future versions, changed scripts and Live are not authorized by this approval.
+Current local version: `fc-automation-tool@27.0.1`, explicitly authorized for user-confirmed single traditional SBC Live execution. Real EA business acceptance and public publication remain pending. The published `27.0.0` is still read-only; `scripts/fc27-readonly-release.json` authorizes only that immutable artifact pair, not the new Live candidate. The production builder injects `__FCAT_LIVE_ENABLED__` into the entry and records the same value in its manifest.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ npm run verify
 
 ## Source Layout
 
-- `src/fc27/production-entry.js`: default production-format entry, currently read-only.
+- `src/fc27/production-entry.js`: default production-format entry, single-SBC Live after explicit confirmation.
 - `src/fc27`: traditional planner, transaction and recovery contracts.
 - `src/userscript-entry.js` and legacy modules below: FC26 regression source, not bundled into FC27 unless explicitly allowlisted.
 
@@ -89,14 +89,14 @@ node scripts/browser-inspection/production-update.mjs
 node scripts/browser-inspection/acceptance.mjs --production --live-read
 ```
 
-These commands install only the reviewed Live-disabled build, test synthetic GM recovery/locks and optionally read EA state. The update probe temporarily installs synthetic older metadata under the same identity, tests Tampermonkey's updater over loopback, and restores exact production source. It never publishes the synthetic version or proves GitHub delivery. Do not run these commands concurrently against the same profile. Reports/screenshots remain local under `artifacts/fc27-browser`; only sanitized evidence enters fixtures.
+These commands report and verify the exact build's execution mode, test synthetic GM recovery/locks and optionally read EA state. They never click Submit/Confirm for an EA transaction, including when installing a Live-enabled production candidate. The separate Acceptance entry remains Live-disabled. The update probe temporarily installs synthetic older metadata under the same identity, tests Tampermonkey's updater over loopback, and restores exact production source. It never publishes the synthetic version or proves GitHub delivery. Do not run these commands concurrently against the same profile. Reports/screenshots remain local under `artifacts/fc27-browser`; only sanitized evidence enters fixtures.
 
 ## FSU Local Maintenance
 
 FSU Local uses two versions:
 
 - `upstreamVersion`: immutable upstream baseline, currently `26.09`.
-- `localVersion`: local derivative revision, currently `26.09.8`.
+- `localVersion`: local derivative revision, currently `26.09.9`.
 
 The maintained build must keep the upstream userscript identity exactly: `@name 【FSU】EAFC FUT WEB 增强器` and `@namespace https://futcd.com/`. Tampermonkey isolates GM storage by script identity, so changing either field creates a separate settings scope and resets the user's SBC exclusions, ranges, locks, and related preferences. GitHub release ownership is expressed through the version, description, homepage/support URL, and update/download URL instead.
 
@@ -113,7 +113,7 @@ The patch generator must reproduce the exact modified SHA256 from the immutable 
 
 ## Release Process
 
-1. Verify explicit publication approval for the exact scope and artifact. The 27.0.0 approval is read-only; enabling Live requires separate real low-value SBC acceptance and approval.
+1. Verify explicit publication approval for the exact scope and artifact. The 27.0.0 approval is read-only; publishing the new Live build requires separate real low-value SBC acceptance, installation evidence and publication approval. Current readiness/packaging checks intentionally reject 27.0.1 with `FC27_READONLY_RELEASE_NOT_APPROVED`; do not extend the old approval or remove its checks to publish Live.
 2. Update `package.json` using `27.x.y` for FC27 and synchronize the lock file.
 3. Update `CHANGELOG.md` and compatibility documentation with actual evidence.
 4. Run `npm run verify`, `node scripts/verify-fc27-prelaunch.mjs --browser`, and `git diff --check`.

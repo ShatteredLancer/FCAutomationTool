@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "source": "actual Chrome and Tampermonkey in the owned inspection profile; install followed by a separate browser restart check",
+  "version": "27.0.1",
+  "sha256": "5c17626e8d067e03915668b6becaf106e34054adb1dec5e51b51077351fb9f25",
+  "identity": "production",
+  "liveExecutionEnabled": true,
+  "installed": true,
+  "exactInstalledSource": true,
+  "installedSourceVerifiedAfterBrowserRestart": true,
+  "gmPreservedAcrossVersionUpdate": true,
+  "gmReloadAndRestartVerified": true,
+  "crossTabReason": "FC27_EXCLUSIVE_ACCESS_UNAVAILABLE",
+  "ownerCloseRetainedPhase": "save-pending",
+  "journalProbe": "synthetic and separate from EA account journals",
+  "eaMutationsPerformed": false,
+  "realBusinessAcceptanceVerified": false,
+  "published": false
+}

@@ -28,7 +28,8 @@ metadata = artifact.metadata.replace(/^\/\/ @updateURL\s+.*$/m, `// @updateURL  
   .replace(/^\/\/ @downloadURL\s+.*$/m, `// @downloadURL  ${base}/FCAutomationTool.user.js`);
 seed = artifact.script.replace(artifact.metadata, metadata.replace(/^\/\/ @version\s+.*$/m, '// @version      26.99.99'));
 const report = { schema: 1, version: artifact.version, sha256: artifact.manifest.sha256, syntheticOlderVersion: '26.99.99',
-  actualTampermonkeyUpdater: true, localTransportOnly: true, githubDeliveryVerified: false, liveEnabled: false };
+  actualTampermonkeyUpdater: true, localTransportOnly: true, githubDeliveryVerified: false,
+  liveEnabled: artifact.manifest.liveExecutionEnabled, eaMutationsPerformed: false };
 let context; let seeded = false; let restored = false;
 let stage = 'launch';
 try {

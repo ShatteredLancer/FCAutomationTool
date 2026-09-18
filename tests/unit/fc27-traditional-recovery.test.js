@@ -83,6 +83,45 @@ it('composes a default read-only session with genuine providers and no page-glob
   expect(await session.inspectRecovery()).toMatchObject({ status: 'idle' });
 });
 
+async function liveSession() {
+  const x = executionRuntime(); const store = storage();
+  x.root.crypto.randomUUID = () => 'synthetic-live-session';
+  const session = createFc27AcceptanceSession({ root: x.root, ...store, lockManager: lockManager(), liveEnabled: true });
+  const pending = session.prepare({ setId: 4, maxRating: 74 }); await vi.runAllTimersAsync();
+  const plan = await pending;
+  const approval = { approved: true, count: 1, setId: plan.setId, challengeId: plan.challengeId,
+    maxRating: plan.maxRating, maxPlayers: plan.selectedCount };
+  return { ...x, store, session, plan, approval };
+}
+
+it('enables one explicitly confirmed Live transaction without any write during preparation or replay', async () => {
+  const x = await liveSession();
+  expect(x.plan).toMatchObject({ status: 'prepared', liveEnabled: true, selectedCount: 11 });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+  expect(x.store.gmSetValue).not.toHaveBeenCalled();
+  const executing = x.session.execute(x.approval); await vi.runAllTimersAsync();
+  expect(await executing).toMatchObject({ status: 'completed', submitted: true, consumedCount: 11 });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(2);
+  expect([...x.store.values.values()][0].phase).toBe('completed');
+  expect(await x.session.execute(x.approval)).toMatchObject({ status: 'blocked' });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(2);
+});
+
+it.each([{ approved: false }, { count: 2 }, { maxRating: 99 }, { challengeId: 999 }])(
+  'rejects invalid Live confirmation %j without saving', async change => {
+    const x = await liveSession();
+    expect(await x.session.execute({ ...x.approval, ...change })).toMatchObject({ reason: 'FC27_APPROVAL_INVALID' });
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+    expect(x.store.gmSetValue).not.toHaveBeenCalled();
+  });
+
+it('keeps a confirmed Live request blocked when the exact material changes', async () => {
+  const x = await liveSession(); x.state.players = x.state.players.slice(1);
+  const executing = x.session.execute(x.approval); await vi.runAllTimersAsync();
+  expect(await executing).toMatchObject({ status: 'blocked', reason: 'FC27_EXACT_ITEMS_CHANGED', submitted: false });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+});
+
 it.each(['saved', 'submit-pending'])('resolves %s through real provider composition only after explicit confirmation', async phase => {
   const x = executionRuntime(); const store = storage();
   const account = readFc27Context(x.root); const key = traditionalJournalScope(account);

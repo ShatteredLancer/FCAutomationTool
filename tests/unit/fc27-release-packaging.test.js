@@ -6,10 +6,15 @@ import { buildFc27Production } from '../../scripts/build-fc27-production.mjs';
 
 async function approvedInputs() {
   const read = async file => JSON.parse(await readFile(new URL(file, import.meta.url), 'utf8'));
-  return { manifest: (await buildFc27Production()).manifest,
-    approval: await read('../../scripts/fc27-readonly-release.json'),
-    evidence: await read('../fixtures/fc27-production-installation-observation.json'),
-    fsu: await read('../../FSU_mod/fsu-mod-manifest.json') };
+  const evidence = await read('../fixtures/fc27-production-installation-observation.json');
+  const approval = await read('../../scripts/fc27-readonly-release.json');
+  return { manifest: { name: evidence.name, namespace: evidence.namespace, version: evidence.version,
+    sha256: evidence.sha256, targetSeason: '27', releaseScope: 'read-only', liveExecutionEnabled: false },
+    approval,
+    evidence,
+    // The approval tests the immutable v27.0.0 release. Do not silently
+    // replace its historical FSU .8 input with the current maintenance build.
+    fsu: { localVersion: approval.fsuLocalVersion, modifiedSha256: approval.fsuSha256 } };
 }
 
 it('uses an explicit FC27-only publication asset list without old workflows or preview scripts', async () => {
@@ -26,6 +31,14 @@ it('uses an explicit FC27-only publication asset list without old workflows or p
 it('permits only the explicitly approved read-only release without claiming Live acceptance', async () => {
   expect(assertReadonlyRelease(await approvedInputs())).toEqual({ scope: 'read-only', version: '27.0.0',
     liveExecutionEnabled: false, liveAcceptanceVerified: false });
+});
+
+it('does not publish the new Live candidate using the historical read-only approval', async () => {
+  const input = await approvedInputs();
+  input.manifest = (await buildFc27Production()).manifest;
+  expect(input.manifest.liveExecutionEnabled).toBe(true);
+  expect(input.manifest.releaseEligible).toBe(false);
+  expect(() => assertReadonlyRelease(input)).toThrow('FC27_READONLY_RELEASE_NOT_APPROVED');
 });
 
 it.each([

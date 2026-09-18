@@ -2,6 +2,8 @@
 
 **27.0.0 是 FC27 只读首版，Live 执行保持硬关闭。** 支持传统 SBC 的读取、选材预览与诊断，不支持真实提交、开包、Rolling 或交易。真实业务等安全库存充足后独立验收，再通过新版本开放。范围见 [27.0.0 发布说明](docs/releases/27.0.0.md)和[验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
 
+本地开发版 `27.0.1` 已按用户要求开放传统 SBC 单次 Live：`Verify squad` 成功后，可点击 `Submit once` 并确认一次保存/提交。仍限制安全普通 Club 卡、不可交易、默认最高 74（可选 83 且受 FSU 更严格策略约束）；不自动连续执行或打开奖励。此开发版未公开发布，真实 EA 提交尚未验收；上方及下方 Release 下载链接仍为只读 `27.0.0`。
+
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -32,11 +34,11 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-本地构建使用仓库根目录 `FCAutomationTool.user.js`，版本为 `27.0.0`。这是全新安装，不迁移旧 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.8`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 自身的手动功能不受 Runner 的只读门禁控制，不能将其视为全部禁写的插件。
+本地构建使用仓库根目录 `FCAutomationTool.user.js`，当前版本为 `27.0.1`（单次 Live 开发版），沿用 `27.0.0` 的新安装身份及 GM 存储；不迁移 FC26 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.8`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 是独立插件，其手动功能不受 Runner 的执行门禁控制。
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
-FC27 面板可刷新目标并只读准备阵容。材料不足时正常停止，提交按钮保持禁用；不会为了通过验收购买材料或放宽保护。
+已发布 `27.0.0` 面板可刷新目标并只读准备阵容，提交按钮保持禁用。本地 `27.0.1` 仅在整阵校验通过后允许确认一次提交；材料不足时仍停止，不会购买材料或放宽保护。
 
 ## 自动更新
 

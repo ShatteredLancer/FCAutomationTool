@@ -29,7 +29,8 @@ const extension = 'chrome-extension://dhdgffkkebhmkfjojejmpbldmpobfkfo';
 const web = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/';
 let context;
 const report = { schema: 1, version: artifact.version, sha256: artifact.manifest.sha256 ?? null,
-  identity: production ? 'production' : 'acceptance', liveExecutionEnabled: false, installed: false, gm: {}, reads: null };
+  identity: production ? 'production' : 'acceptance', liveExecutionEnabled: artifact.manifest.liveExecutionEnabled,
+  eaMutationsPerformed: false, installed: false, gm: {}, reads: null };
 const output = path.join(root, 'artifacts/fc27-browser');
 await mkdir(output, { recursive: true });
 async function clickPanel(page, id) {
@@ -104,7 +105,8 @@ try {
     const checks = { exactSource: !!exactSource,
       name: exactSource.includes(`// @name         FC Automation Tool${production ? '\n' : ' Acceptance'}`),
       namespace: exactSource.includes(`// @namespace    https://github.com/ShatteredLancer/FCAutomationTool${production ? '\n' : '/acceptance'}`),
-      version: exactSource.includes(`// @version      ${artifact.version}`), disabled: exactSource.includes('liveEnabled: false') };
+      version: exactSource.includes(`// @version      ${artifact.version}`),
+      executionMode: exactSource.includes(`liveEnabled: ${artifact.manifest.liveExecutionEnabled}`) };
     if (Object.values(checks).some(value => !value)) {
       console.log(JSON.stringify({ installerChecks: checks, editorCount: editorSources.length }));
       await installer.screenshot({ path: path.join(output, 'acceptance-identity-failure.png') });
@@ -113,7 +115,7 @@ try {
     const button = installer.getByRole('button', { name: /^(Install|Reinstall|Update|\u5b89\u88c5|\u91cd\u65b0\u5b89\u88c5|\u66f4\u65b0)$/ });
     if (await button.count() !== 1) throw new Error('ACCEPTANCE_INSTALL_BUTTON_AMBIGUOUS');
     await button.click();
-    console.log(`${artifactPrefix} userscript installation clicked; Live remains disabled.`);
+    console.log(`${artifactPrefix} userscript installation clicked; Live: ${artifact.manifest.liveExecutionEnabled}. This inspection never submits.`);
   }
   if (production) {
     const manager = await installedScripts(context);
@@ -136,6 +138,7 @@ try {
   await clickPanel(first, 'hold');
   await first.waitForFunction(async () => (await navigator.locks.query()).held.some(lock => lock.name === 'fca-fc27-traditional-sbc-v1'), {}, { timeout: 2000 });
   await first.close();
+  await second.waitForFunction(async () => !(await navigator.locks.query()).held.some(lock => lock.name === 'fca-fc27-traditional-sbc-v1'), {}, { timeout: 10000 });
   await clickPanel(second, 'gm'); report.gm.ownerClosed = await result(second);
   await second.screenshot({ path: path.join(output, `${artifactPrefix}-1280.png`) });
   await second.setViewportSize({ width: 390, height: 844 });

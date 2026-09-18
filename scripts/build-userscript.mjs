@@ -11,4 +11,4 @@ for (const name of ['FCAutomationTool.user.js', 'dist/FCAutomationTool.user.js']
 }
 await writeFile(path.join(root, 'dist/FCAutomationTool.meta.js'), `${artifact.metadata}\n`);
 await writeFile(path.join(root, 'dist/FCAutomationTool.manifest.json'), `${JSON.stringify(artifact.manifest, null, 2)}\n`);
-console.log(`Built FC Automation Tool ${artifact.version}; Live disabled, read-only release approved: ${artifact.manifest.releaseEligible} (${artifact.manifest.bytes} bytes)`);
+console.log(`Built FC Automation Tool ${artifact.version}; Live: ${artifact.manifest.liveExecutionEnabled}, scope: ${artifact.manifest.releaseScope}, release approved: ${artifact.manifest.releaseEligible} (${artifact.manifest.bytes} bytes)`);

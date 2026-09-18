@@ -1,5 +1,5 @@
 export function mountFc27AcceptancePanel({ document, targets, prepare, execute, inspectRecovery, resolveRecovery, checkInstallation,
-  hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null }) {
+  hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
@@ -21,6 +21,7 @@ export function mountFc27AcceptancePanel({ document, targets, prepare, execute, 
   </div></details><dialog><p id="approval"></p><div class="row"><button id="cancel">Cancel</button><button id="confirm">Confirm</button></div></dialog>`;
   const node = id => shadow.getElementById(id);
   shadow.querySelector('summary').textContent = title;
+  node('status').textContent = liveEnabled === true ? 'Live: single SBC' : 'Live execution disabled';
   let busy = false; let plan = null; let recovery = null; let action = null;
   const renderTargets = () => {
     const previous = node('target').value;
@@ -33,7 +34,7 @@ export function mountFc27AcceptancePanel({ document, targets, prepare, execute, 
   };
   const update = () => {
     for (const button of shadow.querySelectorAll('button,select')) button.disabled = busy;
-    node('execute').disabled = busy || plan?.liveEnabled !== true;
+    node('execute').disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
     node('resolve').disabled = busy || recovery?.status !== 'recoverable';
   };
   const run = async task => {
@@ -61,7 +62,7 @@ export function mountFc27AcceptancePanel({ document, targets, prepare, execute, 
   on('recovery', () => { plan = null; recovery = null; void run(inspectRecovery); });
   const dialog = shadow.querySelector('dialog');
   on('execute', () => {
-    if (plan?.liveEnabled !== true) return;
+    if (liveEnabled !== true || plan?.liveEnabled !== true) return;
     action = 'execute'; node('approval').textContent = `${plan.setName}: submit ${plan.selectedCount} players, max OVR ${plan.maxRating}, once.`; dialog.showModal();
   });
   on('resolve', () => {

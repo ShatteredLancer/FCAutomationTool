@@ -1,5 +1,9 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-09-18 FSU `26.09.9` 对话框兼容修复：FC27 的 `EADialogViewController` 已从 `dialogOptions` 切换为 `continueOption`/`cancelOption`，导致原 FSU SBC 方案导入弹窗缺少确认/取消按钮。共用 `events.popup` 现在同时兼容新旧字段，并保留三按钮动作、标签和 Escape 语义；5 项回归覆盖 FC27/FC26 合同。未改 FSU Club 缓存、选材、保存或提交路径；真实登录页面按钮可见性仍待验收。
+
+2026-09-18 Live 授权更新：本地 `27.0.1` 按用户“打开 live 限制”开放现有传统 SBC 单次保存/提交，仍要求计划校验和逐次确认，全部材料/事务保护保留。已发布 `27.0.0` 不变，真实业务及新版本发布仍 Pending。进度见 [单次 Live 开放](FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-单次-live-开放)。
+
 2026-09-18 发布完成：`v27.0.0` 已在提交 `40463dc` 正式发布为只读 latest，配套 FSU Local `26.09.8`。完整 2,480 项、FC27 专项 500 项及浏览器 CI 通过，七项资产和四个 latest 更新地址实下载 SHA256 一致；Live 继续硬关闭。详见 [发布与交付结果](FC27_LIVE_ADAPTATION_ZH.md#发布与交付结果)，以下为历史过程。
 
 2026-09-18 只读发布授权：用户确认按 `27.0.0` 只读首版正式发布。只允许已实机验收的精确 Runner/FSU SHA256 组合，Live 硬关闭及真实业务 Pending 保留；旧“阻断全部 Release”不再适用于该限定版本。CI 改为构建后验证授权/安装证据、固定范围发布说明和显式资产清单；变更脚本或未来版本不得沿用许可。执行结果见 [发布记录](FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-只读首版发布授权)。

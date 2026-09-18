@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.0
-// @description  FC27 traditional SBC preparation and recovery. Live execution pending acceptance.
+// @version      27.0.1
+// @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
 // @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FCAutomationTool.meta.js
@@ -2416,7 +2416,8 @@
     checkInstallation,
     hostId = "fcat-fc27-acceptance",
     title = "FC Automation Tool - FC27 Acceptance",
-    version = null
+    version = null,
+    liveEnabled = false
   }) {
     if (!document?.body || document.getElementById(hostId)) return;
     const host = document.createElement("aside");
@@ -2440,6 +2441,7 @@
   </div></details><dialog><p id="approval"></p><div class="row"><button id="cancel">Cancel</button><button id="confirm">Confirm</button></div></dialog>`;
     const node = (id2) => shadow.getElementById(id2);
     shadow.querySelector("summary").textContent = title;
+    node("status").textContent = liveEnabled === true ? "Live: single SBC" : "Live execution disabled";
     let busy = false;
     let plan = null;
     let recovery = null;
@@ -2457,7 +2459,7 @@
     };
     const update = () => {
       for (const button of shadow.querySelectorAll("button,select")) button.disabled = busy;
-      node("execute").disabled = busy || plan?.liveEnabled !== true;
+      node("execute").disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
       node("resolve").disabled = busy || recovery?.status !== "recoverable";
     };
     const run = async (task) => {
@@ -2510,7 +2512,7 @@
     });
     const dialog = shadow.querySelector("dialog");
     on("execute", () => {
-      if (plan?.liveEnabled !== true) return;
+      if (liveEnabled !== true || plan?.liveEnabled !== true) return;
       action = "execute";
       node("approval").textContent = `${plan.setName}: submit ${plan.selectedCount} players, max OVR ${plan.maxRating}, once.`;
       dialog.showModal();
@@ -2560,15 +2562,16 @@
     gmGetValue: GM_getValue,
     gmSetValue: GM_setValue,
     lockManager: unsafeWindow.navigator.locks,
-    liveEnabled: false
+    liveEnabled: true
   };
   var session;
   var current = () => session ??= createFc27AcceptanceSession(dependencies);
   mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.0"}`,
-    version: "27.0.0",
+    title: `FC Automation Tool ${"27.0.1"}`,
+    version: "27.0.1",
+    liveEnabled: dependencies.liveEnabled,
     targets: () => readFc27RunnerPanel(unsafeWindow).targets,
     prepare: (options) => current().prepare(options),
     execute: (approval) => current().execute(approval),

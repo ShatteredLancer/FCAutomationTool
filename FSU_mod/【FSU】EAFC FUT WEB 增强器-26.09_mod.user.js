@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         【FSU】EAFC FUT WEB 增强器
 // @namespace    https://futcd.com/
-// @version      26.09.8
+// @version      26.09.9
 // @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
 // @author       Futcd_kcka
 // @contributor  ShatteredLancer
@@ -4137,6 +4137,9 @@
                 message.innerHTML = m;
             }
             let mp = new EADialogViewController({
+                // FC27 uses named options; FC26 still reads dialogOptions.
+                continueOption: o[0],
+                cancelOption: o[1],
                 dialogOptions: o,
                 message: message,
                 title: t,
@@ -4153,6 +4156,30 @@
                 }
             });
             gPopupClickShield.setActivePopup(mp);
+            // Preserve FSU's custom labels and third action on the FC27 view.
+            const modernDialogView = mp.getView();
+            if (modernDialogView?.dialogOptionEnums instanceof Map && typeof modernDialogView.createOption == "function") {
+                const popupLabel = (option) => {
+                    const key = `popupButtonsText.${option.labelEnum}`;
+                    const label = fy(key);
+                    return label === key ? null : label;
+                };
+                for (const [button, labelEnum] of modernDialogView.dialogOptionEnums.entries()) {
+                    const label = popupLabel({ labelEnum });
+                    if (label) button.setText(label);
+                }
+                for (const option of o.slice(2)) {
+                    modernDialogView.createOption(
+                        popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum),
+                        "cancel",
+                        option.labelEnum,
+                        option.mini
+                    );
+                }
+                if (o.length > 2) {
+                    mp.cancelOption = o[o.length - 1];
+                }
+            }
             _.flatMap(mp.getView().dialogOptions,(v,i) => {
                 if(v.__text.innerHTML == "*"){
                     v.setText(fy(`popupButtonsText.${mp.options[i].labelEnum}`))

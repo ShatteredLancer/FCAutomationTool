@@ -1,5 +1,28 @@
 # FC27 上线后适配记录
 
+## 2026-09-18 FSU SBC 导入弹窗按钮修复
+
+FC27 官方编译代码中的 `EADialogViewController` 只读取 `continueOption`/`cancelOption`，而 Local FSU 原共用 `events.popup` 只传旧 `dialogOptions`。因此“导入方案 ID 或网址”弹窗会显示标题和输入框，但按钮容器为空。Local FSU `26.09.9` 同时传递新旧选项；FC27 运行时按 `dialogOptionEnums` 重标自定义按钮、补齐第三个动作，并把 Escape 绑定到最后的取消项。空输入默认方案、URL/ID 解析、Club readiness、选材、保存和提交均未改变。
+
+Node 回归覆盖两按钮导入、三按钮评分补全、自定义标签、Escape 取消以及 FC26 旧 `dialogOptions` 视图。`npm run check:fsu-patch` 与完整 `npm run verify` 仍是交付门禁；当前未在登录账号上点击真实填阵或提交。
+
+## 2026-09-18 单次 Live 开放
+
+用户在了解只读边界后明确要求“打开 live 限制”。本次开放本地 `27.0.1` 的现有单次传统 SBC 执行，不覆盖只读 `v27.0.0`，不将授权解释为 Agent 可以直接代用户消费。
+
+- 默认入口与 manifest 共享构建注入的 Live 模式；版本和 lock 同步为 `27.0.1`，安装身份/GM key 不变。独立 Acceptance 和旧只读检查工具仍不自动执行。
+- `Verify squad` 仍只读取、选材及整阵 fresh 定向校验；成功后才可点击 `Submit once`，确认目标、人数、评分上限和一次执行后才保存/提交。取消、缺料、计划过期/属性变化、未决 Journal、跨标签冲突仍停止。每次执行消耗一次计划，不能重放确认或自动连做。
+- 范围仍是单 Challenge、11 人无 brick、普通 Club 卡、不可交易及原 FSU 策略；默认上限 74、可选 83 且不突破 FSU 更严格范围。Evolution/租借/特殊卡/未知条件继续排除，不放宽保存前后 validator 或错误确认规则。
+- 事务核心、EA Provider、FSU 源/缓存合同和共享 FC26 提交实现不改。开放不包含 Rolling、自动开包、补给、移动、Pick 或交易，也不等于旧季全部功能已恢复。
+- 新增会话级单次确认、非法批准、重复调用、精确材料变化回归；浏览器模拟校验准备零执行、取消、确认一次、执行中禁用、评分变更失效、缺料、只读面板隔离及桌面/手机布局。
+- 历史 `27.0.0` 安装/更新 fixture 和只读发布许可保持原样；新 manifest 的 `releaseEligible:false`、`FC27_LIVE_ACCEPTANCE_PENDING` 保留。公开发布命令预期拒绝新 Live 包，需要新的真实业务/安装验收及独立发布批准。
+
+完成验证：`npm run verify` 通过 244 文件 / 2,487 项，FC27 专项 40 文件 / 507 项及浏览器检查通过。新面板在桌面 1280 与手机 390 视口完成确认/取消/缺料检查；只读 Acceptance 仍关闭 Live。
+
+实际专用 Chrome / Tampermonkey 已从 `27.0.0` 安装更新至本地 `27.0.1`，安装器及已安装完整源码一致；随后关闭浏览器，再启动独立复核，版本/源码、原合成 GM 记录保留、刷新、跨标签排斥和关闭持锁页日志保留均通过。新版 130,729 bytes / 22 白名单模块，SHA256 为 `5c17626e8d067e03915668b6becaf106e34054adb1dec5e51b51077351fb9f25`；脱敏安装记录为 `tests/fixtures/fc27-live-candidate-installation-observation.json`，完整本地报告在忽略目录 `artifacts/fc27-browser`。
+
+发布检查按预期以 `FC27_READONLY_RELEASE_NOT_APPROVED` 拒绝本地 Live 包，不影响本地运行。未创建提交/tag 或推送/发布，远程 `v27.0.0` 保持不变；专用浏览器与临时服务已关闭。没有执行真实 SBC、开包、移动或交易，EA 消费闭环未验证，不能用上述合成事务或 GM 安装证据代替。
+
 ## 2026-09-18 只读首版发布授权
 
 用户在明确确认“27.0.0 只读首版、Live 关闭、后续验收再开放业务”的范围后回复“确认发布首版”。本次据此允许提交、推送和发布 `v27.0.0`，不执行 EA 消费，也不把真实业务标为通过。

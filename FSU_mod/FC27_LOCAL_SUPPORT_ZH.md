@@ -1,5 +1,7 @@
 # FC27 本地 FSU 支持与上游同步
 
+2026-09-18 一键填阵导入弹窗修复：FC27 EA `EADialogViewController` 不再读取旧 `dialogOptions`，导致 FSU 导入方案弹窗缺少确认/取消按钮。`26.09.9` 在共用 `events.popup` 同时传递 `continueOption`/`cancelOption` 与旧字段，并兼容额外 FSU 动作按钮；输入、空值默认方案、选材与提交路径未改。Node 回归覆盖 FC27 两按钮、三按钮、Escape 和 FC26 旧视图，仍需登录后的真实页面确认按钮可见性。
+
 2026-09-18 启动竞态修复：实际安装原 `26.09.8`，新增 Home 专用有界 readiness 等待，修复 Controller 迟到时的一次性漏触发。自然冷启动及连续两次刷新均未手动 init、无启动警告/page error，并进入 `initialized` 与 `trusted-provisional`；设置保留、2/2 fresh 定向复核通过。FutNext 报价赛季归属和卡面显示仍未验收，见 [修复证据](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。
 
 2026-09-18 抽样续验：原 `26.09.6` 定向查询实机通过两张卡的精确身份和安全属性复核，仍为 provisional，不代表整个 Club ready。只修了诊断工具对原 FSU 延迟初始化 capture 集合的误判，没有改 mod。价格仅被动检查：当前 FutNext provider，运行函数仍含 FUT.GG 26 分支，未发价格请求；`26.09.7` 安装和真实价格显示仍 Pending。充足库存下 11 人规划及后续重规划仅离线通过，不要求用户补卡。见 [本轮证据与边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-缺卡期间的原-fsu-抽样验证)。以下各批记录保留当时状态。
@@ -20,7 +22,7 @@
 - Runner 必需合同尽量通过既有 `info/events` 和窄 Adapter 映射，缺能力时再添加最小接口。上游更新后重放小补丁并做行为回归，不合并两套 FSU 实现。
 - 先前批准的 Preview 默认 74 分策略未保存，独立配阵未执行；不把该批准扩大为修改原 FSU 设置或写 EA 阵容的授权。
 
-当前不可变 origin 仍为 `26.09`，本地 mod 已递增为 `26.09.8`，并已重新生成 manifest、patch 和 `dist/FSU-Local` 资产；其它生产功能未改动。FC26 冻结检查已按本地维护路线调整并增加启动回归：origin 逐字节不变，同上游 Local 版本不可降级，未升版时仍冻结实现，已升版时 metadata/config 仍受限制，patch replay 必须通过。不可变 origin 和历史 FC26 归档继续保留，正式发布门禁没有解除。
+当前不可变 origin 仍为 `26.09`，本地 mod 已递增为 `26.09.9`，并已重新生成 manifest、patch 和 `dist/FSU-Local` 资产；其它生产功能未改动。FC26 冻结检查已按本地维护路线调整并增加启动回归：origin 逐字节不变，同上游 Local 版本不可降级，未升版时仍冻结实现，已升版时 metadata/config 仍受限制，patch replay 必须通过。不可变 origin 和历史 FC26 归档继续保留，正式发布门禁没有解除。
 
 价格季节回归、patch replay 和资产已完成本地验证，完整结果见下方“当前增量修复”。原版实机尚未在登录后的真实 Challenge 中验证卡面价格请求或一键填阵写入，未执行填阵、保存、提交、开包、移动或交易。原版 FutNext fallback 没有改动，不能把 FUT.GG 的赛季绑定修复描述为所有价格来源都已完成赛季校验。
 

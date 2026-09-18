@@ -2,7 +2,7 @@
 
 2026-09-18 FC27 单次事务接线：隔离 Acceptance Provider 继续读取原 FSU 策略/Club 缓存，选中整阵通过已有原生只读 Adapter 按 definition 查询再精确匹配 item 与安全属性；原 FSU ready 时的 `cached:true` 不冒充 fresh。未复制全量库存服务，未改 FSU 源码或下文 FC26 合同。提交前使用经源码指纹核验的原 `markClubCacheDirty`，权威消费确认后才按精确 item ID 清理本地 Club entries 并失效 stats；恢复检查本身不清理，明确确认完成后才执行。该写后维护只通过合成回归，实机为 2/2 只读验证，未发生真实消费。见 [实现与验收边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-ea-provider-与真实-gm-验收)。
 
-2026-09-18 自然重启修复续验：原 `26.09.8` 通过 Home 专用有界 readiness 等待修复 Controller 迟到漏初始化；自然冷启动及连续两次刷新均成功进入 `initialized`，随后进入 `trusted-provisional`。2/2 fresh 定向复核仍通过，未将 provisional 提升为全量 ready。未修改 Club cache/readiness 合同，见 [修复记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。
+2026-09-18 当前维护版 `26.09.9` 仅修复 FC27 共用弹窗的按钮兼容；Club cache/readiness 合同未改。历史 `26.09.8` 的 Home 专用有界 readiness 等待仍是当前启动基线，自然冷启动及连续两次刷新均成功进入 `initialized`，随后进入 `trusted-provisional`。2/2 fresh 定向复核仍通过，未将 provisional 提升为全量 ready。见 [修复记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。
 
 2026-09-18 原 FSU 抽样实机：安装 `26.09.6` 的 `validateClubPlayers()` 在 FC27 上完成 2/2 fresh 精确身份及安全属性复核，Club 仍为 `trusted-provisional`。诊断先核对原方法指纹、上下文与队列；capture 集合在首次请求时才初始化，属性完全缺失可以是合法空闲状态，但未知形状/getter/活动集合仍阻断。仅修诊断判断，没有改 FSU 源、capture、缓存或 readiness 合同。抽样不代替全量/实际选中整阵复核，也不允许原生填阵绕过 guard。详见 [本轮记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-缺卡期间的原-fsu-抽样验证)。
 
@@ -23,7 +23,7 @@ FC27 离线 Runner-support core 位于 `FSU_mod/src/runner-support/core.js`，�
 下文缓存实机证据的历史适用组件（当前维护版本与 FC27 边界见 [本地支持记录](FC27_LOCAL_SUPPORT_ZH.md)）：
 
 - FSU 上游基线：`26.09`
-- FSU Local 历史缓存证据：`26.09.6`；当前维护版为 `26.09.8`，Release 资产 `FSU-Local.user.js`
+- FSU Local 历史缓存证据：`26.09.6`；当前维护版为 `26.09.9`，Release 资产 `FSU-Local.user.js`
 - Daily Loop Runner：`0.5.39` 起支持 `trusted-provisional` 快速缓存状态
 - FC26 Enhancer：已观察版本 `26.1.5.7`
 - EA FC Web App：2026-07-21 实际页面模型
