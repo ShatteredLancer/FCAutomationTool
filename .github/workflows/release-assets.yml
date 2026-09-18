@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to publish, for example v0.7.2
+        description: Existing version tag to publish, for example v27.0.0
         required: true
         type: string
 
@@ -32,12 +32,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Block unreviewed renamed assets
-        run: node scripts/check-release-readiness.mjs
       - run: npm run verify
+      - name: Verify exact read-only release approval and installation evidence
+        run: node scripts/check-release-readiness.mjs
       - name: Verify committed compatibility userscript
         run: git diff --exit-code -- FCAutomationTool.user.js
-      - run: npm run build:profiles
+      - run: node scripts/verify-fc27-prelaunch.mjs
+      - run: node scripts/check-release-readiness.mjs --packaging
 
       - name: Validate release tag
         id: version
@@ -75,26 +76,7 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "latest=$($policy.latest.ToString().ToLowerInvariant())" -Encoding utf8
 
       - name: Package release assets
-        shell: pwsh
-        run: |
-          Compress-Archive -Path 'dist\profiles\*' -DestinationPath 'dist\FCAutomationTool.profiles.zip' -Force
-          Copy-Item -LiteralPath 'dist\profiles\manifest.json' -Destination 'dist\FCAutomationTool.profiles.manifest.json' -Force
-          Copy-Item -LiteralPath 'FSU_mod\fsu-mod-manifest.json' -Destination 'dist\FSU-Local.manifest.json' -Force
-          $assets = @(
-            'dist\FCAutomationTool.user.js',
-            'dist\FCAutomationTool.meta.js',
-            'FCAutomationTool.loops.json',
-            'dist\FCAutomationTool.profiles.zip',
-            'dist\FCAutomationTool.profiles.manifest.json',
-            'dist\FSU-Local.user.js',
-            'dist\FSU-Local.meta.js',
-            'dist\FSU-Local.manifest.json'
-          )
-          $checksums = foreach ($asset in $assets) {
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
-            "$hash  $([System.IO.Path]::GetFileName($asset))"
-          }
-          Set-Content -LiteralPath 'dist\SHA256SUMS' -Value $checksums -Encoding ascii
+        run: node scripts/package-fc27-release.mjs
 
       - name: Create or reuse draft release
         shell: pwsh
@@ -109,7 +91,7 @@ jobs:
               throw "Release $env:RELEASE_TAG is already published and must remain immutable"
             }
           } else {
-            gh release create $env:RELEASE_TAG --verify-tag --draft --generate-notes --title "DailyLoopRunner v$env:RELEASE_VERSION"
+            gh release create $env:RELEASE_TAG --verify-tag --draft --notes-file "docs/releases/$env:RELEASE_VERSION.md" --title "FC Automation Tool v$env:RELEASE_VERSION (Read-only)"
             if ($LASTEXITCODE -ne 0) { throw 'Failed to create draft release' }
           }
 
@@ -119,17 +101,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $assets = @(
-            'dist/FCAutomationTool.user.js',
-            'dist/FCAutomationTool.meta.js',
-            'FCAutomationTool.loops.json',
-            'dist/FCAutomationTool.profiles.zip',
-            'dist/FCAutomationTool.profiles.manifest.json',
-            'dist/FSU-Local.user.js',
-            'dist/FSU-Local.meta.js',
-            'dist/FSU-Local.manifest.json',
-            'dist/SHA256SUMS'
-          )
+          $assets = @((Get-Content -LiteralPath 'dist/fc27-release-assets.json' | ConvertFrom-Json).assets | ForEach-Object { "dist/$_" })
           gh release upload $env:RELEASE_TAG $assets --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Failed to upload release assets' }
 
@@ -149,7 +121,7 @@ jobs:
         run: |
           $manifest = Get-Content 'FSU_mod\fsu-mod-manifest.json' | ConvertFrom-Json
           @"
-          ## DailyLoopRunner release
+          ## FC Automation Tool release
 
           | Field | Value |
           | --- | --- |

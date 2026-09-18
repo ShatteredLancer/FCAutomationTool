@@ -54,7 +54,7 @@ try {
   }
   console.log(`Setup ready. Official Tampermonkey ID: ${extensionId}. Local artifact: ${artifact.version}.`);
   console.log(setupOptions.proxy ? `Dedicated browser proxy: ${setupOptions.proxy.server}; loopback bypassed.` : 'Dedicated browser proxy: direct.');
-  console.log('Commands: status, store, extensions, extension-status, manager, scripts, install, confirm-install, web, reload-web, baseline, inspect, snapshot, q. Preview-only: panel, club, prices. Browser permission and policy approval remain manual.');
+  console.log('Commands: status, store, extensions, extension-status, manager, scripts, scripts-refresh, install, confirm-install, web, focus-web, reload-web, baseline, runtime, runtime-ui, runner, runner-panel, runner-panel-snapshot, runner-panel-preview <setId> [74|83], runner-support, runner-settings, runner-validate, runner-catalog <setId>, runner-contract <setId>, runner-preview <setId> [74|83], inspect, snapshot, q. Preview-only: panel, club, prices. Browser permission and policy approval remain manual.');
   while (true) {
     const command = (await terminal.question('fsu-setup > ')).trim();
     if (command === 'q') break;

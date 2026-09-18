@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "source": "dedicated Chrome profile with actual Tampermonkey installation",
+  "runnerVersion": "0.8.65",
+  "installation": {
+    "name": "FC Automation Tool Acceptance",
+    "namespace": "https://github.com/ShatteredLancer/FCAutomationTool/acceptance",
+    "sourceMatchedGeneratedArtifact": true,
+    "liveEnabled": false
+  },
+  "gm": {
+    "api": "actual Tampermonkey GM_getValue/GM_setValue",
+    "journal": "synthetic disjoint acceptance-self-test account scope",
+    "page": "intercepted blank matching HTTPS document with page network blocked",
+    "phaseAfterReloadAndBrowserRestart": "save-pending",
+    "contendingTabReason": "FC27_EXCLUSIVE_ACCESS_UNAVAILABLE",
+    "ownerConfirmedHoldingNativeLockBeforeClose": true,
+    "phaseAfterOwnerClosed": "save-pending",
+    "eaRequests": 0
+  },
+  "liveReads": {
+    "methodsVerified": true,
+    "cachedPlayers": 41,
+    "sampleRequested": 2,
+    "sampleMatched": 2,
+    "fresh": true,
+    "unassignedClear": true,
+    "setId": 4,
+    "rewardPackId": 509,
+    "rewardPackCount": 0,
+    "purchaseDisplayGroupMyPacks": "mypacks",
+    "installedPanelReason": "SAFE_MATERIAL_SHORTAGE",
+    "installedPanelSubmitted": false,
+    "installedPanelRecoveryRequired": false
+  },
+  "limits": {
+    "fullSelectedSquadVerified": false,
+    "saveVerified": false,
+    "submitVerified": false,
+    "actualInterruptedTransactionRecoveryVerified": false,
+    "eaMutationsPerformed": false,
+    "productionReleaseApproved": false
+  }
+}

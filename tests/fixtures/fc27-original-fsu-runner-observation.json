@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "observedAt": "2026-09-18",
+  "provenance": {
+    "source": "Dedicated browser, original Local FSU, reviewed read-only catalog and squad GETs",
+    "installedVersionVerified": true,
+    "installedFsuVersion": "26.09.6",
+    "runnerInstalled": false,
+    "accountAndItemIdsExported": false
+  },
+  "contextVerified": true,
+  "fsu": {
+    "initialized": true,
+    "readiness": "provisional",
+    "cacheStatus": "trusted-provisional",
+    "targetedValidationAvailable": true,
+    "targetedValidationExecuted": false,
+    "policy": {
+      "onlyUntradeable": true,
+      "excludeEvolution": false,
+      "excludeDesignatedLeagues": true,
+      "excludedLeagueCount": 5,
+      "storageFirst": true,
+      "goldRange": [75, 83]
+    }
+  },
+  "inventory": { "cachedEntries": 49, "cachedPlayers": 41, "complete": false, "scope": "club-only" },
+  "previewPolicy": {
+    "maxRating": 74,
+    "onlyUntradeable": true,
+    "excludeEvolution": true,
+    "excludeSpecial": true,
+    "excludedLeagueCount": 5,
+    "protectFsuLockedPlayers": false,
+    "protectActiveSquad": false,
+    "persisted": false
+  },
+  "eligibilityKeys": { "PLAYER_QUALITY": 3, "PLAYER_MIN_OVR": 26, "PLAYER_MAX_OVR": 28 },
+  "scopes": { "GREATER": 0, "EXACT": 2 },
+  "qualities": { "BRONZE": 1, "SILVER": 2, "GOLD": 3 },
+  "previews": [
+    {
+      "setId": 4, "challengeId": 16, "name": "Bronze Upgrade", "challengeStatus": "IN_PROGRESS",
+      "type": "OPEN_CHALLENGE", "eligibilityOperation": "AND",
+      "requirements": [{ "count": -1, "scope": 2, "pairs": [{ "key": 3, "values": [1] }] }],
+      "layout": { "slotCount": 11, "requiredPlayerCount": 11, "simpleBrickIndices": [], "customBrickIndices": [] },
+      "result": { "status": "blocked", "reason": "SAFE_MATERIAL_SHORTAGE", "safeCandidates": 5, "excluded": 36, "selectedCount": 0 }
+    },
+    {
+      "setId": 5, "challengeId": 42, "name": "Silver Upgrade", "challengeStatus": "IN_PROGRESS",
+      "type": "OPEN_CHALLENGE", "eligibilityOperation": "AND",
+      "requirements": [{ "count": -1, "scope": 2, "pairs": [{ "key": 3, "values": [2] }] }],
+      "layout": { "slotCount": 11, "requiredPlayerCount": 11, "simpleBrickIndices": [], "customBrickIndices": [] },
+      "result": { "status": "blocked", "reason": "SAFE_MATERIAL_SHORTAGE", "safeCandidates": 7, "excluded": 34, "selectedCount": 0 }
+    }
+  ],
+  "goldPreview": {
+    "setId": 6, "challengeId": 18, "name": "Gold Upgrade", "challengeStatus": "IN_PROGRESS",
+    "type": "OPEN_CHALLENGE", "eligibilityOperation": "AND", "previewMaxRating": 83,
+    "previewApproval": "Explicit user approval for read-only 83 cap; original FSU settings unchanged",
+    "requirements": [{ "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [3] }] }],
+    "layout": { "slotCount": 11, "requiredPlayerCount": 11, "simpleBrickIndices": [], "customBrickIndices": [] },
+    "result": {
+      "status": "blocked", "reason": "SAFE_MATERIAL_SHORTAGE", "safeCandidates": 5, "excluded": 36, "selectedCount": 0,
+      "excludedByReason": { "rating-outside-range": 25, "tradeable-or-unknown": 3, "league-excluded-or-unknown": 8 }
+    },
+    "diagnosticsSemantics": "Each candidate is counted by its first failing guard; unknown fields fail closed",
+    "inventory": { "status": "provisional", "complete": false, "cachedPlayers": 41, "scope": "club-only" },
+    "liveExecutionEnabled": false
+  },
+  "introChallenges": [
+    { "id": 1, "name": "Break Away", "status": "COMPLETED" },
+    { "id": 2, "name": "A Brace", "status": "COMPLETED" },
+    { "id": 3, "name": "Hat-trick", "status": "COMPLETED" },
+    { "id": 4, "name": "A Pair Of Pairs", "status": "COMPLETED" }
+  ],
+  "squadInitialized": false,
+  "fillExecuted": false,
+  "saveExecuted": false,
+  "submissionExecuted": false,
+  "packOpened": false,
+  "liveExecutionEnabled": false,
+  "laterRead": { "status": "blocked", "reason": "FC27_CATALOG_READ_UNCONFIRMED", "httpStatus": 0, "automaticRetry": false },
+  "limitations": ["CACHED_CLUB_ONLY", "NO_SUCCESSFUL_FULL_SQUAD", "NO_EXACT_ITEM_VALIDATION", "NO_TRANSACTION_ACCEPTANCE"]
+}

@@ -8,14 +8,21 @@ on:
     paths:
       - 'src/fc27/**'
       - 'src/adapters/browser/fc27-inspection.js'
+      - 'src/adapters/ea/fc27-*.js'
       - 'FSU_mod/src/**'
+      - 'FSU_mod/*.user.js'
+      - 'FSU_mod/*.json'
+      - 'FSU_mod/*.patch'
       - 'scripts/*fc27*'
       - 'scripts/*fc26*'
+      - 'scripts/fsu-maintenance-boundary.mjs'
+      - 'scripts/check-fsu-patch.mjs'
       - 'scripts/release-channel.mjs'
       - 'package*.json'
       - 'scripts/browser-inspection/**'
       - 'tools/browser-inspection/**'
       - 'tests/**/fc27*'
+      - 'tests/unit/fsu-maintenance-boundary.test.js'
       - '.github/workflows/fc27-preview.yml'
 
 permissions:

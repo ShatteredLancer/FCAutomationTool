@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "observedAt": "2026-09-18",
+  "provenance": {
+    "source": "Dedicated browser, original Local FSU, passive support inspection and validateClubPlayers",
+    "installedFsuVersion": "26.09.6",
+    "runnerInstalled": false,
+    "accountAndItemIdsExported": false,
+    "syntheticInventoryUsedInBrowser": false
+  },
+  "support": {
+    "status": "observed",
+    "reason": "FC27_FSU_SUPPORT_INSPECTION",
+    "liveExecutionEnabled": false,
+    "validation": {
+      "methodHash": "ee004d70ec2cbb5e05da61493d3c9afb1ebd39485a89b47f01201d45fd1ac149",
+      "reviewedMethod": true,
+      "busy": false,
+      "queueCount": 0,
+      "captureCount": null,
+      "captureCollectionAbsent": true,
+      "captureHookPresent": true
+    },
+    "prices": {
+      "methodPresent": true,
+      "provider": 3,
+      "legacyFc26Path": true,
+      "seasonBoundPath": false,
+      "cachedEaAverageCount": 28,
+      "networkExecuted": false,
+      "displayVerified": false
+    },
+    "cachedPlayers": 41,
+    "inventoryComplete": false
+  },
+  "sample": {
+    "status": "observed",
+    "reason": "FC27_FSU_EXACT_SAMPLE_VERIFIED",
+    "liveExecutionEnabled": false,
+    "requested": 2,
+    "matched": 2,
+    "safetyAttributesUnchanged": true,
+    "fresh": true,
+    "inventoryComplete": false,
+    "cacheStatus": "trusted-provisional"
+  },
+  "accountMutationsExecuted": false,
+  "settingsChanged": false,
+  "limitations": [
+    "TWO_ITEM_SAMPLE_ONLY",
+    "NO_FULL_INVENTORY_PROMOTION",
+    "NO_LIVE_FULL_SQUAD",
+    "NO_PRICE_REQUEST_OR_DISPLAY_ACCEPTANCE",
+    "NO_TRANSACTION_ACCEPTANCE"
+  ]
+}

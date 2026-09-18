@@ -1,5 +1,11 @@
 # FSU Club Cache Optimization and Integration Guide
 
+2026-09-18 FC27 单次事务接线：隔离 Acceptance Provider 继续读取原 FSU 策略/Club 缓存，选中整阵通过已有原生只读 Adapter 按 definition 查询再精确匹配 item 与安全属性；原 FSU ready 时的 `cached:true` 不冒充 fresh。未复制全量库存服务，未改 FSU 源码或下文 FC26 合同。提交前使用经源码指纹核验的原 `markClubCacheDirty`，权威消费确认后才按精确 item ID 清理本地 Club entries 并失效 stats；恢复检查本身不清理，明确确认完成后才执行。该写后维护只通过合成回归，实机为 2/2 只读验证，未发生真实消费。见 [实现与验收边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-ea-provider-与真实-gm-验收)。
+
+2026-09-18 自然重启修复续验：原 `26.09.8` 通过 Home 专用有界 readiness 等待修复 Controller 迟到漏初始化；自然冷启动及连续两次刷新均成功进入 `initialized`，随后进入 `trusted-provisional`。2/2 fresh 定向复核仍通过，未将 provisional 提升为全量 ready。未修改 Club cache/readiness 合同，见 [修复记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。
+
+2026-09-18 原 FSU 抽样实机：安装 `26.09.6` 的 `validateClubPlayers()` 在 FC27 上完成 2/2 fresh 精确身份及安全属性复核，Club 仍为 `trusted-provisional`。诊断先核对原方法指纹、上下文与队列；capture 集合在首次请求时才初始化，属性完全缺失可以是合法空闲状态，但未知形状/getter/活动集合仍阻断。仅修诊断判断，没有改 FSU 源、capture、缓存或 readiness 合同。抽样不代替全量/实际选中整阵复核，也不允许原生填阵绕过 guard。详见 [本轮记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-缺卡期间的原-fsu-抽样验证)。
+
 2026-09-18 当前方向：用户确认原 `26.09.6` 在 FC27 大部分功能可用，维护改为原版最小兼容修复。未修改原版已实机初始化完成、Club ready，原填阵/价格函数与开关存在。独立 Preview 停止扩展且不再默认安装，下文原 FSU scoped capture、provisional 与提交前精确校验合同继续保留，不用另一套库存服务替代。readiness 实机通过不等于所有选材/写阵/价格功能已验收。
 
 2026-09-17 最新验收：真实 Tampermonkey 5.5.0 / 独立 Preview .2 安装及面板/桥已通过，独立 GM 诊断键刷新后保留，真实面板取得 41 名 Club 球员及首屏 25 张 EA 均价；FUT.GG GM 请求为 403。只验证了安装诊断键，不等于策略/锁卡 key 与全 readiness 已验收；策略仍未保存，桥正确保持 not-ready。后续只读配阵已获用户授权但尚未执行，写操作门禁不变。
@@ -17,7 +23,7 @@ FC27 离线 Runner-support core 位于 `FSU_mod/src/runner-support/core.js`，�
 下文缓存实机证据的历史适用组件（当前维护版本与 FC27 边界见 [本地支持记录](FC27_LOCAL_SUPPORT_ZH.md)）：
 
 - FSU 上游基线：`26.09`
-- FSU Local：`26.09.6`，Release 资产 `FSU-Local.user.js`
+- FSU Local 历史缓存证据：`26.09.6`；当前维护版为 `26.09.8`，Release 资产 `FSU-Local.user.js`
 - Daily Loop Runner：`0.5.39` 起支持 `trusted-provisional` 快速缓存状态
 - FC26 Enhancer：已观察版本 `26.1.5.7`
 - EA FC Web App：2026-07-21 实际页面模型
@@ -578,7 +584,7 @@ FSU 本体仍是外部单文件脚本，目前没有完整 Node 单元测试框�
 
 ## 15. 发布、补丁和回滚
 
-历史已验证 FSU 文件（以下旧 hash 不代表当前 `26.09.7`；当前产物以 manifest 和 patch replay 为准）：
+历史已验证 FSU 文件（以下旧 hash 不代表当前 `26.09.8`；当前产物以 manifest 和 patch replay 为准）：
 
 ```text
 FSU_mod\【FSU】EAFC FUT WEB 增强器-26.09_mod.user.js

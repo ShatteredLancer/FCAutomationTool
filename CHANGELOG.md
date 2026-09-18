@@ -5,6 +5,25 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.0] - 2026-09-18
+
+### Read-only First Release
+
+- Publish the explicitly approved read-only scope. Live execution remains
+  hard-disabled; the release gate pins this exact Runner and FSU artifact pair
+  and does not authorize later versions or unverified business execution.
+
+- Switch the default build to the new `FC Automation Tool` installation identity
+  and `fc-automation-tool@27.0.0`; keep legacy FC26 sources/tests for regression.
+- Ship only the allowlisted FC27 traditional SBC preparation and recovery modules.
+  Live execution remains disabled pending real low-value SBC acceptance.
+- Prepare explicit Runner/FSU script, metadata, manifest and checksum assets;
+  exclude legacy Loop/Profile and Preview assets from the new release workflow.
+- Verify actual Tampermonkey installation, isolated GM storage, cross-tab locking
+  and a local controlled update with state preserved after browser restart.
+- Reject FC27 in the legacy Hot Reload loader. Real business acceptance is deferred
+  until safe inventory is available and will require a separate feature release.
+
 ## [0.8.64] - 2026-09-03
 
 ### Fixed

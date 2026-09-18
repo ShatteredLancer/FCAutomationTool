@@ -1,6 +1,16 @@
 # FC27 本地 FSU 支持与上游同步
 
+2026-09-18 启动竞态修复：实际安装原 `26.09.8`，新增 Home 专用有界 readiness 等待，修复 Controller 迟到时的一次性漏触发。自然冷启动及连续两次刷新均未手动 init、无启动警告/page error，并进入 `initialized` 与 `trusted-provisional`；设置保留、2/2 fresh 定向复核通过。FutNext 报价赛季归属和卡面显示仍未验收，见 [修复证据](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。
+
+2026-09-18 抽样续验：原 `26.09.6` 定向查询实机通过两张卡的精确身份和安全属性复核，仍为 provisional，不代表整个 Club ready。只修了诊断工具对原 FSU 延迟初始化 capture 集合的误判，没有改 mod。价格仅被动检查：当前 FutNext provider，运行函数仍含 FUT.GG 26 分支，未发价格请求；`26.09.7` 安装和真实价格显示仍 Pending。充足库存下 11 人规划及后续重规划仅离线通过，不要求用户补卡。见 [本轮证据与边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-缺卡期间的原-fsu-抽样验证)。以下各批记录保留当时状态。
+
+2026-09-18 金卡续验：获批的 83 分只读检查保留原 FSU 上限交集和联赛保护，Gold Upgrade 安全缓存候选为 5/11，正常停止。此批没有修改 FSU 源、patch、资产或 GM 设置，没有调用原 FSU 填阵/定向校验；不将缓存不足当作完整库存不足。见 [最新记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-获批-83-分金卡只读预览)。
+
+2026-09-18 登录后续验：原 FSU `26.09.6` 的上下文、设置和 provisional Club 可读；Runner 已用原缓存完成铜/银升级只读选材检查，分别 5/11、7/11，按保护策略正常停止。没有修改 FSU 或其 GM 设置，没有调用填阵/保存/提交，正向完整配阵和精确复核仍待验收。见 [实机续验记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-登录后原-fsu--runner-只读续验)，下文未登录状态为前一批历史记录。
+
 更新：2026-09-18。用户明确：现有 `26.09.6` 在 FC27 大部分功能可用，只在原有功能上查漏补缺。当前路线改为既有 mod 的最小兼容补丁，优先 **原版一键填阵、价格显示**；市场工具和 Evo 延后。独立 Preview 停止功能扩展，不再默认安装或作为产品前置条件，以下相关记录仅为历史研究结果。
+
+2026-09-18 Runner 续验：旧冻结误阻断已修正为“FC26 Runner/FSU origin 严格冻结 + 同上游 Local 修订维护”，仍验证 metadata/config/hash 与 patch replay；专项门禁已恢复通过。Tampermonkey 管理页本次明确显示实际安装 `26.09.6`，不是本地产物 `26.09.7`。页面停在登录页，Runner 原 FSU 输入检查返回 `FC27_CONTEXT_UNAVAILABLE`，没有账号写操作。当前验收表和完整结果见 [Runner 发布准备续验](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-runner-发布准备续验)。
 
 ## 原版增量路线
 
@@ -10,7 +20,7 @@
 - Runner 必需合同尽量通过既有 `info/events` 和窄 Adapter 映射，缺能力时再添加最小接口。上游更新后重放小补丁并做行为回归，不合并两套 FSU 实现。
 - 先前批准的 Preview 默认 74 分策略未保存，独立配阵未执行；不把该批准扩大为修改原 FSU 设置或写 EA 阵容的授权。
 
-当前不可变 origin 仍为 `26.09`，本地 mod 已递增为 `26.09.7`，并已重新生成 manifest、patch 和 `dist/FSU-Local` 资产；其它生产功能未改动。现有 FC26 冻结检查的 FSU 工作文件边界需按这次用户批准的新路线显式调整并增加回归，不得直接删除检查或伪造 hash。不可变 origin 和历史 FC26 归档继续保留。
+当前不可变 origin 仍为 `26.09`，本地 mod 已递增为 `26.09.8`，并已重新生成 manifest、patch 和 `dist/FSU-Local` 资产；其它生产功能未改动。FC26 冻结检查已按本地维护路线调整并增加启动回归：origin 逐字节不变，同上游 Local 版本不可降级，未升版时仍冻结实现，已升版时 metadata/config 仍受限制，patch replay 必须通过。不可变 origin 和历史 FC26 归档继续保留，正式发布门禁没有解除。
 
 价格季节回归、patch replay 和资产已完成本地验证，完整结果见下方“当前增量修复”。原版实机尚未在登录后的真实 Challenge 中验证卡面价格请求或一键填阵写入，未执行填阵、保存、提交、开包、移动或交易。原版 FutNext fallback 没有改动，不能把 FUT.GG 的赛季绑定修复描述为所有价格来源都已完成赛季校验。
 
@@ -55,7 +65,7 @@ node scripts/browser-inspection/fsu-setup.mjs --proxy http://127.0.0.1:1080
 node scripts/browser-inspection/fsu-setup.mjs --proxy socks5://127.0.0.1:1080
 ```
 
-安装工具现在默认读取原 `fsu-mod.config.json` 指定的维护源，核对 manifest hash 后只提供 `/FSU-Local.user.js`；仅显式 `--preview` 才构建历史 Preview。复用专用 profile 和 loopback 代理，不更改系统/日常浏览器。`install` 打开对应地址，`confirm-install` 核对官方扩展页、本地来源、FSU 身份和精确版本；从 Preview 还原原版时允许该确切脚本的降级按钮，不操作其它脚本。`baseline` 只输出原 FSU 初始化、Club 状态和功能存在性，不导出账号或卡片；`extension-status` 只读 Chrome 用户脚本权限。历史 `inspect/panel/club/prices` 仅适用 Preview。没有任意 JS、策略保存、锁卡或账号写操作命令，`q` 关闭自有浏览器及服务。
+安装工具现在默认读取原 `fsu-mod.config.json` 指定的维护源，核对 manifest hash 后只提供 `/FSU-Local.user.js`；仅显式 `--preview` 才构建历史 Preview。复用专用 profile 和 loopback 代理，不更改系统/日常浏览器。`install` 打开对应地址，`confirm-install` 核对官方扩展页、本地来源、FSU 身份和精确版本；从 Preview 还原原版时允许该确切脚本的降级按钮，不操作其它脚本。`baseline` 只输出原 FSU 初始化、Club 状态和功能存在性，不导出账号或卡片；`runtime` 读取脱敏 EA/UI 证据，`runner` 读取原 FSU 的 Runner 接入前提并始终保持 Live 关闭；`runner-support` 被动检查原校验/价格接口，`runner-validate` 只调用原 FSU 最多两卡的有界定向查询，不推广全量 ready；`extension-status` 只读 Chrome 用户脚本权限。历史 `inspect/panel/club/prices` 仅适用 Preview。没有任意 JS、策略保存、锁卡或账号写操作命令，`q` 关闭自有浏览器及服务。
 
 2026-09-17 初次网络检查失败；用户恢复代理后，HTTP `127.0.0.1:1080` 成功打开官方商店。用户完成 Tampermonkey 5.5.0、Preview .2 安装和 Chrome 的“允许用户脚本”。后续 Agent 确认真实 GM 写后回读，刷新后 `previousLoad=true`，面板/桥存在且 season=27。安装自检只使用 `fsu_fc27_preview_installation_v1`，保存固定大小的 schema/版本/随机启动标记；不保存账号信息，不碰策略/锁卡/旧 build/set，也不改变 readiness。未确认策略时仍为 not-ready，不因安装通过而授权选材或提交。
 
@@ -100,7 +110,7 @@ node scripts/fsu-upstream.mjs --candidate C:\Path\FSU-upstream.user.js
 - 阶段提交前重新执行 `npm run verify`：228 个测试文件、2187 项测试通过；485 个 JavaScript 文件语法检查、undef、配置、架构、FSU patch replay、构建、dist 和 FSU Local release 检查均通过。新增测试先复现了安装记录误把本地产物版本当成实机版本的问题，再修正 fixture 与本地安装包版本断言。
 - 单独执行三项隔离构建、`FSU_mod/src` lint、`node node_modules/vitest/vitest.mjs run fc27 fsu-upstream`（24 文件、207 项）和 `node scripts/browser-inspection/run.mjs --self-test` 均通过。离线 Chrome 覆盖桌面/移动 Preview，不访问 EA；这不代表预发布总检查通过。重新构建的历史 Preview 版本随 Local 基线生成 `26.09.7.27.2`，没有安装到真实浏览器；原 `.6.27.2` 实机记录只属于历史原型。
 - 最近一次专用浏览器检查停在未登录状态，随后浏览器和服务已关闭；尚未独立确认浏览器实际安装版本，不能声称 `26.09.7` 实机通过。继续时先重开专用浏览器并核对安装版本，再进行登录后的价格和配阵只读检查；真实填阵/保存/提交仍需单独授权。
-- 本次阶段提交复查中，`node scripts/verify-fc27-prelaunch.mjs --browser` 在首个冻结检查失败：`FC26 frozen input changed: FSU_mod/fsu-mod.config.json`。旧检查仍要求 FSU 工作文件与 `26.09.6` 基线一致，与已批准的 Local 增量路线不一致；专项构建/测试和 browser 步骤未由该命令执行。后续需单独更新维护边界并补回归，不能删检查、改历史归档或把旧成功记录当成本次通过。推送后现有 FC27 offline preparation CI 也会被此门禁阻断。
+- 阶段提交时专项命令曾在首个冻结检查失败：`FC26 frozen input changed: FSU_mod/fsu-mod.config.json`。后续 Runner 续验已明确拆分归档与 Local 维护边界并补 15 项回归，专项命令恢复通过；没有删除 origin、Runner 冻结或 patch replay 检查。远程 CI 尚未在本轮改动上运行，不把本地通过描述为已推送或已发布。
 
 ## 历史 Preview 验证与当前接续
 

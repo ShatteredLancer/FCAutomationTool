@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         【FSU】EAFC FUT WEB 增强器
 // @namespace    https://futcd.com/
-// @version      26.09.7
+// @version      26.09.8
 // @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
 // @author       Futcd_kcka
 // @contributor  ShatteredLancer
@@ -6853,6 +6853,71 @@
                 }
             }
         }
+        // Home can finish rendering before its Controller is attached to the navigation stack.
+        events.scheduleHomeInitialization = (view) => {
+            const pending = info.base.homeInitWait;
+            if(info.base.initialized || info.base.initPromise){
+                pending?.cancel();
+                return;
+            }
+            if(pending?.view === view) return;
+            pending?.cancel();
+            const app = _appMain;
+            const root = app?._rootViewController;
+            const started = Date.now();
+            let timer, finished = false, attached = false;
+            const warn = message => { try{ console.warn(message); }catch(error){} };
+            const cancel = () => {
+                finished = true;
+                clearInterval(timer);
+                globalThis.removeEventListener("pagehide", cancel);
+                if(info.base.homeInitWait === task) info.base.homeInitWait = null;
+            };
+            const task = { view, cancel };
+            info.base.homeInitWait = task;
+            globalThis.addEventListener("pagehide", cancel, { once:true });
+            timer = setInterval(() => {
+                if(finished) return;
+                if(info.base.initialized || info.base.initPromise){
+                    cancel();
+                    return;
+                }
+                if(Date.now() - started >= 30000){
+                    cancel();
+                    warn("[FSU init] home startup readiness timed out");
+                    return;
+                }
+                try{
+                    if(_appMain !== app || _appMain?._rootViewController !== root){
+                        cancel();
+                        return;
+                    }
+                    const connected = view.__root?.isConnected === true;
+                    if(attached && !connected){
+                        cancel();
+                        return;
+                    }
+                    attached ||= connected;
+                    const current = cntlr.current();
+                    if(current && (current.className !== "UTHomeHubViewController" || current.getView() !== view)){
+                        cancel();
+                        return;
+                    }
+                    if(!connected || !current?.parentViewController
+                        || typeof current.parentViewController.getView !== "function"
+                        || !current.parentViewController.getView()
+                        || gClickShield.isShowing() !== false) return;
+                }catch(error){
+                    return;
+                }
+                cancel();
+                try{
+                    Promise.resolve(events.init()).catch(() => warn("[FSU init] home startup initialization failed"));
+                }catch(error){
+                    warn("[FSU init] home startup initialization failed");
+                }
+            }, 100);
+        };
         UTHomeHubView.prototype._generate = function (...args) {
             if (!this._generated) {
                 call.task.home.call(this, ...args);
@@ -6892,20 +6957,8 @@
                 this._fsuGP._parent = this;
                 this._fsuSet.__root.after(this._fsuGP.__root);
 
-                events.waitForClickShieldToHide(() => {
-                    try {
-                        // 尝试访问 currentController，如果不报错说明加载完成
-                        const cur = cntlr.current(); // 这里一旦报错就会跳 catch
-                        if (cur) {
-                            events.init(); // 安全地调用
-                        } else {
-                            console.warn("cntlr.current() 为空，跳过初始化");
-                        }
-                    } catch (e) {
-                        console.warn("cntlr.current() 结构未就绪，跳过 events.init()");
-                    }
-                });
             }
+            events.scheduleHomeInitialization(this);
         };
         events.reloadPlayers = (options = {}) =>{
             if(info.base.reloadPlayersPromise){

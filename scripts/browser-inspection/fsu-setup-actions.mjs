@@ -6,6 +6,12 @@ const extensionId = 'dhdgffkkebhmkfjojejmpbldmpobfkfo';
 const extensionBase = `chrome-extension://${extensionId}`;
 const webUrl = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/';
 
+function runnerInspection() {
+  const url = new URL('./runner-inspection.mjs', import.meta.url);
+  url.searchParams.set('revision', String(Date.now()));
+  return import(url.href);
+}
+
 export async function loadLocalFsuBaseline(root) {
   const directory = path.join(root, 'FSU_mod');
   const config = JSON.parse(await readFile(path.join(directory, 'fsu-mod.config.json'), 'utf8'));
@@ -122,9 +128,10 @@ export async function runFsuSetupAction({ context, command, version, installUrl,
         checked: typeof element.checked === 'boolean' ? element.checked : null,
         toggle: element.shadowRoot?.querySelector('cr-toggle')?.checked ?? null })) : null };
   }
-  if (command === 'scripts') {
+  if (command === 'scripts' || command === 'scripts-refresh') {
     const page = context.pages().find(page => page.url().startsWith(`${extensionBase}/options.html`));
     if (!page) throw new Error('FSU_MANAGER_NOT_OPEN');
+    if (command === 'scripts-refresh') await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
     const tab = page.getByText(/^(Installed Userscripts|\u5df2\u5b89\u88c5\u811a\u672c)$/);
     if (await tab.count() !== 1) throw new Error('FSU_MANAGER_TAB_AMBIGUOUS');
     await tab.click();
@@ -151,9 +158,72 @@ export async function runFsuSetupAction({ context, command, version, installUrl,
         priceElements: globalThis.document.querySelectorAll('.fsu-PriceBar,.fsu-cards-price').length };
     });
   }
-  if (['panel', 'club', 'prices', 'reload-web'].includes(command)) {
+  if (command === 'runtime' || command === 'runtime-ui') {
     const pages = context.pages().filter(page => page.url().startsWith(webUrl));
     if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { observeRuntime } = await import('./runtime-observation.mjs');
+    const { observePageUi } = await import('./navigation.mjs');
+    if (command === 'runtime-ui') return observePageUi(pages[0]);
+    return { runtime: await pages[0].evaluate(observeRuntime), ui: await observePageUi(pages[0]) };
+  }
+  if (command === 'runner') {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { inspectRunnerInputs } = await runnerInspection();
+    return inspectRunnerInputs(pages[0]);
+  }
+  if (command === 'runner-panel' || command === 'runner-panel-snapshot') {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { showRunnerPanel, captureRunnerPanel } = await runnerInspection();
+    return command === 'runner-panel' ? showRunnerPanel(pages[0]) : captureRunnerPanel(pages[0]);
+  }
+  if (/^runner-panel-preview [1-9]\d{0,8}(?: (?:74|83))?$/.test(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const panel = pages[0].locator('#fcat-fc27-preview');
+    const [, setId, maxRating = '74'] = command.split(' ');
+    await panel.locator('#target').selectOption(setId, { timeout: 3000 });
+    await panel.locator('#rating').selectOption(maxRating, { timeout: 3000 });
+    await panel.getByRole('button', { name: 'Preview squad' }).click({ timeout: 3000 });
+    await panel.locator('#refresh').waitFor({ state: 'visible', timeout: 3000 });
+    await pages[0].waitForFunction(() => !globalThis.document.getElementById('fcat-fc27-preview')?.shadowRoot.getElementById('refresh').disabled,
+      null, { timeout: 40000 });
+    return { reason: await panel.locator('#status').innerText(), counts: await panel.locator('#counts').innerText(), liveExecutionEnabled: false };
+  }
+  if (['runner-support', 'runner-validate', 'runner-settings'].includes(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { inspectRunnerSupport } = await runnerInspection();
+    return inspectRunnerSupport(pages[0], { validateSample: command === 'runner-validate', settings: command === 'runner-settings' });
+  }
+  if (/^runner-catalog [1-9]\d{0,8}$/.test(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { inspectRunnerCatalog } = await runnerInspection();
+    return inspectRunnerCatalog(pages[0], Number(command.split(' ')[1]));
+  }
+  if (/^runner-contract [1-9]\d{0,8}$/.test(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { inspectRunnerContract } = await runnerInspection();
+    return inspectRunnerContract(pages[0], Number(command.split(' ')[1]));
+  }
+  if (/^runner-preview [1-9]\d{0,8}(?: (?:74|83))?$/.test(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    const { previewRunnerSquad } = await runnerInspection();
+    const [, setId, maxRating] = command.split(' ');
+    return previewRunnerSquad(pages[0], Number(setId), maxRating === undefined ? 74 : Number(maxRating));
+  }
+  if (['panel', 'club', 'prices', 'reload-web', 'focus-web'].includes(command)) {
+    const pages = context.pages().filter(page => page.url().startsWith(webUrl));
+    if (pages.length !== 1) throw new Error('FSU_EA_TAB_AMBIGUOUS');
+    if (command === 'focus-web') {
+      await pages[0].bringToFront();
+      await pages[0].waitForTimeout(8000);
+      return runFsuSetupAction({ context, command: 'baseline' });
+    }
     if (command === 'reload-web') {
       await pages[0].reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
       return { reloaded: true };

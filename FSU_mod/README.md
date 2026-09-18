@@ -1,12 +1,12 @@
-# FSU Local 26.09.7
+# FSU Local 26.09.8
 
 ## FC27 开发状态
 
-2026-09-18 用户明确以现有 `26.09.6` 为主查漏补缺，优先原有一键填阵与价格显示。未修改原版已在 FC27 实机完成初始化、Club ready 和功能入口检查；不等于全部业务已验收。`26.09.7` 仅修正价格查询/探测的赛季绑定，未知赛季不请求旧赛季地址；一键填阵尚待登录后的真实 Challenge 验证。后续只做有证据的局部兼容修复，不另建 FSU。独立 Preview 停止扩展并降为研究原型，专用浏览器已换回原版；详见 [FC27 本地支持与上游同步](FC27_LOCAL_SUPPORT_ZH.md)。下文历史完整验证记录仍指 FC26。
+2026-09-18 用户明确以现有 `26.09.6` 为主查漏补缺，优先原有一键填阵与价格显示。未修改原版已在 FC27 实机完成初始化、Club ready 和功能入口检查；不等于全部业务已验收。当前 `26.09.8` 在 `26.09.7` 的价格赛季绑定基础上修复 Home Controller 延迟初始化，未知赛季不请求旧赛季地址；一键填阵尚待登录后的真实 Challenge 验证。后续只做有证据的局部兼容修复，不另建 FSU。独立 Preview 停止扩展并降为研究原型，专用浏览器已换回原版；详见 [FC27 本地支持与上游同步](FC27_LOCAL_SUPPORT_ZH.md)。下文历史完整验证记录仍指 FC26。
 
-阶段提交复核：上述原版运行时观察未独立确认实际安装版本，不能证明 `26.09.7` 已安装或实机通过。本地完整验证通过 228 文件、2187 项测试；FC27 预发布总检查仍被旧 FSU 冻结规则阻断，当前不发布。默认安装工具提供维护版，历史 Preview 不作为默认方案。
+发布范围更新：`26.09.8` 随 FC Automation Tool `27.0.0` 只读首版提供，保持原 FSU 身份、设置和手动功能，不等于 FSU 全部 FC27 业务已验收。实际安装、自然启动、设置保留和两卡 fresh 复核通过；完整写阵与价格显示仍待验收。Runner 的 Live 硬关闭不控制 FSU 自身操作。早期未独立核实安装版本的观察仍只作历史证据，默认安装工具提供维护版，历史 Preview 不作为默认方案。
 
-本目录维护基于上游 FSU `26.09` 的本地版本 `26.09.7`。上游原版保持字节不变，本地版本通过可重放 Git patch 生成并保留原作者和 MIT 许可证。普通用户只需要阅读本文；修改缓存、XHR capture、状态机或 Runner 集成时，继续阅读同目录的 [FSU_CLUB_CACHE_INTEGRATION.md](FSU_CLUB_CACHE_INTEGRATION.md)。
+本目录维护基于上游 FSU `26.09` 的本地版本 `26.09.8`。上游原版保持字节不变，本地版本通过可重放 Git patch 生成并保留原作者和 MIT 许可证。普通用户只需要阅读本文；修改缓存、XHR capture、状态机或 Runner 集成时，继续阅读同目录的 [FSU_CLUB_CACHE_INTEGRATION.md](FSU_CLUB_CACHE_INTEGRATION.md)。
 
 ## 文件说明
 
@@ -30,9 +30,9 @@
 https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.user.js
 ```
 
-维护版保留原版的 `@name` 和 `@namespace`，必须作为原版 FSU 的就地更新安装。Tampermonkey 中只应存在一个启用的 `【FSU】EAFC FUT WEB 增强器`；安装确认页应显示版本升级到 `26.09.7`，而不是新增第二个 FSU 脚本。
+维护版保留原版的 `@name` 和 `@namespace`，必须作为原版 FSU 的就地更新安装。Tampermonkey 中只应存在一个启用的 `【FSU】EAFC FUT WEB 增强器`；安装确认页应显示版本升级到 `26.09.8`，而不是新增第二个 FSU 脚本。
 
-本地版本使用 DailyLoopRunner GitHub Release 的独立 `@downloadURL` 和 `@updateURL`，不会被上游 Greasy Fork 自动覆盖。上游更新不会自动进入本地版本；必须先更新不可变基线、重放或重建补丁并完成真实页面验证。
+本地版本使用 FCAutomationTool GitHub Release 的独立 `@downloadURL` 和 `@updateURL`，不会被上游 Greasy Fork 自动覆盖。上游更新不会自动进入本地版本；必须先更新不可变基线、重放或重建补丁并完成真实页面验证。
 
 `@name` 和 `@namespace` 不得改成 Local 专用值。Tampermonkey 会为不同脚本身份分配独立的 GM 存储，导致排除可交易、排除联赛、Gold Range、Lock 等设置恢复默认。曾安装过旧 `【FSU Local】` 身份的用户，需要先迁回原版身份后再安装本维护版；仅更新版本号不能把已经分叉的内部 UUID 合并回来。
 
@@ -55,7 +55,7 @@ https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU
 ## 本地维护模型
 
 - `26.09` 表示不可变上游版本。
-- `26.09.7` 的最后一位表示本地修订号；本地行为变化必须递增。
+- `26.09.8` 的最后一位表示本地修订号；本地行为变化必须递增。
 - 上游升级到新版本时新增对应 origin/mod 基线，不直接覆盖已发布的 `26.09` 文件。
 - `fsu-mod.config.json` 是维护输入，`fsu-mod-manifest.json` 是生成后的 hash 证明。
 - Release 中使用稳定文件名 `FSU-Local.user.js` 和 `FSU-Local.meta.js`，Tampermonkey 按本地版本号更新。

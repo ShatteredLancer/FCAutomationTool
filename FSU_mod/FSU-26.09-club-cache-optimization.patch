@@ -1,12 +1,12 @@
 diff --git a/FSU.user.js b/FSU.user.js
-index dd554ab..fd5d267 100644
+index dd554ab..f0bde71 100644
 --- a/FSU.user.js
 +++ b/FSU.user.js
 @@ -3,5 +3,8 @@
  // @namespace    https://futcd.com/
 -// @version      26.09
 -// @description  EAFCFUT模式SBC任务便捷操作增强器👍👍👍，模拟开包、额外信息展示、近期低价自动查询、一键挂出球员、跳转FUTBIN、快捷搜索、拍卖行优化等等...👍👍👍
-+// @version      26.09.7
++// @version      26.09.8
 +// @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
  // @author       Futcd_kcka
 +// @contributor  ShatteredLancer
@@ -126,7 +126,75 @@ index dd554ab..fd5d267 100644
 -                    url: `https://www.fut.gg/api/fut/player-prices/26/?ids=${_.random(20000, 39999)}`,
 +                    url: `https://www.fut.gg/api/fut/player-prices/${season}/?ids=${_.random(20000, 39999)}`,
                      anonymous: false, // 关键：利用当前页面的已存 Cookie
-@@ -6815,14 +6884,6 @@
+@@ -6786,2 +6855,67 @@
+         }
++        // Home can finish rendering before its Controller is attached to the navigation stack.
++        events.scheduleHomeInitialization = (view) => {
++            const pending = info.base.homeInitWait;
++            if(info.base.initialized || info.base.initPromise){
++                pending?.cancel();
++                return;
++            }
++            if(pending?.view === view) return;
++            pending?.cancel();
++            const app = _appMain;
++            const root = app?._rootViewController;
++            const started = Date.now();
++            let timer, finished = false, attached = false;
++            const warn = message => { try{ console.warn(message); }catch(error){} };
++            const cancel = () => {
++                finished = true;
++                clearInterval(timer);
++                globalThis.removeEventListener("pagehide", cancel);
++                if(info.base.homeInitWait === task) info.base.homeInitWait = null;
++            };
++            const task = { view, cancel };
++            info.base.homeInitWait = task;
++            globalThis.addEventListener("pagehide", cancel, { once:true });
++            timer = setInterval(() => {
++                if(finished) return;
++                if(info.base.initialized || info.base.initPromise){
++                    cancel();
++                    return;
++                }
++                if(Date.now() - started >= 30000){
++                    cancel();
++                    warn("[FSU init] home startup readiness timed out");
++                    return;
++                }
++                try{
++                    if(_appMain !== app || _appMain?._rootViewController !== root){
++                        cancel();
++                        return;
++                    }
++                    const connected = view.__root?.isConnected === true;
++                    if(attached && !connected){
++                        cancel();
++                        return;
++                    }
++                    attached ||= connected;
++                    const current = cntlr.current();
++                    if(current && (current.className !== "UTHomeHubViewController" || current.getView() !== view)){
++                        cancel();
++                        return;
++                    }
++                    if(!connected || !current?.parentViewController
++                        || typeof current.parentViewController.getView !== "function"
++                        || !current.parentViewController.getView()
++                        || gClickShield.isShowing() !== false) return;
++                }catch(error){
++                    return;
++                }
++                cancel();
++                try{
++                    Promise.resolve(events.init()).catch(() => warn("[FSU init] home startup initialization failed"));
++                }catch(error){
++                    warn("[FSU init] home startup initialization failed");
++                }
++            }, 100);
++        };
+         UTHomeHubView.prototype._generate = function (...args) {
+@@ -6815,14 +6949,6 @@
                      (e) => {
 -                        services.Club.clubDao.clubRepo.items.reset();
                          events.waitForClickShieldToHide(() => {
@@ -144,16 +212,19 @@ index dd554ab..fd5d267 100644
 +                                console.error("[FSU club load] manual reload failed", error);
 +                            });
                          });
-@@ -6848,74 +6909,2322 @@
-         };
--        events.reloadPlayers = async(e) =>{
--            GM_setValue("players",JSON.stringify({}));
--            let current = getAppMain().getRootViewController();
--            await services.Club.getStats().observe(current,async function _onGetStats(e, t) {
--                e.unobserve(current);
--                t.success ? t.response.stats.forEach(async function(e) {
--                    if(e.type == 'players'){
--                        if(e.count !== services.Club.clubDao.clubRepo.items.length){
+@@ -6833,89 +6959,2325 @@
+ 
+-                events.waitForClickShieldToHide(() => {
+-                    try {
+-                        // 尝试访问 currentController，如果不报错说明加载完成
+-                        const cur = cntlr.current(); // 这里一旦报错就会跳 catch
+-                        if (cur) {
+-                            events.init(); // 安全地调用
+-                        } else {
+-                            console.warn("cntlr.current() 为空，跳过初始化");
++            }
++            events.scheduleHomeInitialization(this);
++        };
 +        events.reloadPlayers = (options = {}) =>{
 +            if(info.base.reloadPlayersPromise){
 +                console.log("[FSU club load] reusing the active Club load");
@@ -882,7 +953,9 @@ index dd554ab..fd5d267 100644
 +                                elapsed:Date.now() - startedAt,
 +                                extra
 +                            });
-+                        }
+                         }
+-                    } catch (e) {
+-                        console.warn("cntlr.current() 结构未就绪，跳过 events.init()");
 +                    };
 +                }
 +                collectClubRuntimeInventory();
@@ -922,7 +995,7 @@ index dd554ab..fd5d267 100644
 +                        const callSummary = callRecords.map(record => `${record.target}.${record.method}/${record.length} x${record.count}`).join(", ") || "no traced calls";
 +                        const networkSummary = networkTrace.calls.map(call => `${call.transport}:${call.method} ${call.status ?? "?"} ${call.url}`).join(" | ") || "no network calls";
 +                        emitClubDiagnostic(outcome === "error" ? "error" : "log", "request-trace", `request #${requestId} ${label} attempt ${attempt} ${outcome}; ${callSummary}; ${networkSummary}`, details);
-+                    }
+                     }
 +                };
 +            };
 +            const summarizeClubPageResult = (result, requestPayloads) => {
@@ -1026,8 +1099,17 @@ index dd554ab..fd5d267 100644
 +                GM_registerMenuCommand("Disable deep FSU Club diagnostics for next reload", () => {
 +                    GM_setValue(CLUB_DEEP_DIAGNOSTICS_KEY, false);
 +                    console.log("[FSU club diagnostic] deep request tracing disabled for the next page reload");
-+                });
-+            }
+                 });
+             }
+-        };
+-        events.reloadPlayers = async(e) =>{
+-            GM_setValue("players",JSON.stringify({}));
+-            let current = getAppMain().getRootViewController();
+-            await services.Club.getStats().observe(current,async function _onGetStats(e, t) {
+-                e.unobserve(current);
+-                t.success ? t.response.stats.forEach(async function(e) {
+-                    if(e.type == 'players'){
+-                        if(e.count !== services.Club.clubDao.clubRepo.items.length){
 +            const captureClubPayload = payload => {
 +                if(payload?.itemType != ItemType.PLAYER) return;
 +                const itemId = Number(payload?.id || 0);
@@ -2525,7 +2607,7 @@ index dd554ab..fd5d267 100644
              });
 +            return info.base.reloadPlayersPromise;
          }
-@@ -8254,2 +10563,11 @@
+@@ -8254,2 +10616,11 @@
          events.playerListFillSquad = (challenge,list,type) => {
 +            if(!events.requireClubReady("squad fill")) return false;
 +            events.emitClubDiagnostic?.("log", "squad-fill-input", `squad fill received ${list?.length || 0} player(s)`, {
@@ -2537,7 +2619,7 @@ index dd554ab..fd5d267 100644
 +                input:Array.from(list || []).map(item => events.summarizeFillDiagnosticItem?.(item))
 +            });
              events.showLoader();
-@@ -8285,4 +10603,13 @@
+@@ -8285,4 +10656,13 @@
              })
 +            events.emitClubDiagnostic?.("log", "squad-fill-mapped", `squad fill mapped ${playerlist.filter(Boolean).length} player(s)`, {
 +                challenge:{ id:challenge?.id, setId:challenge?.setId, name:challenge?.name },
@@ -2551,19 +2633,19 @@ index dd554ab..fd5d267 100644
 +                squad:Array.from(challenge?.squad?.getPlayers?.() || []).map(slot => events.summarizeFillDiagnosticItem?.(slot?.item || slot))
 +            });
              //events.hideLoader();
-@@ -8293,2 +10620,3 @@
+@@ -8293,2 +10673,3 @@
          events.getTemplate = async function(e,type,sId){
 +            if(!events.requireClubReady("SBC template fill")) return false;
              e.setInteractionState(0);
-@@ -8851,2 +11179,3 @@
+@@ -8851,2 +11232,3 @@
          events.getRatingPlayers = (squad,ratings) => {
 +            if(!events.requireClubReady("rating squad fill")) return [];
              const assignPlayer = (playerlist, shortlist, Exclusionlist, index, pos) => {
-@@ -10012,2 +12341,3 @@
+@@ -10012,2 +12394,3 @@
          events.fastSBC = async (id,cId) => {
 +            if(!events.requireClubReady("Fast SBC")) return false;
              let controller = events.getCurrent(),
-@@ -10230,5 +12560,32 @@
+@@ -10230,5 +12613,32 @@
              function valuablePlayerTips(left,controller,e) {
 -                
 -                const preciousCount = left.getView().slotViews.slice(0, 11).reduce((acc, view) => {
@@ -2599,11 +2681,11 @@ index dd554ab..fd5d267 100644
 +
 +                    return acc + (priceItem.classList.contains("precious") ? 1 : 0);
                  }, 0);
-@@ -11813,2 +14170,3 @@
+@@ -11813,2 +14223,3 @@
          UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
 +            events.markClubCacheDirty("SBC submission started");
              let r = originalSubmitChallenge.apply(this, arguments);
-@@ -14402,2 +16760,34 @@
+@@ -14402,2 +16813,34 @@
                              (e) => {
 +                                const unassigned = Array.from(repositories.Item.getUnassignedItems() || []);
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-start", `one-click fill started with ${unassigned.length} Unassigned item(s)`, {
@@ -2638,14 +2720,14 @@ index dd554ab..fd5d267 100644
 +                                    return false;
 +                                }
                                  let playerList = [], removeIds = [];
-@@ -14408,3 +16798,5 @@
+@@ -14408,3 +16851,5 @@
                                      getCriteria = events.ignorePlayerToCriteria(getCriteria);
 -                                    playerList = events.getItemBy(2,getCriteria,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
 +                                    const candidates = events.getItemBy(2,getCriteria,unassigned);
 +                                    playerList = candidates.slice(0,criteriaNumber);
 +                                    events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill broad criteria selected ${playerList.length}/${criteriaNumber}`, events.collectOneFillDiagnostic?.(getCriteria, candidates, playerList, unassigned));
                                  }else{
-@@ -14417,6 +16809,6 @@
+@@ -14417,6 +16862,6 @@
                                          getCriteria["lock"] = false;
 -                                        let result = events.getItemBy(2, getCriteria, repositories.Item.getUnassignedItems());
 -
@@ -2654,18 +2736,18 @@ index dd554ab..fd5d267 100644
                                          console.log(cropping,_.map(cropping,"rating"))
 +                                        events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill criterion selected ${cropping.length}/${i.c}`, events.collectOneFillDiagnostic?.(getCriteria, result, cropping, unassigned));
                                          removeIds = removeIds.concat(cropping.map( i => {return i.databaseId}))
-@@ -14425,2 +16817,6 @@
+@@ -14425,2 +16870,6 @@
                                  }
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-selected", `one-click fill selected ${playerList.length} player(s)`, {
 +                                    challenge:{ id:thisController?._challenge?.id, setId:thisController?._challenge?.setId, name:thisController?._challenge?.name },
 +                                    selected:playerList.map(item => events.summarizeFillDiagnosticItem?.(item))
 +                                });
                                  if(playerList.length){
-@@ -14451,2 +16847,3 @@
+@@ -14451,2 +16900,3 @@
                          (e) => {
 +                            if(!events.requireClubReady("duplicate squad fill")) return false;
                              const dupIds = _.map(
-@@ -15733,2 +18130,2 @@
+@@ -15733,2 +18183,2 @@
      main()
 -})();
 \ No newline at end of file

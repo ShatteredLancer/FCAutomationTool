@@ -43,8 +43,27 @@ it('rejects absent or ambiguous installers without clicking', async () => {
 });
 it('has no command for account, protection policy or arbitrary browser writes', async () => {
   const pages = vi.fn();
-  for (const command of ['save-policy', 'lock', 'submit', 'fill', 'eval']) {
+  for (const command of ['save-policy', 'lock', 'submit', 'fill', 'eval', 'startup-init', 'close-login-notice', 'home-cycle']) {
     expect(await runFsuSetupAction({ context: { pages }, command })).toEqual({ unsupported: true });
   }
   expect(pages).not.toHaveBeenCalled();
+});
+it('reads the existing runtime and bounded UI without installing or changing settings', async () => {
+  const snapshot = { schema: 1, liveExecutionEnabled: false };
+  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+    evaluate: vi.fn(async () => snapshot),
+    locator: () => ({ count: async () => 0, evaluateAll: async () => [] }) };
+  const result = await runFsuSetupAction({ context: { pages: () => [page] }, command: 'runtime' });
+  expect(result.runtime).toEqual(snapshot);
+  expect(result.ui).toMatchObject({ home: false, login: false, modal: false });
+  expect(page.evaluate).toHaveBeenCalledOnce();
+});
+
+it.each(['runner', 'runner-support', 'runner-settings', 'runner-validate', 'runner-catalog 4', 'runner-preview 4', 'runner-preview 6 83'])('builds the current bounded diagnostic for %s without installing scripts', async command => {
+  const snapshot = { status: 'blocked', reason: 'TEST_NO_EA', liveExecutionEnabled: false };
+  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', evaluate: vi.fn(async () => snapshot) };
+  expect(await runFsuSetupAction({ context: { pages: () => [page] }, command })).toEqual(snapshot);
+  expect(page.evaluate).toHaveBeenCalledOnce();
+  expect(page.evaluate.mock.calls[0][0]).toContain('FC27RunnerReadOnly');
+  if (command.endsWith(' 83')) expect(page.evaluate.mock.calls[0][0]).toContain('maxRating: 83');
 });

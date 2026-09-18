@@ -32,7 +32,7 @@ export function listFc27InProgressChallenges(root) {
   return targets;
 }
 
-export function normalizeFc27TraditionalChallenge({ context, setId, challenge, layout, keys, scopes }) {
+export function normalizeFc27TraditionalChallenge({ context, setId, challenge, layout, keys, scopes, qualities }) {
   const id = ownData(challenge, 'id');
   if (ownData(challenge, 'setId') !== setId || ownData(challenge, 'status') !== 'IN_PROGRESS'
       || ownData(challenge, 'eligibilityOperation') !== 'AND' || layout.status !== 'observed'
@@ -46,9 +46,24 @@ export function normalizeFc27TraditionalChallenge({ context, setId, challenge, l
   if (!raw.length || !Number.isInteger(count) || count < 1 || count > 11) throw new Error('FC27_REQUIREMENTS_UNVERIFIED');
   const requirements = [{ kind: 'player-count', count }];
   for (const rule of raw) {
-    if (ownData(rule, 'count') !== count || ![0, 2].includes(ownData(rule, 'scope'))) throw new Error('FC27_REQUIREMENT_UNSUPPORTED');
     const pairs = ownData(ownData(rule, 'kvPairs'), '_collection');
     const codes = pairs && Object.keys(pairs);
+    if (codes?.length === 1 && codes[0] === '3') {
+      const quality = ownData(pairs, '3');
+      const scope = ownData(rule, 'scope');
+      if (ownData(keys, 'PLAYER_QUALITY') !== 3 || ownData(rule, 'count') !== -1
+          || ownData(qualities, 'BRONZE') !== 1 || ownData(qualities, 'SILVER') !== 2 || ownData(qualities, 'GOLD') !== 3
+          || !Array.isArray(quality) || quality.length !== 1 || ![1, 2, 3].includes(quality[0])
+          || !(scope === 2 || (scope === 0 && quality[0] === 3))) {
+        throw new Error('FC27_REQUIREMENT_UNSUPPORTED');
+      }
+      // Exact compares the single squad tier; minimum Gold compares the lowest tier, so both require all Gold.
+      // count=-1 is not a player count; other minimum-quality cases remain unreviewed.
+      const [min, max] = [[1, 64], [65, 74], [75, 99]][quality[0] - 1];
+      requirements.push({ kind: 'player-min-overall', count, value: min }, { kind: 'player-max-overall', count, value: max });
+      continue;
+    }
+    if (ownData(rule, 'count') !== count || ![0, 2].includes(ownData(rule, 'scope'))) throw new Error('FC27_REQUIREMENT_UNSUPPORTED');
     if (codes?.length !== 1 || !['26', '28'].includes(codes[0])) throw new Error('FC27_REQUIREMENT_UNSUPPORTED');
     const range = ownData(pairs, codes[0]);
     if (!Array.isArray(range) || range.length !== 1 || !Number.isInteger(range[0]) || range[0] < 1 || range[0] > 99) {
@@ -73,5 +88,5 @@ export async function readFc27TraditionalChallenge(root, { setId, id }) {
   const layout = await inspectInProgressSquad({ setId, challengeId: id }, root);
   if (challenge !== find() || JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error('FC27_CHALLENGE_CHANGED');
   return normalizeFc27TraditionalChallenge({ context, setId, challenge, layout,
-    keys: ownData(root, 'SBCEligibilityKey'), scopes: ownData(root, 'SBCEligibilityScope') });
+    keys: ownData(root, 'SBCEligibilityKey'), scopes: ownData(root, 'SBCEligibilityScope'), qualities: ownData(root, 'SBCEligibilityQualityType') });
 }

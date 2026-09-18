@@ -9,7 +9,8 @@ function versionParts(version) {
 
 export function releaseChannel(version, latestTag = null) {
   const candidate = versionParts(version);
-  if (candidate.numeric[0] >= 27) throw new Error('FC27_RELEASE_NOT_ENABLED: use isolated preview artifacts until P5');
+  // Channel calculation is not publication permission; the readiness gate is independent.
+  if (candidate.numeric[0] >= 28) throw new Error('FUTURE_SEASON_RELEASE_NOT_ENABLED');
   let newer = true;
   if (latestTag !== null) {
     if (typeof latestTag !== 'string' || !latestTag.startsWith('v')) throw new Error('Invalid latest tag');

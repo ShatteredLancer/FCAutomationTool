@@ -30,7 +30,7 @@ jobs:
         if: always() && steps.verify.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: DailyLoopRunner-verification-failure-${{ github.run_id }}
+          name: FCAutomationTool-verification-failure-${{ github.run_id }}
           path: |
             artifacts/verify.log
             reports/junit.xml
@@ -40,19 +40,19 @@ jobs:
         if: always() && hashFiles('reports/junit.xml') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: DailyLoopRunner-junit-${{ github.run_id }}
+          name: FCAutomationTool-junit-${{ github.run_id }}
           path: reports/junit.xml
           retention-days: 14
-      - name: Build Profile library
+      - name: Build legacy FC26 Profile regression artifacts
         id: profiles
         run: npm run build:profiles
       - name: Check generated compatibility userscript is committed
         id: compatibility
         run: git diff --exit-code -- FCAutomationTool.user.js
-      - name: Upload Profile library preview
+      - name: Upload legacy FC26 Profile regression artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DailyLoopRunner-profiles
+          name: FC26-legacy-profiles-regression
           path: dist/profiles
       - name: Write verification summary
         if: always()
@@ -95,7 +95,7 @@ jobs:
           $overall = if ($incompleteOutcomes.Count -eq 0) { 'Passed' } else { 'Failed' }
           $shortSha = $env:GITHUB_SHA.Substring(0, 7)
           @"
-          ## DailyLoopRunner verification
+          ## FC Automation Tool verification
 
           | Field | Result |
           | --- | --- |
@@ -104,7 +104,7 @@ jobs:
           | Trigger | ``$env:GITHUB_EVENT_NAME`` |
           | Overall | **$overall** |
           | Full verification | ``$env:VERIFY_OUTCOME`` |
-          | Profile build | ``$env:PROFILES_OUTCOME`` |
+          | Legacy FC26 Profile regression build | ``$env:PROFILES_OUTCOME`` |
           | Compatibility userscript | ``$env:COMPATIBILITY_OUTCOME`` |
           | Test files | $testFiles |
           | Tests | $tests |

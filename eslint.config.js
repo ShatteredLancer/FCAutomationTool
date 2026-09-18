@@ -65,6 +65,14 @@ export default [
     },
   },
   {
+    files: ['src/fc27/acceptance-entry.js'],
+    languageOptions: { globals: { unsafeWindow: 'readonly', GM_getValue: 'readonly', GM_setValue: 'readonly' } },
+  },
+  {
+    files: ['src/fc27/production-entry.js'],
+    languageOptions: { globals: { unsafeWindow: 'readonly', GM_getValue: 'readonly', GM_setValue: 'readonly', __FCAT_VERSION__: 'readonly' } },
+  },
+  {
     files: ['scripts/**/*.mjs', 'tests/**/*.js', 'eslint.config.js', 'vitest.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "evidence": "dedicated-browser-reviewed-dao-get-only",
+  "methods": { "getSets": true, "getChallengesForSet": true, "saveChallenge": true, "submitChallenge": true },
+  "writeContractVerified": false,
+  "liveExecutionEnabled": false,
+  "accountMutationPerformed": false,
+  "contracts": [
+    {
+      "schema": 1,
+      "source": "fresh-dao",
+      "observedAt": 1789718276231,
+      "set": {
+        "id": 4, "name": "Bronze Upgrade", "challengesCount": 1, "challengesCompletedCount": 0,
+        "timesCompleted": 0, "repeats": 0, "repeatabilityMode": "UNLIMITED",
+        "startTime": 1786381200, "endTime": 2071242001
+      },
+      "rewards": [{ "scope": "set", "type": "pack", "value": 509, "count": 1, "tradable": false }],
+      "challenge": {
+        "schema": 1, "mechanism": "traditional", "requirementsOperation": "AND", "completed": false,
+        "setId": 4, "id": 16, "slotCount": 11, "brickIndices": [],
+        "requirements": [
+          { "kind": "player-count", "count": 11 },
+          { "kind": "player-min-overall", "count": 11, "value": 1 },
+          { "kind": "player-max-overall", "count": 11, "value": 64 }
+        ]
+      }
+    },
+    {
+      "schema": 1,
+      "source": "fresh-dao",
+      "observedAt": 1789718714530,
+      "set": {
+        "id": 6, "name": "Gold Upgrade", "challengesCount": 1, "challengesCompletedCount": 0,
+        "timesCompleted": 0, "repeats": 0, "repeatabilityMode": "UNLIMITED",
+        "startTime": 1786381200, "endTime": 2071242001
+      },
+      "rewards": [{ "scope": "set", "type": "pack", "value": 1022, "count": 1, "tradable": false }],
+      "challenge": {
+        "schema": 1, "mechanism": "traditional", "requirementsOperation": "AND", "completed": false,
+        "setId": 6, "id": 18, "slotCount": 11, "brickIndices": [],
+        "requirements": [
+          { "kind": "player-count", "count": 11 },
+          { "kind": "player-min-overall", "count": 11, "value": 75 },
+          { "kind": "player-max-overall", "count": 11, "value": 99 }
+        ]
+      }
+    }
+  ]
+}

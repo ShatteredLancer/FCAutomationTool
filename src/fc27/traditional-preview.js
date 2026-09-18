@@ -61,21 +61,34 @@ export function previewTraditionalSquad({ context, challenge, inventory, policy 
   const seen = new Set();
   const candidates = [];
   let excluded = 0;
+  const excludedByReason = {};
   for (const item of inventory.items) {
     if (!item || !identity(item.id) || !identity(item.definitionId) || seen.has(item.id)) return stop('INVENTORY_IDENTITY_CONFLICT');
     seen.add(item.id);
-    const safe = item.type === 'player' && ['club', 'storage'].includes(item.pile)
-      && integer(item.rating, minRating, Math.min(maxRating, policy.maxRating))
-      && (item.rating < 75 || integer(item.rating, policy.goldRange[0], policy.goldRange[1]))
-      && item.special === false && item.evolution === false && item.cosmetic === false
-      && item.concept === false && item.academyEnrolled === false && item.activeTrade === false
-      && item.limitedUse === false && item.loans === -1 && item.protected === false
-      && typeof item.tradeable === 'boolean' && (!policy.onlyUntradeable || item.tradeable === false)
-      && identity(item.leagueId) && !policy.excludedLeagueIds.includes(item.leagueId)
-      && (!policy.protectFsuLockedPlayers || item.locked === false)
-      && (!policy.protectActiveSquad || item.activeSquad === false);
-    if (safe) candidates.push(item);
-    else excluded++;
+    const checks = [
+      ['type-or-pile-unverified', item.type === 'player' && ['club', 'storage'].includes(item.pile)],
+      ['rating-outside-range', integer(item.rating, minRating, Math.min(maxRating, policy.maxRating))],
+      ['fsu-gold-range', item.rating < 75 || integer(item.rating, policy.goldRange[0], policy.goldRange[1])],
+      ['special-or-unknown', item.special === false],
+      ['evolution-or-unknown', item.evolution === false],
+      ['cosmetic-or-unknown', item.cosmetic === false],
+      ['concept-or-unknown', item.concept === false],
+      ['academy-or-unknown', item.academyEnrolled === false],
+      ['active-trade-or-unknown', item.activeTrade === false],
+      ['limited-use-or-unknown', item.limitedUse === false && item.loans === -1],
+      ['protected-or-unknown', item.protected === false],
+      ['tradeable-or-unknown', typeof item.tradeable === 'boolean' && (!policy.onlyUntradeable || item.tradeable === false)],
+      ['league-excluded-or-unknown', identity(item.leagueId) && !policy.excludedLeagueIds.includes(item.leagueId)],
+      ['locked-or-unknown', !policy.protectFsuLockedPlayers || item.locked === false],
+      ['active-squad-or-unknown', !policy.protectActiveSquad || item.activeSquad === false],
+    ];
+    // Count only the first rejection; overlapping guards must not inflate the excluded total.
+    const rejection = checks.find(([, passed]) => !passed)?.[0];
+    if (!rejection) candidates.push(item);
+    else {
+      excluded++;
+      excludedByReason[rejection] = (excludedByReason[rejection] ?? 0) + 1;
+    }
   }
   candidates.sort((a, b) => (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
     || a.rating - b.rating || a.id - b.id);
@@ -88,11 +101,11 @@ export function previewTraditionalSquad({ context, challenge, inventory, policy 
     if (selected.length === required) break;
   }
   if (selected.length !== required) return { ...stop('SAFE_MATERIAL_SHORTAGE'), required,
-    safeCandidates: candidates.length, uniqueDefinitions: definitions.size, excluded };
+    safeCandidates: candidates.length, uniqueDefinitions: definitions.size, excluded, excludedByReason };
   const slots = Array.from({ length: slotCount }, (_, index) => index).filter(index => !brickIndices.includes(index));
   return { status: 'preview', reason: 'READ_ONLY_PLAN', liveExecutionEnabled: false,
     setId: challenge.setId, challengeId: challenge.id, required, minRating, maxRating,
     selected: selected.map((item, index) => ({ ...item, slot: slots[index] })),
-    safeCandidates: candidates.length, excluded, inventoryStatus: inventory.status,
+    safeCandidates: candidates.length, excluded, excludedByReason, inventoryStatus: inventory.status,
     pending: ['FC27_RUNTIME_CONTRACT', 'EXACT_ITEM_REVALIDATION', 'REWARD_IDENTITY', 'EXPLICIT_TRANSACTION_APPROVAL'] };
 }

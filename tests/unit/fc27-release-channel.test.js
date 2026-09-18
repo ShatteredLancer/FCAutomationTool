@@ -9,7 +9,10 @@ describe('release channel isolation', () => {
     expect(workflow).toContain('node scripts/release-channel.mjs');
     expect(workflow).toContain('node scripts/check-release-readiness.mjs');
     const readiness = await readFile(new URL('../../scripts/check-release-readiness.mjs', import.meta.url), 'utf8');
-    expect(readiness).toContain("throw new Error('RENAME_RELEASE_NOT_APPROVED:");
+    expect(readiness).toContain('assertReadonlyRelease');
+    expect(readiness).toContain('fc27-readonly-release.json');
+    expect(workflow.indexOf('- run: npm run verify')).toBeLessThan(workflow.indexOf('run: node scripts/check-release-readiness.mjs'));
+    expect(workflow).toContain('--notes-file "docs/releases/$env:RELEASE_VERSION.md"');
     const preview = await readFile(new URL('../../.github/workflows/fc27-preview.yml', import.meta.url), 'utf8');
     expect(preview).toContain('fetch-depth: 0');
     expect(preview).toContain('branches: [main]');
@@ -26,7 +29,12 @@ describe('release channel isolation', () => {
     expect(releaseChannel('0.8.65', 'v0.8.64').latest).toBe(true);
     expect(releaseChannel('0.8.64', 'v0.8.64').latest).toBe(false);
   });
-  it.each(['27.0.0', '27.0.0-alpha.1', '28.0.0', 'garbage', '0.8.1-unknown'])('blocks unapproved release %s', version => {
+  it('calculates FC27 channels without granting publication permission', () => {
+    expect(releaseChannel('27.0.0', 'v0.8.60')).toEqual({ prerelease: false, latest: true });
+    expect(releaseChannel('27.0.0-rc.1', 'v0.8.60')).toEqual({ prerelease: true, latest: false });
+    expect(releaseChannel('27.0.1', 'v28.0.0').latest).toBe(false);
+  });
+  it.each(['28.0.0', 'garbage', '0.8.1-unknown'])('blocks unsupported release %s', version => {
     expect(() => releaseChannel(version)).toThrow();
   });
 });

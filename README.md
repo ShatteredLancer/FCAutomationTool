@@ -1,11 +1,11 @@
 # FC Automation Tool
 
-当前完整脚本仍为 FC26 业务，FC27 仅有离线 Preview。新名 Release 资产尚未发布，`FCAutomationTool.user.js/.meta.js` 的 `releases/latest` 地址当前不是可用安装入口。详见 [改名记录](docs/RENAME_STATUS_ZH.md)和[上线前收尾清单](docs/FC27_PRELAUNCH_CLOSEOUT_ZH.md)。
+**27.0.0 是 FC27 只读首版，Live 执行保持硬关闭。** 支持传统 SBC 的读取、选材预览与诊断，不支持真实提交、开包、Rolling 或交易。真实业务等安全库存充足后独立验收，再通过新版本开放。范围见 [27.0.0 发布说明](docs/releases/27.0.0.md)和[验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具，用于编排 SBC、开包、Unassigned 处理、Player Pick、动态 SBC 扫描和可复用 Workflow/Profile。
+FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具。FC27 当前提供传统 SBC 的只读准备、材料保护和恢复检查；旧季 Rolling、开包、Player Pick、交易及 Profile 未随新入口启用。
 
 项目优先保证材料和库存安全：身份、材料要求、库存去向或提交状态无法确认时会停止，而不是继续猜测。
 
@@ -18,17 +18,25 @@ FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工�
 - Chrome 或兼容浏览器
 - Tampermonkey
 - FSU `26.09`，或本仓库维护的 [FSU Local](FSU_mod/README.md)
-- FC26 Enhancer 可选；Runner 支持与其共存，但核心安全策略来自 FSU
+- FC27 不要求安装 FC26 Enhancer；新版组合兼容性不能沿用旧季声明
 
-当前公开的冻结 FC26 正式版为 `0.8.60`，仅供继续使用旧季版本或回退：
+FC27 只读首版：
 
-<https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/DailyLoopRunner.user.js>
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v27.0.0/FCAutomationTool.user.js>
 
-`0.8.65` 是未发布的 FC27 上线前准备版本；正式 `FCAutomationTool.user.js` 安装入口须等安装身份、FSU Local 版本和 Release 资产通过验收后再启用。不要手工拼接尚不存在的新名 Release 地址。
+配套 FSU Local：
+
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v27.0.0/FSU-Local.user.js>
+
+冻结 FC26 正式版 `0.8.60` 仅供旧季历史回退，不应安装到 FC27：
+
+<https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
+
+本地构建使用仓库根目录 `FCAutomationTool.user.js`，版本为 `27.0.0`。这是全新安装，不迁移旧 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.8`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 自身的手动功能不受 Runner 的只读门禁控制，不能将其视为全部禁写的插件。
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
-进入 EA FC Web App 后等待启动扫描完成。面板日志出现 `Ready v...` 后才能运行 Loop。首次扫描可能需要读取当前 SBC Challenge；后续 Incremental scan 会复用仍有效的逐 SBC 缓存。
+FC27 面板可刷新目标并只读准备阵容。材料不足时正常停止，提交按钮保持禁用；不会为了通过验收购买材料或放宽保护。
 
 ## 自动更新
 
@@ -37,7 +45,7 @@ Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络�
 - `DailyLoopRunner.meta.js`：现有 FC26 Tampermonkey 版本检查
 - `DailyLoopRunner.user.js`：现有 FC26 完整脚本
 
-FC27 正式发布后才启用新名资产：
+FC27 使用新名资产；旧 FC26 资产只通过固定版本链接获取，不迁移旧身份：
 
 - `FCAutomationTool.meta.js`：Tampermonkey 版本检查
 - `FCAutomationTool.user.js`：完整脚本
@@ -45,7 +53,11 @@ FC27 正式发布后才启用新名资产：
 
 Tampermonkey 按自身的更新检查间隔读取 `releases/latest`。只有 `@version` 增加且 Release 完整发布后才会更新；也可以在 Tampermonkey 中手动检查脚本更新。
 
-## 快速开始
+## FC26 历史功能参考
+
+以下快速开始、主要能力、Profile 和第三方网络功能描述的是冻结 FC26 实现，不属于当前 FC27 支持声明。FC27 bundle 不包含这些旧工作流、交易和配置库；旧源及测试保留作回归依据。
+
+### 快速开始
 
 1. 确认 FSU 已加载，并等待 Runner 显示 Ready。
 2. 在 `Profile` 中选择 Built-in 或需要的官方/用户 Profile。

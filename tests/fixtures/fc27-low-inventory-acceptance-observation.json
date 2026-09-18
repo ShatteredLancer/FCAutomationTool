@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "evidence": "dedicated-browser-original-fsu-read-only",
+  "installedFsuVersion": "26.09.8",
+  "versionVerifiedByManager": true,
+  "userConfirmedClubPlayerCount": 41,
+  "cachedClubPlayerCount": 41,
+  "cachedClubEntryCount": 49,
+  "cacheStatus": "trusted-provisional",
+  "inventoryComplete": false,
+  "exactSample": {
+    "requested": 2,
+    "matched": 2,
+    "fresh": true,
+    "safetyAttributesUnchanged": true
+  },
+  "catalogs": [
+    {
+      "setId": 4,
+      "setName": "Bronze Upgrade",
+      "setRewards": {
+        "source": "cached-set",
+        "fresh": false,
+        "rewards": [{ "type": "pack", "value": 509, "count": 1, "tradable": false }]
+      },
+      "challengeRewardsSource": "catalog-response",
+      "rewardIdentityVerified": false,
+      "challenge": {
+        "id": 16,
+        "status": "IN_PROGRESS",
+        "requirements": [{ "count": -1, "scope": 2, "pairs": [{ "key": 3, "values": [1] }] }],
+        "rewards": []
+      },
+      "preview": { "reason": "SAFE_MATERIAL_SHORTAGE", "maxRating": 74, "safeCandidates": 5, "required": 11 }
+    },
+    {
+      "setId": 5,
+      "setName": "Silver Upgrade",
+      "setRewards": {
+        "source": "cached-set",
+        "fresh": false,
+        "rewards": [{ "type": "pack", "value": 1013, "count": 1, "tradable": false }]
+      },
+      "challengeRewardsSource": "catalog-response",
+      "rewardIdentityVerified": false,
+      "challenge": {
+        "id": 42,
+        "status": "IN_PROGRESS",
+        "requirements": [{ "count": -1, "scope": 2, "pairs": [{ "key": 3, "values": [2] }] }],
+        "rewards": []
+      },
+      "preview": { "reason": "SAFE_MATERIAL_SHORTAGE", "maxRating": 74, "safeCandidates": 7, "required": 11 }
+    },
+    {
+      "setId": 6,
+      "setName": "Gold Upgrade",
+      "setRewards": {
+        "source": "cached-set",
+        "fresh": false,
+        "rewards": [{ "type": "pack", "value": 1022, "count": 1, "tradable": false }]
+      },
+      "challengeRewardsSource": "catalog-response",
+      "rewardIdentityVerified": false,
+      "challenge": {
+        "id": 18,
+        "status": "IN_PROGRESS",
+        "requirements": [{ "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [3] }] }],
+        "rewards": []
+      },
+      "preview": { "reason": "SAFE_MATERIAL_SHORTAGE", "maxRating": 83, "safeCandidates": 5, "required": 11 }
+    }
+  ],
+  "fillSaveSubmitOpenMoveTradePerformed": false,
+  "liveExecutionEnabled": false,
+  "releaseVerified": false
+}

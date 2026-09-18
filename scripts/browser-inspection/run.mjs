@@ -74,6 +74,10 @@ if (help) {
       console.log('Offline browser probe passed; no EA page, account or mutation used.');
       const { exerciseFsuPanel } = await import('./fsu-panel-smoke.mjs');
       await exerciseFsuPanel(page, out);
+      const { exerciseRunnerPanel } = await import('./runner-panel-smoke.mjs');
+      await exerciseRunnerPanel(page, out);
+      const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');
+      await exerciseTraditionalPersistence(context, out);
     } else if (agent) {
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       await runAgentSession({ context, terminal, root, withExtensions });

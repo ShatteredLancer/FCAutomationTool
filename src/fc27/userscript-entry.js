@@ -12,6 +12,8 @@
 
 import { inspectFc27Environment } from '../adapters/browser/fc27-inspection.js';
 import { inspectPrelaunchRuntime } from './runtime.js';
+import { readFc27RunnerPanel, previewFc27RunnerSquad } from '../adapters/ea/fc27-fsu-read.js';
+import { mountFc27RunnerPanel } from '../adapters/browser/fc27-runner-panel.js';
 
 const state = Object.freeze({
   product: 'FC Automation Tool Preview',
@@ -19,4 +21,6 @@ const state = Object.freeze({
   environment: inspectFc27Environment(unsafeWindow, 'web-app'),
 });
 console.info('[FC Automation Tool Preview]', state);
+mountFc27RunnerPanel({ document: unsafeWindow.document,
+  read: () => readFc27RunnerPanel(unsafeWindow), preview: options => previewFc27RunnerSquad(unsafeWindow, options) });
 

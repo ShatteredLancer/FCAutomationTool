@@ -33,6 +33,17 @@ it('only forces the reviewed GET branch for the exact in-progress challenge, wit
   expect(challenge.squad).toBeUndefined();
 });
 
+it('accepts an immediately observed catalog challenge without populating EA caches', async () => {
+  const { root, dao, challenge } = fixture();
+  root.services.SBC.repository.sets._collection[1].challenges = [];
+  expect((await inspectInProgressSquad({ setId: 1, challengeId: 2 }, root, challenge)).status).toBe('observed');
+  expect(dao.loadChallenge).toHaveBeenCalledExactlyOnceWith(2, true);
+  expect(root.services.SBC.repository.sets._collection[1].challenges).toEqual([]);
+  challenge.status = 'NOT_STARTED';
+  expect((await inspectInProgressSquad({ setId: 1, challengeId: 2 }, root, challenge)).status).toBe('blocked');
+  expect(dao.loadChallenge).toHaveBeenCalledOnce();
+});
+
 it.each(['NOT_STARTED', 'COMPLETED', undefined])('never initializes or reopens status %s', async status => {
   const { root, dao, challenge } = fixture();
   challenge.status = status;

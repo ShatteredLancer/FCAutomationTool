@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FC26 Daily Loop Runner - Hot Reload
 // @namespace    https://github.com/ShatteredLancer/DailyLoopRunner/dev
-// @version      0.1.2
-// @description  Reloads the local Daily Loop Runner userscript without refreshing the Web App page.
+// @version      0.1.3
+// @description  Legacy FC26 only. FC27 must be installed directly in Tampermonkey.
 // @license      MIT
 // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
 // @match        https://www.easports.com/*/ea-sports-fc/ultimate-team/web-app/*
@@ -53,11 +53,15 @@
     });
   }
 
-  W.__FCLoopRunnerRequestText = requestText;
   async function reloadLoopRunner() {
     try {
+      if (String(W.APP_YEAR_SHORT) !== '26') throw new Error('LEGACY_FC26_ONLY');
       log('Loading local script...');
       const code = await requestText(`${SCRIPT_URL}?t=${Date.now()}`);
+      const metadata = code.match(/^\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==/)?.[0] || '';
+      if (!/^\/\/ @name\s+FC26 Daily Loop Runner\s*$/m.test(metadata)
+          || !/^\/\/ @version\s+0\.\d+\.\d+\s*$/m.test(metadata)) throw new Error('LEGACY_SCRIPT_REQUIRED');
+      W.__FCLoopRunnerRequestText = requestText;
       W.__FCLoopRunner?.destroy?.();
       W.__FCLoopRunnerUserscriptApi = Object.freeze({
         request: (details) => GM_xmlhttpRequest(details),

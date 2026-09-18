@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "evidence": "dedicated-browser-original-fsu-natural-startup",
+  "installedFsuVersion": "26.09.8",
+  "versionVerifiedByManager": true,
+  "manualInitialization": false,
+  "firstBrowserStart": {
+    "initialized": true,
+    "clubReady": false,
+    "clubCacheStatus": "trusted-provisional",
+    "runtimeBuildSetLockFingerprintsUnchanged": true
+  },
+  "sample": {
+    "status": "observed",
+    "reason": "FC27_FSU_EXACT_SAMPLE_VERIFIED",
+    "liveExecutionEnabled": false,
+    "requested": 2,
+    "matched": 2,
+    "safetyAttributesUnchanged": true,
+    "fresh": true,
+    "inventoryComplete": false,
+    "cacheStatus": "trusted-provisional"
+  },
+  "prices": {
+    "provider": 3,
+    "requested": 2,
+    "quoted": 2,
+    "positive": 2,
+    "originalMethodInvoked": true,
+    "methodAndTransportSourceHashesMatched": true,
+    "settingsUnchanged": true,
+    "seasonVerified": false,
+    "displayVerified": false
+  },
+  "successfulReload": {
+    "initializedAtElapsedMs": 32053,
+    "clubCacheReadyAtElapsedMs": 36064,
+    "pageErrors": 0,
+    "startupWarnings": [],
+    "settledClubCacheStatus": "trusted-provisional"
+  },
+  "failedReload": {
+    "requestedBackgroundComparison": true,
+    "observedDocumentVisible": true,
+    "pageErrors": 0,
+    "warning": { "elapsedMs": 20013, "reason": "CONTROLLER_EMPTY" },
+    "samples": [
+      { "elapsedMs": 1728, "initialized": false, "initPending": false, "homeTiles": false, "currentPresent": false },
+      { "elapsedMs": 19905, "initialized": false, "initPending": false, "homeTiles": true, "currentPresent": false },
+      { "elapsedMs": 21911, "initialized": false, "initPending": false, "homeTiles": true, "currentPresent": true }
+    ],
+    "pollCount": 55,
+    "pollIntervalMs": 1000,
+    "finalInitialized": false,
+    "finalClubCacheStatus": null,
+    "runnerStopCode": "FC27_FSU_SEASON_MISMATCH",
+    "backgroundThrottlingProven": false
+  },
+  "fixedReload": {
+    "naturalInitialization": true,
+    "refreshesVerified": 2,
+    "warnings": [],
+    "pageErrors": 0,
+    "manualInitialization": false,
+    "settledClubCacheStatus": "trusted-provisional"
+  },
+  "fillSaveSubmitOpenMoveTradePerformed": false,
+  "productionSourceChanged": false,
+  "temporaryProbesRemoved": true
+}

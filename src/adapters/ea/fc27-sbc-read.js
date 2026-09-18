@@ -1,5 +1,5 @@
 // Self-contained for the isolated inspection browser. This is not a Live adapter.
-export async function inspectInProgressSquad({ setId, challengeId } = {}, root = globalThis) {
+export async function inspectInProgressSquad({ setId, challengeId } = {}, root = globalThis, observedChallenge = null) {
   const stop = reason => ({ status: 'blocked', reason, liveExecutionEnabled: false });
   function data(value, key) {
     try {
@@ -33,7 +33,9 @@ export async function inspectInProgressSquad({ setId, challengeId } = {}, root =
     const service = data(data(root, 'services'), 'SBC');
     const sets = values(data(data(service, 'repository'), 'sets'), 500).filter(set => data(set, 'id') === setId);
     if (sets.length !== 1) return null;
-    const challenges = values(data(sets[0], 'challenges'), 50).filter(challenge => data(challenge, 'id') === challengeId);
+    // A fresh catalog GET may supply its detached challenge without modifying EA repositories.
+    const challenges = (observedChallenge ? [observedChallenge] : values(data(sets[0], 'challenges'), 50))
+      .filter(challenge => data(challenge, 'id') === challengeId);
     const challenge = challenges[0];
     if (challenges.length !== 1 || data(challenge, 'setId') !== setId
         || data(challenge, 'status') !== 'IN_PROGRESS'

@@ -4,7 +4,9 @@
 
 本文件是 AI agent 和维护者处理本仓库任务时的首要工程说明。它描述当前真实实现，而不是最终理想状态。
 
-2026-09-18 FSU 路线修正：用户确认原 `26.09.6` 在 FC27 大部分功能可用；专用浏览器已观察到原版运行时初始化且 Club 为 ready，但该观察未独立确认实际安装版本，不能用本地产物版本替代安装证据。FSU 后续必须基于既有 mod 查漏补缺，优先原有一键填阵/价格函数的最小修复，保留界面、设置与已验证缓存合同。当前本地修订为 `26.09.7`，仅完成 FUT.GG 价格季节绑定；一键填阵仍需登录后的真实 Challenge 验证。独立 FC27 FSU Preview 降为历史研究原型，不再默认安装、扩展或作为 Runner 适配前置条件；不得以静态耦合风险推断原版整体不可用。新 Runner 的 FC27 架构计划不因此取消，实际填阵/保存/提交仍需相应验证与授权。最新边界见 [FSU 本地支持](FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
+2026-09-18 首版发布授权：用户明确确认将 `fc-automation-tool@27.0.0` 按只读首版发布，取代此前阻断全部 Release 的安排。`liveEnabled:false` 必须保留，真实 SBC 验收继续延期。`scripts/fc27-readonly-release.json` 只授权精确版本和 Runner/FSU SHA256 组合；`check-release-readiness.mjs` 验证安装/更新证据、FSU 重放和产物一致性，未来版本、改动后的脚本或 Live 均不能沿用此批准。默认入口为 `src/fc27/production-entry.js`，全新身份 `FC Automation Tool` / 新仓库 namespace；旧源、Loops/Profile、Rolling、交易仅作 FC26 回归，不表示新版支持。范围见 [27.0.0 说明](docs/releases/27.0.0.md)，证据见 [验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
+
+2026-09-18 FSU 路线修正：用户确认原 `26.09.6` 在 FC27 大部分功能可用；专用浏览器已观察到原版运行时初始化且 Club 为 ready，但该观察未独立确认实际安装版本，不能用本地产物版本替代安装证据。FSU 后续必须基于既有 mod 查漏补缺，优先原有一键填阵/价格函数的最小修复，保留界面、设置与已验证缓存合同。当前本地修订为 `26.09.8`，包含 FUT.GG 价格季节绑定和 Home Controller 延迟初始化修复；一键填阵仍需登录后的真实 Challenge 验证。独立 FC27 FSU Preview 降为历史研究原型，不再默认安装、扩展或作为 Runner 适配前置条件；不得以静态耦合风险推断原版整体不可用。新 Runner 的 FC27 架构计划不因此取消，实际填阵/保存/提交仍需相应验证与授权。最新边界见 [FSU 本地支持](FSU_mod/FC27_LOCAL_SUPPORT_ZH.md)。
 
 开始任何代码任务前，先读取：
 
@@ -65,7 +67,7 @@ FC Automation Tool 是 EA FC Web App 的 Tampermonkey 自动化脚本，运行�
 - Tampermonkey API：`unsafeWindow`、`GM_xmlhttpRequest`、`GM_notification`、`GM_getValue/GM_setValue/GM_deleteValue`。Reward Alert 凭证使用 GM 隔离存储；本地 Hot Reload 通过受控 userscript bridge 转交这些 API，不能改回页面 localStorage。
 - 外部价格服务：FUT.GG，失败时回退 FUTNext。
 
-Userscript metadata 位于 `src/userscript-entry.js` 文件开头。新增远程请求域名时必须同步检查 `@connect`。
+FC27 metadata 位于 `src/fc27/production-entry.js`；旧季 metadata 保留在 `src/userscript-entry.js`。FC27 当前仅授予 `unsafeWindow`、`GM_getValue` 和 `GM_setValue`，没有 `@connect`；不能直接继承旧季网络权限。
 
 ### 2.2 开发工具
 
@@ -125,17 +127,18 @@ npm run verify
 ### 3.1 真正的源码
 
 ```text
+src/fc27/production-entry.js (FC27 default build)
 src/userscript-entry.js
 src/**
 ```
 
-`src/userscript-entry.js` 包含 userscript metadata、Runtime Adapter 组合、命令实现、页面编排和仍未完全拆出的 helper。内置 `LOOP_DEFS`、配置展示和 schema 校验已经迁入 `src/config`；其它 `src` 目录包含已经模块化、可独立测试的领域逻辑、事务、运行时 Adapter 和 UI。
+`src/fc27/production-entry.js` 复用已验证的 FC27 只读准备、隔离 Journal/锁和单次事务基础设施；依赖白名单由构建强制校验，Live 仍关闭。`src/userscript-entry.js` 是保留的 FC26 入口，包含 Runtime Adapter 组合、命令实现、页面编排和仍未完全拆出的 helper。内置 `LOOP_DEFS`、配置展示和 schema 校验已经迁入 `src/config`；这些旧季源和测试不因新默认构建而删除。
 
 不要假设入口已经完全薄化。当前它仍约数千行，是主要集成层，修改前必须搜索调用方和架构测试基线。
 
 ### 3.2 外部配置
 
-`FCAutomationTool.loops.json` 是可选外部配置，包含：
+`FCAutomationTool.loops.json` 是 FC26 的可选外部配置，不进入 FC27 Release，包含：
 
 - `loops`
 - `recoveryRecipes`
@@ -152,6 +155,7 @@ src/**
 FCAutomationTool.user.js
 dist/FCAutomationTool.user.js
 dist/FCAutomationTool.meta.js
+dist/FCAutomationTool.manifest.json
 dist/FSU-Local.user.js
 dist/FSU-Local.meta.js
 dist/profiles/*
@@ -160,12 +164,12 @@ dist/profiles/*
 禁止手工编辑生成文件。构建链路：
 
 ```text
-src/userscript-entry.js metadata
+src/fc27/production-entry.js metadata
         +
-src/userscript-entry.js body and imported src modules
+FC27 entry body and allowlisted modules
         |
         v
-scripts/build-userscript.mjs
+scripts/build-userscript.mjs -> scripts/build-fc27-production.mjs
         |
         v
 esbuild, bundle=true, format=iife, target=chrome120
@@ -182,11 +186,11 @@ esbuild, bundle=true, format=iife, target=chrome120
 - 根目录和 `dist` 产物字节一致。
 - 生产脚本不包含 localhost 网络权限。
 
-`package.json` 是 Runner 版本的唯一来源。`src/userscript-entry.js` 中的 `__DLR_VERSION__` 由构建注入，运行时显示读取打包后的 package version；禁止在源码或生成脚本中维护第二份手写版本号。升级版本时必须同步 `package-lock.json`，再由构建刷新生成产物。
+`package.json` 是当前 Runner 版本的唯一来源。FC27 入口 metadata 的 `__DLR_VERSION__` 和运行时 `__FCAT_VERSION__` 均由构建注入；禁止手写第二份版本号。升级时同步 `package-lock.json` 并重建。`scripts/build-fc26-regression.mjs` 只在内存构建历史源，并读取冻结提交的 package 输入供 baseline 回归；不会生成第二个生产安装包。
 
 `FC26 Daily Loop Runner` 的生产 `@name`、GitHub namespace、update/download URL 和 MIT `@license` 从 `0.7.0` 起属于稳定安装身份。除非明确设计并记录一次新的安装迁移，不得随重构、仓库移动或开发脚本改名而改变。生产 metadata 只允许已审查的远程域名；`127.0.0.1` 和 `localhost` 仅允许出现在 `FCAutomationToolHotReload.user.js`。
 
-当前 `0.8.65` 是未发布的改名过渡状态：完整脚本仍使用旧 `@name`，但源码和构建断言已改为新 Runner namespace 及新名 update/download 资产。`scripts/check-release-readiness.mjs` 因此继续阻断全部正式 Release。在 [FC27 上线前收尾清单](docs/FC27_PRELAUNCH_CLOSEOUT_ZH.md)明确身份组合并完成 Tampermonkey、新旧资产和 FSU Local 升版验收前，不得删除阻断、创建发布 tag，或把当前 metadata 描述成已批准的生产安装迁移。
+`0.8.65` 的混合身份过渡已由 FC27 全新入口替代，旧源和历史资产不作迁移。`27.0.0` 已获用户明确的只读发布批准；默认发布检查和 `--packaging` 均校验精确授权、绑定版本/SHA256 的安装证据及 FSU 资产。`FC27_LIVE_ACCEPTANCE_PENDING` 仍是业务状态，不再阻止这次限定的只读交付；不得据此开放 Live，或把离线成功当作真实业务验收。
 
 FSU Local 的维护输入是 `FSU_mod/fsu-mod.config.json`。上游 `26.09` 原文件必须保持字节不变，`upstreamVersion` 不得因本地修改变化；本地改动只提升独立的 `localVersion`，并重新生成 patch、manifest、`FSU-Local.user.js` 和 `FSU-Local.meta.js`。`npm run check:fsu-patch` 必须证明 patch 可从 immutable origin 重放到 manifest 记录的 modified SHA256；直接编辑 manifest hash 或发布产物不算修复。
 
@@ -632,7 +636,7 @@ Dynamic SBC 缓存只能缓存只读 Challenge 快照，不能缓存“可运行
 
 主面板 Profile 选择器只能激活 Profile 的 Saved/last-known-good，不得隐式保存或应用 Draft。内置 Starter Profile 在 Store 归一化时只补缺，不得覆盖同 ID 的现有用户 Profile。旧版缺失 `preset`、名称仍为 `Default`、没有动态绑定且 Draft/Saved/last-known-good 均严格等于其旧 base 的 Default 可以先补齐官方标记再随当前 built-in rebase；任何内容被修改过的同名旧 Profile 必须保持冲突保护。Built-in、Default 和 `Bronze/Silver Inventory Only` 的 `One-click Daily Loop` 固定为 Daily Bronze -> Daily Silver -> Daily Common -> Daily Rare 四步，不得隐式追加 Rare Pack 回收；`Daily + Rare Pack Recycling` 可以追加 Rare Gold Premium/Baseline 第 5 步，`Daily + Rare Pack to 5x80+` 可以追加 quantity-first Common Gold Premium、Rare-only 填充的第 5 步，两者都必须保持 `useRoundsAsCompletions:false` 与最多一次库存 fallback，且不得互相覆盖。独立 Rare Pack Loop 在所有配置中仍保留。旧 Starter 的稳定 ID/preset 保留兼容；只有名称和配置均未被用户修改的旧官方 `Daily + Rare Pack to 2x84+` Profile 才能自动迁移显示名，自定义副本不得覆盖。`Bronze/Silver Inventory Only` Starter 只能把使用铜/银 `targetDuplicate` 或 requirements 的 supported Loop 设为 `inventory-only`，并把其余 supported/container Loop 显式设为 `normal`，使它与主面板全局 `Inventory only` 区分；不得给 unsupported/intrinsic strategy 写入非法配置。旧 `starter-inventory-only` 仅在保持原始名称、preset 和未修改配置时自动迁移，用户自定义副本必须保留。主面板不得恢复 `Dry run` 或 `Show MVP loops` 控件；Dry Run 仅由 Builder/Profile 中的 Loop 配置启用，MVP/验证 Loop 保留在配置和 Builder 中但始终从主 Loop 下拉列表隐藏。主面板保留 `Refresh caches` 和 `Scan SBCs` 作为库存缓存恢复与 Dynamic SBC 绑定刷新入口；`Scan SBCs` 必须提供 Incremental、Full rescan 和 Clear cache 三种只读模式。JSON 验证/导入和 recap 模拟预览只放在 Builder/开发入口，不恢复为主面板按钮。
 
-可发布 Profile 的源目录固定为 `profiles/`。每个 `*.profile.json` 文件名必须与 kebab-case `id` 一致，且只能二选一引用官方 `preset` 或提供完整 `config`；新增文件必须通过 `npm run check:profiles`，并由 `npm run build:profiles` 生成 `dist/profiles/*.loops.json` 和 manifest。禁止上传带 `discovered`、`discoveryIdentity` 或 `discovered-player-pick-*` 的动态 Pick 快照。`.github/workflows/release-assets.yml` 只在新版本 Release 发布时上传 userscript、完整 Loop 配置和 `FCAutomationTool.profiles.zip`；已发布 Release 不得因 Profile-only 合并而覆盖资产，需分发的 Profile 变化必须提升 package 版本并创建新 tag。
+旧季 Profile 的源目录固定为 `profiles/`。每个 `*.profile.json` 文件名必须与 kebab-case `id` 一致，且只能二选一引用官方 `preset` 或提供完整 `config`；新增文件必须通过 `npm run check:profiles`，并由 `npm run build:profiles` 生成 `dist/profiles/*.loops.json` 和 manifest。禁止上传带 `discovered`、`discoveryIdentity` 或 `discovered-player-pick-*` 的动态 Pick 快照。FC27 Release 不包含这些旧季配置或 Profile zip；CI 保留构建仅作历史回归。已发布 Release 不得因 Profile-only 合并而覆盖资产。
 
 Reward Alerts 的三个测试入口必须保持解耦：Preview 只展示本地 Toast/烟花，不调用 `GM_notification` 或网络；Desktop test 实际调用本机系统通知；ntfy test 实际发送远程测试消息。不要为了减少按钮数量把真实通知副作用合并进 Preview。
 
@@ -1123,7 +1127,7 @@ powershell -ExecutionPolicy Bypass -File ".\StartFCAutomationToolDevServer.ps1"
 
 ```powershell
 npm run build
-# Web App 中点击 Reload Loop
+# FC27: 直接在 Tampermonkey 重装生成脚本，再刷新 Web App
 ```
 
 发布前：
@@ -1137,7 +1141,7 @@ git diff --check
 
 CI 位于 `.github/workflows`，Windows + Node 22 执行 `npm ci` 和 `npm run verify`，并检查生成的根目录 userscript 已提交。`verify.yml` 同时构建 Profile preview artifact；`release-assets.yml` 负责 GitHub Release 资产打包和上传。
 
-正式 Release 只能由与 `package.json` 完全匹配的 `v<version>` tag 或指向该既有 tag 的手动触发创建。发布 workflow 必须先完成完整验证、构建全部 Runner/FSU/Profile 资产并生成 SHA256，再从 draft 发布；已发布 Release 不得覆盖、替换或因 Profile 单独变更而修改。需要更新任何资产时提升版本并创建新 tag。
+旧 Hot Reload 仅支持 FC26，赛季不符或下载到 FC27 bundle 时必须在 destroy/eval 前拒绝；不得把 FC27 GM API 暴露到页面以绕过隔离。正式 Release 只能由与 `package.json` 完全匹配的 `v<version>` tag 或指向该既有 tag 的手动触发创建。发布 workflow 必须先通过当前精确只读发布许可及完整验证，按 `scripts/package-fc27-release.mjs` 的显式清单构建 Runner/FSU script、meta、manifest 和 SHA256，再从 draft 发布；旧 Loops/Profile/Preview 不得混入。已发布 Release 不得覆盖或替换；新增 Live 需真实业务验收、独立批准、升版及新 tag。
 
 ## 15. 交付报告要求
 
@@ -1156,7 +1160,7 @@ Agent 完成任务时应说明：
 
 ## 16. 当前架构边界与后续项
 
-FC27 上线前准备另见 [FC27 实施记录](docs/FC27_PRELAUNCH_PROGRESS_ZH.md)。`src/fc27` 和 `FSU_mod/src/runner-support` 当前只进入隔离 Preview/core 构建，不得因新增目录存在就宣称 FC27 已兼容，或将其接入 FC26 生产入口。修改这些模块除完整 `npm run verify` 外，执行 `node scripts/verify-fc27-prelaunch.mjs`；浏览器工具先 `npm ci --prefix tools/browser-inspection`，再加 `--browser` 执行无 EA 的离线 smoke。真实 EA/GM provider、安装迁移和正式 27 发布仍须对应实机/发布门禁。
+FC27 历史准备另见 [实施记录](docs/FC27_PRELAUNCH_PROGRESS_ZH.md)。当前正式入口只包含经过依赖白名单审查的 FC27 模块和少量共享纯逻辑/事务模块；`FSU_mod/src/runner-support` 独立原型仍不进入生产，也不替代既有 FSU。修改 FC27 除完整 `npm run verify` 外，执行 `node scripts/verify-fc27-prelaunch.mjs --browser`（先安装 tools/browser-inspection 依赖）。真实 EA Provider/GM 只读与安装证据已取得，但真实 SBC 业务验收和正式 27 发布仍待完成，不得混淆。
 
 核心架构重构已在 `0.5.12` 收尾。以下是明确保留的运行时边界和独立后续功能，不应误判为需要机械拆分的未完成工作：
 

@@ -1,5 +1,7 @@
 # FCAutomationTool Development and Release
 
+Current version: `fc-automation-tool@27.0.0`, approved explicitly as a read-only first release. Live remains hard-disabled and real low-value SBC acceptance is deferred. `scripts/fc27-readonly-release.json` pins this exact Runner/FSU artifact pair; future versions, changed scripts and Live are not authorized by this approval.
+
 ## Requirements
 
 - Node.js 22
@@ -14,6 +16,10 @@ npm run verify
 ```
 
 ## Source Layout
+
+- `src/fc27/production-entry.js`: default production-format entry, currently read-only.
+- `src/fc27`: traditional planner, transaction and recovery contracts.
+- `src/userscript-entry.js` and legacy modules below: FC26 regression source, not bundled into FC27 unless explicitly allowlisted.
 
 - `src/config`: Loop schema, discovery, Profile and runtime policy.
 - `src/workflows`: side-effect orchestration by strategy.
@@ -43,7 +49,7 @@ npm run build
 npm run build:profiles
 ```
 
-`package.json` is the Runner version source. `src/userscript-entry.js` keeps an `__DLR_VERSION__` metadata token, and the build injects the package version into the production metadata. Runtime display reads the bundled package version.
+`package.json` is the sole active Runner version source. The FC27 entry receives metadata and display versions from the production builder. `build:profiles` remains a legacy FC26 regression build, not a FC27 release asset. `scripts/build-fc26-regression.mjs` compiles the frozen legacy entry in memory using its historical package input without overwriting current assets.
 
 ## Verification
 
@@ -59,9 +65,9 @@ npm run build:profiles
 
 CI additionally checks that the generated root compatibility userscript is committed, uploads JUnit reports, and preserves failure logs.
 
-## Local Hot Reload
+## Local Installation
 
-Install `FCAutomationToolHotReload.user.js`, then run:
+FC27 must run directly in the Tampermonkey sandbox. Build and serve the local script:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\StartFCAutomationToolDevServer.ps1"
@@ -73,14 +79,24 @@ After source changes:
 npm run build
 ```
 
-Use `Reload Loop` in the Web App. Only the dedicated Hot Reload userscript has `127.0.0.1`/`localhost` permissions; the production Runner must not gain them.
+Install/reinstall the exact `FCAutomationTool.user.js` through Tampermonkey, then reload the page. Disable old Runner/Preview/Acceptance/Hot Reload scripts; keep FSU Local enabled. The legacy Hot Reload script now rejects FC27 before destroy/eval. No FC27 page-global GM bridge or localhost production grant is allowed.
+
+In the owned inspection profile, after user login:
+
+```powershell
+node scripts/browser-inspection/acceptance.mjs --production --install --live-read
+node scripts/browser-inspection/production-update.mjs
+node scripts/browser-inspection/acceptance.mjs --production --live-read
+```
+
+These commands install only the reviewed Live-disabled build, test synthetic GM recovery/locks and optionally read EA state. The update probe temporarily installs synthetic older metadata under the same identity, tests Tampermonkey's updater over loopback, and restores exact production source. It never publishes the synthetic version or proves GitHub delivery. Do not run these commands concurrently against the same profile. Reports/screenshots remain local under `artifacts/fc27-browser`; only sanitized evidence enters fixtures.
 
 ## FSU Local Maintenance
 
 FSU Local uses two versions:
 
 - `upstreamVersion`: immutable upstream baseline, currently `26.09`.
-- `localVersion`: local derivative revision, currently `26.09.5`.
+- `localVersion`: local derivative revision, currently `26.09.8`.
 
 The maintained build must keep the upstream userscript identity exactly: `@name 【FSU】EAFC FUT WEB 增强器` and `@namespace https://futcd.com/`. Tampermonkey isolates GM storage by script identity, so changing either field creates a separate settings scope and resets the user's SBC exclusions, ranges, locks, and related preferences. GitHub release ownership is expressed through the version, description, homepage/support URL, and update/download URL instead.
 
@@ -97,16 +113,18 @@ The patch generator must reproduce the exact modified SHA256 from the immutable 
 
 ## Release Process
 
-1. Update `package.json` using Semantic Versioning.
-2. Update `CHANGELOG.md` and any compatibility documentation.
-3. Run `npm install --package-lock-only` if package metadata changed.
-4. Run `npm run verify` and commit the generated root userscript.
-5. Complete the real Web App smoke checklist.
-6. Create and push a matching tag, for example `v0.7.10`.
+1. Verify explicit publication approval for the exact scope and artifact. The 27.0.0 approval is read-only; enabling Live requires separate real low-value SBC acceptance and approval.
+2. Update `package.json` using `27.x.y` for FC27 and synchronize the lock file.
+3. Update `CHANGELOG.md` and compatibility documentation with actual evidence.
+4. Run `npm run verify`, `node scripts/verify-fc27-prelaunch.mjs --browser`, and `git diff --check`.
+5. Run `node scripts/package-fc27-release.mjs` and `node scripts/check-release-readiness.mjs --packaging`. Installation evidence must match the exact artifact SHA256; rerun when the artifact changes.
+6. Only after final approval, commit the generated root script and create/push the matching tag, for example `v27.0.0`.
 
-The tag workflow verifies again, builds profiles, creates a draft Release, uploads Runner/FSU/Profile assets plus `SHA256SUMS`, and only then publishes it. A published Release is immutable and cannot be overwritten by rerunning the workflow.
+The tag workflow verifies first, enforces the pinned scope/installation gate, and uploads only the explicit Runner/FSU script/meta/manifest asset list plus `SHA256SUMS` from a draft Release. Release notes come from `docs/releases/<version>.md`, not automatically generated feature claims. No legacy Loops/Profile/Preview assets are shipped. After publishing, verify actual GitHub downloads/metadata and fresh-install delivery. The local update test cannot replace that check. Published Releases remain immutable. Old FC26 assets must be referenced by their version tag once latest points at FC27.
 
 ## Live Smoke Checklist
+
+The following is the legacy broad matrix; FC27 only claims evidence recorded in `FC27_LIVE_ADAPTATION_ZH.md`. Unsupported old features remain excluded, not implicitly accepted.
 
 - Fresh production userscript installation.
 - Manual Tampermonkey update from the previous test release.

@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { previewTraditionalSquad } from '../../src/fc27/traditional-preview.js';
+import { normalizeFc27TraditionalChallenge } from '../../src/adapters/ea/fc27-traditional-read.js';
 
 const ui = JSON.parse(readFileSync(new URL('../fixtures/fc27-a-brace-ui.json', import.meta.url), 'utf8'));
+const originalFsu = JSON.parse(readFileSync(new URL('../fixtures/fc27-original-fsu-runner-observation.json', import.meta.url), 'utf8'));
 function fixture() {
   const context = { season: '27', accountScope: 'synthetic-test', platform: 'pc' };
   const item = (id, rating) => ({ id, definitionId: id + 100, rating, type: 'player', pile: 'club',
@@ -51,6 +53,20 @@ it('does not resolve duplicate signals or select duplicate definitions', () => {
   input.inventory.items[0].definitionId = 500;
   input.inventory.items[0].pile = 'unassigned';
   expect(previewTraditionalSquad(input).reason).toBe('SAFE_MATERIAL_SHORTAGE');
+});
+it('counts each excluded candidate once by its first failed guard without exporting identities', () => {
+  const input = fixture();
+  input.inventory.items[0].tradeable = true;
+  input.inventory.items[0].leagueId = 2;
+  input.policy.excludedLeagueIds = [2];
+  const result = previewTraditionalSquad(input);
+  expect(result).toMatchObject({ reason: 'SAFE_MATERIAL_SHORTAGE', safeCandidates: 1, excluded: 3,
+    excludedByReason: { 'tradeable-or-unknown': 1, 'rating-outside-range': 2 } });
+  expect(Object.values(result.excludedByReason).reduce((sum, count) => sum + count, 0)).toBe(result.excluded);
+  input.inventory.items[0].tradeable = false;
+  expect(previewTraditionalSquad(input).excludedByReason).toEqual({ 'league-excluded-or-unknown': 1, 'rating-outside-range': 2 });
+  input.inventory.items[0].special = null;
+  expect(previewTraditionalSquad(input).excludedByReason).toEqual({ 'special-or-unknown': 1, 'rating-outside-range': 2 });
 });
 it('rejects missing safety facts, unknown requirements, and unverified layout', () => {
   const unknown = fixture();
@@ -101,4 +117,82 @@ it('rejects mixed scope, observation samples, completed challenges and conflicti
   expect(previewTraditionalSquad(input).reason).toBe('INVENTORY_IDENTITY_CONFLICT');
   input.challenge.completed = true;
   expect(previewTraditionalSquad(input).reason).toBe('CHALLENGE_UNVERIFIED');
+});
+
+// Only the observed rule/layout are real; every card and account scope below is synthetic.
+function syntheticGoldInput(count = 22) {
+  const input = fixture();
+  const observed = originalFsu.goldPreview;
+  input.challenge = normalizeFc27TraditionalChallenge({ context: input.context,
+    setId: observed.setId, keys: originalFsu.eligibilityKeys, scopes: originalFsu.scopes,
+    qualities: originalFsu.qualities,
+    layout: { status: 'observed', setId: observed.setId, challengeId: observed.challengeId, ...observed.layout },
+    challenge: { id: observed.challengeId, setId: observed.setId, status: observed.challengeStatus,
+      eligibilityOperation: observed.eligibilityOperation, eligibilityRequirements: observed.requirements.map(rule => ({
+        count: rule.count, scope: rule.scope, kvPairs: { _collection: Object.fromEntries(rule.pairs.map(pair => [pair.key, pair.values])) },
+      })) } });
+  input.policy.maxRating = 83;
+  input.policy.goldRange = [75, 83];
+  const template = input.inventory.items[0];
+  input.inventory.items = Array.from({ length: count }, (_, index) => ({ ...template,
+    id: 1000 + index, definitionId: 2000 + index, rating: 75 + index % 9 }));
+  return input;
+}
+
+it('plans a complete synthetic eleven-player squad under the observed Gold rule without mutation', () => {
+  const input = syntheticGoldInput();
+  const before = structuredClone(input);
+  const result = previewTraditionalSquad(input);
+  expect(result).toMatchObject({ status: 'preview', required: 11, liveExecutionEnabled: false, inventoryStatus: 'provisional' });
+  expect(result.selected).toHaveLength(11);
+  expect(result.selected.map(item => item.slot)).toEqual(Array.from({ length: 11 }, (_, index) => index));
+  expect(new Set(result.selected.map(item => item.definitionId)).size).toBe(11);
+  expect(result.selected.every(item => item.rating >= 75 && item.rating <= 83)).toBe(true);
+  expect(result.pending).toContain('EXACT_ITEM_REVALIDATION');
+  expect(result.pending).toContain('EXPLICIT_TRANSACTION_APPROVAL');
+  expect(input).toEqual(before);
+});
+
+it('replans two disjoint synthetic squads, stops on exhaustion, and reads a later synthetic replenishment', () => {
+  const input = syntheticGoldInput();
+  const before = structuredClone(input);
+  const first = previewTraditionalSquad(input);
+  const used = new Set(first.selected.map(item => item.id));
+  const remaining = { ...input, inventory: { ...input.inventory, items: input.inventory.items.filter(item => !used.has(item.id)) } };
+  const second = previewTraditionalSquad(remaining);
+  expect(second.status).toBe('preview');
+  expect(second.selected).toHaveLength(11);
+  expect(second.selected.every(item => !used.has(item.id))).toBe(true);
+  const exhausted = { ...input, inventory: { ...input.inventory, items: [] } };
+  expect(previewTraditionalSquad(exhausted)).toMatchObject({ reason: 'SAFE_MATERIAL_SHORTAGE', selected: [], safeCandidates: 0 });
+  const replenished = { ...exhausted, inventory: { ...exhausted.inventory, items: input.inventory.items.slice(0, 11)
+    .map(item => ({ ...item, id: item.id + 5000, definitionId: item.definitionId + 5000 })) } };
+  const third = previewTraditionalSquad(replenished);
+  expect(third.status).toBe('preview');
+  expect(third.selected).toHaveLength(11);
+  expect(third.selected.every(item => !used.has(item.id))).toBe(true);
+  expect(input).toEqual(before);
+});
+
+it('does not fill a synthetic eleven-player shortage with above-cap, protected or duplicate-definition cards', () => {
+  for (const mutate of [
+    item => { item.rating = 84; }, item => { item.special = true; }, item => { item.evolution = true; },
+    item => { item.tradeable = true; }, item => { item.locked = true; }, item => { item.activeSquad = true; },
+    item => { item.definitionId = 2000; }, item => { item.pile = 'unassigned'; },
+  ]) {
+    const input = syntheticGoldInput(11); mutate(input.inventory.items[10]);
+    const before = structuredClone(input);
+    expect(previewTraditionalSquad(input)).toMatchObject({ reason: 'SAFE_MATERIAL_SHORTAGE', selected: [], liveExecutionEnabled: false });
+    expect(input).toEqual(before);
+  }
+});
+
+it('keeps Storage priority and unique definitions when planning a synthetic full squad', () => {
+  const input = syntheticGoldInput(12);
+  Object.assign(input.inventory.items[11], { pile: 'storage', rating: 83, definitionId: 2000 });
+  const result = previewTraditionalSquad(input);
+  expect(result.status).toBe('preview');
+  expect(result.selected[0]).toMatchObject({ id: 1011, pile: 'storage', rating: 83 });
+  expect(result.selected.some(item => item.id === 1000)).toBe(false);
+  expect(new Set(result.selected.map(item => item.definitionId)).size).toBe(11);
 });

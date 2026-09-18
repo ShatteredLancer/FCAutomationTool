@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-18",
+  "evidence": "dedicated-browser-original-fsu-and-temporary-runner-panel",
+  "installation": {
+    "before": "26.09.6",
+    "after": "26.09.7",
+    "verifiedByRefreshedManager": true,
+    "runtimeBuildSetLockFingerprintsUnchanged": true,
+    "allGmKeysVerified": false
+  },
+  "startup": {
+    "automaticInitializationPassed": false,
+    "observedBefore": { "initialized": false, "clubReady": false, "homeHookPresent": true, "homeTilesPresent": true },
+    "guardedManualInitialization": true,
+    "observedAfter": { "initialized": true, "clubReady": true, "clubCacheStatus": "ready" },
+    "exactTriggerFailureCauseConfirmed": false
+  },
+  "runnerPanel": {
+    "persistentInstallation": false,
+    "setId": 6,
+    "maxRating": 83,
+    "reason": "SAFE_MATERIAL_SHORTAGE",
+    "safeCandidates": 5,
+    "required": 11,
+    "cachedPlayers": 41,
+    "inventoryScope": "club-only",
+    "liveExecutionEnabled": false
+  },
+  "priceRequestSuccessVerified": false,
+  "priceDisplayVerified": false,
+  "fillSaveSubmitOpenMoveTradePerformed": false
+}
