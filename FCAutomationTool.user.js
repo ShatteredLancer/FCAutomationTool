@@ -61,9 +61,9 @@
   ]);
 
   // src/domain/player-rarity.js
-  function callBoolean(item, method2) {
+  function callBoolean(item, method3) {
     try {
-      const value = item?.[method2]?.();
+      const value = item?.[method3]?.();
       return typeof value === "boolean" ? value : null;
     } catch {
       return null;
@@ -191,9 +191,156 @@
     });
   }
 
+  // src/adapters/ea/fc27-challenge-catalog.js
+  var reviewedHash = "238c93154b271b36affb9e95eb5696d05471cc8d533294a0d0d8848c55e3b693";
+  var id = (value) => Number.isSafeInteger(value) && value > 0 && value < 1e9;
+  var text = (value) => typeof value === "string" && value.length <= 160 && !/[\u0000-\u001f]/.test(value) ? value : null;
+  var number = (value) => Number.isSafeInteger(value) && value >= 0 && value < 1e9 ? value : null;
+  var fail = (reason) => {
+    throw new Error(reason);
+  };
+  var stop = (reason, extra = {}) => ({ status: "blocked", reason, liveExecutionEnabled: false, ...extra });
+  function values(input, limit) {
+    const raw = ownData(input, "_collection") ?? input;
+    if (!raw || typeof raw !== "object") return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+    const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
+    if (keys2.length > limit) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+    return keys2.map((key) => ownData(raw, key));
+  }
+  function method(object, key) {
+    for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      if (descriptor) return descriptor.value;
+    }
+    return void 0;
+  }
+  function projectRewards(awards) {
+    return values(awards, 6).map((reward) => ({
+      type: text(ownData(reward, "type")),
+      value: number(ownData(reward, "value")),
+      count: number(ownData(reward, "count")),
+      tradable: typeof ownData(reward, "tradable") === "boolean" ? ownData(reward, "tradable") : null
+    }));
+  }
+  function cachedSetRewards(set) {
+    let rewards2 = null;
+    try {
+      rewards2 = projectRewards(ownData(set, "awards"));
+    } catch {
+    }
+    return { source: "cached-set", fresh: false, rewards: rewards2 };
+  }
+  function projectFc27CatalogChallenge(challenge, setId) {
+    const challengeId = ownData(challenge, "id");
+    if (!id(challengeId) || ownData(challenge, "setId") !== setId) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+    const requirements = values(ownData(challenge, "eligibilityRequirements"), 16).map((rule) => {
+      const pairs = ownData(ownData(rule, "kvPairs"), "_collection");
+      if (!pairs || typeof pairs !== "object" || Object.keys(pairs).length > 8) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+      return {
+        count: ownData(rule, "count") === -1 ? -1 : number(ownData(rule, "count")),
+        scope: number(ownData(rule, "scope")),
+        pairs: Object.keys(pairs).map((key) => {
+          if (!/^\d{1,6}$/.test(key)) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+          const raw = ownData(pairs, key);
+          if (!Array.isArray(raw) || raw.length > 32) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+          return { key: Number(key), values: Array.from({ length: raw.length }, (_, index) => number(ownData(raw, String(index)))) };
+        })
+      };
+    });
+    const rewards2 = projectRewards(ownData(challenge, "awards"));
+    return {
+      id: challengeId,
+      setId,
+      name: text(ownData(challenge, "name")),
+      status: text(ownData(challenge, "status")),
+      type: text(ownData(challenge, "type")) ?? number(ownData(challenge, "type")),
+      eligibilityOperation: text(ownData(challenge, "eligibilityOperation")),
+      requirements,
+      rewards: rewards2
+    };
+  }
+  async function inspectFc27ChallengeCatalog(root, { setId } = {}) {
+    try {
+      if (!id(setId)) return stop("FC27_CATALOG_SET_UNVERIFIED");
+      const context = JSON.stringify(readFc27Context(root));
+      const service = ownData(ownData(root, "services"), "SBC");
+      const findSet = () => values(ownData(ownData(service, "repository"), "sets"), 500).filter((set) => ownData(set, "id") === setId);
+      const sets2 = findSet();
+      if (sets2.length !== 1) return stop("FC27_CATALOG_SET_UNVERIFIED");
+      const setRewards = cachedSetRewards(sets2[0]);
+      const dao = ownData(service, "sbcDAO");
+      const read = method(dao, "getChallengesForSet");
+      if (typeof read !== "function" || !root.crypto?.subtle) return stop("FC27_CATALOG_DAO_UNREVIEWED");
+      const source = Function.prototype.toString.call(read);
+      if (source.length > 4096) return stop("FC27_CATALOG_DAO_UNREVIEWED");
+      const hash = Array.from(
+        new Uint8Array(await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(source))),
+        (value) => value.toString(16).padStart(2, "0")
+      ).join("");
+      if (hash !== reviewedHash) return stop("FC27_CATALOG_DAO_UNREVIEWED");
+      const unchanged = () => {
+        try {
+          const current2 = findSet();
+          return JSON.stringify(readFc27Context(root)) === context && ownData(ownData(root, "services"), "SBC") === service && ownData(service, "sbcDAO") === dao && method(dao, "getChallengesForSet") === read && current2.length === 1 && current2[0] === sets2[0] && JSON.stringify(cachedSetRewards(current2[0])) === JSON.stringify(setRewards);
+        } catch {
+          return false;
+        }
+      };
+      if (!unchanged()) return stop("FC27_CATALOG_CONTEXT_CHANGED");
+      return await new Promise((resolve) => {
+        let observable;
+        let finished = false;
+        const owner = {};
+        const finish = (result) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          try {
+            observable?.unobserve(owner);
+          } catch {
+          }
+          resolve(result);
+        };
+        const timer = setTimeout(() => finish(stop("FC27_CATALOG_READ_TIMEOUT")), 15e3);
+        try {
+          observable = read.call(dao, setId);
+          observable.observe(owner, (_sender, reply) => {
+            if (finished) return;
+            if (!unchanged()) return finish(stop("FC27_CATALOG_CONTEXT_CHANGED"));
+            const httpStatus = number(ownData(reply, "status"));
+            if (ownData(reply, "success") !== true || httpStatus !== 200) {
+              return finish(stop("FC27_CATALOG_READ_UNCONFIRMED", { httpStatus }));
+            }
+            try {
+              const challenges = values(ownData(ownData(reply, "response"), "challenges"), 50).map((challenge) => projectFc27CatalogChallenge(challenge, setId));
+              if (new Set(challenges.map((challenge) => challenge.id)).size !== challenges.length) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+              finish({
+                status: "observed",
+                reason: "FC27_CHALLENGE_CATALOG_READ",
+                liveExecutionEnabled: false,
+                setId,
+                setName: text(ownData(sets2[0], "name")),
+                setRewards,
+                challengeRewardsSource: "catalog-response",
+                rewardIdentityVerified: false,
+                challenges
+              });
+            } catch {
+              finish(stop("FC27_CATALOG_SHAPE_UNVERIFIED"));
+            }
+          });
+        } catch {
+          finish(stop("FC27_CATALOG_READ_UNCONFIRMED"));
+        }
+      });
+    } catch (error) {
+      return stop(/^FC27_[A-Z_]+$/.test(error?.message) ? error.message : "FC27_CATALOG_UNAVAILABLE");
+    }
+  }
+
   // src/adapters/ea/fc27-sbc-read.js
   async function inspectInProgressSquad({ setId, challengeId } = {}, root = globalThis, observedChallenge = null) {
-    const stop2 = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false });
+    const stop3 = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false });
     function data(value, key) {
       try {
         for (let depth = 0; value && depth < 5; depth++, value = Object.getPrototypeOf(value)) {
@@ -237,24 +384,24 @@
         scope: JSON.stringify([userId, personaId, sku, data(club, "platform")])
       };
     }
-    if (![setId, challengeId].every((id2) => Number.isSafeInteger(id2) && id2 > 0 && id2 < 1e9)) return stop2("INVALID_CHALLENGE_IDENTITY");
+    if (![setId, challengeId].every((id2) => Number.isSafeInteger(id2) && id2 > 0 && id2 < 1e9)) return stop3("INVALID_CHALLENGE_IDENTITY");
     try {
       const initial = find();
-      if (!initial) return stop2("IN_PROGRESS_CHALLENGE_UNCONFIRMED");
+      if (!initial) return stop3("IN_PROGRESS_CHALLENGE_UNCONFIRMED");
       const load = data(initial.dao, "loadChallenge");
-      if (typeof load !== "function" || !root.crypto?.subtle) return stop2("DAO_IMPLEMENTATION_UNREVIEWED");
+      if (typeof load !== "function" || !root.crypto?.subtle) return stop3("DAO_IMPLEMENTATION_UNREVIEWED");
       const source = Function.prototype.toString.call(load);
-      if (source.length > 4096) return stop2("DAO_IMPLEMENTATION_UNREVIEWED");
+      if (source.length > 4096) return stop3("DAO_IMPLEMENTATION_UNREVIEWED");
       const hash = Array.from(
         new Uint8Array(await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(source))),
         (value) => value.toString(16).padStart(2, "0")
       ).join("");
-      if (hash !== "04f9ea36c9d79e8ce1f0b0f5e27c10deffb576aafbde4b33e905b99751c3e87e") return stop2("DAO_IMPLEMENTATION_UNREVIEWED");
+      if (hash !== "04f9ea36c9d79e8ce1f0b0f5e27c10deffb576aafbde4b33e905b99751c3e87e") return stop3("DAO_IMPLEMENTATION_UNREVIEWED");
       const unchanged = () => {
         const current2 = find();
         return current2?.service === initial.service && current2?.dao === initial.dao && current2?.challenge === initial.challenge && data(initial.dao, "loadChallenge") === load && current2?.scope === initial.scope && current2?.user === initial.user && current2?.persona === initial.persona && current2?.club === initial.club;
       };
-      if (!unchanged()) return stop2("CHALLENGE_CHANGED");
+      if (!unchanged()) return stop3("CHALLENGE_CHANGED");
       return await new Promise((resolve) => {
         let observable;
         let finished = false;
@@ -269,21 +416,21 @@
           }
           resolve(result);
         };
-        const timer = setTimeout(() => finish(stop2("SQUAD_READ_TIMEOUT")), 15e3);
+        const timer = setTimeout(() => finish(stop3("SQUAD_READ_TIMEOUT")), 15e3);
         try {
           observable = load.call(initial.dao, challengeId, true);
           observable.observe(owner, (_sender, response) => {
             if (finished) return;
             try {
-              if (!unchanged()) return finish(stop2("CHALLENGE_CHANGED"));
-              if (data(response, "success") !== true || data(response, "status") !== 200) return finish(stop2("SQUAD_READ_UNCONFIRMED"));
+              if (!unchanged()) return finish(stop3("CHALLENGE_CHANGED"));
+              if (data(response, "success") !== true || data(response, "status") !== 200) return finish(stop3("SQUAD_READ_UNCONFIRMED"));
               const squad = data(data(response, "response"), "squad");
               const slots = data(data(root, "UTSquadEntity"), "FIELD_PLAYERS");
               const simple = data(squad, "simpleBrickIndices");
               const custom = data(squad, "customBrickIndices");
-              if (slots !== 11 || !Array.isArray(simple) || !Array.isArray(custom) || simple.length > 11 || custom.length > 11) return finish(stop2("SLOT_LAYOUT_UNVERIFIED"));
+              if (slots !== 11 || !Array.isArray(simple) || !Array.isArray(custom) || simple.length > 11 || custom.length > 11) return finish(stop3("SLOT_LAYOUT_UNVERIFIED"));
               const bricks = [...simple, ...custom];
-              if (bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= slots) || new Set(bricks).size !== bricks.length || bricks.length >= slots) return finish(stop2("SLOT_LAYOUT_UNVERIFIED"));
+              if (bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= slots) || new Set(bricks).size !== bricks.length || bricks.length >= slots) return finish(stop3("SLOT_LAYOUT_UNVERIFIED"));
               finish({
                 status: "observed",
                 reason: "IN_PROGRESS_SQUAD_READ",
@@ -296,20 +443,20 @@
                 requiredPlayerCount: slots - bricks.length
               });
             } catch {
-              finish(stop2("SQUAD_READ_UNCONFIRMED"));
+              finish(stop3("SQUAD_READ_UNCONFIRMED"));
             }
           });
         } catch {
-          finish(stop2("SQUAD_READ_UNCONFIRMED"));
+          finish(stop3("SQUAD_READ_UNCONFIRMED"));
         }
       });
     } catch {
-      return stop2("SQUAD_INSPECTION_UNAVAILABLE");
+      return stop3("SQUAD_INSPECTION_UNAVAILABLE");
     }
   }
 
   // src/adapters/ea/fc27-traditional-read.js
-  function values(collection, limit) {
+  function values2(collection, limit) {
     const raw = ownData(collection, "_collection") ?? collection;
     if (!raw || typeof raw !== "object") throw new Error("FC27_CHALLENGE_COLLECTION_UNAVAILABLE");
     const keys2 = Object.keys(raw);
@@ -318,7 +465,7 @@
   }
   function sets(root) {
     const repository = ownData(ownData(ownData(root, "services"), "SBC"), "repository");
-    return values(ownData(repository, "sets"), 500);
+    return values2(ownData(repository, "sets"), 500);
   }
   function listFc27InProgressChallenges(root) {
     readFc27Context(root);
@@ -326,7 +473,7 @@
     for (const set of sets(root)) {
       const collection = ownData(set, "challenges");
       if (!collection) continue;
-      for (const challenge of values(collection, 50)) {
+      for (const challenge of values2(collection, 50)) {
         const id2 = ownData(challenge, "id");
         const setId = ownData(set, "id");
         if (ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "setId") !== setId || !Number.isSafeInteger(id2) || id2 <= 0 || !Number.isSafeInteger(setId) || setId <= 0) continue;
@@ -342,7 +489,7 @@
       throw new Error("FC27_CHALLENGE_UNVERIFIED");
     }
     const count2 = layout.requiredPlayerCount;
-    const raw = values(ownData(challenge, "eligibilityRequirements"), 16);
+    const raw = values2(ownData(challenge, "eligibilityRequirements"), 16);
     if (!raw.length || !Number.isInteger(count2) || count2 < 1 || count2 > 11) throw new Error("FC27_REQUIREMENTS_UNVERIFIED");
     const requirements = [{ kind: "player-count", count: count2 }];
     for (const rule of raw) {
@@ -380,115 +527,63 @@
     };
   }
 
-  // src/adapters/ea/fc27-challenge-catalog.js
-  var id = (value) => Number.isSafeInteger(value) && value > 0 && value < 1e9;
-  var text = (value) => typeof value === "string" && value.length <= 160 && !/[\u0000-\u001f]/.test(value) ? value : null;
-  var number = (value) => Number.isSafeInteger(value) && value >= 0 && value < 1e9 ? value : null;
-  var fail = (reason) => {
-    throw new Error(reason);
-  };
-  function values2(input, limit) {
-    const raw = ownData(input, "_collection") ?? input;
-    if (!raw || typeof raw !== "object") return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-    const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
-    if (keys2.length > limit) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-    return keys2.map((key) => ownData(raw, key));
-  }
-  function projectRewards(awards) {
-    return values2(awards, 6).map((reward) => ({
-      type: text(ownData(reward, "type")),
-      value: number(ownData(reward, "value")),
-      count: number(ownData(reward, "count")),
-      tradable: typeof ownData(reward, "tradable") === "boolean" ? ownData(reward, "tradable") : null
-    }));
-  }
-  function projectFc27CatalogChallenge(challenge, setId) {
-    const challengeId = ownData(challenge, "id");
-    if (!id(challengeId) || ownData(challenge, "setId") !== setId) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-    const requirements = values2(ownData(challenge, "eligibilityRequirements"), 16).map((rule) => {
-      const pairs = ownData(ownData(rule, "kvPairs"), "_collection");
-      if (!pairs || typeof pairs !== "object" || Object.keys(pairs).length > 8) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-      return {
-        count: ownData(rule, "count") === -1 ? -1 : number(ownData(rule, "count")),
-        scope: number(ownData(rule, "scope")),
-        pairs: Object.keys(pairs).map((key) => {
-          if (!/^\d{1,6}$/.test(key)) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-          const raw = ownData(pairs, key);
-          if (!Array.isArray(raw) || raw.length > 32) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-          return { key: Number(key), values: Array.from({ length: raw.length }, (_, index) => number(ownData(raw, String(index)))) };
-        })
-      };
-    });
-    const rewards2 = projectRewards(ownData(challenge, "awards"));
-    return {
-      id: challengeId,
-      setId,
-      name: text(ownData(challenge, "name")),
-      status: text(ownData(challenge, "status")),
-      type: text(ownData(challenge, "type")) ?? number(ownData(challenge, "type")),
-      eligibilityOperation: text(ownData(challenge, "eligibilityOperation")),
-      requirements,
-      rewards: rewards2
-    };
-  }
-
   // src/fc27/traditional-preview.js
   var integer2 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
   var identity3 = (value) => integer2(value, 1, Number.MAX_SAFE_INTEGER);
-  var stop = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false, selected: [] });
+  var stop2 = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false, selected: [] });
   function previewTraditionalSquad({ context, challenge, inventory, policy } = {}) {
     let scope;
     try {
       scope = createSeasonContext(context);
     } catch {
-      return stop("CONTEXT_UNAVAILABLE");
+      return stop2("CONTEXT_UNAVAILABLE");
     }
-    if (scope.season !== "27") return stop("UNSUPPORTED_SEASON");
+    if (scope.season !== "27") return stop2("UNSUPPORTED_SEASON");
     for (const input of [challenge, inventory, policy]) {
       let other;
       try {
         other = createSeasonContext(input?.context);
       } catch {
-        return stop("CONTEXT_UNAVAILABLE");
+        return stop2("CONTEXT_UNAVAILABLE");
       }
-      if (["season", "accountScope", "platform"].some((key) => other[key] !== scope[key])) return stop("CONTEXT_MISMATCH");
+      if (["season", "accountScope", "platform"].some((key) => other[key] !== scope[key])) return stop2("CONTEXT_MISMATCH");
     }
     if (challenge.schema !== 1 || challenge.mechanism !== "traditional" || challenge.requirementsOperation !== "AND" || !identity3(challenge.setId) || !identity3(challenge.id) || challenge.completed !== false) {
-      return stop("CHALLENGE_UNVERIFIED");
+      return stop2("CHALLENGE_UNVERIFIED");
     }
     if (!Array.isArray(challenge.requirements) || !challenge.requirements.length || challenge.requirements.length > 16) {
-      return stop("REQUIREMENTS_UNAVAILABLE");
+      return stop2("REQUIREMENTS_UNAVAILABLE");
     }
     const countRules = challenge.requirements.filter((rule) => rule?.kind === "player-count");
     const required = countRules[0]?.count;
-    if (countRules.length !== 1 || !integer2(required, 1, 11)) return stop("PLAYER_COUNT_UNVERIFIED");
+    if (countRules.length !== 1 || !integer2(required, 1, 11)) return stop2("PLAYER_COUNT_UNVERIFIED");
     let minRating = 1;
     let maxRating = 99;
     for (const rule of challenge.requirements) {
       if (!rule || !["player-count", "player-min-overall", "player-max-overall"].includes(rule.kind) || rule.count !== required || Object.keys(rule).some((key) => !["kind", "count", "value"].includes(key))) {
-        return stop("UNSUPPORTED_REQUIREMENT");
+        return stop2("UNSUPPORTED_REQUIREMENT");
       }
       if (rule.kind === "player-count") {
-        if (rule.value !== void 0) return stop("UNSUPPORTED_REQUIREMENT");
+        if (rule.value !== void 0) return stop2("UNSUPPORTED_REQUIREMENT");
       } else {
-        if (!integer2(rule.value, 1, 99)) return stop("UNSUPPORTED_REQUIREMENT");
+        if (!integer2(rule.value, 1, 99)) return stop2("UNSUPPORTED_REQUIREMENT");
         if (rule.kind === "player-min-overall") minRating = Math.max(minRating, rule.value);
         else maxRating = Math.min(maxRating, rule.value);
       }
     }
-    if (minRating > maxRating) return stop("CONTRADICTORY_REQUIREMENTS");
+    if (minRating > maxRating) return stop2("CONTRADICTORY_REQUIREMENTS");
     const { slotCount, brickIndices } = challenge;
     if (!integer2(slotCount, 1, 11) || !Array.isArray(brickIndices) || brickIndices.some((index) => !integer2(index, 0, slotCount - 1)) || new Set(brickIndices).size !== brickIndices.length || slotCount - brickIndices.length !== required) {
-      return stop("SLOT_LAYOUT_UNVERIFIED");
+      return stop2("SLOT_LAYOUT_UNVERIFIED");
     }
-    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id2) => !identity3(id2))) return stop("PROTECTION_POLICY_UNVERIFIED");
-    if (inventory.schema !== 1 || inventory.kind !== "normalized-inventory" || !["ready", "provisional"].includes(inventory.status) || !Array.isArray(inventory.items) || inventory.items.length > 2e4) return stop("INVENTORY_UNVERIFIED");
+    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id2) => !identity3(id2))) return stop2("PROTECTION_POLICY_UNVERIFIED");
+    if (inventory.schema !== 1 || inventory.kind !== "normalized-inventory" || !["ready", "provisional"].includes(inventory.status) || !Array.isArray(inventory.items) || inventory.items.length > 2e4) return stop2("INVENTORY_UNVERIFIED");
     const seen = /* @__PURE__ */ new Set();
     const candidates = [];
     let excluded = 0;
     const excludedByReason = {};
     for (const item of inventory.items) {
-      if (!item || !identity3(item.id) || !identity3(item.definitionId) || seen.has(item.id)) return stop("INVENTORY_IDENTITY_CONFLICT");
+      if (!item || !identity3(item.id) || !identity3(item.definitionId) || seen.has(item.id)) return stop2("INVENTORY_IDENTITY_CONFLICT");
       seen.add(item.id);
       const checks = [
         ["type-or-pile-unverified", item.type === "player" && ["club", "storage"].includes(item.pile)],
@@ -524,7 +619,7 @@
       if (selected.length === required) break;
     }
     if (selected.length !== required) return {
-      ...stop("SAFE_MATERIAL_SHORTAGE"),
+      ...stop2("SAFE_MATERIAL_SHORTAGE"),
       required,
       safeCandidates: candidates.length,
       uniqueDefinitions: definitions.size,
@@ -569,10 +664,9 @@
       excludedLeagueIds: report.fsu.policy.excludeDesignatedLeagues ? Array.from({ length: leagues.length }, (_, index) => ownData(leagues, String(index))) : []
     };
   }
-  function readFc27RunnerPanel(root) {
-    const inputs = inspectFc27RunnerInputs(root);
-    if (inputs.status !== "observed") return { inputs, targets: [] };
+  function readFc27ChallengeTargets(root) {
     try {
+      readFc27Context(root);
       const sets2 = ownData(ownData(ownData(ownData(root, "services"), "SBC"), "repository"), "sets");
       const collection = ownData(sets2, "_collection");
       if (!collection || typeof collection !== "object") throw new Error();
@@ -586,9 +680,9 @@
         return { setId, name };
       });
       if (new Set(targets.map((target) => target.setId)).size !== targets.length) throw new Error();
-      return { inputs, targets };
+      return targets;
     } catch {
-      return { inputs: { ...inputs, status: "blocked", reason: "FC27_CATALOG_SET_UNVERIFIED" }, targets: [] };
+      return [];
     }
   }
   function inspectFc27RunnerInputs(root) {
@@ -662,7 +756,7 @@
     throw new Error(reason);
   };
   var integer3 = (value) => Number.isSafeInteger(value) && value >= 0;
-  function method(object, key) {
+  function method2(object, key) {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
       if (descriptor) return descriptor.value;
@@ -690,7 +784,7 @@
       const context = readFc27Context(root);
       const service = ownData(ownData(root, "services"), "SBC");
       const dao = ownData(service, "sbcDAO");
-      const functions = Object.fromEntries(Object.keys(hashes).map((key) => [key, method(dao, key)]));
+      const functions = Object.fromEntries(Object.keys(hashes).map((key) => [key, method2(dao, key)]));
       const methods = {};
       for (const [key, fn] of Object.entries(functions)) {
         methods[key] = false;
@@ -704,7 +798,7 @@
       if (!methods.getSets || !methods.getChallengesForSet) return fail2("FC27_CONTRACT_READ_METHOD_UNREVIEWED");
       const unchanged = () => {
         try {
-          if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context) || ownData(ownData(root, "services"), "SBC") !== service || ownData(service, "sbcDAO") !== dao || Object.keys(functions).some((key) => method(dao, key) !== functions[key])) return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
+          if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context) || ownData(ownData(root, "services"), "SBC") !== service || ownData(service, "sbcDAO") !== dao || Object.keys(functions).some((key) => method2(dao, key) !== functions[key])) return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
         } catch {
           return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
         }
@@ -2290,6 +2384,11 @@
       }
     });
     return Object.freeze({
+      inspectCatalog: ({ setId } = {}) => run(async () => {
+        prepared?.adapter.cancel();
+        prepared = null;
+        return inspectFc27ChallengeCatalog(root, { setId });
+      }),
       prepare: (options) => run(async () => {
         prepared?.adapter.cancel();
         prepared = null;
@@ -2328,6 +2427,8 @@
               maxRating: plan.policy.maxRating,
               selectedCount: plan.selected.length,
               ratings: plan.selected.map((item) => item.rating),
+              selected: plan.selected.map((item) => ({ slot: item.slot, rating: item.rating, pile: item.pile })),
+              requirements: plan.challenge.requirements.map((rule) => ({ ...rule })),
               packId: baseline.packId,
               packCount: baseline.count
             };
@@ -2405,10 +2506,34 @@
     return result ?? blocked2("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
   }
 
+  // src/fc27/sbc-presentation.js
+  function describeCatalogRule(rule) {
+    const raw = `count=${rule.count ?? "?"}, scope=${rule.scope ?? "?"}, pairs=${JSON.stringify(rule.pairs)}`;
+    const pair = rule.pairs?.length === 1 ? rule.pairs[0] : null;
+    const value = pair?.values?.length === 1 ? pair.values[0] : null;
+    let label = null;
+    if (pair?.key === 3 && rule.count === -1 && [1, 2, 3].includes(value) && (rule.scope === 2 || rule.scope === 0 && value === 3)) {
+      label = `All players: ${["Bronze", "Silver", "Gold"][value - 1]} quality`;
+    } else if ([26, 28].includes(pair?.key) && Number.isInteger(value) && value >= 1 && value <= 99 && Number.isInteger(rule.count) && rule.count > 0 && rule.count <= 11 && [0, 2].includes(rule.scope)) {
+      label = `${rule.scope === 0 ? "At least" : "Exactly"} ${rule.count} players: ${pair.key === 26 ? "minimum" : "maximum"} OVR ${value}`;
+    }
+    return { label: label ?? "Unsupported requirement \u2014 retained for inspection", raw, recognized: label !== null };
+  }
+  function describeCatalogRewards(rewards2) {
+    if (!Array.isArray(rewards2)) return "Unknown rewards";
+    if (!rewards2.length) return "No rewards at this level";
+    return rewards2.map((reward) => `${reward.count ?? "?"} \xD7 ${reward.type ?? "unknown"} ${reward.value ?? "?"} (${reward.tradable === true ? "tradeable" : reward.tradable === false ? "untradeable" : "tradeability unknown"})`).join("; ");
+  }
+  function describePreparedRequirement(rule) {
+    if (rule.kind === "player-count") return `${rule.count} players`;
+    return `${rule.count} players: ${rule.kind === "player-min-overall" ? "minimum" : "maximum"} OVR ${rule.value}`;
+  }
+
   // src/adapters/browser/fc27-acceptance-panel.js
   function mountFc27AcceptancePanel({
     document,
     targets,
+    inspectCatalog,
     prepare: prepare2,
     execute,
     inspectRecovery,
@@ -2426,18 +2551,20 @@
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = `<style>
     :host{all:initial;position:fixed;right:12px;bottom:12px;z-index:100002;font:13px/1.45 Arial,sans-serif;color:#edf1ef;letter-spacing:0}
-    *{box-sizing:border-box;letter-spacing:0}details{width:min(370px,calc(100vw - 24px));background:#202724;border:1px solid #67736c;border-radius:6px}
+    *{box-sizing:border-box;letter-spacing:0}details{width:min(460px,calc(100vw - 24px));background:#202724;border:1px solid #67736c;border-radius:6px}
     summary{padding:12px;cursor:pointer;font-weight:600}.body{padding:0 12px 12px;max-height:calc(100dvh - 100px);overflow:auto}
     label{display:grid;gap:4px;margin:8px 0}select,button{font:inherit;min-height:36px;padding:7px;border:1px solid #67736c;border-radius:4px;color:inherit;background:#303b35;max-width:100%}
     select{width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
     output{display:block;min-height:38px;overflow-wrap:anywhere;border-top:1px solid #526159;padding-top:8px;color:#f3d89a}
+    #requirements,#squad{margin-top:8px;color:#c2d9cb;overflow-wrap:anywhere}ul{margin:4px 0 0 18px;padding:0}.requirement{margin-top:8px;padding-top:6px;border-top:1px solid #39483f}
+    small{display:block;color:#9caea3;margin-top:4px}#squad ol{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:0;gap:6px}#squad li{background:#303b35;padding:8px;border-radius:4px}
     #detail{margin-top:6px;overflow-wrap:anywhere;color:#c2d9cb}dialog{max-width:min(360px,calc(100vw - 24px));color:#edf1ef;background:#202724;border:1px solid #67736c;border-radius:6px}dialog::backdrop{background:#0009}
   </style><details><summary></summary><div class="body">
     <div class="row"><button id="refresh" title="Refresh targets" aria-label="Refresh targets">&#8635;</button><button id="gm">Check GM</button><button id="hold">Check tab lock</button></div>
     <label>SBC<select id="target"></select></label><label>Max OVR<select id="rating"><option>74</option><option>83</option></select></label>
-    <div class="row"><button id="prepare">Verify squad</button><button id="execute" disabled>Submit once</button></div>
+    <div class="row"><button id="catalog">Read requirements</button><button id="prepare">Verify squad</button><button id="execute" disabled>Submit once</button></div>
     <div class="row"><button id="recovery">Check recovery</button><button id="resolve" disabled>Confirm recovery</button></div>
-    <output id="status">Live execution disabled</output><div id="detail"></div>
+    <output id="status">Live execution disabled</output><div id="detail"></div><div id="requirements" aria-live="polite"></div><div id="squad"></div>
   </div></details><dialog><p id="approval"></p><div class="row"><button id="cancel">Cancel</button><button id="confirm">Confirm</button></div></dialog>`;
     const node = (id2) => shadow.getElementById(id2);
     shadow.querySelector("summary").textContent = title;
@@ -2461,6 +2588,72 @@
       for (const button of shadow.querySelectorAll("button,select")) button.disabled = busy;
       node("execute").disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
       node("resolve").disabled = busy || recovery?.status !== "recoverable";
+      node("catalog").disabled = busy || !node("target").value || typeof inspectCatalog !== "function";
+      node("prepare").disabled = busy || !node("target").value;
+    };
+    const appendText = (parent, tag, text2) => {
+      const element = document.createElement(tag);
+      element.textContent = text2;
+      parent.append(element);
+      return element;
+    };
+    const clear = () => {
+      plan = null;
+      recovery = null;
+      action = null;
+      node("requirements").replaceChildren();
+      node("squad").replaceChildren();
+      node("detail").textContent = "";
+      node("status").textContent = node("target").value ? "Choose Read requirements or Verify squad" : "No cached SBCs. Open EA SBC once, then refresh.";
+      delete host.dataset.result;
+    };
+    const renderPlan = (result) => {
+      node("requirements").replaceChildren();
+      appendText(node("requirements"), "div", "Verified plan requirements");
+      const rules = appendText(node("requirements"), "ul", "");
+      for (const rule of result.requirements ?? []) appendText(rules, "li", describePreparedRequirement(rule));
+      const squad = node("squad");
+      squad.replaceChildren();
+      appendText(squad, "div", "Selected slots \xB7 exact material checked");
+      const list = appendText(squad, "ol", "");
+      for (const item of result.selected ?? []) appendText(list, "li", `Slot ${item.slot + 1} \xB7 ${item.rating} OVR \xB7 ${item.pile}`);
+      appendText(squad, "small", "Untradeable ordinary cards only. Confirm once saves and submits this plan; materials are checked again before saving.");
+    };
+    const renderCatalog = (result) => {
+      const target = node("requirements");
+      target.replaceChildren();
+      if (result?.status !== "observed") return;
+      const heading = document.createElement("div");
+      heading.textContent = `${result.setName ?? "SBC"} \xB7 ${result.challenges.length} challenge${result.challenges.length === 1 ? "" : "s"}`;
+      target.append(heading);
+      appendText(target, "small", "Requirements from this EA read. Layout and submission eligibility are checked by Verify squad.");
+      appendText(target, "small", `Set rewards (cached, unverified): ${describeCatalogRewards(result.setRewards?.rewards)}`);
+      if (result.challenges.length !== 1) appendText(target, "div", "Multi-challenge planning is not supported yet.");
+      for (const challenge of result.challenges) {
+        const block = document.createElement("div");
+        block.className = "requirement";
+        const title2 = document.createElement("div");
+        title2.textContent = `${challenge.name ?? `Challenge ${challenge.id}`} \xB7 ${challenge.status ?? "unknown"} \xB7 ${challenge.eligibilityOperation ?? "unknown"} rules`;
+        block.append(title2);
+        if (challenge.status !== "IN_PROGRESS") appendText(block, "small", "Not ready for planning. Unstarted challenges need EA initialization; this read does not start them.");
+        if (challenge.eligibilityOperation !== "AND") appendText(block, "small", "Unsupported requirement combination.");
+        const list = document.createElement("ul");
+        for (const rule of challenge.requirements ?? []) {
+          const item = document.createElement("li");
+          const description = describeCatalogRule(rule);
+          item.textContent = description.label;
+          appendText(item, "small", description.raw);
+          list.append(item);
+        }
+        if (!challenge.requirements?.length) {
+          const item = document.createElement("li");
+          item.textContent = "No requirement rows observed";
+          list.append(item);
+        }
+        block.append(list);
+        appendText(block, "small", `Challenge rewards (this read): ${describeCatalogRewards(challenge.rewards)}`);
+        target.append(block);
+      }
     };
     const run = async (task) => {
       if (busy) return;
@@ -2470,8 +2663,12 @@
       host.dataset.busy = "true";
       try {
         const result = await task();
-        if (result.status === "prepared") plan = result;
+        if (result.status === "prepared") {
+          plan = result;
+          renderPlan(result);
+        }
         if (result.status === "recoverable") recovery = result;
+        if (result.status === "observed" && result.challenges) renderCatalog(result);
         node("status").textContent = result.reason ?? result.status;
         node("detail").textContent = result.status === "prepared" ? `${result.setName}: ${result.selectedCount} players; OVR ${result.ratings.join(", ")}; pack ${result.packId}` : result.synthetic ? `GM ${result.persistedPreviously ? "restored" : "written"}; ${result.phase}` : "";
         host.dataset.result = JSON.stringify(result);
@@ -2489,25 +2686,28 @@
       if (event.isTrusted && !busy) callback();
     });
     on("refresh", () => {
-      plan = null;
-      recovery = null;
       renderTargets();
+      clear();
       update();
     });
     on("gm", () => {
+      clear();
       void run(() => checkInstallation(false));
     });
     on("hold", () => {
+      clear();
       void run(() => checkInstallation(true));
     });
+    on("catalog", () => {
+      clear();
+      void run(() => inspectCatalog({ setId: Number(node("target").value) }));
+    });
     on("prepare", () => {
-      plan = null;
-      recovery = null;
+      clear();
       void run(() => prepare2({ setId: Number(node("target").value), maxRating: Number(node("rating").value) }));
     });
     on("recovery", () => {
-      plan = null;
-      recovery = null;
+      clear();
       void run(inspectRecovery);
     });
     const dialog = shadow.querySelector("dialog");
@@ -2527,11 +2727,14 @@
       action = null;
       dialog.close();
     });
+    dialog.addEventListener("cancel", () => {
+      action = null;
+    });
     on("confirm", () => {
       dialog.close();
       if (action === "execute" && plan) {
         const current2 = plan;
-        plan = null;
+        clear();
         void run(() => execute({
           approved: true,
           count: 1,
@@ -2541,14 +2744,13 @@
           maxPlayers: current2.selectedCount
         }));
       } else if (action === "resolve" && recovery) {
-        recovery = null;
+        clear();
         void run(() => resolveRecovery(true));
       }
       action = null;
     });
     for (const id2 of ["target", "rating"]) node(id2).addEventListener("change", () => {
-      plan = null;
-      recovery = null;
+      clear();
       update();
     });
     document.body.append(host);
@@ -2572,7 +2774,8 @@
     title: `FC Automation Tool ${"27.0.1"}`,
     version: "27.0.1",
     liveEnabled: dependencies.liveEnabled,
-    targets: () => readFc27RunnerPanel(unsafeWindow).targets,
+    targets: () => readFc27ChallengeTargets(unsafeWindow),
+    inspectCatalog: (options) => current().inspectCatalog(options),
     prepare: (options) => current().prepare(options),
     execute: (approval) => current().execute(approval),
     inspectRecovery: () => current().inspectRecovery(),

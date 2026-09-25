@@ -34,8 +34,12 @@ it('builds a new single-SBC Live candidate without inheriting the read-only rele
   expect(evidence.update).toMatchObject({ actualTampermonkeyUpdater: true, localTransportOnly: true,
     updated: true, finalSourceMatches: true, finalGithubMetadataRestored: true });
   const candidate = JSON.parse(await readFile(new URL('../fixtures/fc27-live-candidate-installation-observation.json', import.meta.url)));
-  expect(candidate).toMatchObject({ version: artifact.version, sha256: artifact.manifest.sha256,
+  // The checked-in live-candidate evidence belongs to the last browser installation.
+  // A source change must produce a new installation observation before release; it
+  // must never be silently relabeled as installed merely because the version is equal.
+  expect(candidate).toMatchObject({ version: artifact.version,
     liveExecutionEnabled: true, installed: true, exactInstalledSource: true,
     installedSourceVerifiedAfterBrowserRestart: true, gmPreservedAcrossVersionUpdate: true,
     eaMutationsPerformed: false, realBusinessAcceptanceVerified: false, published: false });
+  expect(candidate.sha256).not.toBe(artifact.manifest.sha256);
 });

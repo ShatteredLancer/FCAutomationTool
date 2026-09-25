@@ -3,6 +3,7 @@ import { assessTraditionalRecovery, createTraditionalJournal, traditionalJournal
 import { checkFc27GmInstallation, createFc27AcceptanceSession } from '../../src/adapters/browser/fc27-acceptance-session.js';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
+import { readFc27ChallengeTargets } from '../../src/adapters/ea/fc27-fsu-read.js';
 
 const context = { schema: 1, season: '27', accountScope: 'synthetic-recovery', platform: 'pc' };
 const scope = traditionalJournalScope(context);
@@ -76,11 +77,51 @@ it('composes a default read-only session with genuine providers and no page-glob
   const x = executionRuntime(); const store = storage();
   const session = createFc27AcceptanceSession({ root: x.root, ...store, lockManager: lockManager() });
   const pending = session.prepare({ setId: 4, maxRating: 74 }); await vi.runAllTimersAsync();
-  expect(await pending).toMatchObject({ status: 'prepared', liveEnabled: false, selectedCount: 11 });
+  const result = await pending;
+  expect(result).toMatchObject({ status: 'prepared', liveEnabled: false, selectedCount: 11,
+    selected: Array.from({ length: 11 }, (_, slot) => ({ slot, rating: 60, pile: 'club' })) });
+  expect(JSON.stringify(result)).not.toMatch(/accountScope|definitionId|permit|fingerprint/);
   expect(await session.execute({ approved: true })).toMatchObject({ reason: 'FC27_LIVE_DISABLED' });
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
   expect(store.gmSetValue).not.toHaveBeenCalled();
   expect(await session.inspectRecovery()).toMatchObject({ status: 'idle' });
+});
+
+it('reads the selected Challenge catalog through the session without initializing or writing an SBC', async () => {
+  const x = executionRuntime(); const store = storage();
+  const session = createFc27AcceptanceSession({ root: x.root, ...store, lockManager: lockManager() });
+  const before = JSON.stringify(x.root.services.SBC.repository.sets._collection);
+  const pending = session.inspectCatalog({ setId: 4 }); await vi.runAllTimersAsync();
+  expect(await pending).toMatchObject({ status: 'observed', setId: 4, challenges: [{ id: 16, status: 'IN_PROGRESS' }] });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+  expect(x.calls.some(call => call.kind === 'squad')).toBe(false);
+  expect(JSON.stringify(x.root.services.SBC.repository.sets._collection)).toBe(before);
+  expect(store.gmSetValue).not.toHaveBeenCalled();
+});
+
+it('shows unstarted challenges without FSU while refusing to prepare or initialize them', async () => {
+  const x = executionRuntime(); const store = storage();
+  x.challenge.status = 'NOT_STARTED'; delete x.root.info;
+  expect(readFc27ChallengeTargets(x.root)).toEqual([{ setId: 4, name: x.set.name }]);
+  const session = createFc27AcceptanceSession({ root: x.root, ...store, lockManager: lockManager(), liveEnabled: true });
+  expect(await session.inspectCatalog({ setId: 4 })).toMatchObject({ status: 'observed', challenges: [{ status: 'NOT_STARTED' }] });
+  const pending = session.prepare({ setId: 4, maxRating: 74 }); await vi.runAllTimersAsync();
+  expect((await pending).status).toBe('blocked');
+  expect(x.calls.some(call => call.kind === 'squad' || call.method === 'PUT')).toBe(false);
+  expect(store.gmSetValue).not.toHaveBeenCalled();
+});
+
+it('rejects invalid cached target identities without invoking hidden getters or FSU', () => {
+  for (const mutate of [
+    x => { x.root.APP_YEAR_SHORT = 26; },
+    x => { x.root.services.SBC.repository.sets._collection.extra = x.root.services.SBC.repository.sets._collection[4]; },
+    x => { x.root.services.SBC.repository.sets._collection[4].id = -1; },
+    x => { Object.defineProperty(x.root.services.SBC.repository.sets._collection[4], 'name', { get() { throw new Error('do not call'); } }); },
+  ]) {
+    const x = executionRuntime(); mutate(x);
+    expect(readFc27ChallengeTargets(x.root)).toEqual([]);
+    expect(x.calls).toEqual([]);
+  }
 });
 
 async function liveSession() {
@@ -93,6 +134,23 @@ async function liveSession() {
     maxRating: plan.maxRating, maxPlayers: plan.selectedCount };
   return { ...x, store, session, plan, approval };
 }
+
+it.each([4, 999])('invalidates a prepared transaction on catalog read for set %s even if reading fails', async setId => {
+  const x = await liveSession();
+  const result = await x.session.inspectCatalog({ setId });
+  expect(result.status).toBe(setId === 4 ? 'observed' : 'blocked');
+  expect((await x.session.execute(x.approval)).status).toBe('blocked');
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+});
+
+it('keeps UI projections detached from the private execution plan', async () => {
+  const x = await liveSession();
+  x.plan.selected[0].rating = 99; x.plan.selected[0].slot = 8;
+  x.plan.requirements[0].count = 1;
+  const pending = x.session.execute(x.approval); await vi.runAllTimersAsync();
+  expect(await pending).toMatchObject({ status: 'completed', consumedCount: 11 });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(2);
+});
 
 it('enables one explicitly confirmed Live transaction without any write during preparation or replay', async () => {
   const x = await liveSession();

@@ -1,5 +1,9 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-09-25 FC27 SBC Studio 第一块生产接线：正式面板新增只读 `Read requirements`，通过现有方法指纹校验的 Challenge catalog GET 展示 Challenge 状态和原始 requirement 行；读取会清理旧配阵计划，不初始化 Challenge、不保存或提交阵容。准备成功的面板摘要同时显示选中卡来源和评分。当前完整 Puzzle 约束求解、多阵、化学/联赛/动态 group 仍按 Unsupported 停止，后续需真实合同和 fixture 后再扩展。
+
+2026-09-25 FC27 Automation Studio 规划：新增 [FC27 Automation Studio 规划](FC27_AUTOMATION_STUDIO_PLAN_ZH.md)，确定 Puzzle 传统 SBC 从计划到实际填阵/提交、Gallery 收集缺口与采购、Market 手动交易与订单计划、定时交易和 Streamlined 积分流程的分阶段边界；当前合同采集阶段的只读不代表最终产品只读。Fodder GG 仅作黑盒行为参考，完整远程 bundle 不进入仓库或运行时。Web 与 Android 共享纯 planner/保护/事务合同，分别使用 EA Web/Companion adapter；FC26 Rolling、Swap、完整 Builder 和旧 Trade 默认构建继续归档，Android 仅在 Web App 无法满足需求且 A0-A3 门禁通过后评估。
+
 2026-09-18 FSU `26.09.9` 对话框兼容修复：FC27 的 `EADialogViewController` 已从 `dialogOptions` 切换为 `continueOption`/`cancelOption`，导致原 FSU SBC 方案导入弹窗缺少确认/取消按钮。共用 `events.popup` 现在同时兼容新旧字段，并保留三按钮动作、标签和 Escape 语义；5 项回归覆盖 FC27/FC26 合同。未改 FSU Club 缓存、选材、保存或提交路径；真实登录页面按钮可见性仍待验收。
 
 2026-09-18 Live 授权更新：本地 `27.0.1` 按用户“打开 live 限制”开放现有传统 SBC 单次保存/提交，仍要求计划校验和逐次确认，全部材料/事务保护保留。已发布 `27.0.0` 不变，真实业务及新版本发布仍 Pending。进度见 [单次 Live 开放](FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-单次-live-开放)。

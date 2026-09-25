@@ -1,4 +1,5 @@
 import { readFc27Context } from '../ea/fc27-local-read.js';
+import { inspectFc27ChallengeCatalog } from '../ea/fc27-challenge-catalog.js';
 import { createFc27TraditionalProvider } from '../ea/fc27-traditional-provider.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
 import { createTraditionalTransaction } from '../../fc27/traditional-transaction.js';
@@ -44,6 +45,12 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, lock
     } finally { adapter.cancel(); }
   });
   return Object.freeze({
+    inspectCatalog: ({ setId } = {}) => run(async () => {
+      // A fresh catalog observation invalidates any plan prepared against an older
+      // requirement snapshot. It is still read-only and does not initialize a challenge.
+      prepared?.adapter.cancel(); prepared = null;
+      return inspectFc27ChallengeCatalog(root, { setId });
+    }),
     prepare: options => run(async () => {
       prepared?.adapter.cancel(); prepared = null;
       return await persistence.exclusive(scope, async () => {
@@ -68,7 +75,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, lock
           unchanged(); prepared = { engine, plan, adapter };
           return { status: 'prepared', liveEnabled: liveEnabled === true, setId: plan.set.id, challengeId: plan.challenge.id,
             setName: plan.set.name, maxRating: plan.policy.maxRating, selectedCount: plan.selected.length,
-            ratings: plan.selected.map(item => item.rating), packId: baseline.packId, packCount: baseline.count };
+            ratings: plan.selected.map(item => item.rating),
+            selected: plan.selected.map(item => ({ slot: item.slot, rating: item.rating, pile: item.pile })),
+            requirements: plan.challenge.requirements.map(rule => ({ ...rule })),
+            packId: baseline.packId, packCount: baseline.count };
         } catch (error) { adapter.cancel(); throw error; }
       }) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
     }),

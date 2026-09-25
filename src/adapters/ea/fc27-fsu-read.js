@@ -44,6 +44,30 @@ export function readFc27RunnerPanel(root) {
   }
 }
 
+// Challenge discovery is intentionally independent from FSU readiness. A user can
+// inspect requirements before Club cache loading completes; only planning/submission
+// keeps the existing FSU and exact-inventory gates.
+export function readFc27ChallengeTargets(root) {
+  try {
+    readFc27Context(root);
+    const sets = ownData(ownData(ownData(ownData(root, 'services'), 'SBC'), 'repository'), 'sets');
+    const collection = ownData(sets, '_collection');
+    if (!collection || typeof collection !== 'object') throw new Error();
+    const keys = Object.getOwnPropertyNames(collection);
+    if (keys.length > 500) throw new Error();
+    const targets = keys.map(key => {
+      const set = ownData(collection, key);
+      const setId = ownData(set, 'id');
+      const name = ownData(set, 'name');
+      if (!Number.isSafeInteger(setId) || setId <= 0 || setId >= 1e9 || typeof name !== 'string'
+          || !name.trim() || name.length > 160 || /[\u0000-\u001f]/.test(name)) throw new Error();
+      return { setId, name };
+    });
+    if (new Set(targets.map(target => target.setId)).size !== targets.length) throw new Error();
+    return targets;
+  } catch { return []; }
+}
+
 // Diagnostic projection only: do not invoke FSU methods, expose identities or promote cached inventory.
 export function inspectFc27RunnerInputs(root) {
   const report = { schema: 1, status: 'blocked', reason: 'FC27_CONTEXT_UNAVAILABLE',

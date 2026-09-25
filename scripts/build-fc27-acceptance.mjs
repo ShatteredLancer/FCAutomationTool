@@ -11,7 +11,7 @@ export const FC27_TRANSACTION_INPUTS = Object.freeze([
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-sbc-contract.js', 'src/adapters/ea/fc27-sbc-read.js',
     'src/adapters/ea/fc27-traditional-provider.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/adapters/ea/fc27-transaction-transport.js', 'src/domain/contracts.js', 'src/domain/player-rarity.js',
-    'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-journal.js',
+    'src/fc27/prelaunch-contract.js', 'src/fc27/sbc-presentation.js', 'src/fc27/traditional-journal.js',
     'src/fc27/traditional-lock.js', 'src/fc27/traditional-preview.js', 'src/fc27/traditional-transaction.js',
     'src/sbc/submit-attempt.js',
 ]);

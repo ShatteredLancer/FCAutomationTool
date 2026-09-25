@@ -20,10 +20,17 @@ export async function exerciseProductionLivePanel(context, directory) {
     });
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.evaluate(() => {
-      const state = globalThis.livePanelSmoke = { prepares: 0, executions: [], shortage: false, finish: null };
+      const state = globalThis.livePanelSmoke = { prepares: 0, catalogReads: 0, executions: [], shortage: false, finish: null };
       const mount = liveEnabled => globalThis.LivePanelSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'live-smoke', title: 'FC Automation Tool', liveEnabled,
         targets: () => [{ setId: 4, name: 'Synthetic upgrade' }],
+        inspectCatalog: async ({ setId }) => {
+          state.catalogReads++;
+          return { status: 'observed', reason: 'FC27_CHALLENGE_CATALOG_READ', setId, setName: 'Synthetic upgrade',
+            challenges: [{ id: 16, name: 'Synthetic upgrade', status: 'IN_PROGRESS', eligibilityOperation: 'AND', requirements: [
+              { count: -1, scope: 2, pairs: [{ key: 3, values: [1] }] },
+            ] }] };
+        },
         prepare: async ({ setId, maxRating }) => {
           state.prepares++;
           return state.shortage ? { status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE' }
@@ -44,6 +51,10 @@ export async function exerciseProductionLivePanel(context, directory) {
     await host.locator('summary').click();
     assert.equal(await button('execute').isDisabled(), true);
     assert.equal(await button('status').innerText(), 'Live: single SBC');
+    await button('catalog').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.catalogReads), 1);
+    assert.match(await host.locator('#requirements').innerText(), /All players/);
     await button('prepare').evaluate(node => node.click());
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.prepares), 0);
     const prepare = async () => {

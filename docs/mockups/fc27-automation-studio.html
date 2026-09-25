@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FC Automation Tool — FC27 离线界面原型</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0e14;
+      --panel: #111823;
+      --panel-2: #172131;
+      --line: #273449;
+      --text: #e8eef8;
+      --muted: #8f9caf;
+      --blue: #6ca8ff;
+      --green: #4bd19a;
+      --amber: #f3bd63;
+      --red: #ff7f87;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .25);
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 75% -20%, #19315d 0, transparent 38%), var(--bg); color: var(--text); }
+    button, input, select { font: inherit; }
+    button { border: 0; cursor: pointer; color: inherit; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 228px minmax(0, 1fr); }
+    .sidebar { padding: 22px 14px; border-right: 1px solid var(--line); background: rgba(10, 14, 20, .78); }
+    .brand { display: flex; gap: 10px; align-items: center; padding: 0 10px 24px; }
+    .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(145deg, #6ca8ff, #8a6cff); font-weight: 800; }
+    .brand strong { display: block; letter-spacing: -.02em; }
+    .brand small { color: var(--muted); font-size: 11px; }
+    .nav { display: grid; gap: 6px; }
+    .nav button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border-radius: 10px; background: transparent; color: var(--muted); text-align: left; }
+    .nav button:hover, .nav button.active { background: #1a2638; color: var(--text); }
+    .nav .icon { width: 20px; color: var(--blue); text-align: center; }
+    .demo-note { padding: 9px 12px; margin-bottom: 16px; border: 1px solid #3b5273; border-radius: 9px; color: #b7ceee; background: #142238; font-size: 12px; }
+    .pitch { margin-top: 14px; padding: 16px; border: 1px solid #326a58; border-radius: 12px; background: repeating-linear-gradient(0deg, #122d28, #122d28 56px, #15352e 56px, #15352e 112px); }
+    .pitch-row { display: flex; justify-content: space-evenly; gap: 8px; margin: 10px 0; }
+    .player { width: 65px; padding: 7px 4px; border: 1px solid #997e40; border-radius: 8px; background: #322f20; text-align: center; font-size: 12px; }
+    .player b, .player small { display: block; }
+    .player b { font-size: 20px; color: #ead294; }
+    .checklist { display: grid; gap: 6px; margin-top: 14px; }
+    details { margin-top: 12px; }
+    summary { cursor: pointer; color: var(--muted); }
+    button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .side-note { margin: 26px 8px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; }
+    .side-note b { display: block; color: var(--green); margin-bottom: 3px; }
+    .main { min-width: 0; padding: 18px 24px 38px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 20px; }
+    .crumb { color: var(--muted); font-size: 13px; }
+    .crumb strong { color: var(--text); font-size: 18px; margin-right: 8px; }
+    .top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; }
+    .badge.live { color: var(--amber); border-color: #6d4e27; background: #251b0d; }
+    .badge.ready { color: var(--green); border-color: #285b48; background: #0d261e; }
+    .btn { padding: 9px 13px; border-radius: 9px; background: #223149; color: var(--text); }
+    .btn:hover { background: #2b405f; }
+    .btn.primary { background: var(--blue); color: #08111f; font-weight: 700; }
+    .btn.primary:hover { background: #8abaff; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); }
+    .btn.danger { color: var(--red); border: 1px solid #69333d; background: transparent; }
+    .btn:disabled { cursor: not-allowed; opacity: .45; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .grid { display: grid; gap: 14px; }
+    .grid.two { grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg, rgba(23, 33, 49, .96), rgba(17, 24, 35, .96)); box-shadow: var(--shadow); }
+    .card.flat { box-shadow: none; }
+    .card h2, .card h3 { margin: 0 0 5px; letter-spacing: -.02em; }
+    .card h2 { font-size: 19px; }
+    .card h3 { font-size: 15px; }
+    .subtle { color: var(--muted); }
+    .section-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+    .tabs { display: flex; gap: 6px; margin: 0 0 15px; padding-bottom: 2px; overflow-x: auto; }
+    .tabs button { padding: 8px 11px; white-space: nowrap; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); }
+    .tabs button.active { border-color: var(--blue); color: var(--text); }
+    .challenge { display: grid; grid-template-columns: 1fr auto; gap: 13px; align-items: center; padding: 14px; border: 1px solid #30405a; border-radius: 12px; background: #131e2d; }
+    .challenge + .challenge { margin-top: 9px; }
+    .challenge .title { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+    .challenge .meta { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    .dot.amber { background: var(--amber); }
+    .plan-summary { margin-top: 14px; padding: 13px; border-radius: 11px; background: #0e1623; border: 1px dashed #35445d; }
+    .plan-summary .row, .kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
+    .plan-summary .row + .row, .kv + .kv { border-top: 1px solid #202d40; }
+    .value { color: var(--text); font-weight: 650; text-align: right; }
+    .good { color: var(--green); }
+    .warn { color: var(--amber); }
+    .bad { color: var(--red); }
+    .flow { display: flex; gap: 5px; align-items: center; margin: 15px 0; }
+    .flow-step { flex: 1; padding: 8px 6px; text-align: center; border-radius: 8px; background: #1a2638; color: var(--muted); font-size: 12px; }
+    .flow-step.done { color: var(--green); background: #123128; }
+    .flow-step.current { color: var(--text); border: 1px solid var(--blue); }
+    .flow-arrow { color: var(--muted); }
+    .split { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .guard-list { display: grid; gap: 8px; margin-top: 11px; }
+    .guard { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); font-size: 12px; }
+    .guard i { font-style: normal; color: var(--green); }
+    .guard.block i { color: var(--amber); }
+    .metric { padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #131d2b; }
+    .metric .number { margin-top: 5px; font-size: 25px; font-weight: 750; }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .collection { min-height: 126px; padding: 15px; border-radius: 12px; background: linear-gradient(145deg, #192a43, #152030); border: 1px solid #2c466a; }
+    .collection .score { margin: 11px 0 2px; font-size: 25px; font-weight: 750; }
+    .progress { height: 7px; margin: 10px 0 5px; overflow: hidden; border-radius: 99px; background: #0b111a; }
+    .progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--green)); }
+    table { width: 100%; border-collapse: collapse; }
+    .table-wrap { overflow-x: auto; }
+    th, td { padding: 11px 8px; border-bottom: 1px solid #223047; text-align: left; }
+    th { color: var(--muted); font-size: 12px; font-weight: 500; }
+    td:last-child, th:last-child { text-align: right; }
+    .pill { display: inline-block; padding: 3px 7px; border-radius: 999px; background: #1b2a40; color: var(--muted); font-size: 11px; }
+    .pill.green { background: #123128; color: var(--green); }
+    .pill.amber { background: #332717; color: var(--amber); }
+    .market-search { display: grid; grid-template-columns: 1fr 150px auto; gap: 8px; margin-bottom: 15px; }
+    input, select { min-width: 0; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; background: #0d1521; color: var(--text); outline: none; }
+    input:focus, select:focus { border-color: var(--blue); }
+    .job { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 13px 0; border-bottom: 1px solid #223047; }
+    .job:last-child { border-bottom: 0; }
+    .job strong { display: block; }
+    .job small { color: var(--muted); }
+    .toggle { width: 38px; height: 22px; padding: 3px; border-radius: 99px; background: #2c394c; }
+    .toggle span { display: block; width: 16px; height: 16px; border-radius: 50%; background: #94a1b5; transition: transform .2s; }
+    .toggle.on { background: #217154; }
+    .toggle.on span { transform: translateX(16px); background: #d8fff0; }
+    .timeline { display: grid; gap: 0; }
+    .event { display: grid; grid-template-columns: 72px 14px 1fr; gap: 9px; padding: 10px 0; }
+    .event time { color: var(--muted); font-size: 12px; }
+    .event .line { position: relative; display: flex; justify-content: center; }
+    .event .line::before { content: ""; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--blue); z-index: 1; }
+    .event .line::after { content: ""; position: absolute; top: 13px; bottom: -13px; width: 1px; background: #2e3c54; }
+    .event:last-child .line::after { display: none; }
+    .event strong { display: block; font-size: 13px; }
+    .event small { color: var(--muted); }
+    .notice { padding: 11px 13px; border-radius: 10px; background: #211b11; border: 1px solid #5b4524; color: #eacb8f; font-size: 12px; }
+    .empty { padding: 45px 12px; text-align: center; color: var(--muted); }
+    dialog { width: min(680px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); overflow-y: auto; }
+    dialog::backdrop { background: #030711cc; }
+    dialog h2 { margin: 0 0 8px; }
+    .order-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .order-fields label { min-width: 0; color: var(--muted); font-size: 12px; }
+    .order-fields input, .order-fields select { display: block; margin-top: 4px; }
+    .order-summary { white-space: pre-line; overflow-wrap: anywhere; }
+    .status-message { min-height: 20px; color: var(--green); margin-top: 12px; }
+    @media (max-width: 920px) {
+      .app { grid-template-columns: 74px minmax(0, 1fr); }
+      .sidebar { padding: 16px 9px; }
+      .brand { justify-content: center; padding: 0 0 18px; }
+      .brand > div:not(.brand-mark), .nav button span:not(.icon), .side-note { display: none; }
+      .nav button { justify-content: center; padding: 12px 8px; }
+      .main { padding: 15px; }
+      .grid.two { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .app { display: block; padding-bottom: 73px; }
+      .sidebar { position: fixed; inset: auto 0 0; z-index: 5; height: 62px; padding: 5px; border: 0; border-top: 1px solid var(--line); background: #0e1520; }
+      .brand { display: none; }
+      .nav { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); height: 100%; gap: 3px; }
+      .nav button { padding: 5px 2px; border-radius: 8px; flex-direction: column; gap: 1px; font-size: 10px; }
+      .nav button span:not(.icon) { display: block; font-size: 10px; }
+      .nav .icon { font-size: 16px; }
+      .main { padding: 12px 10px 25px; }
+      .topbar { align-items: flex-start; flex-direction: column; margin-bottom: 14px; }
+      .top-actions { justify-content: flex-start; }
+      .grid.three { grid-template-columns: 1fr 1fr; }
+      .challenge { grid-template-columns: 1fr; }
+      .market-search { grid-template-columns: 1fr 1fr; }
+      .market-search input { grid-column: 1 / -1; }
+      .job { grid-template-columns: 1fr auto; }
+      .job .pill { grid-column: 1; }
+      .flow-arrow { display: none; }
+      .flow { display: grid; grid-template-columns: 1fr; }
+      table { min-width: 440px; }
+      .section-head { flex-wrap: wrap; }
+      .section-head select { max-width: 160px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">FA</div><div><strong>FC Automation Tool</strong><small>FC27 · 工作台原型</small></div></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="active" data-view="sbc"><span class="icon">▦</span><span>SBC</span></button>
+        <button data-view="gallery"><span class="icon">◇</span><span>图鉴</span></button>
+        <button data-view="market"><span class="icon">↗</span><span>市场</span></button>
+        <button data-view="inventory"><span class="icon">□</span><span>库存</span></button>
+        <button data-view="automation"><span class="icon">◷</span><span>自动化</span></button>
+        <button data-view="activity"><span class="icon">≡</span><span>记录</span></button>
+      </nav>
+      <div class="side-note"><b>Live guard active</b>最终支持确认后的 SBC 提交、Gallery 采购和交易订单。本原型不连接账号，所有写操作只展示流程。</div>
+    </aside>
+
+    <main class="main">
+      <div class="demo-note">离线设计原型 · 全部数据均为示例，未连接账号。界面展示最终的“计划 → 确认 → 执行 → 对账”流程；按钮不会触碰 EA 账号。</div>
+      <header class="topbar">
+        <div class="crumb"><strong id="page-title">SBC Studio</strong><span id="page-subtitle">Puzzle、积分与受保护的单次计划</span></div>
+        <div class="top-actions"><span class="badge">FC27 · 演示</span><span class="badge">快照 2 分钟前 · 待复核</span><span class="badge live">未连接账号</span><button class="btn danger" disabled>停止</button></div>
+      </header>
+
+      <section class="view active" id="view-sbc">
+        <div class="tabs" role="tablist"><button class="active" data-tab="traditional">Traditional Puzzle</button><button data-tab="streamlined">Streamlined Points</button><button data-tab="legacy">Advanced / Legacy</button></div>
+        <div id="tab-traditional" class="tab-panel">
+          <div class="grid two">
+            <div class="card">
+              <div class="section-head"><div><h2>可解挑战</h2><div class="subtle">读取 EA Challenge 后，只列出合同完整的项目</div></div><button class="btn ghost" id="scan-challenges">重新读取</button></div>
+              <div class="challenge"><div><div class="title"><i class="dot"></i> 基础联赛挑战 · 示例</div><div class="meta">11 人 · 最低评分 75 · 化学 18 · 至少 3 个联赛 · 奖励：示例金包</div></div><span class="pill green">演示预览</span></div>
+              <div class="challenge"><div><div class="title"><i class="dot amber"></i> League & Nation Advanced</div><div class="meta">多阵 · chemistry · requirement matcher 尚未确认</div></div><span class="pill amber">Unsupported</span></div>
+              <div class="challenge"><div><div class="title"><i class="dot amber"></i> 84+ Player Pick</div><div class="meta">动态 eligibility group · 等待真实页面合同</div></div><span class="pill amber">只读</span></div>
+              <div class="button-row"><button class="btn primary" id="make-plan">生成解题计划</button><button class="btn ghost">过滤保护原因</button></div>
+              <div class="plan-summary"><div class="row"><span>选材范围</span><span class="value">仅不可交易普通卡</span></div><div class="row"><span>单卡上限 / 整阵超额上限</span><span class="value">83 / 目标 +1</span></div><div class="row"><span>求解目标</span><span class="value">仅用库存 · 减少材料浪费</span></div></div>
+            </div>
+            <div class="card" id="plan-card">
+              <div class="section-head"><div><h2>Plan Inspector</h2><div class="subtle">当前计划：尚未生成</div></div><span class="pill">Snapshot v—</span></div>
+              <div class="empty">点击生成解题计划，查看阵型、逐条达标情况、消耗摘要和执行门禁。</div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px"><div class="section-head"><div><h3>执行门禁</h3><div class="subtle">计划、fresh 校验、用户确认和实际执行分开显示</div></div><span class="badge">默认保护开启</span></div><div class="flow"><div class="flow-step done">1 · 读取合同</div><span class="flow-arrow">›</span><div class="flow-step current">2 · Preview</div><span class="flow-arrow">›</span><div class="flow-step">3 · Confirm once</div><span class="flow-arrow">›</span><div class="flow-step">4 · 填阵/提交</div><span class="flow-arrow">›</span><div class="flow-step">5 · 对账</div></div><div class="notice">连接真实账号后，确认按钮会执行一次已复核的填阵、保存和提交；任何快照变化、保护冲突或回执不明都会停止并要求重新规划。</div></div>
+        </div>
+        <div id="tab-streamlined" class="tab-panel" hidden>
+          <div class="grid two"><div class="card"><h2>Streamlined Points</h2><p class="subtle">积分贡献不使用 11 人阵容语义。页面合同未确认前只展示占位状态。</p><div class="metric"><div class="label">当前 Challenge</div><div class="number">—</div><div class="subtle">未发现权威 points source</div></div><div class="button-row"><button class="btn primary" disabled>读取积分合同</button><button class="btn ghost">导出诊断</button></div></div><div class="card"><h3>为什么停在只读</h3><div class="guard-list"><div class="guard block"><i>!</i><span>积分值、资格组或批次限制未知</span></div><div class="guard block"><i>!</i><span>部分贡献后的 receipt 和奖励身份未知</span></div><div class="guard"><i>✓</i><span>已准备好显示后续 2–3 批的保守预算</span></div></div></div></div>
+        </div>
+        <div id="tab-legacy" class="tab-panel" hidden><div class="card"><h2>Advanced / Legacy</h2><p class="subtle">FC26 Rolling、Swap、Provisions、Storage sink 和旧 Builder 已归档，不会从 FC27 默认入口加载。</p><div class="notice">为了连续运行而放宽评分、特殊卡或容量保护的旧路径不会在这里恢复。</div></div></div>
+      </section>
+
+      <section class="view" id="view-gallery">
+        <div class="section-head"><div><h2>Gallery</h2><div class="subtle">集合、缺口和积分进度；采购项复用 Market Order 引擎</div></div><button class="btn ghost">刷新 Gallery</button></div>
+        <div class="grid three"><div class="collection"><div class="subtle">球员集合 A · 示例</div><div class="score">38 / 50</div><div class="progress"><span style="width:76%"></span></div><small class="subtle">缺少 12 张 · 非真实 Gallery 数据</small></div><div class="collection"><div class="subtle">球员集合 B · 示例</div><div class="score">74%</div><div class="progress"><span style="width:74%"></span></div><small class="subtle">等级/积分规则待真实页面验证</small></div><div class="collection"><div class="subtle">球员集合 C · 示例</div><div class="score">12 / 30</div><div class="progress"><span style="width:40%"></span></div><small class="subtle">身份和可购买性分别检查</small></div></div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="card"><div class="section-head"><div><h3>缺口明细 · 示例三项</h3><div class="subtle">已收集、在 Club、可购买和未知分别统计</div></div></div><table><thead><tr><th>球员 / 版本</th><th>来源</th><th>示例报价</th><th>操作</th></tr></thead><tbody><tr><td>Rare Gold · 78 OVR</td><td><span class="pill amber">缺失</span></td><td>650</td><td><button class="btn ghost" data-order-origin="gallery" data-order-mode="now">采购此球员</button></td></tr><tr><td>Common Gold · 79 OVR</td><td><span class="pill green">Club 已有</span></td><td>不再购买</td><td><button class="btn ghost" disabled>待收集回读</button></td></tr><tr><td>Holographic variant</td><td><span class="pill amber">身份未知</span></td><td>—</td><td><button class="btn ghost" disabled>排除采购</button></td></tr></tbody></table></div>
+          <div class="card"><h3>Collection Plan</h3><p class="subtle">在本页确认采购，不必切换工作区。底层共用 Market 订单和 Automation 调度。</p><div class="plan-summary"><div class="row"><span>已在 Club / 可采购 / 未知</span><span class="value">1 / 1 / 1</span></div><div class="row"><span>本次买入</span><span class="value">Rare Gold 78 × 1</span></div><div class="row"><span>示例预计花费</span><span class="value">650 硬币</span></div><div class="row"><span>用途预约</span><span class="value good">收集回读前禁止卖出/用于 SBC</span></div></div><div class="button-row"><button class="btn primary" id="gallery-buy" data-order-origin="gallery" data-order-mode="now">立即采购</button><button class="btn ghost" id="gallery-schedule" data-order-origin="gallery" data-order-mode="interval">定时采购</button></div><div class="status-message" id="gallery-status" role="status">未知项不计入可采购数或预计成本。</div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-market">
+        <div class="section-head"><div><h2>Market</h2><div class="subtle">价格比较、订单计划、手动买卖和定时策略</div></div><span class="badge live">演示：未连接账号</span></div>
+        <div class="card"><div class="market-search"><input value="Rare Gold 78" aria-label="搜索卡片"><select aria-label="平台"><option>Console</option><option>PC</option></select><button class="btn primary" disabled>实时报价 · 未连接</button></div><table><thead><tr><th>球员 / 版本</th><th>买入参考</th><th>挂牌参考</th><th>价格状态</th><th>操作</th></tr></thead><tbody><tr><td><b>Rare Gold 78</b><br><small class="subtle">demo-definition-78 · 普通稀有金</small></td><td>650</td><td>700 / 750</td><td><span class="pill">演示报价 · 非实时</span></td><td><button class="btn ghost" data-order-origin="market" data-order-mode="now">买入计划</button></td></tr><tr><td><b>Holographic variant</b><br><small class="subtle">版本身份未确认</small></td><td>—</td><td>—</td><td><span class="pill amber">禁止下单</span></td><td><button class="btn ghost" disabled>等待验证</button></td></tr></tbody></table></div>
+        <div class="grid two" style="margin-top:14px"><div class="card"><h3>订单与买卖策略</h3><p class="subtle">设置买什么、卖什么、价格、总数量和预算；立即执行或交给 Automation 定时运行。</p><div class="kv"><span>买入用途</span><span class="value">普通持有 / Gallery / SBC 补卡</span></div><div class="kv"><span>挂牌范围</span><span class="value">确切可交易实体 · 排除已预约材料</span></div><div class="button-row"><button class="btn primary" id="market-buy" data-order-origin="market" data-order-mode="now">配置买入订单</button><button class="btn ghost" id="market-sell" data-order-origin="market" data-order-mode="now" data-order-side="sell">配置挂牌订单</button><button class="btn ghost" id="market-schedule" data-order-origin="market" data-order-mode="once">创建定时买卖</button></div><div class="status-message" id="market-status" role="status"></div></div><div class="card"><h3>执行边界</h3><div class="guard-list"><div class="guard"><i>✓</i><span>策略批准一次，范围内自动执行；逐笔精确对账</span></div><div class="guard"><i>✓</i><span>余额/容量未知、限流或回执不明时暂停</span></div><div class="guard"><i>✓</i><span>Gallery/SBC 预约材料不被其它订单抢占</span></div><div class="guard block"><i>!</i><span>定时挂牌不保证成交；浏览器关闭/休眠不保证执行</span></div></div></div></div>
+      </section>
+
+      <section class="view" id="view-inventory">
+        <div class="section-head"><div><h2>Inventory</h2><div class="subtle">按真实 item ID 规划整理；所有移动先预览，再逐次确认</div></div><button class="btn ghost">刷新库存</button></div>
+        <div class="grid three"><div class="collection"><div class="subtle">Club</div><div class="score">41</div><small class="subtle">fresh · FSU provisional</small></div><div class="collection"><div class="subtle">Storage</div><div class="score">18 / 30</div><small class="subtle">容量已确认</small></div><div class="collection"><div class="subtle">Unassigned</div><div class="score">0</div><small class="subtle">没有待确认奖励</small></div></div>
+        <div class="grid two" style="margin-top:14px"><div class="card"><div class="section-head"><div><h3>整理建议</h3><div class="subtle">duplicate signal 只用于解析真实实体，不直接当作卡片</div></div><span class="pill green">只读计划</span></div><table><thead><tr><th>对象</th><th>当前</th><th>建议目标</th><th>保护</th></tr></thead><tbody><tr><td>Rare Gold 78 · item …8A2</td><td>Club</td><td>Storage</td><td><span class="pill green">安全</span></td></tr><tr><td>Unassigned duplicate · signal …19C</td><td>Unassigned</td><td>等待实体确认</td><td><span class="pill amber">阻断</span></td></tr><tr><td>Evolution 82 · item …C41</td><td>Club</td><td>保持 Club</td><td><span class="pill amber">Evolution</span></td></tr></tbody></table><div class="button-row"><button class="btn primary" disabled>生成移动计划</button><button class="btn ghost">查看保护规则</button></div></div><div class="card"><h3>Inventory guards</h3><div class="guard-list"><div class="guard"><i>✓</i><span>每次移动都绑定 item ID、definition ID 和目标 pile</span></div><div class="guard"><i>✓</i><span>FSU Lock、Active Squad、Evolution 和交易中卡片保留</span></div><div class="guard block"><i>!</i><span>容量未知、实体不完整或 Unassigned 未推进时停止</span></div></div></div></div>
+      </section>
+
+      <section class="view" id="view-automation">
+        <div class="section-head"><div><h2>Automation</h2><div class="subtle">Routine 编排、定时任务和恢复状态独立于 SBC 运行</div></div><button class="btn primary" disabled>New Routine</button></div>
+        <div class="card" style="margin-bottom:14px"><div class="section-head"><div><h3>Routine Builder</h3><div class="subtle">把已验证的步骤串成可恢复流程，每一步都有输入、输出和停止条件</div></div><span class="pill">Draft</span></div><div class="flow"><div class="flow-step done">读取库存</div><span class="flow-arrow">›</span><div class="flow-step current">生成 Puzzle 计划</div><span class="flow-arrow">›</span><div class="flow-step">用户确认</div><span class="flow-arrow">›</span><div class="flow-step">填阵并提交</div><span class="flow-arrow">›</span><div class="flow-step">对账/恢复</div></div><div class="button-row"><button class="btn primary">预览 Routine</button><button class="btn ghost">管理步骤</button></div></div>
+         <div class="card"><div class="job"><div><strong>Gallery purchase order</strong><small>缺口采购 · 下一次：按 Market 订单执行 · 买入后刷新 Gallery</small></div><span class="pill">待确认</span><button class="toggle" aria-label="关闭"><span></span></button></div><div class="job"><div><strong>Buy Rare Gold 78</strong><small>每 15 分钟 · 上限 2 张 · 硬币保留 100,000 · Market Order</small></div><span class="pill amber">Blocked · 未完成实机合同</span><button class="toggle" aria-label="关闭"><span></span></button></div><div class="job"><div><strong>Relist expired items</strong><small>Transfer only · 仅前台运行 · 0/0</small></div><span class="pill amber">Paused</span><button class="toggle" aria-label="关闭"><span></span></button></div></div><div class="notice" style="margin-top:14px">定时买入/售出必须先通过单张手动 mutation、重启恢复和精确对账。Job 的暂停和 Kill switch 不会中断已经进入提交临界区的操作。</div>
+      </section>
+
+      <section class="view" id="view-activity">
+        <div class="section-head"><div><h2>Activity</h2><div class="subtle">所有工作区共用的脱敏审计时间线</div></div><button class="btn ghost">导出诊断</button></div>
+        <div class="card timeline"><div class="event"><time>刚刚</time><div class="line"></div><div><strong>FC27 能力状态已刷新</strong><small>Traditional ready · Streamlined unknown · Trade contract pending</small></div></div><div class="event"><time>2 分钟前</time><div class="line"></div><div><strong>Club snapshot v41</strong><small>fresh · FSU provisional · 未执行写操作</small></div></div><div class="event"><time>6 分钟前</time><div class="line"></div><div><strong>Gallery 缺口计划已生成</strong><small>3 个集合 · 2 个待采购 · 0 个已对账买入</small></div></div><div class="event"><time>今天</time><div class="line"></div><div><strong>Live guard 保持开启</strong><small>原型不连接账号；真实写操作仍需计划、确认和回执对账</small></div></div></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="order-dialog" aria-labelledby="order-title">
+    <form method="dialog" id="order-form">
+      <h2 id="order-title">订单确认</h2>
+      <p class="subtle" id="order-description">示例订单，不会连接 EA。</p>
+      <div class="order-fields">
+        <label>方向<select id="order-side"><option value="buy">Buy Now 买入</option><option value="sell">挂牌/重挂</option></select></label>
+        <label>执行方式<select id="order-mode"><option value="now">立即执行</option><option value="once">按时间执行一次</option><option value="interval">按间隔执行</option></select></label>
+        <label>最高买入价 / 最低卖价<input id="order-price" type="number" value="650" min="1" required></label>
+        <label>整个策略数量上限<input id="order-quantity" type="number" value="1" min="1" max="10" required></label>
+        <label>总预算上限<input id="order-budget" type="number" value="650" min="1" required></label>
+        <label>硬币保留<input id="order-reserve" type="number" value="100000" min="0" required></label>
+        <label>开始时间 · 本机时区<input id="order-start" type="datetime-local" required></label>
+        <label>策略有效至 · 本机时区<input id="order-until" type="datetime-local" required></label>
+        <label>查询间隔（分钟）<input id="order-interval" type="number" min="5" value="15" required></label>
+        <label>用途预约<select id="order-purpose"><option value="gallery">Gallery 收集回读前保留</option><option value="sbc">SBC 补卡，买入后重新规划</option><option value="holding">普通持有，允许后续挂牌</option></select></label>
+      </div>
+      <p class="notice order-summary" id="order-summary">订单范围和预算会在真实执行前再次校验。</p>
+      <div class="button-row"><button class="btn primary" value="confirm">确认并模拟执行</button><button class="btn ghost" value="cancel" formnovalidate>取消</button></div>
+    </form>
+  </dialog>
+  <script>
+    const titles = { sbc: ['SBC Studio', '解题计划、填阵、提交和对账'], gallery: ['Gallery', '收集目标、缺口采购和完成验证'], market: ['Market', '价格比较、订单和买卖策略'], inventory: ['Inventory', '库存快照、整理计划和保护规则'], automation: ['Automation', 'Routine 编排、定时任务和恢复状态'], activity: ['Activity', '所有工作区共用的脱敏审计时间线'] };
+    const setView = name => { document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.view === name)); document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${name}`)); document.querySelector('#page-title').textContent = titles[name][0]; document.querySelector('#page-subtitle').textContent = titles[name][1]; };
+    document.querySelectorAll('.nav button').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
+    document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === button)); document.querySelectorAll('.tab-panel').forEach(panel => panel.hidden = panel.id !== `tab-${button.dataset.tab}`); }));
+    document.querySelector('#make-plan').addEventListener('click', () => {
+      const rows = [['LW', 'ST', 'RW'], ['CM', 'CM', 'CM'], ['LB', 'CB', 'CB', 'RB'], ['GK']];
+      let item = 0;
+      const pitch = rows.map(row => `<div class="pitch-row">${row.map(position => `<div class="player"><b>76</b>${position}<small>演示卡 ${++item}</small></div>`).join('')}</div>`).join('');
+      document.querySelector('#plan-card').innerHTML = `<div class="section-head"><div><h2>阵容计划</h2><div class="subtle">基础联赛挑战 · 模拟数据；真实连接后沿同一计划执行</div></div><span class="pill green">可行解 · 非最优证明</span></div>
+        <div class="pitch" aria-label="4-3-3 模拟阵容">${pitch}</div>
+        <div class="checklist"><span class="good">✓ 人数 11/11 · 唯一 item / definition</span><span class="good">✓ 评分 76 ≥ 75 · 超额 +1 ≤ +1</span><span class="good">✓ 化学 21 ≥ 18 · 联赛 3 ≥ 3</span></div>
+        <div class="plan-summary"><div class="row"><span>材料来源</span><span class="value">Club 8 + Storage 3</span></div><div class="row"><span>只用库存 / 额外购买</span><span class="value good">是 / 0 硬币</span></div><div class="row"><span>库存估值</span><span class="value warn">未知 · 不称为最便宜</span></div><div class="row"><span>Lock / 现役保护</span><span class="value">沿用设置 · 默认关闭</span></div></div>
+        <details><summary>技术明细：快照、逐卡引用与保护</summary><p>示例 Snapshot v41；11 张稳定引用，特殊卡、Evolution、loan、concept 和交易中实体排除。保存前仍需按 item + definition 定向复核。</p></details>
+        <div class="button-row"><button class="btn primary demo-execute" data-action="fill">模拟：填阵并保存</button><button class="btn ghost demo-execute" data-action="submit">模拟：填阵并提交</button></div><div class="status-message" id="sbc-status" role="status"></div>`;
+      document.querySelectorAll('.demo-execute').forEach(button => button.addEventListener('click', () => {
+        const submitted = button.dataset.action === 'submit';
+        document.querySelector('#sbc-status').textContent = submitted ? '模拟完成：填阵 → 保存 → 提交 → 库存/奖励对账。未连接账号，没有消耗真实卡片。' : '模拟完成：填阵并保存；未提交。未连接账号，没有修改真实阵容。';
+        if (submitted) document.querySelectorAll('.demo-execute').forEach(action => action.disabled = true);
+      }));
+    });
+    const orderDialog = document.querySelector('#order-dialog');
+    const orderForm = document.querySelector('#order-form');
+    const field = name => document.querySelector(`#order-${name}`);
+    let orderSource = 'market';
+    const localMinute = value => {
+      const date = new Date(value);
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+    const updateOrder = () => {
+      const selling = field('side').value === 'sell';
+      const scheduled = field('mode').value !== 'now';
+      field('side').disabled = orderSource === 'gallery';
+      field('purpose').disabled = orderSource === 'gallery' || selling;
+      field('quantity').max = orderSource === 'gallery' || selling ? '1' : '10';
+      if (Number(field('quantity').value) > Number(field('quantity').max)) field('quantity').value = field('quantity').max;
+      field('budget').disabled = selling;
+      field('reserve').disabled = selling;
+      field('start').disabled = !scheduled;
+      field('until').disabled = !scheduled;
+      field('interval').disabled = field('mode').value !== 'interval';
+      field('until').setCustomValidity(scheduled && field('until').value <= field('start').value ? '截止时间必须晚于开始时间。' : '');
+      field('budget').setCustomValidity(!selling && Number(field('budget').value) < Number(field('price').value) * Number(field('quantity').value) ? '示例预算须覆盖数量 × 单价上限。' : '');
+      field('title').textContent = selling ? '挂牌订单策略' : '买入订单策略';
+      const scope = selling ? '示例可交易实体 demo-item-78 × 1，未被其它任务预约' : `Rare Gold 78 × ${field('quantity').value}`;
+      const price = selling ? `最低挂牌 ${field('price').value}；实际报价须满足 EA 范围，成交不保证。` : `最高单价 ${field('price').value}，总预算 ${field('budget').value}，保留硬币 ${field('reserve').value}。`;
+      const time = !scheduled ? '立即一次。' : `${field('start').value} 至 ${field('until').value}（本机时区），${field('mode').value === 'interval' ? `每 ${field('interval').value} 分钟检查` : '只执行一次'}，数量为整个策略的累计上限。`;
+      const purpose = !selling && field('purpose').value === 'sbc' ? '\n补卡需要独立用途授权；Only Untradeable 策略冲突时不能买入并直接提交。' : '';
+      field('summary').textContent = `${scope}\n${price}\n${time}${purpose}\n一次批准范围内自动运行；原型只在内存演示，不发送 EA 请求。`;
+      orderForm.querySelector('[value="confirm"]').textContent = scheduled ? '确认并模拟创建任务' : '确认并模拟执行';
+    };
+    const openOrderDialog = button => {
+      orderForm.reset();
+      orderSource = button.dataset.orderOrigin || 'market';
+      field('side').value = button.dataset.orderSide || 'buy';
+      field('mode').value = button.dataset.orderMode || 'now';
+      field('purpose').value = orderSource === 'gallery' ? 'gallery' : 'holding';
+      field('price').value = field('side').value === 'sell' ? '750' : '650';
+      field('start').value = localMinute(Date.now() + 600000);
+      field('until').value = localMinute(Date.now() + 86400000);
+      field('description').textContent = orderSource === 'gallery' ? '来源：Gallery 缺口；买入后保留实体并重新读取收集状态。' : '来源：Market；可配置单次订单或有限的定时策略。';
+      updateOrder();
+      orderDialog.showModal();
+    };
+    document.querySelectorAll('[data-order-origin]').forEach(button => button.addEventListener('click', () => openOrderDialog(button)));
+    orderForm.addEventListener('input', updateOrder);
+    orderForm.addEventListener('change', updateOrder);
+    orderForm.addEventListener('submit', event => {
+      if (event.submitter?.value !== 'confirm') return;
+      event.preventDefault();
+      updateOrder();
+      if (!orderForm.reportValidity()) return;
+      orderDialog.close();
+      const scheduled = field('mode').value !== 'now';
+      const target = document.querySelector(`#${orderSource}-status`);
+      if (scheduled) {
+        const job = document.createElement('div');
+        job.className = 'card simulated-job';
+        job.style.marginTop = '14px';
+        const title = document.createElement('h3');
+        title.textContent = `${orderSource === 'gallery' ? 'Gallery' : 'Market'} · ${field('side').value === 'sell' ? '定时挂牌' : '定时买入'} · 模拟待执行`;
+        const description = document.createElement('p');
+        description.className = 'order-summary subtle';
+        description.textContent = field('summary').textContent;
+        job.append(title, description);
+        document.querySelector('#view-automation').append(job);
+        target.textContent = '已模拟创建有限策略，在“自动化”查看范围和时间。任务仅保留于本页内存，不会真正调度。';
+      } else {
+        target.textContent = orderSource === 'gallery' ? '模拟：买入 → 库存对账 → Gallery 回读。真实收集进度未改变。' : field('side').value === 'sell' ? '模拟：挂牌请求 → 回读确认挂牌。尚未成交，未产生真实订单。' : '模拟：Buy Now → 实体和余额对账。未产生真实订单。';
+      }
+    });
+    document.querySelector('#scan-challenges').addEventListener('click', event => { const button = event.currentTarget; const original = button.textContent; button.textContent = '读取中…'; button.disabled = true; setTimeout(() => { button.textContent = '已刷新'; button.disabled = false; setTimeout(() => button.textContent = original, 900); }, 500); });
+    document.querySelectorAll('table').forEach(table => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'table-wrap';
+      wrapper.tabIndex = 0;
+      wrapper.setAttribute('role', 'region');
+      wrapper.setAttribute('aria-label', '明细表，可横向滚动');
+      table.before(wrapper);
+      wrapper.append(table);
+    });
+  </script>
+</body>
+</html>
