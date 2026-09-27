@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFc27Production } from './build-fc27-production.mjs';
+import { assertFc27ProductionMetadata } from './fc27-build-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = (await readFile(path.join(root, 'src/fc27/production-entry.js'), 'utf8')).replace(/^\uFEFF/, '').replaceAll('\r\n', '\n');
@@ -50,7 +51,7 @@ const expectedFields = {
 for (const [key, expected] of Object.entries(expectedFields)) {
   if (metadataValue(key) !== expected) throw new Error(`userscript metadata @${key} is not production-ready`);
 }
-if (/^\/\/ @connect\s/m.test(builtMetadata)) throw new Error('FC27 preparation must not grant external network access');
+assertFc27ProductionMetadata(builtMetadata);
 const expected = await buildFc27Production();
 if (built !== expected.script) throw new Error('FC27 production output is stale or includes unreviewed modules');
 const manifest = JSON.parse(await readFile(path.join(root, 'dist/FCAutomationTool.manifest.json'), 'utf8'));

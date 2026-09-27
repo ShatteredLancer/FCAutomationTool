@@ -17,7 +17,7 @@ export function createFc27TransactionPersistence({ context, gmGetValue, gmSetVal
     // A timeout cannot cancel a dispatched GM write. Keep the native lock until it settles.
     finally { while (pendingWrites.size) await Promise.allSettled([...pendingWrites]); }
   });
-  return Object.freeze({ journal, exclusive, inspect: () => {
+  return Object.freeze({ lock, journal, exclusive, inspect: () => {
     const state = lock.inspect();
     return { storageAvailable: true, lockSupported: state.supported, active: state.active };
   } });

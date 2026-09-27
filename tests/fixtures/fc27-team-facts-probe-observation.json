@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "observedAt": "2026-09-26T05:04:53.593Z",
+  "evidence": "dedicated-browser-method-descriptors-and-public-source-comparison",
+  "status": "unverified",
+  "reason": "FC27_EA_TEAM_FACTS_UNVERIFIED",
+  "invoked": false,
+  "executable": false,
+  "liveExecutionEnabled": false,
+  "setId": 19,
+  "challengeId": 43,
+  "plan": { "selectedCount": 11, "presentCount": 11, "chemistry": 17, "teamRating": 68 },
+  "methods": [
+    { "path": "UTSquadEntity.prototype._calculateRating", "sha256": "398beb4841b2f7e08b46c8c556ee4be2e6d3ed991ec8adcbe0dbb13e467adc7e", "publicSourceMatches": true, "writesReceiver": true },
+    { "path": "UTSquadEntity.prototype.calculateChemistry", "sha256": "3955b92f4eaeade0eedd8354ce84ee8015db80adbcc850e1d5b53ffcc2322a86", "publicSourceMatches": true, "writesReceiver": true },
+    { "path": "UTSBCChallengeEntity.prototype.meetsRequirements", "sha256": "86450ce2af8209594e5f5ab3d6ab3222cf0cf1c53544efc8c03a6c643ee14ac2", "publicSourceMatches": true },
+    { "path": "UTSBCChallengeEntity.prototype.isRequirementMet", "sha256": "d8dcfe4ea78cbdcc899971855dd13db78fe9775da1537c70bd345b395ac5a31c", "publicSourceMatches": true },
+    { "path": "UTSquadEntity.prototype.getRating", "sha256": "8e12820d14ed9e2f50a53c2fa0d8a92ec6396f63d834cd78083584fa9fa52ee7", "publicSourceMatches": false, "localFsuSourceMatches": true },
+    { "path": "UTSquadChemCalculatorUtils.prototype.calculate", "sha256": "57c5ae711b073e0144e01ba7e8d4d475f0f96419c22155860f1b206918ea986e", "publicSourceMatches": true }
+  ],
+  "pending": ["EA_TEAM_FACTS_DIFFERENTIAL", "PUZZLE_FILL_TRANSACTION"]
+}

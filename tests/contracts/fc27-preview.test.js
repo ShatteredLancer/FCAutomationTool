@@ -10,8 +10,7 @@ describe('isolated FC27 preview', () => {
     const info = vi.fn();
     vm.runInNewContext(script, { unsafeWindow: {}, console: { info } });
     expect(info.mock.calls[0][1].runtime.liveExecutionEnabled).toBe(false);
-    expect(manifest.inputs).toHaveLength(14);
-    expect(manifest.bytes).toBeLessThan(90_000);
+    expect(manifest.bytes).toBe(Buffer.byteLength(script));
     expect(manifest.inputs).not.toContain('src/userscript-entry.js');
     expect(manifest.inputs).not.toContain('src/fc27/traditional-transaction.js');
     expect(manifest.inputs.some(name => /traditional-journal|traditional-lock|transaction-persistence/.test(name))).toBe(false);

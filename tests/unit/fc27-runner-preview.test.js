@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { previewFc27RunnerSquad } from '../../src/adapters/ea/fc27-fsu-read.js';
 import { inspectFc27ChallengeCatalog } from '../../src/adapters/ea/fc27-challenge-catalog.js';
 import { inspectInProgressSquad } from '../../src/adapters/ea/fc27-sbc-read.js';
+import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks } from '../../src/adapters/ea/fc27-puzzle-read.js';
 
 vi.mock('../../src/adapters/ea/fc27-challenge-catalog.js', () => ({ inspectFc27ChallengeCatalog: vi.fn() }));
 vi.mock('../../src/adapters/ea/fc27-sbc-read.js', () => ({ inspectInProgressSquad: vi.fn() }));
@@ -23,7 +24,7 @@ function fixture() {
     SBCEligibilityScope: { GREATER: 0, EXACT: 2 }, SBCEligibilityQualityType: { BRONZE: 1, SILVER: 2, GOLD: 3 },
     services: { User: { currentUserId: 901, repository: { _collection: { 901: user } } },
       SBC: { repository: { sets: { _collection: {} } }, saveChallenge: forbidden, submitChallenge: forbidden } },
-    repositories: { Item: { club: { items: { _collection: {
+    repositories: { TeamConfig: { teamLinks: new Map() }, Item: { club: { items: { _collection: {
       101: player, 102: { ...player, id: 102, definitionId: 202, _rating: 62 },
     } } } } },
     info: { base: { year: 27, initialized: true, state: false, clubCache: { status: 'trusted-provisional' } },
@@ -42,6 +43,76 @@ beforeEach(() => {
   vi.clearAllMocks();
   inspectFc27ChallengeCatalog.mockResolvedValue(catalog());
   inspectInProgressSquad.mockResolvedValue(layout());
+});
+
+it('uses a separate Puzzle read adapter without broadening the live contract or exporting item identities', async () => {
+  const { root, forbidden } = fixture();
+  root.SBCEligibilityScope.LOWER = 1;
+  const result = await inspectFc27PuzzlePlan(root, { setId: 4, challengeId: 16 });
+  expect(result).toMatchObject({ status: 'preview', liveExecutionEnabled: false, plan: { selectedCount: 2 } });
+  expect(JSON.stringify(result)).not.toMatch(/901|902|101|201|accountScope|definitionId/);
+  expect(forbidden).not.toHaveBeenCalled();
+  expect(inspectInProgressSquad).toHaveBeenCalledOnce();
+});
+
+it('does not initialize unstarted Puzzle challenges or accept changed enum meanings', async () => {
+  const { root, forbidden } = fixture(); root.SBCEligibilityScope.LOWER = 1;
+  const current = catalog(); current.challenges[0].status = 'NOT_STARTED';
+  inspectFc27ChallengeCatalog.mockResolvedValueOnce(current);
+  expect((await inspectFc27PuzzlePlan(root, { setId: 4, challengeId: 16 })).reason).toBe('FC27_IN_PROGRESS_PUZZLE_REQUIRED');
+  root.SBCEligibilityKey.PLAYER_QUALITY = 999;
+  expect((await inspectFc27PuzzlePlan(root, { setId: 4, challengeId: 16 })).reason).toBe('FC27_PUZZLE_ENUM_CHANGED');
+  expect(inspectInProgressSquad).not.toHaveBeenCalled(); expect(forbidden).not.toHaveBeenCalled();
+});
+
+it('reads complete linked-club maps through built-ins without invoking page-owned methods', () => {
+  const forbidden = vi.fn(); const teamLinks = new Map([[1111, 11]]); teamLinks.entries = forbidden;
+  const root = { repositories: { TeamConfig: { teamLinks } } };
+  const snapshot = readFc27PuzzleClubLinks(root);
+  expect(snapshot).toEqual({ schema: 1, complete: true, links: [[1111, 11]] });
+  teamLinks.set(2222, 22); expect(snapshot.links).toEqual([[1111, 11]]);
+  expect(forbidden).not.toHaveBeenCalled();
+  root.repositories.TeamConfig.teamLinks = {}; expect(readFc27PuzzleClubLinks(root)).toBeNull();
+});
+
+it('replays Marquee Matchups and requires explicit config before evaluating synthetic safe cards', async () => {
+  const observed = JSON.parse(readFileSync(new URL('../fixtures/fc27-puzzle-plan-observation.json', import.meta.url), 'utf8'));
+  const { root, player, forbidden } = fixture();
+  root.SBCEligibilityScope.LOWER = 1;
+  Object.assign(root.SBCEligibilityKey, { NATION_ID: 10, CLUB_COUNT: 9, PLAYER_LEVEL: 17, CHEMISTRY_POINTS: 35 });
+  root.repositories.TeamConfig = { teamLinks: new Map() };
+  root.repositories.Item.club.items._collection = Array.from({ length: 11 }, (_, i) => ({ ...player,
+    id: 101 + i, definitionId: 201 + i, _rating: i < 3 ? 70 : 60, nationId: 27, teamId: i + 1,
+    basePossiblePositions: [observed.layout.formation.positions[i]], groups: [] }));
+  inspectFc27ChallengeCatalog.mockResolvedValue({ status: 'observed', challenges: [{ id: observed.challengeId,
+    setId: observed.setId, status: observed.challengeStatus, eligibilityOperation: 'AND', requirements: observed.rawRequirements }] });
+  inspectInProgressSquad.mockResolvedValue({ status: 'observed', setId: observed.setId,
+    challengeId: observed.challengeId, ...observed.layout });
+  const target = { setId: observed.setId, challengeId: observed.challengeId };
+  const result = await inspectFc27PuzzlePlan(root, target);
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE' });
+  expect(result.rules).toBeUndefined();
+  expect(result.layout).toBeUndefined();
+  expect(forbidden).not.toHaveBeenCalled();
+  root.UTServerSettingsRepository = { KEY: { CHEMISTRY_PROFILES_ENABLED: 'chemistry',
+    SQUAD_RATING_FLOAT_CALCULATION_ENABLED: 'rating', SUPER_CHEM_RARITY_IDS: 'super' } };
+  root.services.Configuration = Object.create({ checkFeatureEnabled: () => true });
+  root.repositories.ServerSettings = Object.create({ getStringSettingByKey: () => '' });
+  root.UTItemEntity = { LEGENDS_CLUB_ID: 9001, LEGENDS_LEAGUE_ID: 9002, LEAGUE_HERO_CLUB_ID: 9003, HALL_OF_FUT_CLUB_ID: 9004 };
+  const runtime = JSON.parse(readFileSync(new URL('../fixtures/fc27-puzzle-runtime-observation.json', import.meta.url), 'utf8'));
+  root.repositories.Chemistry = { parameters: runtime.chemistryParameters, profiles: [{ id: 1,
+    maxChem: false, baseOverride: false, applicableRarityIds: [], rules: [1, 2, 3].map(parameterId =>
+      ({ parameterId, calculationType: 1, contribution: 1 })) }] };
+  const before = JSON.stringify(root);
+  const preview = await inspectFc27PuzzlePlan(root, target);
+  expect(preview).toMatchObject({ status: 'preview', reason: 'READ_ONLY_PLAN', liveExecutionEnabled: false,
+    configuration: { profilesEnabled: true, floatCalculationEnabled: true },
+    plan: { selectedCount: 11, teamFacts: { chemistry: 33, teamRating: 64 } } });
+  expect(preview.rules.map(rule => rule.kind)).toEqual(['from-nations', 'distinct-clubs', 'quality-count', 'min-quality', 'min-chemistry']);
+  expect(preview.layout.formation).toEqual(observed.layout.formation);
+  expect(JSON.stringify(root)).toBe(before);
+  expect(forbidden).not.toHaveBeenCalled();
+  expect(JSON.stringify(preview)).not.toMatch(/accountScope|definitionId/);
 });
 
 it('uses original FSU and a stricter temporary low-value policy without writes or full-inventory claims', async () => {

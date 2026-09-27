@@ -1,0 +1,401 @@
+{
+  "schema": 1,
+  "evidence": "sanitized-projected-response-not-raw-payload",
+  "observedAt": "2026-09-26T01:45:49.416Z",
+  "limitations": [
+    "NO_ACCOUNT_OR_AUCTION_IDENTITIES",
+    "SAMPLED_CATALOG_NOT_COMPLETE",
+    "NO_PURCHASE_OR_SBC_EXECUTION"
+  ],
+  "probe": {
+    "status": "observed",
+    "reason": "FC27_MARKET_SAMPLE_OBSERVED",
+    "catalog": {
+      "status": "observed",
+      "season": "27",
+      "source": "ea-defid",
+      "observedAt": 1790387150128,
+      "entries": [
+        {
+          "definitionId": 252509,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 37,
+          "leagueId": 66,
+          "teamId": 110206,
+          "positions": [
+            12,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 268065,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 133,
+          "leagueId": 1,
+          "teamId": 1516,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 71925,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 21,
+          "leagueId": 19,
+          "teamId": 10029,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 274528,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 34,
+          "leagueId": 10,
+          "teamId": 1906,
+          "positions": [
+            5,
+            10
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 77575,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 2216,
+          "teamId": 116011,
+          "positions": [
+            3,
+            12
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 79717,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 80,
+          "leagueId": 2218,
+          "teamId": 116036,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 259730,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 159,
+          "leagueId": 2149,
+          "teamId": 113146,
+          "positions": [
+            3,
+            5,
+            7,
+            10
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 70166,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 36,
+          "leagueId": 41,
+          "teamId": 112199,
+          "positions": [
+            10,
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 252878,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 14,
+          "leagueId": 60,
+          "teamId": 112764,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 271172,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 39,
+          "leagueId": 330,
+          "teamId": 310,
+          "positions": [
+            12,
+            14,
+            18,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 259993,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 20,
+          "teamId": 110329,
+          "positions": [
+            12,
+            14,
+            18,
+            23,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 216582,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 4,
+          "leagueId": 80,
+          "teamId": 113616,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 257165,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 37,
+          "leagueId": 66,
+          "teamId": 110749,
+          "positions": [
+            12,
+            16,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 268437,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 14,
+          "leagueId": 31,
+          "teamId": 111811,
+          "positions": [
+            12,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 239642,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 14,
+          "leagueId": 65,
+          "teamId": 423,
+          "positions": [
+            10,
+            14,
+            18,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 50412028,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 10,
+          "leagueId": 14,
+          "teamId": 1795,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 226652,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 167,
+          "leagueId": 83,
+          "teamId": 1473,
+          "positions": [
+            5,
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 83827,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 136,
+          "leagueId": 31,
+          "teamId": 1842,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 80731,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 48,
+          "leagueId": 68,
+          "teamId": 326,
+          "positions": [
+            3,
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 266438,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 21,
+          "leagueId": 2076,
+          "teamId": 531,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        }
+      ],
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "silver"
+      },
+      "complete": false,
+      "pageEndObserved": false
+    },
+    "quotes": [
+      {
+        "status": "observed",
+        "season": "27",
+        "platform": "PSN:FFA27PS5",
+        "definitionId": 252509,
+        "source": "ea-visible-buy-now",
+        "observedAt": 1790387150934,
+        "returned": 20,
+        "eligible": 20,
+        "price": 500,
+        "complete": false,
+        "executable": false,
+        "marketAvailabilityVerified": false
+      },
+      {
+        "status": "observed",
+        "season": "27",
+        "platform": "PSN:FFA27PS5",
+        "definitionId": 268065,
+        "source": "ea-visible-buy-now",
+        "observedAt": 1790387151727,
+        "returned": 20,
+        "eligible": 20,
+        "price": 850,
+        "complete": false,
+        "executable": false,
+        "marketAvailabilityVerified": false
+      },
+      {
+        "status": "observed",
+        "season": "27",
+        "platform": "PSN:FFA27PS5",
+        "definitionId": 71925,
+        "source": "ea-visible-buy-now",
+        "observedAt": 1790387152536,
+        "returned": 18,
+        "eligible": 18,
+        "price": 600,
+        "complete": false,
+        "executable": false,
+        "marketAvailabilityVerified": false
+      }
+    ],
+    "requests": 4,
+    "executable": false,
+    "liveExecutionEnabled": false
+  }
+}

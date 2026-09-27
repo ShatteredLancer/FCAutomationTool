@@ -39,19 +39,25 @@ export async function createFc27TransactionTransport(root, { canWrite = () => fa
     if (stopped || JSON.stringify(context) !== JSON.stringify(readFc27Context(root))
         || at(root, 'services.SBC.sbcDAO.authDelegate') !== auth) return fail('FC27_TRANSACTION_CONTEXT_CHANGED');
   };
-  async function request(action, target = {}) {
+  async function request(action, target = {}, beforeDispatch = null) {
     if (busy || stopped) return fail('FC27_TRANSACTION_TRANSPORT_BLOCKED');
     const id = target.challengeId;
     const mutation = action === 'save' || action === 'submit';
     if (!['unassigned', 'packs', 'save', 'submit'].includes(action)
         || mutation && (!Number.isSafeInteger(id) || id <= 0 || canWrite() !== true)) return fail('FC27_LIVE_DISABLED');
-    if (action === 'save' && (!Array.isArray(target.players) || target.players.length < 11 || target.players.length > 32
-        || new Set(target.players.map(player => player.index)).size !== target.players.length
-        || new Set(target.players.slice(0, 11).map(player => player.itemData?.id)).size !== 11
-        || target.players.some((player, index) => player.index !== index
-          || !Number.isSafeInteger(player.itemData?.id) || (index < 11 ? player.itemData.id < 1 : ![0, -1].includes(player.itemData.id))
-          || player.itemData.dream !== false))) {
-      return fail('FC27_SAVE_INPUT_UNVERIFIED');
+    if (action === 'save') {
+      // Only explicitly declared, provider-verified simple bricks may be empty
+      // on the pitch. Existing traditional callers still require eleven players.
+      const bricks = target.simpleBrickIndices === undefined ? [] : target.simpleBrickIndices;
+      if (!Array.isArray(bricks) || bricks.length >= 11 || new Set(bricks).size !== bricks.length
+          || bricks.some(index => !Number.isInteger(index) || index < 0 || index >= 11)
+          || !Array.isArray(target.players) || target.players.length < 11 || target.players.length > 32
+          || new Set(target.players.slice(0, 11).filter((_, index) => !bricks.includes(index))
+            .map(player => player?.itemData?.id)).size !== 11 - bricks.length
+          || target.players.some((player, index) => player?.index !== index
+            || !Number.isSafeInteger(player?.itemData?.id)
+            || (index < 11 && !bricks.includes(index) ? player.itemData.id < 1 : ![0, -1].includes(player.itemData.id))
+            || player.itemData.dream !== false)) return fail('FC27_SAVE_INPUT_UNVERIFIED');
     }
     busy = true;
     try {
@@ -75,6 +81,13 @@ export async function createFc27TransactionTransport(root, { canWrite = () => fa
         itemData: { id: player.itemData.id, dream: false } })) });
       // This DAO argument is always false. Never inherit the account's skip setting.
       if (action === 'submit') { url.searchParams.set('skipUserSquadValidation', 'false'); req.url = url.href; }
+      // All network/body/layout preflight has finished. A Puzzle caller now
+      // persists its write-ahead record, before this request can be sent.
+      if (beforeDispatch !== null) {
+        if (action !== 'save' || typeof beforeDispatch !== 'function') return fail('FC27_SAVE_INPUT_UNVERIFIED');
+        await beforeDispatch();
+        assert();
+      }
       last = Date.now();
       return await new Promise((resolve, reject) => {
         const owner = {}; let done = false;

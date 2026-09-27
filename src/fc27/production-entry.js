@@ -19,6 +19,8 @@
 import { createFc27AcceptanceSession, checkFc27GmInstallation } from '../adapters/browser/fc27-acceptance-session.js';
 import { mountFc27AcceptancePanel } from '../adapters/browser/fc27-acceptance-panel.js';
 import { readFc27ChallengeTargets } from '../adapters/ea/fc27-fsu-read.js';
+import { mountFc27PuzzleNativeButton } from '../adapters/browser/fc27-puzzle-native-button.js';
+import { readFc27PuzzlePage } from '../adapters/ea/fc27-puzzle-page.js';
 
 // A new Tampermonkey identity: no legacy or Acceptance storage migration.
 const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
@@ -30,7 +32,15 @@ mountFc27AcceptancePanel({ document: unsafeWindow.document,
   liveEnabled: dependencies.liveEnabled,
   targets: () => readFc27ChallengeTargets(unsafeWindow),
   inspectCatalog: options => current().inspectCatalog(options),
+  inspectPuzzle: options => current().inspectPuzzle(options),
+  inspectPuzzlePolicy: () => current().inspectPuzzlePolicy(),
+  setPuzzleMaxRating: value => current().setPuzzleMaxRating(value),
   prepare: options => current().prepare(options), execute: approval => current().execute(approval),
+  fillPuzzle: approval => current().fillPuzzle(approval),
   inspectRecovery: () => current().inspectRecovery(), resolveRecovery: approved => current().resolveRecovery(approved),
   checkInstallation: hold => checkFc27GmInstallation({ ...dependencies, hold }),
+});
+mountFc27PuzzleNativeButton({ document: unsafeWindow.document,
+  onFill: (target, callbacks) => current().solveAndFillPuzzle(target, callbacks),
+  readTarget: () => readFc27PuzzlePage(unsafeWindow),
 });

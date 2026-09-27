@@ -96,7 +96,8 @@ it('reads the selected Challenge catalog through the session without initializin
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
   expect(x.calls.some(call => call.kind === 'squad')).toBe(false);
   expect(JSON.stringify(x.root.services.SBC.repository.sets._collection)).toBe(before);
-  expect(store.gmSetValue).not.toHaveBeenCalled();
+  expect(store.gmSetValue).toHaveBeenCalledTimes(2);
+  expect([...store.values.keys()].some(key => key.includes('fcat-fc27-puzzle-catalog:'))).toBe(true);
 });
 
 it('shows unstarted challenges without FSU while refusing to prepare or initialize them', async () => {
@@ -108,7 +109,8 @@ it('shows unstarted challenges without FSU while refusing to prepare or initiali
   const pending = session.prepare({ setId: 4, maxRating: 74 }); await vi.runAllTimersAsync();
   expect((await pending).status).toBe('blocked');
   expect(x.calls.some(call => call.kind === 'squad' || call.method === 'PUT')).toBe(false);
-  expect(store.gmSetValue).not.toHaveBeenCalled();
+  expect(store.gmSetValue).toHaveBeenCalledTimes(2);
+  expect([...store.values.keys()].some(key => key.includes('fcat-fc27-puzzle-catalog:'))).toBe(true);
 });
 
 it('rejects invalid cached target identities without invoking hidden getters or FSU', () => {

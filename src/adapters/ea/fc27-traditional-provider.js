@@ -4,6 +4,8 @@ import { readFc27RunnerPolicy } from './fc27-fsu-read.js';
 import { readFc27SbcContract } from './fc27-sbc-contract.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27TransactionTransport, verifyFc27Methods } from './fc27-transaction-transport.js';
+import { projectFc27PuzzleLayout, assertFc27PuzzleLayout } from './fc27-puzzle-layout.js';
+import { synchronizeFc27PuzzleSquad } from './fc27-puzzle-page.js';
 
 const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -94,6 +96,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
   }));
   let lastRead = -Infinity;
   let stopped = false;
+  let savedRead = null;
   const assert = () => {
     if (stopped || !same(context, readFc27Context(root)) || at(root, 'services.SBC.sbcDAO') !== dao
         || Object.keys(functions).some(key => dao[key] !== functions[key])) return fail('FC27_TRANSACTION_CONTEXT_CHANGED');
@@ -203,45 +206,98 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
         items: cached.items.map(protectedItem) } };
     },
     readInputs,
-    async validateItems(plan) { return { context, fresh: true, items: await freshRefs(plan.selected) }; },
-    async readRewardBaseline(plan) { return { context, fresh: true, packId: plan.rewards[0].value, count: await rewardCount(plan.rewards[0]) }; },
-    async save(plan) {
-      assert();
-      if (canWrite() !== true || plan.challenge.brickIndices.length) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+    async validateItems(plan) {
+      const items = await freshRefs(plan.selected);
+      return { context, fresh: true, observedAt: Date.now(), items };
+    },
+    assertCurrent() { assert(); return true; },
+    async readSquadState(plan) {
       const loaded = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
       const slots = ownData(loaded, '_players');
+      if (plan.kind === 'puzzle-fill') assertFc27PuzzleLayout(plan, projectFc27PuzzleLayout(root, loaded,
+        { setId: plan.challenge.setId, challengeId: plan.challenge.id }));
       if (!Array.isArray(slots) || slots.length < 11 || slots.length > 32
-          || !same(ownData(loaded, 'simpleBrickIndices'), []) || !same(ownData(loaded, 'customBrickIndices'), [])) {
+          || !same(ownData(loaded, 'simpleBrickIndices'), ['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind)
+            ? plan.challenge.brickIndices : []) || !same(ownData(loaded, 'customBrickIndices'), [])) {
+        return fail('FC27_SQUAD_STATE_UNVERIFIED');
+      }
+      const ids = slots.map(slot => ownData(ownData(slot, '_item'), 'id'));
+      if (ids.some((id, index) => !Number.isSafeInteger(id) || ownData(slots[index], 'index') !== index
+          || (index >= 11 || plan.challenge.brickIndices.includes(index)) && ![0, -1].includes(id))) return fail('FC27_SQUAD_STATE_UNVERIFIED');
+      return { context, fresh: true, observedAt: Date.now(), setId: plan.challenge.setId,
+        challengeId: plan.challenge.id, squadEmpty: ids.every(id => id === 0 || id === -1),
+        ...(plan.kind === 'puzzle-fill' ? { layout: projectFc27PuzzleLayout(root, loaded,
+          { setId: plan.challenge.setId, challengeId: plan.challenge.id }) } : {}) };
+    },
+    async readRewardBaseline(plan) { return { context, fresh: true, packId: plan.rewards[0].value, count: await rewardCount(plan.rewards[0]) }; },
+    async save(plan, beforeWrite = null, beforeDispatch = null) {
+      assert();
+      if (canWrite() !== true || plan.kind !== 'puzzle-fill' && plan.challenge.brickIndices.length) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const loaded = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
+      const slots = ownData(loaded, '_players');
+      if (plan.kind === 'puzzle-fill') assertFc27PuzzleLayout(plan, projectFc27PuzzleLayout(root, loaded,
+        { setId: plan.challenge.setId, challengeId: plan.challenge.id }));
+      if (!Array.isArray(slots) || slots.length < 11 || slots.length > 32
+          || !same(ownData(loaded, 'simpleBrickIndices'), plan.kind === 'puzzle-fill' ? plan.challenge.brickIndices : [])
+          || !same(ownData(loaded, 'customBrickIndices'), [])) {
         return fail('FC27_SAVE_INPUT_UNVERIFIED');
       }
       const players = slots.map((slot, index) => {
         const selected = plan.selected.find(item => item.slot === index);
         const emptyId = ownData(ownData(slot, '_item'), 'id');
-        if (ownData(slot, 'index') !== index || index < 11 && !selected || index >= 11 && ![0, -1].includes(emptyId)) {
+        const playable = index < 11 && !plan.challenge.brickIndices.includes(index);
+        if (ownData(slot, 'index') !== index || playable && !selected
+            || !playable && (selected || ![0, -1].includes(emptyId))) {
           return fail('FC27_SAVE_INPUT_UNVERIFIED');
         }
+        if (plan.kind === 'puzzle-fill' && ![0, -1].includes(emptyId)) return fail('FC27_PUZZLE_EXISTING_SQUAD_BLOCKED');
         return { index, itemData: { id: selected?.id ?? emptyId, dream: false } };
       });
+      if (typeof beforeWrite === 'function' && beforeWrite() !== true) return fail('FC27_PUZZLE_FILL_INPUTS_CHANGED');
       const reply = await transport.request('save', { challengeId: plan.challenge.id,
-        players });
+        players, simpleBrickIndices: plan.kind === 'puzzle-fill' ? plan.challenge.brickIndices : [] }, beforeDispatch);
       assert();
       return { ...targetOf(plan), status: ownData(reply, 'success') === true && ownData(reply, 'status') === 200 ? 'confirmed' : 'unknown' };
     },
     async readSavedSquad(plan) {
+      savedRead = null;
       const response = await readDao('loadChallenge', [plan.challenge.id, true]);
       const squad = ownData(response, 'squad');
       const slots = ownData(squad, '_players');
+      if (plan.kind === 'puzzle-fill') assertFc27PuzzleLayout(plan, projectFc27PuzzleLayout(root, squad,
+        { setId: plan.challenge.setId, challengeId: plan.challenge.id }));
       if (!Array.isArray(slots) || slots.length < 11 || slots.length > 32
-          || !same(ownData(squad, 'simpleBrickIndices'), []) || !same(ownData(squad, 'customBrickIndices'), [])
-          || plan.challenge.brickIndices.length) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
+          || !same(ownData(squad, 'simpleBrickIndices'), ['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind)
+            ? plan.challenge.brickIndices : []) || !same(ownData(squad, 'customBrickIndices'), [])
+          || !['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind) && plan.challenge.brickIndices.length) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
       const items = [];
       for (let index = 0; index < slots.length; index++) {
         if (ownData(slots[index], 'index') !== index) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
         const item = ownData(slots[index], '_item');
-        if (index < 11) items.push({ ...protectedItem(snapshotFc27ClubPlayer(item, root)), slot: index });
+        if (index < 11 && !plan.challenge.brickIndices.includes(index)) {
+          if (plan.kind !== 'puzzle-fill-recovery' || ![0, -1].includes(ownData(item, 'id'))) {
+            items.push({ ...protectedItem(snapshotFc27ClubPlayer(item, root)), slot: index });
+          }
+        }
         else if (![0, -1].includes(ownData(item, 'id'))) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
       }
-      return { context, fresh: true, ...targetOf(plan), ready: items.length === 11, items };
+      savedRead = { target: targetOf(plan), squad, items, observedAt: Date.now() };
+      return { context, fresh: true, observedAt: savedRead.observedAt, ...targetOf(plan), squadEmpty: items.length === 0,
+        ready: items.length === 11 - plan.challenge.brickIndices.length, items,
+        ...(plan.kind === 'puzzle-fill' ? { layout: projectFc27PuzzleLayout(root, squad,
+          { setId: plan.challenge.setId, challengeId: plan.challenge.id }) } : {}) };
+    },
+    async syncSavedSquad(plan) {
+      assert();
+      const read = savedRead; savedRead = null;
+      if (!['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind) || !read
+          || !same(read.target, targetOf(plan)) || Date.now() - read.observedAt < 0 || Date.now() - read.observedAt > 15000
+          || read.items.length !== plan.selected.length || !plan.selected.every(ref => read.items.some(item =>
+            item.id === ref.id && item.definitionId === ref.definitionId && item.slot === ref.slot && item.pile === ref.pile))) {
+        return fail('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED');
+      }
+      const result = await synchronizeFc27PuzzleSquad(root, read.target, read.squad, plan.selected, assert);
+      assert(); return result;
     },
     async submit(plan, options) {
       assert();

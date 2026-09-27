@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "evidence": "dedicated-browser-owned-only-local-planner-aggregate",
+  "observedAt": "2026-09-26T04:44:45.428Z",
+  "action": "READ_ONLY_PLAN",
+  "status": "preview",
+  "reason": "READ_ONLY_PLAN",
+  "setId": 19,
+  "challengeId": 43,
+  "liveExecutionEnabled": false,
+  "executable": false,
+  "inventory": { "cachedPlayers": 338, "status": "provisional", "complete": false, "scope": "club-only" },
+  "policy": { "maxRating": 74 },
+  "plan": {
+    "required": 11,
+    "safeCandidates": 47,
+    "excluded": 291,
+    "excludedByReason": {
+      "rating-outside-range": 267,
+      "type-or-pile-unverified": 2,
+      "tradeable-or-unknown": 14,
+      "league-excluded-or-unknown": 8
+    },
+    "selectedCount": 11,
+    "deficits": [],
+    "nodes": 43,
+    "teamFacts": { "chemistry": 17, "teamRating": 68 },
+    "ratings": [66, 67, 69, 67, 71, 69, 65, 67, 65, 69, 69],
+    "slots": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "exactValidation": {
+      "status": "verified",
+      "selectedCount": 11,
+      "presentCount": 11,
+      "uniqueDefinitions": true,
+      "scope": "selected-club-items-only",
+      "reusableForExecution": false
+    }
+  },
+  "pending": ["EA_TEAM_FACTS_DIFFERENTIAL", "PUZZLE_FILL_TRANSACTION"],
+  "limitations": ["NOT_A_FULL_INVENTORY", "PURE_EVALUATOR_NOT_EA_CONFIRMATION", "NO_FILL_SAVE_SUBMIT"]
+}

@@ -103,6 +103,22 @@ it('reads observed EA market average as display-only metadata, never as a safety
   expect(readFc27CachedClub(root).items[0].marketAverage).toBeNull();
 });
 
+it('snapshots observed puzzle fields, freezes arrays and fingerprints attribute changes', () => {
+  const { root, player } = fixture();
+  Object.assign(player, { nationId: 7, teamId: 11, preferredPosition: 0,
+    basePossiblePositions: [0], groups: [0, 83] });
+  const first = readFc27CachedClub(root).items[0];
+  expect(first).toMatchObject({ nationId: 7, teamId: 11, positions: [0], groups: [0, 83] });
+  player.basePossiblePositions.push(3);
+  player.nationId = 38;
+  const next = readFc27CachedClub(root).items[0];
+  expect(first.positions).toEqual([0]);
+  expect(Object.isFrozen(first.groups)).toBe(true);
+  expect(first.safetyFingerprint).not.toBe(next.safetyFingerprint);
+  player.upgrades = { enrolled: true };
+  expect(readFc27CachedClub(root).items[0]).toMatchObject({ positions: null, groups: null });
+});
+
 it('wires synchronous GM reads to scoped core policy without importing old settings or exposing storage', () => {
   const { root } = fixture();
   const gmGetValue = vi.fn((_key, fallback) => fallback);

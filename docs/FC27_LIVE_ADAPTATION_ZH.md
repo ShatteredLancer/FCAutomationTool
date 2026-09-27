@@ -1,5 +1,7 @@
 # FC27 上线后适配记录
 
+2026-09-26 开发标准更新：27.0.0 的只读发布许可、固定安装 hash、`FC27_LIVE_ACCEPTANCE_PENDING` 和生产包体积/逐文件依赖限制只作为历史交付记录，不再阻止后续 FC27 正式版本。当前发布检查按版本化生产 manifest、FSU patch replay、完整回归、浏览器 smoke、tag/产物一致性执行；已发布资产仍不可覆盖。每项业务的真实 EA 验收状态单独记录，未验收不等于已实现。
+
 ## 2026-09-18 FSU SBC 导入弹窗按钮修复
 
 FC27 官方编译代码中的 `EADialogViewController` 只读取 `continueOption`/`cancelOption`，而 Local FSU 原共用 `events.popup` 只传旧 `dialogOptions`。因此“导入方案 ID 或网址”弹窗会显示标题和输入框，但按钮容器为空。Local FSU `26.09.9` 同时传递新旧选项；FC27 运行时按 `dialogOptionEnums` 重标自定义按钮、补齐第三个动作，并把 Escape 绑定到最后的取消项。空输入默认方案、URL/ID 解析、Club readiness、选材、保存和提交均未改变。

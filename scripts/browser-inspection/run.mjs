@@ -49,8 +49,14 @@ if (help) {
   }
   const context = await chromium.launchPersistentContext(profile, {
     executablePath: browserPath, headless: selfTest, viewport: { width: 1280, height: 800 },
+    // The optional AI key belongs to the Node transport, never a browser child.
+    env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== 'FCAT_LLM_API_KEY')),
     // Playwright controls this owned browser through a pipe, not a public CDP listener.
     ignoreDefaultArgs: !selfTest && (!(auto || agent) || withExtensions) ? ['--disable-extensions'] : [],
+  }).catch(() => {
+    // Playwright's raw error contains browser arguments and profile paths.
+    // A racing second launcher can still lose the profile after a preflight.
+    throw new Error('FCAT_BROWSER_LAUNCH_FAILED: Browser closed before inspection started. Close the old dedicated inspection session with q, then retry. No model request was made; raw browser error omitted.');
   });
   let terminal;
   try {
@@ -76,6 +82,8 @@ if (help) {
       await exerciseFsuPanel(page, out);
       const { exerciseRunnerPanel } = await import('./runner-panel-smoke.mjs');
       await exerciseRunnerPanel(page, out);
+      const { exercisePuzzleResultPanel } = await import('./puzzle-result-smoke.mjs');
+      await exercisePuzzleResultPanel(page, out);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');
       await exerciseTraditionalPersistence(context, out);
       const { exerciseProductionLivePanel } = await import('./production-live-smoke.mjs');

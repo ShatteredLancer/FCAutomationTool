@@ -9,8 +9,8 @@ describe('release channel isolation', () => {
     expect(workflow).toContain('node scripts/release-channel.mjs');
     expect(workflow).toContain('node scripts/check-release-readiness.mjs');
     const readiness = await readFile(new URL('../../scripts/check-release-readiness.mjs', import.meta.url), 'utf8');
-    expect(readiness).toContain('assertReadonlyRelease');
-    expect(readiness).toContain('fc27-readonly-release.json');
+    expect(readiness).toContain('assertRelease');
+    expect(readiness).not.toContain('fc27-readonly-release.json');
     expect(workflow.indexOf('- run: npm run verify')).toBeLessThan(workflow.indexOf('run: node scripts/check-release-readiness.mjs'));
     expect(workflow).toContain('--notes-file "docs/releases/$env:RELEASE_VERSION.md"');
     const preview = await readFile(new URL('../../.github/workflows/fc27-preview.yml', import.meta.url), 'utf8');

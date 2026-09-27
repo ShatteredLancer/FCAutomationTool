@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-25",
+  "evidence": "dedicated-browser-production-panel-read-only",
+  "extensionMode": "existing-extensions",
+  "targets": [
+    { "setId": 1, "name": "Intro to SBCs" },
+    { "setId": 3, "name": "Intro to Upgrade SBCs" },
+    { "setId": 4, "name": "Bronze Upgrade" },
+    { "setId": 5, "name": "Silver Upgrade" },
+    { "setId": 6, "name": "Gold Upgrade" },
+    { "setId": 10, "name": "League & Nation Advanced" },
+    { "setId": 11, "name": "2x 79+ Upgrade" },
+    { "setId": 15, "name": "Madrid Dreams" },
+    { "setId": 19, "name": "Marquee Matchups" }
+  ],
+  "catalog": {
+    "setId": 19,
+    "setName": "Marquee Matchups",
+    "setRewards": {
+      "source": "cached-set",
+      "fresh": false,
+      "rewards": [{ "type": "pack", "value": 308, "count": 1, "tradable": true }]
+    },
+    "challengeRewardsSource": "catalog-response",
+    "rewardIdentityVerified": false,
+    "challenges": [
+      {
+        "id": 43,
+        "name": "Italy v Belgium",
+        "status": "IN_PROGRESS",
+        "type": "OPEN_CHALLENGE",
+        "eligibilityOperation": "AND",
+        "requirements": [
+          { "count": 1, "scope": 0, "pairs": [{ "key": 10, "values": [27, 7] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 9, "values": [3] }] },
+          { "count": 3, "scope": 0, "pairs": [{ "key": 17, "values": [2] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [1] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [14] }] }
+        ],
+        "rewards": [{ "type": "pack", "value": 306, "count": 1, "tradable": true }]
+      },
+      {
+        "id": 44,
+        "name": "Norway v Portugal",
+        "status": "NOT_STARTED",
+        "type": "OPEN_CHALLENGE",
+        "eligibilityOperation": "AND",
+        "requirements": [
+          { "count": 1, "scope": 0, "pairs": [{ "key": 10, "values": [36, 38] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 6, "values": [3] }] },
+          { "count": -1, "scope": 1, "pairs": [{ "key": 8, "values": [5] }] },
+          { "count": 2, "scope": 0, "pairs": [{ "key": 17, "values": [3] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [2] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [18] }] }
+        ],
+        "rewards": [{ "type": "pack", "value": 532, "count": 1, "tradable": true }]
+      },
+      {
+        "id": 45,
+        "name": "Netherlands v Germany",
+        "status": "NOT_STARTED",
+        "type": "OPEN_CHALLENGE",
+        "eligibilityOperation": "AND",
+        "requirements": [
+          { "count": 2, "scope": 0, "pairs": [{ "key": 10, "values": [34, 21] }] },
+          { "count": -1, "scope": 1, "pairs": [{ "key": 6, "values": [2] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 5, "values": [4] }] },
+          { "count": 2, "scope": 0, "pairs": [{ "key": 17, "values": [3] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [2] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [22] }] }
+        ],
+        "rewards": [{ "type": "pack", "value": 314, "count": 1, "tradable": true }]
+      },
+      {
+        "id": 46,
+        "name": "England v Spain",
+        "status": "NOT_STARTED",
+        "type": "OPEN_CHALLENGE",
+        "eligibilityOperation": "AND",
+        "requirements": [
+          { "count": 2, "scope": 0, "pairs": [{ "key": 10, "values": [14, 45] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 4, "values": [4] }] },
+          { "count": -1, "scope": 1, "pairs": [{ "key": 6, "values": [3] }] },
+          { "count": -1, "scope": 1, "pairs": [{ "key": 8, "values": [5] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 19, "values": [75] }] },
+          { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [26] }] }
+        ],
+        "rewards": [{ "type": "pack", "value": 515, "count": 1, "tradable": true }]
+      }
+    ]
+  },
+  "liveExecutionEnabled": false,
+  "eaMutationsPerformed": false
+}

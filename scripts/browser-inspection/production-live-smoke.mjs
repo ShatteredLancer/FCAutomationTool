@@ -8,6 +8,10 @@ export async function exerciseProductionLivePanel(context, directory) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
     bundle: true, write: false, format: 'iife', globalName: 'LivePanelSmoke', target: 'chrome120' });
+  const nativeBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-puzzle-native-button.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'NativePuzzleSmoke', target: 'chrome120' });
+  const pageBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/ea/fc27-puzzle-page.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'NativePuzzlePageSmoke', target: 'chrome120' });
   const page = await context.newPage();
   let externalRequests = 0;
   await page.route('**/*', route => { externalRequests++; return route.abort(); });
@@ -19,17 +23,28 @@ export async function exerciseProductionLivePanel(context, directory) {
       globalThis.Element.prototype.attachShadow = function (options) { return attach.call(this, { ...options, mode: 'open' }); };
     });
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.addScriptTag({ content: nativeBundle.outputFiles[0].text });
+    await page.addScriptTag({ content: pageBundle.outputFiles[0].text });
     await page.evaluate(() => {
-      const state = globalThis.livePanelSmoke = { prepares: 0, catalogReads: 0, executions: [], shortage: false, finish: null };
+      const state = globalThis.livePanelSmoke = { prepares: 0, catalogReads: 0, puzzleReads: 0, executions: [], fills: [], fillReady: false, shortage: false, finish: null, puzzleCap: 82, policySaves: 0 };
       const mount = liveEnabled => globalThis.LivePanelSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'live-smoke', title: 'FC Automation Tool', liveEnabled,
         targets: () => [{ setId: 4, name: 'Synthetic upgrade' }],
+        inspectPuzzlePolicy: async () => ({ status: 'observed', maxRating: state.puzzleCap }),
+        setPuzzleMaxRating: async value => { state.policySaves++; state.puzzleCap = value; return { status: 'observed', maxRating: value }; },
         inspectCatalog: async ({ setId }) => {
           state.catalogReads++;
           return { status: 'observed', reason: 'FC27_CHALLENGE_CATALOG_READ', setId, setName: 'Synthetic upgrade',
             challenges: [{ id: 16, name: 'Synthetic upgrade', status: 'IN_PROGRESS', eligibilityOperation: 'AND', requirements: [
               { count: -1, scope: 2, pairs: [{ key: 3, values: [1] }] },
             ] }] };
+        },
+        inspectPuzzle: async ({ setId, challengeId = 16 }) => {
+          state.puzzleReads++;
+          return { status: 'preview', reason: 'READ_ONLY_PLAN', setId, challengeId, fillReady: state.fillReady,
+            policy: { maxRating: 74 }, rules: [], plan: { required: 11, selectedCount: 11, ratings: Array(11).fill(60),
+              slots: Array.from({ length: 11 }, (_, slot) => slot), teamFacts: { teamRating: 60, chemistry: 33 },
+              exactValidation: { status: 'verified' }, fillPreflight: { status: 'verified' } } };
         },
         prepare: async ({ setId, maxRating }) => {
           state.prepares++;
@@ -41,6 +56,7 @@ export async function exerciseProductionLivePanel(context, directory) {
           state.executions.push(approval);
           return new Promise(resolve => { state.finish = () => resolve({ status: 'completed', submitted: true }); });
         },
+        fillPuzzle: async approval => { state.fills.push(approval); return { status: 'filled', saved: true, submitted: false }; },
         inspectRecovery: async () => ({ status: 'idle' }), resolveRecovery: async () => ({ status: 'resolved' }),
         checkInstallation: async () => ({ status: 'verified', synthetic: true }),
       });
@@ -50,7 +66,18 @@ export async function exerciseProductionLivePanel(context, directory) {
     const button = id => host.locator(`#${id}`);
     await host.locator('summary').click();
     assert.equal(await button('execute').isDisabled(), true);
-    assert.equal(await button('status').innerText(), 'Live: single SBC');
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await button('puzzle-rating').inputValue(), '82');
+    await button('puzzle-rating').fill('83');
+    await button('puzzle-policy-save').evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.policySaves), 0);
+    await button('puzzle-policy-save').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.puzzleCap), 83);
+    assert.match(await button('status').innerText(), /83/);
+    await host.locator('summary').click(); await host.locator('summary').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await button('puzzle-rating').inputValue(), '83');
     await button('catalog').click();
     await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.catalogReads), 1);
@@ -61,6 +88,94 @@ export async function exerciseProductionLivePanel(context, directory) {
       await button('prepare').click();
       await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
     };
+    await prepare();
+    assert.equal(await button('execute').isEnabled(), true);
+    await button('puzzle').evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.puzzleReads), 0);
+    await button('puzzle').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.puzzleReads), 1);
+    assert.equal(await button('execute').isDisabled(), true);
+    assert.equal(await host.locator('#squad li').count(), 11);
+    assert.match(await host.locator('#squad').innerText(), /chemistry 33/);
+    assert.match(await host.locator('#requirements').innerText(), /Preview only/);
+    assert.equal(await button('fill').isDisabled(), true);
+    await page.evaluate(() => { globalThis.livePanelSmoke.fillReady = true; });
+    await button('puzzle').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await button('fill').isEnabled(), true);
+    await button('fill').click();
+    assert.match(await button('approval').innerText(), /No SBC submission/);
+    await button('cancel').click();
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.fills.length), 0);
+    await button('fill').evaluate(node => node.click());
+    assert.equal(await host.locator('dialog').evaluate(node => node.open), false);
+    await button('fill').click();
+    await button('confirm').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.deepEqual(await page.evaluate(() => globalThis.livePanelSmoke.fills), [
+      { approved: true, action: 'fill-only', count: 1, setId: 4, challengeId: 16, maxPlayers: 11, maxRating: 74 },
+    ]);
+    assert.equal(await button('fill').isDisabled(), true);
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.executions.length), 0);
+    await page.evaluate(() => {
+      const document = globalThis.document;
+      const section = document.createElement('section'); section.id = 'native-sbc';
+      const anchor = document.createElement('button'); anchor.textContent = 'EA submit'; section.append(anchor); document.body.append(section);
+      const state = globalThis.livePanelSmoke; state.nativePlans = [];
+      state.target = { setId: 19, challengeId: 43, anchor };
+      class SquadController {}
+      class DetailController {}
+      const nativeRoot = { document, UTSBCSquadSplitViewController: SquadController, UTSBCSquadDetailPanelViewController: DetailController,
+        getAppMain: () => ({ getRootViewController: () => ({ getPresentedViewController: () => null,
+          currentController: { currentController: { currentController: state.target ? Object.assign(new SquadController(), {
+            _set: { id: state.target.setId }, _challengeId: state.target.challengeId,
+            _challengeDetailsController: { currentController: Object.assign(new DetailController(), {
+              _set: { id: state.target.setId }, _challenge: { id: state.target.challengeId, setId: state.target.setId },
+              getView: () => ({ _btnExchange: { getRootElement: () => state.target.anchor } }),
+            }) },
+          }) : null } },
+        }) }) };
+      state.cleanup = globalThis.NativePuzzleSmoke.mountFc27PuzzleNativeButton({ document,
+        readTarget: () => globalThis.NativePuzzlePageSmoke.readFc27PuzzlePage(nativeRoot),
+        onFill: async (target, callbacks) => {
+          state.nativePlans.push(target); state.nativeCallbacks = callbacks;
+          callbacks.onProgress('validating');
+          if (state.holdNative) await new Promise(resolve => { state.releaseNative = resolve; });
+          return state.nativeResult ?? { status: 'filled', saved: true, submitted: false };
+        },
+        schedule: update => { state.updateNative = update; return 1; }, unschedule: () => {} });
+    });
+    const nativeButton = page.locator('#fcat-fc27-puzzle-native');
+    assert.equal(await nativeButton.count(), 1);
+    assert.equal(await nativeButton.evaluate(node => node.nextSibling.textContent), 'EA submit');
+    await host.locator('summary').click();
+    await nativeButton.evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans.length), 0);
+    await nativeButton.click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-fc27-puzzle-native').disabled);
+    assert.deepEqual(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans), [{ setId: 19, challengeId: 43 }]);
+    assert.match(await page.locator('#fcat-fc27-puzzle-status').innerText(), /阵容已保存/);
+    assert.equal(await host.locator('details').evaluate(node => node.open), false);
+    assert.equal(await host.locator('dialog').evaluate(node => node.open), false);
+    // Replace target object to model navigation between periodic observations.
+    await page.evaluate(() => { const state = globalThis.livePanelSmoke; state.target = { ...state.target, challengeId: 45 }; });
+    await nativeButton.click();
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans.length), 1);
+    await nativeButton.click();
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans.at(-1).challengeId), 45);
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-fc27-puzzle-native').disabled);
+    await page.evaluate(() => { globalThis.livePanelSmoke.holdNative = true; });
+    await nativeButton.click();
+    assert.equal(await nativeButton.isDisabled(), true);
+    await nativeButton.evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans.length), 3);
+    await page.evaluate(() => { const state = globalThis.livePanelSmoke; state.target = null; state.updateNative(); });
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.nativeCallbacks.isCurrent()), false);
+    assert.equal(await nativeButton.count(), 0);
+    await page.evaluate(() => globalThis.livePanelSmoke.releaseNative());
+    await page.evaluate(() => globalThis.livePanelSmoke.cleanup());
+    await host.locator('summary').click();
     await prepare();
     assert.equal(await button('execute').isEnabled(), true);
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.executions.length), 0);
@@ -105,7 +220,8 @@ export async function exerciseProductionLivePanel(context, directory) {
     await writeFile(path.join(directory, 'production-live-panel-self-test.json'), JSON.stringify({ schema: 1,
       source: 'synthetic callbacks only; no EA or Tampermonkey', userConfirmationRequired: true,
       cancelWithoutExecution: true, exactSingleApproval: true, staleUiPlanCleared: true,
-      shortageBlocked: true, readonlyPanelBlocked: true, externalRequests }, null, 2));
-    console.log('Production Live panel smoke passed: confirmation, cancel, single use, shortage and read-only isolation. Synthetic only.');
+      shortageBlocked: true, readonlyPanelBlocked: true, puzzleClearsSubmit: true,
+      puzzleSaveConfirmation: true, nativeTargetNavigation: true, nativeOneClickNoPanel: true, nativeDuplicateClickBlocked: true, externalRequests }, null, 2));
+    console.log('Production Live panel smoke passed: confirmation, cancel, single use, Puzzle preview, shortage and read-only isolation. Synthetic only.');
   } finally { await page.close(); }
 }

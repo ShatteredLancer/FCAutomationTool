@@ -9,6 +9,13 @@ export { inspectFc27FsuSupport, inspectFc27FsuSettings, validateFc27FsuSample } 
 
 export function readFc27RunnerPolicy(root, maxRating = 74) {
   if (![74, 83].includes(maxRating)) throw new Error('FC27_PREVIEW_POLICY_UNAPPROVED');
+  return readFc27PuzzlePolicy(root, maxRating);
+}
+
+// Puzzle has its own explicit saved cap. Traditional submission retains its
+// existing 74/83 contract; neither path raises the cap to satisfy a Challenge.
+export function readFc27PuzzlePolicy(root, maxRating = 82) {
+  if (!Number.isSafeInteger(maxRating) || maxRating < 1 || maxRating > 99) throw new Error('FC27_PUZZLE_POLICY_INVALID');
   const report = inspectFc27RunnerInputs(root);
   if (report.status !== 'observed') throw new Error(report.reason);
   const leagues = ownData(ownData(ownData(root, 'info'), 'set'), 'shield_league');

@@ -1,13 +1,13 @@
 # FC Automation Tool
 
-**27.0.0 是 FC27 只读首版，Live 执行保持硬关闭。** 支持传统 SBC 的读取、选材预览与诊断，不支持真实提交、开包、Rolling 或交易。真实业务等安全库存充足后独立验收，再通过新版本开放。范围见 [27.0.0 发布说明](docs/releases/27.0.0.md)和[验收记录](docs/FC27_LIVE_ADAPTATION_ZH.md)。
+**FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。Puzzle 规划正在接入，未完成的保存、提交、Gallery 和交易能力会明确标注。
 
-本地开发版 `27.0.1` 已按用户要求开放传统 SBC 单次 Live：`Verify squad` 成功后，可点击 `Submit once` 并确认一次保存/提交。仍限制安全普通 Club 卡、不可交易、默认最高 74（可选 83 且受 FSU 更严格策略约束）；不自动连续执行或打开奖励。此开发版未公开发布，真实 EA 提交尚未验收；上方及下方 Release 下载链接仍为只读 `27.0.0`。
+当前 `27.0.1` 生产构建开放用户确认的单次传统 SBC Live：`Verify squad` 成功后，可点击 `Submit once` 并确认一次保存/提交。Puzzle 计划按钮只读展示，Puzzle save-only 事务仍在真实 Provider 接线前；不自动连续执行或打开奖励。每项功能的真实 EA 验收状态见文档。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具。FC27 当前提供传统 SBC 的只读准备、材料保护和恢复检查；旧季 Rolling、开包、Player Pick、交易及 Profile 未随新入口启用。
+FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具。FC27 入口包含传统 SBC 事务与 Puzzle 只读规划；市场补卡仍在独立检查工具中，旧季 Rolling、开包、Player Pick、交易及 Profile 尚未接入新版入口。
 
 项目优先保证材料和库存安全：身份、材料要求、库存去向或提交状态无法确认时会停止，而不是继续猜测。
 

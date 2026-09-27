@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-25",
+  "evidence": "dedicated-browser-passive-data-descriptors",
+  "liveExecutionEnabled": false,
+  "eaMutationsPerformed": false,
+  "setCount": 9,
+  "cachedEntries": 314,
+  "cachedPlayers": 306,
+  "eligibilityKeys": {
+    "PLAYER_MIN_OVR": 26,
+    "PLAYER_MAX_OVR": 28,
+    "PLAYER_EXACT_OVR": 27,
+    "PLAYER_QUALITY": 3,
+    "PLAYER_LEVEL": 17,
+    "PLAYER_RARITY": 18,
+    "PLAYER_RARITY_GROUP": 25,
+    "TEAM_RATING": 19,
+    "CHEMISTRY_POINTS": 35,
+    "ALL_PLAYERS_CHEMISTRY_POINTS": 36,
+    "SQUAD_PLAYER_COUNT": null,
+    "PLAYER_COUNT": 2,
+    "TEAM_SIZE": null,
+    "NATION_ID": 10,
+    "LEAGUE_ID": 11,
+    "CLUB_ID": 12,
+    "SAME_NATION_COUNT": 4,
+    "SAME_LEAGUE_COUNT": 5,
+    "SAME_CLUB_COUNT": 6,
+    "NATION_COUNT": 7,
+    "LEAGUE_COUNT": 8,
+    "CLUB_COUNT": 9,
+    "LEGEND_COUNT": 15,
+    "TEAM_STAR_RATING": 0,
+    "FIRST_OWNER_PLAYERS_COUNT": 30,
+    "PLAYER_TRADABILITY": 33,
+    "PLAYER_COUNT_COMBINED": 21,
+    "SCOPE": 13
+  },
+  "scopes": {
+    "GREATER": 0,
+    "LOWER": 1,
+    "EXACT": 2
+  },
+  "quality": {
+    "BRONZE": 1,
+    "SILVER": 2,
+    "GOLD": 3
+  },
+  "playerSamples": [
+    {
+      "itemRef": "item-7",
+      "definitionRef": "definition-7",
+      "nationId": 7,
+      "teamId": 11,
+      "leagueId": 13,
+      "preferredPosition": 0,
+      "basePossiblePositions": [
+        0
+      ],
+      "groups": []
+    },
+    {
+      "itemRef": "item-8",
+      "definitionRef": "definition-8",
+      "nationId": 38,
+      "teamId": 10,
+      "leagueId": 13,
+      "preferredPosition": 3,
+      "basePossiblePositions": [
+        3,
+        14
+      ],
+      "groups": []
+    },
+    {
+      "itemRef": "item-9",
+      "definitionRef": "definition-9",
+      "nationId": 21,
+      "teamId": 116017,
+      "leagueId": 2216,
+      "preferredPosition": 5,
+      "basePossiblePositions": [
+        5
+      ],
+      "groups": []
+    },
+    {
+      "itemRef": "item-10",
+      "definitionRef": "definition-10",
+      "nationId": 57,
+      "teamId": 1,
+      "leagueId": 13,
+      "preferredPosition": 7,
+      "basePossiblePositions": [
+        5,
+        7
+      ],
+      "groups": []
+    },
+    {
+      "itemRef": "item-11",
+      "definitionRef": "definition-11",
+      "nationId": 14,
+      "teamId": 10,
+      "leagueId": 13,
+      "preferredPosition": 7,
+      "basePossiblePositions": [
+        7,
+        10,
+        14
+      ],
+      "groups": []
+    },
+    {
+      "itemRef": "item-12",
+      "definitionRef": "definition-12",
+      "nationId": 18,
+      "teamId": 116034,
+      "leagueId": 2218,
+      "preferredPosition": 14,
+      "basePossiblePositions": [
+        7,
+        10,
+        14,
+        16,
+        27
+      ],
+      "groups": []
+    }
+  ],
+  "chemistryParameters": [
+    {
+      "id": 1,
+      "thresholds": [
+        {
+          "requirement": 2,
+          "points": 1
+        },
+        {
+          "requirement": 5,
+          "points": 1
+        },
+        {
+          "requirement": 8,
+          "points": 1
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "thresholds": [
+        {
+          "requirement": 3,
+          "points": 1
+        },
+        {
+          "requirement": 5,
+          "points": 1
+        },
+        {
+          "requirement": 8,
+          "points": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "thresholds": [
+        {
+          "requirement": 2,
+          "points": 1
+        },
+        {
+          "requirement": 4,
+          "points": 1
+        },
+        {
+          "requirement": 7,
+          "points": 1
+        }
+      ]
+    }
+  ],
+  "chemistryParameterEnums": {
+    "CLUB": 3,
+    "LEAGUE": 2,
+    "NATION": 1
+  },
+  "limitations": [
+    "PARTIAL_CACHED_INVENTORY",
+    "NO_PLAN_OR_CHEMISTRY_DIFFERENTIAL_VALIDATION",
+    "TEAM_LINKS_AND_RATING_CONFIG_PENDING"
+  ]
+}

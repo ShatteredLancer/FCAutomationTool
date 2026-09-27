@@ -6,7 +6,7 @@ const stop = reason => ({ status: 'blocked', reason, liveExecutionEnabled: false
 
 // Accept normalized, complete facts only. Passive samples and screenshot facts
 // cannot supply identities, safety fields, or an authorization to use real cards.
-export function previewTraditionalSquad({ context, challenge, inventory, policy } = {}) {
+export function collectSafeTraditionalCandidates({ context, challenge, inventory, policy } = {}) {
   let scope;
   try { scope = createSeasonContext(context); } catch { return stop('CONTEXT_UNAVAILABLE'); }
   if (scope.season !== '27') return stop('UNSUPPORTED_SEASON');
@@ -92,6 +92,15 @@ export function previewTraditionalSquad({ context, challenge, inventory, policy 
   }
   candidates.sort((a, b) => (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
     || a.rating - b.rating || a.id - b.id);
+  return { status: 'candidates', candidates, required, minRating, maxRating, excluded, excludedByReason };
+}
+
+export function previewTraditionalSquad(input = {}) {
+  const pool = collectSafeTraditionalCandidates(input);
+  if (pool.status !== 'candidates') return pool;
+  const { candidates, required, minRating, maxRating, excluded, excludedByReason } = pool;
+  const { challenge, inventory } = input;
+  const { slotCount, brickIndices } = challenge;
   const definitions = new Set();
   const selected = [];
   for (const item of candidates) {

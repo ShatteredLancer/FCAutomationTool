@@ -10,6 +10,16 @@ it('reports unknown collections without claiming empty inventory or readiness', 
   expect(result.fsu.verified).toBe(false);
 });
 
+it('observes Puzzle enums without invoking accessors or assuming numeric aliases', () => {
+  const forbidden = vi.fn(() => { throw new Error('private-secret'); });
+  const keys = { CLUB_ID: 12, PLAYER_LEVEL: 17, PLAYER_RARITY: 18, SAME_NATION_COUNT: 4, CLUB_COUNT: 9 };
+  Object.defineProperty(keys, 'NATION_ID', { get: forbidden });
+  const result = observeRuntime({ SBCEligibilityKey: keys, SBCEligibilityQualityType: { BRONZE: 1, SILVER: 2, GOLD: 3 } });
+  expect(result.eligibilityKeyEnums).toMatchObject({ CLUB_ID: 12, PLAYER_LEVEL: 17, NATION_ID: null });
+  expect(result.eligibilityQualityEnums).toEqual({ BRONZE: 1, SILVER: 2, GOLD: 3 });
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
 it('never invokes model accessors, service methods, or bridge methods', () => {
   const forbidden = vi.fn(() => { throw new Error('private-secret'); });
   const service = { requestSets: forbidden, saveChallenge: forbidden };
@@ -21,6 +31,103 @@ it('never invokes model accessors, service methods, or bridge methods', () => {
   expect(result.fsu.bridge.describe).toBe('function');
   expect(forbidden).not.toHaveBeenCalled();
   expect(JSON.stringify(result)).not.toContain('private-secret');
+});
+
+it('observes market method descriptors without searching, constructing criteria or exposing private fields', () => {
+  const forbidden = vi.fn(() => { throw new Error('private-secret'); });
+  const itemService = Object.create({ searchConceptItems: forbidden, searchTransferMarket: forbidden });
+  itemService.privateToken = 'private-secret';
+  Object.defineProperty(itemService, 'requestMarketData', { get: forbidden });
+  const root = { services: { Item: itemService }, UTSearchCriteriaDTO: forbidden };
+  const result = observeRuntime(root);
+  expect(result.market).toEqual({ verified: false, itemService: 'data', criteria: 'function',
+    methods: { searchConceptItems: 'function', searchTransferMarket: 'function', requestMarketData: 'accessor' } });
+  expect(result.limitations).toContain('NO_MARKET_CONTRACT_VERIFICATION');
+  expect(forbidden).not.toHaveBeenCalled();
+  expect(JSON.stringify(result)).not.toContain('private-secret');
+});
+
+it('does not invoke shadowing market accessors or promote absent market methods to readiness', () => {
+  const forbidden = vi.fn();
+  const service = Object.create({ searchConceptItems: forbidden });
+  Object.defineProperty(service, 'searchConceptItems', { get: forbidden });
+  const root = { services: { Item: service } };
+  Object.defineProperty(root, 'UTSearchCriteriaDTO', { get: forbidden });
+  expect(observeRuntime(root).market).toMatchObject({ verified: false, criteria: 'accessor',
+    methods: { searchConceptItems: 'accessor', searchTransferMarket: 'absent', requestMarketData: 'absent' } });
+  Object.defineProperty(root.services, 'Item', { get: forbidden });
+  expect(observeRuntime(root).market).toMatchObject({ itemService: 'accessor',
+    methods: { searchConceptItems: 'absent' } });
+  expect(observeRuntime({}).market).toMatchObject({ itemService: 'absent', criteria: 'absent', verified: false });
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
+it('observes bounded puzzle attributes without reading position accessors or item identities', () => {
+  const forbidden = vi.fn();
+  const item = { id: 900001, definitionId: 12345678, nationId: 27, teamId: 10, leagueId: 5,
+    preferredPosition: 25, basePossiblePositions: [25, 23], groups: [0, 83] };
+  Object.defineProperty(item, 'possiblePositions', { get: forbidden });
+  const result = observeRuntime({ repositories: { Item: { club: { items: [item] } } } });
+  expect(result.inventory.club.samples[0].puzzle).toEqual({ nationId: 27, teamId: 10, leagueId: 5,
+    preferredPosition: 25, basePossiblePositions: [25, 23], groups: [0, 83] });
+  expect(forbidden).not.toHaveBeenCalled();
+  expect(JSON.stringify(result)).not.toMatch(/900001|12345678/);
+});
+
+it('observes chemistry thresholds, profile contributions and bounded public team links without runtime methods', () => {
+  const forbidden = vi.fn();
+  const teamLinks = new Map(Array.from({ length: 10 }, (_, i) => [100 + i, 200 + i]));
+  teamLinks.entries = forbidden;
+  const report = observeRuntime({ ChemistryParamId: { CLUB: 3, LEAGUE: 2, NATION: 1 }, repositories: {
+    TeamConfig: { teamLinks }, Chemistry: { parameters: [{ id: 3, thresholds: [{ requirement: 2, points: 1 }] }],
+      profiles: [{ id: 1, maxChem: false, applicableRarityIds: [], rules: [{ parameterId: 3, calculationType: 1, contribution: 1 }] }] },
+  } });
+  expect(report.chemistry.parameters.samples[0].thresholds.samples).toEqual([{ requirement: 2, points: 1 }]);
+  expect(report.chemistry.profiles.samples[0].rules.samples).toEqual([{ parameterId: 3, calculationType: 1, contribution: 1 }]);
+  expect(report.chemistry.teamLinks).toMatchObject({ count: 10, truncated: true });
+  expect(report.chemistry.teamLinks.samples).toHaveLength(8);
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
+it('replays the logged-in Puzzle descriptors without promoting sampled cards or chemistry to a solved plan', () => {
+  const observed = JSON.parse(readFileSync(new URL('../fixtures/fc27-puzzle-runtime-observation.json', import.meta.url), 'utf8'));
+  const report = observeRuntime({ SBCEligibilityKey: observed.eligibilityKeys, SBCEligibilityScope: observed.scopes,
+    SBCEligibilityQualityType: observed.quality, ChemistryParamId: observed.chemistryParameterEnums,
+    repositories: { Chemistry: { parameters: observed.chemistryParameters },
+      Item: { club: { items: observed.playerSamples } } } });
+  expect(report.eligibilityKeyEnums).toEqual(observed.eligibilityKeys);
+  expect(report.inventory.club.samples.map(item => item.puzzle.nationId)).toEqual(observed.playerSamples.map(item => item.nationId));
+  expect(report.chemistry.parameters.samples.map(parameter => parameter.thresholds.samples))
+    .toEqual(observed.chemistryParameters.map(parameter => parameter.thresholds));
+  expect(report.liveExecutionEnabled).toBe(false);
+  expect(observed).toMatchObject({ cachedEntries: 314, cachedPlayers: 306, eaMutationsPerformed: false });
+});
+
+it('reads profile overrides and calculation enums without promoting missing fields to defaults', () => {
+  const forbidden = vi.fn();
+  const profile = { id: 1, baseOverride: false, iconOverride: true };
+  Object.defineProperty(profile, 'heroOverride', { get: forbidden });
+  const result = observeRuntime({ ChemistryProfileId: { BASE: 1, ICON: 3, HERO: 2 },
+    ChemistryProfileRuleCalculationType: { NORMAL: 1, UNIVERSAL_WITH_PLAYER_COUNT: 2 },
+    repositories: { Chemistry: { profiles: [profile] } } });
+  expect(result.chemistry.profileEnums).toEqual({ BASE: 1, ICON: 3, HERO: 2 });
+  expect(result.chemistry.calculationEnums).toEqual({ NORMAL: 1, UNIVERSAL_WITH_PLAYER_COUNT: 2 });
+  expect(result.chemistry.profiles.samples[0]).toMatchObject({ baseOverride: false, iconOverride: true, heroOverride: null });
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
+it('observes inherited config readers and constants without executing settings readers or accessors', () => {
+  const forbidden = vi.fn();
+  const settings = Object.create({ getStringSettingByKey: forbidden });
+  const keys = { CHEMISTRY_PROFILES_ENABLED: 'enableChemistryProfiles' };
+  Object.defineProperty(keys, 'SUPER_CHEM_RARITY_IDS', { get: forbidden });
+  const result = observeRuntime({ services: { Configuration: Object.create({ checkFeatureEnabled: forbidden }) },
+    repositories: { ServerSettings: settings }, UTServerSettingsRepository: { KEY: keys },
+    UTItemEntity: { HALL_OF_FUT_CLUB_ID: 132794 } });
+  expect(result.chemistry.configEvidence).toMatchObject({ checkFeatureEnabled: 'function', getStringSettingByKey: 'function',
+    keys: { CHEMISTRY_PROFILES_ENABLED: 'enableChemistryProfiles', SUPER_CHEM_RARITY_IDS: null },
+    identities: { HALL_OF_FUT_CLUB_ID: 132794, LEGENDS_CLUB_ID: null } });
+  expect(forbidden).not.toHaveBeenCalled();
 });
 
 it('bounds inventory samples, anonymizes identities and preserves unknown safety fields', () => {

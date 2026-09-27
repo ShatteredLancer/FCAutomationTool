@@ -1,5 +1,5 @@
 // Self-contained for the isolated inspection browser. This is not a Live adapter.
-export async function inspectInProgressSquad({ setId, challengeId } = {}, root = globalThis, observedChallenge = null) {
+export async function inspectInProgressSquad({ setId, challengeId, includeFormation = false } = {}, root = globalThis, observedChallenge = null) {
   const stop = reason => ({ status: 'blocked', reason, liveExecutionEnabled: false });
   function data(value, key) {
     try {
@@ -16,6 +16,17 @@ export async function inspectInProgressSquad({ setId, challengeId } = {}, root =
     const keys = Object.getOwnPropertyNames(value).filter(key => key !== 'length');
     if (keys.length > limit) return [];
     return keys.map(key => data(value, key));
+  }
+  function formationSnapshot(squad) {
+    const formation = data(squad, '_formation');
+    const id = data(formation, 'id');
+    const raw = data(formation, 'positions');
+    let positions = null;
+    if (Array.isArray(raw) && data(raw, 'length') === 11) {
+      const copied = Array.from({ length: 11 }, (_, index) => data(data(raw, String(index)), 'typeId'));
+      if (copied.every(value => Number.isInteger(value) && value >= 0 && value <= 27)) positions = copied;
+    }
+    return { id: Number.isSafeInteger(id) && id >= 0 && id < 1e9 ? id : null, positions };
   }
   function find() {
     if (![27, '27'].includes(data(root, 'APP_YEAR_SHORT'))) return null;
@@ -34,10 +45,18 @@ export async function inspectInProgressSquad({ setId, challengeId } = {}, root =
     const sets = values(data(data(service, 'repository'), 'sets'), 500).filter(set => data(set, 'id') === setId);
     if (sets.length !== 1) return null;
     // A fresh catalog GET may supply its detached challenge without modifying EA repositories.
-    const challenges = (observedChallenge ? [observedChallenge] : values(data(sets[0], 'challenges'), 50))
+    const currentChallenges = values(data(sets[0], 'challenges'), 50)
       .filter(challenge => data(challenge, 'id') === challengeId);
+    const currentChallenge = currentChallenges[0];
+    const challenges = (observedChallenge ? [observedChallenge] : currentChallenges);
     const challenge = challenges[0];
-    if (challenges.length !== 1 || data(challenge, 'setId') !== setId
+    // Cached catalog rules may be reused, but the native page/repository must
+    // still confirm that this exact Challenge is currently actionable.
+    if (currentChallenges.length > 1
+        || currentChallenges.length === 1 && (data(currentChallenge, 'setId') !== setId
+          || data(currentChallenge, 'status') !== 'IN_PROGRESS')
+        || currentChallenges.length === 0 && !observedChallenge
+        || challenges.length !== 1 || data(challenge, 'setId') !== setId
         || data(challenge, 'status') !== 'IN_PROGRESS'
         || data(data(root, 'SBCChallengeStatus'), 'IN_PROGRESS') !== 'IN_PROGRESS') return null;
     return { service, challenge, dao: data(service, 'sbcDAO'), user, persona, club,
@@ -93,7 +112,8 @@ export async function inspectInProgressSquad({ setId, challengeId } = {}, root =
                 || new Set(bricks).size !== bricks.length || bricks.length >= slots) return finish(stop('SLOT_LAYOUT_UNVERIFIED'));
             finish({ status: 'observed', reason: 'IN_PROGRESS_SQUAD_READ', liveExecutionEnabled: false,
               setId, challengeId, slotCount: slots, simpleBrickIndices: [...simple], customBrickIndices: [...custom],
-              requiredPlayerCount: slots - bricks.length });
+              requiredPlayerCount: slots - bricks.length,
+              ...(includeFormation === true ? { formation: formationSnapshot(squad) } : {}) });
           } catch { finish(stop('SQUAD_READ_UNCONFIRMED')); }
         });
       } catch { finish(stop('SQUAD_READ_UNCONFIRMED')); }

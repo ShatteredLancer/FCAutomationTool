@@ -44,6 +44,23 @@ it('accepts an immediately observed catalog challenge without populating EA cach
   expect(dao.loadChallenge).toHaveBeenCalledOnce();
 });
 
+it('copies opt-in formation positions without calling model getters or changing the existing read result', async () => {
+  const { root, squad } = fixture();
+  const forbidden = vi.fn();
+  squad._formation = { id: 442, positions: Array.from({ length: 11 }, (_, index) => ({ typeId: index })) };
+  Object.defineProperty(squad, 'formation', { get: forbidden });
+  squad.getFormation = forbidden;
+  const normal = await inspectInProgressSquad({ setId: 1, challengeId: 2 }, root);
+  expect(normal).not.toHaveProperty('formation');
+  const result = await inspectInProgressSquad({ setId: 1, challengeId: 2, includeFormation: true }, root);
+  expect(result.formation).toEqual({ id: 442, positions: Array.from({ length: 11 }, (_, i) => i) });
+  squad._formation.positions[0].typeId = 27;
+  expect(result.formation.positions[0]).toBe(0);
+  Object.defineProperty(squad._formation.positions[1], 'typeId', { get: forbidden });
+  expect((await inspectInProgressSquad({ setId: 1, challengeId: 2, includeFormation: true }, root)).formation.positions).toBeNull();
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
 it.each(['NOT_STARTED', 'COMPLETED', undefined])('never initializes or reopens status %s', async status => {
   const { root, dao, challenge } = fixture();
   challenge.status = status;

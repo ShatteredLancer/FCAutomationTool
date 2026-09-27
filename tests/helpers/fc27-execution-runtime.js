@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import { FC27_CLUB_READ_METHODS } from '../../src/adapters/ea/fc27-club-read.js';
 import { FC27_SBC_EXECUTION_METHODS, FC27_SBC_CACHE_METHODS } from '../../src/adapters/ea/fc27-traditional-provider.js';
+import { FC27_PUZZLE_SYNC_METHODS } from '../../src/adapters/ea/fc27-puzzle-page.js';
 
 export function executionRuntime() {
   const calls = [];
@@ -10,9 +11,21 @@ export function executionRuntime() {
     awards: [{ type: 'pack', value: 509, count: 1, tradable: false }] };
   const challenge = { id: 16, setId: 4, name: set.name, status: 'IN_PROGRESS', type: 'OPEN_CHALLENGE',
     eligibilityOperation: 'AND', eligibilityRequirements: [{ count: -1, scope: 2, kvPairs: { _collection: { 3: [1] } } }], awards: [] };
-  const state = { players, saved: null, packCount: 3, unassigned: [], submitStatus: 200, timeout: false, wrongOwner: false };
+  const state = { players, saved: null, packCount: 3, unassigned: [], submitStatus: 200, timeout: false, wrongOwner: false,
+    formation: { id: 16, positions: Array.from({ length: 11 }, () => ({ typeId: 5 })) } };
   const ok = response => ({ success: true, status: 200, response });
   const observable = response => ({ observe(_owner, callback) { callback(this, response); }, unobserve() {} });
+  class EAObservable {
+    notify(data) { this.notifications = (this.notifications ?? 0) + 1; this.last = data; }
+  }
+  class UTSquadEntity {
+    static FIELD_PLAYERS = 11;
+    update(squad) {
+      this._players = squad._players;
+      this._formation = squad._formation;
+      this.onDataUpdated?.notify({ slots: this._players });
+    }
+  }
   class EAHttpRequest {
     setRequestBody(body) { this.requestBody = body; }
     send() { throw new Error('never use base send'); }
@@ -45,7 +58,7 @@ export function executionRuntime() {
       return { ...data, definitionId: data.resourceId, type: 'player', utasPile: 7, _rating: 60, _rareflag: 0,
         upgrades: null, concept: false, cosmetics: [], _hyperCosmeticDTOs: {}, leagueId: 10,
         startTime: -1, endTime: -1, loans: -1, limitedUseType: 0, tradable: false,
-        state: 'free', _auction: { _tradeState: 'inactive' } };
+        state: 'free', _auction: { _tradeState: 'inactive' }, ...state.playerFacts, ...state.playerFactsById?.[data.id] };
     }
   }
   const itemFactory = new UTItemEntityFactory();
@@ -65,7 +78,7 @@ export function executionRuntime() {
       if (!inProgress) throw new Error('initialization forbidden');
       calls.push({ kind: 'squad' });
       const slots = state.saved ?? Array.from({ length: 23 }, (_, index) => ({ index, itemData: { id: 0, dream: false } }));
-      return observable(ok({ squad: { simpleBrickIndices: [], customBrickIndices: [], _players: slots.map(({ index, itemData }) => ({ index,
+      return observable(ok({ squad: { _formation: state.formation, simpleBrickIndices: state.simpleBrickIndices ?? [], customBrickIndices: [], _players: slots.map(({ index, itemData }) => ({ index,
         _item: itemData.id > 0 ? itemFactory.createItem({ id: itemData.id, resourceId: itemData.id + 100 }) : { id: 0 } })) } }));
     }
     saveChallenge() { throw new Error('queued mutation forbidden'); }
@@ -75,7 +88,7 @@ export function executionRuntime() {
   const persona = { id: 902, _sku: club.sku, clubs: { _collection: { [club.sku]: club } } };
   const user = { id: 901, selectedPersona: 902, _personas: { _collection: { 902: persona } } };
   const root = { APP_YEAR: 2027, APP_YEAR_SHORT: 27, GAME_NAME: 'fc27',
-    UTHttpRequest, EAHttpRequest, UTItemEntityFactory, UTItemRepository, UTClubRepository, UTSquadBuildingChallengeDAO, UTSquadEntity: { FIELD_PLAYERS: 11 },
+    UTHttpRequest, EAHttpRequest, EAObservable, UTItemEntityFactory, UTItemRepository, UTClubRepository, UTSquadBuildingChallengeDAO, UTSquadEntity,
     factories: { Item: itemFactory }, services: { User: { currentUserId: 901, repository: { _collection: { 901: user } } },
       SBC: { sbcDAO: new UTSquadBuildingChallengeDAO(), repository: { sets: { _collection: { 4: { ...set, challenges: [challenge] } } } } },
       Club: { clubDao: { authDelegate: {} } } },
@@ -91,7 +104,7 @@ export function executionRuntime() {
     ItemRarity: { NONE: 0, RARE: 1 }, LimitedUseType: { NONE: 0 }, AuctionTradeStateEnum: { ACTIVE: 'active', INACTIVE: 'inactive' } };
   // Git may check this synthetic runtime out with CRLF; adapters hash normalized source.
   const normalizeSource = source => source.replace(/\r\n/g, '\n');
-  const hashes = new Map([...FC27_CLUB_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS, ...FC27_SBC_CACHE_METHODS].map(([path, hash]) => [
+  const hashes = new Map([...FC27_CLUB_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS, ...FC27_SBC_CACHE_METHODS, ...FC27_PUZZLE_SYNC_METHODS].map(([path, hash]) => [
     normalizeSource(Function.prototype.toString.call(path.split('.').reduce((value, key) => value[key], root))), hash,
   ]));
   root.crypto = { subtle: { digest: vi.fn(async (_algorithm, bytes) => Uint8Array.from(Buffer.from(

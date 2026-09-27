@@ -5,6 +5,11 @@ const identity = value => Number.isSafeInteger(value) && value > 0;
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
 const boolean = value => typeof value === 'boolean' ? value : null;
 const at = (value, keys) => keys.reduce((next, key) => ownData(next, key), value);
+function numbers(value, limit, min, max) {
+  if (!Array.isArray(value) || value.length > limit) return null;
+  const result = Array.from({ length: value.length }, (_, index) => integer(ownData(value, String(index)), min, max));
+  return result.includes(null) || new Set(result).size !== result.length ? null : Object.freeze(result);
+}
 
 // Verified 2026-09-17 against the selected User -> Persona -> SKU -> Club chain.
 // Returned identities stay inside the provider; diagnostic reports export booleans only.
@@ -78,6 +83,10 @@ export function snapshotFc27ClubPlayer(item, root) {
     limitedUse: limitedType !== null && Number.isInteger(none) && startTime !== null && endTime !== null
       ? limitedType !== none || startTime !== -1 || endTime !== -1 : null,
     leagueId: integer(get('leagueId'), 1, 1e9),
+    // Observed FC27 data properties. No getters or upgrade-position fallback.
+    nationId: integer(get('nationId'), 1, 1e9), teamId: integer(get('teamId'), 1, 1e9),
+    positions: noUpgrades ? numbers(get('basePossiblePositions'), 28, 0, 27) : null,
+    groups: noUpgrades ? numbers(get('groups'), 128, 0, 1e9) : null,
     state: typeof get('state') === 'string' && get('state').length <= 32 ? get('state') : null,
     activeTrade: auctionState === active && active === 'active' ? true
       : auctionState === inactive && inactive === 'inactive' && get('state') === 'free' ? false : null,

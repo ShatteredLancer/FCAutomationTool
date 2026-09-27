@@ -1,6 +1,6 @@
 # FCAutomationTool Development and Release
 
-Current local version: `fc-automation-tool@27.0.1`, explicitly authorized for user-confirmed single traditional SBC Live execution. Real EA business acceptance and public publication remain pending. The published `27.0.0` is still read-only; `scripts/fc27-readonly-release.json` authorizes only that immutable artifact pair, not the new Live candidate. The production builder injects `__FCAT_LIVE_ENABLED__` into the entry and records the same value in its manifest.
+Current local version: `fc-automation-tool@27.0.1`, developed under normal production release standards. The published `27.0.0` remains immutable and read-only; its historical approval no longer gates new builds. Production and manifest share `__FCAT_LIVE_ENABLED__`. Release eligibility identifies a production artifact, not proof of live business acceptance. Feature validation and incomplete capabilities are documented separately; see [current release policy](FC27_GATES_AUDIT_ZH.md).
 
 ## Requirements
 
@@ -113,14 +113,14 @@ The patch generator must reproduce the exact modified SHA256 from the immutable 
 
 ## Release Process
 
-1. Verify explicit publication approval for the exact scope and artifact. The 27.0.0 approval is read-only; publishing the new Live build requires separate real low-value SBC acceptance, installation evidence and publication approval. Current readiness/packaging checks intentionally reject 27.0.1 with `FC27_READONLY_RELEASE_NOT_APPROVED`; do not extend the old approval or remove its checks to publish Live.
+1. Review implemented capabilities, relevant runtime evidence and outstanding limitations. There is no per-version manual hash allowlist or old installation-fixture gate. Do not describe unimplemented or unverified behavior as tested.
 2. Update `package.json` using `27.x.y` for FC27 and synchronize the lock file.
 3. Update `CHANGELOG.md` and compatibility documentation with actual evidence.
 4. Run `npm run verify`, `node scripts/verify-fc27-prelaunch.mjs --browser`, and `git diff --check`.
-5. Run `node scripts/package-fc27-release.mjs` and `node scripts/check-release-readiness.mjs --packaging`. Installation evidence must match the exact artifact SHA256; rerun when the artifact changes.
-6. Only after final approval, commit the generated root script and create/push the matching tag, for example `v27.0.0`.
+5. Run `node scripts/check-release-readiness.mjs --packaging` and `node scripts/package-fc27-release.mjs`. These validate current build/FSU assets and generate checksums; neither command publishes remotely.
+6. Commit the generated root script with source changes. When publication is requested, create/push the matching new version tag. Development authorization alone does not publish a Release.
 
-The tag workflow verifies first, enforces the pinned scope/installation gate, and uploads only the explicit Runner/FSU script/meta/manifest asset list plus `SHA256SUMS` from a draft Release. Release notes come from `docs/releases/<version>.md`, not automatically generated feature claims. No legacy Loops/Profile/Preview assets are shipped. After publishing, verify actual GitHub downloads/metadata and fresh-install delivery. The local update test cannot replace that check. Published Releases remain immutable. Old FC26 assets must be referenced by their version tag once latest points at FC27.
+The tag workflow runs full regression, FC27 and offline browser checks, verifies version/tag and current artifacts, then uploads the Runner/FSU script/meta/manifest asset list plus `SHA256SUMS` from a draft Release. Release notes come from `docs/releases/<version>.md`. Preview artifacts remain separate. After publishing, verify actual GitHub downloads/metadata and installation delivery. Published Releases remain immutable. Old FC26 assets remain available by version tag.
 
 ## Live Smoke Checklist
 

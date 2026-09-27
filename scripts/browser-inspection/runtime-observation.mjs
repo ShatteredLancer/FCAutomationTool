@@ -63,6 +63,20 @@ export function observeRuntime(root = globalThis) {
       return { count, truncated: count > limit, samples };
     } catch { return { count: null, truncated: false, samples: [] }; }
   }
+  function publicTeamLinks(value) {
+    try {
+      // Use the built-in Map operation, not a page-owned method or accessor.
+      const size = Object.getOwnPropertyDescriptor(Map.prototype, 'size').get.call(value);
+      if (size > 20000) return { count: size, truncated: true, samples: [] };
+      const iterator = Map.prototype.entries.call(value);
+      const samples = [];
+      for (let i = 0; i < Math.min(size, 8); i++) {
+        const [teamId, linkedTeamId] = iterator.next().value;
+        samples.push({ teamId: number(teamId, 1), linkedTeamId: number(linkedTeamId, 1) });
+      }
+      return { count: size, truncated: size > 8, samples };
+    } catch { return { count: null, truncated: false, samples: [] }; }
+  }
   const refs = { item: new Map(), definition: new Map() };
   function alias(value, kind) {
     if (!(number(value, 1, Number.MAX_SAFE_INTEGER) !== null
@@ -98,6 +112,10 @@ export function observeRuntime(root = globalThis) {
       hyperCosmeticCount: collection(data(value, '_hyperCosmeticDTOs'), 0, () => null).count,
       state: enumValue(read('state')), pile: enumValue(read('pile')),
       utasPile: number(read('utasPile'), 0, 100),
+      puzzle: { nationId: number(data(value, 'nationId'), 1), teamId: number(data(value, 'teamId'), 1),
+        leagueId: number(data(value, 'leagueId'), 1), preferredPosition: number(data(value, 'preferredPosition'), 0, 27),
+        basePossiblePositions: numericArray(data(value, 'basePossiblePositions'), 28),
+        groups: numericArray(data(value, 'groups'), 128) },
       endTime: number(read('endTime'), -1, Number.MAX_SAFE_INTEGER),
       auction: { source: state(value, '_auction'), state: enumValue(at(value, ['_auction', 'tradeState'])),
         fields: Object.fromEntries(['tradeId', 'id', 'state', 'tradeState', 'expires']
@@ -115,7 +133,10 @@ export function observeRuntime(root = globalThis) {
   const eligibility = data(root, 'SBCEligibilityKey');
   const keyNames = ['PLAYER_MIN_OVR', 'PLAYER_MAX_OVR', 'PLAYER_EXACT_OVR', 'PLAYER_QUALITY',
     'PLAYER_LEVEL', 'PLAYER_RARITY', 'PLAYER_RARITY_GROUP', 'TEAM_RATING', 'CHEMISTRY_POINTS',
-    'ALL_PLAYERS_CHEMISTRY_POINTS', 'SQUAD_PLAYER_COUNT', 'PLAYER_COUNT', 'TEAM_SIZE'];
+    'ALL_PLAYERS_CHEMISTRY_POINTS', 'SQUAD_PLAYER_COUNT', 'PLAYER_COUNT', 'TEAM_SIZE',
+    'NATION_ID', 'LEAGUE_ID', 'CLUB_ID', 'SAME_NATION_COUNT', 'SAME_LEAGUE_COUNT', 'SAME_CLUB_COUNT',
+    'NATION_COUNT', 'LEAGUE_COUNT', 'CLUB_COUNT', 'LEGEND_COUNT', 'TEAM_STAR_RATING',
+    'FIRST_OWNER_PLAYERS_COUNT', 'PLAYER_TRADABILITY', 'PLAYER_COUNT_COMBINED', 'SCOPE'];
   function requirementKey(value) {
     return number(value) ?? (typeof value === 'string' && /^\d{1,6}$/.test(value) ? Number(value) : label(value));
   }
@@ -193,7 +214,48 @@ export function observeRuntime(root = globalThis) {
   const sku = data(persona, '_sku');
   const club = at(persona, ['clubs', '_collection', String(sku)]);
   const rawCacheStatus = at(info, ['base', 'clubCache', 'status']);
+  // Market descriptors are observation-only. In particular, do not construct
+  // UTSearchCriteriaDTO or call a search/request method from this probe: the
+  // FC27 request/response contract still needs a reviewed read-only fixture.
+  const services = data(root, 'services');
+  const itemService = data(services, 'Item');
+  const market = { verified: false, itemService: state(services, 'Item'),
+    criteria: state(root, 'UTSearchCriteriaDTO'),
+    methods: Object.fromEntries(['searchConceptItems', 'searchTransferMarket', 'requestMarketData']
+      .map(key => [key, state(itemService, key)])) };
   return { schema: 1, evidence: 'passive-data-descriptors', liveExecutionEnabled: false,
+    eligibilityKeyEnums: Object.fromEntries(keyNames.map(key => [key, number(data(eligibility, key))])),
+    eligibilityQualityEnums: Object.fromEntries(['BRONZE', 'SILVER', 'GOLD']
+      .map(key => [key, number(at(root, ['SBCEligibilityQualityType', key]))])),
+    chemistry: {
+      configEvidence: {
+        checkFeatureEnabled: state(at(root, ['services', 'Configuration']), 'checkFeatureEnabled'),
+        getStringSettingByKey: state(at(root, ['repositories', 'ServerSettings']), 'getStringSettingByKey'),
+        keys: Object.fromEntries(['CHEMISTRY_PROFILES_ENABLED', 'SQUAD_RATING_FLOAT_CALCULATION_ENABLED', 'SUPER_CHEM_RARITY_IDS']
+          .map(key => [key, publicText(at(root, ['UTServerSettingsRepository', 'KEY', key]))
+            ?? number(at(root, ['UTServerSettingsRepository', 'KEY', key]))])),
+        identities: Object.fromEntries(['LEGENDS_CLUB_ID', 'LEGENDS_LEAGUE_ID', 'LEAGUE_HERO_CLUB_ID', 'HALL_OF_FUT_CLUB_ID']
+          .map(key => [key, number(at(root, ['UTItemEntity', key]), 1)])),
+      },
+      parameterEnums: Object.fromEntries(['CLUB', 'LEAGUE', 'NATION'].map(key => [key, number(at(root, ['ChemistryParamId', key]))])),
+      profileEnums: Object.fromEntries(['BASE', 'ICON', 'HERO'].map(key => [key, number(at(root, ['ChemistryProfileId', key]))])),
+      calculationEnums: Object.fromEntries(['NORMAL', 'UNIVERSAL_WITH_PLAYER_COUNT']
+        .map(key => [key, number(at(root, ['ChemistryProfileRuleCalculationType', key]))])),
+      parameters: collection(at(root, ['repositories', 'Chemistry', 'parameters']), 8, parameter => ({
+        id: number(data(parameter, 'id')), thresholds: collection(data(parameter, 'thresholds'), 8, threshold => ({
+          requirement: number(data(threshold, 'requirement'), 0, 100), points: number(data(threshold, 'points'), 0, 3),
+        })),
+      })),
+      profiles: collection(at(root, ['repositories', 'Chemistry', 'profiles']), 8, profile => ({
+        id: number(data(profile, 'id')), maxChem: bool(data(profile, 'maxChem')),
+        baseOverride: bool(data(profile, 'baseOverride')), iconOverride: bool(data(profile, 'iconOverride')),
+        heroOverride: bool(data(profile, 'heroOverride')),
+        applicableRarityIds: numericArray(data(profile, 'applicableRarityIds'), 128),
+        rules: collection(data(profile, 'rules'), 8, rule => ({ parameterId: number(data(rule, 'parameterId')),
+          calculationType: enumValue(data(rule, 'calculationType')), contribution: number(data(rule, 'contribution'), 0, 100) })),
+      })),
+      teamLinks: publicTeamLinks(at(root, ['repositories', 'TeamConfig', 'teamLinks'])),
+    },
     itemTypeEnums: Object.fromEntries(['PLAYER', 'MANAGER', 'CONSUMABLE', 'MISC']
       .map(key => [key, enumValue(at(root, ['ItemType', key]))])),
     eligibilityScopeEnums: Object.fromEntries(['GREATER', 'LOWER', 'EXACT'].map(key => [key, number(at(root, ['SBCEligibilityScope', key]))])),
@@ -206,6 +268,7 @@ export function observeRuntime(root = globalThis) {
       skuMatched: typeof sku === 'string' && data(club, 'sku') === sku,
       clubYear: number(data(club, 'year'), 2024, 2100), platform: enumValue(data(club, 'platform')),
       fields: Object.fromEntries(['currentUserId', 'repository', 'getUser'].map(key => [key, state(userService, key)])) },
+    market,
     inventory, sbc: { repository: state(service, 'repository'),
       methods: Object.fromEntries(['requestSets', 'requestChallengesForSet', 'loadChallenge', 'loadChallengeData',
         'saveChallenge', 'submitChallenge'].map(key => [key, state(service, key)])),
@@ -222,6 +285,6 @@ export function observeRuntime(root = globalThis) {
       targetedValidation: state(data(root, 'events'), 'validateClubPlayers'),
       bridge: Object.fromEntries(['describe', 'getPolicy', 'getLocks', 'getClubState', 'validateClubPlayers']
         .map(key => [key, state(bridge, key)])) },
-    limitations: ['NO_METHODS_INVOKED', 'NO_ACCOUNT_SCOPE_VERIFICATION', 'SAMPLES_NOT_COMPLETE_INVENTORY',
+    limitations: ['NO_METHODS_INVOKED', 'NO_MARKET_CONTRACT_VERIFICATION', 'NO_ACCOUNT_SCOPE_VERIFICATION', 'SAMPLES_NOT_COMPLETE_INVENTORY',
       'NO_LIVE_ELIGIBILITY_VERIFICATION', 'NO_TRANSACTION_AUTHORIZATION'] };
 }

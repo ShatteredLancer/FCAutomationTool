@@ -33,11 +33,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
-      - name: Verify exact read-only release approval and installation evidence
+      - name: Verify current release artifacts
         run: node scripts/check-release-readiness.mjs
       - name: Verify committed compatibility userscript
         run: git diff --exit-code -- FCAutomationTool.user.js
       - run: node scripts/verify-fc27-prelaunch.mjs
+      - run: npm ci --prefix tools/browser-inspection
+      - name: Verify browser interactions
+        run: node scripts/browser-inspection/run.mjs --self-test
       - run: node scripts/check-release-readiness.mjs --packaging
 
       - name: Validate release tag
@@ -91,7 +94,7 @@ jobs:
               throw "Release $env:RELEASE_TAG is already published and must remain immutable"
             }
           } else {
-            gh release create $env:RELEASE_TAG --verify-tag --draft --notes-file "docs/releases/$env:RELEASE_VERSION.md" --title "FC Automation Tool v$env:RELEASE_VERSION (Read-only)"
+            gh release create $env:RELEASE_TAG --verify-tag --draft --notes-file "docs/releases/$env:RELEASE_VERSION.md" --title "FC Automation Tool v$env:RELEASE_VERSION"
             if ($LASTEXITCODE -ne 0) { throw 'Failed to create draft release' }
           }
 

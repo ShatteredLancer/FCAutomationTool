@@ -67,6 +67,36 @@ it('does not use stale FSU ready cache as exact validation', async () => {
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
 });
 
+it.each(['occupied', 'bench', 'slot', 'before-write'])('blocks Puzzle %s at the native save boundary', async kind => {
+  const x = await fixture();
+  const provider = await createFc27TraditionalProvider(x.root, { canWrite: () => true });
+  const plan = { ...x.plan, kind: 'puzzle-fill', challenge: { ...x.plan.challenge,
+    formation: { id: 16, positions: Array(11).fill(5) }, slotCount: 11 } };
+  x.state.saved = Array.from({ length: 23 }, (_, index) => ({ index, itemData: { id: 0, dream: false } }));
+  if (kind === 'occupied') x.state.saved[0].itemData.id = x.state.players[0].id;
+  if (kind === 'bench') x.state.saved[11].itemData.id = x.state.players[0].id;
+  if (kind === 'slot') x.state.saved[0].index = 1;
+  const beforeWrite = vi.fn(() => kind !== 'before-write');
+  await expect(settle(provider.save(plan, beforeWrite))).rejects.toThrow(/FC27_/);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+  expect(beforeWrite).toHaveBeenCalledTimes(kind === 'before-write' ? 1 : 0);
+});
+
+it('saves Puzzle through the native transport once and reads exact slots without submitting or evicting Club', async () => {
+  const x = await fixture();
+  const provider = await createFc27TraditionalProvider(x.root, { canWrite: () => true });
+  const plan = { ...x.plan, kind: 'puzzle-fill', challenge: { ...x.plan.challenge,
+    formation: { id: 16, positions: Array(11).fill(5) }, slotCount: 11 } };
+  expect(await settle(provider.readSquadState(plan))).toMatchObject({ squadEmpty: true, fresh: true });
+  const beforeWrite = vi.fn(() => true);
+  expect(await settle(provider.save(plan, beforeWrite))).toMatchObject({ status: 'confirmed' });
+  expect(beforeWrite).toHaveBeenCalledOnce();
+  const saved = await settle(provider.readSavedSquad(plan));
+  expect(saved.items.map(({ id, slot }) => ({ id, slot }))).toEqual(plan.selected.map(({ id, slot }) => ({ id, slot })));
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(Object.keys(x.root.repositories.Item.club.items._collection)).toHaveLength(11);
+});
+
 it.each([409, 429, 500])('sends one submit for HTTP %s, never forces or retries', async status => {
   const x = await fixture(); x.state.submitStatus = status;
   const result = await settle(x.engine.execute(x.approval().permit));

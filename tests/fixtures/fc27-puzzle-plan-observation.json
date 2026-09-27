@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-25",
+  "evidence": "dedicated-browser-reviewed-catalog-and-in-progress-squad-get",
+  "liveExecutionEnabled": false,
+  "agentPerformedAccountMutation": false,
+  "setId": 19,
+  "challengeId": 43,
+  "challengeStatus": "IN_PROGRESS",
+  "rawRequirements": [
+    { "count": 1, "scope": 0, "pairs": [{ "key": 10, "values": [27, 7] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 9, "values": [3] }] },
+    { "count": 3, "scope": 0, "pairs": [{ "key": 17, "values": [2] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [1] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [14] }] }
+  ],
+  "layout": {
+    "slotCount": 11,
+    "requiredPlayerCount": 11,
+    "simpleBrickIndices": [],
+    "customBrickIndices": [],
+    "formation": { "id": 16, "positions": [0, 3, 5, 5, 7, 12, 14, 14, 16, 25, 25] }
+  },
+  "inventory": { "cachedEntries": 309, "cachedPlayers": 301, "status": "provisional", "complete": false, "scope": "club-only" },
+  "linkedClubCount": 64,
+  "linkedClubReadComplete": true,
+  "policy": { "maxRating": 74 },
+  "plan": {
+    "status": "blocked",
+    "reason": "FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE",
+    "safeCandidates": 47,
+    "excluded": 254,
+    "excludedByReason": { "rating-outside-range": 232, "tradeable-or-unknown": 14, "league-excluded-or-unknown": 8 },
+    "selectedCount": 0,
+    "nodes": 0
+  },
+  "chemistryProfileEnums": { "BASE": 1, "ICON": 3, "HERO": 2 },
+  "chemistryCalculationEnums": { "NORMAL": 1, "UNIVERSAL_WITH_PLAYER_COUNT": 2 },
+  "limitations": ["NOT_A_FULL_INVENTORY", "NO_TEAM_FACT_EVALUATOR", "NO_POSITION_SEARCH", "NO_FILL_SAVE_SUBMIT"]
+}

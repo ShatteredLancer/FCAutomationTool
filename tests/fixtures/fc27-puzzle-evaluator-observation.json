@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "observedOn": "2026-09-25",
+  "evidence": "dedicated-browser-reviewed-GETs-and-local-pure-evaluator",
+  "liveExecutionEnabled": false,
+  "agentPerformedAccountMutation": false,
+  "setId": 19,
+  "challengeId": 43,
+  "inventory": { "cachedEntries": 332, "cachedPlayers": 324, "status": "provisional", "complete": false, "scope": "club-only" },
+  "policy": { "maxRating": 74 },
+  "configuration": { "profilesEnabled": true, "floatCalculationEnabled": true, "profileCount": 4, "superChemRarityCount": 0 },
+  "linkedClubCount": 64,
+  "plan": {
+    "status": "preview",
+    "reason": "READ_ONLY_PLAN",
+    "safeCandidates": 47,
+    "excluded": 277,
+    "excludedByReason": { "rating-outside-range": 255, "tradeable-or-unknown": 14, "league-excluded-or-unknown": 8 },
+    "selectedCount": 11,
+    "nodes": 43,
+    "search": { "combinationNodes": 15, "placementNodes": 26, "evaluations": 1, "bounds": 1 },
+    "teamFacts": { "chemistry": 17, "teamRating": 68 },
+    "ratings": [66, 67, 69, 67, 71, 69, 65, 67, 65, 69, 69],
+    "slots": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  },
+  "limitations": ["NOT_A_FULL_INVENTORY", "PURE_EVALUATOR_RESULT_NOT_EA_CONFIRMATION", "NO_MINIMUM_COST_PROOF", "NO_FILL_SAVE_SUBMIT"]
+}

@@ -1,57 +1,52 @@
 import { expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { FC27_RELEASE_ASSETS } from '../../scripts/package-fc27-release.mjs';
-import { assertReadonlyRelease } from '../../scripts/fc27-release-policy.mjs';
+import { assertRelease } from '../../scripts/fc27-release-policy.mjs';
 import { buildFc27Production } from '../../scripts/build-fc27-production.mjs';
 
-async function approvedInputs() {
+async function inputs() {
   const read = async file => JSON.parse(await readFile(new URL(file, import.meta.url), 'utf8'));
-  const evidence = await read('../fixtures/fc27-production-installation-observation.json');
-  const approval = await read('../../scripts/fc27-readonly-release.json');
-  return { manifest: { name: evidence.name, namespace: evidence.namespace, version: evidence.version,
-    sha256: evidence.sha256, targetSeason: '27', releaseScope: 'read-only', liveExecutionEnabled: false },
-    approval,
-    evidence,
-    // The approval tests the immutable v27.0.0 release. Do not silently
-    // replace its historical FSU .8 input with the current maintenance build.
-    fsu: { localVersion: approval.fsuLocalVersion, modifiedSha256: approval.fsuSha256 } };
+  return { manifest: (await buildFc27Production()).manifest,
+    fsu: await read('../../FSU_mod/fsu-mod-manifest.json'),
+    fsuConfig: await read('../../FSU_mod/fsu-mod.config.json') };
 }
 
-it('uses an explicit FC27-only publication asset list without old workflows or preview scripts', async () => {
+it('packages production assets through the normal immutable release workflow', async () => {
   expect(FC27_RELEASE_ASSETS).toEqual([
     'FCAutomationTool.user.js', 'FCAutomationTool.meta.js', 'FCAutomationTool.manifest.json',
     'FSU-Local.user.js', 'FSU-Local.meta.js', 'FSU-Local.manifest.json', 'SHA256SUMS',
   ]);
   const workflow = await readFile(new URL('../../.github/workflows/release-assets.yml', import.meta.url), 'utf8');
   expect(workflow).toContain('node scripts/package-fc27-release.mjs');
-  expect(workflow).not.toMatch(/FCAutomationTool\.loops|build:profiles|profiles\.zip|DailyLoopRunner/);
-  expect(workflow).toContain('FC Automation Tool v$env:RELEASE_VERSION');
+  expect(workflow).toContain('node scripts/browser-inspection/run.mjs --self-test');
+  expect(workflow).toContain('already published and must remain immutable');
+  expect(workflow).not.toMatch(/FCAutomationTool\.loops|build:profiles|profiles\.zip|DailyLoopRunner|\(Read-only\)/);
 });
 
-it('permits only the explicitly approved read-only release without claiming Live acceptance', async () => {
-  expect(assertReadonlyRelease(await approvedInputs())).toEqual({ scope: 'read-only', version: '27.0.0',
-    liveExecutionEnabled: false, liveAcceptanceVerified: false });
+it('accepts the current production build without a manual hash approval or old installation fixture', async () => {
+  const input = await inputs();
+  expect(assertRelease(input)).toEqual({ scope: 'fc27', version: input.manifest.version, liveExecutionEnabled: true });
 });
 
-it('does not publish the new Live candidate using the historical read-only approval', async () => {
-  const input = await approvedInputs();
-  input.manifest = (await buildFc27Production()).manifest;
-  expect(input.manifest.liveExecutionEnabled).toBe(true);
-  expect(input.manifest.releaseEligible).toBe(false);
-  expect(() => assertReadonlyRelease(input)).toThrow('FC27_READONLY_RELEASE_NOT_APPROVED');
+it('supports future FC27 versions and both execution modes without another hardcoded allowlist', async () => {
+  const input = await inputs();
+  input.manifest.version = '27.5.0'; input.manifest.liveExecutionEnabled = false;
+  input.manifest.sha256 = 'a'.repeat(64);
+  expect(assertRelease(input)).toEqual({ scope: 'fc27', version: '27.5.0', liveExecutionEnabled: false });
 });
 
 it.each([
-  ['Live enabled', input => { input.manifest.liveExecutionEnabled = true; }],
-  ['future version', input => { input.manifest.version = '27.0.1'; }],
-  ['changed script', input => { input.manifest.sha256 = 'a'.repeat(64); }],
-  ['approval missing', input => { input.approval = null; }],
-  ['approval revoked', input => { input.approval.approved = false; }],
-  ['Live approval', input => { input.approval.scope = 'live'; }],
-  ['unverified install', input => { input.evidence.installed = false; }],
-  ['unverified update', input => { input.evidence.update.fullScriptRequests = 0; }],
-  ['changed FSU', input => { input.fsu.modifiedSha256 = 'b'.repeat(64); }],
-])('rejects %s without extending the release approval', async (name, change) => {
-  const input = await approvedInputs(); change(input);
-  expect(() => assertReadonlyRelease(input)).toThrow(/FC27_/);
+  ['wrong season', input => { input.manifest.targetSeason = '26'; }],
+  ['preview artifact', input => { input.manifest.releaseEligible = false; }],
+  ['wrong identity', input => { input.manifest.name = 'FC Automation Tool Preview'; }],
+  ['malformed version', input => { input.manifest.version = 'garbage'; }],
+  ['malformed hash', input => { input.manifest.sha256 = 'a'; }],
+  ['empty artifact', input => { input.manifest.bytes = 0; }],
+  ['unknown execution mode', input => { delete input.manifest.liveExecutionEnabled; }],
+  ['FSU version mismatch', input => { input.fsu.localVersion = '26.09.1'; }],
+  ['FSU origin mismatch', input => { input.fsu.upstreamVersion = '26.00'; }],
+  ['FSU missing hash', input => { delete input.fsu.modifiedSha256; }],
+])('retains release integrity: %s', async (_name, change) => {
+  const input = await inputs(); change(input);
+  expect(() => assertRelease(input)).toThrow(/FC27_/);
 });
