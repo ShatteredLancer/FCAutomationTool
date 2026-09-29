@@ -1,6 +1,7 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { FC27_CLUB_READ_METHODS } from './fc27-club-read.js';
+import { MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 
 // Public FC27 sources reviewed 2026-09-26, captured 2026-09-17. No service
 // market search: its page cache can contain another caller's search results.
@@ -68,7 +69,8 @@ function method(object, key) {
   }
 }
 
-export async function createFc27MarketReadTransport(root) {
+export async function createFc27MarketReadTransport(root, { maxRequests = 8 } = {}) {
+  if (!valid(maxRequests, 1, PUZZLE_MARKET_READ_LIMIT)) throw error('QUERY_INVALID');
   const context = readFc27Context(root);
   const reviewed = new Map();
   for (const [index, [path, expected]] of FC27_MARKET_READ_METHODS.entries()) {
@@ -99,8 +101,9 @@ export async function createFc27MarketReadTransport(root) {
   let busy = false; let stopped = false; let requests = 0; let lastRequestAt = null;
 
   async function request(kind, query, project) {
-    if (busy || stopped || requests >= 8) throw error('READ_BLOCKED');
+    if (busy || stopped || requests >= maxRequests) throw error('READ_BLOCKED');
     busy = true;
+    let failureDetails = null;
     try {
       const delay = lastRequestAt === null ? 0 : Math.max(0, 800 - (Date.now() - lastRequestAt));
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -142,13 +145,25 @@ export async function createFc27MarketReadTransport(root) {
       });
       assertRuntime();
       const status = ownData(dto, 'status');
-      if (ownData(dto, 'success') !== true || status !== 200) throw error(valid(status, 100, 599) ? `HTTP_${status}` : 'RESPONSE_UNVERIFIED');
+      if (ownData(dto, 'success') !== true || status !== 200) {
+        // Numeric EA subcodes only: never retain the response, messages or credentials.
+        const rawCode = ownData(ownData(dto, 'response'), 'code');
+        const code = typeof rawCode === 'string' && /^\d{1,10}$/.test(rawCode) ? Number(rawCode) : rawCode;
+        failureDetails = { httpStatus: valid(status, 100, 599) ? status : null,
+          eaCode: valid(code, 0, 0x7fffffff) ? code : null };
+        throw error(valid(status, 100, 599) ? `HTTP_${status}` : 'RESPONSE_UNVERIFIED');
+      }
       const body = ownData(dto, 'response');
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw error('RESPONSE_UNVERIFIED');
       const result = project(body);
       assertRuntime();
       return result;
-    } catch (caught) { stopped = true; throw new Error(marketReadReason(caught)); }
+    } catch (caught) {
+      stopped = true;
+      const failure = new Error(marketReadReason(caught));
+      if (failureDetails) failure.marketFailure = failureDetails;
+      throw failure;
+    }
     finally { busy = false; }
   }
   function materialize(raw) {
@@ -175,9 +190,9 @@ export async function createFc27MarketReadTransport(root) {
     readQuotePage: async (query = {}) => {
       if (!query || Object.keys(query).some(k => !['definitionId', 'start', 'count', 'maxBuy'].includes(k))
           || !valid(query.definitionId, 1, Number.MAX_SAFE_INTEGER) || !valid(query.start, 0, 1000)
-          || !valid(query.count, 1, 50) || !valid(query.maxBuy, 150, 10000)) throw error('QUERY_INVALID');
+          || !valid(query.count, 1, 50) || !isPuzzleQuoteCeiling(query.maxBuy)) throw error('QUERY_INVALID');
       return request('quotes', { type: 'player', definitionId: query.definitionId, start: query.start,
-        num: query.count, maxb: query.maxBuy }, body => {
+        num: query.count, ...(query.maxBuy === null ? {} : { maxb: query.maxBuy }) }, body => {
         const rows = ownData(body, 'auctionInfo');
         if (!Array.isArray(rows) || rows.length > query.count) throw error('PAYLOAD_UNVERIFIED');
         const ids = new Set(); const prices = [];
@@ -190,7 +205,7 @@ export async function createFc27MarketReadTransport(root) {
           ids.add(String(tradeId));
           const price = ownData(row, 'buyNowPrice');
           if (ownData(row, 'tradeState') === 'active' && valid(ownData(row, 'expires'), 1, 604800)
-              && valid(price, 150, query.maxBuy) && ownData(row, 'tradeOwner') === false
+              && valid(price, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE) && ownData(row, 'tradeOwner') === false
               && ownData(item, 'untradeable') === false) prices.push(price);
         }
         return { status: 'observed', season: '27', platform: context.platform, definitionId: query.definitionId,

@@ -34,6 +34,12 @@ const report = { schema: 1, version: artifact.version, sha256: artifact.manifest
 const output = path.join(root, 'artifacts/fc27-browser');
 await mkdir(output, { recursive: true });
 async function clickPanel(page, id) {
+  if (!id.startsWith('tab-')) {
+    const entry = page.locator('.ut-tab-bar .fcat-navigation-entry');
+    if (await entry.count() === 1) await entry.click();
+    await clickPanel(page, ['gm', 'hold'].includes(id) ? 'tab-settings'
+      : ['recovery', 'resolve'].includes(id) ? 'tab-activity' : 'tab-sbc');
+  }
   const cdp = await context.newCDPSession(page);
   try {
     const { root: doc } = await cdp.send('DOM.getDocument');
@@ -43,9 +49,11 @@ async function clickPanel(page, id) {
     if (!shadow) throw new Error('ACCEPTANCE_PANEL_ABSENT');
     const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: shadow.backendNodeId, objectGroup: 'acceptance' });
     const result = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
-      functionDeclaration: `function(id) { const details=this.querySelector('details'); details.open=true;
+      functionDeclaration: `function(id) { this.host.style.display='block'; const details=this.querySelector('details'); details.open=true;
+        const advanced=this.querySelector('[data-sbc-advanced]'); if(advanced && !id.startsWith('tab-'))advanced.open=true;
         if(id==='prepare') { this.getElementById('target').value='4'; this.getElementById('rating').value='74'; }
         const button=this.getElementById(id); if(!button || button.disabled)return null;
+        button.scrollIntoView({block:'nearest',inline:'nearest'});
         const r=button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; }`, arguments: [{ value: id }] });
     const point = result.result.value; if (!point) throw new Error('ACCEPTANCE_CONTROL_UNAVAILABLE');
     await page.mouse.click(point.x, point.y);

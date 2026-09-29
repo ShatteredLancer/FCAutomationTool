@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
-import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchases } from '../../src/fc27/puzzle-procurement.js';
+import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchases,
+  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchases } from '../../src/fc27/puzzle-procurement.js';
+import { marketRow } from '../helpers/fc27-market-fixture.js';
 
 function fixture() {
   const input = puzzleFillFixture();
@@ -42,4 +44,67 @@ it('queries only bounded connected lanes and rejects stale or tampered seeds',()
   expect(route.queries.every(q=>q.level==='bronze'&&q.count===20)).toBe(true);
   input.challenge.rawRequirements[1].pairs[0].values=[32];
   expect(suggestFc27PuzzlePurchases(input,seed,[card]).status).toBe('blocked');
+});
+
+it('plans missing bronze materials without requiring a complete owned near-solution', () => {
+  const { input, card } = fixture();
+  input.inventory.items.pop();
+  input.challenge.rawRequirements = [marketRow(3, 1), marketRow(17, 2, 3), marketRow(35, 14)];
+  input.inventory.items.slice(7).forEach(item => { item.rating = 68; });
+  expect(findFc27PuzzleRepairSeed(input).status).toBe('blocked');
+  const route = planFc27PuzzleShortageQueries(input);
+  expect(route.status).toBe('ready');
+  expect(route.queries.every(query => query.level === 'bronze')).toBe(true);
+  const result = suggestFc27PuzzleJointPurchases(input, [card]);
+  expect(result).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1,
+    selectedOwned: expect.any(Array), purchases: [{ definitionId: 901 }] }] });
+  expect(result.plans[0].selectedOwned).toHaveLength(10);
+  expect(result.plans[0].purchases[0]).not.toHaveProperty('id');
+  expect(input.policy.onlyUntradeable).toBe(true);
+  expect(suggestFc27PuzzleJointPurchases(input, [{ ...card, rating: 68 }]).plans).toEqual([]);
+});
+
+it('joint procurement also works without a chemistry requirement and retains owned protections', () => {
+  const { input, card } = fixture();
+  input.challenge.rawRequirements = [marketRow(3, 1, -1, 2)];
+  input.inventory.items.pop();
+  expect(suggestFc27PuzzleJointPurchases(input, [card]).status).toBe('suggested');
+  input.inventory.items[0].locked = true;
+  expect(suggestFc27PuzzleJointPurchases(input, [card]).status).toBe('blocked');
+});
+
+it('targets bronze clubs under a club cap even when bronze headcount alone is sufficient', () => {
+  const { input } = fixture();
+  input.challenge.rawRequirements = [marketRow(3, 1), marketRow(9, 4, -1, 1), marketRow(35, 14)];
+  input.inventory.items.forEach((item, i) => { item.teamId = Math.floor(i / 2) + 1; });
+  const route = planFc27PuzzleShortageQueries(input);
+  expect(route.queries).toEqual([1, 2, 3].map(team => ({ start: 0, count: 20, level: 'bronze', team })));
+});
+
+it('uses safe public candidates to focus later pages without promoting protected owned cards', () => {
+  const { input, card } = fixture();
+  input.challenge.rawRequirements = [marketRow(3, 1), marketRow(9, 4, -1, 1)];
+  input.inventory.items.forEach(item => { item.locked = true; });
+  const entries = [0, 1, 2].map(i => ({ ...card, definitionId: 901 + i, teamId: 123 }));
+  entries.push({ ...card, definitionId: 910, teamId: 321, special: true });
+  const route = planFc27PuzzleShortageQueries(input, entries);
+  expect(route.queries[0]).toEqual({ start: 0, count: 20, level: 'bronze', team: 123 });
+  expect(route.queries.every(query => query.level === 'bronze' && query.team !== 321 && query.team !== 11)).toBe(true);
+});
+
+it('does not sample silver or gold when minimum bronze policy forbids their use', () => {
+  const { input } = fixture(); input.challenge.rawRequirements = [marketRow(3, 1)];
+  input.policy.maxRating = 82;
+  expect(planFc27PuzzleShortageQueries(input).queries.every(query => query.level === 'bronze')).toBe(true);
+});
+
+it('reserves a query for a missing required tier when only filler clubs are owned', () => {
+  const { input } = fixture(); input.policy.maxRating = 82;
+  input.challenge.rawRequirements = [marketRow(3, 2), marketRow(17, 3, 2), marketRow(9, 4, -1, 1)];
+  input.inventory.items.forEach((item, i) => { item.rating = 70; item.teamId = Math.floor(i / 2) + 1; });
+  const route = planFc27PuzzleShortageQueries(input);
+  expect(route.queries).toHaveLength(3);
+  expect(route.queries[0]).toMatchObject({ level: 'gold' });
+  expect(route.queries.some(query => query.level === 'silver')).toBe(true);
+  expect(route.queries.some(query => query.level === 'bronze')).toBe(false);
 });

@@ -67,3 +67,16 @@ it('preserves Storage priority even when an AI hint prefers another group', () =
   const result = previewFc27PuzzleSquad({ ...input, searchHint: { strategy: 'nation', groupId: 2 } });
   expect(result.status).toBe('preview'); expect(result.selected[0].pile).toBe('storage');
 });
+
+it('keeps an advertised route usable when native quality rules remove every member', () => {
+  const input = fixture();
+  input.challenge.rawRequirements = [{ count: -1, scope: 2, pairs: [{ key: 3, values: [1] }] }];
+  input.inventory.items.forEach(item => { if (item.nationId === 1) item.rating = 70; });
+  const session = createFc27PuzzleAssistantSession(input);
+  expect(session.observe().groups.nation.entries.some(entry => entry.id === 1)).toBe(true);
+  expect(session.run({ strategy: 'nation', groupId: 1 })).toMatchObject({ status: 'preview', selectedCount: 3 });
+  expect(session.result().selected.every(item => item.rating === 60)).toBe(true);
+  const best = session.result();
+  expect(session.run({ strategy: 'nation', groupId: 999 }).reason).toBe('FC27_PUZZLE_STRATEGY_INVALID');
+  expect(session.result()).toEqual(best);
+});

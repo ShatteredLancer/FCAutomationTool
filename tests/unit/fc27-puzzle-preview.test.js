@@ -6,6 +6,53 @@ import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc2
 
 const row = (key, value, count = -1, scope = 0) => ({ count, scope, pairs: [{ key, values: [value] }] });
 
+it.each([[7, 'nationId'], [8, 'leagueId'], [9, 'teamId']])(
+  'prunes insufficient remaining group capacity for key %i without exhausting the budget', (key, field) => {
+    const input = fixture(); input.challenge.slotCount = 11;
+    input.challenge.rawRequirements = [row(key, 3, -1, 1)];
+    const base = input.inventory.items[0];
+    // Many isolated low-rated cards precede three groups that can fill eleven.
+    input.inventory.items = Array.from({ length: 52 }, (_, i) => ({ ...base,
+      id: i + 1, definitionId: i + 101, rating: 50 + Math.floor(i / 10),
+      [field]: i < 40 ? i + 1 : 100 + Math.floor((i - 40) / 4) }));
+    const result = previewFc27PuzzleSquad({ ...input, maxNodes: 5000 });
+    expect(result.status).toBe('preview');
+    expect(result.selected).toHaveLength(11);
+    expect(result.selected.every(item => item.id > 40)).toBe(true);
+    expect(result.nodes).toBeLessThan(5000);
+  });
+
+it.each([1, 2])('proves insufficient max/exact club capacity with scope %i before placement', scope => {
+  const input = fixture(); input.challenge.slotCount = 11;
+  input.challenge.rawRequirements = [row(9, 4, -1, scope)];
+  input.inventory.items = Array.from({ length: 23 }, (_, i) => ({ ...input.inventory.items[0],
+    id: i + 1, definitionId: 101 + i, teamId: Math.floor(i / 2) + 1 }));
+  expect(previewFc27PuzzleSquad({ ...input, maxNodes: 100 })).toMatchObject({
+    reason: 'FC27_PUZZLE_NO_PLAN_FOUND', nodes: 1,
+  });
+});
+
+it('agrees with exhaustive small-pool feasibility across group modes and duplicate definitions', () => {
+  for (let sample = 0; sample < 36; sample++) {
+    const input = fixture(); input.challenge.slotCount = 4;
+    const key = 7 + sample % 3; const scope = Math.floor(sample / 3) % 3;
+    input.challenge.rawRequirements = [row(key, 1 + Math.floor(sample / 9), -1, scope)];
+    input.inventory.items = Array.from({ length: 9 }, (_, i) => ({ ...input.inventory.items[0],
+      id: i + 1, definitionId: 101 + (i + sample) % 7,
+      nationId: 1 + i % 3, leagueId: 1 + i % 4, teamId: 1 + i % 5 }));
+    const rules = parseFc27SbcRequirements(input.challenge.rawRequirements, 4).rules;
+    let feasible = false;
+    for (let mask = 0; mask < 512; mask++) {
+      const squad = input.inventory.items.filter((_, i) => mask & (1 << i));
+      if (squad.length !== 4 || new Set(squad.map(item => item.definitionId)).size !== 4) continue;
+      if (matchFc27SbcRequirements({ requirements: rules, squad, clubLinks: input.clubLinks }).status === 'satisfied') feasible = true;
+    }
+    const result = previewFc27PuzzleSquad({ ...input, maxNodes: 10000 });
+    expect(result.status === 'preview', `sample ${sample}`).toBe(feasible);
+    expect(result.reason).not.toBe('FC27_PUZZLE_SEARCH_LIMIT');
+  }
+});
+
 it('uses exactly two capped gold cards and silver fillers for minimum silver plus two gold', () => {
   const input = fixture(); input.policy.maxRating = 82;
   input.challenge.rawRequirements = [row(3, 2), row(17, 3, 2)];
@@ -158,6 +205,59 @@ it('does not call a market shortage proven when only a search limit was reached'
   expect(result.reason).toBe('FC27_PUZZLE_SEARCH_LIMIT'); expect(result.selected).toEqual([]);
   expect(result).not.toHaveProperty('deficits'); expect(result.nodes).toBeLessThanOrEqual(201);
 });
+
+it('continues bounded multi-start search when a frequent group disappears under native quality rules', () => {
+  const input = fixture(); input.challenge.slotCount = 11;
+  input.challenge.rawRequirements = [row(3, 1, -1, 2), row(35, 33)];
+  input.inventory.items = Array.from({ length: 32 }, (_, i) => ({ ...input.inventory.items[0],
+    id: i + 1, definitionId: 1000 + i, rating: i < 20 ? 70 : 60,
+    leagueId: i < 20 ? 1 : 2, nationId: i < 20 ? 1 : 2,
+  }));
+  const evaluateSquad = vi.fn(squad => {
+    expect(squad.every(item => item.rating < 65)).toBe(true);
+    return { chemistry: 0 };
+  });
+  const result = previewFc27PuzzleSquad({ ...input, maxNodes: 1000, evaluateSquad });
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', selected: [] });
+  expect(result.nodes).toBe(1000);
+  expect(result.nodes).toBe(Object.values(result.search).reduce((sum, count) => sum + count, 0));
+  expect(result.strategyAttempts).toBeGreaterThan(1);
+  expect(evaluateSquad).toHaveBeenCalled();
+});
+
+it.each(['league', 'nation', 'club'])('falls back safely when a known %s hint is removed by unary constraints', strategy => {
+  const input = fixture(); input.challenge.rawRequirements = [row(3, 1, -1, 2)];
+  input.inventory.items = Array.from({ length: 5 }, (_, i) => ({ ...input.inventory.items[0],
+    id: i + 1, definitionId: 1000 + i, rating: i < 2 ? 70 : 60,
+    leagueId: i < 2 ? 1 : 2, nationId: i < 2 ? 1 : 2, teamId: i < 2 ? 1 : 2,
+  }));
+  const baseline = previewFc27PuzzleSquad(input);
+  const result = previewFc27PuzzleSquad({ ...input, searchHint: { strategy, groupId: 1 } });
+  expect(result).toMatchObject({ status: 'preview', selected: baseline.selected });
+  expect(result.selected.every(item => item.rating < 65)).toBe(true);
+  expect(previewFc27PuzzleSquad({ ...input, searchHint: { strategy, groupId: 999 } }).reason)
+    .toBe('FC27_PUZZLE_STRATEGY_INVALID');
+});
+
+it('reaches a later feasible route instead of allocating starts to an excluded dominant group', () => {
+  const input = fixture(); input.challenge.rawRequirements = [row(3, 1, -1, 2), row(35, 3)];
+  input.inventory.items = Array.from({ length: 35 }, (_, i) => ({ ...input.inventory.items[0],
+    id: i + 1, definitionId: 1000 + i, rating: i < 20 ? 70 : i < 32 ? 60 : 64,
+    leagueId: i < 20 ? 1 : i < 32 ? 2 : 3, nationId: i < 20 ? 1 : i < 32 ? 2 : 3,
+  }));
+  const result = previewFc27PuzzleSquad({ ...input, maxNodes: 1000,
+    evaluateSquad: squad => ({ chemistry: squad.every(item => item.leagueId === 3) ? 3 : 0 }) });
+  expect(result).toMatchObject({ status: 'preview', validation: { satisfied: true } });
+  expect(result.selected.map(item => item.id).sort((a, b) => a - b)).toEqual([33, 34, 35]);
+  expect(result.strategyAttempts).toBeGreaterThan(1);
+  expect(result.nodes).toBeLessThanOrEqual(1000);
+});
+
+it.each([{ strategy: 'relax', groupId: 0 }, { strategy: 'balanced', groupId: 2 },
+  { strategy: 'nation', groupId: '1' }, { strategy: 'nation', groupId: 1, relax: true }])(
+  'still rejects malformed external hints %j', searchHint => {
+    expect(previewFc27PuzzleSquad({ ...fixture(), searchHint }).reason).toBe('FC27_PUZZLE_STRATEGY_INVALID');
+  });
 
 it('skips position permutations for a proven chemistry bound and reaches a later feasible combination', () => {
   const input = fixture(); input.challenge.rawRequirements.push(row(35, 3));

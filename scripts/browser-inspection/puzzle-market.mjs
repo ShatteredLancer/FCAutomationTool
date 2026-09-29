@@ -73,6 +73,7 @@ export async function inspectPuzzleMarket(page, setId, challengeId, options = {}
   const bundle = await build({ absWorkingDir: root, stdin: { contents: source, resolveDir: root, sourcefile: 'puzzle-market-inspection.js' },
     bundle: true, write: false, metafile: true, format: 'iife', globalName: 'MarketRead', target: 'chrome120' });
   const allowed = new Set(['puzzle-market-inspection.js', 'src/fc27/puzzle-market-session.js', 'src/fc27/market-catalog.js', 'src/fc27/puzzle-market.js',
+    'src/fc27/puzzle-concept-plan.js',
     'src/adapters/ea/fc27-puzzle-read.js', 'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js',
     'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js', 'src/adapters/ea/fc27-challenge-catalog.js',
     'src/adapters/ea/fc27-sbc-read.js', 'src/domain/player-rarity.js', 'src/fc27/prelaunch-contract.js',

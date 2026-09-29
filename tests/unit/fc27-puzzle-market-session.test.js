@@ -57,6 +57,14 @@ it('rejects duplicate and unknown routes without consuming another attempt', () 
   expect(session.observe()).toEqual(before);
 });
 
+it('can use a market-only group without requiring it to exist in the owned baseline', () => {
+  const session = createFc27PuzzleMarketSession(marketFixture());
+  expect(session.observe().groups.nation.entries.find(entry => entry.id === 2)).toMatchObject({ ownedCount: 0, marketCount: 4 });
+  const result = session.run({ strategy: 'nation', groupId: 2 });
+  expect(result).toMatchObject({ status: 'preview', reason: 'FC27_MARKET_PLAN_PREVIEW', purchaseCount: 1 });
+  expect(session.result().estimatedCost).toBe(200);
+});
+
 it('enforces a shared node budget and retains the incumbent when a later search is limited', () => {
   const session = createFc27PuzzleMarketSession(marketFixture(), { nodesPerAttempt: 13, totalNodes: 14 });
   const best = session.result(); expect(best.status).toBe('preview');

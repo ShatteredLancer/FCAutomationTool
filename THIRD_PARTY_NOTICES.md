@@ -16,6 +16,17 @@ The original author, metadata attribution, and MIT notice are retained. See
 [`FSU_mod/LICENSE`](FSU_mod/LICENSE) and
 [`FSU_mod/fsu-mod-manifest.json`](FSU_mod/fsu-mod-manifest.json).
 
+FCAT's independent concept-player buyer also adapts the bounded price search
+and serial search/buy/move flow from FSU 26.09 `readAuctionPrices` and
+`buyConceptPlayer`, plus `futbinId.getId/getPrice/setPrice` and the native loader
+and purchase-button behavior. See `src/fc27/fsu-auction-search.js`,
+`src/fc27/fsu-reference-price.js`, `src/adapters/browser/fc27-futbin-http.js`,
+`src/adapters/browser/fc27-puzzle-buy-button.js`, and
+`src/adapters/ea/fc27-puzzle-buy.js`. The MIT attribution and permission notice
+are retained in the source and bundled userscript. It does not call FSU's
+buttons, functions, settings or loader; FSU installation is not required for
+this purchase feature. Puzzle selection/submission keeps its separate policies.
+
 ## Runtime Services
 
 FCAutomationTool can request player metadata or prices from FUT.GG, FUTBIN, and

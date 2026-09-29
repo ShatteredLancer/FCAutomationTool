@@ -31,13 +31,54 @@ function locate(root) {
         || ownData(ownData(detail, '_challenge'), 'setId') !== setId) return null;
     const anchor = detail?.getView?.()?._btnExchange?.getRootElement?.();
     if (!anchor?.isConnected || anchor.ownerDocument !== root.document) return null;
-    return { setId, challengeId, anchor, challenge: ownData(detail, '_challenge') };
+    return { setId, challengeId, anchor, challenge: ownData(detail, '_challenge'),
+      purchaseAnchor: detail?.getView?.()?._challengeDetails?.getRootElement?.() ?? null };
   } catch { return null; }
 }
 
 export function readFc27PuzzlePage(root) {
   const target = locate(root);
-  return target ? { setId: target.setId, challengeId: target.challengeId, anchor: target.anchor } : null;
+  return target ? { setId: target.setId, challengeId: target.challengeId, anchor: target.anchor,
+    ...(target.purchaseAnchor ? { purchaseAnchor: target.purchaseAnchor } : {}) } : null;
+}
+
+// FSU's purchase button reads getPlayers(), including the work area. Buying
+// does not use the solver's eleven-player/formation/brick validation contract.
+export function readFc27PurchasePage(root, target) {
+  const page = locate(root);
+  if (!page || page.setId !== target.setId || page.challengeId !== target.challengeId) return null;
+  const squad = page.challenge.squad;
+  const players = squad.getPlayers();
+  return { squad, items: players.map(slot => slot.item ?? slot._item),
+    slots: players.map((slot, index) => {
+      const item = slot.item ?? slot._item;
+      return !item || [0, -1].includes(item.id) ? null
+        : { slot: index, id: item.id, definitionId: item.definitionId, concept: item.concept };
+    }) };
+}
+
+export function readFc27PurchasePageSlots(root, target, record = null) {
+  const slots = readFc27PurchasePage(root, target)?.slots ?? null;
+  return slots && record?.base?.kind !== 'native-concept-purchase' && record?.base?.slots
+    ? slots.slice(0, record.base.slots.length) : slots;
+}
+
+// Transient native entities for the purchase adapter only; never persisted.
+export function readFc27PuzzlePageItems(root, target) {
+  const page = locate(root);
+  if (!page || page.setId !== target.setId || page.challengeId !== target.challengeId) return null;
+  return ownData(ownData(page.challenge, 'squad'), '_players')?.slice(0, 11).map(slot => ownData(slot, '_item')) ?? null;
+}
+
+export function readFc27PuzzlePageSlots(root, target) {
+  const page = locate(root);
+  if (!page || page.setId !== target.setId || page.challengeId !== target.challengeId) return null;
+  const slots = ownData(ownData(page.challenge, 'squad'), '_players');
+  if (!Array.isArray(slots) || slots.length < 11) return null;
+  return slots.slice(0, 11).map((slot, index) => {
+    const item = ownData(slot, '_item'); const id = ownData(item, 'id');
+    return [0, -1].includes(id) ? null : { slot: index, id, definitionId: ownData(item, 'definitionId'), concept: ownData(item, 'concept') };
+  });
 }
 
 // Current native editor already holds these rules. Projection is local only;
@@ -87,6 +128,29 @@ function currentChallengeEntity(root, { setId, challengeId }) {
 // Called only after the exact server readback has passed transaction validation.
 // Never load, save, submit, navigate, or replace a different local arrangement.
 export async function synchronizeFc27PuzzleSquad(root, target, savedSquad, refs, assertContext = () => {}) {
+  if (!Array.isArray(refs) || refs.some(ref => ref?.kind === 'concept' || ref?.concept === true)) throw new Error('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED');
+  return synchronize(root, target, savedSquad, refs, assertContext, false);
+}
+
+export async function synchronizeFc27PuzzleConceptSquad(root, target, savedSquad, refs, assertContext = () => {}) {
+  if (!Array.isArray(refs) || !refs.some(ref => ref.kind === 'concept')
+      || refs.some(ref => !['owned', 'concept'].includes(ref.kind)
+        || ref.kind === 'concept' && (ref.id !== undefined || ref.catalogRef !== `fc27:${ref.definitionId}`))) {
+    throw new Error('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED');
+  }
+  return synchronize(root, target, savedSquad, refs, assertContext, true);
+}
+
+export function synchronizeFc27PurchasedPuzzleSquad(root, target, savedSquad, refs, previousRefs, assertContext) {
+  if (!Array.isArray(previousRefs) || previousRefs.length !== refs.length
+      || refs.some(ref => !previousRefs.some(old => old.slot === ref.slot && old.definitionId === ref.definitionId
+        && (old.kind === 'concept' || ref.kind === 'owned' && old.id === ref.id)))) {
+    throw new Error('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED');
+  }
+  return synchronize(root, target, savedSquad, refs, assertContext, refs.some(ref => ref.kind === 'concept'), previousRefs);
+}
+
+async function synchronize(root, target, savedSquad, refs, assertContext, concepts, previousRefs = null) {
   const fail = () => { throw new Error('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED'); };
   const runtime = await verifyFc27Methods(root, FC27_PUZZLE_SYNC_METHODS);
   assertContext();
@@ -96,20 +160,45 @@ export async function synchronizeFc27PuzzleSquad(root, target, savedSquad, refs,
   const layout = projectFc27PuzzleLayout(root, local, target);
   const savedLayout = projectFc27PuzzleLayout(root, savedSquad, target);
   if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false })
-      || layout.customBrickIndices.length || !Array.isArray(refs) || refs.length !== layout.requiredPlayerCount
+      || layout.customBrickIndices.length || !Array.isArray(refs)
+      || (previousRefs === null ? refs.length !== layout.requiredPlayerCount : refs.length > layout.requiredPlayerCount)
       || new Set(refs.map(ref => ref.slot)).size !== refs.length
-      || new Set(refs.map(ref => ref.id)).size !== refs.length
+      || new Set(refs.map(ref => ref.kind === 'concept' ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs.length
       || new Set(refs.map(ref => ref.definitionId)).size !== refs.length) return fail();
   const matches = squad => refs.every(ref => {
     const item = ownData(ownData(squad, '_players')?.[ref.slot], '_item');
-    return ownData(item, 'id') === ref.id && ownData(item, 'definitionId') === ref.definitionId;
+    return ownData(item, 'id') === (ref.kind === 'concept' ? ref.definitionId : ref.id)
+      && ownData(item, 'definitionId') === ref.definitionId
+      && ownData(item, 'concept') === (concepts && ref.kind === 'concept');
   });
-  if (!matches(savedSquad) || !layout.squadEmpty && !matches(local)) return fail();
+  const previousMatches = () => previousRefs !== null && previousRefs.every(ref => {
+    const item = ownData(ownData(local, '_players')?.[ref.slot], '_item');
+    return ownData(item, 'id') === (ref.kind === 'concept' ? ref.definitionId : ref.id)
+      && ownData(item, 'definitionId') === ref.definitionId && ownData(item, 'concept') === (ref.kind === 'concept');
+  });
+  if (!matches(savedSquad) || !layout.squadEmpty && !matches(local) && !previousMatches()) return fail();
   if (local.update !== root.UTSquadEntity.prototype.update
       || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail();
   runtime();
   if (currentChallengeEntity(root, target) !== challenge) return fail();
+  // EA's update() refuses to copy player slots while the manager is a null
+  // entity. SBC squads commonly have no manager, so use the reviewed native
+  // setPlayers() path in that case; it updates existing slot objects and
+  // emits the normal local observer event without another network call.
   local.update(savedSquad);
+  if (!matches(local) && (layout.squadEmpty || previousMatches())) {
+    // FSU wraps setPlayers with its own history side effect. Its retained
+    // original must match the native function exactly before we call it.
+    const retained = ownData(ownData(ownData(root, 'call'), 'squad'), 'setPlayers');
+    const path = retained === undefined ? 'UTSquadEntity.prototype.setPlayers' : 'call.squad.setPlayers';
+    const checkPlayers = await verifyFc27Methods(root, [[path, '36369f3b5fec8c43f00f5078b5d5223b2d3fce1eaf9c47e9bd8355e6a3b53669']]);
+    assertContext(); runtime(); checkPlayers();
+    if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, 'squad') !== local
+        || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches(savedSquad)) return fail();
+    const players = ownData(savedSquad, '_players').map((slot, index) => refs.some(ref => ref.slot === index) ? ownData(slot, '_item') : null);
+    const setPlayers = retained ?? ownData(ownData(ownData(root, 'UTSquadEntity'), 'prototype'), 'setPlayers');
+    setPlayers.call(local, players);
+  }
   if (ownData(challenge, 'squad') !== local || !matches(local)) return fail();
   challenge.onDataChange.notify({ squad: local });
   // EAObservable queues rendering. Let its already queued observers run before

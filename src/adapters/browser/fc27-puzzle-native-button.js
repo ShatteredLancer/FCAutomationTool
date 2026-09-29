@@ -1,6 +1,9 @@
 const stageText = { planning: '正在解题…', procurement: '正在计算补卡方案并查询候选报价…', validating: '正在复核材料…', saving: '正在填阵保存…', verifying: '正在核验保存结果…', recovering: '正在核对已保存阵容并恢复显示…' };
 const sameTarget = (a, b) => !!(a && b && a.setId === b.setId && a.challengeId === b.challengeId && a.anchor === b.anchor);
 const resultText = result => {
+  if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
+  if (result?.reason === 'FC27_BUY_DRAFT_ACTIVE') return '此阵容已有确认购买的卡；可继续批量购买剩余概念卡，或在原生页面提交已完成的阵容。';
+  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡，观察总价 ${result.estimatedCost} 金币。尚未购买或提交 SBC；FCAT 批量购买接线尚未完成。`;
   const purchase = result?.purchaseSuggestion;
   if (purchase?.reason === 'FC27_PURCHASE_CACHE_EXPIRED') return '补卡资料或报价已过期，本次未采用旧价格、未再次请求或购买；需要更新补卡资料。';
   if (purchase?.reason === 'FC27_MARKET_HTTP_429') return 'EA 市场请求限流，本次已停止并记录，不会自动重试或购买。';
@@ -16,17 +19,20 @@ const resultText = result => {
     return 'SBC 需求记录不可用，请进入目标子阵后使用解题填充。';
   }
   if (result?.reason === 'FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED') return '保存后页面同步未完成，已保留恢复记录；请勿重复保存。';
+  if (result?.reason === 'FC27_CONCEPT_SQUAD_MANUAL_EDITED') return '检测到阵容被部分清空或手动修改；为保护现有卡片，请先清空整个阵容后再点击 FCAT 解题填充。';
   if (Number.isSafeInteger(result?.recoveryChallengeId)) return `子阵 ${result.recoveryChallengeId} 的保存待核对，请返回该子阵点击解题填充恢复。`;
   if (result?.status === 'recovery-required' || /RECOVERY_REQUIRED/.test(result?.reason ?? '')) return '保存状态待核对，请使用 FCAT 恢复检查。';
   if (result?.reason === 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED') return '当前阵容已有球员，未覆盖原阵容。';
+  if (result?.reason === 'FC27_PUZZLE_SERVER_SQUAD_CHANGED') return '解题期间服务器阵容发生变化，本次未覆盖；请核对当前阵容后再试。';
+  if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '阵容不符合选材策略，未增加高品质卡补位。';
   if (['FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(result?.reason)) {
     const composition = result.policy?.materialComposition?.filter(rule => rule.count > 0)
       .map(rule => `${rule.count} ${({ 1: '铜', 2: '银', 3: '金' })[rule.quality] ?? ''}`).join('＋');
     const scope = [composition, Number.isInteger(result.policy?.maxRating) ? `最高 ${result.policy.maxRating}` : ''].filter(Boolean).join('，');
     const message = result.reason === 'FC27_PUZZLE_SEARCH_LIMIT'
-      ? '本次搜索未找到满足全部条件的阵容，未放宽选材或修改阵容。'
-      : '当前可用材料无法在选材限制内组成阵容，未自动增加高品质卡。';
+      ? '本次搜索达到上限，尚未找到满足全部条件的阵容；不能判定无解，未修改阵容。'
+      : '本次库存解题未找到符合选材限制的阵容，未自动增加高品质卡。';
     return scope ? `${scope}：${message}` : message;
   }
   if (result?.reason === 'FC27_PUZZLE_CHALLENGE_COMPLETED') return '当前 SBC 子阵已完成，不会改用其他子阵。';
@@ -34,6 +40,52 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_FILL_TARGET_CHANGED') return '页面已切换，本次填阵停止。';
   return `未完成填阵：${/^[A-Z0-9_]{1,100}$/.test(result?.reason ?? '') ? result.reason : '请稍后重试'}`;
 };
+
+const code = value => typeof value === 'string' && /^FC27_[A-Z0-9_]{1,100}$/.test(value) ? value : null;
+const countText = value => Number.isSafeInteger(value) && value >= 0 ? String(value) : '未知';
+const purchaseReasons = {
+  FC27_PUZZLE_SEARCH_LIMIT: '补卡组合搜索达到上限，不能判定无解',
+  FC27_PURCHASE_REPAIR_NO_PLAN: '本次候选中未找到补卡组合，不代表整个市场无解',
+  FC27_PURCHASE_QUOTES_UNAVAILABLE: '已尝试替换无可用挂牌的候选，仍未取得整阵所需报价',
+  FC27_PURCHASE_READ_BUDGET: '本次查询已达预算，已保存进度；再次点击会复用仍有效的数据继续规划',
+  FC27_PURCHASE_PRICE_LIMIT_INVALID: '补卡单卡报价上限无效，请在解题设置中填写金额或留空为不限',
+  FC27_MARKET_HTTP_429: 'EA 限流，已停止；不会自动重试',
+  FC27_MARKET_HTTP_401: 'EA 拒绝了市场查询认证，未修改阵容',
+  FC27_MARKET_READ_BLOCKED: '资料或报价读取被停止，未完成查询',
+  FC27_PURCHASE_CACHE_UNVERIFIED: '补卡缓存校验失败，未重新查询',
+  FC27_PURCHASE_READ_UNCONFIRMED: '之前的查询尚未确认，未重复请求',
+  FC27_PURCHASE_CACHE_EXPIRED: '资料或报价已过期，未采用旧价格',
+};
+
+// Display only the existing aggregate result. Never query EA to explain a stop.
+export function formatFc27PuzzleNativeResult(result) {
+  const message = resultText(result);
+  const purchase = result?.purchaseSuggestion;
+  if (purchase?.status !== 'blocked') return message;
+  const reason = code(purchase.reason);
+  const lines = [message, `补卡：${purchaseReasons[reason] ?? '规划未完成'}${reason ? `（${reason}）` : ''}。`];
+  if (Object.hasOwn(purchase, 'quoteCeiling')) lines.push(purchase.quoteCeiling === null
+    ? '单卡报价：不限。' : `单卡报价上限：${countText(purchase.quoteCeiling)} 金币。`);
+  const inventory = result.plan;
+  if (inventory) lines.push(`库存初筛 ${countText(inventory.safeCandidates)} 人；搜索节点 ${countText(inventory.nodes)}。`);
+  const d = purchase.diagnostics;
+  if (d) {
+    if (d.failureSource === 'cache') lines.push('本次读取的是历史失败记录，未重新发送该查询。');
+    else if (d.failureSource === 'request') lines.push('本次查询失败，已停止后续请求。');
+    if (reason === 'FC27_MARKET_HTTP_401' && Number.isSafeInteger(d.retryAfterSeconds) && d.retryAfterSeconds >= 0) {
+      lines.push(`确认 Web App 已正常登录后，请等待 ${d.retryAfterSeconds} 秒，再次点击“FCAT 解题填充”；只重查失败项，成功资料继续复用（过期则更新），不会自动循环重试。`);
+    }
+    if (Number.isSafeInteger(d.eaCode) && d.eaCode >= 0 && d.eaCode <= 0x7fffffff) lines.push(`EA 错误码：${d.eaCode}。`);
+    const stage = ({ 'repair-seed': '寻找库存基础阵容', 'query-planning': '规划资料查询',
+      'catalog-read': '读取球员资料', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
+    const route = ({ repair: '局部替换 1–2 张', joint: '库存与候选联合求解' })[d.route] ?? '尚未确定';
+    lines.push(`停在${stage}；${route}。资料 ${countText(d.catalogPages)} 页，去重候选 ${countText(d.catalogCandidates)}，资料预筛合格 ${countText(d.usableCandidates)}。`);
+    if (code(d.localReason)) lines.push(`本地结果：${d.localReason}；检查 ${countText(d.checks)} 次 / 节点 ${countText(d.nodes)}${d.truncated === true ? '（搜索或结果截断）' : ''}。`);
+    lines.push(`查询尝试：资料 ${countText(d.catalogAttempts)}、报价 ${countText(d.quoteAttempts)}；缓存 ${countText(d.cacheHits)}。`);
+    if (d.excludedUnavailable > 0) lines.push(`已排除 ${countText(d.excludedUnavailable)} 个无可用挂牌的候选；本地重新规划 ${countText(d.replans)} 次。`);
+  }
+  return lines.join('\n');
+}
 
 // One trusted click authorizes one solve/validate/save attempt. No Tools popup.
 export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
@@ -46,7 +98,7 @@ export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
   button.style.cssText = 'display:block;width:calc(100% - 1rem);margin:.5rem auto;min-height:38px';
   const status = document.createElement('div'); status.id = 'fcat-fc27-puzzle-status';
   status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  status.style.cssText = 'margin:.5rem;text-align:center;white-space:normal;overflow-wrap:anywhere;font-size:13px';
+  status.style.cssText = 'margin:.5rem;text-align:center;white-space:pre-line;overflow-wrap:anywhere;font-size:13px;max-height:180px;overflow-y:auto';
   let target = null; let busy = false; let disposed = false;
   const read = () => { try { return readTarget?.(); } catch { return null; } };
   const update = () => {
@@ -72,7 +124,7 @@ export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
     onProgress('planning');
     try {
       const result = await onFill({ setId: origin.setId, challengeId: origin.challengeId }, { isCurrent, onProgress });
-      if (isCurrent()) { status.hidden = false; status.textContent = resultText(result); }
+      if (isCurrent()) { status.hidden = false; status.textContent = formatFc27PuzzleNativeResult(result); }
     } catch {
       if (isCurrent()) { status.hidden = false; status.textContent = '填阵未完成，请查看后台记录。'; }
     } finally {

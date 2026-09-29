@@ -21,8 +21,13 @@ export function executionRuntime() {
   class UTSquadEntity {
     static FIELD_PLAYERS = 11;
     update(squad) {
+      if (state.skipSquadUpdate) return;
       this._players = squad._players;
       this._formation = squad._formation;
+      this.onDataUpdated?.notify({ slots: this._players });
+    }
+    setPlayers(items) {
+      items.forEach((item, index) => { if (item) this._players[index]._item = item; });
       this.onDataUpdated?.notify({ slots: this._players });
     }
   }
@@ -40,11 +45,12 @@ export function executionRuntime() {
         retry: this.doRetry, reauth: this.doReauth });
       if (state.timeout) return;
       let response;
-      if (this.url.endsWith('/club')) response = ok({ itemData: state.players });
+      if (this.url.endsWith('/club')) response = ok({ itemData: state.filterClubQueries && this.requestBody?.defId
+        ? state.players.filter(item => this.requestBody.defId.split(',').map(Number).includes(item.resourceId)) : state.players });
       else if (this.url.endsWith('/purchased/items')) response = ok({ itemData: state.unassigned });
       else if (this.url.endsWith('/store/purchaseGroup/all')) response = ok({ purchase: [{ id: 509, displayGroup: { value: 'mypacks' },
         packType: 'CARDPACK', untradeable: true, quantity: state.packCount }] });
-      else if (this.url.endsWith('/squad')) { state.saved = this.requestBody.players; response = ok({}); }
+      else if (this.url.endsWith('/squad')) { state.saved = this.requestBody.players; if (state.saveResponseLost) return; response = ok({}); }
       else if (this.url.endsWith('?skipUserSquadValidation=false')) {
         response = state.submitStatus === 200 ? ok({ setId: 4, challengeId: 16 })
           : { success: false, status: state.submitStatus, response: {} };
@@ -79,7 +85,8 @@ export function executionRuntime() {
       calls.push({ kind: 'squad' });
       const slots = state.saved ?? Array.from({ length: 23 }, (_, index) => ({ index, itemData: { id: 0, dream: false } }));
       return observable(ok({ squad: { _formation: state.formation, simpleBrickIndices: state.simpleBrickIndices ?? [], customBrickIndices: [], _players: slots.map(({ index, itemData }) => ({ index,
-        _item: itemData.id > 0 ? itemFactory.createItem({ id: itemData.id, resourceId: itemData.id + 100 }) : { id: 0 } })) } }));
+        _item: itemData.id > 0 ? { ...itemFactory.createItem({ id: itemData.id, resourceId: itemData.dream ? itemData.id : itemData.id + 100 }),
+          concept: itemData.dream === true } : { id: 0 } })) } }));
     }
     saveChallenge() { throw new Error('queued mutation forbidden'); }
     submitChallenge() { throw new Error('queued mutation forbidden'); }
@@ -107,6 +114,7 @@ export function executionRuntime() {
   const hashes = new Map([...FC27_CLUB_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS, ...FC27_SBC_CACHE_METHODS, ...FC27_PUZZLE_SYNC_METHODS].map(([path, hash]) => [
     normalizeSource(Function.prototype.toString.call(path.split('.').reduce((value, key) => value[key], root))), hash,
   ]));
+  hashes.set(normalizeSource(String(UTSquadEntity.prototype.setPlayers)), '36369f3b5fec8c43f00f5078b5d5223b2d3fce1eaf9c47e9bd8355e6a3b53669');
   root.crypto = { subtle: { digest: vi.fn(async (_algorithm, bytes) => Uint8Array.from(Buffer.from(
     hashes.get(normalizeSource(new TextDecoder().decode(bytes))) ?? '0'.repeat(64), 'hex')).buffer) } };
   return { root, state, calls, set, challenge, user };

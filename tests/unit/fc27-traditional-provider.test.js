@@ -147,6 +147,31 @@ it('blocks default transport mutations and fences a mutation waiting for pacing 
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
 });
 
+it('allows only explicitly marked concept slots through the separate concept save action', async () => {
+  const x = executionRuntime();
+  const transport = await createFc27TransactionTransport(x.root, { canWrite: () => true });
+  const players = Array.from({ length: 23 }, (_, index) => ({ index,
+    itemData: { id: index < 11 ? index + 1001 : 0, dream: index < 11 } }));
+  await settle(transport.request('save-concept', { challengeId: 16, players,
+    simpleBrickIndices: [], conceptSlots: players.slice(0, 11).map(player => ({ slot: player.index, definitionId: player.itemData.id })) }, () => {}));
+  const write = x.calls.find(call => call.method === 'PUT');
+  expect(write.body.players.slice(0, 11).every(player => player.itemData.dream === true)).toBe(true);
+  await expect(transport.request('save', { challengeId: 16, players }, () => {}))
+    .rejects.toThrow('SAVE_INPUT_UNVERIFIED');
+});
+
+it.each(['closed', 'undeclared', 'identity', 'bench', 'traditional'])('rejects invalid concept saves: %s', async kind => {
+  const x = executionRuntime();
+  const transport = await createFc27TransactionTransport(x.root, { canWrite: () => kind !== 'closed' });
+  const players = Array.from({ length: 23 }, (_, index) => ({ index,
+    itemData: { id: index < 11 ? index + 1 : 0, dream: index === 10 } }));
+  const concepts = [{ slot: 10, definitionId: kind === 'identity' ? 999 : 11 }];
+  if (kind === 'bench') players[11].itemData.dream = true;
+  await expect(transport.request(kind === 'traditional' ? 'save' : 'save-concept', { challengeId: 16, players,
+    conceptSlots: kind === 'undeclared' ? undefined : concepts })).rejects.toThrow(/FC27_/);
+  expect(x.calls).toHaveLength(0);
+});
+
 it('aborts its own timed out request and never treats timeout as rejection', async () => {
   const x = executionRuntime(); x.state.timeout = true;
   const transport = await createFc27TransactionTransport(x.root, { canWrite: () => true });

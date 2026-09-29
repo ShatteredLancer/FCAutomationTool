@@ -12,6 +12,8 @@ it('jointly plans owned and missing versions without creating fake owned item id
   expect(result.purchases[0]).toMatchObject({ definitionId: 201, quantity: 1, estimatedUnitPrice: 200 });
   expect(result.purchases[0]).not.toHaveProperty('id');
   expect(result.selected).toEqual([]);
+  expect(result.conceptPlan).toMatchObject({ status: 'prepared', purchaseCount: 1, executable: false,
+    slots: [{ kind: 'owned', id: 1 }, { kind: 'owned', id: 2 }, { kind: 'concept', definitionId: 201 }] });
   expect(input).toEqual(before);
 });
 

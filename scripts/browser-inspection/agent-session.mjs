@@ -29,13 +29,25 @@ async function panelCall(context, page, fn, args = []) {
 }
 
 async function readProductionPanel(context, page, setId = null) {
+  const entry = page.locator('.ut-tab-bar .fcat-navigation-entry');
+  if (await entry.count() === 1) await entry.click();
+  const tab = await panelCall(context, page, function () {
+    const button = this.getElementById('tab-sbc');
+    if (!button) return null;
+    button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const rect = button.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  if (tab) await page.mouse.click(tab.x, tab.y);
   const deadline = Date.now() + 15000;
   let target = null;
   let reloaded = false;
   const refresh = await panelCall(context, page, function () {
     this.querySelector('details').open = true;
+    const advanced = this.querySelector('[data-sbc-advanced]'); if (advanced) advanced.open = true;
     const button = this.getElementById('refresh');
     if (!button || button.disabled) return null;
+    button.scrollIntoView({ block: 'nearest' });
     const rect = button.getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   });
@@ -61,8 +73,10 @@ async function readProductionPanel(context, page, setId = null) {
   if (target?.status !== 'ready') return { status: 'blocked', reason: 'FC27_PANEL_TARGETS_UNAVAILABLE', reloaded };
   const click = await panelCall(context, page, function () {
     this.querySelector('details').open = true;
+    const advanced = this.querySelector('[data-sbc-advanced]'); if (advanced) advanced.open = true;
     const button = this.getElementById('catalog');
     if (!button || button.disabled) return null;
+    button.scrollIntoView({ block: 'nearest' });
     const rect = button.getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   });
@@ -89,6 +103,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     ...await import(`./puzzle-market.mjs?revision=${revision}`),
     ...await import(`./puzzle-market-live.mjs?revision=${revision}`),
     ...await import(`./market-probe.mjs?revision=${revision}`),
+    ...await import(`./navigation-probe.mjs?revision=${revision}`),
   }) }) {
   const network = createNetworkCollector(context);
   const directory = path.join(root, 'artifacts/fc27-browser');
@@ -103,11 +118,11 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. Commands: inspect, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|provider|club|market-probe|sbc|ai-test|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'ai-test') {
         try { const { testPuzzleAiConnection } = await loadHelpers(Date.now()); console.log(JSON.stringify(await testPuzzleAiConnection())); }
         catch { console.log('AI connection test unavailable; raw exception omitted.'); }
@@ -118,7 +133,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       try {
         // Reload diagnostic helpers between inspections, without restarting the login session.
         const revision = Date.now();
-        const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime } = await loadHelpers(revision);
+        const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);
         const target = targets[0];
         const report = await collectPageReport(target);
         const runtime = await target.evaluate(observeRuntime);
@@ -201,6 +216,10 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
             observation.marketProbe = await inspectFc27MarketRuntime(target);
             observation.action = observation.marketProbe.reason ?? observation.marketProbe.status;
           }
+        }
+        if (command === 'navigation-probe') {
+          observation.navigation = await target.evaluate(inspectFc27Navigation);
+          observation.action = 'NAVIGATION_READ_ONLY_INSPECTED';
         }
         // Include the requests made by this command, not only earlier traffic.
         observation.network = network.snapshot();

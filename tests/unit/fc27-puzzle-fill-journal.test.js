@@ -3,10 +3,10 @@ import { createFc27TransactionPersistence } from '../../src/adapters/browser/fc2
 import { createFc27PuzzleFillPersistence } from '../../src/fc27/puzzle-fill-journal.js';
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { FC27_TRADITIONAL_WEB_LOCK } from '../../src/fc27/traditional-lock.js';
+import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 
-function fixture() {
-  const context = { season: '27', accountScope: 'test-account', platform: 'local' };
-  const scope = traditionalJournalScope(context); const data = new Map();
+function fixture({ context = { season: '27', accountScope: 'test-account', platform: 'local' }, data = new Map() } = {}) {
+  const scope = traditionalJournalScope(context);
   const gmGetValue = vi.fn(async (key, fallback) => structuredClone(data.get(key) ?? fallback));
   const gmSetValue = vi.fn(async (key, value) => { data.set(key, structuredClone(value)); });
   const lockManager = { request: vi.fn(async (name, _options, task) => task({ name, mode: 'exclusive' })) };
@@ -88,3 +88,51 @@ it('accepts explicit v2 bricks, rejects truncated legacy records and prevents br
     expect((await x.store.journal.read(x.scope)).brickIndices).toEqual([0]);
   });
 });
+
+it('isolates pending records by Challenge and records the account identity', async () => {
+  const x = fixture();
+  const other = { ...x.record, setId: 21, challengeId: 48, operationId: 'operation-2',
+    account: { accountScope: 'test-account', platform: 'local' } };
+  await x.store.exclusive(x.scope, async () => {
+    await x.store.journal.write(x.scope, x.record);
+    await x.store.journal.write(x.scope, other);
+    expect(await x.store.journal.read(x.scope, { setId: 19, challengeId: 43 })).toMatchObject({ setId: 19, challengeId: 43 });
+    expect(await x.store.journal.read(x.scope, { setId: 21, challengeId: 48 })).toMatchObject({ setId: 21, challengeId: 48, account: { accountScope: 'test-account' } });
+    expect((await x.store.journal.list(x.scope)).map(record => `${record.setId}:${record.challengeId}`)).toEqual(['19:43', '21:48']);
+  });
+});
+
+it('rejects a record carrying a different account identity before writing it', async () => {
+  const x = fixture();
+  await x.store.exclusive(x.scope, async () => {
+    await expect(x.store.journal.write(x.scope, { ...x.record,
+      account: { accountScope: 'another-account', platform: 'local' } }))
+      .rejects.toThrow('FC27_PUZZLE_FILL_JOURNAL_ACCOUNT_CONFLICT');
+  });
+  expect([...x.data.keys()].some(key => key.includes(':19:43'))).toBe(false);
+});
+
+it('clears a matching legacy record without leaving it available through fallback', async () => {
+  const x = fixture();
+  const key = `fcat-fc27-puzzle-fill:${contextKey({ season: '27', accountScope: 'test-account', platform: 'local' }, 'puzzle-fill')}`;
+  x.data.set(key, x.record);
+  await x.store.exclusive(x.scope, async () => {
+    expect(await x.store.journal.read(x.scope, { setId: 21, challengeId: 48 })).toBeNull();
+    await x.store.journal.clear(x.scope, x.record);
+    expect(await x.store.journal.list(x.scope)).toEqual([]);
+  });
+});
+
+it.each([{ accountScope: 'another-account', platform: 'local' }, { accountScope: 'test-account', platform: 'ps:another-sku' }])(
+  'keeps the same Challenge separate for account/platform %j', async identity => {
+    const a = fixture(); const b = fixture({ context: { season: '27', ...identity }, data: a.data });
+    await a.store.exclusive(a.scope, () => a.store.journal.write(a.scope, a.record));
+    await b.store.exclusive(b.scope, async () => {
+      expect(await b.store.journal.read(b.scope, { setId: 19, challengeId: 43 })).toBeNull();
+      expect(await b.store.journal.list(b.scope)).toEqual([]);
+      await b.store.journal.write(b.scope, { ...b.record, operationId: 'account-b' });
+    });
+    await a.store.exclusive(a.scope, async () => {
+      expect(await a.store.journal.read(a.scope, { setId: 19, challengeId: 43 })).toEqual(a.record);
+    });
+  });

@@ -1,33 +1,22 @@
 import { describeCatalogRule, describeCatalogRewards, describePreparedRequirement } from '../../fc27/sbc-presentation.js';
+import { fc27WorkbenchMarkup, bindFc27WorkbenchTabs } from './fc27-workbench-view.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
-  inspectPuzzlePolicy = null, setPuzzleMaxRating = null,
+  inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null,
   hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
   const shadow = host.attachShadow({ mode: 'closed' });
-  shadow.innerHTML = `<style>
-    :host{all:initial;position:fixed;right:12px;bottom:12px;z-index:100002;font:13px/1.45 Arial,sans-serif;color:#edf1ef;letter-spacing:0}
-    *{box-sizing:border-box;letter-spacing:0}details{width:min(460px,calc(100vw - 24px));background:#202724;border:1px solid #67736c;border-radius:6px}
-    summary{padding:12px;cursor:pointer;font-weight:600}.body{padding:0 12px 12px;max-height:calc(100dvh - 100px);overflow:auto}
-    label{display:grid;gap:4px;margin:8px 0}select,button,input{font:inherit;min-height:36px;padding:7px;border:1px solid #67736c;border-radius:4px;color:inherit;background:#303b35;max-width:100%}
-    select{width:100%}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
-    output{display:block;min-height:38px;overflow-wrap:anywhere;border-top:1px solid #526159;padding-top:8px;color:#f3d89a}
-    #requirements,#squad{margin-top:8px;color:#c2d9cb;overflow-wrap:anywhere}ul{margin:4px 0 0 18px;padding:0}.requirement{margin-top:8px;padding-top:6px;border-top:1px solid #39483f}
-    small{display:block;color:#9caea3;margin-top:4px}#squad ol{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:0;gap:6px}#squad li{background:#303b35;padding:8px;border-radius:4px}
-    #detail{margin-top:6px;overflow-wrap:anywhere;color:#c2d9cb}dialog{max-width:min(360px,calc(100vw - 24px));color:#edf1ef;background:#202724;border:1px solid #67736c;border-radius:6px}dialog::backdrop{background:#0009}
-  </style><details><summary></summary><div class="body">
-    <div class="row"><button id="refresh" title="Refresh targets" aria-label="Refresh targets">&#8635;</button><button id="gm">Check GM</button><button id="hold">Check tab lock</button></div>
-    <label>SBC<select id="target"></select></label><label>Max OVR<select id="rating"><option>74</option><option>83</option></select></label>
-    <div id="puzzle-settings"><label>解题球员最高评分（金卡默认 82）<input id="puzzle-rating" type="number" min="1" max="99" step="1" value="82"></label><button id="puzzle-policy-save">保存解题上限</button><small>铜银按本阵品质条件选材；最低银卡＋至少 2 金按 2 金＋其余银卡解题。金卡仍受 FSU 范围限制，缺料不自动增加金卡或提高评分；已保存的更低上限继续有效。</small></div>
-    <div class="row"><button id="catalog">Read requirements</button><button id="puzzle">Plan Puzzle</button><button id="prepare">Verify squad</button><button id="execute" disabled>Submit once</button><button id="fill" disabled>Fill and save once</button></div>
-    <div class="row"><button id="recovery">Check recovery</button><button id="resolve" disabled>Confirm recovery</button></div>
-    <output id="status">Live execution disabled</output><div id="detail"></div><div id="requirements" aria-live="polite"></div><div id="squad"></div>
-  </div></details><dialog><p id="approval"></p><div class="row"><button id="cancel">Cancel</button><button id="confirm">Confirm</button></div></dialog>`;
+  shadow.innerHTML = fc27WorkbenchMarkup();
+  const selectTab = bindFc27WorkbenchTabs(shadow, host);
   const node = id => shadow.getElementById(id);
-  node('puzzle-settings').hidden = typeof setPuzzleMaxRating !== 'function';
-  shadow.querySelector('summary').textContent = title;
+  node('workbench-version').textContent = version ?? title;
+  node('workbench-mode').textContent = liveEnabled === true ? '已开放现有单次操作；提交需单独确认。' : '当前为只读模式。';
+  node('puzzle-settings').hidden = typeof setPuzzleMaxRating !== 'function' && typeof setPuzzlePolicy !== 'function';
+  node('puzzle-quote-setting').hidden = typeof setPuzzlePolicy !== 'function';
+  node('puzzle-queries-setting').hidden = typeof setPuzzlePolicy !== 'function';
+  shadow.querySelector('summary').textContent = `${title}　×`;
   node('status').textContent = liveEnabled === true ? 'Live: single SBC' : 'Live execution disabled';
   let busy = false; let plan = null; let puzzlePlan = null; let recovery = null; let action = null;
   const renderTargets = () => {
@@ -40,7 +29,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
     if ([...node('target').options].some(option => option.value === previous)) node('target').value = previous;
   };
   const update = () => {
-    for (const button of shadow.querySelectorAll('button,select,input')) button.disabled = busy;
+    for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) button.disabled = busy;
     node('execute').disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
     node('fill').disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== 'function';
     node('resolve').disabled = busy || recovery?.status !== 'recoverable';
@@ -142,18 +131,27 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const on = (id, callback) => node(id).addEventListener('click', event => { if (event.isTrusted && !busy) callback(); });
   on('refresh', () => { renderTargets(); clear(); update(); });
   on('puzzle-policy-save', () => {
-    if (typeof setPuzzleMaxRating !== 'function') return;
+    if (typeof setPuzzleMaxRating !== 'function' && typeof setPuzzlePolicy !== 'function') return;
     const value = Number(node('puzzle-rating').value); clear();
+    const priceText = node('puzzle-quote-ceiling').value.trim();
     void run(async () => {
-      const result = await setPuzzleMaxRating(value);
-      return { ...result, reason: result.status === 'observed' ? `解题评分上限已保存：${result.maxRating}` : result.reason };
+      const result = typeof setPuzzlePolicy === 'function'
+        ? await setPuzzlePolicy({ maxRating: value, quoteCeiling: priceText === '' ? null : Number(priceText),
+          queriesNumber: Number(node('puzzle-queries').value) })
+        : await setPuzzleMaxRating(value);
+      return { ...result, reason: result.status === 'observed'
+        ? `解题设置已保存：最高评分 ${result.maxRating}；补卡单卡报价${result.quoteCeiling == null ? '不限' : `上限 ${result.quoteCeiling} 金币`}` : result.reason };
     });
   });
   shadow.querySelector('details').addEventListener('toggle', () => {
-    if (!shadow.querySelector('details').open || busy || typeof inspectPuzzlePolicy !== 'function') return;
+    if (!shadow.querySelector('details').open || busy || liveEnabled !== true || typeof inspectPuzzlePolicy !== 'function') return;
     void run(async () => {
       const result = await inspectPuzzlePolicy();
-      if (result.status === 'observed') node('puzzle-rating').value = String(result.maxRating);
+      if (result.status === 'observed') {
+        node('puzzle-rating').value = String(result.maxRating);
+        node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
+        node('puzzle-queries').value = String(result.queriesNumber ?? 5);
+      }
       return result;
     });
   });
@@ -194,11 +192,38 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
     action = null;
   });
   for (const id of ['target', 'rating']) node(id).addEventListener('change', () => { clear(); update(); });
-  document.body.append(host); renderTargets(); update();
+  document.body.append(host); host.style.display = 'none'; renderTargets(); update();
+  const open = container => {
+    if (container?.append) {
+      container.append(host); host.dataset.navigationPage = 'true';
+      shadow.querySelector('summary').textContent = title;
+    }
+    host.style.display = 'block'; shadow.querySelector('details').open = true;
+    renderTargets(); update();
+    if (!busy && liveEnabled === true && typeof inspectPuzzlePolicy === 'function') {
+      void run(async () => {
+        const result = await inspectPuzzlePolicy();
+        if (result.status === 'observed') {
+          node('puzzle-rating').value = String(result.maxRating);
+          node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
+          node('puzzle-queries').value = String(result.queriesNumber ?? 5);
+        }
+        return result;
+      });
+    }
+  };
+  const close = () => { if (!busy) { host.style.display = 'none'; shadow.querySelector('details').open = false; } };
+  shadow.querySelector('summary').addEventListener('click', event => {
+    if (host.dataset.navigationPage) { event.preventDefault(); return; }
+    if (event.isTrusted && !busy) { event.preventDefault(); close(); }
+  });
   return Object.freeze({
+    open,
+    close,
     triggerPuzzle: ({ setId, challengeId }) => {
       if (busy || !Number.isSafeInteger(setId) || typeof inspectPuzzle !== 'function') return;
       shadow.querySelector('details').open = true;
+      selectTab('sbc'); shadow.querySelector('[data-sbc-advanced]').open = true;
       renderTargets(); node('target').value = String(setId);
       clear(); void run(() => inspectPuzzle({ setId, challengeId }));
     },

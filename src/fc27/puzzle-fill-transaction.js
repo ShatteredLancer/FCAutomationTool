@@ -78,11 +78,13 @@ export function createFc27PuzzleFillTransaction({ enabled = false, adapter, jour
           entered = true;
           alive(created);
           if (await checkOtherTransactions(scope) !== true) fail('FC27_RECOVERY_REQUIRED');
-          const previous = await journal.read(scope);
+          const target = { setId: plan.challenge.setId, challengeId: plan.challenge.id };
+          const previous = await journal.read(scope, target);
           if (previous && previous.phase !== 'saved') fail('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
           const operationId = createOperationId();
           if (typeof operationId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(operationId)) fail('FC27_PUZZLE_OPERATION_UNVERIFIED');
           const record = { schema: 2, kind: 'puzzle-fill', scope, operationId,
+            account: { accountScope: plan.context.accountScope, platform: plan.context.platform },
             brickIndices: [...plan.challenge.brickIndices],
             setId: plan.challenge.setId, challengeId: plan.challenge.id,
             itemRefs: plan.selected.map(({ id, definitionId, pile, slot }) => ({ id, definitionId, pile, slot })),
@@ -113,7 +115,7 @@ export function createFc27PuzzleFillTransaction({ enabled = false, adapter, jour
                 if (adapter.assertCurrent(plan) !== true) fail('FC27_PUZZLE_FILL_INPUTS_CHANGED');
                 boundary = true;
                 await journal.write(scope, structuredClone(record));
-                if (!same(await journal.read(scope), record)) fail('FC27_PUZZLE_FILL_JOURNAL_UNCONFIRMED');
+                if (!same(await journal.read(scope, target), record)) fail('FC27_PUZZLE_FILL_JOURNAL_UNCONFIRMED');
                 alive(created); evidence(exact, plan); evidence(current, plan);
                 if (adapter.assertCurrent(plan) !== true) fail('FC27_PUZZLE_FILL_INPUTS_CHANGED');
                 dispatched = true;
@@ -134,7 +136,7 @@ export function createFc27PuzzleFillTransaction({ enabled = false, adapter, jour
             },
             postSaveValidators: [async () => {
               await journal.write(scope, { ...record, phase: 'saved', updatedAt: time() });
-              const completed = await journal.read(scope);
+              const completed = await journal.read(scope, target);
               if (!completed || !same({ ...completed, phase: record.phase, updatedAt: record.updatedAt }, record)
                   || completed.phase !== 'saved') fail('FC27_PUZZLE_FILL_JOURNAL_UNCONFIRMED');
             }],

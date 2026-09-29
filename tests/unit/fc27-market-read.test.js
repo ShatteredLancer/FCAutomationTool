@@ -129,6 +129,18 @@ it.each([304, 401, 427, 429, 500])('stops on HTTP %s without retries or cache fa
   expect(f.calls).toHaveLength(1); expect(f.forbidden).not.toHaveBeenCalled();
 });
 
+it.each([1234, '1234', 'secret-token', null])('exports only a numeric EA failure code (%j), without auth retry', async code => {
+  const f = fixture(); f.control.status = 401;
+  Object.assign(f.market, { code, message: 'secret-token', token: 'secret-token' });
+  const transport = await createFc27MarketReadTransport(f.root);
+  const error = await transport.readQuotePage(quoteQuery).catch(error => error);
+  expect(error.message).toBe('FC27_MARKET_HTTP_401');
+  expect(error.marketFailure).toEqual({ httpStatus: 401, eaCode: code === 1234 || code === '1234' ? 1234 : null });
+  expect(JSON.stringify(error)).not.toContain('secret-token');
+  expect(f.calls).toHaveLength(1);
+  expect(f.calls[0]).toMatchObject({ doRetry: false, doReauth: false });
+});
+
 it.each(['missing', 'bad-card', 'duplicate', 'oversized'])('rejects malformed catalog %s and latches stopped', async mode => {
   const f = fixture();
   if (mode === 'missing') delete f.catalog.itemData;
@@ -152,7 +164,7 @@ it.each(['definition', 'identity', 'duplicate', 'payload'])('rejects untrusted m
 it('rejects invalid queries and runtime method drift before any request', async () => {
   const f = fixture(); const t = await createFc27MarketReadTransport(f.root);
   await expect(t.readCatalogPage({ ...catalogQuery, endpoint: '/item' })).rejects.toThrow('QUERY_INVALID');
-  await expect(t.readQuotePage({ ...quoteQuery, maxBuy: 10001 })).rejects.toThrow('QUERY_INVALID');
+  await expect(t.readQuotePage({ ...quoteQuery, maxBuy: 15000001 })).rejects.toThrow('QUERY_INVALID');
   f.root.UTHttpRequest.prototype.send = () => {};
   await expect(t.readCatalogPage(catalogQuery)).rejects.toThrow('RUNTIME_CHANGED');
   expect(f.calls).toEqual([]);
@@ -178,6 +190,25 @@ it('paces requests, refuses parallel work and caps a transport at eight reads', 
     for (let i = 2; i < 8; i++) { const next = t.readCatalogPage(catalogQuery); await vi.advanceTimersByTimeAsync(800); await next; }
     await expect(t.readCatalogPage(catalogQuery)).rejects.toThrow('READ_BLOCKED');
     expect(f.calls).toHaveLength(8);
+  } finally { vi.useRealTimers(); }
+});
+
+it('omits the price filter for unlimited quote reads and accepts a configured ceiling above 10000', async () => {
+  const f = fixture(); f.auction.buyNowPrice = 12500;
+  const unlimited = await (await createFc27MarketReadTransport(f.root)).readQuotePage({ ...quoteQuery, maxBuy: null });
+  expect(unlimited.price).toBe(12500); expect(f.calls[0].urlVariables).not.toContain('maxb');
+  expect(await (await createFc27MarketReadTransport(f.root)).readQuotePage({ ...quoteQuery, maxBuy: 15000 }))
+    .toMatchObject({ price: 12500 });
+  expect(f.calls[1].urlVariables).toContain('maxb=15000');
+});
+
+it('supports the bounded procurement budget without retaining the probe-only eight-read ceiling', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fixture(); const t = await createFc27MarketReadTransport(f.root, { maxRequests: 25 });
+    for (let i = 0; i < 25; i++) { const next = t.readQuotePage(quoteQuery); await vi.advanceTimersByTimeAsync(800); await next; }
+    await expect(t.readQuotePage(quoteQuery)).rejects.toThrow('READ_BLOCKED');
+    expect(f.calls).toHaveLength(25);
   } finally { vi.useRealTimers(); }
 });
 

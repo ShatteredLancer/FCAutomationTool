@@ -19,7 +19,7 @@ export async function buildFc27Production() {
   assertFc27ProductionMetadata(metadata);
   const result = await build({ stdin: { contents: source.slice(match[0].length), resolveDir: path.dirname(entry),
     sourcefile: 'production-entry.js' }, bundle: true, write: false, metafile: true, target: 'chrome120',
-    format: 'iife', legalComments: 'none', define: { __FCAT_VERSION__: JSON.stringify(version),
+    format: 'iife', legalComments: 'inline', define: { __FCAT_VERSION__: JSON.stringify(version),
       __FCAT_LIVE_ENABLED__: JSON.stringify(liveExecutionEnabled) } });
   const inputs = Object.keys(result.metafile.inputs).map(file => path.relative(root, path.resolve(file)).replaceAll('\\', '/')).sort();
   assertFc27BrowserInputs(inputs);

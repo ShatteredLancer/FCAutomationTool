@@ -39,3 +39,23 @@ export function assertFc27PuzzleLayout(plan, layout) {
     throw new Error('FC27_PUZZLE_FILL_LAYOUT_CHANGED');
   }
 }
+
+// A server squad can remain populated after the native editor was cleared
+// locally. Keep an exact, serializable baseline so a subsequent solve may
+// replace that squad only when EA has not changed it meanwhile.
+export function projectFc27PuzzleSquadBaseline(root, squad, target) {
+  projectFc27PuzzleLayout(root, squad, target);
+  const slots = ownData(squad, '_players');
+  return slots.map((slot, index) => {
+    if (ownData(slot, 'index') !== index) throw new Error('FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED');
+    const item = ownData(slot, '_item');
+    const id = ownData(item, 'id');
+    if (!Number.isSafeInteger(id) || id < -1) throw new Error('FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED');
+    if (id <= 0) return null;
+    const definitionId = ownData(item, 'definitionId');
+    const concept = ownData(item, 'concept');
+    if (!Number.isSafeInteger(definitionId) || definitionId <= 0 || typeof concept !== 'boolean'
+        || concept && id !== definitionId) throw new Error('FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED');
+    return { id, definitionId, concept };
+  });
+}

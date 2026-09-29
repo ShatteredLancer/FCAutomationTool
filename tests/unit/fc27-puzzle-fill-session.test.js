@@ -11,6 +11,7 @@ const currentLayout = () => ({ status: 'observed', setId: 19, challengeId: 43, s
   simpleBrickIndices: [], customBrickIndices: [], requiredPlayerCount: 11,
   formation: state.input.challenge.formation, squadEmpty: !state.saved });
 vi.mock('../../src/adapters/ea/fc27-puzzle-page.js', () => ({
+  readFc27PuzzlePage: () => state.pageMissing ? null : ({ setId: 19, challengeId: 43 }),
   readFc27PuzzlePageSnapshot: () => state.pageMissing ? null : ({ challenge: currentChallenge(), layout: currentLayout() }),
   readFc27CurrentPuzzleChallenge: () => currentChallenge(),
 }));
@@ -105,12 +106,12 @@ it('does not mistake executable callbacks in the input for serializable plan dat
   expect((await x.session.fillPuzzle(x.approval)).status).toBe('blocked'); expect(state.saves).toBe(0);
 });
 
-it('retains uncertain save across restart, blocks both transactions, and only acknowledges an exact saved readback', async () => {
+it('retains uncertain save across restart, isolates another target, and only acknowledges an exact saved readback', async () => {
   const x = fixture(); await x.plan(); state.lost = true;
   expect((await x.session.fillPuzzle(x.approval)).status).toBe('recovery-required');
   const next = x.restart();
   expect((await next.inspectPuzzle({ setId: 19, challengeId: 43 })).reason).toBe('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
-  expect((await next.prepare({ setId: 4 })).reason).toBe('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
+  expect((await next.prepare({ setId: 4 })).reason).not.toBe('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
   expect(await next.inspectRecovery()).toMatchObject({ status: 'recoverable', outcome: 'saved' });
   expect(state.catalogReads).toBe(1);
   expect((await next.resolveRecovery(false)).status).toBe('blocked');

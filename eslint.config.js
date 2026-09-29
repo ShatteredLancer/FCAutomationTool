@@ -71,6 +71,7 @@ export default [
   {
     files: ['src/fc27/production-entry.js'],
     languageOptions: { globals: { unsafeWindow: 'readonly', GM_getValue: 'readonly', GM_setValue: 'readonly',
+      GM_xmlhttpRequest: 'readonly',
       __FCAT_VERSION__: 'readonly', __FCAT_LIVE_ENABLED__: 'readonly' } },
   },
   {

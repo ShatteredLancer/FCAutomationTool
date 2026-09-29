@@ -99,6 +99,64 @@ const relationField = rule => rule.kind.endsWith('nation') || rule.kind.endsWith
 const relationValue = (rule, item, resolveClub) => relationField(rule) === 'teamId'
   ? resolveClub?.(item.teamId ?? item.clubId) ?? null : item[relationField(rule)];
 
+// Sparse suffix index: total storage is linear in candidates per rule, not
+// groups multiplied by candidates. Physical copies overestimate capacity;
+// uniqueness and cross-rule conflicts can only reduce it, so pruning is safe.
+function groupSuffixIndex(rule, candidates, resolveClub) {
+  const groups = new Map();
+  candidates.forEach((item, index) => {
+    const value = relationValue(rule, item, resolveClub);
+    if (!groups.has(value)) groups.set(value, []);
+    groups.get(value).push(index);
+  });
+  return groups;
+}
+
+function suffixSize(indices, start) {
+  let low = 0; let high = indices.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (indices[middle] < start) low = middle + 1;
+    else high = middle;
+  }
+  return indices.length - low;
+}
+
+function remainingGroupCapacity(groups, used, start, freeGroups) {
+  let existing = 0;
+  const additional = [];
+  for (const [key, indices] of groups) {
+    const count = suffixSize(indices, start);
+    if (used.has(key)) existing += count;
+    else if (count) additional.push(count);
+  }
+  additional.sort((a, b) => b - a);
+  return existing + additional.slice(0, freeGroups).reduce((sum, count) => sum + count, 0);
+}
+
+const hintGroup = (hint, item, resolveClub) => hint.strategy === 'club' ? resolveClub?.(item.teamId ?? item.clubId)
+  : item[hint.strategy === 'nation' ? 'nationId' : 'leagueId'];
+
+export function isFc27PuzzleSearchHintValid(hint, candidates, clubLinks) {
+  if (hint === null) return true;
+  if (!hint || Object.keys(hint).sort().join(',') !== 'groupId,strategy'
+      || !['balanced', 'low-rating', 'nation', 'league', 'club'].includes(hint.strategy)
+      || !integer(hint.groupId, 0, Number.MAX_SAFE_INTEGER)) return false;
+  if (['balanced', 'low-rating'].includes(hint.strategy)) return hint.groupId === 0;
+  const resolveClub = createFc27ClubResolver(clubLinks);
+  return hint.groupId > 0 && candidates.some(item => hintGroup(hint, item, resolveClub) === hint.groupId);
+}
+
+function filterUnaryCandidates(candidates, itemRules, required, groupMatcher, resolveClub) {
+  // Apply only necessary per-card predicates. Unknown facts remain available
+  // to the existing fail-closed checks; this is not a feasibility proof.
+  return candidates.filter(item => itemRules.every(rule => {
+    if (rule.count === required && rule.mode !== 'max') return matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) !== false;
+    if (rule.count === 0 && ['max', 'exact'].includes(rule.mode)) return matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) !== true;
+    return true;
+  }));
+}
+
 // A bounded, deterministic first-feasible search. Not a minimum-cost proof. Team
 // evaluators operate on detached immutable snapshots; this module cannot access EA.
 
@@ -123,9 +181,12 @@ export function previewFc27PuzzleSquad({ context, challenge, inventory, policy, 
   // budget each time. Preserve every candidate and every protection. An
   // explicit caller/AI hint still selects exactly its requested traversal.
   const hints = [null];
+  const hintCandidates = filterUnaryCandidates(pool.candidates,
+    [...rules.rules, ...puzzleMaterialRules(rules.rules, required)].filter(rule => itemKinds.has(rule.kind)),
+    required, groupMatcher, createFc27ClubResolver(clubLinks));
   for (const [strategy, field] of [['league', 'leagueId'], ['nation', 'nationId']]) {
     const groups = new Map();
-    for (const item of pool.candidates) {
+    for (const item of hintCandidates) {
       if (!integer(item[field], 1, Number.MAX_SAFE_INTEGER)) continue;
       if (!groups.has(item[field])) groups.set(item[field], new Set());
       groups.get(item[field]).add(item.definitionId);
@@ -168,21 +229,12 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
   }
   const materialRules = puzzleMaterialRules(parsed.rules, required);
   const itemRules = [...parsed.rules, ...materialRules].filter(rule => itemKinds.has(rule.kind));
-  let candidates = pool.candidates;
-  // Unary propagation: every chosen card must match an all-player predicate,
-  // and no chosen card may match an exact/max zero predicate. Unknown facts
-  // remain in the pool for the existing fail-closed check below.
-  candidates = candidates.filter(item => itemRules.every(rule => {
-    if (rule.count === required && rule.mode !== 'max') return matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) !== false;
-    if (rule.count === 0 && ['max', 'exact'].includes(rule.mode)) return matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) !== true;
-    return true;
-  }));
-  if (searchHint !== null && (!searchHint || Object.keys(searchHint).sort().join(',') !== 'groupId,strategy'
-      || !['balanced', 'low-rating', 'nation', 'league', 'club'].includes(searchHint.strategy)
-      || !integer(searchHint.groupId, 0, Number.MAX_SAFE_INTEGER)
-      || (['balanced', 'low-rating'].includes(searchHint.strategy) ? searchHint.groupId !== 0 : searchHint.groupId === 0))) {
+  // Validate against the safe input pool, not the propagated pool: a known
+  // traversal preference can lose all members without becoming malformed.
+  if (!isFc27PuzzleSearchHintValid(searchHint, pool.candidates, clubLinks)) {
     return blocked('FC27_PUZZLE_STRATEGY_INVALID');
   }
+  let candidates = filterUnaryCandidates(pool.candidates, itemRules, required, groupMatcher, resolveClub);
   if (searchHint?.strategy !== 'low-rating' && parsed.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)) {
     // A traversal heuristic only: prefer connected groups, never filter by
     // this score or infer feasibility from it. Keep the configured pile order.
@@ -206,9 +258,9 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
   if (['nation', 'league', 'club'].includes(searchHint?.strategy)) {
-    const group = item => searchHint.strategy === 'club' ? resolveClub?.(item.teamId ?? item.clubId)
-      : item[searchHint.strategy === 'nation' ? 'nationId' : 'leagueId'];
-    if (!candidates.some(item => group(item) === searchHint.groupId)) return blocked('FC27_PUZZLE_STRATEGY_INVALID');
+    const group = item => hintGroup(searchHint, item, resolveClub);
+    // With no remaining members this is a stable no-op, retaining the
+    // balanced order. Never reintroduce excluded cards to satisfy a hint.
     // Hints change traversal only. All candidates, unique-definition checks,
     // Storage priority, safety gates and the full final validator remain intact.
     candidates = candidates.slice().sort((a, b) =>
@@ -258,6 +310,8 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
       || relations.some(rule => candidates.some(item => !integer(relationValue(rule, item, resolveClub), 1, Number.MAX_SAFE_INTEGER)))) {
     return blocked('FC27_REQUIREMENT_VALUE_UNAVAILABLE', metrics);
   }
+  const groupCaps = new Map(relations.filter(rule => rule.kind.startsWith('distinct-') && rule.mode !== 'min')
+    .map(rule => [rule, groupSuffixIndex(rule, candidates, resolveClub)]));
   // A same-group minimum can only be met by groups with enough distinct
   // definitions. Their union is a necessary count predicate; with a sole
   // eligible group this propagates all of its required members immediately.
@@ -322,6 +376,10 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
       for (const item of chosen) { const value = relationValue(rule, item, resolveClub); counts.set(value, (counts.get(value) ?? 0) + 1); }
       const actual = rule.kind.startsWith('distinct-') ? counts.size : Math.max(0, ...counts.values());
       if (rule.mode !== 'min' && actual > rule.value || rule.mode !== 'max' && actual + remaining < rule.value) return;
+      // Even the largest still-available groups must be able to fill every
+      // remaining slot within the distinct-group cap. Reject dead branches
+      // before enumerating their combinations or expensive chemistry layouts.
+      if (groupCaps.has(rule) && remainingGroupCapacity(groupCaps.get(rule), counts, start, rule.value - counts.size) < remaining) return;
     }
     if (chosen.length === required) {
       const validate = facts => matchFc27SbcRequirements({ requirements: parsed.rules, squad: chosen,
@@ -377,7 +435,7 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
   if (procurement) found = best;
   if (unavailable) return blocked('FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE', { ...metrics, nodes, search, evaluatorReason: unavailable });
   if ((exhausted || deferredPlacements) && !found) return blocked('FC27_PUZZLE_SEARCH_LIMIT', { ...metrics, nodes, maxNodes, search });
-  if (!found) return blocked('FC27_PUZZLE_NO_PLAN_FOUND', { ...metrics, nodes, maxNodes, deficits: [] });
+  if (!found) return blocked('FC27_PUZZLE_NO_PLAN_FOUND', { ...metrics, nodes, maxNodes, search, deficits: [] });
   return { status: 'preview', reason: 'READ_ONLY_PLAN', liveExecutionEnabled: false, setId: challenge.setId,
     challengeId: challenge.id, required, selected: found.items.map((item, index) => ({ id: item.id,
       definitionId: item.definitionId, pile: item.pile, rating: item.rating, slot: slots[index],

@@ -4,8 +4,8 @@ import { readFc27RunnerPolicy } from './fc27-fsu-read.js';
 import { readFc27SbcContract } from './fc27-sbc-contract.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27TransactionTransport, verifyFc27Methods } from './fc27-transaction-transport.js';
-import { projectFc27PuzzleLayout, assertFc27PuzzleLayout } from './fc27-puzzle-layout.js';
-import { synchronizeFc27PuzzleSquad } from './fc27-puzzle-page.js';
+import { projectFc27PuzzleLayout, projectFc27PuzzleSquadBaseline, assertFc27PuzzleLayout } from './fc27-puzzle-layout.js';
+import { synchronizeFc27PuzzleSquad, synchronizeFc27PuzzleConceptSquad, synchronizeFc27PurchasedPuzzleSquad } from './fc27-puzzle-page.js';
 
 const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -97,6 +97,15 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
   let lastRead = -Infinity;
   let stopped = false;
   let savedRead = null;
+  const replacementBaselines = new WeakMap();
+  const assertReplacementBaseline = (plan, loaded, baseline) => {
+    const binding = replacementBaselines.get(baseline);
+    const target = { setId: plan.challenge.setId, challengeId: plan.challenge.id };
+    if (!binding || !same(binding.target, target) || Date.now() - binding.observedAt < 0
+        || Date.now() - binding.observedAt > 15000) return fail('FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED');
+    assertFc27PuzzleLayout(plan, binding.layout);
+    if (!same(projectFc27PuzzleSquadBaseline(root, loaded, target), binding.slots)) return fail('FC27_PUZZLE_SERVER_SQUAD_CHANGED');
+  };
   const assert = () => {
     if (stopped || !same(context, readFc27Context(root)) || at(root, 'services.SBC.sbcDAO') !== dao
         || Object.keys(functions).some(key => dao[key] !== functions[key])) return fail('FC27_TRANSACTION_CONTEXT_CHANGED');
@@ -198,6 +207,93 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
   };
   return Object.freeze({
     capabilities: Object.freeze({ verified: true, submitWithoutSave: true, liveAcceptanceVerified: false }),
+    async saveConceptDraft(plan, beforeWrite, beforeDispatch, { previousSlots = null, replaceBaseline = null } = {}) {
+      assert();
+      if (canWrite() !== true || plan?.kind !== 'puzzle-concept-draft' || plan.status !== 'prepared'
+          || typeof beforeWrite !== 'function' || typeof beforeDispatch !== 'function'
+          || !Array.isArray(plan.slots) || plan.slots.length !== 11) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const loaded = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
+      const layout = projectFc27PuzzleLayout(root, loaded, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
+      assertFc27PuzzleLayout(plan, layout);
+      if (replaceBaseline !== null) {
+        if (previousSlots !== null) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+        assertReplacementBaseline(plan, loaded, replaceBaseline);
+      } else if (previousSlots !== null) {
+        if (!Array.isArray(previousSlots) || previousSlots.length !== 11
+            || previousSlots.some((ref, index) => {
+              const item = ownData(ownData(loaded, '_players')?.[index], '_item');
+              return ref ? ownData(item, 'id') !== (ref.kind === 'concept' ? ref.definitionId : ref.id)
+                || ownData(item, 'definitionId') !== ref.definitionId || ownData(item, 'concept') !== (ref.kind === 'concept')
+                : ![0, -1].includes(ownData(item, 'id'));
+            })) return fail('FC27_BUY_SQUAD_CHANGED');
+      } else if (!layout.squadEmpty) return fail('FC27_PUZZLE_EXISTING_SQUAD_BLOCKED');
+      const refs = plan.slots.filter(Boolean);
+      if (refs.length !== layout.requiredPlayerCount || new Set(refs.map(ref => ref.definitionId)).size !== refs.length
+          || refs.some(ref => !identity(ref.definitionId) || !['owned', 'concept'].includes(ref.kind)
+            || plan.slots[ref.slot] !== ref || plan.challenge.brickIndices.includes(ref.slot)
+            || ref.kind === 'owned' && (!identity(ref.id) || ref.pile !== 'club')
+            || ref.kind === 'concept' && (ref.id !== undefined || ref.catalogRef !== `fc27:${ref.definitionId}`))) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const players = ownData(loaded, '_players').map((slot, index) => {
+        const ref = plan.slots[index];
+        return { index, itemData: { id: ref ? ref.kind === 'concept' ? ref.definitionId : ref.id : ownData(ownData(slot, '_item'), 'id'),
+          dream: ref?.kind === 'concept' } };
+      });
+      if (beforeWrite() !== true) return fail('FC27_CONCEPT_INPUTS_CHANGED');
+      const reply = await transport.request(refs.some(ref => ref.kind === 'concept') ? 'save-concept' : 'save', { challengeId: plan.challenge.id, players,
+        simpleBrickIndices: plan.challenge.brickIndices,
+        conceptSlots: refs.filter(ref => ref.kind === 'concept').map(({ slot, definitionId }) => ({ slot, definitionId })) }, beforeDispatch);
+      assert();
+      return { setId: plan.challenge.setId, challengeId: plan.challenge.id,
+        status: ownData(reply, 'success') === true && ownData(reply, 'status') === 200 ? 'confirmed' : 'unknown' };
+    },
+    async readConceptDraft(plan) {
+      savedRead = null;
+      if (plan?.kind !== 'puzzle-concept-draft') return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const squad = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
+      const target = { setId: plan.challenge.setId, challengeId: plan.challenge.id };
+      const layout = projectFc27PuzzleLayout(root, squad, target);
+      assertFc27PuzzleLayout(plan, layout);
+      const slots = ownData(squad, '_players'); const owned = []; const concepts = [];
+      const playable = index => index < 11 && !plan.challenge.brickIndices.includes(index);
+      const occupied = slots.slice(0, 11).filter((slot, index) => playable(index)
+        && Number(ownData(ownData(slot, '_item'), 'id')) > 0).length;
+      // A user may deliberately clear a previously saved concept squad. This
+      // is different from a partial/manual edit: an unambiguous empty server
+      // squad is safe to abandon and re-plan on the next trusted click.
+      if (occupied === 0) return fail('FC27_CONCEPT_SQUAD_CLEARED');
+      if (occupied !== plan.slots.filter(Boolean).length) return fail('FC27_CONCEPT_SQUAD_MANUAL_EDITED');
+      const identityMatches = plan.slots.filter(Boolean).every(ref => {
+        const item = ownData(slots[ref.slot], '_item');
+        return ownData(item, 'definitionId') === ref.definitionId
+          && ownData(item, 'concept') === (ref.kind === 'concept')
+          && ownData(item, 'id') === (ref.kind === 'concept' ? ref.definitionId : ref.id);
+      });
+      if (!identityMatches) return fail('FC27_CONCEPT_SQUAD_MANUAL_EDITED');
+      for (const ref of plan.slots.filter(Boolean)) {
+        const item = ownData(slots[ref.slot], '_item');
+        if (ref.kind === 'owned') owned.push({ ...protectedItem(snapshotFc27ClubPlayer(item, root)), slot: ref.slot });
+        else {
+          // EA's saved concept entity must reproduce the catalog facts used by
+          // the solver, including alternative positions and eligibility groups.
+          const expected = plan.purchases.find(entry => entry.definitionId === ref.definitionId);
+          const snapshot = snapshotFc27ClubPlayer(item, root);
+          for (const key of ['rating', 'rarity', 'nationId', 'leagueId', 'teamId', 'positions', 'groups', 'special', 'evolution', 'cosmetic']) {
+            if (!same(snapshot[key], expected?.[key])) return fail('FC27_CONCEPT_READBACK_UNVERIFIED');
+          }
+          concepts.push({ slot: ref.slot, definitionId: ref.definitionId });
+        }
+      }
+      savedRead = { target, squad, concepts: true, observedAt: Date.now() };
+      return { ...target, context, fresh: true, observedAt: savedRead.observedAt, owned, concepts, layout };
+    },
+    async syncConceptDraft(plan, previousSlots = null) {
+      const read = savedRead; savedRead = null; assert();
+      if (!read?.concepts || read.target.setId !== plan.challenge.setId || read.target.challengeId !== plan.challenge.id
+          || Date.now() - read.observedAt < 0 || Date.now() - read.observedAt > 15000) return fail('FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED');
+      if (previousSlots !== null) return synchronizeFc27PurchasedPuzzleSquad(root, read.target, read.squad,
+        plan.slots.filter(Boolean), previousSlots.filter(Boolean), assert);
+      return synchronizeFc27PuzzleConceptSquad(root, read.target, read.squad, plan.slots.filter(Boolean), assert);
+    },
     async prepareInputs(options) {
       const input = await readInputs(options);
       if (!input.unassignedClear) return fail('FC27_UNASSIGNED_NOT_CLEAR');
@@ -206,6 +302,17 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
         items: cached.items.map(protectedItem) } };
     },
     readInputs,
+    async readPuzzleBaseline(plan) {
+      if (!['puzzle-fill', 'puzzle-concept-draft'].includes(plan?.kind)) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const loaded = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
+      const target = { setId: plan.challenge.setId, challengeId: plan.challenge.id };
+      const layout = projectFc27PuzzleLayout(root, loaded, target);
+      assertFc27PuzzleLayout(plan, layout);
+      const slots = projectFc27PuzzleSquadBaseline(root, loaded, target);
+      const baseline = Object.freeze({ target: Object.freeze(target), slots: Object.freeze(slots.map(ref => ref && Object.freeze(ref))) });
+      replacementBaselines.set(baseline, { target, slots, layout, observedAt: Date.now() });
+      return baseline;
+    },
     async validateItems(plan) {
       const items = await freshRefs(plan.selected);
       return { context, fresh: true, observedAt: Date.now(), items };
@@ -230,7 +337,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
           { setId: plan.challenge.setId, challengeId: plan.challenge.id }) } : {}) };
     },
     async readRewardBaseline(plan) { return { context, fresh: true, packId: plan.rewards[0].value, count: await rewardCount(plan.rewards[0]) }; },
-    async save(plan, beforeWrite = null, beforeDispatch = null) {
+    async save(plan, beforeWrite = null, beforeDispatch = null, { replaceBaseline = null } = {}) {
       assert();
       if (canWrite() !== true || plan.kind !== 'puzzle-fill' && plan.challenge.brickIndices.length) return fail('FC27_SAVE_INPUT_UNVERIFIED');
       const loaded = ownData(await readDao('loadChallenge', [plan.challenge.id, true]), 'squad');
@@ -242,6 +349,10 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
           || !same(ownData(loaded, 'customBrickIndices'), [])) {
         return fail('FC27_SAVE_INPUT_UNVERIFIED');
       }
+      if (replaceBaseline !== null) {
+        if (plan.kind !== 'puzzle-fill') return fail('FC27_SAVE_INPUT_UNVERIFIED');
+        assertReplacementBaseline(plan, loaded, replaceBaseline);
+      }
       const players = slots.map((slot, index) => {
         const selected = plan.selected.find(item => item.slot === index);
         const emptyId = ownData(ownData(slot, '_item'), 'id');
@@ -250,7 +361,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
             || !playable && (selected || ![0, -1].includes(emptyId))) {
           return fail('FC27_SAVE_INPUT_UNVERIFIED');
         }
-        if (plan.kind === 'puzzle-fill' && ![0, -1].includes(emptyId)) return fail('FC27_PUZZLE_EXISTING_SQUAD_BLOCKED');
+        if (plan.kind === 'puzzle-fill' && replaceBaseline === null && ![0, -1].includes(emptyId)) return fail('FC27_PUZZLE_EXISTING_SQUAD_BLOCKED');
         return { index, itemData: { id: selected?.id ?? emptyId, dream: false } };
       });
       if (typeof beforeWrite === 'function' && beforeWrite() !== true) return fail('FC27_PUZZLE_FILL_INPUTS_CHANGED');

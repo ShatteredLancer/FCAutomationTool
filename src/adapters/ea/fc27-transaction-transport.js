@@ -42,22 +42,36 @@ export async function createFc27TransactionTransport(root, { canWrite = () => fa
   async function request(action, target = {}, beforeDispatch = null) {
     if (busy || stopped) return fail('FC27_TRANSACTION_TRANSPORT_BLOCKED');
     const id = target.challengeId;
-    const mutation = action === 'save' || action === 'submit';
-    if (!['unassigned', 'packs', 'save', 'submit'].includes(action)
+    const mutation = action === 'save' || action === 'save-concept' || action === 'save-purchase' || action === 'submit';
+    if (!['unassigned', 'packs', 'save', 'save-concept', 'save-purchase', 'submit'].includes(action)
         || mutation && (!Number.isSafeInteger(id) || id <= 0 || canWrite() !== true)) return fail('FC27_LIVE_DISABLED');
-    if (action === 'save') {
+    if (action === 'save' || action === 'save-concept' || action === 'save-purchase') {
       // Only explicitly declared, provider-verified simple bricks may be empty
       // on the pitch. Existing traditional callers still require eleven players.
-      const bricks = target.simpleBrickIndices === undefined ? [] : target.simpleBrickIndices;
+      const declaredBricks = target.simpleBrickIndices === undefined ? [] : target.simpleBrickIndices;
+      const empty = action === 'save-purchase' ? target.emptySlotIndices : [];
+      if (!Array.isArray(declaredBricks) || !Array.isArray(empty)
+          || new Set(declaredBricks).size !== declaredBricks.length
+          || declaredBricks.some(index => !Number.isInteger(index) || index < 0 || index >= 11)
+          || new Set(empty).size !== empty.length || empty.some(index => !Number.isInteger(index) || index < 0 || index >= 11)) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+      const bricks = action === 'save-purchase' ? [...new Set([...declaredBricks, ...empty])] : declaredBricks;
+      const concepts = action === 'save-concept' || action === 'save-purchase' ? target.conceptSlots : [];
+      if (!Array.isArray(concepts) || action === 'save-concept' && !concepts.length
+          || concepts.some(ref => !Number.isInteger(ref?.slot) || ref.slot < 0 || ref.slot >= 11
+            || !Number.isSafeInteger(ref.definitionId) || ref.definitionId <= 0)
+          || new Set(concepts.map(ref => ref.slot)).size !== concepts.length
+          || new Set(concepts.map(ref => ref.definitionId)).size !== concepts.length) return fail('FC27_SAVE_INPUT_UNVERIFIED');
       if (!Array.isArray(bricks) || bricks.length >= 11 || new Set(bricks).size !== bricks.length
           || bricks.some(index => !Number.isInteger(index) || index < 0 || index >= 11)
           || !Array.isArray(target.players) || target.players.length < 11 || target.players.length > 32
           || new Set(target.players.slice(0, 11).filter((_, index) => !bricks.includes(index))
-            .map(player => player?.itemData?.id)).size !== 11 - bricks.length
+            .map(player => `${player?.itemData?.dream}:${player?.itemData?.id}`)).size !== 11 - bricks.length
           || target.players.some((player, index) => player?.index !== index
             || !Number.isSafeInteger(player?.itemData?.id)
             || (index < 11 && !bricks.includes(index) ? player.itemData.id < 1 : ![0, -1].includes(player.itemData.id))
-            || player.itemData.dream !== false)) return fail('FC27_SAVE_INPUT_UNVERIFIED');
+            || player.itemData.dream !== concepts.some(ref => ref.slot === index)
+            || concepts.some(ref => ref.slot === index && (bricks.includes(index) || player.itemData.id !== ref.definitionId)))
+          || concepts.some(ref => !target.players[ref.slot]?.itemData?.dream)) return fail('FC27_SAVE_INPUT_UNVERIFIED');
     }
     busy = true;
     try {
@@ -72,19 +86,19 @@ export async function createFc27TransactionTransport(root, { canWrite = () => fa
       req.doRetry = false; req.doReauth = false; req.timeout = 10000;
       req.requestType = mutation ? 'PUT' : 'GET';
       const endpoint = `/ut/game/${game}/${action === 'unassigned' ? 'purchased/items'
-        : action === 'packs' ? 'store/purchaseGroup/all' : `sbs/challenge/${id}${action === 'save' ? '/squad' : ''}`}`;
+        : action === 'packs' ? 'store/purchaseGroup/all' : `sbs/challenge/${id}${['save', 'save-concept', 'save-purchase'].includes(action) ? '/squad' : ''}`}`;
       req.setPath(endpoint);
       const url = new URL(ownData(req, 'url'));
       if (url.protocol !== 'https:' || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint
           || url.search || url.hash || url.username || url.password) return fail('FC27_TRANSACTION_ENDPOINT_UNVERIFIED');
-      if (action === 'save') req.setRequestBody({ players: target.players.map(player => ({ index: player.index,
-        itemData: { id: player.itemData.id, dream: false } })) });
+      if (['save', 'save-concept', 'save-purchase'].includes(action)) req.setRequestBody({ players: target.players.map(player => ({ index: player.index,
+        itemData: { id: player.itemData.id, dream: action !== 'save' ? player.itemData.dream === true : false } })) });
       // This DAO argument is always false. Never inherit the account's skip setting.
       if (action === 'submit') { url.searchParams.set('skipUserSquadValidation', 'false'); req.url = url.href; }
       // All network/body/layout preflight has finished. A Puzzle caller now
       // persists its write-ahead record, before this request can be sent.
       if (beforeDispatch !== null) {
-        if (action !== 'save' || typeof beforeDispatch !== 'function') return fail('FC27_SAVE_INPUT_UNVERIFIED');
+        if (!['save', 'save-concept', 'save-purchase'].includes(action) || typeof beforeDispatch !== 'function') return fail('FC27_SAVE_INPUT_UNVERIFIED');
         await beforeDispatch();
         assert();
       }

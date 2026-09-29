@@ -1,7 +1,8 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { previewFc27PuzzleSquad, searchFc27PuzzleCandidates } from './puzzle-preview.js';
+import { isFc27PuzzleSearchHintValid, previewFc27PuzzleSquad, searchFc27PuzzleCandidates } from './puzzle-preview.js';
 import { parseFc27SbcRequirements, matchFc27SbcItemRule, createFc27ClubResolver } from './sbc-requirements.js';
 import { normalizeFc27PlayerCatalog, indexFc27MarketQuotes } from './market-catalog.js';
+import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 
 const integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
 const stop = (reason, extra = {}) => ({ status: 'blocked', reason, executable: false, liveExecutionEnabled: false,
@@ -92,15 +93,27 @@ export function prepareFc27MarketCandidates(input) {
 export function previewFc27PuzzleMarket(input = {}) {
   const maxNodes = input.maxNodes ?? 50000;
   if (!integer(maxNodes, 1, 250000)) return stop('FC27_PUZZLE_BUDGET_INVALID');
+  const groupedHint = ['nation', 'league', 'club'].includes(input.searchHint?.strategy);
+  let prepared;
+  if (groupedHint) {
+    prepared = prepareFc27MarketCandidates(input);
+    if (prepared.status !== 'ready') return stop(prepared.reason);
+    if (!isFc27PuzzleSearchHintValid(input.searchHint, [...prepared.pool.candidates, ...prepared.market], input.clubLinks)) {
+      return stop('FC27_PUZZLE_STRATEGY_INVALID');
+    }
+  }
   // Reserve search for the joint plan. Owned-only exhaustion proves neither
   // shortage nor that a purchase is needed, and must not starve procurement.
-  const baseline = previewFc27PuzzleSquad({ ...input, maxNodes: Math.max(1, Math.floor(maxNodes / 3)) });
+  // A joint route can exist only in the market. It must not constrain the
+  // independent owned-only baseline or suppress a valid zero-cost plan.
+  const baseline = previewFc27PuzzleSquad({ ...input, ...(groupedHint ? { searchHint: null } : {}),
+    maxNodes: Math.max(1, Math.floor(maxNodes / 3)) });
   if (baseline.status === 'preview') return { ...stop('FC27_MARKET_PLAN_PREVIEW'), status: 'preview',
     selectedOwned: baseline.selected, purchaseCount: 0, estimatedCost: 0, teamFacts: baseline.teamFacts,
     nodes: baseline.nodes, requiresPurchasedMaterialApproval: false, marketAvailabilityVerified: false,
     optimization: { objective: 'additional-coins', searchComplete: true, optimalWithinPool: true, globalMinimumProven: true }, baselineReason: baseline.reason };
   if (!recoverable.has(baseline.reason)) return stop(baseline.reason, { baselineReason: baseline.reason });
-  const prepared = prepareFc27MarketCandidates(input);
+  prepared ??= prepareFc27MarketCandidates(input);
   if (prepared.status !== 'ready') return stop(prepared.reason, { baselineReason: baseline.reason });
   const remaining = maxNodes - (baseline.nodes ?? 0);
   if (remaining <= 0) return stop('FC27_PUZZLE_SEARCH_LIMIT', { nodes: maxNodes, baselineReason: baseline.reason });
@@ -119,7 +132,7 @@ export function previewFc27PuzzleMarket(input = {}) {
       rating: item.rating, slot: ref.slot, quantity: 1, estimatedUnitPrice: item.quote.price,
       maxUnitPrice: item.quote.price, quoteSource: item.quote.source, quoteObservedAt: item.quote.observedAt };
   });
-  return { ...stop('FC27_MARKET_PLAN_PREVIEW'), status: 'preview', setId: input.challenge.setId, challengeId: input.challenge.id,
+  const joint = { ...stop('FC27_MARKET_PLAN_PREVIEW'), status: 'preview', setId: input.challenge.setId, challengeId: input.challenge.id,
     selectedOwned: result.selected.filter(item => !item.catalogRef), purchases, purchaseCount: purchases.length,
     estimatedCost: result.estimatedCost, budget: caps.effectiveBudget, minimumRetainedCoins: caps.minimumRetainedCoins,
     teamFacts: result.teamFacts, validation: result.validation, coverage, nodes, baselineReason: baseline.reason,
@@ -127,4 +140,5 @@ export function previewFc27PuzzleMarket(input = {}) {
     optimization: { objective: 'additional-coins', searchComplete: result.searchComplete, optimalWithinPool: result.optimalWithinPool, globalMinimumProven: result.estimatedCost === 0 },
     pending: ['LIVE_AUCTION_RECHECK', 'EXPLICIT_PURCHASE_AND_MATERIAL_APPROVAL', 'EXACT_PURCHASE_RECEIPTS',
       'FRESH_INVENTORY_REPLAN', 'EXACT_ITEM_REVALIDATION', 'EXPLICIT_SBC_APPROVAL'] };
+  return { ...joint, conceptPlan: prepareFc27PuzzleConceptPlan({ challenge: input.challenge, plan: joint }) };
 }
