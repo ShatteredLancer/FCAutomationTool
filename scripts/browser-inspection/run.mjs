@@ -11,9 +11,9 @@ import { runAgentSession } from './agent-session.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const requireTools = createRequire(path.join(root, 'tools/browser-inspection/package.json'));
-const { help, selfTest, auto, agent, durationSeconds, withExtensions, executable } = inspectionOptions(process.argv.slice(2));
+const { help, selfTest, auto, agent, durationSeconds, withExtensions, executable, proxy } = inspectionOptions(process.argv.slice(2));
 if (help) {
-  console.log('node scripts/browser-inspection/run.mjs --self-test|--interactive|--auto|--agent [--browser <executable>]');
+  console.log('node scripts/browser-inspection/run.mjs --self-test|--interactive|--auto|--agent [--browser <executable>] [--proxy loopback:port]');
   console.log('Interactive mode uses a dedicated profile. Login is manual. EA responses are counted from startup; Enter captures fixed read-only fields; q closes.');
   console.log('Auto opens the official Web App, saves passive reports without Enter, then closes. Login/2FA remain manual.');
   console.log('Auto options: --duration-seconds 1..600 (default 120), --with-extensions (default: native baseline, extensions disabled).');
@@ -48,11 +48,12 @@ if (help) {
     await writeFile(marker, JSON.stringify({ purpose: 'fcat-inspection', schema: 1 }), { flag: 'wx' });
   }
   const context = await chromium.launchPersistentContext(profile, {
-    executablePath: browserPath, headless: selfTest, viewport: { width: 1280, height: 800 },
+    executablePath: browserPath, headless: selfTest, viewport: selfTest ? { width: 1280, height: 800 } : null,
     // The optional AI key belongs to the Node transport, never a browser child.
     env: Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== 'FCAT_LLM_API_KEY')),
     // Playwright controls this owned browser through a pipe, not a public CDP listener.
     ignoreDefaultArgs: !selfTest && (!(auto || agent) || withExtensions) ? ['--disable-extensions'] : [],
+    ...(proxy ? { proxy } : {}),
   }).catch(() => {
     // Playwright's raw error contains browser arguments and profile paths.
     // A racing second launcher can still lose the profile after a preflight.
@@ -90,6 +91,12 @@ if (help) {
       await exerciseProductionLivePanel(context, out);
       const { exercisePuzzleBuyButton } = await import('./puzzle-buy-smoke.mjs');
       await exercisePuzzleBuyButton(context, root);
+      const { exerciseGalleryCatalog } = await import('./gallery-catalog-smoke.mjs');
+      await exerciseGalleryCatalog(context, out);
+      const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');
+      await exerciseGalleryJoint(context, out);
+      const { exerciseGalleryInspection } = await import('./gallery-inspection-smoke.mjs');
+      await exerciseGalleryInspection(context);
     } else if (agent) {
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       await runAgentSession({ context, terminal, root, withExtensions });

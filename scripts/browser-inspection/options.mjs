@@ -1,3 +1,14 @@
+function parseLoopbackProxy(value, error = 'Expected --proxy loopback:port') {
+  if (!value) throw new Error(error);
+  const proxy = new URL(value.includes('://') ? value : `http://${value}`);
+  if (!['http:', 'socks5:'].includes(proxy.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(proxy.hostname)
+    || !proxy.port || Number(proxy.port) < 1 || proxy.username || proxy.password
+    || proxy.pathname && proxy.pathname !== '/' || proxy.search || proxy.hash) {
+    throw new Error(error);
+  }
+  return { server: `${proxy.protocol}//${proxy.host}`, bypass: 'localhost,127.0.0.1,[::1]' };
+}
+
 export function fsuSetupOptions(args) {
   if (args.includes('--preview')) {
     if (args.filter(arg => arg === '--preview').length !== 1) throw new Error('Duplicate preview option');
@@ -5,13 +16,7 @@ export function fsuSetupOptions(args) {
   }
   if (!args.length) return {};
   if (args.length !== 2 || args[0] !== '--proxy' || !args[1]) throw new Error('Expected --proxy loopback:port');
-  const proxy = new URL(args[1].includes('://') ? args[1] : `http://${args[1]}`);
-  if (!['http:', 'socks5:'].includes(proxy.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(proxy.hostname)
-    || !proxy.port || Number(proxy.port) < 1 || proxy.username || proxy.password
-    || proxy.pathname && proxy.pathname !== '/' || proxy.search || proxy.hash) {
-    throw new Error('Setup proxy must be a loopback HTTP or SOCKS5 endpoint without credentials');
-  }
-  return { proxy: { server: `${proxy.protocol}//${proxy.host}`, bypass: 'localhost,127.0.0.1,[::1]' } };
+  return { proxy: parseLoopbackProxy(args[1], 'Setup proxy must be a loopback HTTP or SOCKS5 endpoint without credentials') };
 }
 
 export function inspectionOptions(args) {
@@ -20,6 +25,7 @@ export function inspectionOptions(args) {
   let executable = null;
   let durationSeconds = null;
   let withExtensions = false;
+  let proxy = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--self-test' || arg === '--interactive' || arg === '--auto' || arg === '--agent') {
@@ -37,11 +43,14 @@ export function inspectionOptions(args) {
     } else if (arg === '--with-extensions') {
       if (withExtensions) throw new Error('Duplicate extension option');
       withExtensions = true;
+    } else if (arg === '--proxy') {
+      if (proxy || !args[i + 1] || args[i + 1].startsWith('--')) throw new Error('Expected --proxy loopback:port');
+      proxy = parseLoopbackProxy(args[++i]);
     } else throw new Error('Unknown inspection argument');
   }
   if (!mode && args.length) throw new Error('Inspection mode required');
   if (durationSeconds !== null && mode !== '--auto') throw new Error('Automatic mode required');
   if (withExtensions && mode !== '--auto' && mode !== '--agent') throw new Error('Automatic or agent mode required');
   return { help: !mode, selfTest: mode === '--self-test', interactive: mode === '--interactive',
-    auto: mode === '--auto', agent: mode === '--agent', durationSeconds: durationSeconds ?? 120, withExtensions, executable };
+    auto: mode === '--auto', agent: mode === '--agent', durationSeconds: durationSeconds ?? 120, withExtensions, executable, proxy };
 }

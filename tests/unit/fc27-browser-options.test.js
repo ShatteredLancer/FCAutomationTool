@@ -37,6 +37,9 @@ it('accepts bounded automatic collection, with extensions only when explicitly r
 });
 it('supports one persistent agent-controlled native session', () => {
   expect(inspectionOptions(['--agent'])).toMatchObject({ agent: true, withExtensions: false });
+  expect(inspectionOptions(['--agent', '--proxy', '127.0.0.1:1080']).proxy).toEqual({
+    server: 'http://127.0.0.1:1080', bypass: 'localhost,127.0.0.1,[::1]',
+  });
   expect(() => inspectionOptions(['--agent', '--duration-seconds', '30'])).toThrow();
 });
 it.each([
@@ -47,6 +50,7 @@ it.each([
   ['--auto', '--interactive'], ['--auto', '--duration-seconds', '0'],
   ['--auto', '--duration-seconds', '601'], ['--auto', '--duration-seconds', 'Infinity'],
   ['--auto', '--duration-seconds', '1.5'], ['--self-test', '--with-extensions'],
+  ['--agent', '--proxy'], ['--agent', '--proxy', '127.0.0.1:1080', '--proxy', '127.0.0.1:1081'],
   ['--interactive', '--duration-seconds', '30'], ['--auto', '--with-extensions', '--with-extensions'],
 ])('rejects ambiguous or malformed arguments %j', (...args) => {
   expect(() => inspectionOptions(args)).toThrow();

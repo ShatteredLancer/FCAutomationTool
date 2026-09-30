@@ -2,31 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { collectPageReport, createNetworkCollector, pageKind } from './probe.mjs';
 import { WEB_APP_URL } from './automatic.mjs';
+import { panelCall, waitForPanel, openProductionPanel, selectPanelTab, clickPanelControl } from './production-panel-inspection.mjs';
 
 const PRODUCTION_PANEL_ID = 'fcat-fc27-production';
-
-async function panelCall(context, page, fn, args = []) {
-  const cdp = await context.newCDPSession(page);
-  try {
-    const { root: documentNode } = await cdp.send('DOM.getDocument');
-    const { nodeId } = await cdp.send('DOM.querySelector', {
-      nodeId: documentNode.nodeId, selector: `#${PRODUCTION_PANEL_ID}`,
-    });
-    if (!nodeId) return null;
-    const { node } = await cdp.send('DOM.describeNode', { nodeId, depth: 1, pierce: true });
-    const shadow = node.shadowRoots?.find(value => value.shadowRootType === 'closed');
-    if (!shadow) return null;
-    const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: shadow.backendNodeId, objectGroup: 'agent-panel' });
-    const result = await cdp.send('Runtime.callFunctionOn', {
-      objectId: object.objectId, returnByValue: true,
-      functionDeclaration: fn.toString(), arguments: args.map(value => ({ value })),
-    });
-    return result.result?.value ?? null;
-  } finally {
-    await cdp.send('Runtime.releaseObjectGroup', { objectGroup: 'agent-panel' }).catch(() => {});
-    await cdp.detach();
-  }
-}
 
 async function readProductionPanel(context, page, setId = null) {
   const entry = page.locator('.ut-tab-bar .fcat-navigation-entry');
@@ -91,6 +69,84 @@ async function readProductionPanel(context, page, setId = null) {
   return { status: 'observed', target, result, reloaded };
 }
 
+export async function readProductionGallery(context, page, setName = 'Arsenal') {
+  await openProductionPanel(context, page);
+  await selectPanelTab(context, page, 'gallery');
+  const deadline = Date.now() + 25000;
+  let overview = null;
+  while (Date.now() < deadline) {
+    overview = await panelCall(context, page, function (requestedName) {
+      const status = this.getElementById('gallery-status')?.textContent ?? '';
+      const source = this.getElementById('gallery-source')?.textContent ?? '';
+      const cards = [...this.querySelectorAll('#gallery-set-list .gallery-set')].map(card => ({
+        name: card.querySelector('h4')?.textContent?.trim() ?? '',
+        progress: card.querySelector('small')?.textContent?.trim() ?? '',
+        button: !!card.querySelector('.gallery-open-set'),
+      }));
+      const target = cards.find(card => card.name.toLowerCase() === requestedName.toLowerCase());
+      return { status, source, activeTab: this.host?.dataset?.activeTab ?? null,
+        tabSelected: this.getElementById('tab-gallery')?.getAttribute('aria-selected') ?? null,
+        pageHidden: this.getElementById('page-gallery')?.hidden ?? null,
+        categories: this.querySelectorAll('#gallery-categories button[data-category-id]:not([data-category-id=""])').length,
+        categoryButtons: this.querySelectorAll('#gallery-categories button').length,
+        sets: cards.length, target, loaded: cards.length > 0 };
+    }, [setName]);
+    if (overview?.loaded && overview.target) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!overview?.loaded || !overview.target) return { status: 'blocked', reason: 'FC27_GALLERY_SET_UNAVAILABLE', overview };
+  const click = await panelCall(context, page, function (requestedName) {
+    const card = [...this.querySelectorAll('#gallery-set-list .gallery-set')].find(value =>
+      value.querySelector('h4')?.textContent?.trim()?.toLowerCase() === requestedName.toLowerCase());
+    const button = card?.querySelector('.gallery-open-set');
+    if (!button) return null;
+    return `[data-set-id="${globalThis.CSS.escape(card.dataset.setId)}"] .gallery-open-set`;
+  }, [setName]);
+  if (!click) return { status: 'blocked', reason: 'FC27_GALLERY_SET_BUTTON_UNAVAILABLE', overview };
+  await clickPanelControl(context, page, click);
+  let detail = null;
+  while (Date.now() < deadline + 25000) {
+    detail = await panelCall(context, page, function () {
+      const root = this.getElementById('gallery-set-detail');
+      const text = root?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+      const cards = root ? root.querySelectorAll('.gallery-card').length : 0;
+      const filters = root ? [...root.querySelectorAll('button')].map(button => button.textContent?.trim()) : [];
+      return { visible: !!root && !root.hidden, name: root?.querySelector('h3')?.textContent, text: text.slice(0, 1600), cards, filters,
+        loading: text.includes('正在读取卡池') };
+    });
+    if (detail?.visible && !detail.loading && detail.cards > 0) break;
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  if (!detail?.visible || detail.loading || detail.cards === 0) return { status: 'blocked', reason: 'FC27_GALLERY_DETAIL_UNAVAILABLE', overview, detail };
+  if (detail.name?.toLowerCase() !== setName.toLowerCase()) return { status: 'blocked', reason: 'FC27_GALLERY_DETAIL_MISMATCH', overview, detail };
+  const filtered = await panelCall(context, page, function () {
+    const root = this.getElementById('gallery-set-detail');
+    const button = [...(root?.querySelectorAll('button') ?? [])].find(value => value.textContent?.trim() === '已收集');
+    if (!button) return null;
+    return `#gallery-set-detail .gallery-card-filters button:nth-child(${[...button.parentElement.children].indexOf(button) + 1})`;
+  });
+  if (!filtered) return { status: 'blocked', reason: 'FC27_GALLERY_FILTER_UNAVAILABLE', overview, detail };
+  await clickPanelControl(context, page, filtered);
+  await waitForPanel(context, page, function (selector) {
+    return this.querySelector(selector)?.getAttribute('aria-pressed') === 'true';
+  }, [filtered]);
+  const collected = await panelCall(context, page, function () {
+    const root = this.getElementById('gallery-set-detail');
+    return { text: root?.textContent?.replace(/\s+/g, ' ').trim()?.slice(0, 800) ?? '', cards: root?.querySelectorAll('.gallery-card').length ?? 0 };
+  });
+  const back = await panelCall(context, page, function () {
+    const button = [...this.querySelectorAll('#gallery-set-detail button')].find(value => value.textContent?.trim() === '返回集合');
+    if (!button) return null;
+    return `#gallery-set-detail > button:nth-child(${[...button.parentElement.children].indexOf(button) + 1})`;
+  });
+  if (!back) return { status: 'blocked', reason: 'FC27_GALLERY_RETURN_UNAVAILABLE', overview, detail, collected };
+  await clickPanelControl(context, page, back);
+  const returned = await waitForPanel(context, page, function () {
+    return this.querySelector('#gallery-set-detail')?.hidden === true && this.querySelector('#gallery-sets')?.checkVisibility();
+  });
+  return { status: 'observed', overview, detail, collected, returned };
+}
+
 // Local stdin only: no debug port, arbitrary JS command, or account mutation API.
 export async function runAgentSession({ context, terminal, root, withExtensions,
   loadHelpers = async revision => ({
@@ -118,23 +174,37 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('gallery-fallback temporarily changes the local Gallery proxy, tests the public catalog fallback, then restores the original setting; no EA write.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|gallery-fallback|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'ai-test') {
         try { const { testPuzzleAiConnection } = await loadHelpers(Date.now()); console.log(JSON.stringify(await testPuzzleAiConnection())); }
         catch { console.log('AI connection test unavailable; raw exception omitted.'); }
         continue;
       }
       const targets = context.pages().filter(target => pageKind(target.url()) === 'web-app');
-      if (targets.length !== 1) { console.log('Exactly one Web App tab required.'); continue; }
+      let target = targets.length === 1 ? targets[0] : null;
+      if (!target && targets.length > 1) {
+        // Repeated inspection launches can leave a login redirect beside the
+        // live Web App tab. Select one readable, non-login tab without closing
+        // or mutating any user page; remain fail-closed if still ambiguous.
+        const candidates = [];
+        for (const candidate of targets) {
+          try {
+            const text = await candidate.locator('body').innerText({ timeout: 1000 });
+            if (!/\b(?:Login|Sign in|Signed Into Another Device)\b/i.test(text)) candidates.push(candidate);
+          } catch { /* Closed or transitional tab. */ }
+        }
+        if (candidates.length === 1) target = candidates[0];
+      }
+      if (!target) { console.log('Exactly one readable Web App tab required.'); continue; }
       try {
         // Reload diagnostic helpers between inspections, without restarting the login session.
         const revision = Date.now();
         const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);
-        const target = targets[0];
         const report = await collectPageReport(target);
         const runtime = await target.evaluate(observeRuntime);
         let action = 'NONE';
@@ -175,6 +245,16 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
           const requested = command.split(' ')[1];
           observation.panel = await readProductionPanel(context, target, requested ? Number(requested) : null);
           observation.action = observation.panel.status === 'observed' ? 'PRODUCTION_PANEL_CATALOG_READ' : observation.panel.reason;
+        }
+        if (command.startsWith('gallery-read')) {
+          const requested = command.split(' ').slice(1).join(' ') || 'Arsenal';
+          observation.gallery = await readProductionGallery(context, target, requested);
+          observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_READ' : observation.gallery.reason;
+        }
+        if (command === 'gallery-fallback') {
+          const { inspectGalleryFallback } = await import(`./gallery-proxy-inspection.mjs?revision=${revision}`);
+          observation.gallery = await inspectGalleryFallback(context, target);
+          observation.action = observation.gallery.reason;
         }
         if (command.startsWith('puzzle ') || command.startsWith('puzzle-ai ')) {
           const ui = observation.ui;

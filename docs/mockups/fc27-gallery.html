@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FCAT Gallery · 收集进度与采购演示</title>
+  <link rel="stylesheet" href="fc27-gallery-browse.css">
+  <style>
+    :root{color-scheme:dark;font:14px/1.6 system-ui,"Segoe UI",sans-serif;color:#edf1f4;background:#111b24}
+    *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit;color:inherit}button,select,input[type=number]{background:#23323f;border:1px solid #536571;border-radius:6px;padding:9px 12px}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #a8f2d1;outline-offset:3px}
+    header{padding:18px 28px;border-bottom:1px solid #344652;background:#17232d}header strong{font-size:20px}header span{color:#a9bcc7;margin-left:15px}.tabs{display:flex;gap:24px;padding:12px 28px;overflow:auto;border-bottom:1px solid #344652;white-space:nowrap;color:#9dafbb}.tabs b{color:#b5f2d7;border-bottom:2px solid #b5f2d7}main{max-width:1280px;margin:auto;padding:25px}.notice{padding:12px 16px;background:#2c302a;border:1px solid #575b42;border-radius:8px;color:#e0debd}h1{font-size:28px;line-height:1.3;margin:24px 0 7px}h2{font-size:18px;margin:0 0 12px}p{margin:5px 0 15px;color:#b3c3cc}.toolbar{display:flex;gap:18px;align-items:end;flex-wrap:wrap;margin:20px 0}.toolbar label{display:grid;gap:5px}.toolbar input{width:180px}.grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:20px}.panel{padding:22px;background:#1c2b36;border:1px solid #394e5b;border-radius:12px}.targets{display:grid;gap:12px}.target{padding:16px;background:#233540;border:1px solid #425964;border-radius:9px}.target label{display:flex;gap:10px;align-items:center;font-weight:600}.target input{accent-color:#94e1c0;width:18px;height:18px}.target p{font-size:12px;margin:10px 0 0}.target output{display:block;margin-top:8px;color:#a0eccb}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}.stat{padding:16px;border:1px solid #456152;border-radius:9px;background:#213b33}.stat small{display:block;color:#adcdc0}.stat strong{font-size:25px}.muted{color:#adbec8}.summary .stat:last-child{background:#273642;border-color:#496070}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:12px 9px;border-bottom:1px solid #38505c}th{font-weight:500;color:#a6bcc8}td:first-child{font-weight:600}td:last-child{text-align:right}.table-wrap{overflow:auto}.tag{display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;border:1px solid #486b60;border-radius:5px;font-size:11px;color:#b9ecd6}.comparison{padding:15px;margin-top:18px;background:#14212b;border-radius:8px}.comparison p{margin:4px 0}.foot{margin-top:16px;font-size:12px;color:#a8bfc9}.empty{padding:30px 0;color:#bbcbd4}.description{margin-top:20px}.description summary{cursor:pointer}.description li{margin:8px 0}input[type=checkbox]{accent-color:#94e1c0}.valid{color:#aff1cd}.warning{color:#f2ca8c}[hidden]{display:none!important}
+    .toolbar input[type=checkbox]{width:16px;height:16px;vertical-align:middle}
+    @media(max-width:880px){.grid{grid-template-columns:1fr}.targets{grid-template-columns:repeat(3,minmax(0,1fr))}.target{padding:12px}.summary{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
+    @media(max-width:550px){main{padding:16px}.targets{grid-template-columns:1fr}.toolbar{gap:10px}.toolbar label{width:100%}.toolbar select,.toolbar input{width:100%}.summary{grid-template-columns:1fr}.panel{padding:15px}header span{display:block;margin:0}h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <header><strong>FC Automation Tool</strong><span>Gallery 设计演示</span></header>
+  <nav class="tabs" aria-label="工作台位置示意"><span>SBC 解题</span><b>Gallery</b><span>市场</span><span>自动交易</span><span>库存</span><span>Routine</span><span>滚卡</span><span>活动记录</span><span>设置</span></nav>
+  <main>
+    <div class="notice">离线交互原型。以下集合、卡片、可行组合及奖励均为虚构，不读取账号、不联网、不购买。</div>
+    <div class="gallery-modes" aria-label="Gallery 页面">
+      <a href="#" id="browse-link" aria-current="page">收集进度</a><a href="#plan" id="plan-link">联合规划</a>
+      <label class="demo-state">演示状态 <select id="demo-sync"><option value="synced">已同步</option><option value="empty">未同步</option></select></label>
+    </div>
+    <section id="browse-screen" aria-label="Gallery 收集进度"></section>
+    <p id="gallery-message" role="status"></p>
+    <section id="planner-screen" aria-label="联合规划示例" hidden>
+    <h1>一份预算，规划多个收集目标</h1>
+    <p>勾选目标并调整预算，查看共享卡片如何影响总花费。单集合浏览与采购仍保留原有短流程，此处展示新增的联合规划。</p>
+    <div class="toolbar">
+      <label>规划目标<select id="mode"><option value="reward">预算内优先更多代币</option><option value="cost">达到全部目标，尽量省钱</option></select></label>
+      <label>总预算（金币）<input id="budget" type="number" min="0" max="100000" step="50" value="2000"></label>
+      <label><span>报价场景</span><span><input id="price-change" type="checkbox"> A 卡涨至 1,000</span></label>
+      <button id="reset" type="button">恢复示例</button>
+    </div>
+    <div class="grid">
+      <section class="panel"><h2>关注的收集目标</h2><div class="targets" id="targets"></div><p class="foot">每个示例集合已达到前一档，卡片表只展示新增材料。所有奖励均假设尚未领取且为同一种代币。</p></section>
+      <section class="panel" aria-live="polite">
+        <h2>合并采购方案</h2>
+        <div class="summary"><div class="stat"><small>预计买入</small><strong id="cost">—</strong></div><div class="stat"><small>预计新增代币</small><strong id="reward">—</strong></div><div class="stat"><small>达成目标 / 已选</small><strong id="achieved">—</strong></div></div>
+        <p id="status"></p>
+        <div class="table-wrap"><table><thead><tr><th>精确版本</th><th>帮助的目标</th><th>示例报价</th></tr></thead><tbody id="cards"></tbody></table></div>
+        <div class="comparison"><p id="baseline"></p><p id="savings"></p></div>
+        <p class="foot">生产版在这里提供采购入口与前台逐卡进度；本原型没有执行按钮。预计达成不会显示成已领取奖励。</p>
+      </section>
+    </div>
+    <details class="panel description"><summary>这个例子为什么需要联合规划？</summary><ul>
+      <li>俱乐部集合可用 A＋B 或 E＋B；联赛集合可用 A＋C 或 E＋F；稀有度集合需要 C＋D。这些组合仅为预设的虚构可行方案。</li>
+      <li>俱乐部单独买 E＋B 最便宜，但 A 同时帮助联赛；先独立选各集合最低价、最后才去重，也可能比联合选择更贵。</li>
+      <li>缺一组中的任意卡都没有该组奖励，因此逐张按“即时奖励 / 价格”贪心会漏掉解。</li>
+      <li>本演示只有六张虚构卡，可以检查全部 64 种子集得到精确结果。生产计划采用有界搜索和规则复核，不穷举真实全卡库，不承诺全局最优。</li>
+      <li>报价变化后只展示重新计算的方案；生产执行不得据此突破用户批准的候选范围或预算，已花费与未知扣款仍需保留。</li>
+    </ul></details>
+    </section>
+  </main>
+  <dialog id="gallery-cart" aria-labelledby="cart-title"><form method="dialog"><button class="cart-close" aria-label="关闭采购清单">关闭</button></form><h2 id="cart-title">采购清单 · 演示</h2><div id="cart-content"></div></dialog>
+  <script>
+    const definitions = [
+      { id:'club',name:'示例俱乐部 · B 级',short:'俱乐部',tokens:20,plans:[['A','B'],['E','B']] },
+      { id:'league',name:'示例联赛 · B 级',short:'联赛',tokens:30,plans:[['A','C'],['E','F']] },
+      { id:'rarity',name:'示例稀有度 · C 级',short:'稀有度',tokens:15,plans:[['C','D']] },
+    ];
+    const quotes = {A:600,B:400,C:500,D:350,E:450,F:900};
+    const byId = id => document.getElementById(id);
+    const number = value => value.toLocaleString('zh-CN');
+    byId('targets').innerHTML = definitions.map(set => `<article class="target"><label><input type="checkbox" id="select-${set.id}" checked>${set.name}</label><p>预计新增 ${set.tokens} 代币</p><output id="result-${set.id}"></output></article>`).join('');
+    const price = id => id==='A' && byId('price-change').checked ? 1000 : quotes[id];
+    const total = ids => [...ids].reduce((sum,id)=>sum+price(id),0);
+    const achieved = (set,ids) => set.plans.some(plan=>plan.every(id=>ids.has(id)));
+    function render() {
+      const selected = definitions.filter(set=>byId(`select-${set.id}`).checked);
+      const budget = Number(byId('budget').value), validBudget = byId('budget').value.trim()!=='' && Number.isSafeInteger(budget) && budget>=0 && budget<=100000;
+      const mode = byId('mode').value, keys=Object.keys(quotes);
+      const choices=[];
+      for(let mask=0; mask<64; mask++) {
+        const ids=new Set(keys.filter((id,index)=>mask & (1<<index)));
+        const goals=selected.filter(set=>achieved(set,ids)), cost=total(ids), reward=goals.reduce((sum,set)=>sum+set.tokens,0);
+        if(mode==='reward' ? validBudget && cost<=budget : goals.length===selected.length) choices.push({ids,goals,cost,reward});
+      }
+      choices.sort((a,b)=>mode==='reward' ? b.reward-a.reward || a.cost-b.cost || a.ids.size-b.ids.size : a.cost-b.cost || a.ids.size-b.ids.size);
+      const plan=validBudget ? choices[0] : null;
+      byId('cost').textContent=plan ? number(plan.cost) : '—';
+      byId('reward').textContent=plan ? `+${plan.reward}` : '—';
+      byId('achieved').textContent=plan ? `${plan.goals.length} / ${selected.length}` : '—';
+      const deficit=plan ? Math.max(0,plan.cost-budget) : 0;
+      byId('status').textContent=!validBudget ? '请输入 0–100,000 的整数预算。' : !selected.length ? '勾选至少一个目标，查看方案。' : deficit ? `全部目标预计需要 ${number(plan.cost)}，当前预算还差 ${number(deficit)} 金币。` : `购买 ${plan.ids.size} 个版本后，预计达成 ${plan.goals.length} 个目标；预算剩余 ${number(budget-plan.cost)}。`;
+      byId('status').className=deficit || !validBudget ? 'warning' : 'valid';
+      byId('cards').innerHTML=plan?.ids.size ? [...plan.ids].map(id=>`<tr><td>示例 ${id} · 版本 ${keys.indexOf(id)+1}</td><td>${plan.goals.filter(set=>set.plans.some(p=>p.includes(id)&&p.every(i=>plan.ids.has(i)))).map(set=>`<span class="tag">${set.short}</span>`).join('')}</td><td>${number(price(id))}</td></tr>`).join('') : '<tr><td colspan="3" class="empty">当前没有待购项目</td></tr>';
+      for(const set of definitions) byId(`result-${set.id}`).textContent=!selected.includes(set) ? '未选中' : plan?.goals.includes(set) ? '计划后达标' : '当前方案未覆盖';
+      const baselineGoals=plan?.goals ?? [];
+      const independent=baselineGoals.map(set=>set.plans.slice().sort((a,b)=>total(a)-total(b))[0]);
+      const naiveCost=independent.reduce((sum,ids)=>sum+total(ids),0), merged=total(new Set(independent.flat()));
+      byId('baseline').textContent=`对比同样达成的目标：分别采购 ${number(naiveCost)}；先独立选最便宜方案再去重 ${number(merged)}。`;
+      byId('savings').textContent=plan && baselineGoals.length ? `联合方案 ${number(plan.cost)}，比“独立选最便宜再去重”少 ${number(merged-plan.cost)} 金币。` : '未达成目标时不宣称节省。';
+    }
+    document.querySelectorAll('input,select').forEach(node=>node.addEventListener('input',render));
+    byId('reset').addEventListener('click',()=>{byId('mode').value='reward';byId('budget').value='2000';byId('price-change').checked=false;definitions.forEach(set=>byId(`select-${set.id}`).checked=true);render();});
+    render();
+  </script>
+  <script src="fc27-gallery-browse.js"></script>
+</body>
+</html>

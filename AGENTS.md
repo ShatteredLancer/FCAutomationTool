@@ -87,7 +87,7 @@ FC Automation Tool 是 EA FC Web App 的 Tampermonkey 自动化脚本，运行�
 - Tampermonkey API：`unsafeWindow`、`GM_xmlhttpRequest`、`GM_notification`、`GM_getValue/GM_setValue/GM_deleteValue`。Reward Alert 凭证使用 GM 隔离存储；本地 Hot Reload 通过受控 userscript bridge 转交这些 API，不能改回页面 localStorage。
 - 外部价格服务：FUT.GG，失败时回退 FUTNext。
 
-FC27 metadata 位于 `src/fc27/production-entry.js`；旧季 metadata 保留在 `src/userscript-entry.js`。FC27 授予 `unsafeWindow`、`GM_getValue`、`GM_setValue`，购买参考价新增 `GM_xmlhttpRequest` 和唯一 `@connect www.futbin.org`；传输只允许 FC27 的两个公开 FUTBIN 价格路径，匿名 GET，不转发 EA 凭证。不能直接继承旧季网络权限。
+FC27 metadata 位于 `src/fc27/production-entry.js`；旧季 metadata 保留在 `src/userscript-entry.js`。FC27 授予 `unsafeWindow`、`GM_getValue`、`GM_setValue`、`GM_xmlhttpRequest`；默认 `@connect` 限于 `www.futbin.org`（购买参考价）、`www.fut.gg` 与 `fodder.gg`（Gallery 公开目录）。FUTBIN 传输只允许两个公开价格路径，Gallery 直连只允许两个精确的匿名只读目录 URL；设置页额外支持用户自有的不带凭证 HTTPS forwarding endpoint，并只转发相对 `/api/fut` 的 Gallery 路径，不转发 EA 凭证。Tampermonkey 不提供 per-request 浏览器/SOCKS 代理；`127.0.0.1:1080` 仍应配置在检查器或系统层，不能直接作为 FCAT forwarding URL。不能直接继承旧季网络权限。
 
 ### 2.2 开发工具
 

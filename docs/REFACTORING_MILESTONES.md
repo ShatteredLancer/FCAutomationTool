@@ -1,5 +1,39 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-09-30 27.0.3 升版收口（当前）：收录 Gallery 动态目录、单集合 EA 进度/原生卡面、批次价格、参考计分与单集合/联合规划，以及 Settings 脱敏诊断导出；同步 package/lock、README、CHANGELOG 和版本说明。完整 verify 304 文件 / 3444 项、FC27 专项 82 文件 / 1275 项及全部离线浏览器通过，生产 27.0.3 / 643110 bytes，root/dist/manifest 一致。用户提供的真实 JSON 已确认日志导出成功，FUT.GG HTTPS forwarding 连接失败后 Fodder 200/126 集合；具体端点失败与清除配置后的恢复仍待核对。FSU 保持 26.09.9，未扩展采购/EA 写入授权；G3 最终安装页、真实买断及 Gallery G4 仍待完成，本轮未重装真实 EA 页面。本次仅本地提交，不推送/tag/发布；结果见 [27.0.3 说明](releases/27.0.3.md)。
+
+2026-09-30 Gallery 无登录续做：价格改为精确平台/最多 50 版本的 5 分钟批次缓存，部分失败保留成功批次与旧报价，持久 Retry-After/默认退避并支持重启续读；旧报价仅显示快照，规划只用有效报价。G2 修复 beam 超预算、排列重复及截断/未知属性误称无解，补精确版本、FO 和输入不变回归；未改参考计分算法、FSU 或 Puzzle。Provider 28/Planner 17 项、完整 verify 302 文件 / 3407 项及 FC27 1275 项/全部离线浏览器通过，27.0.2 / 607584 bytes，详见 [本轮矩阵](FC27_GALLERY_PLAN_ZH.md#1011-无登录价格恢复与-g2-搜索边界修复2026-09-30)。真实公开 FUT.GG 56 版本复测为 53 有价，4 请求均 200，复读/重建零新增请求；最终 TM 安装页仍 Pending，不请求用户现在登录。G3 多集合规划为下一阶段，无 EA 写入、购买、提交或发布。
+
+2026-09-30 Gallery 价格故障修复与登录暂停：实际查明专用研究浏览器拦截 FUT.GG 匿名签名 POST，放行后又确认 56 版本请求超过服务端每批 50 个 ID 上限（400）。当前价格 Transport 使用匿名签名＋GET、console→ps5，并由 Provider 串行按 50＋6 分批、缓存合并和记录安全错误码；不接 FUTNext、不改 FSU/Puzzle 买卡来源。无 EA 登录的产品传输检查取得 Arsenal 53/56 有效报价，Raya 三版本均有价格，缓存复用新增请求 0；完整 verify 302 文件 / 3382 项通过。27.0.2 / 598626 bytes 已安装核对，但最终页面检查超时且用户确认暂不能登录，实机价格显示/目标方案验收仍 Pending。下一步离线补价格恢复、规划场景和多集合规划，不重复要求登录，不买卡/提交/EA 写阵。详见 [恢复点](FC27_GALLERY_PLAN_ZH.md#1010-价格故障定位与无登录恢复点2026-09-30)。
+
+2026-09-30 Gallery G2 指定等级规划首版：新增独立只读 `src/gallery/planner.js`，按精确 `eaId`、当前 EA 基础分或明确标记的公开估分、可用报价和目标 D–S 阈值进行有界 beam 规划；输出多个候选、缺价、估分来源、不可达和已有达标状态，不预留金币、不买卡、不修改 EA 阵容。Gallery 集合详情新增目标等级选择和“生成方案”，方案仍需后续价格复核与用户批准才能进入 G4 购买。新增 planner unit fixture；本轮尚未登录实机验证，未提交或发布。
+
+2026-09-30 Gallery 价格与图标接线：选中集合按当前账号平台对 FUT.GG `/api/fut/player-prices/27/` 执行一次去重批量读取，并通过内存/GM 缓存复用；缺价继续显示未知。分类和集合标题使用 EA `AssetLocationUtils.getFilterImage` 的联赛/俱乐部图标，队名只做精确 TeamConfig 匹配并保留文字回退。新增价格解析、请求路径、缓存和离线界面断言；真实安装价格/图标回归仍待执行，FSU、Puzzle、购买和 EA 写入未改。
+
+2026-09-30 Gallery 卡面方案修正（覆盖此前 FUT.GG 卡图/头像回退）：按用户确认采用 Enhancer 的 EA 原生实体展示副本及大卡视图，保留特殊立绘/闪卡字段；通过 light DOM slot 继承 EA 样式，失败仅回退文字，删除头像套壳与第三方卡图。最终安装页 Arsenal 56 张原生卡、Raya 三版本、筛选/返回缓存复用（新增 defid 0）及坏图文字回退已验证。完整 verify 301 文件 / 3371 项、离线浏览器、diff 检查及最终安装截图通过，详细证据见 [原生卡面修正](FC27_GALLERY_PLAN_ZH.md#2026-09-30-原生卡面修正当前任务)。价格只读现有缓存，未命中保持未知；不新增逐卡资料/价格请求，未改 FSU、买卡、提交或 EA 阵容，未发布。
+
+2026-09-30 Gallery G2 当前计分接入：独立计分模块已显示参考等级/区间、下一档差额、计分阵容和最高十项加成解释，使用 EA 基础分，未知 First Owner 保留区间。80 组 Fodder 客户端差分的总分/选队一致；完整 verify 299 文件 / 3359 项、离线浏览器通过。27.0.2 安装实测 Arsenal 20 张计分卡、89,728–242,389 分、条件等级 D–C；这是本地参考计算，不能作为 EA 已确认等级/奖励。指定等级补卡方案、跨集合规划和采购仍未完成，无消费或 EA 阵容写入，未提交发布。文件、来源差异、验收矩阵与恢复点见 [G2 当前计分](FC27_GALLERY_PLAN_ZH.md#106-g2-当前计分交付与恢复点2026-09-30最新)。
+
+2026-09-29 Gallery 账号进度 401 恢复：重新登录新账号后确认首轮 `defid` 401 是 EA 原生认证续期未接入，而非 Gallery 数据格式问题；放行精确的 `appstats` 仅用于检查器对照后，原生查询可恢复 200。FCAT Gallery reader 依据当前方法指纹接入一次原生认证恢复链，仍保持同一只读请求、最多一次重发、账号变化/二次 401/非认证错误停止。27.0.2 安装实测 Arsenal 56 个版本、20 个 collected、36 个未收集、56 个基础分；筛选与返回通过，二次读取命中缓存。完整 verify 298 文件 / 3347 项，FSU Local 26.09.9；无 EA 写入、买卡、兑换、领取或提交。详见 [Gallery 401 恢复](FC27_GALLERY_PLAN_ZH.md#104-首次-401-恢复已接入并实测2026-09-29)。
+
+2026-09-29 Gallery 回退与恢复实机核验：在 27.0.2 安装页面通过可信 FCAT 设置操作把 FUT.GG 测试地址设为不可用，实际观察到 FUT.GG `301/404` 后 Fodder `/api/gallery` `200`，页面显示 7 类/126 集合并隐藏未核实卡池；随后通过精确 receipt 恢复空代理，刷新后 FUT.GG 重新显示 7 类/127 集合，确认设置持久恢复。Arsenal 详情 56 张、过滤和返回链通过，但 EA `/defid` 返回 401，账号进度保持待核实；不宣称 EA 收集同步完成。检查器补齐遮罩/隐藏面板安全点击和筛选/返回可信命中，`npm run verify` 298 文件 / 3341 项通过。无 EA 写入、买卡、兑换、领取或提交。详见 [Gallery G1 回退与恢复复核](FC27_GALLERY_PLAN_ZH.md#102-代理回退与安装后只读复核2026-09-29-晚间)。
+
+2026-09-29 Gallery G1 刷新竞态修复：离线复现了目录缓存刷新期间点击集合时详情被清空的竞态，其表现与安装页“集合可见但详情为空”相符，尚未证明是实机失败的唯一原因。当前实现按目录差异只失效真实变更的集合，条件变化强制串行重读当前卡池，来源/删除/账号切换和晚到响应均隔离；相同快照不重复读取。`npm run verify` 已通过 298 个测试文件 / 3341 项，产物 FCAT 27.0.2 / 533283 bytes；离线 Gallery 竞态 smoke 通过。此前实机会话的空详情报告（1 个未归因 401）仍未由新安装在用户控制通道中复核，因此不得宣称实机根因或 Gallery 全链路完成。下一恢复点：安装新构建后一次性核对 Arsenal 详情、筛选/返回及代理设置；不进行买卡、兑换、领取或 EA 写入。
+
+2026-09-29 Gallery 代理设置接入：FCAT「设置」页新增 FUT.GG HTTPS forwarding proxy 配置，Gallery 目录和单集合卡池请求读取同一配置并保持匿名、条件缓存和 Fodder 回退。Tampermonkey 无法为单个 `GM_xmlhttpRequest` 设置浏览器/SOCKS 代理，因此 `127.0.0.1:1080` 仍只用于专用检查器或系统层；FCAT 选项拒绝非 HTTPS、带认证或 SOCKS 地址，避免把无效配置伪装成可用。新增传输单测覆盖转发 URL 与非法代理。真实 Gallery 只读页面仍未进行写操作或消费金币。
+
+2026-09-29 Gallery G1 只读进度接入收口：在公开目录与集合浏览基础上，FCAT 现按单集合懒加载 FUT.GG 精确卡池，并通过 FC27 `searchConceptItems`/`defId` 请求读取概念版本的 `isCollected` 与 `gradingScore`；Arsenal 实测 56 张卡池、20 张已收集、36 张未收集。`collected`、`inClub`、`firstOwned`、`gradingScore` 分离建模，Club/First Owner 缺失保持未知，账号/Persona/平台/季节隔离与旧快照缓存已覆盖。298 个测试文件 / 3340 项、离线 Gallery smoke 通过。真实 FCAT 安装后的 Gallery 页面只读回归仍待稳定 EA 会话和 FUT.GG 可访问网络条件；检查器已支持 loopback proxy 参数，生产脚本不虚构 per-request proxy。G2 等级计算、联合规划、采购/兑换/领取尚未实现，未发生 EA 写入或金币消费。恢复点见 [FC27 Gallery 计划](FC27_GALLERY_PLAN_ZH.md#10-g1-当前恢复点-2026-09-29)。
+
+2026-09-29 Gallery G1 公开目录子阶段接入：FCAT 工作台 Gallery 标签已接入 FUT.GG 优先、Fodder 回退的 FC27 公共集合目录 Provider。新增 schema/完整性校验、来源与季节隔离缓存、5 分钟有界刷新、ETag/Last-Modified/304、Retry-After/超时退避、失败保留快照和 Provider 内并发合并；UI 默认显示分类、集合、D–S 门槛和奖励，页面隐藏或离开标签停止检查。14 项目录单测、10 项 Provider 边界测试和离线浏览器 Gallery smoke 已通过；最终完整 verify 295 文件 / 3314 项通过，构建 27.0.2 / 494526 bytes，FSU Local 保持 26.09.9。账号 collected/held/FO、成员卡池、EA 进度同步及采购仍 Pending；不以公共目录伪造账号状态，也未进行 EA 写入或消费金币。恢复点见 [FC27 Gallery 计划](FC27_GALLERY_PLAN_ZH.md#71-本轮-g1-目录子阶段交付2026-09-29)。
+
+2026-09-29 Gallery 公共数据源实测：按用户提供的 FUT.GG Gallery 页面定位 JSON 目录、单集合详情和候选池接口，经 `127.0.0.1:1080` 匿名读取成功；目录为 7 类/127 集合/21 标签，Arsenal 详情与 56 个唯一版本卡池校验通过。与 Fodder 126 个共同集合逐项比对数量、D–S 门槛及代币奖励全部一致，FUT.GG 多出 Starter Set 并提供完整非代币奖励；Fodder 的 EA 页面无凭证跨域读取亦通过，Enhancer 独立直连/代理/EA 页面均为 403。G1 更新为优先评估 FUT.GG 元数据、Fodder 核对/降级；生产传输及个人进度仍未接入，不声称两者服务端同源或实时跟随 EA。见 [服务实测与恢复点](FC27_GALLERY_PLAN_ZH.md#63-futggfodder-与-enhancer-服务实测2026-09-29)。本轮未修改生产代码或产物。
+
+2026-09-29 Gallery 集合自动更新调查：确认 Fodder `/api/gallery` 与 Enhancer `/galleries/categories` 是独立后端目录，新增普通集合无需客户端硬编码；两者收集同步不等于刷新目录。补齐 Fodder 内存缓存、公开 HTTP max-age=300、Enhancer staleTime Infinity/非活动缓存回收的差异，以及后端从 EA 获取新集合的方法仍未知的证据边界。G1 增加数据驱动目录、可见页有界刷新、增量失效和异常缓存回退计划，见 [目录自动更新合同](FC27_GALLERY_PLAN_ZH.md#62-fcat-自动更新合同待实现)。本轮为调查与文档，未启用生产轮询或改变已发布脚本。
+
+2026-09-29 Gallery 浏览原型补齐：用户指出前一版只演示联合采购，缺少参考插件的分类进度。现按分类总览 → 集合等级/积分 → 具体卡片补齐，默认打开收集进度，联合规划为辅助入口；未同步不显示假零，已收集/仍持有/待核实及已领奖励独立显示。17 组离线浏览器检查通过，包含原采购规划场景；真实数据与采购接入仍 Pending，见 [页面修正与恢复点](FC27_GALLERY_PLAN_ZH.md#5-页面和操作)。
+
+2026-09-29 Gallery 主线调整：当前无可用 Puzzle，按用户要求延期 P1 实购，推进 Gallery。已读取 Fodder 当日 1.2.9 bundle 和用户安装的 Enhancer 27.0.0.4 客户端，并在专用浏览器核对两者分类/集合页面及 Fodder 收集字段；区分代码、实机、检查拦截造成的数据缺口。新增 [Gallery 对照与实施计划](FC27_GALLERY_PLAN_ZH.md)，确定单集合升档、跨集合去重/预算奖励规划、本页采购、收集确认与后续可选转售的步骤和场景矩阵；附虚构数据的交互原型。G0 完成，生产数据接入及采购仍 Pending，不因原型或文档将 Gallery 占位页标为可用。无 FCAT/FSU 生产代码变更，无买卖/兑换/提交。
+
 2026-09-29 27.0.2 本地提交收口：按用户要求同步 package/lock 版本并重建生产脚本，整理本轮 Puzzle 概念规划、购买修复与原生九标签工作台。FSU 保持 26.09.9；真实买断、旧记录续购、手机导航及晚加载兜底仍按原计划待验收，不因升版关闭。版本范围、验证结果和恢复路径见 [27.0.2 说明](releases/27.0.2.md)；本次不推送、打 tag 或创建 Release。
 
 2026-09-29 FCAT 左侧导航与模块标签：核对 Enhancer 的原生 Tab/Flow/Controller/View 实现，修复旧入口挂到货币栏的问题，并将工作台挂到原生 FCAT 页面。新增 SBC 解题、Gallery、市场、自动交易、库存、Routine、滚卡、活动记录、设置九个横向标签，归位现有设置/需求/恢复控件，未接入模块保持能力状态。完整 verify 293 文件 / 3290 项及离线浏览器通过；专用 Chrome 已核验安装源码，真实九标签切换、离开返回和窄桌面滚动通过。构建 27.0.1 / 468791 bytes；390px 触发 EA 自带 Resize Window，记录为宿主限制；各业务分区、手机导航及晚加载兜底的原生页面化仍未完成，见 [模块标签实施结果](FC27_AUTOMATION_STUDIO_PLAN_ZH.md#模块标签实施结果2026-09-29)。没有买卡、填阵、提交 SBC 或 Git 发布。
@@ -145,6 +179,8 @@ FC27 上线前独立准备已开始，范围及逐项验证见 [FC27 实施记�
 当前开发修正：EA 后台 SBC 提交返回空 `status:0` / `UTServerErrorVO code:0` 时，不再直接按 `unknown` 停止，也不盲目重发。Runner 等待 3 秒后强制刷新 My Packs 与 Unassigned，从新的 Challenge list 读取同一 Challenge，并重新对账 Rolling Inventory Ledger；仅当 Challenge/Set identity 与完成次数未变、没有新增或减少 Pack、全部精确提交 item 仍留在原 pile，且整套提交 validator 重新通过时允许重试一次。任一证据变化、刷新失败、Challenge 已切换或第二次仍为 status 0 都停止，不发送额外提交。
 
 本文档用于追踪 FC Automation Tool 从单文件、流程型实现迁移到可测试、可组合架构的全过程。
+
+2026-09-30 Gallery UI 收尾增量：按 Enhancer 实机行为将 FC27 Gallery 详情改为 EA 资源徽章、五级彩色菱形/进度轨道和头像卡片网格；资源解析器只生成 EA 静态资源 URL，不创建实体、不新增账号读取。专用浏览器安装后已核对 Arsenal 队徽、Premier League 标志、球员头像、状态图标和响应式布局；评分、First Owner 未知区间、缓存/懒加载和只读边界保持不变。G2 指定等级采购、G3 联合规划、G4 买入仍未完成，真实 EA 等级/首任权威来源仍是 gap。证据见 [FC27 Gallery 计划](FC27_GALLERY_PLAN_ZH.md#64-图标与卡片展示实施合同-2026-09-30) 和本地截图 `artifacts/fodder-research/gallery-ui-latest.png` / `gallery-card-latest.png`。
 
 当前基线：
 
@@ -1138,3 +1174,13 @@ Live validation: One-click Daily、Rare Pack、Provision、Player Pick、2x84+�
 Known gaps: 不能宣称“物理上彻底拆分”。`src/userscript-entry.js` 当前约 7,202 行并承担 composition、缓存合并、评分候选安全策略桥、真实页面副作用回调和页面语义 helper；这是本轮收尾时保留的运行时组合边界。Runtime Adapter 已覆盖 Inventory/Pack/SBC/Player Pick/FSU/Localization/DOM/Storage/HTTP/Page Runtime/Wait/User Effects，entry 已无直接 `W.*`、EA Service/Repository/enum、Clipboard 或 download API 访问。场景 fixture 已登记全部静态 Loop，但不是每个 Loop 都有独立的浏览器级端到端自动化模拟；Node 自动化与真实页面抽样继续共同承担回归验证。
 
 Release conclusion: 核心架构重构在 `0.5.12` 收尾。所有开包、Unassigned、选材和提交分别统一经过公共事务；旧专用 Workflow、重复 Dry Run 和直接 EA/page global 调用已清理或收敛到 Adapter。`0.5.37` 的 `npm run verify` 覆盖 74 个测试文件、396 个测试，19 个内置/外部静态 Loop 配置一致，根目录与 `dist` 发布文件相同。主要生产 Loop、恢复路径和动态 83+/84+ Pick 均有真实页面验证。M7、M8 与本次收尾审计关闭；M9 保持独立 In Progress，只追踪动态 Pick 实盘扩展、Provision 动态覆盖和未来复杂 Pick 条件。
+
+### 2026-09-30 FC27 Gallery 诊断日志
+
+Status: Complete（代码、离线验证及用户提供的真实环境导出证据）
+
+Scope: 为 FC27 Gallery 的 FUT.GG/Fodder 回退、代理、限流和价格读取增加有界脱敏诊断日志；日志通过 GM 存储最近 300 条事件，并在 FCAT Settings 提供 JSON 导出。日志模块只允许固定的阶段、状态、错误码、批次/计数、缓存和退避字段，排除 URL、响应正文、凭证、账号标识和完整卡片对象；导出不触发业务请求或事务。
+
+Tests: 新增日志持久化/恢复/脱敏/上限/GM 失败回归、Gallery Provider/Transport 请求结果记录和生产面板 Settings 下载/失败重试 smoke；`npm run verify` 通过 304 个测试文件 / 3444 项，生产面板与 Gallery 离线浏览器 smoke 通过。
+
+Known gaps: 用户已导出另一环境的 JSON，定位到 FUT.GG HTTPS forwarding 网络错误后正常回退 Fodder；端点/扩展权限等具体原因与清除配置后的恢复尚未确认。日志本身不改变 FUT.GG 代理能力，也不替代其它真实 Web App 场景验证。

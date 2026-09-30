@@ -15,6 +15,8 @@
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @connect      www.futbin.org
+// @connect      www.fut.gg
+// @connect      fodder.gg
 // @run-at       document-end
 // ==/UserScript==
 
@@ -26,11 +28,81 @@ import { readFc27PuzzlePage } from '../adapters/ea/fc27-puzzle-page.js';
 import { readFc27PurchasePageSlots } from '../adapters/ea/fc27-puzzle-page.js';
 import { mountFc27PuzzleBuyButton } from '../adapters/browser/fc27-puzzle-buy-button.js';
 import { mountFc27WorkbenchNavigation } from '../adapters/browser/fc27-workbench-navigation.js';
+import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalizeFc27GalleryProxy } from '../adapters/browser/fc27-gallery-catalog.js';
+import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
+import { createFc27GalleryNativeRenderer } from '../adapters/ea/fc27-gallery-card.js';
+import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
+import { mergeGalleryAccountProgress } from '../gallery/progress.js';
+import { readCachedGalleryPrice } from '../gallery/prices.js';
+import { planGalleryGrade } from '../gallery/planner.js';
+import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
+import { createUserEffectsAdapter } from '../adapters/browser/user-effects.js';
 
 // A new Tampermonkey identity: no legacy or Acceptance storage migration.
 const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest,
   lockManager: unsafeWindow.navigator.locks, liveEnabled: __FCAT_LIVE_ENABLED__ };
+const FC27_GALLERY_PROXY_KEY = 'fcat-fc27-gallery-futgg-proxy-v1';
+let galleryProxy = '';
+try { galleryProxy = normalizeFc27GalleryProxy(GM_getValue(FC27_GALLERY_PROXY_KEY, '') || ''); } catch { galleryProxy = ''; }
+const readGalleryProxy = () => galleryProxy;
+const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: __FCAT_VERSION__ });
+const userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
+// Gallery presentation may reuse EA's already loaded static image routes. It
+// uses the browser cache for league/club/nation emblems. Player cards are
+// rendered by the separate EA native view adapter below.
+const galleryAssets = Object.freeze({
+  filter: (kind, id) => {
+    try { const value = Number(id), util = unsafeWindow.AssetLocationUtils;
+      const type = util?.FILTER?.[String(kind).toUpperCase()];
+      return Number.isSafeInteger(value) && value > 0 && type ? util.getFilterImage(type, value) : '';
+    } catch { return ''; }
+  },
+  club: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.CLUB, Number(id)) || ''; } catch { return ''; } },
+  league: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.LEAGUE, Number(id)) || ''; } catch { return ''; } },
+  nation: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.NATION, Number(id)) || ''; } catch { return ''; } },
+  category: (slug, name = '') => {
+    const key = `${String(slug ?? '')} ${String(name ?? '')}`.toLocaleLowerCase();
+    const ids = key.includes('england') || key.includes('premier') || key.includes('wsl')
+      ? [13, 2216]
+      : key.includes('spain') || key.includes('laliga') || key.includes('liga-f') || key.includes('la-liga')
+        ? [53, 2222]
+        : key.includes('germany') || key.includes('bundesliga') ? [19]
+          : key.includes('france') || key.includes('ligue') || key.includes('arkema') ? [16, 2218]
+            : key.includes('italy') || key.includes('serie-a') || key.includes('serie a') ? [31]
+              : key === 'leagues' || key === 'league' ? [13, 53, 19, 16, 31] : [];
+    return ids.map(id => galleryAssets.league(id)).filter(Boolean);
+  },
+  set: name => {
+    try {
+      const raw = unsafeWindow.repositories?.TeamConfig?.getTeams?.() ?? [];
+      const teams = Array.isArray(raw) ? raw
+        : raw && typeof raw[Symbol.iterator] === 'function' ? [...raw]
+          : Object.values(raw);
+      const normalize = value => String(value ?? '').toLocaleLowerCase()
+        .replace(/[.'’_-]+/g, ' ').replace(/\s+(women|wfc|fc)$/i, '').replace(/\s+/g, ' ').trim();
+      const needle = normalize(name);
+      const rows = teams.map(team => ({ team, value: normalize(team?.name ?? team?.sortName ?? team?.label) }))
+        .filter(row => row.value && row.value === needle);
+      const ids = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId))
+        .filter(value => Number.isSafeInteger(value) && value > 0).slice(0, 3);
+      return [...new Set(ids)].map(id => galleryAssets.club(id)).filter(Boolean);
+    } catch { return []; }
+  },
+});
+// Presentation only: use a price already loaded by FSU. Gallery never
+// triggers one price request per card and missing cache entries stay unknown.
+const galleryPrices = id => readCachedGalleryPrice(unsafeWindow, id);
+const setGalleryProxy = async value => {
+  const normalized = normalizeFc27GalleryProxy(value);
+  await GM_setValue(FC27_GALLERY_PROXY_KEY, normalized);
+  galleryProxy = normalized;
+  return { status: 'observed', proxy: normalized };
+};
+const galleryCatalog = createFc27GalleryCatalogProvider({ http: createFc27GalleryTransport(GM_xmlhttpRequest, { getProxy: readGalleryProxy, diagnosticLog }),
+  gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
+const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue });
+const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document });
 let session;
 const current = () => session ??= createFc27AcceptanceSession(dependencies);
 // FSU's buyConceptPlayer presents one foreground loader while the batch runs.
@@ -75,6 +147,51 @@ const foregroundPurchaseProgress = {
 const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.document,
   hostId: 'fcat-fc27-production', title: `FC Automation Tool ${__FCAT_VERSION__}`, version: __FCAT_VERSION__,
   liveEnabled: dependencies.liveEnabled,
+  galleryCatalog,
+  galleryProxy: readGalleryProxy,
+  setGalleryProxy,
+  galleryAccountScope: galleryProgress.scope,
+  galleryAssets,
+  galleryNativeRenderer,
+  gradePlanner: planGalleryGrade,
+  galleryPrices,
+  exportDiagnostics: async () => {
+    const payload = await diagnosticLog.exportPayload();
+    const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
+    const filename = `FCAutomationTool-FC27-diagnostics-${stamp}.json`;
+    userEffects.downloadText(JSON.stringify(payload, null, 2), filename);
+    return { count: payload.entries.length, filename };
+  },
+  gallerySetLoader: async ({ source, setId, force = false }) => {
+    const pool = await galleryCatalog.loadPool({ source, setId, force });
+    if (pool.status !== 'observed' || !pool.pool) return pool;
+    const progress = await galleryProgress.load(pool.pool);
+    // Prices are a single, de-duplicated public FUT.GG read for the cards in
+    // the selected pool.  Keep it beside the pool result so the view never
+    // falls back to one request per card.
+    let prices = Object.freeze({});
+    let priceError = null;
+    let priceSnapshot = null;
+    let platform = null;
+    try {
+      const context = readFc27Context(unsafeWindow);
+      platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
+      priceSnapshot = await galleryCatalog.loadPriceSnapshot(pool.pool.items.map(item => item.eaId), { platform });
+      prices = priceSnapshot.prices;
+    } catch (error) {
+      priceError = /^FC27_[A-Z_]+$/.test(error?.message) || /^HTTP \d{3}$/.test(error?.message)
+        ? error.message : 'FC27_GALLERY_PRICE_UNAVAILABLE';
+    }
+    if (platform) priceError ??= galleryCatalog.priceError?.(pool.pool.items.map(item => item.eaId), { platform }) ?? null;
+    return {
+      ...progress,
+      progress: progress.progress ?? mergeGalleryAccountProgress(pool.pool),
+      prices,
+      priceSnapshot,
+      priceError,
+      poolStale: pool.stale === true,
+    };
+  },
   targets: () => readFc27ChallengeTargets(unsafeWindow),
   inspectCatalog: options => current().inspectCatalog(options),
   inspectPuzzle: options => current().inspectPuzzle(options),

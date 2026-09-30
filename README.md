@@ -1,13 +1,13 @@
 # FC Automation Tool
 
-**FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。Puzzle 规划正在接入，未完成的保存、提交、Gallery 和交易能力会明确标注。
+**FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 `27.0.1` 生产构建开放用户确认的单次传统 SBC Live：`Verify squad` 成功后，可点击 `Submit once` 并确认一次保存/提交。Puzzle 计划按钮只读展示，Puzzle save-only 事务仍在真实 Provider 接线前；不自动连续执行或打开奖励。每项功能的真实 EA 验收状态见文档。
+当前本地构建为 `27.0.3`：原生 SBC 侧栏提供 Puzzle 解题填充与独立概念卡批量购买；FCAT Gallery 支持动态目录、单集合卡池与收集进度、原生卡面、价格、参考等级及单集合/联合规划。Gallery 采购、兑换和奖励领取尚未接通，部分真实页面验收仍待完成。版本范围与验证边界见 [27.0.3 说明](docs/releases/27.0.3.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具。FC27 入口包含传统 SBC 事务与 Puzzle 只读规划；市场补卡仍在独立检查工具中，旧季 Rolling、开包、Player Pick、交易及 Profile 尚未接入新版入口。
+FC Automation Tool 是运行在 EA FC Web App 中的 Tampermonkey 自动化工具。FC27 入口包含传统 SBC 单次事务、Puzzle 解题/概念补卡和 Gallery 浏览与规划；旧季 Rolling、开包、Player Pick、通用交易及 Profile 尚未接入新版入口。
 
 项目优先保证材料和库存安全：身份、材料要求、库存去向或提交状态无法确认时会停止，而不是继续猜测。
 
@@ -34,11 +34,11 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-本地构建使用仓库根目录 `FCAutomationTool.user.js`，当前版本为 `27.0.1`（单次 Live 开发版），沿用 `27.0.0` 的新安装身份及 GM 存储；不迁移 FC26 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.8`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 是独立插件，其手动功能不受 Runner 的执行门禁控制。
+本地构建使用仓库根目录 `FCAutomationTool.user.js`，当前版本为 `27.0.3`，沿用 `27.0.0` 的新安装身份及 GM 存储；不迁移 FC26 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.9`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 是独立插件，其手动功能不受 Runner 的执行门禁控制。本次仅准备本地提交，不创建新的公开 Release。
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
-已发布 `27.0.0` 面板可刷新目标并只读准备阵容，提交按钮保持禁用。本地 `27.0.1` 仅在整阵校验通过后允许确认一次提交；材料不足时仍停止，不会购买材料或放宽保护。
+已发布 `27.0.0` 面板可刷新目标并只读准备阵容，提交按钮保持禁用。当前传统 SBC 仍在整阵校验通过后确认一次提交；Puzzle 解题点击只授权当前阵容填充保存，购买须独立点击，不授权自动提交。Gallery 的方案生成不买卡、不写 EA 阵容。Settings 可导出最近 300 条脱敏 Gallery 诊断事件用于离线调查。
 
 ## 自动更新
 

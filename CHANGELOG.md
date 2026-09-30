@@ -23,6 +23,25 @@ All notable user-facing changes are documented here. This project follows
   Real EA business acceptance and public publication remain pending. No Rolling,
   pack opening, item moves, Player Picks or trading are enabled.
 
+## [27.0.3] - 2026-09-30
+
+### Gallery And Diagnostics
+
+- Add dynamic FUT.GG Gallery catalogs, lazy per-set card pools and isolated EA
+  collection progress, with cached reads and a visible Fodder catalog fallback.
+- Display EA native player cards, cached league/club icons, batched platform
+  prices, reference grades and score gaps. Unknown facts and stale prices stay
+  explicit; no Gallery purchases, exchanges or reward claims are enabled.
+- Add bounded single-set and multi-set grade planning with exact-version cost
+  deduplication and optional budgets. Plans do not claim global optimality or
+  confirmed EA reward eligibility.
+- Add an optional HTTPS forwarding endpoint and Settings JSON diagnostic export.
+  Keep at most 300 sanitized Gallery events across refreshes; exclude URLs,
+  credentials, account identifiers, response bodies and full card objects.
+- Keep FSU Local at 26.09.9 and existing Puzzle/transaction protections unchanged.
+  This version prepares a local commit, not a public release; final installed-page
+  price/joint-plan scenarios and real purchases remain pending.
+
 ## [27.0.0] - 2026-09-18
 
 ### Read-only First Release

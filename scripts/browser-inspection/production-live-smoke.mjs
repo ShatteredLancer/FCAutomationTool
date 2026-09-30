@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -12,6 +12,10 @@ export async function exerciseProductionLivePanel(context, directory) {
     bundle: true, write: false, format: 'iife', globalName: 'NativePuzzleSmoke', target: 'chrome120' });
   const pageBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/ea/fc27-puzzle-page.js'],
     bundle: true, write: false, format: 'iife', globalName: 'NativePuzzlePageSmoke', target: 'chrome120' });
+  const logBundle = await build({ absWorkingDir: root, entryPoints: ['src/diagnostics/fcat-diagnostic-log.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'DiagnosticLogSmoke', target: 'chrome120' });
+  const effectsBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/user-effects.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'DownloadEffectsSmoke', target: 'chrome120' });
   const page = await context.newPage();
   let externalRequests = 0;
   await page.route('**/*', route => { externalRequests++; return route.abort(); });
@@ -25,8 +29,16 @@ export async function exerciseProductionLivePanel(context, directory) {
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.addScriptTag({ content: nativeBundle.outputFiles[0].text });
     await page.addScriptTag({ content: pageBundle.outputFiles[0].text });
+    await page.addScriptTag({ content: logBundle.outputFiles[0].text });
+    await page.addScriptTag({ content: effectsBundle.outputFiles[0].text });
     await page.evaluate(() => {
-      const state = globalThis.livePanelSmoke = { prepares: 0, catalogReads: 0, puzzleReads: 0, executions: [], fills: [], fillReady: false, shortage: false, finish: null, puzzleCap: 82, quoteCeiling: null, policySaves: 0, policyReads: 0 };
+      const state = globalThis.livePanelSmoke = { prepares: 0, catalogReads: 0, puzzleReads: 0, executions: [], fills: [], exports: 0, fillReady: false, shortage: false, finish: null, puzzleCap: 82, quoteCeiling: null, policySaves: 0, policyReads: 0 };
+      const diagnosticStore = new Map();
+      const diagnosticLog = globalThis.DiagnosticLogSmoke.createFcatDiagnosticLog({ gmGetValue: key => diagnosticStore.get(key),
+        gmSetValue: (key, value) => diagnosticStore.set(key, value), version: '27.0.2' });
+      for (const status of ['started', 'failed', 'success']) void diagnosticLog.record({ area: 'gallery', event: 'catalog-request',
+        source: 'futgg', status, reason: status === 'failed' ? 'HTTP 403' : undefined, token: 'must-not-export' });
+      const effects = globalThis.DownloadEffectsSmoke.createUserEffectsAdapter(globalThis, globalThis.document);
       const mount = liveEnabled => globalThis.LivePanelSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'live-smoke', title: 'FC Automation Tool', liveEnabled,
         targets: () => [{ setId: 4, name: 'Synthetic upgrade' }],
@@ -35,6 +47,13 @@ export async function exerciseProductionLivePanel(context, directory) {
         setPuzzlePolicy: async value => {
           state.policySaves++; state.puzzleCap = value.maxRating; state.quoteCeiling = value.quoteCeiling;
           return { status: 'observed', ...value };
+        },
+        exportDiagnostics: async () => {
+          if (state.exportFailure) throw new Error('private download error');
+          state.exports++;
+          const payload = await diagnosticLog.exportPayload();
+          effects.downloadText(JSON.stringify(payload, null, 2), 'diagnostics.json');
+          return { count: payload.entries.length, filename: 'diagnostics.json' };
         },
         inspectCatalog: async ({ setId }) => {
           state.catalogReads++;
@@ -100,8 +119,12 @@ export async function exerciseProductionLivePanel(context, directory) {
       assert.equal(await host.getAttribute('data-active-tab'), id);
       assert.equal(await host.locator('[role=tabpanel]:visible').count(), 1);
       assert.equal(await button(`page-${id}`).isVisible(), true);
-      if (['gallery', 'market', 'trading', 'inventory', 'routine', 'rolling'].includes(id)) {
+      if (['market', 'trading', 'inventory', 'routine', 'rolling'].includes(id)) {
         assert.equal(await button(`page-${id}`).locator('button,input,select').count(), 0);
+      }
+      if (id === 'gallery') {
+        assert.equal(await button('gallery-refresh').isDisabled(), true);
+        assert.match(await button('gallery-status').innerText(), /未接入公开目录/);
       }
     }
     assert.equal(await button('puzzle-rating').inputValue(), '81');
@@ -116,6 +139,39 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.equal(await host.getAttribute('data-active-tab'), 'settings');
     await button('tab-settings').press('Home');
     assert.equal(await host.getAttribute('data-active-tab'), 'sbc');
+    await button('tab-settings').click();
+    assert.equal(await button('export-diagnostics').isEnabled(), true);
+    await button('export-diagnostics').evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.exports), 0);
+    const downloadPromise = page.waitForEvent('download');
+    await button('export-diagnostics').click();
+    const download = await downloadPromise;
+    assert.equal(download.suggestedFilename(), 'diagnostics.json');
+    const exportFile = path.join(directory, 'diagnostic-export-smoke.json');
+    await download.saveAs(exportFile);
+    const exportedText = await readFile(exportFile, 'utf8');
+    const exported = JSON.parse(exportedText);
+    assert.equal(exported.entries.length, 3);
+    assert.equal(exported.version, '27.0.2');
+    assert.equal(exported.entries[1].reason, 'HTTP 403');
+    assert.equal(exportedText.includes('must-not-export'), false);
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.exports), 1);
+    assert.equal(await button('status').innerText(), 'FC27_DIAGNOSTICS_EXPORTED');
+    assert.match(await button('diagnostic-export-status').innerText(), /3/);
+    await page.evaluate(() => { globalThis.livePanelSmoke.exportFailure = true; });
+    await button('export-diagnostics').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
+    assert.equal(await button('status').innerText(), 'FC27_DIAGNOSTICS_EXPORT_FAILED');
+    assert.equal(await button('export-diagnostics').isEnabled(), true);
+    await page.evaluate(() => { globalThis.livePanelSmoke.exportFailure = false; });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.equal(await host.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+      await page.screenshot({ path: path.join(directory, `diagnostic-settings-${width}.png`) });
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await button('tab-sbc').click();
     await button('puzzle-rating').fill('83');
     await button('puzzle-quote-ceiling').fill('7500');
     await button('puzzle-policy-save').evaluate(node => node.click());
