@@ -1,6 +1,7 @@
 import { galleryCanonical } from './catalog.js';
 
 const fail = () => { throw new Error('FC27_GALLERY_POOL_INVALID'); };
+export const GALLERY_TOP_CANDIDATE_LIMIT = 100;
 const integer = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
 const text = (value, max = 500) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const optionalText = (value, max = 1000) => value == null ? null : text(value, max) ? value : fail();
@@ -33,15 +34,24 @@ export function normalizeGalleryPool(source, input, setId, season = '27') {
   const data = input?.data ?? input;
   if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId
       || !integer(data.requiredCards, 1) || !integer(data.poolSize, 0, 100000)
-      || data.isTruncated !== false || !Array.isArray(data.items) || data.items.length > 100000
-      || data.poolSize !== data.items.length) fail();
-  const items = data.items.map(item);
-  const ids = items.map(row => row.eaId);
-  if (new Set(ids).size !== ids.length) fail();
+      || typeof data.isTruncated !== 'boolean' || !Array.isArray(data.items) || data.items.length > 100000
+      || data.items.length > data.poolSize || (data.isTruncated === false && data.poolSize !== data.items.length)
+      || (data.isTruncated === true && data.poolSize <= data.items.length)) fail();
+  const rawItems = data.items.map(item);
+  // FUT.GG's large Starter Set response is a bounded, score-descending prefix.
+  // It is sufficient for the top-card filler but must never be presented as a
+  // complete collection pool.
+  if (data.isTruncated && rawItems.some((row, index) => index > 0 && row.score > rawItems[index - 1].score)) fail();
+  const sourceIds = rawItems.map(row => row.eaId);
+  if (new Set(sourceIds).size !== sourceIds.length) fail();
+  const candidateOnly = data.isTruncated === true;
+  const items = (candidateOnly ? rawItems.slice(0, GALLERY_TOP_CANDIDATE_LIMIT) : rawItems);
+  if (candidateOnly && items.length < data.requiredCards) fail();
   const generatedAt = data.generatedAt == null ? null : data.generatedAt;
   if (generatedAt !== null && (typeof generatedAt !== 'string' || !Number.isFinite(Date.parse(generatedAt)))) fail();
   const pool = { schema: 1, source, season, setId, requiredCards: data.requiredCards,
-    poolSize: data.poolSize, generatedAt, complete: true, items: Object.freeze(items) };
+    poolSize: data.poolSize, generatedAt, complete: !candidateOnly, candidateOnly,
+    candidateLimit: candidateOnly ? items.length : null, items: Object.freeze(items) };
   const content = galleryCanonical({ ...pool, generatedAt: null });
   let hash = 2166136261;
   for (let i = 0; i < content.length; i++) hash = Math.imul(hash ^ content.charCodeAt(i), 16777619) >>> 0;

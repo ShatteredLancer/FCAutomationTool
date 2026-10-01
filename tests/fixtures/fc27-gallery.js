@@ -30,3 +30,12 @@ export function futggGalleryPool(setId = 30) {
       simpleCardImageUrl: `https://game-assets.fut.gg/fc27/player-${index}-simple.webp`,
     })) } };
 }
+
+export function futggTruncatedGalleryPool(setId = 116) {
+  const template = futggGalleryPool().data.items[0];
+  return { data: { schemaVersion: 1, game: 'fc27', setId, requiredCards: 5,
+    poolSize: 19489, isTruncated: true, items: Array.from({ length: 1000 }, (_, index) => ({
+      ...template, eaId: 910000 + index, playerEaId: 810000 + index,
+      score: 19000 - index * 10, cardName: `Candidate ${index}`,
+    })) } };
+}

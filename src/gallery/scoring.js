@@ -106,7 +106,7 @@ export function evaluateGalleryLineup(rows, compiled, options = {}) {
 // Reference behavior: top-base/tag-tier seeds; top60 plus high-bonus candidates;
 // top six seeds and single-card improvement. The 8000 evaluation budget is
 // checked between complete passes, as in the observed reference implementation.
-function chooseLineup(rows, required, compiled) {
+function* chooseLineupSteps(rows, required, compiled) {
   const base = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore || b.overall - a.overall || a.eaId - b.eaId).slice(0, required);
   if (rows.length <= required || !compiled.tags.length) return base;
   const ranked = rows.slice().sort(order), groups = [];
@@ -135,7 +135,9 @@ function chooseLineup(rows, required, compiled) {
     const identity = key(cards); if (!seen.has(identity)) { seen.add(identity); seeds.push(cards); }
   }
   const score = cards => evaluateGalleryLineup(cards, compiled).total;
-  const starts = seeds.map(cards => ({ cards, total: score(cards) })).sort((a, b) => b.total - a.total).slice(0, 6);
+  const scoredSeeds = [];
+  for (const cards of seeds) { scoredSeeds.push({ cards, total: score(cards) }); yield; }
+  const starts = scoredSeeds.sort((a, b) => b.total - a.total).slice(0, 6);
   if (!starts.some(seed => seed.cards === base)) starts.push({ cards: base, total: score(base) });
   let evaluated = 0, best = null;
   for (const seed of starts) {
@@ -144,7 +146,7 @@ function chooseLineup(rows, required, compiled) {
       improved = false; const ids = new Set(cards.map(row => row.eaId));
       for (let slot = 0; slot < cards.length; slot++) for (const row of candidates) {
         if (ids.has(row.eaId)) continue;
-        const next = cards.slice(); next[slot] = row; const value = score(next); evaluated++;
+        const next = cards.slice(); next[slot] = row; const value = score(next); evaluated++; yield;
         if (value > total) { ids.delete(cards[slot].eaId); ids.add(row.eaId); cards = next; total = value; improved = true; break; }
       }
     }
@@ -153,7 +155,7 @@ function chooseLineup(rows, required, compiled) {
   return best.cards.slice().sort(order);
 }
 
-export function summarizeGalleryScore({ set, catalog, progress }) {
+export function* summarizeGalleryScoreSteps({ set, catalog, progress }) {
   if (!set || !progress || !Array.isArray(progress.rows) || catalog?.source !== 'futgg'
       || set.id !== `futgg:${progress.setId}` || progress.season !== '27'
       || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1) return fail('input-invalid');
@@ -167,7 +169,7 @@ export function summarizeGalleryScore({ set, catalog, progress }) {
   // The reference excludes collected versions with zero gradingScore from
   // scoring lineups. Keep them in collection progress, not in grade fullness.
   const rows = collected.filter(row => row.gradingScore > 0);
-  const lineup = chooseLineup(rows, set.requiredCards, compiled), full = lineup.length >= set.requiredCards;
+  const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled), full = lineup.length >= set.requiredCards;
   const low = evaluateGalleryLineup(lineup, compiled), high = evaluateGalleryLineup(lineup, compiled, { unknown: 'high' });
   const comparison = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg' });
   const comparisonHigh = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg', unknown: 'high' });
@@ -183,4 +185,12 @@ export function summarizeGalleryScore({ set, catalog, progress }) {
     nextGrade: next?.name ?? null, pointsToNext: next ? next.threshold - low.total : null,
     missingCards: Math.max(0, set.requiredCards - rows.length), zeroScoreCards: collected.length - rows.length, unknownFields, collectionUnknown,
     ruleDifference, comparison: ruleDifference ? { low: comparison, high: comparisonHigh } : null };
+}
+
+// Existing planners keep their synchronous API and identical evaluation order.
+export function summarizeGalleryScore(input) {
+  const steps = summarizeGalleryScoreSteps(input);
+  let next;
+  do { next = steps.next(); } while (!next.done);
+  return next.value;
 }

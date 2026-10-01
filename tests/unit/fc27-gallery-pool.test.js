@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import { normalizeGalleryPool } from '../../src/gallery/pool.js';
-import { futggGallery, futggGalleryPool } from '../fixtures/fc27-gallery.js';
+import { normalizeGalleryPool, galleryPoolCachePayload } from '../../src/gallery/pool.js';
+import { futggGallery, futggGalleryPool, futggTruncatedGalleryPool } from '../fixtures/fc27-gallery.js';
 import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalizeFc27GalleryProxy } from '../../src/adapters/browser/fc27-gallery-catalog.js';
 
 it('normalizes a complete FUT.GG pool and keeps exact version identities', () => {
@@ -8,6 +8,37 @@ it('normalizes a complete FUT.GG pool and keeps exact version identities', () =>
   expect(pool).toMatchObject({ source: 'futgg', season: '27', setId: 30, requiredCards: 2, poolSize: 3, complete: true });
   expect(pool.items.map(item => item.eaId)).toEqual([900001, 900002, 900003]);
   expect(pool.items[0].playerEaId).toBe(800001);
+});
+
+it('keeps only 100 score-descending candidates and preserves incomplete scope through cache', () => {
+  const input = futggTruncatedGalleryPool(), original = structuredClone(input);
+  const pool = normalizeGalleryPool('futgg', input, 116);
+  expect(pool).toMatchObject({ poolSize: 19489, requiredCards: 5, complete: false, candidateOnly: true, candidateLimit: 100 });
+  expect(pool.items.map(row => row.eaId)).toEqual(input.data.items.slice(0, 100).map(row => row.eaId));
+  expect(normalizeGalleryPool('futgg', galleryPoolCachePayload(pool), 116)).toEqual(pool);
+  expect(input).toEqual(original);
+});
+
+it('validates the entire returned prefix before limiting candidates', () => {
+  const duplicate = futggTruncatedGalleryPool(); duplicate.data.items[999].eaId = duplicate.data.items[0].eaId;
+  expect(() => normalizeGalleryPool('futgg', duplicate, 116)).toThrow('FC27_GALLERY_POOL_INVALID');
+  const unordered = futggTruncatedGalleryPool(); unordered.data.items[999].score = 20000;
+  expect(() => normalizeGalleryPool('futgg', unordered, 116)).toThrow('FC27_GALLERY_POOL_INVALID');
+  const short = futggTruncatedGalleryPool(); short.data.items = short.data.items.slice(0, 4);
+  expect(() => normalizeGalleryPool('futgg', short, 116)).toThrow('FC27_GALLERY_POOL_INVALID');
+  const empty = futggGalleryPool(); empty.data.items = []; empty.data.poolSize = 0;
+  expect(normalizeGalleryPool('futgg', empty, 30).items).toEqual([]);
+});
+
+it('persists and restores bounded candidates without a second public pool request', async () => {
+  const store = new Map();
+  const getPool = vi.fn(async () => ({ status: 200, text: JSON.stringify(futggTruncatedGalleryPool()), headers: {} }));
+  const make = () => createFc27GalleryCatalogProvider({ http: { get: vi.fn(), getPool }, now: () => 1000,
+    gmGetValue: key => store.get(key), gmSetValue: (key, value) => store.set(key, structuredClone(value)) });
+  const first = await make().loadPool({ setId: 116 });
+  expect(first.pool.items).toHaveLength(100);
+  expect(await make().loadPool({ setId: 116 })).toMatchObject({ cached: true, pool: first.pool });
+  expect(getPool).toHaveBeenCalledTimes(1);
 });
 
 it('rejects truncated, duplicate, and mismatched pools', () => {

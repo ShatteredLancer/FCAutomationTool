@@ -10,6 +10,8 @@ for (const script of ['scripts/check-fc26-baseline.mjs', 'scripts/build-fc27-pre
 execFileSync(process.execPath, ['node_modules/eslint/bin/eslint.js', 'FSU_mod/src'], { cwd: root, stdio: 'inherit' });
 execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run',
   'tests/unit/fc27-prelaunch-contract.test.js', 'tests/unit/fc27-preferences.test.js',
+  'tests/unit/fc27-gallery-native-sync.test.js',
+  'tests/unit/fc27-gallery-sync.test.js',
   'tests/unit/fc27-browser-inspection.test.js', 'tests/unit/fc27-browser-options.test.js', 'tests/unit/fc27-release-channel.test.js',
   'tests/unit/fc27-runtime-observation.test.js', 'tests/unit/fc27-browser-automatic.test.js',
   'tests/unit/fc27-browser-navigation.test.js',

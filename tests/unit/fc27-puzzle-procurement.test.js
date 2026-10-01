@@ -64,6 +64,22 @@ it('plans missing bronze materials without requiring a complete owned near-solut
   expect(suggestFc27PuzzleJointPurchases(input, [{ ...card, rating: 68 }]).plans).toEqual([]);
 });
 
+it('does not exhaust a joint search without market candidates or claim market-wide infeasibility', () => {
+  const { input } = fixture();
+  expect(suggestFc27PuzzleJointPurchases(input, [], { maxNodes: 1 })).toMatchObject({
+    status: 'blocked', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN', marketCandidates: 0,
+    nodes: 0, truncated: false, marketWideInfeasibilityProven: false, plans: [],
+  });
+});
+
+it('retains real joint search exhaustion when eligible market versions exist', () => {
+  const { input, card } = fixture();
+  expect(suggestFc27PuzzleJointPurchases(input, [card], { maxNodes: 1 })).toMatchObject({
+    status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', marketCandidates: 1,
+    truncated: true, plans: [],
+  });
+});
+
 it('joint procurement also works without a chemistry requirement and retains owned protections', () => {
   const { input, card } = fixture();
   input.challenge.rawRequirements = [marketRow(3, 1, -1, 2)];

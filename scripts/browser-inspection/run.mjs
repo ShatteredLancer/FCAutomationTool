@@ -95,6 +95,12 @@ if (help) {
       await exerciseGalleryCatalog(context, out);
       const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');
       await exerciseGalleryJoint(context, out);
+      const { exerciseGalleryTargets } = await import('./gallery-targets-smoke.mjs');
+      await exerciseGalleryTargets(context, out);
+      const { exerciseGallerySync } = await import('./gallery-sync-smoke.mjs');
+      await exerciseGallerySync(context, out);
+      const { exerciseGalleryResponsive } = await import('./gallery-responsive-smoke.mjs');
+      await exerciseGalleryResponsive(context);
       const { exerciseGalleryInspection } = await import('./gallery-inspection-smoke.mjs');
       await exerciseGalleryInspection(context);
     } else if (agent) {

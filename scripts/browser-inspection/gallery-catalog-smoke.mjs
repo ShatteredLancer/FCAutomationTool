@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
 import { mergeGalleryAccountProgress } from '../../src/gallery/progress.js';
-import { futggGallery, fodderGallery, futggGalleryPool } from '../../tests/fixtures/fc27-gallery.js';
+import { futggGallery, fodderGallery, futggGalleryPool, futggTruncatedGalleryPool } from '../../tests/fixtures/fc27-gallery.js';
 
 export async function exerciseGalleryCatalog(context, directory) {
   const page = await context.newPage();
@@ -13,6 +13,8 @@ export async function exerciseGalleryCatalog(context, directory) {
     bundle: true, write: false, format: 'iife', globalName: 'GallerySmoke', target: 'chrome120' });
   const nativeBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/ea/fc27-gallery-card.js'],
     bundle: true, write: false, format: 'iife', globalName: 'GalleryNativeSmoke', target: 'chrome120' });
+  const entityBundle = await build({ absWorkingDir: root, entryPoints: ['tests/helpers/fc27-gallery-entity.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'GalleryEntitySmoke', target: 'chrome120' });
   const requests = [];
   page.on('request', request => requests.push(request.url()));
   try {
@@ -34,6 +36,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     });
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.addScriptTag({ content: nativeBundle.outputFiles[0].text });
+    await page.addScriptTag({ content: entityBundle.outputFiles[0].text });
     await page.addStyleTag({ content: '.fixture-ea-card{width:144px;height:200px;background:rgb(10, 20, 30)}' });
     const catalog = normalizeGalleryCatalog('futgg', futggGallery());
     const fallback = normalizeGalleryCatalog('fodder', fodderGallery());
@@ -57,18 +60,26 @@ export async function exerciseGalleryCatalog(context, directory) {
     const host = page.locator('#fcat-fc27-acceptance');
     assert.equal(await page.evaluate(() => globalThis.galleryCalls.load), 0);
     await host.locator('#tab-gallery').click();
+    await host.locator('#gallery-categories button').first().waitFor();
+    assert.equal(await host.locator('#gallery-set-list .gallery-set').count(), 0);
+    assert.equal(await host.locator('#gallery-categories button').count(), 1);
+    assert.doesNotMatch(await host.locator('#gallery-categories').innerText(), /全部/);
+    assert.equal(await host.locator('.gallery-reward-token').count(), 0, 'Enhancer hides rewards without an EA event-token icon');
+    await host.locator('#gallery-categories button').first().click();
     await host.locator('[data-set-id="futgg:30"]').waitFor();
     assert.equal(await page.evaluate(() => globalThis.galleryTimers.size), 1);
-    assert.equal(await host.locator('#gallery-categories button').count(), 2);
-    assert.match(await host.locator('#gallery-set-list').innerText(), /收集进度：未同步/);
-    assert.match(await host.locator('#gallery-set-list').textContent(), /Club Badge/);
-    await host.locator('#gallery-categories button').last().click();
-    assert.equal(await host.locator('#gallery-categories button').last().getAttribute('aria-pressed'), 'true');
+    assert.match(await host.locator('#gallery-set-list').innerText(), /\? \/ 20/);
+    assert.match(await host.locator('[data-set-id="futgg:30"] .gallery-grade-diamond').first().getAttribute('title'), /Club Badge/);
+    assert.ok(await host.locator('[data-set-id="futgg:30"] .gallery-summary').count() === 1);
+    assert.equal(await host.locator('[data-set-id="futgg:30"] .gallery-reward-token').count(), 0);
+    assert.match(await host.locator('[data-set-id="futgg:30"] .gallery-score-caption').innerText(), /Base score/);
     await host.locator('#gallery-refresh').click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-fc27-acceptance').shadowRoot.getElementById('gallery-refresh').disabled);
+    await host.locator('#gallery-categories button').first().click();
     await host.locator('[data-set-id="fodder:league/example-club"]').waitFor();
-    assert.match(await host.locator('#gallery-status').innerText(), /更新未成功，保留旧目录/);
+    assert.match(await host.locator('#gallery-status').textContent(), /更新未成功，保留旧目录/);
     assert.match(await host.locator('#gallery-source-error').innerText(), /FUT\.GG 未连接（HTTP 403）/);
-    assert.match(await host.locator('#gallery-set-list').textContent(), /未提供非代币奖励/);
+    assert.match(await host.locator('[data-set-id="fodder:league\/example-club"] .gallery-grade-diamond').first().getAttribute('title'), /未提供非代币奖励/);
     assert.equal(await host.locator('img').count(), 0);
     assert.deepEqual(await page.evaluate(() => globalThis.galleryCalls), { peek: 2, load: 1, refresh: 1 });
     await host.evaluate(element => {
@@ -81,6 +92,8 @@ export async function exerciseGalleryCatalog(context, directory) {
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.galleryTimers.size), 0);
     await host.locator('#tab-gallery').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('fcat-fc27-acceptance').shadowRoot.getElementById('gallery-source').textContent === 'FUT.GG');
+    await host.locator('#gallery-categories button').first().click();
     await host.locator('[data-set-id="futgg:30"]').waitFor();
     assert.equal(await page.evaluate(() => globalThis.galleryTimers.size), 1);
     assert.deepEqual(requests, []);
@@ -101,7 +114,8 @@ export async function exerciseGalleryCatalog(context, directory) {
       globalThis.gallerySetCalls=0;globalThis.galleryScope='fixture-a';globalThis.galleryHold=false;
       globalThis.galleryNativeEnabled=false;globalThis.galleryNativeCreated=0;globalThis.galleryNativeDisposed=0;
       const renderer=globalThis.GalleryNativeSmoke.createFc27GalleryNativeRenderer({
-        UTItemEntity:class{},factories:{Item:{createItem:raw=>({concept:true,definitionId:raw.resourceId,guidAssetId:raw.guidAssetId})}},
+        UTItemEntity:globalThis.GalleryEntitySmoke.GalleryItemEntity,
+        factories:{Item:{createItem:globalThis.GalleryEntitySmoke.galleryEntityFromDto}},
         UTItemViewFactory:{createLargeItem:()=>{
           globalThis.galleryNativeCreated++;const element=globalThis.document.createElement('div');element.className='fixture-ea-card';
           return {init(){},getRootElement:()=>element,assetsLoaded:new Map([['shell',true],['main',true]]),
@@ -110,21 +124,31 @@ export async function exerciseGalleryCatalog(context, directory) {
         }},
       },{document:globalThis.document});
       globalThis.galleryProgressPanel=globalThis.GallerySmoke.mountFc27AcceptancePanel({document:globalThis.document,hostId:'gallery-progress-test',targets:()=>[],
+        purchaseGallery:async()=>{throw Error('PURCHASE_NOT_ALLOWED_IN_DISPLAY_TEST');},
         galleryNativeRenderer:{render:options=>globalThis.galleryNativeEnabled?renderer.render(options):null},
-        galleryAssets:{club:id=>`https://www.ea.com/assets/club/${id}.png`,league:id=>`https://www.ea.com/assets/league/${id}.png`,nation:id=>`https://www.ea.com/assets/nation/${id}.png`,portrait:id=>`https://www.ea.com/assets/portrait/${id}.png`,category:()=>['https://www.ea.com/assets/league/13.png'],set:()=>['https://www.ea.com/assets/club/1.png']},
+        galleryAssets:{reward:type=>type==='event_token_1'?'https://www.ea.com/assets/token/1.png':null,club:id=>`https://www.ea.com/assets/club/${id}.png`,league:id=>`https://www.ea.com/assets/league/${id}.png`,nation:id=>`https://www.ea.com/assets/nation/${id}.png`,portrait:id=>`https://www.ea.com/assets/portrait/${id}.png`,category:()=>['https://www.ea.com/assets/league/13.png'],set:()=>['https://www.ea.com/assets/club/1.png','https://www.ea.com/assets/club/1.png','https://www.ea.com/assets/club/2.png']},
         galleryCatalog:{peek:async()=>null,load:async()=>({status:'observed',source:'futgg',catalog,fetchedAt:Date.now()}),refresh:async()=>({status:'blocked'})},
         galleryAccountScope:()=>globalThis.galleryScope,
         gallerySetLoader:async()=>{
           globalThis.gallerySetCalls++;
           const scope=globalThis.galleryScope;
           if(globalThis.galleryHold)await new Promise(resolve=>{globalThis.releaseGallery=resolve;});
-          return {status:'observed',scope,progress,prices:{900001:8300,900002:12500,900003:4200},fetchedAt:Date.now(),runtimeCards:new Map(progress.rows.map(row=>[row.eaId,
-            {resourceId:row.eaId,itemType:'player',dream:true,guidAssetId:`exact-${row.eaId}`}]))};
+          return {status:'observed',scope,progress,prices:{900001:8300,900002:12500,900003:4200},fetchedAt:Date.now(),runtimeCards:new Map(progress.rows.map(row=>{
+            const dto={resourceId:row.eaId,itemType:'player',dream:true,guidAssetId:`exact-${row.eaId}`,
+              rating:89,rareflag:22,attributeArray:[88,86,90,80,45,78],hyperCosmetics:{1:3}};
+            return [row.eaId,row.eaId===900001?globalThis.GalleryEntitySmoke.galleryEntityFromDto(dto):dto];
+          }))};
         },
       });globalThis.galleryProgressPanel.open();
-    },{catalog,progress});
+    },{catalog:{...catalog,tags:[{id:1,name:'First Owner',bonusType:'ITEM_SCORE_PERCENTAGE',thresholdType:'ITEM_COUNT',
+      rules:[{type:'COUNT',target:'ATTRIBUTE',attribute:'FIRST_OWNED',values:['1']}],tiers:[{minItems:20,bonus:5}]}]},progress});
     const progressHost=page.locator('#gallery-progress-test');
     await progressHost.locator('#tab-gallery').click();
+    assert.equal(await progressHost.locator('.gallery-category-rewards [data-reward-type="badge"]').count(),0,'item identifiers are not reward amounts');
+    assert.equal(await progressHost.locator('.gallery-category-rewards [data-reward-type="event_token_1"] .gallery-reward-token-value').innerText(),'100');
+    await progressHost.locator('#gallery-categories button').first().click();
+    assert.equal(await progressHost.locator('.gallery-set-icon').count(),1,'Enhancer renders a single image per set');
+    const selectedSetIcon = await progressHost.locator('.gallery-set-icon').getAttribute('src');
     assert.equal(await page.evaluate(()=>globalThis.gallerySetCalls),0);
     await progressHost.getByRole('button',{name:'查看卡片',exact:true}).click();
     await progressHost.locator('.gallery-card').first().waitFor();
@@ -136,6 +160,10 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.ok(await progressHost.locator('.gallery-category-icon').count() >= 1);
     assert.ok(await progressHost.locator('.gallery-set-icon').count() >= 1);
     assert.equal(await progressHost.locator('.gallery-text-card').count(),3);
+    assert.equal(await progressHost.locator('.gallery-player-card > input').count(),0,'checkbox must not occupy a card grid column');
+    assert.equal(await progressHost.locator('.gallery-player-art > .gallery-card-select').count(),1);
+    await progressHost.locator('.gallery-card-select').check();
+    assert.equal(await progressHost.getByRole('button',{name:'购买所选（1）',exact:true}).isEnabled(),true);
     assert.equal(await progressHost.locator('.gallery-player-portrait,.gallery-player-card-image,.gallery-ea-card').count(),0);
     assert.ok(await progressHost.locator('.gallery-card-price').count() >= 1);
     assert.match(await progressHost.locator('.gallery-card-price').first().innerText(), /8,300/);
@@ -146,6 +174,8 @@ export async function exerciseGalleryCatalog(context, directory) {
     await progressHost.getByRole('button',{name:'全部',exact:true}).click();
     await page.evaluate(()=>{globalThis.galleryNativeEnabled=true;});
     await progressHost.getByRole('button',{name:'全部',exact:true}).click();
+    assert.equal(await progressHost.locator('.gallery-native-card').count(),3,'keep the native view alive while EA retries artwork');
+    await page.waitForFunction(()=>globalThis.document.getElementById('gallery-progress-test').querySelectorAll('.gallery-native-card').length===2,{},{timeout:18000});
     assert.equal(await progressHost.locator('.gallery-native-card').count(),2);
     assert.equal(await progressHost.locator('.gallery-text-card').count(),1,'image failure has exactly one text fallback');
     assert.ok((await progressHost.locator('.gallery-text-card').innerText()).includes(progress.rows[2].name));
@@ -157,23 +187,35 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await progressHost.locator('.gallery-native-card').count(),0);
     assert.equal(await page.evaluate(()=>globalThis.galleryNativeCreated-globalThis.galleryNativeDisposed),0);
     await progressHost.locator('#tab-gallery').click();
+    assert.equal(await progressHost.locator('.gallery-native-card').count(),0,'return lands on category home');
+    assert.equal(await progressHost.locator('.gallery-set').count(),0);
+    await progressHost.locator('#gallery-categories button').first().click();
+    await progressHost.getByRole('button',{name:'查看卡片',exact:true}).click();
     await progressHost.locator('.gallery-native-card').first().waitFor();
-    assert.equal(await page.evaluate(()=>globalThis.gallerySetCalls),1,'tab return reuses display DTOs');
+    assert.equal(await page.evaluate(()=>globalThis.gallerySetCalls),2,'explicit set reopen invokes the cache-aware loader');
     for(const width of [1280,390]){
       await page.setViewportSize({width,height:800});
+      assert.deepEqual(await progressHost.locator('.gallery-card-select').evaluate(el=>{
+        const box=el.getBoundingClientRect();return {width:box.width,height:box.height};
+      }),{width:20,height:20},`checkbox stays compact at ${width}px`);
       assert.equal(await progressHost.evaluate(el=>el.scrollWidth>el.clientWidth+1),false,`Progress ${width} overflow`);
       await page.screenshot({path:path.join(directory,`gallery-progress-${width}.png`)});
     }
     await progressHost.getByRole('button',{name:'返回集合',exact:true}).click();
+    assert.equal(await progressHost.locator('.gallery-set-icon').count(),1);
+    assert.equal(await progressHost.locator('.gallery-set-icon').getAttribute('src'),selectedSetIcon,'keep the selected image across progress rerenders');
+    await page.waitForFunction(()=>globalThis.document.getElementById('gallery-progress-test').shadowRoot.querySelector('.gallery-set .gallery-grade-bar i')?.style.width==='100%');
+    assert.ok(await progressHost.locator('.gallery-set .gallery-grade-bar i').first().evaluate(el=>el.getBoundingClientRect().width>0&&el.getBoundingClientRect().height>0),'known score is painted with fewer than required cards');
     assert.equal(await progressHost.locator('.gallery-native-card').count(),0);
     assert.equal(await page.evaluate(()=>globalThis.galleryNativeCreated-globalThis.galleryNativeDisposed),0);
-    assert.match(await progressHost.locator('#gallery-set-list').innerText(),/已确认收集 1 \/ 目标 20/);
+    assert.match(await progressHost.locator('#gallery-set-list').innerText(),/1 \/ 20/);
     await page.evaluate(()=>{globalThis.galleryHold=true;});
     await progressHost.getByRole('button',{name:'查看卡片',exact:true}).click();
     await page.waitForFunction(()=>typeof globalThis.releaseGallery==='function');
     await page.evaluate(()=>{globalThis.galleryScope='fixture-b';for(const tick of globalThis.galleryTimers.values())tick();globalThis.releaseGallery();});
     await page.waitForFunction(()=>globalThis.document.getElementById('gallery-progress-test').shadowRoot.getElementById('gallery-set-detail').hidden);
-    assert.match(await progressHost.locator('#gallery-set-list').innerText(),/收集进度：未同步/);
+    await progressHost.locator('#gallery-categories button').first().click();
+    assert.match(await progressHost.locator('#gallery-set-list').innerText(),/\? \/ 20/);
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://www.ea.com/assets/')),[]);
     console.log('Offline Gallery progress smoke passed: exact-set lazy load, filters, back, account change/late response, unknown fields, responsive layout.');
 
@@ -198,9 +240,14 @@ export async function exerciseGalleryCatalog(context, directory) {
     },{catalog:scoringCatalog,progress:scoringProgress});
     const scoringHost=page.locator('#gallery-score-test');
     await scoringHost.locator('#tab-gallery').click();
+    await scoringHost.locator('#gallery-categories button').first().click();
     await scoringHost.getByRole('button',{name:'查看卡片',exact:true}).click();
     await scoringHost.locator('.gallery-score').waitFor();
+    await page.waitForFunction(()=>globalThis.document.getElementById('gallery-score-test').shadowRoot
+      .querySelector('.gallery-score')?.textContent.includes('300–1,800'));
     assert.match(await scoringHost.locator('.gallery-score').innerText(),/300–1,800 分 · 等级待核实/);
+    assert.equal(await scoringHost.locator('#gallery-set-detail .gallery-grade-diamond.is-reached').count(),1,'known lower score advances D while the text still marks the grade uncertain');
+    assert.equal(await scoringHost.locator('#gallery-set-detail .gallery-grade-bar i').first().evaluate(el=>el.style.width),'100%');
     await scoringHost.locator('.gallery-score summary').click();
     assert.equal(await scoringHost.locator('.gallery-lineup li').count(),2);
     assert.match(await scoringHost.locator('.gallery-bonuses').innerText(),/未知项满足时 1,500/);
@@ -252,6 +299,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     }, { catalog: normalizeGalleryCatalog('futgg', planInput), progress: planningProgress });
     const planningHost = page.locator('#gallery-plan-test');
     await planningHost.locator('#tab-gallery').click();
+    await planningHost.locator('#gallery-categories button').first().click();
     await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
     await planningHost.locator('.gallery-plan').waitFor();
     assert.match(await planningHost.locator('#gallery-set-detail').innerText(), /价格读取失败 · HTTP 429/);
@@ -293,10 +341,51 @@ export async function exerciseGalleryCatalog(context, directory) {
         rows: Array.from({ length: 128 }, (_, index) => ({ ...original, eaId: 900010 + index, collected: false })) };
     });
     await planningHost.locator('.gallery-plan select').selectOption('C');
+    await page.evaluate(() => {
+      globalThis.planningHeartbeats = 0;
+      globalThis.planningHeartbeatTimer = globalThis.setInterval(() => globalThis.planningHeartbeats++, 16);
+    });
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
-    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /搜索预算耗尽，尚不能确认无解/);
+    await page.waitForFunction(() => !globalThis.document.querySelector('#gallery-plan-test').shadowRoot
+      .querySelector('.gallery-plan button').disabled, null, { timeout: 20000 });
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /(?:搜索预算耗尽|计算时间预算已用完)，尚不能确认无解/);
+    assert.ok(await page.evaluate(() => { globalThis.clearInterval(globalThis.planningHeartbeatTimer);
+      return globalThis.planningHeartbeats > 1; }), 'planning yields to browser heartbeat');
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
+    await planningHost.getByRole('button', { name: '返回集合', exact: true }).click();
+    await page.evaluate(() => {
+      globalThis.planningDetail.status = 'blocked'; globalThis.planningDetail.reason = 'FC27_GALLERY_HTTP_401';
+      globalThis.planningDetail.progress = { ...globalThis.planningDetail.progress, complete: false,
+        totals: { ...globalThis.planningDetail.progress.totals, total: 128, collected: 0, missing: 0, unknown: 128 },
+        rows: globalThis.planningDetail.progress.rows.map(row => ({ ...row, collected: null })) };
+    });
+    await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
+    await planningHost.locator('.gallery-big-count').waitFor();
+    assert.equal(await planningHost.locator('.gallery-big-count').innerText(), '?/2');
+    assert.match(await planningHost.locator('#gallery-set-detail').innerText(), /账号状态未同步 · FC27_GALLERY_HTTP_401/);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.equal(await planningHost.evaluate(element => element.scrollWidth > element.clientWidth + 1), false);
+      await page.screenshot({ path: path.join(directory, `gallery-unsynced-${width}.png`) });
+    }
+    await planningHost.getByRole('button', { name: '返回集合', exact: true }).click();
+    const limitedPool = normalizeGalleryPool('futgg', futggTruncatedGalleryPool(30), 30);
+    const limitedProgress = mergeGalleryAccountProgress(limitedPool, {
+      conceptItems: limitedPool.items.map(row => ({ definitionId: row.eaId, isCollected: true, gradingScore: row.score })),
+    });
+    await page.evaluate(({ pool, progress }) => {
+      globalThis.planningDetail = { status: 'observed', scope: globalThis.galleryScope, pool, progress };
+    }, { pool: limitedPool, progress: limitedProgress });
+    await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
+    assert.equal(await planningHost.locator('#gallery-set-detail .gallery-player-card').count(), 100);
+    assert.match(await planningHost.locator('.gallery-overview').innerText(), /高分候选 100 \/ 全部 19489/);
+    assert.match(await planningHost.locator('.gallery-overview').innerText(), /候选内已收集/);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.equal(await planningHost.evaluate(element => element.scrollWidth > element.clientWidth + 1), false);
+      await page.screenshot({ path: path.join(directory, `gallery-top100-${width}.png`) });
+    }
     assert.deepEqual(requests.filter(url => !url.startsWith('https://www.ea.com/assets/')), []);
-    console.log('Offline Gallery planning smoke passed: stale/error display, expired quote exclusion, repeated local plans/filters, reopen recovery and responsive layout.');
+    console.log('Offline Gallery planning smoke passed: stale/error display, quote exclusion, repeated local plans, heartbeat/cancel, unknown progress and responsive layout.');
   } finally { await page.close(); }
 }

@@ -40,6 +40,7 @@ export async function inspectGalleryFallback(context, page) {
       if (this.querySelector('#gallery-refresh')?.disabled) return null;
       return { source: this.querySelector('#gallery-source')?.textContent,
         status: this.querySelector('#gallery-status')?.textContent,
+        categories: this.querySelectorAll('#gallery-categories button[data-category-id]').length,
         sets: this.querySelectorAll('.gallery-set').length,
         poolButtons: this.querySelectorAll('.gallery-open-set').length,
         cards: this.querySelectorAll('.gallery-card').length };
@@ -47,6 +48,12 @@ export async function inspectGalleryFallback(context, page) {
     let after = await readCatalog();
     if (after.source !== 'Fodder · 回退目录') {
       await clickPanelControl(context, page, '#gallery-refresh');
+      after = await readCatalog();
+    }
+    // Gallery now opens on category home. Enter the first visible category
+    // through a trusted click before asserting the fallback collection cards.
+    if (after.source === 'Fodder · 回退目录' && after.categories > 0) {
+      await clickPanelControl(context, page, '#gallery-categories button[data-category-id]');
       after = await readCatalog();
     }
     result.stages.catalog = after;

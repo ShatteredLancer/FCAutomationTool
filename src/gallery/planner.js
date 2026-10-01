@@ -64,7 +64,7 @@ function materialize(state, targetGrade, threshold) {
   };
 }
 
-export function planGalleryGrade({ set, catalog, progress, prices = {}, targetGrade,
+export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, targetGrade,
   maxPlans = 3, beamWidth = 96, maxCandidates = 128, maxEvaluations = 6000 } = {}) {
   if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 100000) {
@@ -101,7 +101,7 @@ export function planGalleryGrade({ set, catalog, progress, prices = {}, targetGr
       omittedCandidates, plans: [] };
   }
   let states = [base]; let evaluations = 1; const plans = []; let bestSeen = base;
-  let budgetExhausted = false, beamTruncated = false;
+  let budgetExhausted = false, beamTruncated = false, timeExhausted = false;
   let scoringBounded = base.summary.selection === 'bounded-search';
   let scoreUncertain = base.summary.low.total !== base.summary.high.total || base.summary.ruleDifference;
   for (let depth = 0; depth < set.requiredCards && states.length && evaluations < maxEvaluations; depth++) {
@@ -124,14 +124,16 @@ export function planGalleryGrade({ set, catalog, progress, prices = {}, targetGr
       scoreUncertain ||= nextState.summary.low?.total !== nextState.summary.high?.total || nextState.summary.ruleDifference;
       if (rank(nextState, bestSeen, threshold) < 0 || scoreOf(nextState) > scoreOf(bestSeen)) bestSeen = nextState;
       if (nextState.summary?.full === true && scoreOf(nextState) >= threshold) plans.push(nextState);
+      if (yield { evaluations }) { timeExhausted = true; break expansion; }
     }
     next.sort((a, b) => rank(a, b, threshold));
     beamTruncated ||= next.length > beamWidth;
     states = next.slice(0, beamWidth);
-    if (budgetExhausted) break;
+    if (budgetExhausted || timeExhausted) break;
   }
   budgetExhausted ||= evaluations >= maxEvaluations && states.some(state => state.ids.length < set.requiredCards && state.nextIndex < candidates.length);
-  const searchComplete = !budgetExhausted && !beamTruncated && omittedCandidates === 0 && !scoringBounded && !scoreUncertain;
+  const scopeTruncated = progress.candidateOnly === true || progress.poolComplete === false;
+  const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && omittedCandidates === 0 && !scoringBounded && !scoreUncertain;
   const unique = new Map();
   for (const state of plans.sort((a, b) => rank(a, b, threshold))) {
     const key = state.ids.slice().sort((a, b) => a - b).join(',');
@@ -141,13 +143,20 @@ export function planGalleryGrade({ set, catalog, progress, prices = {}, targetGr
   const output = [...unique.values()];
   if (!output.length) {
     const best = [bestSeen, ...states].sort((a, b) => rank(a, b, threshold))[0];
-    const reason = budgetExhausted ? 'search-budget-exhausted' : omittedCandidates > 0 ? 'candidate-search-truncated'
+    const reason = timeExhausted ? 'search-time-exhausted' : budgetExhausted ? 'search-budget-exhausted' : omittedCandidates > 0 ? 'candidate-search-truncated'
       : beamTruncated ? 'beam-search-truncated' : scoreUncertain ? 'score-conditions-unknown'
         : scoringBounded ? 'score-selection-bounded' : 'target-unreachable';
-    return { status: searchComplete ? 'no-plan' : 'partial', reason,
+    return { status: searchComplete ? 'no-plan' : 'partial', reason: scopeTruncated ? 'candidate-search-truncated' : reason,
       targetGrade, threshold, currentScore: scoreOf(base), bestScore: best ? scoreOf(best) : null,
       candidateCount: candidates.length, omittedCandidates, evaluations, searchComplete, plans: [] };
   }
   return { status: 'ready', targetGrade, threshold, currentScore: scoreOf(base), candidateCount: candidates.length,
-    omittedCandidates, evaluations, searchComplete, plans: output };
+    omittedCandidates, evaluations, searchComplete, scopeTruncated, timeExhausted, plans: output };
+}
+
+export function planGalleryGrade(input) {
+  const steps = planGalleryGradeSteps(input);
+  let next;
+  do { next = steps.next(); } while (!next.done);
+  return next.value;
 }

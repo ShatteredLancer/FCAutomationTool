@@ -72,8 +72,17 @@ async function readProductionPanel(context, page, setId = null) {
 export async function readProductionGallery(context, page, setName = 'Arsenal') {
   await openProductionPanel(context, page);
   await selectPanelTab(context, page, 'gallery');
+  for (let level = 0; level < 2; level++) {
+    const backVisible = await panelCall(context, page, function () {
+      return this.getElementById('gallery-back')?.checkVisibility() === true;
+    });
+    if (!backVisible) break;
+    await clickPanelControl(context, page, '#gallery-back');
+  }
   const deadline = Date.now() + 25000;
   let overview = null;
+  let categorySelectors = [];
+  let categoryIndex = 0;
   while (Date.now() < deadline) {
     overview = await panelCall(context, page, function (requestedName) {
       const status = this.getElementById('gallery-status')?.textContent ?? '';
@@ -88,10 +97,25 @@ export async function readProductionGallery(context, page, setName = 'Arsenal') 
         tabSelected: this.getElementById('tab-gallery')?.getAttribute('aria-selected') ?? null,
         pageHidden: this.getElementById('page-gallery')?.hidden ?? null,
         categories: this.querySelectorAll('#gallery-categories button[data-category-id]:not([data-category-id=""])').length,
+        categorySelectors: [...this.querySelectorAll('#gallery-categories button[data-category-id]:not([data-category-id=""])')]
+          .map(button => `#gallery-categories [data-category-id="${globalThis.CSS.escape(button.dataset.categoryId)}"]`),
         categoryButtons: this.querySelectorAll('#gallery-categories button').length,
         sets: cards.length, target, loaded: cards.length > 0 };
     }, [setName]);
     if (overview?.loaded && overview.target) break;
+    // Gallery now intentionally opens at the category page.  Walk the
+    // rendered categories until the requested set is visible; this keeps the
+    // inspection aligned with the production navigation instead of relying on
+    // hidden set cards from the old all-sets home view.
+    if (overview?.categorySelectors?.length && categorySelectors.length === 0) {
+      categorySelectors = overview.categorySelectors;
+    }
+    if (categoryIndex < categorySelectors.length) {
+      if (categoryIndex > 0) await clickPanelControl(context, page, '#gallery-back');
+      await clickPanelControl(context, page, categorySelectors[categoryIndex++]);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      continue;
+    }
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   if (!overview?.loaded || !overview.target) return { status: 'blocked', reason: 'FC27_GALLERY_SET_UNAVAILABLE', overview };
@@ -135,9 +159,13 @@ export async function readProductionGallery(context, page, setName = 'Arsenal') 
     return { text: root?.textContent?.replace(/\s+/g, ' ').trim()?.slice(0, 800) ?? '', cards: root?.querySelectorAll('.gallery-card').length ?? 0 };
   });
   const back = await panelCall(context, page, function () {
-    const button = [...this.querySelectorAll('#gallery-set-detail button')].find(value => value.textContent?.trim() === '返回集合');
+    // The production UI keeps the return control in the sticky browse nav so
+    // it remains visible while the detail card list scrolls.  Older smoke
+    // code searched inside the detail body and therefore rejected the valid
+    // pinned arrow button.
+    const button = this.getElementById('gallery-back');
     if (!button) return null;
-    return `#gallery-set-detail > button:nth-child(${[...button.parentElement.children].indexOf(button) + 1})`;
+    return '#gallery-back';
   });
   if (!back) return { status: 'blocked', reason: 'FC27_GALLERY_RETURN_UNAVAILABLE', overview, detail, collected };
   await clickPanelControl(context, page, back);
@@ -145,6 +173,41 @@ export async function readProductionGallery(context, page, setName = 'Arsenal') 
     return this.querySelector('#gallery-set-detail')?.hidden === true && this.querySelector('#gallery-sets')?.checkVisibility();
   });
   return { status: 'observed', overview, detail, collected, returned };
+}
+
+// One bounded read-only pass over every public Gallery pool. This is separate
+// from gallery-read because the latter intentionally exercises one lazy-loaded
+// set only; the command records the production sync result and visible counts.
+export async function syncProductionGallery(context, page) {
+  // Warm the production panel through the already-verified single-set path;
+  // this also closes any stale detail view left by the user's last inspection.
+  const warmup = await readProductionGallery(context, page, 'Arsenal');
+  if (warmup.status !== 'observed') throw new Error('FC27_GALLERY_PANEL_UNAVAILABLE');
+  await openProductionPanel(context, page);
+  await selectPanelTab(context, page, 'gallery');
+  const control = await waitForPanel(context, page, function () {
+    const button = this.getElementById('gallery-sync');
+    return button ? { hidden: button.hidden, disabled: button.disabled, visible: button.checkVisibility?.() ?? null,
+      activeTab: this.host?.dataset?.activeTab ?? null } : null;
+  }, [], 15000);
+  if (control.hidden || control.disabled || control.visible === false) throw new Error('FC27_GALLERY_SYNC_CONTROL_UNAVAILABLE');
+  await clickPanelControl(context, page, '#gallery-sync', 5000);
+  const deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    const state = await panelCall(context, page, function () {
+      const dialog = this.getElementById('gallery-sync-dialog');
+      const cards = [...this.querySelectorAll('#gallery-set-list .gallery-set')].map(card => ({
+        name: card.querySelector('h4')?.textContent?.trim() ?? '',
+        progress: card.querySelector('small')?.textContent?.trim() ?? '',
+      }));
+      return { open: !!dialog?.open, message: this.getElementById('gallery-sync-message')?.textContent ?? '',
+        note: this.getElementById('gallery-progress-note')?.textContent ?? '',
+        cards, status: this.getElementById('gallery-status')?.textContent ?? '' };
+    });
+    if (state && !state.open) return { status: 'observed', ...state };
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return { status: 'blocked', reason: 'FC27_GALLERY_SYNC_TIMEOUT' };
 }
 
 // Local stdin only: no debug port, arbitrary JS command, or account mutation API.
@@ -174,12 +237,12 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-sync, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     console.log('gallery-fallback temporarily changes the local Gallery proxy, tests the public catalog fallback, then restores the original setting; no EA write.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|gallery-fallback|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|gallery-fallback|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'ai-test') {
         try { const { testPuzzleAiConnection } = await loadHelpers(Date.now()); console.log(JSON.stringify(await testPuzzleAiConnection())); }
         catch { console.log('AI connection test unavailable; raw exception omitted.'); }
@@ -251,6 +314,10 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
           observation.gallery = await readProductionGallery(context, target, requested);
           observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_READ' : observation.gallery.reason;
         }
+        if (command === 'gallery-sync') {
+          observation.gallery = await syncProductionGallery(context, target);
+          observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_SYNC' : observation.gallery.reason;
+        }
         if (command === 'gallery-fallback') {
           const { inspectGalleryFallback } = await import(`./gallery-proxy-inspection.mjs?revision=${revision}`);
           observation.gallery = await inspectGalleryFallback(context, target);
@@ -306,7 +373,11 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
         await writeFile(reportFile, JSON.stringify(observation, null, 2));
         console.log(JSON.stringify({ saved: reportFile, action: observation.action, season: report.season, ui: observation.ui,
           setCount: runtime.sbc.sets.count, clubCachedEntries: runtime.inventory.club.count }));
-      } catch { console.log('Inspection unavailable; raw exception omitted.'); }
+      } catch (error) {
+        const message = typeof error?.message === 'string' && /^FC27_[A-Z0-9_]+$/.test(error.message)
+          ? error.message : 'FC27_INSPECTION_COMMAND_FAILED';
+        console.log(`Inspection unavailable: ${message}`);
+      }
     }
   } finally { network.stop(); }
 }

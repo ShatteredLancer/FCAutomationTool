@@ -1,0 +1,104 @@
+import { expect, it, vi } from 'vitest';
+import { createGalleryPurchaseSession, galleryPurchaseKey, galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js';
+
+function fixture() {
+  const store = new Map(), calls = [], locations = new Map(), collected = new Map([[10, false], [11, false]]);
+  const context = { season: '27', accountScope: 'fixture', platform: 'pc:fixture' };
+  const control = { current: true, buy: null, move: null, quote: null, writeFailure: false, stop: false };
+  const adapter = {
+    verifySquad: vi.fn(), verifyCurrent: vi.fn(),
+    collectionState: async id => collected.get(id),
+    find: async definitionId => { calls.push(['find', definitionId]); return control.quote?.(definitionId) ?? { definitionId, itemId: definitionId + 100, tradeId: String(definitionId + 1000), price: 200 }; },
+    buy: async entry => { calls.push(['buy', entry.definitionId]); const reply = control.buy?.(entry); if (reply) return reply; locations.set(entry.itemId, 'purchased'); return { ...entry, status: 'bought' }; },
+    move: async entry => { calls.push(['move', entry.definitionId]); const reply = control.move?.(entry); if (reply) return reply; locations.set(entry.itemId, 'club'); },
+    locate: async entry => locations.get(entry.itemId) ?? 'unknown', afterPlayer: vi.fn(), cancel: vi.fn(),
+    confirmCollection: async ids => ({ status: 'confirmed', ids }),
+  };
+  const args = { scope: 'fixture-scope', context, get: key => store.get(key) ?? null,
+    set: (key, value) => { if (control.writeFailure) throw Error('storage unavailable'); store.set(key, structuredClone(value)); },
+    exclusive: async (_scope, task) => task(), createAdapter: async () => adapter, operationId: () => 'test-operation',
+    assertCurrent: () => { if (!control.current) throw Error('FC27_GALLERY_CONTEXT_CHANGED'); }, shouldStop: () => control.stop };
+  const input = { items: [{ eaId: 10 }, { eaId: 11 }], binding: 'revision-fixture', approved: true };
+  return { args, adapter, store, calls, control, locations, collected, input, create: () => createGalleryPurchaseSession(args) };
+}
+it('buys exact versions, moves then confirms collection independently, and repeats with zero mutations', async () => {
+  const f = fixture(); expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 400, purchased: 2, completed: 2, collection: { status: 'confirmed' } });
+  expect(f.calls).toEqual([['find',10],['buy',10],['move',10],['find',11],['buy',11],['move',11]]);
+  await f.create().execute(f.input); expect(f.calls).toHaveLength(6);
+});
+it('skips already collected versions without rebuying and keeps unknown state blocked', async () => {
+  const f = fixture(); f.collected.set(10, true); expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 200, completed: 2 });
+  expect((await f.create().inspect()).status).toBe('observed'); expect(f.calls.filter(([name]) => name === 'buy')).toEqual([['buy',11]]);
+  const unknown = fixture(); unknown.collected.set(10, null); expect((await unknown.create().execute(unknown.input)).reason).toBe('FC27_GALLERY_COLLECTION_UNCONFIRMED'); expect(unknown.calls).toEqual([]);
+});
+it.each([401,403,429])('continues explicit %i single-card buy rejection like FSU', async status => {
+  const f = fixture(); f.control.buy = entry => entry.definitionId === 10 ? { status: 'rejected', reason: 'FC27_BUY_REJECTED', httpStatus: status } : null;
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'partial', spent: 200, purchased: 1 });
+  expect(f.calls.filter(([name]) => name === 'buy')).toEqual([['buy',10],['buy',11]]);
+});
+it('continues unavailable search and applies the explicit total budget without using estimates as ceilings', async () => {
+  const f = fixture(); f.control.quote = id => id === 10 ? { unavailable: true, reason: 'FC27_BUY_NO_LISTING' } : null;
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'partial', spent: 200 });
+  const limited = fixture(); expect(await limited.create().execute({ ...limited.input, budget: 200 })).toMatchObject({ status: 'partial', spent: 200 });
+  expect(limited.calls.filter(([name]) => name === 'buy')).toEqual([['buy',10]]);
+});
+it('retains unknown bid receipt and forbids rebuy after reload until exact location is confirmed', async () => {
+  const f = fixture(); f.control.buy = () => ({ status: 'unknown' });
+  expect((await f.create().execute(f.input)).status).toBe('recovery-required');
+  expect(f.store.get(galleryPurchasePendingKey(f.args.scope))).not.toBeNull();
+  await f.create().execute(f.input); expect(f.calls.filter(([name]) => name === 'buy')).toHaveLength(1);
+  f.locations.set(110, 'club'); f.control.buy = null; expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 400 });
+  expect(f.calls.filter(([name]) => name === 'buy')).toEqual([['buy',10],['buy',11]]);
+});
+it('keeps move rejection recoverable while continuing other cards', async () => {
+  const f = fixture(); f.control.move = entry => entry.definitionId === 10 ? { status: 'rejected', reason: 'FC27_BUY_MOVE_REJECTED' } : null;
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'recovery-required', spent: 400, purchased: 2 });
+  f.control.move = null; expect((await f.create().execute(f.input)).status).toBe('purchased');
+  expect(f.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+});
+it('blocks different plans while a transaction is unresolved and preserves all receipts', async () => {
+  const f = fixture(); f.control.buy = () => ({ status: 'unknown' }); await f.create().execute(f.input);
+  const before = structuredClone(f.store.get(galleryPurchaseKey(f.args.scope)));
+  expect((await f.create().execute({ ...f.input, binding: 'different' })).reason).toBe('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
+  expect(f.store.get(galleryPurchaseKey(f.args.scope))).toEqual(before);
+});
+it('does not dispatch without approval, persistence, lock or current account', async () => {
+  for (const kind of ['approval','persistence','lock','account']) {
+    const f = fixture(); if (kind === 'persistence') f.control.writeFailure = true; if (kind === 'lock') f.args.exclusive = async () => null; if (kind === 'account') f.control.current = false;
+    await f.create().execute({ ...f.input, approved: kind !== 'approval' }); expect(f.calls).toEqual([]);
+  }
+});
+it('stops before spending, rejects wrong receipt, and does not treat collection failure as purchase failure', async () => {
+  const f = fixture(); f.control.stop = true; expect(await f.create().execute(f.input)).toMatchObject({ status: 'partial', spent: 0 }); expect(f.calls).toEqual([]);
+  const wrong = fixture(); wrong.control.buy = entry => ({ ...entry, status: 'bought', itemId: 999 }); expect((await wrong.create().execute(wrong.input)).status).toBe('recovery-required');
+  const sync = fixture(); sync.adapter.confirmCollection = async () => ({ status: 'pending' }); expect(await sync.create().execute(sync.input)).toMatchObject({ status: 'purchased', collection: { status: 'pending' }, spent: 400 });
+});
+it('resumes the persisted exact plan without relying on stale UI candidates or prices', async () => {
+  const f = fixture(); f.control.buy = () => ({ status: 'unknown' }); await f.create().execute(f.input);
+  const observed = await f.create().inspect(); f.locations.set(110, 'club'); f.control.buy = null;
+  expect(await f.create().execute({ resume: true, expectedOperationId: observed.operationId, approved: true })).toMatchObject({ status: 'purchased', spent: 400 });
+  expect(f.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+});
+it.each([149,15000001])('rejects invalid %i buy-now prices before mutation', async price => {
+  const f = fixture(); f.control.quote = definitionId => ({ definitionId, itemId: 110, tradeId: '1010', price });
+  expect((await f.create().execute(f.input)).reason).toBe('FC27_BUY_QUOTE_UNVERIFIED'); expect(f.calls.filter(([name]) => name === 'buy')).toEqual([]);
+});
+it('rechecks account and stop after price search, before persisting and dispatching a buy', async () => {
+  for (const kind of ['account','stop']) {
+    const f = fixture(); f.adapter.find = async definitionId => {
+      if (kind === 'account') f.control.current = false; else f.control.stop = true;
+      return { definitionId, itemId: 110, tradeId: '1010', price: 200 };
+    };
+    await f.create().execute(f.input); expect(f.calls).toEqual([]);
+  }
+});
+it('blocks corrupt journals, foreign pending transactions and keeps collection-read failure distinct', async () => {
+  const corrupt = fixture(); await corrupt.create().execute(corrupt.input);
+  const record = corrupt.store.get(galleryPurchaseKey(corrupt.args.scope)); record.plan[1].definitionId = 10;
+  expect((await corrupt.create().inspect()).status).toBe('blocked');
+  const other = fixture(); other.args.checkOtherTransactions = async () => { throw Error('FC27_BUY_RECOVERY_REQUIRED'); };
+  await other.create().execute(other.input); expect(other.calls).toEqual([]);
+  const failed = fixture(); failed.adapter.confirmCollection = async () => { throw Error('FC27_GALLERY_HTTP_401'); };
+  expect(await failed.create().execute(failed.input)).toMatchObject({ status: 'purchased', collection: { status: 'pending' }, spent: 400 });
+  await failed.create().execute(failed.input); expect(failed.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+});

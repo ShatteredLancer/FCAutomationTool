@@ -124,7 +124,7 @@ export async function exerciseProductionLivePanel(context, directory) {
       }
       if (id === 'gallery') {
         assert.equal(await button('gallery-refresh').isDisabled(), true);
-        assert.match(await button('gallery-status').innerText(), /未接入公开目录/);
+        assert.match(await button('gallery-progress-note').innerText(), /未接入公开目录/);
       }
     }
     assert.equal(await button('puzzle-rating').inputValue(), '81');
@@ -226,7 +226,7 @@ export async function exerciseProductionLivePanel(context, directory) {
     await button('cancel').click();
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.fills.length), 0);
     await button('fill').evaluate(node => node.click());
-    assert.equal(await host.locator('dialog').evaluate(node => node.open), false);
+    assert.equal(await host.locator('#action-approval-dialog').evaluate(node => node.open), false);
     await button('fill').click();
     await button('confirm').click();
     await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
@@ -274,7 +274,7 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.deepEqual(await page.evaluate(() => globalThis.livePanelSmoke.nativePlans), [{ setId: 19, challengeId: 43 }]);
     assert.match(await page.locator('#fcat-fc27-puzzle-status').innerText(), /阵容已保存/);
     assert.equal(await host.locator('.workbench > details').evaluate(node => node.open), false);
-    assert.equal(await host.locator('dialog').evaluate(node => node.open), false);
+    assert.equal(await host.locator('#action-approval-dialog').evaluate(node => node.open), false);
     // Replace target object to model navigation between periodic observations.
     await page.evaluate(() => {
       globalThis.livePanelSmoke.nativeResult = { status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE',

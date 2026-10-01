@@ -48,6 +48,10 @@ export async function exerciseGalleryJoint(context, directory) {
     const host = page.locator('#gallery-joint-test');
     await host.locator('#tab-gallery').click();
     assert.equal(await page.evaluate(() => globalThis.jointCalls), 0);
+    // Gallery now follows Enhancer's two-level browse flow: the home screen
+    // contains categories only, so enter the fixture category before opening
+    // either collection.
+    await host.locator('#gallery-categories button').first().click();
     for (const id of ['30', '31']) {
       await host.locator(`[data-set-id="futgg:${id}"]`).getByRole('button', { name: '查看卡片', exact: true }).click();
       await host.getByRole('button', { name: '加入联合目标', exact: true }).click();
@@ -101,7 +105,7 @@ export async function exerciseGalleryJoint(context, directory) {
     await host.locator('#gallery-mode-joint').click();
     assert.equal(await page.evaluate(() => globalThis.jointCalls), 3);
     await page.evaluate(() => { globalThis.jointScope = 'fixture-account-b'; });
-    await host.locator('#gallery-joint-plan').click();
+    await page.waitForFunction(() => globalThis.document.getElementById('gallery-joint-test').shadowRoot.querySelectorAll('.gallery-joint-target').length === 0);
     assert.equal(await host.locator('.gallery-joint-target').count(), 0);
     assert.equal(await host.locator('#gallery-joint-plan').isDisabled(), true);
     assert.equal(await page.evaluate(() => globalThis.jointCalls), 3);

@@ -2,8 +2,9 @@ const DEFAULT_MAX_ENTRIES = 300;
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'status', 'reason', 'route']);
-const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'retryAt', 'durationMs']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale']);
+const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'retryAt', 'durationMs',
+  'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;

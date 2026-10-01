@@ -218,6 +218,12 @@ export function suggestFc27PuzzleJointPurchases(input, entries, { maxNodes = 500
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
   const market = marketCandidates(input, entries);
+  // A shortage route with no eligible public versions cannot produce a
+  // purchase plan. Avoid running the bounded squad solver over the owned
+  // inventory in this case; the caller will report the empty candidate pool
+  // and may continue with its normal bounded catalog route.
+  if (!market.length) return { ...stop('FC27_PURCHASE_REPAIR_NO_PLAN'), marketCandidates: 0, nodes: 0,
+    truncated: false, marketWideInfeasibilityProven: false };
   // Unit weights optimize number of missing versions, not invented coin prices.
   // Only versions in a complete valid solution are quoted by the session.
   const result = searchFc27PuzzleCandidates({ ...input, maxNodes,

@@ -4,14 +4,14 @@ import { mountFc27GalleryView } from './fc27-gallery-view.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryAccountScope = undefined,
-  galleryProxy = '', setGalleryProxy = null, galleryAssets = null, galleryPrices = null, galleryNativeRenderer = null,
+  galleryProxy = '', setGalleryProxy = null, galleryAssets = null, galleryPrices = null, galleryNativeRenderer = null, galleryTargetStore = null, gallerySync = null, purchaseGallery = null,
   exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = fc27WorkbenchMarkup();
-  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, nativeRenderer: galleryNativeRenderer });
+  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, sync: gallerySync, purchase: purchaseGallery });
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => gallery.setActive(id === 'gallery'));
   const node = id => shadow.getElementById(id);
   node('workbench-version').textContent = version ?? title;
@@ -200,7 +200,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   on('puzzle', () => { clear(); void run(() => inspectPuzzle({ setId: Number(node('target').value) })); });
   on('prepare', () => { clear(); void run(() => prepare({ setId: Number(node('target').value), maxRating: Number(node('rating').value) })); });
   on('recovery', () => { clear(); void run(inspectRecovery); });
-  const dialog = shadow.querySelector('dialog');
+  const dialog = node('action-approval-dialog');
   on('execute', () => {
     if (liveEnabled !== true || plan?.liveEnabled !== true) return;
     action = 'execute'; node('approval').textContent = `${plan.setName}: submit ${plan.selectedCount} players, max OVR ${plan.maxRating}, once.`; dialog.showModal();

@@ -2,11 +2,12 @@ const validId = value => Number.isSafeInteger(value) && value > 0;
 const booleanOrUnknown = value => typeof value === 'boolean' ? value : null;
 const scoreOrUnknown = value => Number.isFinite(value) && value >= 0 && value <= 100000000 ? Number(value) : null;
 
-function accountRow(item, concept, club, clubKnown) {
+function accountRow(item, concept, club, clubKnown, history) {
   const collected = booleanOrUnknown(concept?.isCollected);
   const inClub = club ? true : clubKnown ? false : null;
   // Concept owners are not ownership evidence for an account. Use held entities.
-  const firstOwned = club?.some(row => row.owners === 1) ? true
+  const firstOwned = history?.collectedOwners === 1 || club?.some(row => row.owners === 1) ? true
+    : Number.isSafeInteger(history?.collectedOwners) && history.collectedOwners > 1 ? false
     : club?.every(row => Number.isSafeInteger(row.owners) && row.owners > 1) ? false : null;
   return Object.freeze({
     eaId: item.eaId, playerEaId: item.playerEaId, name: item.cardName,
@@ -22,7 +23,7 @@ function accountRow(item, concept, club, clubKnown) {
 
 // Merge exact Gallery version identities. A base playerEaId never substitutes
 // for a special version eaId; unknown account facts remain unknown.
-export function mergeGalleryAccountProgress(pool, { conceptItems = [], clubItems = [], clubKnown = false } = {}) {
+export function mergeGalleryAccountProgress(pool, { conceptItems = [], clubItems = [], clubKnown = false, collectionHistory = [] } = {}) {
   if (!pool || !Array.isArray(pool.items)) throw new TypeError('FC27_GALLERY_PROGRESS_INPUT_INVALID');
   const concepts = new Map();
   const allowed = new Set(pool.items.map(item => item.eaId));
@@ -39,10 +40,13 @@ export function mergeGalleryAccountProgress(pool, { conceptItems = [], clubItems
     if (!club.has(raw.definitionId)) club.set(raw.definitionId, []);
     club.get(raw.definitionId).push(raw);
   }
-  const rows = pool.items.map(item => accountRow(item, concepts.get(item.eaId), club.get(item.eaId), clubKnown));
+  const history = new Map(collectionHistory.map(row => [row.definitionId, row]));
+  const rows = pool.items.map(item => accountRow(item, concepts.get(item.eaId), club.get(item.eaId), clubKnown, history.get(item.eaId)));
   const count = key => rows.filter(row => row[key] === true).length;
   return Object.freeze({ schema: 1, source: 'ea-gallery-progress', season: pool.season,
     setId: pool.setId, poolRevision: pool.revision, complete: concepts.size === pool.items.length,
+    poolComplete: pool.complete === true, candidateOnly: pool.candidateOnly === true,
+    poolSize: pool.poolSize, candidateLimit: pool.candidateLimit ?? pool.items.length,
     clubKnown: clubKnown === true, rows: Object.freeze(rows), totals: Object.freeze({
       total: rows.length, collected: count('collected'), inClub: count('inClub'), firstOwned: count('firstOwned'),
       missing: rows.filter(row => row.collected === false).length,

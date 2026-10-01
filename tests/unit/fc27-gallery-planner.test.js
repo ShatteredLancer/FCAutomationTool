@@ -12,6 +12,14 @@ const row = (eaId, gradingScore, collected, extra = {}) => ({ eaId, playerEaId: 
   positions: ['ST'], skillMoves: 3, weakFoot: 3, nationEaId: 1, clubEaId: 1, leagueEaId: 1, rarityEaId: 1, ...extra });
 
 describe('Gallery grade planner', () => {
+  it('allows candidate-only plans without claiming complete search or global impossibility', () => {
+    const progress = { complete: true, poolComplete: false, candidateOnly: true,
+      rows: [row(1, 100, true), row(2, 100, true), row(3, 200, false)] };
+    expect(planGalleryGrade({ set, catalog, progress, targetGrade: 'B', prices: { 3: 350 } }))
+      .toMatchObject({ status: 'ready', searchComplete: false, scopeTruncated: true });
+    expect(planGalleryGrade({ set, catalog, progress, targetGrade: 1000 }))
+      .toMatchObject({ status: 'partial', reason: 'candidate-search-truncated', searchComplete: false });
+  });
   it('finds a bounded, priced plan for a named grade', () => {
     const result = planGalleryGrade({ set, catalog, targetGrade: 'B',
       progress: { rows: [row(1, 100, true), row(2, 100, true), row(3, 200, false), row(4, 210, false)] },

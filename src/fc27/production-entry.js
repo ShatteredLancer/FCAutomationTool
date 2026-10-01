@@ -30,11 +30,14 @@ import { mountFc27PuzzleBuyButton } from '../adapters/browser/fc27-puzzle-buy-bu
 import { mountFc27WorkbenchNavigation } from '../adapters/browser/fc27-workbench-navigation.js';
 import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalizeFc27GalleryProxy } from '../adapters/browser/fc27-gallery-catalog.js';
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
+import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
+import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
 import { createFc27GalleryNativeRenderer } from '../adapters/ea/fc27-gallery-card.js';
 import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../gallery/progress.js';
 import { readCachedGalleryPrice } from '../gallery/prices.js';
 import { planGalleryGrade } from '../gallery/planner.js';
+import { createGalleryTargetStore } from '../gallery/targets.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
 import { createUserEffectsAdapter } from '../adapters/browser/user-effects.js';
 
@@ -52,6 +55,16 @@ const userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document
 // uses the browser cache for league/club/nation emblems. Player cards are
 // rendered by the separate EA native view adapter below.
 const galleryAssets = Object.freeze({
+  reward: type => {
+    try {
+      // Reuse loaded EA token definitions and the same rendered icon route
+      // as Enhancer; rendering the catalogue does not request definitions.
+      const token = unsafeWindow.services?.EventToken?.repository?._definitions?.find(row =>
+        String(row.currencyName).toLowerCase() === String(type).toLowerCase());
+      return token ? unsafeWindow.AssetLocationUtils?.getEventTokenIconUri(
+        token.assetId, unsafeWindow.EventTokenIconVariant?.RENDERED) || '' : '';
+    } catch { return ''; }
+  },
   filter: (kind, id) => {
     try { const value = Number(id), util = unsafeWindow.AssetLocationUtils;
       const type = util?.FILTER?.[String(kind).toUpperCase()];
@@ -101,8 +114,17 @@ const setGalleryProxy = async value => {
 };
 const galleryCatalog = createFc27GalleryCatalogProvider({ http: createFc27GalleryTransport(GM_xmlhttpRequest, { getProxy: readGalleryProxy, diagnosticLog }),
   gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
-const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue });
-const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document });
+const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
+const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
+const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
+  gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
+  readSettings: () => current().inspectPuzzlePolicy() });
+if (!galleryProgress.install()) {
+  const factoryReady = unsafeWindow.setInterval(() => {
+    if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
+  }, 1000);
+}
+const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
 let session;
 const current = () => session ??= createFc27AcceptanceSession(dependencies);
 // FSU's buyConceptPlayer presents one foreground loader while the batch runs.
@@ -151,10 +173,13 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryProxy: readGalleryProxy,
   setGalleryProxy,
   galleryAccountScope: galleryProgress.scope,
+  gallerySync,
   galleryAssets,
   galleryNativeRenderer,
+  purchaseGallery: galleryPurchase,
   gradePlanner: planGalleryGrade,
   galleryPrices,
+  galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
@@ -162,10 +187,11 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     userEffects.downloadText(JSON.stringify(payload, null, 2), filename);
     return { count: payload.entries.length, filename };
   },
-  gallerySetLoader: async ({ source, setId, force = false }) => {
+  gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
     const pool = await galleryCatalog.loadPool({ source, setId, force });
     if (pool.status !== 'observed' || !pool.pool) return pool;
-    const progress = await galleryProgress.load(pool.pool);
+    gallerySync.remember(pool.pool);
+    const progress = await galleryProgress.load(pool.pool, { force, onProgress });
     // Prices are a single, de-duplicated public FUT.GG read for the cards in
     // the selected pool.  Keep it beside the pool result so the view never
     // falls back to one request per card.

@@ -15,6 +15,13 @@ const target = (id, rows, prices = {}, targetGrade = 'B') => ({ id: `target-${id
   progress: { season: '27', setId: id, complete: true, rows }, prices, targetGrade });
 
 describe('Gallery joint planner', () => {
+  it('permits bounded public-pool plans without global completeness or unreachable claims', () => {
+    const t = target(30, [row(1, 100, true), row(2, 100, true), row(3, 150)], { 3: 200 });
+    t.progress.poolComplete = false; t.progress.candidateOnly = true;
+    expect(planGalleryJoint({ targets: [t] })).toMatchObject({ status: 'ready', searchComplete: false, scopeTruncated: true });
+    t.set.grades[1].threshold = 1000;
+    expect(planGalleryJoint({ targets: [t] })).toMatchObject({ status: 'partial', reason: 'candidate-search-truncated', searchComplete: false });
+  });
   it('deduplicates one exact version shared by two collections', () => {
     const shared = row(3, 150), result = planGalleryJoint({ targets: [
       target(30, [row(1, 100, true), row(2, 100, true), shared], { 3: 200 }),

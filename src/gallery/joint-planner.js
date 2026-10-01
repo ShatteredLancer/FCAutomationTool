@@ -59,7 +59,7 @@ function materialize(state, candidates, budget) {
 
 // Search the shared version pool directly, retaining cross-set alternatives.
 // This module is pure: a plan never reads providers or authorizes a purchase.
-export function planGalleryJoint({ targets, budget = null, maxPlans = 3, maxCandidates = 192,
+export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, maxCandidates = 192,
   maxEvaluations = 3000, beamWidth = 64 } = {}) {
   if (!Array.isArray(targets) || !targets.length) return fail('unavailable', 'targets-invalid');
   if (budget != null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 1000000000)) return fail('unavailable', 'budget-invalid');
@@ -112,7 +112,7 @@ export function planGalleryJoint({ targets, budget = null, maxPlans = 3, maxCand
   const base = { ids: [], nextIndex: 0, cost: 0, missingPrices: false, results: evaluate(prepared, new Set()) };
   if (base.results.some(result => !result.summary.low)) return fail('unavailable', 'scoring-unavailable');
   if (base.results.every(result => result.reached)) return { status: 'achieved', plans: [], targets: materialize(base, candidateMap, budget).targets };
-  let states = [base], evaluations = 1, budgetExhausted = false, beamTruncated = false;
+  let states = [base], evaluations = 1, budgetExhausted = false, beamTruncated = false, timeExhausted = false;
   let bestSeen = base;
   let scoringBounded = base.results.some(result => result.summary.selection === 'bounded-search');
   let uncertain = base.results.some(result => result.summary.status === 'uncertain'), missingPrice = false, overBudget = false;
@@ -133,21 +133,30 @@ export function planGalleryJoint({ targets, budget = null, maxPlans = 3, maxCand
       uncertain ||= results.some(result => result.summary.status === 'uncertain');
       if (results.every(result => result.reached)) plans.push(value);
       next.push(value);
+      if (yield { evaluations }) { timeExhausted = true; break expansion; }
     }
     next.sort((a, b) => rank(a, b, prepared.length));
     beamTruncated ||= next.length > beamWidth;
     states = next.slice(0, beamWidth);
-    if (budgetExhausted) break;
+    if (budgetExhausted || timeExhausted) break;
   }
-  const searchComplete = !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain && !missingPrice;
-  const common = { budget, evaluations, searchComplete, candidateCount: selectedCandidates.length, omittedCandidates };
+  const scopeTruncated = prepared.some(target => target.progress.candidateOnly === true || target.progress.poolComplete === false);
+  const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain && !missingPrice;
+  const common = { budget, evaluations, searchComplete, scopeTruncated, timeExhausted, candidateCount: selectedCandidates.length, omittedCandidates };
   const output = plans.sort((a, b) => rank(a, b, prepared.length)).slice(0, maxPlans)
     .map(state => materialize(state, candidateMap, budget));
   if (output.length) return { status: 'ready', ...common, plans: output };
-  const reason = budgetExhausted ? 'search-budget-exhausted' : omittedCandidates ? 'candidate-search-truncated'
+  const reason = timeExhausted ? 'search-time-exhausted' : budgetExhausted ? 'search-budget-exhausted' : omittedCandidates ? 'candidate-search-truncated'
     : beamTruncated ? 'beam-search-truncated' : missingPrice ? 'price-unknown'
       : uncertain ? 'score-conditions-unknown' : scoringBounded ? 'score-selection-bounded'
         : overBudget ? 'budget-unreachable' : 'target-unreachable';
-  return fail(searchComplete ? 'no-plan' : 'partial', reason,
+  return fail(searchComplete ? 'no-plan' : 'partial', scopeTruncated ? 'candidate-search-truncated' : reason,
     { ...common, targets: materialize(bestSeen, candidateMap, budget).targets });
+}
+
+export function planGalleryJoint(input) {
+  const steps = planGalleryJointSteps(input);
+  let next;
+  do { next = steps.next(); } while (!next.done);
+  return next.value;
 }

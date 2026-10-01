@@ -18,9 +18,11 @@ export async function exerciseGalleryInspection(context) {
     bundle: true, write: false, format: 'iife', globalName: 'GallerySmoke', target: 'chrome120' });
   const normalized = normalizeGalleryCatalog('futgg', futggGallery());
   const template = normalized.categories[0].sets[0];
-  const catalog = Object.freeze({ ...normalized, categories: normalized.categories.map((category, categoryIndex) =>
+  const catalog = Object.freeze({ ...normalized, categories: [Object.freeze({ ...normalized.categories[0],
+    id: 'futgg:other', name: 'Other category', sets: [Object.freeze({ ...template, id: 'futgg:999', name: 'Other set' })] }),
+    ...normalized.categories.map((category, categoryIndex) =>
     Object.freeze({ ...category, sets: categoryIndex === 0 ? Array.from({ length: 127 }, (_, index) => Object.freeze({ ...template,
-      id: `futgg:${index + 1}`, name: index === 29 ? 'Arsenal' : `Fixture set ${index + 1}` })) : category.sets })) });
+      id: `futgg:${index + 1}`, name: index === 29 ? 'Arsenal' : `Fixture set ${index + 1}` })) : category.sets }))] });
   const progress = mergeGalleryAccountProgress(normalizeGalleryPool('futgg', futggGalleryPool(), 30), {
     conceptItems: [{ definitionId: 900001, isCollected: true, gradingScore: 100 }, { definitionId: 900002, isCollected: false }],
   });
@@ -50,7 +52,7 @@ export async function exerciseGalleryInspection(context) {
     assert.equal(report.collected.cards, 1);
     assert.equal(report.returned, true);
     assert.equal(report.overview.categories, catalog.categories.length);
-    assert.equal(report.overview.categoryButtons, catalog.categories.length + 1);
+    assert.equal(report.overview.categoryButtons, catalog.categories.length);
     assert.equal(await page.evaluate(() => globalThis.gallerySetCalls), 1);
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
     console.log('Offline Gallery inspection smoke passed: closed shadow, 127 sets, native scroll, filter/back, one set read.');
@@ -140,6 +142,8 @@ export async function exerciseGalleryInspection(context) {
         globalThis.galleryPanel.open(globalThis.document.getElementById('native'));
       }, { catalog, updated, source, progress });
       await click('#tab-gallery');
+      await page.waitForFunction(() => globalThis.galleryRoots.get(globalThis.galleryPanel.element).querySelector('#gallery-categories [data-category-id]'));
+      await click('#gallery-categories [data-category-id="futgg:1"]');
       await page.waitForFunction(() => globalThis.galleryRoots.get(globalThis.galleryPanel.element).querySelector('.gallery-open-set'));
       await click('[data-set-id="futgg:30"] .gallery-open-set');
       await page.waitForFunction(() => globalThis.gallerySetArgs.length === 1);

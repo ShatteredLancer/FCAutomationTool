@@ -19,18 +19,42 @@ function cloneCardData(raw) {
   return clone(raw);
 }
 
-function validEntity(entity, raw) {
-  const definitionId = own(raw, 'resourceId') ?? own(raw, 'definitionId');
-  return entity && entity.concept === true && validId(entity.definitionId)
-    && entity.definitionId === definitionId && typeof entity.guidAssetId === 'string';
+function sourceDefinitionId(source) {
+  return own(source, 'resourceId') ?? own(source, 'definitionId');
 }
 
-export function createFc27GalleryNativeRenderer(root, { document = root?.document } = {}) {
-  const render = ({ parent, raw, label = '', onUnavailable = () => {} } = {}) => {
-    const factory = at(root, 'factories.Item'), createItem = factory?.createItem;
+function isNativeEntity(root, source) {
+  const Entity = root?.UTItemEntity;
+  return typeof Entity === 'function' && source instanceof Entity;
+}
+
+function validEntity(entity, source, native) {
+  const definitionId = sourceDefinitionId(source);
+  const player = typeof entity?.isPlayer === 'function' && entity.isPlayer();
+  return entity && validId(entity.definitionId) && validId(definitionId)
+    && entity.definitionId === definitionId && player
+    && entity.concept === true && (native || source?.dream === true)
+    && (own(source, 'resourceId') == null || own(source, 'resourceId') === definitionId)
+    && (own(source, 'definitionId') == null || own(source, 'definitionId') === definitionId);
+}
+
+export function createFc27GalleryNativeRenderer(root, { document = root?.document, diagnosticLog } = {}) {
+  const reported = new Set();
+  const record = (phase, reason, status = 'failed') => {
+    const key = `${phase}:${reason ?? status}`;
+    if (reported.has(key)) return;
+    reported.add(key);
+    try { Promise.resolve(diagnosticLog?.record?.({ area:'gallery', event:'card-render', source:'ea', phase, status, ...(reason ? { reason } : {}) })).catch(() => {}); }
+    catch { /* Diagnostics never affect rendering. No card/account data. */ }
+  };
+  const render = ({ parent, raw, label = '', slot = '', onUnavailable = () => {} } = {}) => {
     const viewFactory = at(root, 'UTItemViewFactory'), createLargeItem = viewFactory?.createLargeItem;
-    if (!document || !parent || !raw || raw.itemType !== 'player' || raw.dream !== true
-        || typeof createItem !== 'function' || typeof createLargeItem !== 'function') return null;
+    const native = isNativeEntity(root, raw);
+    const phase = native ? 'native-entity' : 'cached-dto';
+    if (!document || !parent || !raw || (!native && (raw.itemType !== 'player' || raw.dream !== true))
+        || typeof root?.UTItemEntity !== 'function' || typeof createLargeItem !== 'function') {
+      record(phase, 'FC27_GALLERY_CARD_INPUT_UNAVAILABLE'); return null;
+    }
     let view, wrapper, timer, disposed = false, unavailableReported = false;
     const dispose = () => {
       if (disposed) return;
@@ -39,48 +63,67 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
       wrapper?.remove();
     };
     try {
-      const entity = createItem.call(factory, cloneCardData(raw));
-      if (!validEntity(entity, raw)) return null;
+      // Enhancer's Gallery path receives a complete UTItemEntity from
+      // searchConceptItems and shallow-copies it for display. Cached rows are
+      // bounded network DTOs, so rebuild those through EA's own factory first;
+      // this preserves the constructor's private rarity/cosmetic fields.
+      let entity = raw;
+      if (!native) {
+        const createItem = at(root, 'factories.Item.createItem');
+        if (typeof createItem !== 'function') { record(phase, 'FC27_GALLERY_CARD_FACTORY_UNAVAILABLE'); return null; }
+        entity = createItem.call(root.factories.Item, cloneCardData(raw));
+      }
+      if (!validEntity(entity, raw, native)) { record(phase, 'FC27_GALLERY_CARD_ENTITY_UNVERIFIED'); return null; }
+      const display = Object.assign(new root.UTItemEntity(), entity);
       // Enhancer's formItemWithoutConcept applies this only to a display copy.
       // Never publish that copy to inventory or treat it as ownership evidence.
-      const display = Object.assign(new root.UTItemEntity(), entity);
       display.concept = false;
       view = createLargeItem.call(viewFactory, display);
       if (!view || typeof view.init !== 'function' || typeof view.render !== 'function'
-          || typeof view.getRootElement !== 'function') { dispose(); return null; }
+          || typeof view.getRootElement !== 'function') { record(phase, 'FC27_GALLERY_CARD_VIEW_UNAVAILABLE'); dispose(); return null; }
       view.init();
       view.renderRestrictions = true;
       const complete = view.renderComplete;
-      const unavailable = () => {
+      const unavailable = (reason = 'FC27_GALLERY_CARD_ARTWORK_TIMEOUT') => {
         if (disposed) return;
+        record(phase, reason);
         dispose();
         if (!unavailableReported) { unavailableReported = true; onUnavailable(); }
       };
-      // EA normally retries a failed dynamic portrait with a base portrait,
-      // then a silhouette. The user's explicit fallback here is text only.
-      // Override this view instance, never EA's shared prototype or cache.
-      for (const method of ['onLoadDynamicPortraitError','onLoadAssetError']) {
-        const original = view[method];
-        view[method] = function (type, ...args) {
-          if (disposed) return;
-          if (type === (root.ItemAssetType?.MAIN ?? 'main') || type === (root.ItemAssetType?.SHELL ?? 'shell')) unavailable();
-          else original?.call(this, type, ...args);
-        };
-      }
+      // Enhancer does not replace EA's asset error handlers.  EA's player view
+      // deliberately retries a failed special portrait with the database
+      // portrait, and retries a failed shell with the local shell.  Replacing
+      // either callback here destroys Hero/Holographics before that fallback
+      // chain can finish. Keep the native callbacks untouched; fall back to
+      // text only after EA finishes with missing artwork or stops completing.
       const loaded = view.onLoadComplete;
       view.onLoadComplete = function (...args) { if (!disposed) loaded?.apply(this, args); };
       view.renderComplete = function (...args) {
         if (disposed) return;
         complete?.apply(this, args);
+        // EA marks a terminal asset failure false, after its retries finish.
+        // Other renderComplete callers may run before resources settle: absent
+        // keys are pending, not failures. Optional rank/foil failures are not
+        // reasons to discard an otherwise complete card.
+        const main = this.assetsLoaded?.get?.(root.ItemAssetType?.MAIN ?? 'main');
+        const shell = this.assetsLoaded?.get?.(root.ItemAssetType?.SHELL ?? 'shell');
+        // Hero/Holographics can expose a false asset state while EA's own
+        // portrait/shell error handler schedules its fallback. Keep the
+        // native view alive during that retry; the bounded timeout below is
+        // the fallback for a genuinely stalled card.
+        if (main === false || shell === false) return;
+        if (main !== true || shell !== true) return;
         clearTimeout(timer);
-        // Decorative assets (e.g. rank) may be absent on valid EA cards.
-        // The card shell and exact-version player artwork must both exist.
-        if (this.assetsLoaded?.get?.('shell') !== true || this.assetsLoaded?.get?.('main') !== true) unavailable();
+        record(phase, null, 'success');
       };
       const rootElement = view.getRootElement();
-      if (!rootElement || rootElement.nodeType !== 1) { dispose(); return null; }
+      if (!rootElement || rootElement.nodeType !== 1) { record(phase, 'FC27_GALLERY_CARD_VIEW_UNAVAILABLE'); dispose(); return null; }
       wrapper = document.createElement('div');
       wrapper.className = 'gallery-native-card';
+      // Slot assignment must happen before insertion. EA's global card CSS
+      // and the shadow host resolve the slot during append, so assigning it
+      // afterwards creates an intermittent blank/un-styled special card.
+      if (slot) wrapper.slot = String(slot);
       wrapper.style.cssText = 'display:block;position:relative;pointer-events:none';
       wrapper.setAttribute('role', 'img');
       wrapper.setAttribute('aria-label', label);
@@ -91,7 +134,7 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
       view.render(display, false);
       if (disposed) return null;
       return wrapper;
-    } catch { dispose(); return null; }
+    } catch { record(phase, 'FC27_GALLERY_CARD_RENDER_FAILED'); dispose(); return null; }
   };
   return Object.freeze({ render });
 }

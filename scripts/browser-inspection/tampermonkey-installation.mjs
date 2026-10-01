@@ -2,7 +2,7 @@ export const TAMPERMONKEY_URL = 'chrome-extension://dhdgffkkebhmkfjojejmpbldmpob
 
 export async function confirmVerifiedInstaller(installer, { source, allowDowngrade = false }) {
   const normalize = value => value.replaceAll('\r\n', '\n').trimEnd();
-  if (!source.includes('liveEnabled: false') || !source.startsWith('// ==UserScript==')) throw new Error('INSTALLATION_SOURCE_UNSAFE');
+  if (!/liveEnabled:\s*(?:true|false)/.test(source) || !source.startsWith('// ==UserScript==')) throw new Error('INSTALLATION_SOURCE_UNSAFE');
   await installer.waitForLoadState('domcontentloaded');
   if (await installer.locator('.CodeMirror').count() === 0) {
     await installer.getByText(/^(Source|Source code|\u6e90\u4ee3\u7801)$/).click();

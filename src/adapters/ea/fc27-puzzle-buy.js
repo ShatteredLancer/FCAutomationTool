@@ -34,6 +34,8 @@ export function readFc27PuzzleBuyPlan(root, target) {
 }
 
 export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget, referencePrice,
+  verifyCurrent: verifyCurrentOverride = null, verifySquad: verifySquadOverride = null,
+  collectionState = null, confirmCollection = null, playerDetails = null,
   attempts = 5, onEvent = () => {}, wait = (min, max) => new Promise(resolve => setTimeout(resolve,
     Math.floor(Math.random() * (max * 1000 - min * 1000 + 1)) + min * 1000)) } = {}) {
   const context = readFc27Context(root); const service = root.services.Item;
@@ -81,13 +83,15 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
     return amount;
   };
   const verifyCurrent = record => {
-    assertAccount(); assertTarget();
+    assertAccount(); assertTarget?.();
+    if (typeof verifyCurrentOverride === 'function') return verifyCurrentOverride(record);
     const page = readFc27PurchasePageSlots(root, record.target, record);
     if (!puzzleBuyMatchesSlots(record, page)) fail('FC27_BUY_SQUAD_CHANGED');
   };
   return Object.freeze({
     async verifySquad(record) {
       currentRecord = record;
+      if (typeof verifySquadOverride === 'function') return verifySquadOverride(record);
       verifyCurrent(record);
       const used = root.repositories.Item.numItemsInCache(root.ItemPile.PURCHASED);
       if (used >= root.MAX_NEW_ITEMS) fail('FC27_BUY_UNASSIGNED_FULL');
@@ -103,7 +107,8 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       model.updateSearchCriteria(criteria);
       // FSU uses the same native cache invalidation and search API. Only our
       // returned entities of the exact requested version may enter this batch.
-      const item = readFc27PurchasePage(root, currentRecord.target)?.items.find(card => card?.definitionId === definitionId);
+      const item = playerDetails?.get?.(definitionId)
+        ?? (playerDetails === null ? readFc27PurchasePage(root, currentRecord.target)?.items.find(card => card?.definitionId === definitionId) : null);
       if (!item || typeof referencePrice !== 'function') fail('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
       const initial = Number(await referencePrice({ definitionId, rating: item._rating, nationId: item.nationId,
         teamId: item.teamId, leagueId: item.leagueId, preferredPosition: item.preferredPosition }));
@@ -162,6 +167,12 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       const items = reply.response.items.filter(item => item.id === entry.itemId && item.definitionId === entry.definitionId);
       if (items.length !== 1) return 'unknown';
       auctions.set(entry.tradeId, items[0]); return 'purchased';
+    },
+    async collectionState(definitionId) {
+      return typeof collectionState === 'function' ? collectionState(definitionId) : false;
+    },
+    async confirmCollection(definitionIds) {
+      return typeof confirmCollection === 'function' ? confirmCollection(definitionIds) : { status: 'pending', definitionIds };
     },
     async move(entry) {
       writable();

@@ -19,7 +19,7 @@ function fixture() {
   return { input, now, cache, transport, options, session: createFc27PuzzleProcurementSession(options) };
 }
 
-it('retains exhausted joint search instead of claiming no procurement combination exists', async () => {
+it('skips joint search with empty market pages and reuses the bounded no-plan result', async () => {
   const x = fixture();
   x.input.challenge.rawRequirements[1].scope = 2;
   x.input.inventory.items = Array.from({ length: 25 }, (_, i) => ({ ...x.input.inventory.items[0],
@@ -27,11 +27,12 @@ it('retains exhausted joint search instead of claiming no procurement combinatio
   x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27',
     source: 'ea-defid', query, observedAt: x.now, entries: [] }));
   const result = await x.session.plan(x.input);
-  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT',
-    diagnostics: { route: 'joint', localReason: 'FC27_PUZZLE_SEARCH_LIMIT', truncated: true, quoteAttempts: 0 } });
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN',
+    diagnostics: { route: 'joint', localReason: 'FC27_PURCHASE_REPAIR_NO_PLAN', nodes: 0,
+      truncated: false, quoteAttempts: 0 } });
   expect(x.transport.readQuotePage).not.toHaveBeenCalled();
   const repeat = await createFc27PuzzleProcurementSession(x.options).plan(x.input);
-  expect(repeat).toMatchObject({ reason: 'FC27_PUZZLE_SEARCH_LIMIT', requests: 0 });
+  expect(repeat).toMatchObject({ reason: 'FC27_PURCHASE_REPAIR_NO_PLAN', requests: 0 });
 }, 30000);
 
 it('queries only proven replacement versions, preserves untradeable-only, and reuses persisted reads after restart', async () => {

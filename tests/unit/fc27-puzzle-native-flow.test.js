@@ -172,7 +172,8 @@ it('continues from filtered internal routes into cached procurement on repeated 
   for (let click = 0; click < 2; click++) {
     const result = await x.fill();
     expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT',
-      purchaseSuggestion: { reason: 'FC27_PUZZLE_SEARCH_LIMIT', requests: 0 } });
+      purchaseSuggestion: { reason: 'FC27_PURCHASE_REPAIR_NO_PLAN', requests: 0,
+        diagnostics: { usableCandidates: 0, nodes: 0, truncated: false } } });
     expect(result.purchaseSuggestion.cacheHits).toBeGreaterThan(0);
   }
   expect(x.calls).toEqual([]);

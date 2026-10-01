@@ -22,6 +22,7 @@ import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
 import { readFc27PurchasePageSlots } from '../ea/fc27-puzzle-page.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
+import { galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
 
 const blocked = reason => ({ status: 'blocked', reason });
 const safeReason = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message) ? error.message : 'FC27_ACCEPTANCE_UNCONFIRMED';
@@ -104,12 +105,14 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     preparedPuzzle?.adapter.cancel(); preparedPuzzle = null;
   };
   const traditionalExclusive = (requestedScope, task) => persistence.exclusive(requestedScope, async () => {
+    if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     return task();
   });
   const unchanged = () => {
     if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw new Error('FC27_TRANSACTION_CONTEXT_CHANGED');
   };
   const assertNoPuzzlePending = async target => {
+    if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) throw new Error('FC27_BUY_RECOVERY_REQUIRED');
     if ((await puzzlePersistence.journal.read(scope, target))?.phase === 'save-pending') throw new Error('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
     if (await readFc27ConceptPending(gmGetValue, scope, target) !== null) throw new Error('FC27_CONCEPT_RECOVERY_REQUIRED');
@@ -118,6 +121,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     get: gmGetValue, set: gmSetValue, exclusive: persistence.exclusive, operationId: () => root.crypto.randomUUID(),
     assertCurrent: () => { unchanged(); assertTarget(); },
     checkOtherTransactions: async () => {
+      if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) return false;
       const other = await persistence.journal.read(scope);
       // Puzzle journals are isolated by Set/Challenge. A pending save for a
       // different target is deferred until that target is revisited; it must
@@ -488,6 +492,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
         const buyer = createFc27PuzzleBuySession({ scope, context, get: gmGetValue, set: gmSetValue,
           exclusive: persistence.exclusive, assertCurrent: assertTarget, shouldStop: () => buyStopped, onProgress,
           loadDraft: async currentTarget => {
+            if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
             const other = await persistence.journal.read(scope);
             if (other && !isTerminalTraditionalJournal(other)) throw new Error('FC27_RECOVERY_REQUIRED');
             if ((await puzzlePersistence.journal.read(scope, currentTarget))?.phase === 'save-pending'
@@ -525,6 +530,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       if (!Number.isSafeInteger(target?.setId) || target.setId <= 0
           || !Number.isSafeInteger(target?.challengeId) || target.challengeId <= 0
           || typeof isCurrent !== 'function') return blocked('FC27_PUZZLE_FILL_TARGET_CHANGED');
+      if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) return blocked('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
       if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) return blocked('FC27_BUY_RECOVERY_REQUIRED');
       const purchased = await gmGetValue(puzzleBuyKey(scope, target), null) ? await inspectPurchases(target) : { status: 'absent' };
       if (purchased.status === 'ready' && purchased.spent > 0) return { status: 'blocked', reason: 'FC27_BUY_DRAFT_ACTIVE' };
