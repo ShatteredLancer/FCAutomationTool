@@ -23,8 +23,10 @@ const retryableRuntimeFailure = reason => /^FC27_MARKET_METHOD_\d+_(?:MISSING|CH
 const failureDetails = (reason, value) => {
   const match = /^FC27_MARKET_HTTP_([1-5]\d{2})$/.exec(reason);
   const eaCode = Object.getOwnPropertyDescriptor(value ?? {}, 'eaCode')?.value;
+  const phase = Object.getOwnPropertyDescriptor(value ?? {}, 'phase')?.value;
   return { httpStatus: match ? Number(match[1]) : null,
-    eaCode: Number.isSafeInteger(eaCode) && eaCode >= 0 && eaCode <= 0x7fffffff ? eaCode : null };
+    eaCode: Number.isSafeInteger(eaCode) && eaCode >= 0 && eaCode <= 0x7fffffff ? eaCode : null,
+    failurePhase: typeof phase === 'string' && /^[a-z-]{1,40}$/.test(phase) ? phase : null };
 };
 
 // Injected read-only transport, durable per-query memo, no purchase/fill seam.
@@ -45,7 +47,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       usableCandidates: null, unpricedPlans: 0, localReason: null, checks: null, nodes: null,
       truncated: null, catalogAttempts: 0, quoteAttempts: 0,
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
-      excludedUnavailable: 0, replans: 0 };
+      failurePhase: null, excludedUnavailable: 0, replans: 0 };
     let quoteCompleted = 0; let quoteTotal = 0;
     const reportProgress = value => {
       if (typeof onProgress !== 'function') return;

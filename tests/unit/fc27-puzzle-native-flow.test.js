@@ -119,12 +119,12 @@ it('exports native Puzzle search and pre-request market failures without raw inv
   const x = fixture({ diagnosticLog });
   const removed = x.state.players.pop(); delete x.root.repositories.Item.club.items._collection[removed.id];
   x.root.UTHttpRequest = function unreviewedRequest() { throw new Error('must not run'); };
-  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE',
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_METHOD_0_CHANGED',
     purchaseSuggestion: { reason: 'FC27_MARKET_METHOD_0_CHANGED', requests: 0 } });
   const payload = await diagnosticLog.exportPayload();
   expect(payload.entries).toEqual(expect.arrayContaining([
     expect.objectContaining({ area: 'puzzle', event: 'solve-result', setId: 4, challengeId: 16,
-      reason: 'SAFE_MATERIAL_SHORTAGE', safeCandidates: 10 }),
+      reason: 'FC27_MARKET_METHOD_0_CHANGED', safeCandidates: 10 }),
     expect.objectContaining({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_MARKET_METHOD_0_CHANGED',
       source: 'transport', requests: 0, catalogAttempts: 0, quoteAttempts: 0 }),
   ]));

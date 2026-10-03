@@ -34,6 +34,32 @@ const puzzleInput = input => ({ context: input.context, challenge: input.challen
 // contains only the reviewed, serializable challenge projection; it never
 // contains EA entities, Club items, or request/response objects.
 const puzzleCatalogCacheKey = (scope, setId, challengeId = 'all') => `fcat-fc27-puzzle-catalog:${scope}:${setId}:${challengeId}`;
+const puzzleReservationKey = scope => `fcat-fc27-puzzle-reservations:${scope}`;
+const validReservationId = value => Number.isSafeInteger(value) && value > 0;
+const reservationTarget = value => Number.isSafeInteger(value) && value > 0;
+const readPuzzleReservations = async (get, scope) => {
+  const value = await get(puzzleReservationKey(scope), null);
+  if (value === null) return { schema: 1, targets: [] };
+  if (!value || value.schema !== 1 || !Array.isArray(value.targets) || value.targets.length > 100) {
+    throw new Error('FC27_PUZZLE_RESERVATION_UNVERIFIED');
+  }
+  const targets = value.targets.map(entry => {
+    if (!reservationTarget(entry?.setId) || !reservationTarget(entry?.challengeId)
+        || !Array.isArray(entry.itemRefs) || entry.itemRefs.length > 11
+        || entry.itemRefs.some(ref => !validReservationId(ref?.id) || !validReservationId(ref?.definitionId))) {
+      throw new Error('FC27_PUZZLE_RESERVATION_UNVERIFIED');
+    }
+    return { setId: entry.setId, challengeId: entry.challengeId,
+      itemRefs: entry.itemRefs.map(ref => ({ id: ref.id, definitionId: ref.definitionId })) };
+  });
+  return { schema: 1, targets };
+};
+const writePuzzleReservations = async (get, set, scope, value) => {
+  await set(puzzleReservationKey(scope), structuredClone(value));
+  if (JSON.stringify(await get(puzzleReservationKey(scope), null)) !== JSON.stringify(value)) {
+    throw new Error('FC27_PUZZLE_RESERVATION_UNVERIFIED');
+  }
+};
 const cacheCatalogProjection = (catalog, scope, setId, reasonOverride = undefined) => ({
   schema: 1, scope, setId, challengeId: null, attemptedAt: Date.now(),
   result: structuredClone({
@@ -100,6 +126,28 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     return { maxRating: value.maxRating, quoteCeiling, queriesNumber };
   };
   const readPuzzleMaxRating = async () => (await readPuzzleSettings()).maxRating;
+  const reservationSnapshot = async () => {
+    const value = await readPuzzleReservations(gmGetValue, scope);
+    const itemIds = new Set(); const definitionIds = new Set();
+    for (const target of value.targets) for (const ref of target.itemRefs) {
+      itemIds.add(ref.id); definitionIds.add(ref.definitionId);
+    }
+    return { value, itemIds, definitionIds };
+  };
+  const rememberPuzzleReservations = async (target, refs) => {
+    const current = await readPuzzleReservations(gmGetValue, scope);
+    const safeRefs = (Array.isArray(refs) ? refs : []).filter(ref => validReservationId(ref?.id)
+      && validReservationId(ref?.definitionId)).map(ref => ({ id: ref.id, definitionId: ref.definitionId }));
+    if (!safeRefs.length) return;
+    const targets = current.targets.filter(entry => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
+    targets.push({ setId: target.setId, challengeId: target.challengeId, itemRefs: safeRefs.slice(0, 11) });
+    await writePuzzleReservations(gmGetValue, gmSetValue, scope, { schema: 1, targets });
+  };
+  const releasePuzzleReservations = async target => {
+    const current = await readPuzzleReservations(gmGetValue, scope);
+    const targets = current.targets.filter(entry => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
+    if (targets.length !== current.targets.length) await writePuzzleReservations(gmGetValue, gmSetValue, scope, { schema: 1, targets });
+  };
   const invalidate = () => {
     prepared?.adapter.cancel(); prepared = null;
     preparedPuzzle?.adapter.cancel(); preparedPuzzle = null;
@@ -262,6 +310,19 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       // a second Set catalog GET is both redundant and prone to EA 429.
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked('FC27_PUZZLE_FILL_TARGET_CHANGED');
+      const reservations = await reservationSnapshot();
+      // An explicitly empty current Challenge means the user cleared that
+      // target. Release only its own reservation; other saved Challenges stay
+      // protected across the continuous run.
+      if (nativeOnly && pageSnapshot?.layout?.squadEmpty === true) {
+        await releasePuzzleReservations({ setId, challengeId });
+        reservations.value.targets = reservations.value.targets.filter(entry =>
+          entry.setId !== setId || entry.challengeId !== challengeId);
+        reservations.itemIds.clear(); reservations.definitionIds.clear();
+        for (const entry of reservations.value.targets) for (const ref of entry.itemRefs) {
+          reservations.itemIds.add(ref.id); reservations.definitionIds.add(ref.definitionId);
+        }
+      }
       const catalogRead = pageSnapshot
         ? { source: 'native-page', result: { status: 'observed', reason: 'FC27_NATIVE_PUZZLE_READ',
           liveExecutionEnabled: false, setId, challenges: [pageSnapshot.challenge] } }
@@ -281,8 +342,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       let privateData = null;
       const purchaseSettings = await readPuzzleSettings();
       const requestedMaxRating = purchaseSettings.maxRating;
+      const excludedItemIds = pageSnapshot?.layout?.squadEmpty === true ? [...reservations.itemIds] : [];
+      const excludedDefinitionIds = pageSnapshot?.layout?.squadEmpty === true ? [...reservations.definitionIds] : [];
       const puzzleOptions = { setId, challengeId: candidates[0].id, maxRating: requestedMaxRating,
-        catalog, layout: pageSnapshot?.layout };
+        catalog, layout: pageSnapshot?.layout, excludedItemIds, excludedDefinitionIds };
       const report = nativeOnly ? await inspectFc27PuzzlePlan(root, puzzleOptions, async inputs => {
         const preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
           onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
@@ -309,10 +372,21 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
             try {
               const result = await conceptSession(assertTarget, purchaseSettings).save(inputs, purchaseSuggestion.plans[0]);
               privateData.conceptResult = result;
+              if (result?.status === 'concept-filled') {
+                try {
+                  await rememberPuzzleReservations({ setId, challengeId: candidates[0].id },
+                    purchaseSuggestion.plans[0].selectedOwned ?? []);
+                } catch { /* Reservation is advisory and cannot change a confirmed save. */ }
+              }
               return { ...preview, purchaseSuggestion, status: result.status, reason: result.reason };
             } finally { armed = false; }
           }
-          return { ...preview, purchaseSuggestion };
+          // Do not hide a bounded market read failure behind the solver's
+          // earlier search-limit reason. The search was only incomplete
+          // because the exact EA quote response could not be verified.
+          const marketFailure = purchaseSuggestion.status === 'blocked'
+            && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG))/.test(purchaseSuggestion.reason ?? '');
+          return { ...preview, ...(marketFailure ? { status: 'blocked', reason: purchaseSuggestion.reason } : {}), purchaseSuggestion };
         }
         return preview;
       }) : await inspectFc27VerifiedPuzzlePlan(root, puzzleOptions,
@@ -431,7 +505,16 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     const result = current.engine.approve(current.plan, approval);
     if (result.status !== 'approved') { current.adapter.cancel(); return result; }
     armed = true;
-    try { return await current.engine.execute(result.permit); }
+    try {
+      const outcome = await current.engine.execute(result.permit);
+      if (outcome?.status === 'filled') {
+        try {
+          await rememberPuzzleReservations({ setId: current.plan.challenge.setId, challengeId: current.plan.challenge.id },
+            current.plan.selected);
+        } catch { /* Reservation is an optimization; the transaction result remains authoritative. */ }
+      }
+      return outcome;
+    }
     finally { current.adapter.cancel(); }
   };
   const setPuzzlePolicy = changes => run(async () => {
@@ -645,7 +728,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
         const purchase = result?.purchaseSuggestion, d = purchase?.diagnostics;
         if (purchase) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-result',
           setId: target.setId, challengeId: target.challengeId, status: purchase.status, reason: purchase.reason,
-          source: d?.failureSource, phase: d?.stage, route: d?.route, httpStatus: d?.httpStatus,
+          source: d?.failureSource, phase: d?.stage, transportPhase: d?.failurePhase, route: d?.route, httpStatus: d?.httpStatus,
           requests: purchase.requests, catalogAttempts: d?.catalogAttempts, quoteAttempts: d?.quoteAttempts,
           count: d?.catalogCandidates, evaluations: d?.nodes, cached: purchase.cacheHits > 0 });
       } catch { /* Diagnostic failure never changes a solve/save result. */ }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.9
+// @version      27.0.10
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -3896,7 +3896,11 @@
     35: "CHEMISTRY_POINTS"
   };
   function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
-    const failed = () => ({ status: "blocked", reason: "FC27_EXACT_ITEMS_CHANGED" });
+    const failed = (mismatch = "shape") => ({
+      status: "blocked",
+      reason: "FC27_EXACT_ITEMS_CHANGED",
+      mismatch: typeof mismatch === "string" && /^[a-z-]{1,40}$/.test(mismatch) ? mismatch : "shape"
+    });
     const validId12 = (value) => Number.isSafeInteger(value) && value > 0;
     if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11 || freshItems.length >= 250 || !Array.isArray(plannedItems) || plannedItems.length !== selected.length) return failed();
     const fields4 = [
@@ -3933,7 +3937,7 @@
       const current2 = byId.get(plan?.id);
       const before = expected.get(plan?.id);
       if (!validId12(plan?.id) || !validId12(plan?.definitionId) || plan.pile !== "club" || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key) => !Object.hasOwn(current2, key) || !Object.hasOwn(before, key) || JSON.stringify(current2[key]) !== JSON.stringify(before[key])) || current2.type !== "player" || current2.pile !== "club" || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || current2.tradeable !== false) {
-        return failed();
+        return failed("identity");
       }
       seenIds.add(plan.id);
       seenDefinitions.add(plan.definitionId);
@@ -4048,7 +4052,9 @@
     challengeId,
     maxRating = DEFAULT_PUZZLE_MAX_RATING,
     catalog: suppliedCatalog = null,
-    layout: suppliedLayout = null
+    layout: suppliedLayout = null,
+    excludedItemIds = [],
+    excludedDefinitionIds = []
   } = {}, onInputs = null) {
     try {
       const context = readFc27Context(root);
@@ -4075,6 +4081,11 @@
       if (layout.setId !== setId || layout.challengeId !== challengeId) return blocked3("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
       if (!unchanged()) return blocked3("FC27_RUNNER_INPUTS_CHANGED");
       if (layout.customBrickIndices.length) return blocked3("FC27_PUZZLE_CUSTOM_BRICKS_UNVERIFIED");
+      if (!Array.isArray(excludedItemIds) || !Array.isArray(excludedDefinitionIds) || excludedItemIds.length > 500 || excludedDefinitionIds.length > 500 || excludedItemIds.some((value) => !Number.isSafeInteger(value) || value <= 0) || excludedDefinitionIds.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
+        return blocked3("FC27_PUZZLE_RESERVATION_UNVERIFIED");
+      }
+      const excludedItems = new Set(excludedItemIds);
+      const excludedDefinitions = new Set(excludedDefinitionIds);
       const cached = readFc27CachedClub(root);
       const inventory = {
         schema: 1,
@@ -4083,7 +4094,7 @@
         status: "provisional",
         scope: "club-only",
         complete: false,
-        items: cached.items.map((item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false }))
+        items: cached.items.filter((item2) => !excludedItems.has(item2.id) && !excludedDefinitions.has(item2.definitionId)).map((item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false }))
       };
       const challenge = {
         schema: 1,
@@ -5204,9 +5215,11 @@
   var failureDetails = (reason, value) => {
     const match = /^FC27_MARKET_HTTP_([1-5]\d{2})$/.exec(reason);
     const eaCode = Object.getOwnPropertyDescriptor(value ?? {}, "eaCode")?.value;
+    const phase = Object.getOwnPropertyDescriptor(value ?? {}, "phase")?.value;
     return {
       httpStatus: match ? Number(match[1]) : null,
-      eaCode: Number.isSafeInteger(eaCode) && eaCode >= 0 && eaCode <= 2147483647 ? eaCode : null
+      eaCode: Number.isSafeInteger(eaCode) && eaCode >= 0 && eaCode <= 2147483647 ? eaCode : null,
+      failurePhase: typeof phase === "string" && /^[a-z-]{1,40}$/.test(phase) ? phase : null
     };
   };
   function createFc27PuzzleProcurementSession({ createTransport, get, set, now = Date.now } = {}) {
@@ -5240,6 +5253,7 @@
         httpStatus: null,
         eaCode: null,
         retryAfterSeconds: null,
+        failurePhase: null,
         excludedUnavailable: 0,
         replans: 0
       };
@@ -5592,11 +5606,13 @@
       if (busy || stopped || requests >= maxRequests) throw error("READ_BLOCKED");
       busy = true;
       let failureDetails2 = null;
+      let failurePhase = "request-create";
       try {
         const delay = lastRequestAt === null ? 0 : Math.max(0, 800 - (Date.now() - lastRequestAt));
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
         assertRuntime();
         const req = new Request(auth);
+        failurePhase = "request-create";
         for (const [key, path] of [
           ["send", "UTHttpRequest.prototype.send"],
           ["setPath", "UTHttpRequest.prototype.setPath"],
@@ -5612,7 +5628,10 @@
         const url = new URL(ownData(req, "url"));
         if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) throw error("ENDPOINT_UNVERIFIED");
         req.urlVariables = `?${new URLSearchParams(query).toString()}`;
-        if (kind === "quotes") reviewed.get("Identification.prototype.handleRequest").call(identifier, req);
+        if (kind === "quotes") {
+          failurePhase = "identification-request";
+          reviewed.get("Identification.prototype.handleRequest").call(identifier, req);
+        }
         lastRequestAt = Date.now();
         requests++;
         const dto = await new Promise((resolve, reject) => {
@@ -5644,7 +5663,11 @@
                 return;
               }
               try {
-                if (kind === "quotes") reviewed.get("Identification.prototype.handleResponse").call(identifier, req);
+                if (kind === "quotes") {
+                  failurePhase = "identification-response";
+                  reviewed.get("Identification.prototype.handleResponse").call(identifier, req);
+                }
+                failurePhase = "dto";
                 finish(null, value);
               } catch {
                 finish(error("RESPONSE_UNVERIFIED"));
@@ -5656,6 +5679,7 @@
           }
         });
         assertRuntime();
+        failurePhase = "dto-status";
         const status = ownData(dto, "status");
         if (ownData(dto, "success") !== true || status !== 200) {
           const rawCode = ownData(ownData(dto, "response"), "code");
@@ -5666,6 +5690,7 @@
           };
           throw error(valid(status, 100, 599) ? `HTTP_${status}` : "RESPONSE_UNVERIFIED");
         }
+        failurePhase = "payload";
         const body = ownData(dto, "response");
         if (!body || typeof body !== "object" || Array.isArray(body)) throw error("RESPONSE_UNVERIFIED");
         const result = project3(body);
@@ -5674,7 +5699,7 @@
       } catch (caught) {
         stopped = true;
         const failure = new Error(marketReadReason(caught));
-        if (failureDetails2) failure.marketFailure = failureDetails2;
+        failure.marketFailure = failureDetails2 ?? { phase: failurePhase };
         throw failure;
       } finally {
         busy = false;
@@ -7147,6 +7172,33 @@
     squadEmpty: input.squadEmpty
   });
   var puzzleCatalogCacheKey = (scope2, setId, challengeId = "all") => `fcat-fc27-puzzle-catalog:${scope2}:${setId}:${challengeId}`;
+  var puzzleReservationKey = (scope2) => `fcat-fc27-puzzle-reservations:${scope2}`;
+  var validReservationId = (value) => Number.isSafeInteger(value) && value > 0;
+  var reservationTarget = (value) => Number.isSafeInteger(value) && value > 0;
+  var readPuzzleReservations = async (get, scope2) => {
+    const value = await get(puzzleReservationKey(scope2), null);
+    if (value === null) return { schema: 1, targets: [] };
+    if (!value || value.schema !== 1 || !Array.isArray(value.targets) || value.targets.length > 100) {
+      throw new Error("FC27_PUZZLE_RESERVATION_UNVERIFIED");
+    }
+    const targets = value.targets.map((entry) => {
+      if (!reservationTarget(entry?.setId) || !reservationTarget(entry?.challengeId) || !Array.isArray(entry.itemRefs) || entry.itemRefs.length > 11 || entry.itemRefs.some((ref) => !validReservationId(ref?.id) || !validReservationId(ref?.definitionId))) {
+        throw new Error("FC27_PUZZLE_RESERVATION_UNVERIFIED");
+      }
+      return {
+        setId: entry.setId,
+        challengeId: entry.challengeId,
+        itemRefs: entry.itemRefs.map((ref) => ({ id: ref.id, definitionId: ref.definitionId }))
+      };
+    });
+    return { schema: 1, targets };
+  };
+  var writePuzzleReservations = async (get, set, scope2, value) => {
+    await set(puzzleReservationKey(scope2), structuredClone(value));
+    if (JSON.stringify(await get(puzzleReservationKey(scope2), null)) !== JSON.stringify(value)) {
+      throw new Error("FC27_PUZZLE_RESERVATION_UNVERIFIED");
+    }
+  };
   var cacheCatalogProjection = (catalog, scope2, setId, reasonOverride = void 0) => ({
     schema: 1,
     scope: scope2,
@@ -7230,6 +7282,29 @@
       return { maxRating: value.maxRating, quoteCeiling, queriesNumber };
     };
     const readPuzzleMaxRating = async () => (await readPuzzleSettings()).maxRating;
+    const reservationSnapshot = async () => {
+      const value = await readPuzzleReservations(gmGetValue, scope2);
+      const itemIds = /* @__PURE__ */ new Set();
+      const definitionIds = /* @__PURE__ */ new Set();
+      for (const target of value.targets) for (const ref of target.itemRefs) {
+        itemIds.add(ref.id);
+        definitionIds.add(ref.definitionId);
+      }
+      return { value, itemIds, definitionIds };
+    };
+    const rememberPuzzleReservations = async (target, refs3) => {
+      const current2 = await readPuzzleReservations(gmGetValue, scope2);
+      const safeRefs = (Array.isArray(refs3) ? refs3 : []).filter((ref) => validReservationId(ref?.id) && validReservationId(ref?.definitionId)).map((ref) => ({ id: ref.id, definitionId: ref.definitionId }));
+      if (!safeRefs.length) return;
+      const targets = current2.targets.filter((entry) => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
+      targets.push({ setId: target.setId, challengeId: target.challengeId, itemRefs: safeRefs.slice(0, 11) });
+      await writePuzzleReservations(gmGetValue, gmSetValue, scope2, { schema: 1, targets });
+    };
+    const releasePuzzleReservations = async (target) => {
+      const current2 = await readPuzzleReservations(gmGetValue, scope2);
+      const targets = current2.targets.filter((entry) => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
+      if (targets.length !== current2.targets.length) await writePuzzleReservations(gmGetValue, gmSetValue, scope2, { schema: 1, targets });
+    };
     const invalidate = () => {
       prepared?.adapter.cancel();
       prepared = null;
@@ -7445,6 +7520,17 @@
       if (available !== true) return blocked8("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked8("FC27_PUZZLE_FILL_TARGET_CHANGED");
+      const reservations = await reservationSnapshot();
+      if (nativeOnly && pageSnapshot?.layout?.squadEmpty === true) {
+        await releasePuzzleReservations({ setId, challengeId });
+        reservations.value.targets = reservations.value.targets.filter((entry) => entry.setId !== setId || entry.challengeId !== challengeId);
+        reservations.itemIds.clear();
+        reservations.definitionIds.clear();
+        for (const entry of reservations.value.targets) for (const ref of entry.itemRefs) {
+          reservations.itemIds.add(ref.id);
+          reservations.definitionIds.add(ref.definitionId);
+        }
+      }
       const catalogRead = pageSnapshot ? { source: "native-page", result: {
         status: "observed",
         reason: "FC27_NATIVE_PUZZLE_READ",
@@ -7462,12 +7548,16 @@
       let privateData = null;
       const purchaseSettings = await readPuzzleSettings();
       const requestedMaxRating = purchaseSettings.maxRating;
+      const excludedItemIds = pageSnapshot?.layout?.squadEmpty === true ? [...reservations.itemIds] : [];
+      const excludedDefinitionIds = pageSnapshot?.layout?.squadEmpty === true ? [...reservations.definitionIds] : [];
       const puzzleOptions = {
         setId,
         challengeId: candidates[0].id,
         maxRating: requestedMaxRating,
         catalog,
-        layout: pageSnapshot?.layout
+        layout: pageSnapshot?.layout,
+        excludedItemIds,
+        excludedDefinitionIds
       };
       const report = nativeOnly ? await inspectFc27PuzzlePlan(root, puzzleOptions, async (inputs) => {
         const preview = await previewFc27PuzzleSquadCooperatively({
@@ -7508,12 +7598,22 @@
             try {
               const result = await conceptSession(assertTarget, purchaseSettings).save(inputs, purchaseSuggestion.plans[0]);
               privateData.conceptResult = result;
+              if (result?.status === "concept-filled") {
+                try {
+                  await rememberPuzzleReservations(
+                    { setId, challengeId: candidates[0].id },
+                    purchaseSuggestion.plans[0].selectedOwned ?? []
+                  );
+                } catch {
+                }
+              }
               return { ...preview, purchaseSuggestion, status: result.status, reason: result.reason };
             } finally {
               armed = false;
             }
           }
-          return { ...preview, purchaseSuggestion };
+          const marketFailure = purchaseSuggestion.status === "blocked" && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG))/.test(purchaseSuggestion.reason ?? "");
+          return { ...preview, ...marketFailure ? { status: "blocked", reason: purchaseSuggestion.reason } : {}, purchaseSuggestion };
         }
         return preview;
       }) : await inspectFc27VerifiedPuzzlePlan(
@@ -7662,7 +7762,17 @@
       }
       armed = true;
       try {
-        return await current2.engine.execute(result.permit);
+        const outcome = await current2.engine.execute(result.permit);
+        if (outcome?.status === "filled") {
+          try {
+            await rememberPuzzleReservations(
+              { setId: current2.plan.challenge.setId, challengeId: current2.plan.challenge.id },
+              current2.plan.selected
+            );
+          } catch {
+          }
+        }
+        return outcome;
       } finally {
         current2.adapter.cancel();
       }
@@ -7953,6 +8063,7 @@
             reason: purchase.reason,
             source: d?.failureSource,
             phase: d?.stage,
+            transportPhase: d?.failurePhase,
             route: d?.route,
             httpStatus: d?.httpStatus,
             requests: purchase.requests,
@@ -15220,7 +15331,7 @@
   // src/diagnostics/fcat-diagnostic-log.js
   var DEFAULT_MAX_ENTRIES = 300;
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "status", "reason", "route"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "route"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "batchSize",
@@ -15438,7 +15549,7 @@
     galleryProxy = "";
   }
   var readGalleryProxy = () => galleryProxy;
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.9" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.10" });
   var userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
   var galleryAssets = Object.freeze({
     reward: (type) => {
@@ -15589,8 +15700,8 @@
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.9"}`,
-    version: "27.0.9",
+    title: `FC Automation Tool ${"27.0.10"}`,
+    version: "27.0.10",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryProxy: readGalleryProxy,

@@ -157,11 +157,13 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     if (busy || stopped || requests >= maxRequests) throw error('READ_BLOCKED');
     busy = true;
     let failureDetails = null;
+    let failurePhase = 'request-create';
     try {
       const delay = lastRequestAt === null ? 0 : Math.max(0, 800 - (Date.now() - lastRequestAt));
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
       assertRuntime();
       const req = new Request(auth);
+      failurePhase = 'request-create';
       for (const [key, path] of [['send', 'UTHttpRequest.prototype.send'], ['setPath', 'UTHttpRequest.prototype.setPath'],
         ['abort', 'EAHttpRequest.prototype.abort']]) if (method(req, key) !== reviewed.get(path)) throw error('RUNTIME_CHANGED');
       req.doRetry = false; req.doReauth = false; req.timeout = 15000; req.cache = false; req.requestType = 'GET';
@@ -172,7 +174,10 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
           || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) throw error('ENDPOINT_UNVERIFIED');
       req.urlVariables = `?${new URLSearchParams(query).toString()}`;
       // Preserve EA's native request identification; never inspect or export it.
-      if (kind === 'quotes') reviewed.get('Identification.prototype.handleRequest').call(identifier, req);
+      if (kind === 'quotes') {
+        failurePhase = 'identification-request';
+        reviewed.get('Identification.prototype.handleRequest').call(identifier, req);
+      }
       lastRequestAt = Date.now(); requests++;
       const dto = await new Promise((resolve, reject) => {
         const observer = {}; let done = false;
@@ -189,7 +194,11 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
             if (done) return;
             if (sender !== req) { finish(error('RESPONSE_OWNER_MISMATCH')); return; }
             try {
-              if (kind === 'quotes') reviewed.get('Identification.prototype.handleResponse').call(identifier, req);
+              if (kind === 'quotes') {
+                failurePhase = 'identification-response';
+                reviewed.get('Identification.prototype.handleResponse').call(identifier, req);
+              }
+              failurePhase = 'dto';
               finish(null, value);
             } catch { finish(error('RESPONSE_UNVERIFIED')); }
           });
@@ -197,6 +206,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
         } catch { finish(error('REQUEST_FAILED')); }
       });
       assertRuntime();
+      failurePhase = 'dto-status';
       const status = ownData(dto, 'status');
       if (ownData(dto, 'success') !== true || status !== 200) {
         // Numeric EA subcodes only: never retain the response, messages or credentials.
@@ -206,6 +216,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
           eaCode: valid(code, 0, 0x7fffffff) ? code : null };
         throw error(valid(status, 100, 599) ? `HTTP_${status}` : 'RESPONSE_UNVERIFIED');
       }
+      failurePhase = 'payload';
       const body = ownData(dto, 'response');
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw error('RESPONSE_UNVERIFIED');
       const result = project(body);
@@ -214,7 +225,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     } catch (caught) {
       stopped = true;
       const failure = new Error(marketReadReason(caught));
-      if (failureDetails) failure.marketFailure = failureDetails;
+      failure.marketFailure = failureDetails ?? { phase: failurePhase };
       throw failure;
     }
     finally { busy = false; }

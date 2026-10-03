@@ -18,7 +18,8 @@ const enumNames = { 3: 'PLAYER_QUALITY', 4: 'SAME_NATION_COUNT', 5: 'SAME_LEAGUE
 // never receives refreshed EA entities, and this helper deliberately returns
 // only aggregate evidence so item identities cannot escape the adapter.
 export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
-  const failed = () => ({ status: 'blocked', reason: 'FC27_EXACT_ITEMS_CHANGED' });
+  const failed = (mismatch = 'shape') => ({ status: 'blocked', reason: 'FC27_EXACT_ITEMS_CHANGED',
+    mismatch: typeof mismatch === 'string' && /^[a-z-]{1,40}$/.test(mismatch) ? mismatch : 'shape' });
   const validId = value => Number.isSafeInteger(value) && value > 0;
   if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11
       || freshItems.length >= 250 || !Array.isArray(plannedItems)
@@ -46,7 +47,7 @@ export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) 
         || current.concept !== false || current.academyEnrolled !== false
         || current.activeTrade !== false || current.limitedUse !== false
         || current.loans !== -1 || current.tradeable !== false) {
-      return failed();
+      return failed('identity');
     }
     seenIds.add(plan.id); seenDefinitions.add(plan.definitionId);
   }
@@ -148,7 +149,8 @@ export function readFc27PuzzleChemistry(root, clubLinks) {
 // Only the reviewed catalog GET and the already-IN_PROGRESS squad GET are used.
 // Result is an aggregate diagnostic, never a transaction handle or EA item entity.
 export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRating = DEFAULT_PUZZLE_MAX_RATING,
-  catalog: suppliedCatalog = null, layout: suppliedLayout = null } = {}, onInputs = null) {
+  catalog: suppliedCatalog = null, layout: suppliedLayout = null, excludedItemIds = [],
+  excludedDefinitionIds = [] } = {}, onInputs = null) {
   try {
     const context = readFc27Context(root);
     const policy = readFc27PuzzlePolicy(root, maxRating);
@@ -181,9 +183,18 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
     if (!unchanged()) return blocked('FC27_RUNNER_INPUTS_CHANGED');
     // Custom bricks can contribute chemistry; their attributes need a separate contract.
     if (layout.customBrickIndices.length) return blocked('FC27_PUZZLE_CUSTOM_BRICKS_UNVERIFIED');
+    if (!Array.isArray(excludedItemIds) || !Array.isArray(excludedDefinitionIds)
+        || excludedItemIds.length > 500 || excludedDefinitionIds.length > 500
+        || excludedItemIds.some(value => !Number.isSafeInteger(value) || value <= 0)
+        || excludedDefinitionIds.some(value => !Number.isSafeInteger(value) || value <= 0)) {
+      return blocked('FC27_PUZZLE_RESERVATION_UNVERIFIED');
+    }
+    const excludedItems = new Set(excludedItemIds);
+    const excludedDefinitions = new Set(excludedDefinitionIds);
     const cached = readFc27CachedClub(root);
     const inventory = { schema: 1, context, kind: 'normalized-inventory', status: 'provisional', scope: 'club-only', complete: false,
-      items: cached.items.map(item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false })) };
+      items: cached.items.filter(item => !excludedItems.has(item.id) && !excludedDefinitions.has(item.definitionId))
+        .map(item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false })) };
     const challenge = { schema: 1, context, mechanism: 'traditional-puzzle', requirementsOperation: 'AND',
       completed: false, setId, id: challengeId, slotCount: layout.slotCount,
       formation: layout.formation,
