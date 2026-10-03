@@ -4,7 +4,17 @@ const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const reasonOf = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message ?? '') ? error.message : 'FC27_CONCEPT_UNCONFIRMED';
 const blocked = reason => ({ status: 'blocked', reason, saved: false, submitted: false });
+const mismatch = value => typeof value === 'string' && /^[a-z-]{1,40}$/.test(value) ? value : null;
+const exactError = (reason = 'FC27_EXACT_ITEMS_CHANGED', detail = null) => {
+  const error = new Error(reason);
+  if (mismatch(detail)) error.mismatch = detail;
+  return error;
+};
 export const fc27ConceptPendingKey = (scope, target = null) => `fcat-fc27-concept-pending:${scope}${target ? `:${target.setId}:${target.challengeId}` : ''}`;
+export const fc27ConceptDraftKey = (scope, target) => {
+  if (!validTarget(target)) throw new Error('FC27_CONCEPT_JOURNAL_UNCONFIRMED');
+  return `fcat-fc27-concept-draft:${scope}:${target.setId}:${target.challengeId}`;
+};
 const keyOf = (scope, target) => `fcat-fc27-concept-draft:${scope}:${target.setId}:${target.challengeId}`;
 const indexKeyOf = scope => `${fc27ConceptPendingKey(scope)}:index`;
 const sameTarget = (a, b) => a?.setId === b?.setId && a?.challengeId === b?.challengeId;
@@ -12,6 +22,28 @@ const validTarget = target => [target?.setId, target?.challengeId].every(id => N
 const accountOf = context => ({ accountScope: context?.accountScope, platform: context?.platform });
 const accountMatches = (record, context) => !record?.account
   || record.account.accountScope === context?.accountScope && record.account.platform === context?.platform;
+const validReservationId = value => Number.isSafeInteger(value) && value > 0;
+
+// Upgrade evidence written by 27.0.8/27.0.9 did not have the reservation
+// index introduced later. Read only the durable terminal draft and expose
+// exact owned refs so the next Challenge can avoid reusing those cards. No
+// concept/catalog fields are returned and malformed records are ignored.
+export async function readFc27ConceptReservation(get, scope, target, context) {
+  try {
+    if (typeof get !== 'function' || typeof scope !== 'string' || !validTarget(target)) return null;
+    const record = await get(fc27ConceptDraftKey(scope, target), null);
+    if (!record || record.schema !== 1 || record.scope !== scope || record.phase !== 'saved'
+        || record.submitted !== false || !accountMatches(record, context)
+        || record.plan?.challenge?.setId !== target.setId || record.plan?.challenge?.id !== target.challengeId) return null;
+    const refs = Array.isArray(record.plan?.slots) ? record.plan.slots
+      .filter(ref => ref?.kind === 'owned' && validReservationId(ref.id) && validReservationId(ref.definitionId)
+        && Number.isSafeInteger(ref.slot) && ref.slot >= 0 && ref.slot < 11)
+      .map(ref => ({ id: ref.id, definitionId: ref.definitionId })) : [];
+    if (!refs.length || refs.length > 11 || new Set(refs.map(ref => ref.id)).size !== refs.length
+        || new Set(refs.map(ref => ref.definitionId)).size !== refs.length) return null;
+    return refs;
+  } catch { return null; }
+}
 
 export async function readFc27ConceptPending(get, scope, target = null) {
   if (target && !validTarget(target)) fail('FC27_CONCEPT_JOURNAL_UNCONFIRMED');
@@ -50,7 +82,7 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
   };
   const validate = (plan, current, owned) => {
     const result = validateFc27PuzzleConceptDraft(plan, current, owned);
-    if (result.status !== 'verified') fail(result.reason);
+    if (result.status !== 'verified') throw exactError(result.reason, result.mismatch);
   };
   const targetOf = plan => ({ setId: plan.challenge.setId, challengeId: plan.challenge.id });
   const pendingOf = (target, context, identifier) => ({ ...target, operationId: identifier, account: accountOf(context) });
@@ -124,7 +156,11 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
           if (receipt?.status !== 'confirmed' || !same({ setId: receipt.setId, challengeId: receipt.challengeId }, targetOf(plan))) fail('FC27_CONCEPT_SAVE_UNCONFIRMED');
           return readback(provider, record);
         }) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
-      } catch (error) { return { ...blocked(reasonOf(error)), status: boundary ? 'recovery-required' : 'blocked', saved: boundary ? null : false }; }
+      } catch (error) {
+        const detail = mismatch(error?.mismatch);
+        return { ...blocked(reasonOf(error)), ...(detail ? { mismatch: detail } : {}),
+          status: boundary ? 'recovery-required' : 'blocked', saved: boundary ? null : false };
+      }
       finally { provider?.cancel(); }
     },
     async recover(target, { restartIfEmpty = false } = {}) {

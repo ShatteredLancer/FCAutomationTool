@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { applyGalleryFirstOwnerHistory, normalizeGalleryFirstOwnerHistory, removeGalleryFirstOwnerHistory, toggleGalleryFirstOwnerHistory } from '../../src/gallery/first-owner-history.js';
+import { applyGalleryFirstOwnerHistory, galleryFirstOwnerHistoryAction, normalizeGalleryFirstOwnerHistory, removeGalleryFirstOwnerHistory, toggleGalleryFirstOwnerHistory } from '../../src/gallery/first-owner-history.js';
 
 describe('Gallery local First Owner history', () => {
+  it.each([
+    ['uncollected', { collected: false, firstOwned: null }, null],
+    ['collection unknown', { collected: null, firstOwned: null }, null],
+    ['current first owner', { collected: true, firstOwned: true, inClub: true }, null],
+    ['recorded first owner no longer held', { collected: true, firstOwned: true, inClub: false }, null],
+    ['collected with unknown history', { collected: true, firstOwned: null, inClub: false }, 'mark'],
+    ['collected with unknown current ownership', { collected: true, firstOwned: null, inClub: null }, 'mark'],
+    ['market copy does not disprove historical FO', { collected: true, firstOwned: false, inClub: true }, 'mark'],
+    ['historical market copy', { collected: true, firstOwned: false, inClub: false }, 'mark'],
+    ['manual declaration', { collected: true, firstOwned: true, firstOwnedSource: 'local-history' }, 'clear'],
+    ['legacy declaration on missing card', { collected: false, firstOwned: true, firstOwnedSource: 'local-history' }, 'clear'],
+    ['legacy negative declaration', { collected: true, firstOwned: false, firstOwnedSource: 'local-history' }, 'clear'],
+  ])('offers the appropriate history action: %s', (_name, row, action) => {
+    expect(galleryFirstOwnerHistoryAction(row)).toBe(action);
+  });
+
   it('normalizes invalid and duplicate records deterministically', () => {
     expect(normalizeGalleryFirstOwnerHistory([
       { definitionId: 20, firstOwned: true, updatedAt: 4 },

@@ -259,14 +259,18 @@ export async function exerciseGalleryCatalog(context, directory) {
     await scoringHost.locator('.gallery-score summary').click();
     assert.equal(await scoringHost.locator('.gallery-lineup li').count(),2);
     assert.match(await scoringHost.locator('.gallery-bonuses').innerText(),/未知项满足时 1,500/);
+    assert.equal(await scoringHost.locator('.gallery-first-owner-toggle').count(), 1,
+      'only collected unknown FO offers marking; known FO and missing cards do not');
     const fo = scoringHost.locator('.gallery-first-owner-toggle').first();
-    assert.equal(await fo.innerText(), '标记本地 FO');
+    assert.equal(await fo.innerText(), '标记历史 FO');
     await fo.click();
-    assert.equal(await fo.innerText(), '清除本地 FO');
-    assert.equal(await scoringHost.locator('.gallery-player-flags [aria-label="First Owner"]').count(), 1);
+    assert.equal(await fo.innerText(), '清除历史 FO');
+    assert.equal(await scoringHost.locator('.gallery-player-flags [aria-label="First Owner"]').count(), 2);
     await scoringHost.locator('.gallery-first-owner-toggle').first().click();
-    assert.equal(await scoringHost.locator('.gallery-first-owner-toggle').first().innerText(), '标记本地 FO');
-    assert.deepEqual(await page.evaluate(() => globalThis.foCalls), [[900001, true], [900001, null]]);
+    assert.equal(await scoringHost.locator('.gallery-first-owner-toggle').first().innerText(), '标记历史 FO');
+    assert.equal(await scoringHost.locator('.gallery-player-flags [aria-label="First Owner"]').count(), 1,
+      'clearing the manual declaration retains the other card’s observed FO');
+    assert.deepEqual(await page.evaluate(() => globalThis.foCalls), [[900002, true], [900002, null]]);
     await page.evaluate(() => { globalThis.foFail = true; });
     await scoringHost.locator('.gallery-first-owner-toggle').first().click();
     assert.match(await scoringHost.locator('.gallery-first-owner-error').innerText(), /保存失败/);

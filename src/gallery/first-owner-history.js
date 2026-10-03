@@ -1,5 +1,13 @@
 const validId = value => Number.isSafeInteger(value) && value > 0;
 
+export function galleryFirstOwnerHistoryAction(row) {
+  // Always allow undo of an existing declaration, including legacy entries.
+  if (row?.firstOwnedSource === 'local-history') return 'clear';
+  // A market-owned copy cannot disprove a previous first-owner copy.
+  // Only collected versions without confirmed FO need a history entry.
+  return row?.collected === true && row.firstOwned !== true ? 'mark' : null;
+}
+
 export function normalizeGalleryFirstOwnerHistory(rows, { max = 100000 } = {}) {
   if (!Array.isArray(rows) || rows.length > max) return [];
   const result = new Map();

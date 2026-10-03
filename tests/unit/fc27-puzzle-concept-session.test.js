@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
-import { createFc27PuzzleConceptSession, fc27ConceptPendingKey, readFc27ConceptPending } from '../../src/fc27/puzzle-concept-session.js';
+import { createFc27PuzzleConceptSession, fc27ConceptPendingKey, fc27ConceptDraftKey, readFc27ConceptPending, readFc27ConceptReservation } from '../../src/fc27/puzzle-concept-session.js';
 
 function fixture() {
   const input = puzzleFillFixture();
@@ -141,4 +141,20 @@ it('rejects a stored account mismatch before querying EA', async () => {
   const reads = x.state.reads;
   expect(await x.session.recover({ setId: 19, challengeId: 43 })).toMatchObject({ reason: 'FC27_CONCEPT_JOURNAL_UNCONFIRMED' });
   expect(x.state.reads).toBe(reads);
+});
+
+it('recovers owned reservations from a terminal draft written before the reservation index', async () => {
+  const x = fixture();
+  const target = { setId: 19, challengeId: 43 };
+  await x.session.save(x.input, x.suggestion);
+  const record = structuredClone(x.values.get(fc27ConceptDraftKey('ea:test', target)));
+  expect(record.phase).toBe('saved');
+  expect(await readFc27ConceptReservation(async (key, fallback) => x.values.get(key) ?? fallback,
+    'ea:test', target, x.input.context)).toEqual(x.input.inventory.items.slice(0, 10).map(item => ({
+      id: item.id, definitionId: item.definitionId,
+    })));
+  record.account.accountScope = 'another-account';
+  x.values.set(fc27ConceptDraftKey('ea:test', target), record);
+  expect(await readFc27ConceptReservation(async (key, fallback) => x.values.get(key) ?? fallback,
+    'ea:test', target, x.input.context)).toBeNull();
 });

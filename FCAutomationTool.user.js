@@ -133,9 +133,9 @@
   }
   function snapshotFc27ClubPlayer(item2, root) {
     const get = (key) => ownData(item2, key);
-    const id6 = get("id");
+    const id7 = get("id");
     const definitionId = get("definitionId");
-    if (!identity2(id6) || !identity2(definitionId)) throw new Error("FC27_CACHED_ITEM_IDENTITY_CONFLICT");
+    if (!identity2(id7) || !identity2(definitionId)) throw new Error("FC27_CACHED_ITEM_IDENTITY_CONFLICT");
     const upgrades = get("upgrades");
     const noUpgrades = upgrades === null;
     const pile = get("utasPile");
@@ -155,7 +155,7 @@
     const inactive = at(root, ["AuctionTradeStateEnum", "INACTIVE"]);
     const active = at(root, ["AuctionTradeStateEnum", "ACTIVE"]);
     const snapshot = {
-      id: id6,
+      id: id7,
       definitionId,
       type: "player",
       pile: clubPile !== void 0 && pile === clubPile ? "club" : null,
@@ -374,14 +374,14 @@
     }
     function formationSnapshot(squad) {
       const formation = data(squad, "_formation");
-      const id6 = data(formation, "id");
+      const id7 = data(formation, "id");
       const raw = data(formation, "positions");
       let positions2 = null;
       if (Array.isArray(raw) && data(raw, "length") === 11) {
         const copied = Array.from({ length: 11 }, (_, index) => data(data(raw, String(index)), "typeId"));
         if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions2 = copied;
       }
-      return { id: Number.isSafeInteger(id6) && id6 >= 0 && id6 < 1e9 ? id6 : null, positions: positions2 };
+      return { id: Number.isSafeInteger(id7) && id7 >= 0 && id7 < 1e9 ? id7 : null, positions: positions2 };
     }
     function find() {
       if (![27, "27"].includes(data(root, "APP_YEAR_SHORT"))) return null;
@@ -411,7 +411,7 @@
         scope: JSON.stringify([userId, personaId, sku, data(club, "platform")])
       };
     }
-    if (![setId, challengeId].every((id6) => Number.isSafeInteger(id6) && id6 > 0 && id6 < 1e9)) return stop6("INVALID_CHALLENGE_IDENTITY");
+    if (![setId, challengeId].every((id7) => Number.isSafeInteger(id7) && id7 > 0 && id7 < 1e9)) return stop6("INVALID_CHALLENGE_IDENTITY");
     try {
       const initial = find();
       if (!initial) return stop6("IN_PROGRESS_CHALLENGE_UNCONFIRMED");
@@ -502,18 +502,18 @@
       const collection = ownData(set, "challenges");
       if (!collection) continue;
       for (const challenge of values2(collection, 50)) {
-        const id6 = ownData(challenge, "id");
+        const id7 = ownData(challenge, "id");
         const setId = ownData(set, "id");
-        if (ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "setId") !== setId || !Number.isSafeInteger(id6) || id6 <= 0 || !Number.isSafeInteger(setId) || setId <= 0) continue;
+        if (ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "setId") !== setId || !Number.isSafeInteger(id7) || id7 <= 0 || !Number.isSafeInteger(setId) || setId <= 0) continue;
         const name = ownData(challenge, "name");
-        targets.push({ id: id6, setId, name: typeof name === "string" && name.length <= 160 ? name : `Challenge ${id6}` });
+        targets.push({ id: id7, setId, name: typeof name === "string" && name.length <= 160 ? name : `Challenge ${id7}` });
       }
     }
     return targets;
   }
   function normalizeFc27TraditionalChallenge({ context, setId, challenge, layout, keys: keys2, scopes, qualities }) {
-    const id6 = ownData(challenge, "id");
-    if (ownData(challenge, "setId") !== setId || ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "eligibilityOperation") !== "AND" || layout.status !== "observed" || layout.setId !== setId || layout.challengeId !== id6 || layout.slotCount !== 11 || ownData(keys2, "PLAYER_MIN_OVR") !== 26 || ownData(keys2, "PLAYER_MAX_OVR") !== 28 || ownData(scopes, "GREATER") !== 0 || ownData(scopes, "EXACT") !== 2) {
+    const id7 = ownData(challenge, "id");
+    if (ownData(challenge, "setId") !== setId || ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "eligibilityOperation") !== "AND" || layout.status !== "observed" || layout.setId !== setId || layout.challengeId !== id7 || layout.slotCount !== 11 || ownData(keys2, "PLAYER_MIN_OVR") !== 26 || ownData(keys2, "PLAYER_MAX_OVR") !== 28 || ownData(scopes, "GREATER") !== 0 || ownData(scopes, "EXACT") !== 2) {
       throw new Error("FC27_CHALLENGE_UNVERIFIED");
     }
     const count2 = layout.requiredPlayerCount;
@@ -548,7 +548,7 @@
       requirementsOperation: "AND",
       completed: false,
       setId,
-      id: id6,
+      id: id7,
       slotCount: layout.slotCount,
       brickIndices: [...layout.simpleBrickIndices, ...layout.customBrickIndices],
       requirements
@@ -604,7 +604,7 @@
     if (!integer2(slotCount, 1, 11) || !Array.isArray(brickIndices) || brickIndices.some((index) => !integer2(index, 0, slotCount - 1)) || new Set(brickIndices).size !== brickIndices.length || slotCount - brickIndices.length !== required2) {
       return stop2("SLOT_LAYOUT_UNVERIFIED");
     }
-    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id6) => !identity3(id6))) return stop2("PROTECTION_POLICY_UNVERIFIED");
+    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id7) => !identity3(id7))) return stop2("PROTECTION_POLICY_UNVERIFIED");
     if (inventory.schema !== 1 || inventory.kind !== "normalized-inventory" || !["ready", "provisional"].includes(inventory.status) || !Array.isArray(inventory.items) || inventory.items.length > 2e4) return stop2("INVENTORY_UNVERIFIED");
     const seen = /* @__PURE__ */ new Set();
     const candidates = [];
@@ -760,7 +760,7 @@
       const goldenMax = ownData(set, "goldenrange");
       const rawLeagues = ownData(set, "shield_league");
       const leagues = Array.isArray(rawLeagues) && rawLeagues.length <= 200 ? Array.from({ length: rawLeagues.length }, (_, index) => ownData(rawLeagues, String(index))) : null;
-      if (flags2.some((value) => typeof value !== "boolean") || !Number.isInteger(goldenMax) || goldenMax < 75 || goldenMax > 99 || !leagues || leagues.some((id6) => !Number.isSafeInteger(id6) || id6 < 1)) throw new Error("FC27_FSU_POLICY_UNVERIFIED");
+      if (flags2.some((value) => typeof value !== "boolean") || !Number.isInteger(goldenMax) || goldenMax < 75 || goldenMax > 99 || !leagues || leagues.some((id7) => !Number.isSafeInteger(id7) || id7 < 1)) throw new Error("FC27_FSU_POLICY_UNVERIFIED");
       report.fsu.policy = {
         onlyUntradeable: flags2[0],
         excludeEvolution: flags2[1],
@@ -1113,7 +1113,7 @@
         return count2;
       },
       readPage: async ({ start, count: count2, definitionIds }) => {
-        if (!Number.isInteger(start) || start < 0 || start > 2e4 || !Number.isInteger(count2) || count2 < 1 || count2 > 250 || !Array.isArray(definitionIds) || definitionIds.length > 50 || definitionIds.some((id6) => !validId(id6)) || new Set(definitionIds).size !== definitionIds.length) throw new Error("FC27_CLUB_QUERY_INVALID");
+        if (!Number.isInteger(start) || start < 0 || start > 2e4 || !Number.isInteger(count2) || count2 < 1 || count2 > 250 || !Array.isArray(definitionIds) || definitionIds.length > 50 || definitionIds.some((id7) => !validId(id7)) || new Set(definitionIds).size !== definitionIds.length) throw new Error("FC27_CLUB_QUERY_INVALID");
         const body = { type: "player", start, count: count2 };
         if (definitionIds.length) body.defId = definitionIds.join(",");
         const response = await request("players", body);
@@ -1187,9 +1187,9 @@
     };
     async function request(action, target = {}, beforeDispatch = null) {
       if (busy || stopped) return fail3("FC27_TRANSACTION_TRANSPORT_BLOCKED");
-      const id6 = target.challengeId;
+      const id7 = target.challengeId;
       const mutation = action === "save" || action === "save-concept" || action === "save-purchase" || action === "submit";
-      if (!["unassigned", "packs", "save", "save-concept", "save-purchase", "submit"].includes(action) || mutation && (!Number.isSafeInteger(id6) || id6 <= 0 || canWrite() !== true)) return fail3("FC27_LIVE_DISABLED");
+      if (!["unassigned", "packs", "save", "save-concept", "save-purchase", "submit"].includes(action) || mutation && (!Number.isSafeInteger(id7) || id7 <= 0 || canWrite() !== true)) return fail3("FC27_LIVE_DISABLED");
       if (action === "save" || action === "save-concept" || action === "save-purchase") {
         const declaredBricks = target.simpleBrickIndices === void 0 ? [] : target.simpleBrickIndices;
         const empty = action === "save-purchase" ? target.emptySlotIndices : [];
@@ -1210,7 +1210,7 @@
         req.doReauth = false;
         req.timeout = 1e4;
         req.requestType = mutation ? "PUT" : "GET";
-        const endpoint = `/ut/game/${game}/${action === "unassigned" ? "purchased/items" : action === "packs" ? "store/purchaseGroup/all" : `sbs/challenge/${id6}${["save", "save-concept", "save-purchase"].includes(action) ? "/squad" : ""}`}`;
+        const endpoint = `/ut/game/${game}/${action === "unassigned" ? "purchased/items" : action === "packs" ? "store/purchaseGroup/all" : `sbs/challenge/${id7}${["save", "save-concept", "save-purchase"].includes(action) ? "/squad" : ""}`}`;
         req.setPath(endpoint);
         const url = new URL(ownData(req, "url"));
         if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) return fail3("FC27_TRANSACTION_ENDPOINT_UNVERIFIED");
@@ -1295,14 +1295,14 @@
     if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail19();
     const ids = Array.from({ length: slots.length }, (_, index) => {
       const slot = ownData(slots, String(index));
-      const id7 = ownData(ownData(slot, "_item"), "id");
-      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id7) || id7 < -1 || (index >= 11 || simple.includes(index)) && id7 > 0) return fail19();
-      return id7;
+      const id8 = ownData(ownData(slot, "_item"), "id");
+      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id8) || id8 < -1 || (index >= 11 || simple.includes(index)) && id8 > 0) return fail19();
+      return id8;
     });
     const formation = ownData(squad, "_formation");
-    const id6 = ownData(formation, "id");
+    const id7 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
-    if (!Number.isSafeInteger(id6) || id6 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail19();
+    if (!Number.isSafeInteger(id7) || id7 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail19();
     const positions2 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
     if (positions2.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail19();
     return {
@@ -1313,7 +1313,7 @@
       simpleBrickIndices: [...simple],
       customBrickIndices: [...custom],
       requiredPlayerCount: 11 - bricks.length,
-      formation: { id: id6, positions: positions2 },
+      formation: { id: id7, positions: positions2 },
       squadEmpty: ids.every((value) => value === 0 || value === -1)
     };
   }
@@ -1328,13 +1328,13 @@
     return slots.map((slot, index) => {
       if (ownData(slot, "index") !== index) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
       const item2 = ownData(slot, "_item");
-      const id6 = ownData(item2, "id");
-      if (!Number.isSafeInteger(id6) || id6 < -1) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
-      if (id6 <= 0) return null;
+      const id7 = ownData(item2, "id");
+      if (!Number.isSafeInteger(id7) || id7 < -1) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
+      if (id7 <= 0) return null;
       const definitionId = ownData(item2, "definitionId");
       const concept = ownData(item2, "concept");
-      if (!Number.isSafeInteger(definitionId) || definitionId <= 0 || typeof concept !== "boolean" || concept && id6 !== definitionId) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
-      return { id: id6, definitionId, concept };
+      if (!Number.isSafeInteger(definitionId) || definitionId <= 0 || typeof concept !== "boolean" || concept && id7 !== definitionId) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
+      return { id: id7, definitionId, concept };
     });
   }
 
@@ -1401,8 +1401,8 @@
     if (!Array.isArray(slots) || slots.length < 11) return null;
     return slots.slice(0, 11).map((slot, index) => {
       const item2 = ownData(slot, "_item");
-      const id6 = ownData(item2, "id");
-      return [0, -1].includes(id6) ? null : { slot: index, id: id6, definitionId: ownData(item2, "definitionId"), concept: ownData(item2, "concept") };
+      const id7 = ownData(item2, "id");
+      return [0, -1].includes(id7) ? null : { slot: index, id: id7, definitionId: ownData(item2, "definitionId"), concept: ownData(item2, "concept") };
     });
   }
   function readFc27PuzzlePageSnapshot(root, { setId, challengeId }) {
@@ -1669,7 +1669,11 @@
       if (!Array.isArray(refs3) || refs3.length < 1 || refs3.length > 11 || refs3.some((ref) => !identity4(ref.id) || !identity4(ref.definitionId) || ref.pile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail4("FC27_EXACT_ITEMS_CHANGED");
       const items = await club.readPage({ start: 0, count: 250, definitionIds: refs3.map((ref) => ref.definitionId) });
       assert();
-      if (items.length >= 250 || new Set(items.map((item2) => item2.id)).size !== items.length || items.some((item2) => !refs3.some((ref) => ref.definitionId === item2.definitionId))) return fail4("FC27_EXACT_ITEMS_CHANGED");
+      if (items.length >= 250 || new Set(items.map((item2) => item2.id)).size !== items.length || items.some((item2) => !refs3.some((ref) => ref.definitionId === item2.definitionId))) {
+        const error2 = new Error("FC27_EXACT_ITEMS_CHANGED");
+        error2.mismatch = "club-response";
+        throw error2;
+      }
       return items.filter((item2) => refs3.some((ref) => ref.id === item2.id && ref.definitionId === item2.definitionId)).map(protectedItem);
     };
     const rewardCount = async (reward) => projectFc27OwnedPackCount(root, success(await transport.request("packs")), reward);
@@ -1713,7 +1717,7 @@
         observedAt: Date.now(),
         setId: record.setId,
         challengeId: record.challengeId,
-        present: present.map(({ id: id6, definitionId, pile }) => ({ id: id6, definitionId, pile })),
+        present: present.map(({ id: id7, definitionId, pile }) => ({ id: id7, definitionId, pile })),
         setTimesCompleted: sets2[0].timesCompleted,
         packId: record.reward.value,
         packCount,
@@ -1853,14 +1857,14 @@
           return fail4("FC27_SQUAD_STATE_UNVERIFIED");
         }
         const ids = slots.map((slot) => ownData(ownData(slot, "_item"), "id"));
-        if (ids.some((id6, index) => !Number.isSafeInteger(id6) || ownData(slots[index], "index") !== index || (index >= 11 || plan.challenge.brickIndices.includes(index)) && ![0, -1].includes(id6))) return fail4("FC27_SQUAD_STATE_UNVERIFIED");
+        if (ids.some((id7, index) => !Number.isSafeInteger(id7) || ownData(slots[index], "index") !== index || (index >= 11 || plan.challenge.brickIndices.includes(index)) && ![0, -1].includes(id7))) return fail4("FC27_SQUAD_STATE_UNVERIFIED");
         return {
           context,
           fresh: true,
           observedAt: Date.now(),
           setId: plan.challenge.setId,
           challengeId: plan.challenge.id,
-          squadEmpty: ids.every((id6) => id6 === 0 || id6 === -1),
+          squadEmpty: ids.every((id7) => id7 === 0 || id7 === -1),
           ...plan.kind === "puzzle-fill" ? { layout: projectFc27PuzzleLayout(
             root,
             loaded,
@@ -1969,7 +1973,7 @@
         return {
           ...evidence,
           progressConfirmed: evidence.setTimesCompleted === plan.set.timesCompleted + 1,
-          consumed: evidence.present.length === 0 ? plan.selected.map(({ id: id6, definitionId, pile }) => ({ id: id6, definitionId, pile })) : [],
+          consumed: evidence.present.length === 0 ? plan.selected.map(({ id: id7, definitionId, pile }) => ({ id: id7, definitionId, pile })) : [],
           rewardDelta: evidence.packCount - baseline.count
         };
       },
@@ -3023,7 +3027,7 @@
     if (clubLinks?.schema !== 1 || clubLinks.complete !== true || !Array.isArray(clubLinks.links) || clubLinks.links.length > 2e4 || clubLinks.links.some((pair) => !Array.isArray(pair) || pair.length !== 2 || !pair.every(positive3))) return null;
     const links = new Map(clubLinks.links);
     if (links.size !== clubLinks.links.length) return null;
-    return (id6) => positive3(id6) ? links.get(id6) ?? id6 : null;
+    return (id7) => positive3(id7) ? links.get(id7) ?? id7 : null;
   }
   function matchFc27SbcItemRule(rule, item2, groupMatcher, clubResolver) {
     if (![
@@ -3854,8 +3858,8 @@
     const eligible = squad.map((item2, slot) => item2 !== null && item2.positions.includes(formation.positions[slot]));
     squad.forEach((item2, slot) => {
       if (eligible[slot]) fields4.forEach((field, index) => {
-        const id6 = field.value(item2);
-        counts[index].set(id6, (counts[index].get(id6) ?? 0) + 1);
+        const id7 = field.value(item2);
+        counts[index].set(id7, (counts[index].get(id7) ?? 0) + 1);
       });
     });
     const slotChemistry = squad.map((item2, slot) => eligible[slot] ? Math.min(3, fields4.reduce((total, field, index) => {
@@ -3896,10 +3900,10 @@
     35: "CHEMISTRY_POINTS"
   };
   function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
-    const failed = (mismatch = "shape") => ({
+    const failed = (mismatch2 = "shape") => ({
       status: "blocked",
       reason: "FC27_EXACT_ITEMS_CHANGED",
-      mismatch: typeof mismatch === "string" && /^[a-z-]{1,40}$/.test(mismatch) ? mismatch : "shape"
+      mismatch: typeof mismatch2 === "string" && /^[a-z-]{1,40}$/.test(mismatch2) ? mismatch2 : "shape"
     });
     const validId12 = (value) => Number.isSafeInteger(value) && value > 0;
     if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11 || freshItems.length >= 250 || !Array.isArray(plannedItems) || plannedItems.length !== selected.length) return failed();
@@ -3955,7 +3959,7 @@
       const size = Object.getOwnPropertyDescriptor(Map.prototype, "size").get.call(map);
       if (size > 2e4) return null;
       const links = Array.from(Map.prototype.entries.call(map));
-      if (links.length !== size || links.some((pair) => !pair.every((id6) => Number.isSafeInteger(id6) && id6 > 0))) return null;
+      if (links.length !== size || links.some((pair) => !pair.every((id7) => Number.isSafeInteger(id7) && id7 > 0))) return null;
       return Object.freeze({ schema: 1, complete: true, links: Object.freeze(links.map((pair) => Object.freeze(pair))) });
     } catch {
       return null;
@@ -4693,7 +4697,7 @@
               brickIndices: [...plan.challenge.brickIndices],
               setId: plan.challenge.setId,
               challengeId: plan.challenge.id,
-              itemRefs: plan.selected.map(({ id: id6, definitionId, pile, slot }) => ({ id: id6, definitionId, pile, slot })),
+              itemRefs: plan.selected.map(({ id: id7, definitionId, pile, slot }) => ({ id: id7, definitionId, pile, slot })),
               phase: "save-pending",
               submitted: false,
               updatedAt: time()
@@ -4800,7 +4804,7 @@
     allowed.sort((a, b) => priority(b.level) - priority(a.level) || a.min - b.min);
     const identities = parsed.rules.filter((rule) => rule.mode === "min" && rule.count > 0 && ["from-nations", "from-leagues", "from-clubs"].includes(rule.kind));
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
-    const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id6) => ({ [fields4[rule.kind]]: id6 })));
+    const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id7) => ({ [fields4[rule.kind]]: id7 })));
     const queries = [];
     const add = (query) => {
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
@@ -5764,12 +5768,12 @@
             const tradeId = ownData(row, "tradeId");
             if (!(valid(tradeId, 1, Number.MAX_SAFE_INTEGER) || typeof tradeId === "string" && /^[1-9]\d{0,19}$/.test(tradeId)) || ids.has(String(tradeId))) throw error("AUCTION_IDENTITY_UNVERIFIED");
             ids.add(String(tradeId));
-            const price = ownData(row, "buyNowPrice");
-            if (ownData(row, "tradeState") === "active" && valid(ownData(row, "expires"), 1, 604800) && valid(price, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE) && ownData(row, "tradeOwner") === false && ownData(item2, "untradeable") === false) {
-              prices.push(price);
+            const price2 = ownData(row, "buyNowPrice");
+            if (ownData(row, "tradeState") === "active" && valid(ownData(row, "expires"), 1, 604800) && valid(price2, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE) && ownData(row, "tradeOwner") === false && ownData(item2, "untradeable") === false) {
+              prices.push(price2);
               const bid = ownData(row, "currentBid"), starting = ownData(row, "startingBid");
               listings.push({
-                buyNow: price,
+                buyNow: price2,
                 expires: ownData(row, "expires"),
                 currentBid: valid(bid, 0, MAX_PUZZLE_QUOTE_PRICE) ? bid : null,
                 startingBid: valid(starting, 150, MAX_PUZZLE_QUOTE_PRICE) ? starting : null
@@ -5798,7 +5802,12 @@
 
   // src/fc27/puzzle-concept-draft.js
   var same8 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var blocked6 = (reason) => ({ status: "blocked", reason, executable: false });
+  var blocked6 = (reason, mismatch2 = null) => ({
+    status: "blocked",
+    reason,
+    executable: false,
+    ...typeof mismatch2 === "string" ? { mismatch: mismatch2 } : {}
+  });
   var scope = (input) => ({
     context: input.context,
     challenge: input.challenge,
@@ -5859,7 +5868,7 @@
     });
     if (squad.some((item2, slot) => slots[slot] && (!item2 || item2.definitionId !== slots[slot].definitionId || item2.rating !== slots[slot].rating))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED");
     for (const item2 of purchases) {
-      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || ![0, 1].includes(item2.rarity) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id6) => Number.isSafeInteger(id6) && id6 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id6) => !Number.isSafeInteger(id6) || id6 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
+      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || ![0, 1].includes(item2.rarity) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id7) => Number.isSafeInteger(id7) && id7 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id7) => !Number.isSafeInteger(id7) || id7 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
     }
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, squad.filter(Boolean).length);
     if (parsed.status !== "observed") return blocked6(parsed.reason);
@@ -5914,18 +5923,18 @@
         status: "provisional",
         items: plan.owned
       } }, {
-        selectedOwned: plan.slots.filter((ref) => ref?.kind === "owned").map(({ id: id6, definitionId, rating, pile, slot }) => ({ id: id6, definitionId, rating, pile, slot })),
+        selectedOwned: plan.slots.filter((ref) => ref?.kind === "owned").map(({ id: id7, definitionId, rating, pile, slot }) => ({ id: id7, definitionId, rating, pile, slot })),
         purchases: plan.purchases,
         purchaseCount: plan.purchaseCount
       });
-      if (rebuilt.status !== "prepared" || !same8(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED");
-      if (!Array.isArray(freshOwned) || freshOwned.length >= 250 || new Set(freshOwned.map((item2) => item2.id)).size !== freshOwned.length || freshOwned.some((item2) => !plan.owned.some((ref) => ref.definitionId === item2.definitionId))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED");
+      if (rebuilt.status !== "prepared" || !same8(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED", "plan");
+      if (!Array.isArray(freshOwned) || freshOwned.length >= 250 || new Set(freshOwned.map((item2) => item2.id)).size !== freshOwned.length || freshOwned.some((item2) => !plan.owned.some((ref) => ref.definitionId === item2.definitionId))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-shape");
       const owned2 = plan.owned.map((expected) => {
         const fresh = freshOwned.find((item2) => item2.id === expected.id);
         const actual = fresh && project2({ ...fresh, protected: fresh.protected ?? expected.protected });
         return same8(actual, expected) ? actual : null;
       });
-      if (owned2.some((item2) => !item2)) return blocked6("FC27_CONCEPT_ITEMS_CHANGED");
+      if (owned2.some((item2) => !item2)) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-identity");
       return assess2(current2, plan.slots, owned2, plan.purchases);
     } catch {
       return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED");
@@ -5939,13 +5948,36 @@
   var same9 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var reasonOf = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_CONCEPT_UNCONFIRMED";
   var blocked7 = (reason) => ({ status: "blocked", reason, saved: false, submitted: false });
+  var mismatch = (value) => typeof value === "string" && /^[a-z-]{1,40}$/.test(value) ? value : null;
+  var exactError = (reason = "FC27_EXACT_ITEMS_CHANGED", detail = null) => {
+    const error2 = new Error(reason);
+    if (mismatch(detail)) error2.mismatch = detail;
+    return error2;
+  };
   var fc27ConceptPendingKey = (scope2, target = null) => `fcat-fc27-concept-pending:${scope2}${target ? `:${target.setId}:${target.challengeId}` : ""}`;
+  var fc27ConceptDraftKey = (scope2, target) => {
+    if (!validTarget(target)) throw new Error("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+    return `fcat-fc27-concept-draft:${scope2}:${target.setId}:${target.challengeId}`;
+  };
   var keyOf2 = (scope2, target) => `fcat-fc27-concept-draft:${scope2}:${target.setId}:${target.challengeId}`;
   var indexKeyOf2 = (scope2) => `${fc27ConceptPendingKey(scope2)}:index`;
   var sameTarget = (a, b) => a?.setId === b?.setId && a?.challengeId === b?.challengeId;
-  var validTarget = (target) => [target?.setId, target?.challengeId].every((id6) => Number.isSafeInteger(id6) && id6 > 0);
+  var validTarget = (target) => [target?.setId, target?.challengeId].every((id7) => Number.isSafeInteger(id7) && id7 > 0);
   var accountOf = (context) => ({ accountScope: context?.accountScope, platform: context?.platform });
   var accountMatches = (record, context) => !record?.account || record.account.accountScope === context?.accountScope && record.account.platform === context?.platform;
+  var validReservationId = (value) => Number.isSafeInteger(value) && value > 0;
+  async function readFc27ConceptReservation(get, scope2, target, context) {
+    try {
+      if (typeof get !== "function" || typeof scope2 !== "string" || !validTarget(target)) return null;
+      const record = await get(fc27ConceptDraftKey(scope2, target), null);
+      if (!record || record.schema !== 1 || record.scope !== scope2 || record.phase !== "saved" || record.submitted !== false || !accountMatches(record, context) || record.plan?.challenge?.setId !== target.setId || record.plan?.challenge?.id !== target.challengeId) return null;
+      const refs3 = Array.isArray(record.plan?.slots) ? record.plan.slots.filter((ref) => ref?.kind === "owned" && validReservationId(ref.id) && validReservationId(ref.definitionId) && Number.isSafeInteger(ref.slot) && ref.slot >= 0 && ref.slot < 11).map((ref) => ({ id: ref.id, definitionId: ref.definitionId })) : [];
+      if (!refs3.length || refs3.length > 11 || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return null;
+      return refs3;
+    } catch {
+      return null;
+    }
+  }
   async function readFc27ConceptPending(get, scope2, target = null) {
     if (target && !validTarget(target)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     if (target) {
@@ -5989,7 +6021,7 @@
     };
     const validate2 = (plan, current2, owned2) => {
       const result = validateFc27PuzzleConceptDraft(plan, current2, owned2);
-      if (result.status !== "verified") fail12(result.reason);
+      if (result.status !== "verified") throw exactError(result.reason, result.mismatch);
     };
     const targetOf = (plan) => ({ setId: plan.challenge.setId, challengeId: plan.challenge.id });
     const pendingOf = (target, context2, identifier) => ({ ...target, operationId: identifier, account: accountOf(context2) });
@@ -6082,7 +6114,13 @@
             return readback(provider, record);
           }) ?? blocked7("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         } catch (error2) {
-          return { ...blocked7(reasonOf(error2)), status: boundary ? "recovery-required" : "blocked", saved: boundary ? null : false };
+          const detail = mismatch(error2?.mismatch);
+          return {
+            ...blocked7(reasonOf(error2)),
+            ...detail ? { mismatch: detail } : {},
+            status: boundary ? "recovery-required" : "blocked",
+            saved: boundary ? null : false
+          };
         } finally {
           provider?.cancel();
         }
@@ -6552,12 +6590,12 @@
     onSearchFailure = () => {
     }
   }) {
-    let price = Math.min(initial, ceiling);
+    let price2 = Math.min(initial, ceiling);
     const queried = /* @__PURE__ */ new Set();
     let items = [];
     while (attempts-- > 0) {
-      if (price > ceiling || queried.has(price)) break;
-      const response = await search(price);
+      if (price2 > ceiling || queried.has(price2)) break;
+      const response = await search(price2);
       const reply = Array.isArray(response) ? { success: true, data: { items: response } } : response;
       if (!reply.success) {
         onSearchFailure(reply);
@@ -6566,9 +6604,9 @@
       onResults();
       const page = reply.data.items;
       items = items.concat(page);
-      queried.add(price);
-      if (!page.length) price = above(price);
-      else if (page.length === 21) price = below(price);
+      queried.add(price2);
+      if (!page.length) price2 = above(price2);
+      else if (page.length === 21) price2 = below(price2);
       else break;
       if (attempts > 0) await wait(0.2, 0.5);
     }
@@ -6746,11 +6784,11 @@
           onSearchFailure: (reply) => {
             searchFailure = { reason: "FC27_BUY_SEARCH_FAILED", ...responseCodes(reply) };
           },
-          above: (price) => root.UTCurrencyInputControl.getIncrementAboveVal(price),
-          below: (price) => root.UTCurrencyInputControl.getIncrementBelowVal(price),
-          search: async (price) => {
+          above: (price2) => root.UTCurrencyInputControl.getIncrementAboveVal(price2),
+          below: (price2) => root.UTCurrencyInputControl.getIncrementBelowVal(price2),
+          search: async (price2) => {
             verifyCurrent(currentRecord);
-            criteria.maxBuy = price;
+            criteria.maxBuy = price2;
             model.updateSearchCriteria(criteria);
             service.clearTransferMarketCache();
             const reply = await observe(() => service.searchTransferMarket(model.searchCriteria, 1));
@@ -6906,22 +6944,98 @@
     });
   }
 
+  // src/gallery/net-cost.js
+  var GALLERY_NET_COST_SCHEMA = 1;
+  var GALLERY_MARKET_TAX_BPS = 500;
+  var STATES = /* @__PURE__ */ new Set(["held", "listed", "sold", "unsold", "unknown"]);
+  var integer9 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var id4 = (value) => integer9(value, 1);
+  var price = (value) => integer9(value, 150, 15e6);
+  function normalizePurchase(value) {
+    if (!value || !id4(value.itemId) || !id4(value.definitionId) || !price(value.purchasePrice)) return null;
+    const state = STATES.has(value.state) ? value.state : "held";
+    if (value.listedPrice != null && !price(value.listedPrice)) return null;
+    if (state === "sold" && !price(value.soldPrice)) return null;
+    if (state !== "sold" && value.soldPrice != null) return null;
+    return {
+      itemId: value.itemId,
+      definitionId: value.definitionId,
+      purchasePrice: value.purchasePrice,
+      tradeId: typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) ? value.tradeId : null,
+      purchasedAt: integer9(value.purchasedAt) ? value.purchasedAt : null,
+      state,
+      listedPrice: price(value.listedPrice) ? value.listedPrice : null,
+      soldPrice: price(value.soldPrice) ? value.soldPrice : null,
+      soldAt: integer9(value.soldAt) ? value.soldAt : null,
+      reason: typeof value.reason === "string" ? value.reason.slice(0, 160) : null
+    };
+  }
+  function normalizeGalleryNetCostLedger(input = {}) {
+    if (!input || typeof input !== "object" || input.schema !== GALLERY_NET_COST_SCHEMA) return null;
+    const entries2 = Array.isArray(input.entries) ? input.entries.map(normalizePurchase) : [];
+    if (entries2.some((entry) => !entry) || new Set(entries2.map((entry) => entry.itemId)).size !== entries2.length) return null;
+    const taxBps = input.taxBps ?? GALLERY_MARKET_TAX_BPS;
+    if (!integer9(taxBps, 0, 1e4)) return null;
+    return {
+      schema: GALLERY_NET_COST_SCHEMA,
+      scope: typeof input.scope === "string" ? input.scope.slice(0, 160) : null,
+      taxBps,
+      entries: entries2
+    };
+  }
+  function galleryNetSale(priceValue, taxBps = GALLERY_MARKET_TAX_BPS) {
+    if (!price(priceValue) || !integer9(taxBps, 0, 1e4)) return null;
+    return Math.floor(priceValue * (1e4 - taxBps) / 1e4);
+  }
+  function summarizeGalleryNetCost(ledger) {
+    const current2 = normalizeGalleryNetCostLedger(ledger);
+    if (!current2) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_LEDGER_INVALID" };
+    const spent = current2.entries.reduce((sum2, entry) => sum2 + entry.purchasePrice, 0);
+    const sold = current2.entries.filter((entry) => entry.state === "sold" && price(entry.soldPrice));
+    const grossRevenue = sold.reduce((sum2, entry) => sum2 + entry.soldPrice, 0);
+    const tax = sold.reduce((sum2, entry) => sum2 + (entry.soldPrice - galleryNetSale(entry.soldPrice, current2.taxBps)), 0);
+    const netRevenue = grossRevenue - tax;
+    const heldCost = current2.entries.filter((entry) => entry.state !== "sold").reduce((sum2, entry) => sum2 + entry.purchasePrice, 0);
+    return {
+      status: "observed",
+      entries: current2.entries.length,
+      sold: sold.length,
+      held: current2.entries.length - sold.length,
+      spent,
+      grossRevenue,
+      tax,
+      netRevenue,
+      netCost: spent - netRevenue,
+      heldCost,
+      taxBps: current2.taxBps
+    };
+  }
+
   // src/gallery/purchase-session.js
   var same13 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var id4 = (value) => Number.isSafeInteger(value) && value > 0;
+  var id5 = (value) => Number.isSafeInteger(value) && value > 0;
   var safeReason5 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_PURCHASE_UNCONFIRMED";
   var states = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club", "collected"]);
   var galleryPurchaseKey = (scope2) => `fcat-fc27-gallery-purchase:${scope2}`;
   var galleryPurchasePendingKey = (scope2) => `fcat-fc27-gallery-purchase-pending:${scope2}`;
   var pending = (record) => record.entries.some((entry) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(entry.state));
-  var quote = (value, definitionId) => value?.definitionId === definitionId && id4(value.itemId) && typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15e6;
+  var quote = (value, definitionId) => value?.definitionId === definitionId && id5(value.itemId) && typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15e6;
   var summary = (record) => {
     const entries2 = record?.entries ?? [], acquired = entries2.filter((entry) => ["bought", "move-pending", "move-rejected", "club"].includes(entry.state));
+    const purchases = acquired.filter((entry) => id5(entry.itemId) && id5(entry.definitionId) && Number.isSafeInteger(entry.price)).map((entry) => ({
+      itemId: entry.itemId,
+      definitionId: entry.definitionId,
+      tradeId: entry.tradeId,
+      purchasePrice: entry.price,
+      state: "held"
+    }));
+    const accounting = summarizeGalleryNetCost({ schema: 1, scope: record?.scope ?? null, entries: purchases });
     return {
       total: entries2.length,
       purchased: acquired.length,
       completed: entries2.filter((entry) => ["club", "collected"].includes(entry.state)).length,
-      spent: acquired.reduce((sum2, entry) => sum2 + (entry.price ?? 0), 0)
+      spent: acquired.reduce((sum2, entry) => sum2 + (entry.price ?? 0), 0),
+      accounting
     };
   };
   var itemResults = (record) => (record?.entries ?? []).map((entry, index) => ({
@@ -6932,7 +7046,7 @@
     reason: record.lastResult?.failures?.find((row) => row.definitionId === entry.definitionId)?.reason ?? null
   }));
   function validate(record, scope2, context) {
-    if (!record || record.schema !== 1 || record.scope !== scope2 || !same13(record.context, context) || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id4(entry.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+    if (!record || record.schema !== 1 || record.scope !== scope2 || !same13(record.context, context) || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id5(entry.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
   }
   function createGalleryPurchaseSession({
     scope: scope2,
@@ -6997,7 +7111,7 @@
               binding = record.binding;
               budget = record.budget ?? null;
             }
-            if (plan.some((item2) => !id4(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
+            if (plan.some((item2) => !id5(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
             const changed = record && (!same13(record.binding, binding) || !same13(record.plan, plan));
             if (changed && (oldPending || pending(record))) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
             if (changed) await write(`${key}:${record.operationId}`, record);
@@ -7173,7 +7287,7 @@
   });
   var puzzleCatalogCacheKey = (scope2, setId, challengeId = "all") => `fcat-fc27-puzzle-catalog:${scope2}:${setId}:${challengeId}`;
   var puzzleReservationKey = (scope2) => `fcat-fc27-puzzle-reservations:${scope2}`;
-  var validReservationId = (value) => Number.isSafeInteger(value) && value > 0;
+  var validReservationId2 = (value) => Number.isSafeInteger(value) && value > 0;
   var reservationTarget = (value) => Number.isSafeInteger(value) && value > 0;
   var readPuzzleReservations = async (get, scope2) => {
     const value = await get(puzzleReservationKey(scope2), null);
@@ -7182,7 +7296,7 @@
       throw new Error("FC27_PUZZLE_RESERVATION_UNVERIFIED");
     }
     const targets = value.targets.map((entry) => {
-      if (!reservationTarget(entry?.setId) || !reservationTarget(entry?.challengeId) || !Array.isArray(entry.itemRefs) || entry.itemRefs.length > 11 || entry.itemRefs.some((ref) => !validReservationId(ref?.id) || !validReservationId(ref?.definitionId))) {
+      if (!reservationTarget(entry?.setId) || !reservationTarget(entry?.challengeId) || !Array.isArray(entry.itemRefs) || entry.itemRefs.length > 11 || entry.itemRefs.some((ref) => !validReservationId2(ref?.id) || !validReservationId2(ref?.definitionId))) {
         throw new Error("FC27_PUZZLE_RESERVATION_UNVERIFIED");
       }
       return {
@@ -7292,9 +7406,40 @@
       }
       return { value, itemIds, definitionIds };
     };
+    const readCachedChallengeIds = (setId) => {
+      try {
+        const repository = ownData(ownData(root, "services"), "SBC")?.repository;
+        const sets2 = ownData(repository, "sets");
+        const collection = ownData(sets2, "_collection") ?? sets2;
+        const set = ownData(collection, String(setId));
+        const challenges = ownData(set, "challenges") ?? ownData(set, "_challenges");
+        const entries2 = ownData(challenges, "_collection") ?? challenges;
+        if (!entries2 || typeof entries2 !== "object") return [];
+        const keys2 = Object.getOwnPropertyNames(entries2).filter((key) => key !== "length");
+        if (keys2.length > 50) return [];
+        const ids = keys2.map((key) => ownData(entries2, key)?.id).filter((id7) => Number.isSafeInteger(id7) && id7 > 0);
+        return [...new Set(ids)];
+      } catch {
+        return [];
+      }
+    };
+    const migratePuzzleReservations = async (setId, challengeId) => {
+      const current2 = await readPuzzleReservations(gmGetValue, scope2);
+      const targets = [...current2.targets];
+      let changed = false;
+      for (const candidate of readCachedChallengeIds(setId)) {
+        if (candidate === challengeId || targets.some((entry) => entry.setId === setId && entry.challengeId === candidate)) continue;
+        const refs3 = await readFc27ConceptReservation(gmGetValue, scope2, { setId, challengeId: candidate }, context);
+        if (!refs3?.length) continue;
+        targets.push({ setId, challengeId: candidate, itemRefs: refs3 });
+        changed = true;
+      }
+      if (changed) await writePuzzleReservations(gmGetValue, gmSetValue, scope2, { schema: 1, targets });
+      return reservationSnapshot();
+    };
     const rememberPuzzleReservations = async (target, refs3) => {
       const current2 = await readPuzzleReservations(gmGetValue, scope2);
-      const safeRefs = (Array.isArray(refs3) ? refs3 : []).filter((ref) => validReservationId(ref?.id) && validReservationId(ref?.definitionId)).map((ref) => ({ id: ref.id, definitionId: ref.definitionId }));
+      const safeRefs = (Array.isArray(refs3) ? refs3 : []).filter((ref) => validReservationId2(ref?.id) && validReservationId2(ref?.definitionId)).map((ref) => ({ id: ref.id, definitionId: ref.definitionId }));
       if (!safeRefs.length) return;
       const targets = current2.targets.filter((entry) => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
       targets.push({ setId: target.setId, challengeId: target.challengeId, itemRefs: safeRefs.slice(0, 11) });
@@ -7427,7 +7572,7 @@
       const activePuzzle = readFc27PuzzlePage(root);
       const conceptPending = await readFc27ConceptPending(gmGetValue, scope2, activePuzzle);
       if (conceptPending !== null) {
-        const valid2 = [conceptPending?.setId, conceptPending?.challengeId].every((id6) => Number.isSafeInteger(id6) && id6 > 0);
+        const valid2 = [conceptPending?.setId, conceptPending?.challengeId].every((id7) => Number.isSafeInteger(id7) && id7 > 0);
         return {
           status: "blocked",
           kind: "puzzle-concept",
@@ -7520,7 +7665,7 @@
       if (available !== true) return blocked8("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked8("FC27_PUZZLE_FILL_TARGET_CHANGED");
-      const reservations = await reservationSnapshot();
+      const reservations = await migratePuzzleReservations(setId, challengeId);
       if (nativeOnly && pageSnapshot?.layout?.squadEmpty === true) {
         await releasePuzzleReservations({ setId, challengeId });
         reservations.value.targets = reservations.value.targets.filter((entry) => entry.setId !== setId || entry.challengeId !== challengeId);
@@ -8049,6 +8194,7 @@
             status: result?.status,
             reason: result?.reason,
             source: log.catalogSource,
+            mismatch: result?.mismatch,
             safeCandidates: result?.plan?.safeCandidates,
             evaluations: result?.plan?.nodes,
             durationMs: log.finishedAt - log.startedAt
@@ -8261,8 +8407,8 @@
     ["activity", "\u6D3B\u52A8\u8BB0\u5F55"],
     ["settings", "\u8BBE\u7F6E"]
   ]);
-  var planned = (id6, title, description, features, status = "\u89C4\u5212\u4E2D \xB7 \u5C1A\u672A\u63A5\u5165") => `
-  <section id="page-${id6}" role="tabpanel" aria-labelledby="tab-${id6}" tabindex="0" hidden>
+  var planned = (id7, title, description, features, status = "\u89C4\u5212\u4E2D \xB7 \u5C1A\u672A\u63A5\u5165") => `
+  <section id="page-${id7}" role="tabpanel" aria-labelledby="tab-${id7}" tabindex="0" hidden>
     <div class="section-heading"><div><p class="eyebrow">${title}</p><h2>${description}</h2></div><span class="badge planned">${status}</span></div>
     <div class="feature-grid">${features.map(([name, text5]) => `<article class="card"><h3>${name}</h3><p>${text5}</p></article>`).join("")}</div>
     <p class="module-note">\u672C\u9875\u5F53\u524D\u4EC5\u5C55\u793A\u529F\u80FD\u89C4\u5212\uFF0C\u5C1A\u4E0D\u6267\u884C\u64CD\u4F5C\u3002</p>
@@ -8312,7 +8458,7 @@
     #gallery-selection-footer{position:fixed;bottom:8px;z-index:10;padding:10px 12px;margin:0;border:1px solid #72808a;border-radius:7px}#gallery-set-detail{padding-bottom:160px}.gallery-selection-preview{margin:0}.gallery-card-select{order:3}.gallery-card-pricebar{order:0}.gallery-player-art>slot,.gallery-text-card{order:1}.gallery-grade-overview-row{overflow-wrap:anywhere}@media(max-width:650px){#gallery-set-detail{padding-bottom:210px}.gallery-card-tools{position:static}}
     .gallery-unknown,.gallery-market-comparison{white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:100%}
   </style><div class="workbench"><details open><summary></summary>
-    <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id6, label], index) => `<button type="button" role="tab" id="tab-${id6}" aria-controls="page-${id6}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
+    <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id7, label], index) => `<button type="button" role="tab" id="tab-${id7}" aria-controls="page-${id7}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
     <div class="body">
       <section id="page-sbc" role="tabpanel" aria-labelledby="tab-sbc" tabindex="0">
         <div class="section-heading"><div><p class="eyebrow">SBC PUZZLE</p><h2>\u89E3\u9898\u4E0E\u8865\u5361</h2></div><span class="badge">\u5DF2\u63A5\u5165\u539F\u751F SBC</span></div>
@@ -8369,18 +8515,18 @@
   }
   function bindFc27WorkbenchTabs(shadow, host, onSelect = () => {
   }) {
-    const tabs = FC27_WORKBENCH_TABS.map(([id6]) => shadow.getElementById(`tab-${id6}`));
-    const select = (id6) => {
-      if (!FC27_WORKBENCH_TABS.some(([key]) => key === id6)) return;
+    const tabs = FC27_WORKBENCH_TABS.map(([id7]) => shadow.getElementById(`tab-${id7}`));
+    const select = (id7) => {
+      if (!FC27_WORKBENCH_TABS.some(([key]) => key === id7)) return;
       for (const [key] of FC27_WORKBENCH_TABS) {
-        const active = key === id6;
+        const active = key === id7;
         const tab = shadow.getElementById(`tab-${key}`);
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
         shadow.getElementById(`page-${key}`).hidden = !active;
       }
-      host.dataset.activeTab = id6;
-      onSelect(id6);
+      host.dataset.activeTab = id7;
+      onSelect(id7);
     };
     tabs.forEach((tab, index) => {
       tab.addEventListener("click", (event) => {
@@ -8409,7 +8555,7 @@
   var invalid = () => {
     throw new Error("FC27_GALLERY_CATALOG_INVALID");
   };
-  var integer9 = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
+  var integer10 = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
   var text2 = (value, max = 500) => typeof value === "string" && value.length > 0 && value.length <= max;
   var slug = (value) => text2(value, 160) && /^[a-z0-9][a-z0-9-]*$/.test(value);
   var list = (value, max, nonempty = false) => {
@@ -8451,14 +8597,14 @@
       if (!row) invalid();
       const name = source === "futgg" ? row.name : row.grade;
       const threshold = source === "futgg" ? row.threshold : row.score;
-      if (!GALLERY_GRADES.includes(name) || !integer9(threshold)) invalid();
+      if (!GALLERY_GRADES.includes(name) || !integer10(threshold)) invalid();
       let rewards2;
       if (source === "futgg") rewards2 = list(row.rewards, 32).map((reward) => {
-        if (!text2(reward?.type, 100) || !text2(reward.label) || !integer9(reward.value) || !integer9(reward.count, 1)) invalid();
+        if (!text2(reward?.type, 100) || !text2(reward.label) || !integer10(reward.value) || !integer10(reward.count, 1)) invalid();
         return definition(pick2(reward, ["id", "type", "count", "label", "value", "assetId", "itemType", "teamEaId", "resourceId", "untradeable", "itemCategory"]));
       });
       else {
-        if (!integer9(row.tokens)) invalid();
+        if (!integer10(row.tokens)) invalid();
         rewards2 = row.tokens ? [{ type: "event_token_1", count: 1, value: row.tokens, label: `${row.tokens} Gallery Tokens` }] : [];
       }
       return { name, threshold, rewards: rewards2, rewardsComplete: source === "futgg" };
@@ -8474,20 +8620,20 @@
     if (data.isTruncated === true || data.complete === false) invalid();
     const categoryIds = [], setIds = [];
     const categories = list(data.categories, 256, true).map((category) => {
-      if (!text2(category?.name) || !slug(category.slug) || category.isTruncated === true || source === "futgg" && !integer9(category.id, 1)) invalid();
-      const id6 = `${source}:${source === "futgg" ? category.id : category.slug}`;
-      categoryIds.push(id6);
+      if (!text2(category?.name) || !slug(category.slug) || category.isTruncated === true || source === "futgg" && !integer10(category.id, 1)) invalid();
+      const id7 = `${source}:${source === "futgg" ? category.id : category.slug}`;
+      categoryIds.push(id7);
       const sets2 = list(category.sets, 4096).map((set) => {
-        if (!text2(set?.name) || !slug(set.slug) || source === "futgg" && (!integer9(set.id, 1) || set.categoryId !== category.id)) invalid();
+        if (!text2(set?.name) || !slug(set.slug) || source === "futgg" && (!integer10(set.id, 1) || set.categoryId !== category.id)) invalid();
         const requiredCards = source === "futgg" ? set.requiredCards : set.required;
-        if (!integer9(requiredCards, 1)) invalid();
+        if (!integer10(requiredCards, 1)) invalid();
         const setId = `${source}:${source === "futgg" ? set.id : `${category.slug}/${set.slug}`}`;
         setIds.push(setId);
         let conditions = null;
         if (source === "fodder") {
           for (const key of ["clubs", "leagues", "rareflags"]) {
             const values6 = list(set[key], 256);
-            if (!values6.every((value) => integer9(value))) invalid();
+            if (!values6.every((value) => integer10(value))) invalid();
             unique(values6);
           }
           if (typeof set.holo !== "boolean") invalid();
@@ -8497,7 +8643,7 @@
         if (description !== null && (typeof description !== "string" || description.length > 2e3)) invalid();
         return {
           id: setId,
-          categoryId: id6,
+          categoryId: id7,
           name: set.name,
           slug: set.slug,
           requiredCards,
@@ -8507,14 +8653,14 @@
         };
       }).sort((a, b) => a.id.localeCompare(b.id));
       unique(sets2.map((set) => set.slug));
-      return { id: id6, name: category.name, slug: category.slug, sets: sets2 };
+      return { id: id7, name: category.name, slug: category.slug, sets: sets2 };
     }).sort((a, b) => a.id.localeCompare(b.id));
     unique(categoryIds);
     unique(setIds);
     unique(categories.map((category) => category.slug));
     if (!setIds.length || setIds.length > 1e4) invalid();
     const tags = list(data.tags, 256).map((tag) => {
-      if (!integer9(tag?.id, 1) || !text2(tag.name)) invalid();
+      if (!integer10(tag?.id, 1) || !text2(tag.name)) invalid();
       return definition(pick2(tag, source === "futgg" ? ["id", "name", "rules", "tiers", "bonusType", "thresholdType", "description"] : ["id", "name", "steps", "match"]));
     }).sort((a, b) => a.id - b.id);
     unique(tags.map((tag) => tag.id));
@@ -8566,18 +8712,18 @@
     const before = new Map(previous.categories.flatMap((category) => category.sets).map((set) => [set.id, set]));
     const after = new Map(current2.categories.flatMap((category) => category.sets).map((set) => [set.id, set]));
     const different = (a, b) => galleryCanonical(a) !== galleryCanonical(b);
-    for (const [id6, set] of after) {
-      const old = before.get(id6);
+    for (const [id7, set] of after) {
+      const old = before.get(id7);
       if (!old) {
-        result.added.push(id6);
+        result.added.push(id7);
         continue;
       }
-      if (different([old.name, old.slug], [set.name, set.slug])) result.renamed.push(id6);
+      if (different([old.name, old.slug], [set.name, set.slug])) result.renamed.push(id7);
       const rules = (row) => [row.categoryId, row.requiredCards, row.description, row.conditions, row.grades.map((g) => [g.name, g.threshold])];
-      if (different(rules(old), rules(set))) result.requirements.push(id6);
-      if (different(old.grades.map((g) => g.rewards), set.grades.map((g) => g.rewards))) result.rewards.push(id6);
+      if (different(rules(old), rules(set))) result.requirements.push(id7);
+      if (different(old.grades.map((g) => g.rewards), set.grades.map((g) => g.rewards))) result.rewards.push(id7);
     }
-    for (const id6 of before.keys()) if (!after.has(id6)) result.removed.push(id6);
+    for (const id7 of before.keys()) if (!after.has(id7)) result.removed.push(id7);
     result.categoriesChanged = different(previous.categories.map((c) => [c.id, c.name, c.slug]), current2.categories.map((c) => [c.id, c.name, c.slug]));
     result.tagsChanged = different(previous.tags, current2.tags);
     return result;
@@ -8588,7 +8734,7 @@
     throw new Error("FC27_GALLERY_POOL_INVALID");
   };
   var GALLERY_TOP_CANDIDATE_LIMIT = 100;
-  var integer10 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var integer11 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
   var text3 = (value, max = 500) => typeof value === "string" && value.length > 0 && value.length <= max;
   var optionalText = (value, max = 1e3) => value == null ? null : text3(value, max) ? value : fail15();
   var bool = (value) => typeof value === "boolean" ? value : null;
@@ -8596,20 +8742,20 @@
     if (!row || typeof row !== "object" || Array.isArray(row)) fail15();
     const eaId = row.eaId;
     const playerEaId = row.playerEaId;
-    if (!integer10(eaId, 1) || !integer10(playerEaId, 1) || !integer10(row.score, 0, 1e8) || !integer10(row.overall, 1, 99) || !integer10(row.clubEaId, 0, 1e8) || !integer10(row.leagueEaId, 0, 1e8) || !integer10(row.nationEaId, 0, 1e8) || !integer10(row.rarityEaId, 0, 1e8) || !text3(row.cardName, 200) || !text3(row.rarityName, 200) || !Array.isArray(row.positions) || row.positions.length > 32 || row.positions.some((position) => !text3(position, 30))) fail15();
+    if (!integer11(eaId, 1) || !integer11(playerEaId, 1) || !integer11(row.score, 0, 1e8) || !integer11(row.overall, 1, 99) || !integer11(row.clubEaId, 0, 1e8) || !integer11(row.leagueEaId, 0, 1e8) || !integer11(row.nationEaId, 0, 1e8) || !integer11(row.rarityEaId, 0, 1e8) || !text3(row.cardName, 200) || !text3(row.rarityName, 200) || !Array.isArray(row.positions) || row.positions.length > 32 || row.positions.some((position) => !text3(position, 30))) fail15();
     return Object.freeze({
       eaId,
       playerEaId,
       score: row.score,
       overall: row.overall,
-      gender: integer10(row.gender, 0, 10) ? row.gender : null,
+      gender: integer11(row.gender, 0, 10) ? row.gender : null,
       clubEaId: row.clubEaId,
       leagueEaId: row.leagueEaId,
       nationEaId: row.nationEaId,
       rarityEaId: row.rarityEaId,
       positions: Object.freeze([...row.positions]),
-      weakFoot: integer10(row.weakFoot, 0, 10) ? row.weakFoot : null,
-      skillMoves: integer10(row.skillMoves, 0, 10) ? row.skillMoves : null,
+      weakFoot: integer11(row.weakFoot, 0, 10) ? row.weakFoot : null,
+      skillMoves: integer11(row.skillMoves, 0, 10) ? row.skillMoves : null,
       holographic: bool(row.holographic),
       cardName: row.cardName,
       commonName: optionalText(row.commonName, 200),
@@ -8621,9 +8767,9 @@
     });
   }
   function normalizeGalleryPool(source, input, setId, season = "27") {
-    if (source !== "futgg" || season !== "27" || !integer10(setId, 1)) fail15();
+    if (source !== "futgg" || season !== "27" || !integer11(setId, 1)) fail15();
     const data = input?.data ?? input;
-    if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId || !integer10(data.requiredCards, 1) || !integer10(data.poolSize, 0, 1e5) || typeof data.isTruncated !== "boolean" || !Array.isArray(data.items) || data.items.length > 1e5 || data.items.length > data.poolSize || data.isTruncated === false && data.poolSize !== data.items.length || data.isTruncated === true && data.poolSize <= data.items.length) fail15();
+    if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId || !integer11(data.requiredCards, 1) || !integer11(data.poolSize, 0, 1e5) || typeof data.isTruncated !== "boolean" || !Array.isArray(data.items) || data.items.length > 1e5 || data.items.length > data.poolSize || data.isTruncated === false && data.poolSize !== data.items.length || data.isTruncated === true && data.poolSize <= data.items.length) fail15();
     const rawItems = data.items.map(item);
     if (data.isTruncated && rawItems.some((row, index) => index > 0 && row.score > rawItems[index - 1].score)) fail15();
     const sourceIds = rawItems.map((row) => row.eaId);
@@ -8677,8 +8823,8 @@
     }
     const result = /* @__PURE__ */ Object.create(null);
     for (const entry of Array.isArray(response?.data) ? response.data : []) {
-      const id6 = Number(entry?.eaId ?? entry?.definitionId), price = Number(entry?.price);
-      if (validId3(id6) && Number.isSafeInteger(price) && price > 0) result[String(id6)] = price;
+      const id7 = Number(entry?.eaId ?? entry?.definitionId), price2 = Number(entry?.price);
+      if (validId3(id7) && Number.isSafeInteger(price2) && price2 > 0) result[String(id7)] = price2;
     }
     return Object.freeze(result);
   }
@@ -8687,16 +8833,16 @@
     const result = /* @__PURE__ */ Object.create(null);
     if (!data || typeof data !== "object") return result;
     for (const rawId of ids) {
-      const id6 = Number(rawId);
-      if (!validId3(id6)) continue;
-      const entry = data[String(id6)] ?? data[id6];
+      const id7 = Number(rawId);
+      if (!validId3(id7)) continue;
+      const entry = data[String(id7)] ?? data[id7];
       const value = Number(entry?.n);
-      if (Number.isSafeInteger(value) && value > 0) result[String(id6)] = value;
+      if (Number.isSafeInteger(value) && value > 0) result[String(id7)] = value;
     }
     return result;
   }
-  function readCachedGalleryPrice(root, id6) {
-    return readCachedGalleryPrices(root, [id6])[String(id6)] ?? null;
+  function readCachedGalleryPrice(root, id7) {
+    return readCachedGalleryPrices(root, [id7])[String(id7)] ?? null;
   }
 
   // src/adapters/browser/fc27-gallery-catalog.js
@@ -9190,7 +9336,7 @@
             }
             if (!Array.isArray(payload?.data)) throw new Error("FC27_GALLERY_PRICE_PAYLOAD_INVALID");
             const parsed = parseGalleryPriceResponse(response.text);
-            const prices = Object.fromEntries(batch.filter((id6) => Object.hasOwn(parsed, id6)).map((id6) => [id6, parsed[id6]]));
+            const prices = Object.fromEntries(batch.filter((id7) => Object.hasOwn(parsed, id7)).map((id7) => [id7, parsed[id7]]));
             entry = { prices, fetchedAt: now(), retryAt: null, error: null };
           }
         } catch (error2) {
@@ -9269,15 +9415,15 @@
           if (entry?.error) error2 ??= entry.error;
           if (entry?.retryAt > now()) retryAt2 = Math.max(retryAt2 ?? 0, entry.retryAt);
           if (fresh) expiresAt = Math.min(expiresAt ?? Infinity, entry.fetchedAt + ttlMs);
-          for (const id6 of batch) {
-            const price = entry?.prices?.[id6];
-            if (price == null) {
-              missingIds.push(id6);
+          for (const id7 of batch) {
+            const price2 = entry?.prices?.[id7];
+            if (price2 == null) {
+              missingIds.push(id7);
               continue;
             }
-            prices[id6] = price;
-            if (fresh) freshPrices[id6] = price;
-            else staleIds.push(id6);
+            prices[id7] = price2;
+            if (fresh) freshPrices[id7] = price2;
+            else staleIds.push(id7);
           }
         }
         if (error2) priceErrors.set(key, error2);
@@ -9663,12 +9809,12 @@
     return Object.freeze({
       read(scope2, input) {
         if (disposed) return null;
-        const id6 = `${scope2}:${input.set.id}`;
+        const id7 = `${scope2}:${input.set.id}`;
         const key = JSON.stringify([input.set, input.catalog.source, input.catalog.tags, input.progress]);
-        let entry = entries2.get(id6);
+        let entry = entries2.get(id7);
         if (entry?.key !== key) {
-          entry = { id: id6, key, input, pending: true, summary: { status: "calculating" } };
-          entries2.set(id6, entry);
+          entry = { id: id7, key, input, pending: true, summary: { status: "calculating" } };
+          entries2.set(id7, entry);
           while (entries2.size > 256) entries2.delete(entries2.keys().next().value);
         }
         start();
@@ -9738,8 +9884,8 @@
   }
   function* galleryBonusBundles(candidates, size, limit) {
     const rows = priced(candidates), groups = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
-    for (const price of new Set(rows.map((row) => row.price))) {
-      groups.set(`price:${price}`, rows.filter((row) => row.price <= price).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.price - b.price || a.id - b.id));
+    for (const price2 of new Set(rows.map((row) => row.price))) {
+      groups.set(`price:${price2}`, rows.filter((row) => row.price <= price2).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.price - b.price || a.id - b.id));
     }
     for (const row of rows) for (const key of row.diversityKeys ?? []) {
       if (!groups.has(key)) groups.set(key, []);
@@ -9968,20 +10114,20 @@
   // src/gallery/price-band-seeds.js
   var owned = (row) => row.collected === true || row.inClub === true || row.held === true;
   function galleryPriceBands(candidates, limit = 8) {
-    const prices = [...new Set(candidates.map((row) => row.price).filter((price) => Number.isSafeInteger(price) && price > 0))].sort((a, b) => a - b);
+    const prices = [...new Set(candidates.map((row) => row.price).filter((price2) => Number.isSafeInteger(price2) && price2 > 0))].sort((a, b) => a - b);
     if (!prices.length) return [];
-    const gaps = prices.slice(0, -1).map((price, i) => ({ price, jump: prices[i + 1] / price })).sort((a, b) => b.jump - a.jump || a.price - b.price);
+    const gaps = prices.slice(0, -1).map((price2, i) => ({ price: price2, jump: prices[i + 1] / price2 })).sort((a, b) => b.jump - a.jump || a.price - b.price);
     return [...gaps.slice(0, limit - 1).map((row) => row.price), prices.at(-1)];
   }
   function* galleryPriceBandSeedSteps({ targets, candidates, maxWork = 16e3 }) {
     const byId = new Map(candidates.map((row) => [row.id, row]));
     const seen = /* @__PURE__ */ new Set();
     let work = 0;
-    for (const price of galleryPriceBands(candidates)) {
+    for (const price2 of galleryPriceBands(candidates)) {
       const ids = /* @__PURE__ */ new Set();
       let complete = true;
       for (const target of targets) {
-        const rows = target.progress.rows.filter((row) => owned(row) || byId.get(row.eaId)?.price > 0 && byId.get(row.eaId).price <= price).map((row) => owned(row) ? { ...row, collected: true } : {
+        const rows = target.progress.rows.filter((row) => owned(row) || byId.get(row.eaId)?.price > 0 && byId.get(row.eaId).price <= price2).map((row) => owned(row) ? { ...row, collected: true } : {
           ...row,
           gradingScore: byId.get(row.eaId).score,
           collected: true,
@@ -10024,8 +10170,8 @@
   var validId4 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice2 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
-  var asPrice = (prices, id6) => {
-    const value = prices?.[String(id6)] ?? prices?.[id6];
+  var asPrice = (prices, id7) => {
+    const value = prices?.[String(id7)] ?? prices?.[id7];
     return validPrice2(value) ? value : null;
   };
   var candidateScore = (row) => validScore2(row?.gradingScore) ? { value: row.gradingScore, source: "ea" } : validScore2(row?.galleryScore) ? { value: row.galleryScore, source: "catalog" } : null;
@@ -10253,7 +10399,7 @@
           diversityKey: (state.summary?.low?.tags ?? []).map((tag) => `${tag.id}:${tag.count}:${tag.pct}`).join("|")
         }),
         evaluate: (ids) => {
-          const picked = ids.map((id6) => byId.get(id6));
+          const picked = ids.map((id7) => byId.get(id7));
           const selected = picked.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
           const items = picked.map((candidate) => ({
             ...candidate.row,
@@ -10261,14 +10407,14 @@
             scoreSource: candidate.score.source,
             price: asPrice(prices, candidate.row.eaId)
           }));
-          const price = items.reduce((sum2, item2) => sum2 + (item2.price ?? 0), 0);
+          const price2 = items.reduce((sum2, item2) => sum2 + (item2.price ?? 0), 0);
           return {
             ids,
             items,
             selected,
             nextIndex: candidates.length,
-            price,
-            cost: price,
+            price: price2,
+            cost: price2,
             unknownPrice: items.some((item2) => item2.price == null),
             missingPrices: items.some((item2) => item2.price == null),
             summary: summarize(set, catalog, existing, selected)
@@ -10295,8 +10441,8 @@
           break expansion;
         }
         const candidate = candidates[index];
-        const price = asPrice(prices, candidate.row.eaId);
-        const item2 = { ...candidate.row, score: candidate.score.value, scoreSource: candidate.score.source, price };
+        const price2 = asPrice(prices, candidate.row.eaId);
+        const item2 = { ...candidate.row, score: candidate.score.value, scoreSource: candidate.score.source, price: price2 };
         const selectedRow = { ...candidate.row, gradingScore: candidate.score.value, firstOwned: false };
         const selected = [...state.selected, selectedRow];
         const nextState = {
@@ -10304,8 +10450,8 @@
           items: [...state.items, item2],
           selected,
           nextIndex: index + 1,
-          price: state.price + (price ?? 0),
-          unknownPrice: state.unknownPrice || price == null,
+          price: state.price + (price2 ?? 0),
+          unknownPrice: state.unknownPrice || price2 == null,
           summary: summarize(set, catalog, existing, selected)
         };
         next.push(nextState);
@@ -10432,18 +10578,18 @@
     return progress(b) - progress(a) || cost(a) - cost(b) || a.ids.length - b.ids.length;
   }
   function materialize2(state, candidates, budget) {
-    const missingPriceIds = state.ids.filter((id6) => candidates.get(id6).price == null);
+    const missingPriceIds = state.ids.filter((id7) => candidates.get(id7).price == null);
     return {
       totalPrice: missingPriceIds.length ? null : state.cost,
       missingPriceIds,
       remainingBudget: budget == null || missingPriceIds.length ? null : budget - state.cost,
-      items: state.ids.map((id6) => {
-        const candidate = candidates.get(id6);
+      items: state.ids.map((id7) => {
+        const candidate = candidates.get(id7);
         return {
           ...candidate.row,
           price: candidate.price,
           scoreSource: validScore3(candidate.row.gradingScore) ? "ea" : "catalog",
-          targetIds: state.results.filter((result) => result.summary.lineup?.some((row) => row.eaId === id6)).map((result) => result.target.set.id)
+          targetIds: state.results.filter((result) => result.summary.lineup?.some((row) => row.eaId === id7)).map((result) => result.target.set.id)
         };
       }),
       targets: state.results.map(({ target, summary: summary2, reached }) => ({
@@ -10513,23 +10659,23 @@
           ownedIds.add(row.eaId);
           continue;
         }
-        const quote2 = target.prices?.[row.eaId], price = validPrice3(quote2) ? quote2 : null;
+        const quote2 = target.prices?.[row.eaId], price2 = validPrice3(quote2) ? quote2 : null;
         const existing = allCandidates.get(row.eaId);
         if (existing) {
           existing.memberships++;
           existing.diversityKeys.push(...galleryCostSearchKeys(row, compiled.tags).map((key) => `${set.id}:${key}`));
-          if (existing.price != null && price != null && existing.price !== price) existing.priceConflict = true;
-          existing.price = existing.priceConflict ? null : price ?? existing.price;
+          if (existing.price != null && price2 != null && existing.price !== price2) existing.priceConflict = true;
+          existing.price = existing.priceConflict ? null : price2 ?? existing.price;
         } else allCandidates.set(row.eaId, {
           row,
-          price,
+          price: price2,
           memberships: 1,
           diversityKeys: galleryCostSearchKeys(row, compiled.tags).map((key) => `${set.id}:${key}`)
         });
       }
       prepared.push({ ...target, grade, threshold: grade.threshold, summaries: /* @__PURE__ */ new Map() });
     }
-    for (const id6 of ownedIds) allCandidates.delete(id6);
+    for (const id7 of ownedIds) allCandidates.delete(id7);
     for (const target of prepared) target.progress = { ...target.progress, rows: target.progress.rows.map((row) => ownedIds.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row) };
     const candidateRows = [...allCandidates.values()].filter((candidate) => score(candidate.row) != null).map((candidate) => ({ ...candidate, id: candidate.row.eaId, score: score(candidate.row) }));
     const selectedCandidates = selectGalleryCandidatePool(candidateRows, maxCandidates);
@@ -10550,14 +10696,14 @@
       for (const target of prepared) {
         const missingSlots = Math.max(0, target.set.requiredCards - target.progress.rows.filter(isGalleryOwned).length);
         const candidates = target.progress.rows.filter((row) => !isGalleryOwned(row) && candidateMap.has(row.eaId)).map((row) => candidateMap.get(row.eaId)).sort((a, b) => {
-          const price = (a.price ?? Infinity) - (b.price ?? Infinity);
-          return (mode === "price" ? price : score(b.row) - score(a.row)) || score(b.row) - score(a.row) || a.row.eaId - b.row.eaId;
+          const price2 = (a.price ?? Infinity) - (b.price ?? Infinity);
+          return (mode === "price" ? price2 : score(b.row) - score(a.row)) || score(b.row) - score(a.row) || a.row.eaId - b.row.eaId;
         });
         for (const candidate of candidates.slice(0, Math.max(1, missingSlots))) selected.add(candidate.row.eaId);
       }
       if (!selected.size) continue;
-      const ids = [...selected], cost = ids.reduce((sum2, id6) => sum2 + (candidateMap.get(id6).price ?? 0), 0);
-      const missingPrices = ids.some((id6) => candidateMap.get(id6).price == null);
+      const ids = [...selected], cost = ids.reduce((sum2, id7) => sum2 + (candidateMap.get(id7).price ?? 0), 0);
+      const missingPrices = ids.some((id7) => candidateMap.get(id7).price == null);
       if (budget != null && (missingPrices || cost > budget)) continue;
       const results = evaluate(prepared, selected);
       evaluations++;
@@ -10592,13 +10738,13 @@
             diversityKey: state.results.map((result) => (result.summary.low?.tags ?? []).map((tag) => `${result.target.set.id}:${tag.id}:${tag.count}:${tag.pct}`).join("|")).join(";")
           }),
           evaluate: (ids2) => {
-            const cost2 = ids2.reduce((sum2, id6) => sum2 + (candidateMap.get(id6).price ?? 0), 0);
+            const cost2 = ids2.reduce((sum2, id7) => sum2 + (candidateMap.get(id7).price ?? 0), 0);
             if (budget != null && cost2 > budget) return null;
             return {
               ids: ids2,
               nextIndex: selectedCandidates.length,
               cost: cost2,
-              missingPrices: ids2.some((id6) => candidateMap.get(id6).price == null),
+              missingPrices: ids2.some((id7) => candidateMap.get(id7).price == null),
               results: evaluate(prepared, new Set(ids2))
             };
           }
@@ -10687,7 +10833,7 @@
   var sources = /* @__PURE__ */ new Set(["futgg", "fodder"]);
   var grades2 = /* @__PURE__ */ new Set(["D", "C", "B", "A", "S"]);
   var validScope2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f]/.test(value);
-  var validId6 = (id6, source) => typeof id6 === "string" && id6.length <= 330 && id6.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id6) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id6));
+  var validId6 = (id7, source) => typeof id7 === "string" && id7.length <= 330 && id7.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id7) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id7));
   var emptyGalleryTargets = () => ({ targets: [], budget: null });
   function normalizeGalleryTargets(value, source) {
     if (!sources.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId6(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
@@ -10772,8 +10918,8 @@
   var validId7 = (value) => Number.isSafeInteger(value) && value > 0;
   var keyOf3 = (row) => validId7(row?.eaId) ? String(row.eaId) : null;
   var textOf = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase().trim();
-  var priceOf3 = (prices, id6) => {
-    const value = prices?.[id6] ?? prices?.[Number(id6)];
+  var priceOf3 = (prices, id7) => {
+    const value = prices?.[id7] ?? prices?.[Number(id7)];
     return Number.isSafeInteger(value) && value > 0 ? value : null;
   };
   function filterGalleryCards(rows, { filter = "all", query = "", order: order2 = "catalog", prices = {}, lineupIds = [] } = {}) {
@@ -10803,8 +10949,8 @@
   function reconcileGallerySelection(selection, rows) {
     const allowed = new Map((Array.isArray(rows) ? rows : []).filter((row) => !isGalleryOwned(row) && row?.collected === false && keyOf3(row)).map((row) => [keyOf3(row), row]));
     const next = /* @__PURE__ */ new Map();
-    for (const [id6, value] of selection instanceof Map ? selection : []) {
-      if (allowed.has(String(id6))) next.set(String(id6), { ...value, eaId: Number(id6), name: allowed.get(String(id6)).name });
+    for (const [id7, value] of selection instanceof Map ? selection : []) {
+      if (allowed.has(String(id7))) next.set(String(id7), { ...value, eaId: Number(id7), name: allowed.get(String(id7)).name });
     }
     return next;
   }
@@ -10816,13 +10962,13 @@
     const rowMap = new Map((Array.isArray(rows) ? rows : []).map((row) => [keyOf3(row), row]));
     const selected = [];
     let total = 0, unknownPrice = false, score2 = 0;
-    for (const [id6] of selection instanceof Map ? selection : []) {
-      const row = rowMap.get(String(id6));
+    for (const [id7] of selection instanceof Map ? selection : []) {
+      const row = rowMap.get(String(id7));
       if (!row || isGalleryOwned(row) || row.collected !== false) continue;
       selected.push(row);
-      const price = priceOf3(prices, id6);
-      if (price == null) unknownPrice = true;
-      else total += price;
+      const price2 = priceOf3(prices, id7);
+      if (price2 == null) unknownPrice = true;
+      else total += price2;
       const value = Number.isSafeInteger(row.gradingScore) ? row.gradingScore : row.galleryScore;
       if (Number.isSafeInteger(value)) score2 += value;
     }
@@ -10929,7 +11075,7 @@
   }
   function replanableGalleryFailures(outcome = {}) {
     if (!isGalleryPurchaseReplanSafe(outcome)) return [];
-    return outcome.failures.map((row) => row.definitionId).filter((id6, index, values6) => values6.indexOf(id6) === index);
+    return outcome.failures.map((row) => row.definitionId).filter((id7, index, values6) => values6.indexOf(id7) === index);
   }
   function* planGalleryRemainderSteps({
     targets,
@@ -10954,12 +11100,12 @@
     for (const entry of outcome.results) {
       if (!rows.has(entry.definitionId)) return blocked9("purchase-result-mismatch");
       if (entry.state === "waiting") continue;
-      const price = entry.state === "club" ? entry.price : 0;
-      if (entry.state === "club" && !validPrice4(price)) return blocked9("purchase-result-mismatch");
-      attemptSpent += price;
+      const price2 = entry.state === "club" ? entry.price : 0;
+      if (entry.state === "club" && !validPrice4(price2)) return blocked9("purchase-result-mismatch");
+      attemptSpent += price2;
       const previous = receipts.get(entry.definitionId);
-      if (previous && previous.price !== price) return blocked9("purchase-result-mismatch");
-      receipts.set(entry.definitionId, { definitionId: entry.definitionId, price });
+      if (previous && previous.price !== price2) return blocked9("purchase-result-mismatch");
+      receipts.set(entry.definitionId, { definitionId: entry.definitionId, price: price2 });
     }
     if (attemptSpent !== outcome.spent || new Set(outcome.results.map((row) => row.definitionId)).size !== outcome.results.length) {
       return blocked9("purchase-result-mismatch");
@@ -10972,7 +11118,7 @@
         quotes[failure.definitionId] = failure.observedPrice;
       }
     }
-    if ([...exclusions].some((id6) => !validId8(id6))) return blocked9("purchase-ledger-invalid");
+    if ([...exclusions].some((id7) => !validId8(id7))) return blocked9("purchase-ledger-invalid");
     const spent = [...receipts.values()].reduce((sum2, row) => sum2 + row.price, 0);
     if (budget !== null && spent > budget) return blocked9("purchase-ledger-invalid");
     const remainingBudget = budget === null ? null : budget - spent;
@@ -11003,6 +11149,36 @@
     };
   }
 
+  // src/gallery/first-owner-history.js
+  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
+  function galleryFirstOwnerHistoryAction(row) {
+    if (row?.firstOwnedSource === "local-history") return "clear";
+    return row?.collected === true && row.firstOwned !== true ? "mark" : null;
+  }
+  function normalizeGalleryFirstOwnerHistory(rows, { max = 1e5 } = {}) {
+    if (!Array.isArray(rows) || rows.length > max) return [];
+    const result = /* @__PURE__ */ new Map();
+    for (const row of rows) {
+      const definitionId = Number(row?.definitionId);
+      if (!validId9(definitionId) || typeof row?.firstOwned !== "boolean") continue;
+      const updatedAt = Number.isSafeInteger(row.updatedAt) && row.updatedAt >= 0 ? row.updatedAt : 0;
+      result.set(definitionId, { definitionId, firstOwned: row.firstOwned, updatedAt });
+    }
+    return [...result.values()].sort((a, b) => a.definitionId - b.definitionId);
+  }
+  function toggleGalleryFirstOwnerHistory(history, definitionId, firstOwned, updatedAt = Date.now()) {
+    const current2 = normalizeGalleryFirstOwnerHistory(history);
+    const id7 = Number(definitionId);
+    if (!validId9(id7) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
+    const next = current2.filter((row) => row.definitionId !== id7);
+    next.push({ definitionId: id7, firstOwned, updatedAt });
+    return normalizeGalleryFirstOwnerHistory(next);
+  }
+  function removeGalleryFirstOwnerHistory(history, definitionId) {
+    const id7 = Number(definitionId);
+    return normalizeGalleryFirstOwnerHistory(history).filter((row) => row.definitionId !== id7);
+  }
+
   // src/adapters/browser/fc27-gallery-view.js
   function selectGallerySetIcon(candidates, random = Math.random) {
     const images = candidates.filter((value) => typeof value === "string" && value.startsWith("https://"));
@@ -11024,7 +11200,7 @@
   function sameGalleryRuntimeCards(left, right) {
     if (left === right) return true;
     if (!(left instanceof Map) || !(right instanceof Map) || left.size !== right.size) return false;
-    for (const [id6, card] of left) if (!right.has(id6) || right.get(id6) !== card) return false;
+    for (const [id7, card] of left) if (!right.has(id7) || right.get(id7) !== card) return false;
     return true;
   }
   function galleryPlanningStateKey(detail) {
@@ -11081,10 +11257,11 @@
     sync = null,
     purchase = null,
     setFirstOwner = null,
+    planStore = null,
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
-    const node = (id6) => shadow.getElementById(id6);
+    const node = (id7) => shadow.getElementById(id7);
     const add = (parent, tag, value = "", className = "") => {
       const child = document.createElement(tag);
       child.textContent = value;
@@ -11148,6 +11325,7 @@
         if (disposed || !active || identity5 !== scope2()) return;
         output.textContent = `${outcome.status === "purchased" ? "\u8D2D\u4E70\u5B8C\u6210" : "\u8D2D\u4E70\u672A\u5B8C\u6210"} \xB7 \u5DF2\u8D2D\u4E70 ${outcome.purchased ?? 0} \u5F20 \xB7 ${count2(outcome.spent ?? 0)} \u91D1\u5E01`;
         if (outcome.status !== "purchased") output.textContent += ` \xB7 ${outcome.reason ?? outcome.status}`;
+        output.textContent += " \xB7 \u51FA\u552E\u8BA1\u5212\uFF1A\u4E70\u5165\u540E\u9ED8\u8BA4\u8FDB\u5165 Club \u5E76\u4FDD\u7559\uFF0C\u4E0D\u81EA\u52A8\u6302\u724C\uFF1B\u6302\u724C/\u91CD\u6302\u9700\u5355\u72EC\u786E\u8BA4\u3002";
         if (outcome.collection?.status === "pending") output.textContent += " \xB7 \u6536\u96C6\u5F85\u786E\u8BA4\uFF1B\u518D\u6B21\u6838\u5BF9\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165";
         if (outcome.failures?.length) output.textContent += ` \xB7 ${outcome.failures.length} \u5F20\u672A\u5B8C\u6210\uFF0C\u53EF\u7EED\u8D2D`;
         const resultList = node("gallery-purchase-results");
@@ -11278,9 +11456,9 @@
     node("gallery-purchase-resume").addEventListener("click", (event) => {
       if (event.isTrusted && purchaseSummary?.status === "observed") void runPurchase({ resume: true, expectedOperationId: purchaseSummary.operationId });
     });
-    const asset = (kind, id6) => {
+    const asset = (kind, id7) => {
       try {
-        const value = assets?.[kind]?.(id6);
+        const value = assets?.[kind]?.(id7);
         return typeof value === "string" && /^https:\/\/www\.ea\.com\//i.test(value) ? value : "";
       } catch {
         return "";
@@ -11441,8 +11619,8 @@
           grades3.replaceChildren();
           gradeTrack(grades3, set.grades, summary2);
         }
-        if ([...changed].some((id6) => jointTargets.has(id6))) renderJoint();
-        if (changed.has(selectedSetId) && !foregroundSync && !jointMode && selectedSetId && details.has(selectedSetId)) {
+        if ([...changed].some((id7) => jointTargets.has(id7))) renderJoint();
+        if (changed.has(selectedSetId) && !activePlans && !foregroundSync && !jointMode && selectedSetId && details.has(selectedSetId)) {
           const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
           const value = details.get(selectedSetId), summary2 = set && scoreSummary(value, set);
           const target = node("gallery-set-detail"), section = target.querySelector(".gallery-score");
@@ -11574,10 +11752,12 @@
         overview.replaceChildren();
         if (!plan) return;
         for (const item2 of plan.grades ?? []) {
+          const saved2 = planCache.get(set.id)?.plan;
+          const candidate = saved2?.status === "ready" && saved2.targetGrade === item2.grade ? saved2.plans?.[0] ?? item2.candidate : item2.candidate;
           const line = add(overview, "div", "", "gallery-grade-overview-row");
           add(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
-          add(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : item2.candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(item2.candidate.totalPrice)} \u91D1\u5E01`);
-          if (item2.candidate?.score != null) add(line, "small", `${count2(item2.candidate.score)} \u5206`);
+          add(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
+          if (candidate?.score != null) add(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
         }
       };
       const show = (plan) => {
@@ -11616,6 +11796,7 @@
           for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
           if (candidate.missingPriceIds.length) add(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
           if (candidate.unknownFields?.length) add(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
+          const planIsCurrent = !planCache.get(set.id)?.stale && planCache.get(set.id)?.binding === planBinding(value, set);
           purchaseButton(
             details2,
             candidate.items,
@@ -11636,17 +11817,28 @@
                 ledger: { receipts: [], excludedIds: [], quotes: {} },
                 budget: null
               },
-              valid: () => value.status === "observed" && !value.stale && !value.poolStale && thisDetailCurrent(value, set.id)
+              valid: () => planIsCurrent && value.status === "observed" && !value.stale && !value.poolStale && thisDetailCurrent(value, set.id)
             }
           );
         }
       };
+      const saved = planCache.get(set.id);
+      if (saved?.plan) {
+        show(saved.plan);
+        if (saved.binding !== planBinding(value, set))
+          add(output, "small", "\u96C6\u5408\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4EE5\u4E0B\u4FDD\u7559\u4E0A\u6B21\u65B9\u6848\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u786E\u8BA4\u91D1\u989D\u3002", "gallery-unknown");
+      }
+      if (saved?.overview) {
+        showOverview(saved.overview);
+        if (saved.overviewBinding !== planBinding(value, set)) add(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
+      }
       button.addEventListener("click", async (event) => {
         if (!event.isTrusted) return;
         button.disabled = true;
         output.replaceChildren();
         add(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
-        const token = ++planningEpoch, identity5 = scope2(), revision = result;
+        const token = ++planningEpoch, identity5 = scope2(), revision = result, binding = planBinding(value, set);
+        activePlans++;
         const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
         const cancel = add(row, "button", "\u53D6\u6D88");
         cancel.type = "button";
@@ -11688,11 +11880,16 @@
             bestPrice: plan.plans?.[0]?.totalPrice,
             bestScore: plan.plans?.[0]?.score
           });
-          if (plan && current2()) show(plan);
+          if (plan && current2()) {
+            savePlanCache(set, value, { binding, plan });
+            show(plan);
+            if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
+          }
         } catch {
           void diag({ event: "grade-plan", phase: "planner", status: "failed", reason: "FC27_GALLERY_GRADE_PLANNER_FAILED" });
           if (current2()) show({ status: "unavailable", reason: "planner-failed" });
         } finally {
+          activePlans = Math.max(0, activePlans - 1);
           button.disabled = false;
           cancel.remove();
         }
@@ -11706,7 +11903,8 @@
         }
         overviewButton.disabled = true;
         overview.textContent = "\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026";
-        const token = ++planningEpoch, identity5 = scope2(), revision = result;
+        const token = ++planningEpoch, identity5 = scope2(), revision = result, binding = planBinding(value, set);
+        activePlans++;
         try {
           const plan = await runGalleryPlan(planGalleryGradeOverviewSteps({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }), {
             current: () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected,
@@ -11716,8 +11914,9 @@
             }
           });
           if (plan && token === planningEpoch) {
-            if (plan.status === "observed") {
+            if (plan.status === "observed" || plan.status === "partial") {
               overviewCache.set(overviewKey, plan);
+              savePlanCache(set, value, { overviewBinding: binding, overview: plan });
               while (overviewCache.size > 8) overviewCache.delete(overviewCache.keys().next().value);
             }
             showOverview(plan);
@@ -11726,6 +11925,7 @@
         } catch {
           if (token === planningEpoch) overview.textContent = "\u5404\u6863\u8D39\u7528\u6682\u4E0D\u53EF\u7528";
         } finally {
+          activePlans = Math.max(0, activePlans - 1);
           overviewButton.disabled = false;
         }
       });
@@ -11751,13 +11951,13 @@
       for (const detail of details.values()) {
         const fresh = detail.status === "observed" && detail.stale !== true && detail.poolStale !== true;
         for (const row of detail.progress?.rows ?? []) {
-          const id6 = String(row.eaId), previous = rows.get(id6);
-          if (!previous || row.collected === true || fresh && previous.collected !== true) rows.set(id6, row);
-          if (fresh && !isGalleryOwned(row) && row.collected === false) confirmedMissing.add(id6);
+          const id7 = String(row.eaId), previous = rows.get(id7);
+          if (!previous || row.collected === true || fresh && previous.collected !== true) rows.set(id7, row);
+          if (fresh && !isGalleryOwned(row) && row.collected === false) confirmedMissing.add(id7);
         }
         Object.assign(prices2, planningPrices(detail) ?? {});
       }
-      return { rows: [...rows.values()], prices: prices2, valid: [...selectedCards.keys()].every((id6) => confirmedMissing.has(id6)) };
+      return { rows: [...rows.values()], prices: prices2, valid: [...selectedCards.keys()].every((id7) => confirmedMissing.has(id7)) };
     };
     const showBrowseLevel = () => {
       const detail = selectedSetId !== null, category = categoryId !== null;
@@ -11775,11 +11975,39 @@
     };
     const details = /* @__PURE__ */ new Map();
     const overviewCache = /* @__PURE__ */ new Map();
-    const thisDetailCurrent = (value, id6) => details.get(id6) === value && selectedSetId === id6 && !jointMode;
+    const planCache = /* @__PURE__ */ new Map();
+    const planBinding = (value, set) => JSON.stringify([scope2(), result?.source, set, result?.catalog?.tags, galleryPlanningStateKey(value)]);
+    const savePlanCache = (set, value, patch) => {
+      const current2 = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
+      const next = { ...current2, ...patch, binding: patch.binding ?? current2.binding, stale: false };
+      planCache.set(set.id, next);
+      if (planStore && currentScope && result?.source) {
+        const scopeAtStart = currentScope, source = result.source, record = { binding: next.binding, overviewBinding: next.overviewBinding, plan: next.plan, overview: next.overview };
+        void Promise.resolve(planStore.save(scopeAtStart, source, set.id, record)).catch(() => {
+        });
+      }
+      return next;
+    };
+    const restorePlanCache = async (set, value) => {
+      if (!planStore || !currentScope || !result?.source) return;
+      const scopeAtStart = currentScope, source = result.source, expected = planBinding(value, set);
+      if (planCache.has(set.id)) return;
+      try {
+        const loaded = await planStore.load(scopeAtStart, source, set.id);
+        if (disposed || scopeAtStart !== currentScope || source !== result?.source || selectedSetId !== set.id) return;
+        if (loaded?.status === "observed") {
+          const record = loaded.record;
+          planCache.set(set.id, { binding: record.binding, overviewBinding: record.overviewBinding, plan: record.plan, overview: record.overview, stale: record.binding !== expected });
+        }
+      } catch {
+      }
+    };
+    const thisDetailCurrent = (value, id7) => details.get(id7) === value && selectedSetId === id7 && !jointMode;
     const jointTargets = /* @__PURE__ */ new Map();
     let jointMode = false;
     let targetsIdentity = null, targetsEpoch = 0, restoringTargets = false;
     let planningEpoch = 0;
+    let activePlans = 0;
     let jointRun = null;
     let syncing = false, syncRefresh = null;
     let foregroundSync = null, resumeBackground = false;
@@ -11844,7 +12072,7 @@
         reconcileTargets();
         renderJoint();
         renderSets();
-        if (!jointMode && selectedSetId && details.has(selectedSetId)) {
+        if (!activePlans && !jointMode && selectedSetId && details.has(selectedSetId)) {
           const set = result?.catalog.categories.flatMap((category) => category.sets).find((set2) => set2.id === selectedSetId);
           if (set) renderSetDetail(details.get(selectedSetId), set);
         }
@@ -11867,20 +12095,20 @@
         return;
       }
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
-      for (const [id6, grade] of jointTargets) {
-        const set = sets2.find((set2) => set2.id === id6);
+      for (const [id7, grade] of jointTargets) {
+        const set = sets2.find((set2) => set2.id === id7);
         const row = add(container, "div", "", "gallery-joint-target");
-        row.dataset.setId = id6;
+        row.dataset.setId = id7;
         if (!set) {
-          add(row, "strong", id6);
+          add(row, "strong", id7);
           add(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
           const remove2 = add(row, "button", "\xD7");
           remove2.title = "\u79FB\u9664\u76EE\u6807";
-          remove2.setAttribute("aria-label", `\u79FB\u9664 ${id6}`);
+          remove2.setAttribute("aria-label", `\u79FB\u9664 ${id7}`);
           remove2.disabled = restoringTargets;
           remove2.addEventListener("click", (event) => {
             if (!event.isTrusted || checkScope() === false) return;
-            jointTargets.delete(id6);
+            jointTargets.delete(id7);
             invalidateJoint();
             renderJoint();
             renderSets();
@@ -11902,7 +12130,7 @@
         row.append(select);
         select.addEventListener("change", () => {
           if (restoringTargets || checkScope() === false) return;
-          jointTargets.set(id6, select.value);
+          jointTargets.set(id7, select.value);
           invalidateJoint();
           persistTargets();
         });
@@ -11912,13 +12140,13 @@
         remove.disabled = restoringTargets;
         remove.addEventListener("click", (event) => {
           if (!event.isTrusted || checkScope() === false) return;
-          jointTargets.delete(id6);
+          jointTargets.delete(id7);
           invalidateJoint();
           renderJoint();
           renderSets();
           persistTargets();
         });
-        const value = details.get(id6);
+        const value = details.get(id7);
         if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
         else add(row, "small", scoreText(scoreSummary(value, set)));
         if (typeof loadSet === "function" && result.source === "futgg") {
@@ -12043,8 +12271,8 @@
       checkScope();
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
       const targets = [];
-      for (const [id6, targetGrade] of jointTargets) {
-        const value = details.get(id6), set = sets2.find((set2) => set2.id === id6);
+      for (const [id7, targetGrade] of jointTargets) {
+        const value = details.get(id7), set = sets2.find((set2) => set2.id === id7);
         if (!set || !value?.progress || value.status !== "observed" || value.stale || value.poolStale) {
           void diag({ event: "joint-plan", phase: "preflight", status: "blocked", reason: "FC27_GALLERY_JOINT_TARGET_STATE_UNKNOWN", count: targets.length });
           showJointPlan({ status: "partial", reason: "target-state-unknown" });
@@ -12153,6 +12381,7 @@
       scoreQueue.cancel();
       scoredSets.clear();
       overviewCache.clear();
+      planCache.clear();
       currentScope = next;
       selection++;
       selectedSetId = null;
@@ -12242,6 +12471,8 @@
       if (value.poolStale) add(target, "small", "\u516C\u5171\u5361\u6C60\u6682\u65F6\u65E0\u6CD5\u66F4\u65B0\uFF0C\u4F7F\u7528\u4E0A\u6B21\u5361\u6C60\u3002", "gallery-unknown");
       if (value.fetchedAt) add(target, "small", `\u6536\u96C6\u72B6\u6001\u8BFB\u53D6\u4E8E ${date(value.fetchedAt)}`);
       renderScoring(target, summary2, value);
+      const cachedPlan = planCache.get(set.id);
+      if (cachedPlan && cachedPlan.binding !== planBinding(value, set)) cachedPlan.stale = true;
       renderPlan(target, value, set, summary2);
       if (selectionSource !== result?.source) {
         selectedCards.clear();
@@ -12307,7 +12538,7 @@
       next.disabled = page.page >= page.pages;
       const reconciled = reconcileGallerySelection(selectedCards, selectionContext().rows);
       selectedCards.clear();
-      for (const [id6, row] of reconciled) selectedCards.set(id6, row);
+      for (const [id7, row] of reconciled) selectedCards.set(id7, row);
       const list2 = add(target, "div", "", "gallery-card-list");
       const selectionBar = node("gallery-selection-footer");
       selectionBar.hidden = typeof purchase !== "function" || !selectedCards.size;
@@ -12328,7 +12559,7 @@
         clear.disabled = !selectedSummary.count;
         selectionSummary.textContent = `${selectedSummary.count} \u5F20 \xB7 ${selectedSummary.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(selectedSummary.totalPrice)} \u91D1\u5E01`}`;
         for (const button of list2.querySelectorAll(".gallery-card-select")) {
-          const id6 = button.closest("[data-definition-id]").dataset.definitionId, added = selectedCards.has(id6);
+          const id7 = button.closest("[data-definition-id]").dataset.definitionId, added = selectedCards.has(id7);
           button.textContent = added ? "Added" : "Buy";
           button.setAttribute("aria-pressed", String(added));
           button.style.color = added ? "#152c22" : "";
@@ -12442,10 +12673,10 @@
             updateSelected();
           });
         }
-        const price = cachedPrice(row, value);
+        const price2 = cachedPrice(row, value);
         const priceBar = add(art, "div", "", "gallery-card-pricebar");
-        const priceLabel = add(priceBar, "span", price == null ? "\u4EF7\u683C\u672A\u77E5" : `${price.toLocaleString()} \u{1FA99}`, "gallery-card-price");
-        const stalePrice = price != null && (priceExpired(value) || value.priceSnapshot?.staleIds?.includes(row.eaId) || value.priceSnapshot && !Object.hasOwn(value.priceSnapshot.prices, row.eaId));
+        const priceLabel = add(priceBar, "span", price2 == null ? "\u4EF7\u683C\u672A\u77E5" : `${price2.toLocaleString()} \u{1FA99}`, "gallery-card-price");
+        const stalePrice = price2 != null && (priceExpired(value) || value.priceSnapshot?.staleIds?.includes(row.eaId) || value.priceSnapshot && !Object.hasOwn(value.priceSnapshot.prices, row.eaId));
         if (stalePrice) {
           priceLabel.dataset.priceState = "snapshot";
           priceLabel.title = "\u65E7\u62A5\u4EF7\u5FEB\u7167\uFF0C\u4E0D\u7528\u4E8E\u65B9\u6848\u6210\u672C";
@@ -12467,11 +12698,12 @@
         statusIcon(flags2, row.inClub, row.inClub === true ? "Club \u53EF\u89C1" : row.inClub === false && row.held ? "\u5176\u4ED6\u5E93\u5B58\u533A\u6301\u6709\uFF0CClub \u672A\u770B\u5230" : row.inClub === false ? "Club \u672A\u770B\u5230" : "Club \u72B6\u6001\u672A\u77E5");
         statusIcon(flags2, row.firstOwned, row.firstOwned === true ? "First Owner" : row.firstOwned === false ? "\u975E First Owner" : "First Owner \u672A\u77E5");
         add(meta, "span", `EA ${row.gradingScore == null ? "\u672A\u77E5" : row.gradingScore}`, "gallery-player-score");
-        if (typeof setFirstOwner === "function") {
-          const localFirstOwner = row.firstOwnedSource === "local-history";
-          const firstOwner = add(meta, "button", localFirstOwner ? "\u6E05\u9664\u672C\u5730 FO" : "\u6807\u8BB0\u672C\u5730 FO", "gallery-first-owner-toggle");
+        const firstOwnerAction = galleryFirstOwnerHistoryAction(row);
+        if (typeof setFirstOwner === "function" && firstOwnerAction) {
+          const localFirstOwner = firstOwnerAction === "clear";
+          const firstOwner = add(meta, "button", localFirstOwner ? "\u6E05\u9664\u5386\u53F2 FO" : "\u6807\u8BB0\u5386\u53F2 FO", "gallery-first-owner-toggle");
           firstOwner.type = "button";
-          firstOwner.title = "\u4EC5\u4FDD\u5B58\u672C\u8D26\u53F7\u7684\u672C\u5730\u5386\u53F2\u58F0\u660E\uFF0C\u4E0D\u6539\u53D8 EA \u6536\u96C6\u72B6\u6001\uFF1B\u53EF\u518D\u6B21\u70B9\u51FB\u6E05\u9664";
+          firstOwner.title = localFirstOwner ? "\u6E05\u9664\u672C\u5730\u9996\u4EFB\u5386\u53F2\u58F0\u660E\uFF0C\u6062\u590D\u81EA\u52A8\u8BC6\u522B\u7ED3\u679C\uFF1B\u4E0D\u6539\u53D8 EA \u8BB0\u5F55" : "\u4EC5\u5728\u786E\u5B9A\u66FE\u9996\u4EFB\u83B7\u5F97\u8FD9\u4E2A\u7248\u672C\u65F6\u6807\u8BB0\uFF1B\u4EC5\u4ECE\u5E02\u573A\u4E70\u8FC7\u7684\u4E0D\u8981\u6807\u8BB0\u3002\u53EA\u5F71\u54CD FCAT \u672C\u5730\u4F30\u5206\uFF0C\u4E0D\u6539\u53D8 EA \u8BB0\u5F55";
           firstOwner.addEventListener("click", async (event) => {
             if (!event.isTrusted || checkScope() === false || !thisDetailCurrent(value, set.id)) return;
             const identity5 = scope2();
@@ -12480,7 +12712,7 @@
               await setFirstOwner(row.eaId, localFirstOwner ? null : true);
               const current2 = details.get(set.id);
               if (!current2 || current2 !== value || identity5 !== scope2() || !thisDetailCurrent(value, set.id)) return;
-              for (const [id6, detail] of details) {
+              for (const [id7, detail] of details) {
                 if (!detail.progress?.rows.some((item2) => item2.eaId === row.eaId)) continue;
                 const rows = detail.progress.rows.map((item2) => {
                   if (item2.eaId !== row.eaId) return item2;
@@ -12492,7 +12724,7 @@
                     firstOwnedSource: localFirstOwner ? observed === null ? null : "ea-observed" : "local-history"
                   };
                 });
-                details.set(id6, { ...detail, progress: { ...detail.progress, rows, totals: {
+                details.set(id7, { ...detail, progress: { ...detail.progress, rows, totals: {
                   ...detail.progress.totals,
                   firstOwned: rows.filter((item2) => item2.firstOwned === true).length,
                   firstOwnedUnknown: rows.filter((item2) => item2.firstOwned === null).length
@@ -12578,12 +12810,14 @@
           foregroundSync.progress = progress;
           updateSyncButton();
         } });
-      }).then((value) => {
+      }).then(async (value) => {
         checkScope();
         if (!value || token !== selection || source !== result?.source || startedScope !== currentScope || value.scope && value.scope !== currentScope) return;
         if (value.status === "observed" && !value.poolStale) invalidated.delete(set.id);
         const changed = galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
         details.set(set.id, value);
+        await restorePlanCache(set, value);
+        if (token !== selection || source !== result?.source || startedScope !== currentScope) return;
         if (changed && jointTargets.has(set.id)) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
         renderJoint();
         renderSets();
@@ -12619,7 +12853,7 @@
         return;
       }
       node("gallery-category-title").textContent = category.name;
-      const summaries = new Map([...details].map(([id6, value]) => [id6, value?.progress?.totals]));
+      const summaries = new Map([...details].map(([id7, value]) => [id7, value?.progress?.totals]));
       const filtered = browseGallerySets(result?.catalog, {
         categoryId,
         query: node("gallery-search").value,
@@ -12707,21 +12941,21 @@
       for (const value of values6 ?? []) {
         const setId = value?.pool?.setId ?? value?.progress?.setId;
         const source = value?.pool?.source ?? value?.progress?.source;
-        const id6 = `${source}:${setId}`;
-        if (source !== result?.source || !sets2.some((set) => set.id === id6) || value.scope && value.scope !== currentScope || !value.progress) continue;
-        const previous = details.get(id6);
+        const id7 = `${source}:${setId}`;
+        if (source !== result?.source || !sets2.some((set) => set.id === id7) || value.scope && value.scope !== currentScope || !value.progress) continue;
+        const previous = details.get(id7);
         if (previous && JSON.stringify(previous.progress) === JSON.stringify(value.progress) && previous.pool?.revision === value.pool?.revision && previous.stale === value.stale && sameGalleryRuntimeCards(previous.runtimeCards, value.runtimeCards)) continue;
         const merged = { ...previous, ...value };
-        if (jointTargets.has(id6) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
-        details.set(id6, merged);
+        if (jointTargets.has(id7) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
+        details.set(id7, merged);
         changed = true;
-        if (id6 === selectedSetId) selectedChanged = true;
+        if (id7 === selectedSetId) selectedChanged = true;
       }
       if (!changed) return;
       if (jointChanged) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
       renderJoint();
       renderSets();
-      if (selectedChanged && !foregroundSync && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
+      if (selectedChanged && !activePlans && !foregroundSync && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
         const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
         if (set) renderSetDetail(details.get(selectedSetId), set);
       }
@@ -12801,7 +13035,7 @@
           resumeBackground = false;
           void synchronize2(null, { background: true });
         }
-        if (!foregroundSync && selectedSetId && details.has(selectedSetId)) {
+        if (!activePlans && !foregroundSync && selectedSetId && details.has(selectedSetId)) {
           const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
           if (set) renderSetDetail(details.get(selectedSetId), set);
         }
@@ -12829,14 +13063,14 @@
       const changed = diffGalleryCatalog(previous?.catalog, catalog);
       const sourceChanged = previous?.source && previous.source !== value.source;
       const removed = new Set(changed?.removed ?? []);
-      for (const id6 of removed) setIconSelections.delete(id6);
+      for (const id7 of removed) setIconSelections.delete(id7);
       const requirementChanges = new Set(changed?.requirements ?? []);
       const selectedStillExists = selectedSetId != null && catalog.categories.some((category) => category.sets.some((set) => set.id === selectedSetId));
       const selectedRemoved = selectedSetId != null && !selectedStillExists;
-      for (const id6 of [...removed, ...requirementChanges]) {
-        details.delete(id6);
-        if (requirementChanges.has(id6)) invalidated.add(id6);
-        else invalidated.delete(id6);
+      for (const id7 of [...removed, ...requirementChanges]) {
+        details.delete(id7);
+        if (requirementChanges.has(id7)) invalidated.add(id7);
+        else invalidated.delete(id7);
       }
       if (sourceChanged || selectedRemoved) {
         disposeNativeCards();
@@ -12848,6 +13082,7 @@
           details.clear();
           invalidated.clear();
           setIconSelections.clear();
+          planCache.clear();
         }
         if (sourceChanged) {
           jointTargets.clear();
@@ -12865,7 +13100,7 @@
         showBrowseLevel();
       }
       if (!catalog.categories.some((row) => row.id === categoryId)) categoryId = null;
-      const targetCatalogChanged = [...changed.requirements, ...changed.rewards, ...changed.removed, ...changed.renamed].some((id6) => jointTargets.has(id6));
+      const targetCatalogChanged = [...changed.requirements, ...changed.rewards, ...changed.removed, ...changed.renamed].some((id7) => jointTargets.has(id7));
       if (changed.tagsChanged || targetCatalogChanged || sourceChanged) invalidateJoint("\u76EE\u6807\u89C4\u5219\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
       if (changed.tagsChanged || changed.requirements.length || changed.rewards.length || changed.removed.length || changed.renamed.length || sourceChanged) overviewCache.clear();
       restoreTargets();
@@ -12918,7 +13153,7 @@
           details.delete(selected.id);
           void loadSetDetails(selected, { force: true });
         }
-      } else if (!jointMode && selectedSetId != null && details.has(selectedSetId)) {
+      } else if (!activePlans && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
         const selected = catalog.categories.flatMap((category) => category.sets).find((set) => set.id === selectedSetId);
         if (selected) renderSetDetail(details.get(selectedSetId), selected);
       }
@@ -13054,6 +13289,7 @@
     galleryDiagnosticLog = null,
     galleryNativeRenderer: galleryNativeRenderer2 = null,
     galleryTargetStore = null,
+    galleryPlanStore = null,
     gallerySync: gallerySync2 = null,
     purchaseGallery = null,
     galleryFirstOwnerHistory = null,
@@ -13069,9 +13305,9 @@
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = fc27WorkbenchMarkup();
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, sync: gallerySync2, purchase: purchaseGallery, setFirstOwner: galleryFirstOwnerHistory });
-    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id6) => gallery.setActive(id6 === "gallery"));
-    const node = (id6) => shadow.getElementById(id6);
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync2, purchase: purchaseGallery, setFirstOwner: galleryFirstOwnerHistory });
+    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id7) => gallery.setActive(id7 === "gallery"));
+    const node = (id7) => shadow.getElementById(id7);
     node("workbench-version").textContent = version ?? title;
     node("workbench-mode").textContent = liveEnabled === true ? "\u5DF2\u5F00\u653E\u73B0\u6709\u5355\u6B21\u64CD\u4F5C\uFF1B\u63D0\u4EA4\u9700\u5355\u72EC\u786E\u8BA4\u3002" : "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002";
     node("gallery-proxy-card").hidden = typeof setGalleryProxy2 !== "function";
@@ -13221,7 +13457,7 @@
         update();
       }
     };
-    const on = (id6, callback) => node(id6).addEventListener("click", (event) => {
+    const on = (id7, callback) => node(id7).addEventListener("click", (event) => {
       if (event.isTrusted && !busy) callback();
     });
     on("refresh", () => {
@@ -13366,7 +13602,7 @@
       }
       action = null;
     });
-    for (const id6 of ["target", "rating"]) node(id6).addEventListener("change", () => {
+    for (const id7 of ["target", "rating"]) node(id7).addEventListener("change", () => {
       clear();
       update();
     });
@@ -13992,7 +14228,7 @@
   }
 
   // src/gallery/progress.js
-  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
   var booleanOrUnknown = (value) => typeof value === "boolean" ? value : null;
   var scoreOrUnknown = (value) => Number.isFinite(value) && value >= 0 && value <= 1e8 ? Number(value) : null;
   function accountRow(item2, concept, club, clubKnown, history, held) {
@@ -14034,21 +14270,21 @@
     const concepts = /* @__PURE__ */ new Map();
     const allowed = new Set(pool.items.map((item2) => item2.eaId));
     for (const raw of conceptItems) {
-      const id6 = raw?.definitionId ?? raw?.resourceId;
-      if (!validId9(id6) || !allowed.has(id6)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
-      if (concepts.has(id6)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
-      concepts.set(id6, raw);
+      const id7 = raw?.definitionId ?? raw?.resourceId;
+      if (!validId10(id7) || !allowed.has(id7)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (concepts.has(id7)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+      concepts.set(id7, raw);
     }
     const club = /* @__PURE__ */ new Map();
     for (const raw of clubItems) {
-      if (!validId9(raw?.definitionId)) continue;
+      if (!validId10(raw?.definitionId)) continue;
       if (!allowed.has(raw.definitionId)) continue;
       if (!club.has(raw.definitionId)) club.set(raw.definitionId, []);
       club.get(raw.definitionId).push(raw);
     }
     const history = /* @__PURE__ */ new Map();
     for (const row of collectionHistory) history.set(row.definitionId, { ...history.get(row.definitionId), ...row });
-    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId9));
+    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId10));
     const rows = pool.items.map((item2) => accountRow(item2, concepts.get(item2.eaId), club.get(item2.eaId), clubKnown, history.get(item2.eaId), held.has(item2.eaId)));
     const count2 = (key) => rows.filter((row) => row[key] === true).length;
     return Object.freeze({
@@ -14077,36 +14313,10 @@
     });
   }
 
-  // src/gallery/first-owner-history.js
-  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
-  function normalizeGalleryFirstOwnerHistory(rows, { max = 1e5 } = {}) {
-    if (!Array.isArray(rows) || rows.length > max) return [];
-    const result = /* @__PURE__ */ new Map();
-    for (const row of rows) {
-      const definitionId = Number(row?.definitionId);
-      if (!validId10(definitionId) || typeof row?.firstOwned !== "boolean") continue;
-      const updatedAt = Number.isSafeInteger(row.updatedAt) && row.updatedAt >= 0 ? row.updatedAt : 0;
-      result.set(definitionId, { definitionId, firstOwned: row.firstOwned, updatedAt });
-    }
-    return [...result.values()].sort((a, b) => a.definitionId - b.definitionId);
-  }
-  function toggleGalleryFirstOwnerHistory(history, definitionId, firstOwned, updatedAt = Date.now()) {
-    const current2 = normalizeGalleryFirstOwnerHistory(history);
-    const id6 = Number(definitionId);
-    if (!validId10(id6) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
-    const next = current2.filter((row) => row.definitionId !== id6);
-    next.push({ definitionId: id6, firstOwned, updatedAt });
-    return normalizeGalleryFirstOwnerHistory(next);
-  }
-  function removeGalleryFirstOwnerHistory(history, definitionId) {
-    const id6 = Number(definitionId);
-    return normalizeGalleryFirstOwnerHistory(history).filter((row) => row.definitionId !== id6);
-  }
-
   // src/adapters/ea/fc27-gallery-progress.js
   var at6 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
-  var id5 = (value) => Number.isSafeInteger(value) && value > 0;
-  var databaseId = (value) => id5(value) ? value % 16777216 : null;
+  var id6 = (value) => Number.isSafeInteger(value) && value > 0;
+  var databaseId = (value) => id6(value) ? value % 16777216 : null;
   var sameDatabaseId = (left, right) => databaseId(left) === databaseId(right);
   var same14 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var safeReason7 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PROGRESS_UNAVAILABLE";
@@ -14177,17 +14387,17 @@
     }
     const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
     const guid = result.guidAssetId;
-    if (!id5(definitionId) || result.itemType !== "player" || result.dream !== true || result.definitionId != null && result.definitionId !== definitionId || !Number.isSafeInteger(result.rareflag) || !Number.isFinite(result.rating) || !Array.isArray(result.attributeArray) || result.attributeArray.length !== 6 || !result.attributeArray.every(Number.isFinite) || guid != null && (typeof guid !== "string" || guid.length > 100)) return null;
+    if (!id6(definitionId) || result.itemType !== "player" || result.dream !== true || result.definitionId != null && result.definitionId !== definitionId || !Number.isSafeInteger(result.rareflag) || !Number.isFinite(result.rating) || !Array.isArray(result.attributeArray) || result.attributeArray.length !== 6 || !result.attributeArray.every(Number.isFinite) || guid != null && (typeof guid !== "string" || guid.length > 100)) return null;
     result.resourceId = definitionId;
     result.definitionId = definitionId;
-    result.id = id5(result.id) ? result.id : definitionId;
+    result.id = id6(result.id) ? result.id : definitionId;
     return Object.freeze(result);
   };
   function sanitizeRows(rows, allowed, accepts = (value) => allowed.has(value), maxRows = allowed.size) {
     if (!Array.isArray(rows) || rows.length > maxRows) fail18("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
     const result = rows.map((raw) => {
       const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
-      if (!id5(definitionId) || !accepts(definitionId)) fail18("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!id6(definitionId) || !accepts(definitionId)) fail18("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       const flag = ownData(raw, "isCollected"), score2 = ownData(raw, "gradingScore");
       const cardData = nativeCardData(ownData(raw, "cardData") ?? raw);
       return {
@@ -14207,7 +14417,7 @@
     if (!items || typeof items !== "object" || Object.keys(items).length > 2e4) return result;
     for (const key of Object.keys(items)) {
       const raw = ownData(items, key), definitionId = ownData(raw, "definitionId");
-      if (ownData(raw, "type") !== "player" || ownData(raw, "concept") !== false || !id5(ownData(raw, "id"))) continue;
+      if (ownData(raw, "type") !== "player" || ownData(raw, "concept") !== false || !id6(ownData(raw, "id"))) continue;
       const owners = ownData(raw, "owners");
       result.push({ definitionId, owners: Number.isSafeInteger(owners) && owners > 0 && owners <= 1e4 ? owners : null });
     }
@@ -14228,7 +14438,7 @@
       if (!source || typeof source !== "object") continue;
       for (const key of Object.keys(source).slice(0, 2e4)) {
         const raw = ownData(source, key), definitionId = ownData(raw, "definitionId");
-        if (id5(definitionId) && id5(ownData(raw, "id")) && ownData(raw, "type") === "player" && ownData(raw, "concept") === false) result.push({ definitionId });
+        if (id6(definitionId) && id6(ownData(raw, "id")) && ownData(raw, "type") === "player" && ownData(raw, "concept") === false) result.push({ definitionId });
       }
     }
     return [...new Map(result.map((row) => [row.definitionId, row])).values()];
@@ -14281,7 +14491,7 @@
       let changed = false;
       for (const row of rows) {
         const previous = state.rows.get(row.definitionId);
-        const owners = [previous?.collectedOwners, row.collectedOwners].filter((value) => id5(value));
+        const owners = [previous?.collectedOwners, row.collectedOwners].filter((value) => id6(value));
         const next = {
           ...previous,
           ...row,
@@ -14307,7 +14517,7 @@
       try {
         const rows = sanitizeRows(saved.concepts, new Set(saved.concepts.map((row) => row.definitionId)));
         for (let i = 0; i < rows.length; i++) {
-          if (id5(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
+          if (id6(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
           const readAt = saved.concepts[i].readAt ?? saved.fetchedAt;
           if (Number.isSafeInteger(readAt) && readAt >= 0 && readAt <= now()) rows[i].readAt = readAt;
         }
@@ -14319,7 +14529,7 @@
         state.syncedAt = Number.isSafeInteger(saved.syncedAt) && saved.syncedAt <= now() ? saved.syncedAt : null;
         state.fullSyncAt = Number.isSafeInteger(saved.fullSyncAt) && saved.fullSyncAt <= now() ? saved.fullSyncAt : null;
         if (Array.isArray(saved.coveredDefinitionIds) && saved.coveredDefinitionIds.length <= 1e5) {
-          state.coveredDefinitionIds = new Set(saved.coveredDefinitionIds.filter(id5));
+          state.coveredDefinitionIds = new Set(saved.coveredDefinitionIds.filter(id6));
         }
         state.setSyncedAt = saved.setSyncedAt && typeof saved.setSyncedAt === "object" ? { ...saved.setSyncedAt } : {};
         state.firstOwnerHistory = normalizeGalleryFirstOwnerHistory(saved.firstOwnerHistory);
@@ -14364,14 +14574,14 @@
       assert(context);
       if ([...nativePending].some((pending2) => !same14(context, pending2.context))) return;
       const definitionId = item2.definitionId;
-      if (!id5(definitionId)) return;
+      if (!id6(definitionId)) return;
       const state = stateFor(context), owners = ownerCount(item2);
       const changed = merge(state, [{
         definitionId,
         isCollected: true,
         gradingScore: Number.isFinite(item2.gradingScore) ? item2.gradingScore : null,
         cardData: nativeCardData(raw),
-        ...id5(owners) ? { collectedOwners: owners } : {}
+        ...id6(owners) ? { collectedOwners: owners } : {}
       }]);
       state.clubSnapshot = null;
       state.heldSnapshot = null;
@@ -14402,11 +14612,11 @@
       return true;
     };
     const validatePool = (pool, context) => {
-      if (pool?.source !== "futgg" || pool.season !== context.season || typeof pool.complete !== "boolean" || !id5(pool.setId) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id5(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id5(pool.requiredCards) || !id5(pool.poolSize) || pool.poolSize <= pool.items.length || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail18("FC27_GALLERY_POOL_UNAVAILABLE");
+      if (pool?.source !== "futgg" || pool.season !== context.season || typeof pool.complete !== "boolean" || !id6(pool.setId) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id6(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id6(pool.requiredCards) || !id6(pool.poolSize) || pool.poolSize <= pool.items.length || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail18("FC27_GALLERY_POOL_UNAVAILABLE");
     };
     const projectState = (pool, state, extra = {}) => {
       assert(state.context);
-      const allowed = new Set(pool.items.map((row) => row.eaId)), concepts = [...allowed].map((id6) => state.rows.get(id6)).filter(Boolean);
+      const allowed = new Set(pool.items.map((row) => row.eaId)), concepts = [...allowed].map((id7) => state.rows.get(id7)).filter(Boolean);
       if (!state.clubSnapshot || now() - state.clubSnapshotAt >= 5e3) {
         state.clubSnapshot = readClubSnapshot(root);
         state.heldSnapshot = readHeldSnapshot(root);
@@ -14502,7 +14712,7 @@
       try {
         context = readFc27Context(root);
         if (pool) validatePool(pool, context);
-        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id5(value)) || new Set(definitionIds).size !== definitionIds.length)) fail18("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id6(value)) || new Set(definitionIds).size !== definitionIds.length)) fail18("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason7(error2) });
       }
@@ -14521,7 +14731,7 @@
           await restore(state);
           assert(context);
           const allIds = definitionIds ?? (pool ? pool.items.map((row) => row.eaId) : root.repositories.Item.getStaticData().map((row) => row.id));
-          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id5(value))) fail18("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id6(value))) fail18("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
           const fullSync = !pool && definitionIds === null;
           let ids = fullSync && !force ? allIds.filter((value) => !state.coveredDefinitionIds.has(value)) : pool && incremental && !force ? allIds.filter((value) => needsRead(state, value, missingOnly)) : allIds;
           let rechecking = false;
@@ -14535,10 +14745,11 @@
             record({ event: "sync-plan", phase: "incremental", status: "success", count: 0, cached: true });
             return { status: "observed", cached: true, scope: scope2(), covered: state.coveredDefinitionIds.size };
           }
-          if (now() < state.retryAt) fail18("FC27_GALLERY_PROGRESS_BACKOFF");
+          if (definitionIds === null && now() < state.retryAt) fail18("FC27_GALLERY_PROGRESS_BACKOFF");
           if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function" || root.GAME_NAME !== "fc27") fail18("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
           record({ event: "sync-plan", phase: force ? "full" : rechecking ? "recheck" : "incremental", status: "started", count: ids.length, cached: state.rows.size > 0 });
           const incoming = [], seen = /* @__PURE__ */ new Set(), groups = Math.ceil(ids.length / 1e3);
+          let familyEvidence = false;
           let pages = 0;
           for (let start = 0; start < ids.length; start += 1e3) {
             const batch = ids.slice(start, start + 1e3), allowed = new Set(batch);
@@ -14569,7 +14780,7 @@
               const exactProjection = pool || definitionIds !== null || rechecking;
               const pageAllowed = exactProjection ? allowed : new Set(data.items.map((item2) => item2.definitionId));
               const accepts = pool || rechecking ? (value) => [...allowed].some((requested) => sameDatabaseId(requested, value)) : (value) => pageAllowed.has(value);
-              const responseIds = data.items.map((item2) => item2?.definitionId).filter(id5);
+              const responseIds = data.items.map((item2) => item2?.definitionId).filter(id6);
               record({
                 event: "concept-response",
                 status: "validated",
@@ -14581,8 +14792,11 @@
                 recheck: rechecking
               });
               const nativeItems = new Map(data.items.map((item2) => [item2?.definitionId, item2]));
+              const acceptedItems = data.items.filter((item2) => id6(item2?.definitionId) && accepts(item2.definitionId));
+              if (acceptedItems.length) familyEvidence = true;
+              const payloadItems = exactProjection && acceptedItems.length ? acceptedItems : data.items;
               const rows = sanitizeRows(
-                data.items.map((item2) => ({
+                payloadItems.map((item2) => ({
                   definitionId: item2.definitionId,
                   isCollected: item2.isCollected,
                   gradingScore: item2.gradingScore,
@@ -14639,8 +14853,22 @@
           }
           assert(context);
           if (operation.stopped) return { status: "stopped", scope: scope2() };
+          if ((pool || definitionIds !== null || rechecking) && incoming.length < ids.length && familyEvidence) {
+            const observed = new Set(incoming.map((row) => row.definitionId));
+            for (const definitionId of ids) {
+              if (observed.has(definitionId)) continue;
+              incoming.push({ definitionId, isCollected: null, gradingScore: null, readAt: now(), familyOnly: true });
+            }
+            record({
+              event: "concept-response",
+              status: "family-only",
+              requestedCount: ids.length,
+              retainedCount: incoming.length,
+              unknownCount: incoming.filter((row) => row.familyOnly === true).length
+            });
+          }
           if ((definitionIds !== null || rechecking) && incoming.length !== ids.length) fail18("FC27_GALLERY_CONCEPT_INCOMPLETE");
-          if (pool && incoming.length < ids.length && ids.every((id6) => state.rows.has(id6))) fail18("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if (pool && incoming.length < ids.length && ids.every((id7) => state.rows.has(id7))) fail18("FC27_GALLERY_CONCEPT_INCOMPLETE");
           merge(state, incoming);
           state.fetchedAt = now();
           if (fullSync && !rechecking) for (const value of ids) state.coveredDefinitionIds.add(value);
@@ -14718,7 +14946,7 @@
       const context = readFc27Context(root), state = stateFor(context);
       await restore(state);
       assert(context);
-      if (!id5(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail18("FC27_GALLERY_FO_INPUT_INVALID");
+      if (!id6(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail18("FC27_GALLERY_FO_INPUT_INVALID");
       const saved = await persist(state, (history) => firstOwned === null ? removeGalleryFirstOwnerHistory(history, Number(definitionId)) : toggleGalleryFirstOwnerHistory(history, Number(definitionId), firstOwned, now()));
       if (!saved) fail18("FC27_GALLERY_FO_SAVE_FAILED");
       assert(context);
@@ -15028,17 +15256,17 @@
   var validId11 = (value) => Number.isSafeInteger(value) && value > 0;
   function cloneCardData(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const clone2 = (value, depth = 0) => {
+    const clone3 = (value, depth = 0) => {
       if (depth > 5) return null;
-      if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone2(item2, depth + 1) : item2);
+      if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone3(item2, depth + 1) : item2);
       if (value && typeof value === "object") {
         const copy = {};
-        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy[key] = item2 && typeof item2 === "object" ? clone2(item2, depth + 1) : item2;
+        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy[key] = item2 && typeof item2 === "object" ? clone3(item2, depth + 1) : item2;
         return copy;
       }
       return value;
     };
-    return clone2(raw);
+    return clone3(raw);
   }
   function sourceDefinitionId(source) {
     return own(source, "resourceId") ?? own(source, "definitionId");
@@ -15160,6 +15388,107 @@
     return Object.freeze({ render });
   }
 
+  // src/gallery/plans.js
+  var GALLERY_PLAN_SCHEMA = 1;
+  var sourceOf = (value) => value === "futgg" || value === "fodder" ? value : null;
+  var scopeOf2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f]/.test(value) ? value : null;
+  var setOf = (value) => typeof value === "string" && value.length > 0 && value.length <= 330 && /^(?:futgg:[1-9]\d{0,15}|fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*)$/.test(value) ? value : null;
+  var clone2 = (value) => {
+    try {
+      return structuredClone(value);
+    } catch {
+      return null;
+    }
+  };
+  function normalizeRecord(value, scope2, source, setId) {
+    if (!value || value.schema !== GALLERY_PLAN_SCHEMA || value.scope !== scope2 || value.source !== source || value.setId !== setId || typeof value.binding !== "string" || value.binding.length < 1 || value.binding.length > 5e5 || !Number.isSafeInteger(value.savedAt) || value.savedAt < 0 || value.savedAt > Date.now() + 6e4) return null;
+    const plan = value.plan == null ? null : clone2(value.plan), overview = value.overview == null ? null : clone2(value.overview);
+    if (plan === null && overview === null || plan !== null && (typeof plan !== "object" || Array.isArray(plan)) || overview !== null && (typeof overview !== "object" || Array.isArray(overview))) return null;
+    const overviewBinding = value.overviewBinding ?? value.binding;
+    if (typeof overviewBinding !== "string" || !overviewBinding.length || overviewBinding.length > 5e5) return null;
+    return {
+      schema: GALLERY_PLAN_SCHEMA,
+      scope: scope2,
+      source,
+      setId,
+      binding: value.binding,
+      overviewBinding,
+      plan,
+      overview,
+      savedAt: value.savedAt
+    };
+  }
+  function galleryPlanKey(scope2, source, setId) {
+    const validScope3 = scopeOf2(scope2), validSource = sourceOf(source), validSet = setOf(setId);
+    if (!validScope3 || !validSource || !validSet) throw new Error("FC27_GALLERY_PLAN_SCOPE_INVALID");
+    return `fcat-fc27-gallery-plan:${JSON.stringify([validScope3, validSource, validSet])}`;
+  }
+  function createGalleryPlanStore({ get, set, now = () => Date.now() } = {}) {
+    let tail = Promise.resolve();
+    const load = async (scope2, source, setId) => {
+      try {
+        await tail;
+        const value = await get(galleryPlanKey(scope2, source, setId), null);
+        if (value == null) return { status: "absent" };
+        const record = normalizeRecord(value, scope2, source, setId);
+        return record ? { status: "observed", record } : { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_INVALID" };
+      } catch {
+        return { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_READ_FAILED" };
+      }
+    };
+    const save = (scope2, source, setId, value) => {
+      let record, key;
+      try {
+        key = galleryPlanKey(scope2, source, setId);
+        record = normalizeRecord({
+          schema: GALLERY_PLAN_SCHEMA,
+          scope: scope2,
+          source,
+          setId,
+          binding: value?.binding,
+          overviewBinding: value?.overviewBinding,
+          plan: value?.plan,
+          overview: value?.overview ?? null,
+          savedAt: now()
+        }, scope2, source, setId);
+        if (!record) throw new Error();
+      } catch {
+        return Promise.resolve({ status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_INVALID" });
+      }
+      const task = tail.then(async () => {
+        try {
+          await set(key, record);
+          return { status: "observed", record };
+        } catch {
+          return { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_WRITE_FAILED" };
+        }
+      });
+      tail = task.catch(() => {
+      });
+      return task;
+    };
+    const clear = (scope2, source, setId) => {
+      let key;
+      try {
+        key = galleryPlanKey(scope2, source, setId);
+      } catch {
+        return Promise.resolve({ status: "blocked", reason: "FC27_GALLERY_PLAN_SCOPE_INVALID" });
+      }
+      const task = tail.then(async () => {
+        try {
+          await set(key, null);
+          return { status: "observed" };
+        } catch {
+          return { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_WRITE_FAILED" };
+        }
+      });
+      tail = task.catch(() => {
+      });
+      return task;
+    };
+    return Object.freeze({ load, save, clear });
+  }
+
   // src/gallery/market-comparison.js
   function createGalleryMarketComparison({
     createTransport,
@@ -15270,7 +15599,7 @@
     "skillMoves"
   ];
   var flags = ["collected", "held", "inClub", "firstOwned", "holographic"];
-  var integer11 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
+  var integer12 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
   var gradeName = (value) => typeof value === "string" && /^[A-S][+-]?$/.test(value);
   function createGalleryPlanReplay(input) {
     try {
@@ -15278,7 +15607,7 @@
       if (!targets.length || targets.length > 4 || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
       const clean = targets.map((target) => {
         const { set, catalog, progress, prices = {}, targetGrade } = target;
-        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer11(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer11(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
+        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer12(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer12(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
         const tags = catalog.tags.map((tag) => {
           const rule = tag.rules[0];
           if (rule.values.length > 256 || rule.values.some((value) => !/^[A-Za-z0-9_-]{1,24}$/.test(String(value))) || tag.tiers.length > 256) throw Error("invalid");
@@ -15293,7 +15622,7 @@
         });
         const rows = progress.rows.map((row) => {
           const clean2 = {};
-          for (const key of numeric) if (row[key] == null || integer11(row[key])) clean2[key] = row[key] ?? null;
+          for (const key of numeric) if (row[key] == null || integer12(row[key])) clean2[key] = row[key] ?? null;
           else throw Error("invalid");
           for (const key of flags) if (row[key] == null || typeof row[key] === "boolean") clean2[key] = row[key] ?? null;
           else throw Error("invalid");
@@ -15304,9 +15633,9 @@
           return clean2;
         });
         const quotes = {};
-        for (const row of rows) if (integer11(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
+        for (const row of rows) if (integer12(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
         return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
-          if (!gradeName(grade.name) || !integer11(grade.threshold)) throw Error("invalid");
+          if (!gradeName(grade.name) || !integer12(grade.threshold)) throw Error("invalid");
           return { name: grade.name, threshold: grade.threshold };
         }) }, catalog: { source: "futgg", tags }, progress: {
           season: "27",
@@ -15317,7 +15646,7 @@
           rows
         }, prices: quotes, targetGrade };
       });
-      if (joint && input.budget != null && !integer11(input.budget)) return null;
+      if (joint && input.budget != null && !integer12(input.budget)) return null;
       return {
         schema: 1,
         mode: joint ? "joint" : "grade",
@@ -15331,7 +15660,7 @@
   // src/diagnostics/fcat-diagnostic-log.js
   var DEFAULT_MAX_ENTRIES = 300;
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "route"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "route", "mismatch"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "batchSize",
@@ -15563,43 +15892,44 @@
         return "";
       }
     },
-    filter: (kind, id6) => {
+    filter: (kind, id7) => {
       try {
-        const value = Number(id6), util = unsafeWindow.AssetLocationUtils;
+        const value = Number(id7), util = unsafeWindow.AssetLocationUtils;
         const type = util?.FILTER?.[String(kind).toUpperCase()];
         return Number.isSafeInteger(value) && value > 0 && type ? util.getFilterImage(type, value) : "";
       } catch {
         return "";
       }
     },
-    club: (id6) => {
+    club: (id7) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.CLUB, Number(id6)) || "";
+        return u?.getFilterImage(u.FILTER.CLUB, Number(id7)) || "";
       } catch {
         return "";
       }
     },
-    league: (id6) => {
+    league: (id7) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.LEAGUE, Number(id6)) || "";
+        return u?.getFilterImage(u.FILTER.LEAGUE, Number(id7)) || "";
       } catch {
         return "";
       }
     },
-    nation: (id6) => {
+    nation: (id7) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.NATION, Number(id6)) || "";
+        return u?.getFilterImage(u.FILTER.NATION, Number(id7)) || "";
       } catch {
         return "";
       }
     },
     category: (slug2, name = "") => {
       const key = `${String(slug2 ?? "")} ${String(name ?? "")}`.toLocaleLowerCase();
-      const ids = key.includes("england") || key.includes("premier") || key.includes("wsl") ? [13, 2216] : key.includes("spain") || key.includes("laliga") || key.includes("liga-f") || key.includes("la-liga") ? [53, 2222] : key.includes("germany") || key.includes("bundesliga") ? [19] : key.includes("france") || key.includes("ligue") || key.includes("arkema") ? [16, 2218] : key.includes("italy") || key.includes("serie-a") || key.includes("serie a") ? [31] : key === "leagues" || key === "league" ? [13, 53, 19, 16, 31] : [];
-      return ids.map((id6) => galleryAssets.league(id6)).filter(Boolean);
+      const rarityCategory = key.includes("rarit");
+      const ids = key.includes("england") || key.includes("premier") || key.includes("wsl") ? [13, 2216] : key.includes("spain") || key.includes("laliga") || key.includes("liga-f") || key.includes("la-liga") ? [53, 2222] : key.includes("germany") || key.includes("bundesliga") ? [19, 2221] : key.includes("france") || key.includes("ligue") || key.includes("arkema") ? [16, 2218] : key.includes("italy") || key.includes("serie-a") || key.includes("serie a") ? [31] : key.includes("leagues") || key === "league" ? [13, 53, 19, 2221, 16, 31] : rarityCategory ? [1, 3, 4, 5, 6] : [];
+      return ids.map((id7) => rarityCategory ? galleryAssets.filter("RARITY", id7) : galleryAssets.league(id7)).filter(Boolean);
     },
     set: (name) => {
       try {
@@ -15609,13 +15939,13 @@
         const needle = normalize2(name);
         const rows = teams.map((team) => ({ team, value: normalize2(team?.name ?? team?.sortName ?? team?.label) })).filter((row) => row.value && row.value === needle);
         const ids = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId)).filter((value) => Number.isSafeInteger(value) && value > 0).slice(0, 3);
-        return [...new Set(ids)].map((id6) => galleryAssets.club(id6)).filter(Boolean);
+        return [...new Set(ids)].map((id7) => galleryAssets.club(id7)).filter(Boolean);
       } catch {
         return [];
       }
     }
   });
-  var galleryPrices = (id6) => readCachedGalleryPrice(unsafeWindow, id6);
+  var galleryPrices = (id7) => readCachedGalleryPrice(unsafeWindow, id7);
   var setGalleryProxy = async (value) => {
     const normalized = normalizeFc27GalleryProxy(value);
     await GM_setValue(FC27_GALLERY_PROXY_KEY, normalized);
@@ -15722,6 +16052,7 @@
       return galleryCatalog.loadPriceSnapshot(ids, { platform });
     },
     galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
+    galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
     exportDiagnostics: async () => {
       const payload = await diagnosticLog.exportPayload();
       const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-");

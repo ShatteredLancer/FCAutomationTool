@@ -3,7 +3,7 @@ import { createGalleryPlanReplay } from '../gallery/plan-replay.js';
 const DEFAULT_MAX_ENTRIES = 300;
 const MAX_STRING_LENGTH = 160;
 
-const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'route']);
+const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'route', 'mismatch']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
   'catalogAttempts', 'quoteAttempts', 'safeCandidates',
   'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',

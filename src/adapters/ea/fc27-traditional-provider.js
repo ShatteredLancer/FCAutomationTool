@@ -163,7 +163,9 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
     const items = await club.readPage({ start: 0, count: 250, definitionIds: refs.map(ref => ref.definitionId) });
     assert();
     if (items.length >= 250 || new Set(items.map(item => item.id)).size !== items.length
-        || items.some(item => !refs.some(ref => ref.definitionId === item.definitionId))) return fail('FC27_EXACT_ITEMS_CHANGED');
+        || items.some(item => !refs.some(ref => ref.definitionId === item.definitionId))) {
+      const error = new Error('FC27_EXACT_ITEMS_CHANGED'); error.mismatch = 'club-response'; throw error;
+    }
     return items.filter(item => refs.some(ref => ref.id === item.id && ref.definitionId === item.definitionId)).map(protectedItem);
   };
   const rewardCount = async reward => projectFc27OwnedPackCount(root, success(await transport.request('packs')), reward);

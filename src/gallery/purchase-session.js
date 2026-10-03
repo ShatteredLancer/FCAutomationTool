@@ -1,3 +1,5 @@
+import { summarizeGalleryNetCost } from './net-cost.js';
+
 // Exact Gallery version purchase journal. It deliberately has no SBC or EA
 // page knowledge; those facts are supplied by the injected adapter.
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -12,8 +14,12 @@ const quote = (value, definitionId) => value?.definitionId === definitionId && i
   && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15000000;
 const summary = record => {
   const entries = record?.entries ?? [], acquired = entries.filter(entry => ['bought', 'move-pending', 'move-rejected', 'club'].includes(entry.state));
+  const purchases = acquired.filter(entry => id(entry.itemId) && id(entry.definitionId) && Number.isSafeInteger(entry.price))
+    .map(entry => ({ itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId,
+      purchasePrice: entry.price, state: 'held' }));
+  const accounting = summarizeGalleryNetCost({ schema: 1, scope: record?.scope ?? null, entries: purchases });
   return { total: entries.length, purchased: acquired.length, completed: entries.filter(entry => ['club', 'collected'].includes(entry.state)).length,
-    spent: acquired.reduce((sum, entry) => sum + (entry.price ?? 0), 0) };
+    spent: acquired.reduce((sum, entry) => sum + (entry.price ?? 0), 0), accounting };
 };
 const itemResults = record => (record?.entries ?? []).map((entry, index) => ({ definitionId: entry.definitionId,
   name: record?.plan?.[index]?.name ?? '', state: entry.state,

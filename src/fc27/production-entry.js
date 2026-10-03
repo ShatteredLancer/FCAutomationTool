@@ -38,6 +38,7 @@ import { mergeGalleryAccountProgress } from '../gallery/progress.js';
 import { readCachedGalleryPrice } from '../gallery/prices.js';
 import { planGalleryGrade } from '../gallery/planner.js';
 import { createGalleryTargetStore } from '../gallery/targets.js';
+import { createGalleryPlanStore } from '../gallery/plans.js';
 import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
@@ -78,15 +79,17 @@ const galleryAssets = Object.freeze({
   nation: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.NATION, Number(id)) || ''; } catch { return ''; } },
   category: (slug, name = '') => {
     const key = `${String(slug ?? '')} ${String(name ?? '')}`.toLocaleLowerCase();
+    const rarityCategory = key.includes('rarit');
     const ids = key.includes('england') || key.includes('premier') || key.includes('wsl')
       ? [13, 2216]
       : key.includes('spain') || key.includes('laliga') || key.includes('liga-f') || key.includes('la-liga')
         ? [53, 2222]
-        : key.includes('germany') || key.includes('bundesliga') ? [19]
+      : key.includes('germany') || key.includes('bundesliga') ? [19, 2221]
           : key.includes('france') || key.includes('ligue') || key.includes('arkema') ? [16, 2218]
             : key.includes('italy') || key.includes('serie-a') || key.includes('serie a') ? [31]
-              : key === 'leagues' || key === 'league' ? [13, 53, 19, 16, 31] : [];
-    return ids.map(id => galleryAssets.league(id)).filter(Boolean);
+              : key.includes('leagues') || key === 'league' ? [13, 53, 19, 2221, 16, 31]
+                : rarityCategory ? [1, 3, 4, 5, 6] : [];
+    return ids.map(id => rarityCategory ? galleryAssets.filter('RARITY', id) : galleryAssets.league(id)).filter(Boolean);
   },
   set: name => {
     try {
@@ -192,6 +195,7 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     return galleryCatalog.loadPriceSnapshot(ids, { platform });
   },
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
+  galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');

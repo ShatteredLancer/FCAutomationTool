@@ -98,6 +98,29 @@ it('accepts database-family expansion for a set but stores only its exact pool v
   expect(result.progress.rows[0]).toMatchObject({ collected: true });
   expect(result.progress.rows).toHaveLength(3);
 });
+it('keeps an exact version unknown when EA returns only its database-family expansions', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  f.control.raw = Array.from({ length: 3 }, (_, index) => ({
+    resourceId: 900001 + 16777216 * (index + 1), isCollected: index === 0,
+  }));
+  const pool = { ...f.pool, items: [f.pool.items[0]], requiredCards: 1 };
+  const first = await finish(r.load(pool));
+  expect(first.status).toBe('observed');
+  expect(first.progress.rows).toHaveLength(1);
+  expect(first.progress.rows[0]).toMatchObject({ eaId: 900001, collected: null });
+  expect(f.calls).toHaveLength(1);
+  const cached = await finish(r.load(pool));
+  expect(cached.cached).toBe(true);
+  expect(f.calls).toHaveLength(1);
+});
+it('ignores one unrelated EA expansion when requested pool versions are present', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  f.control.raw = [{ resourceId: 900001, isCollected: true }, { resourceId: 900002, isCollected: false },
+    { resourceId: 900003, isCollected: false }, { resourceId: 800001, isCollected: true }];
+  const result = await finish(r.load(f.pool));
+  expect(result.status).toBe('observed');
+  expect(result.progress.rows.map(row => row.eaId)).toEqual([900001, 900002, 900003]);
+});
 it('forwards foreground load progress and advances confirmed pages without changing requests', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader(), progress = [];
   f.control.staticIds = Array.from({ length: 300 }, (_, i) => 900000 + i);

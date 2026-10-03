@@ -1,5 +1,9 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-10-03 Transfer List Bulk List 续查：Enhancer 在 Available/Unsold 共用 Bulk List 面板，默认 Percentage 100–100%、等待 3–5 秒；FSU 的分组列表也有批量拍卖，Fodder 有同名 Bulk List/Bulk Re-list，实际按钮来源尚缺页面 DOM 证据。建议 Gallery 已购实体与 Transfer List 复用 Enhancer 风格面板。Enhancer Auto Relist 按 1/5/10 分钟（默认 10）原价重挂全 Unsold；按批次重挂必须逐卡，不能误用全量接口。已纠正早期计划混用参考默认值、价格来源和错误处理的描述；旧交易数量/调度上限与参考的差异需先核对。仅更新计划，未新增交易代码或执行交易。详见 [Bulk List 与 Relist 计划](FC27_GALLERY_REMAINING_PLAN_ZH.md#transfer-list-bulk-list-来源与-fcat-复用边界)。
+
+2026-10-03 Gallery 自动出售/定时挂牌计划：已完成 Enhancer 27.0.0.4 与 Fodder GG 1.2.9 客户端行为取证。Enhancer 的 Gallery 买入后挂牌是可选的逐卡 `tPt → r8 → xAe`，默认 `sellPercent=0` 不出售；Fodder 将购买与 Bulk List/Bulk Re-list 分开，支持百分比、固定价、EA 价格阶梯、逐卡覆盖和 2–15 秒节奏。Fodder 的 `schedulePass` 仅为界面刷新，不是定时交易。FCAT 后续按 T1–T7 先接精确购买 Journal，再复用既有 Trade Adapter/Listing Transaction/Scheduler，实现买后挂牌与独立定时 Job；默认保留 Club，未知成交/入库/价格限制/身份变化 fail-closed。当前仅更新计划，未新增交易代码，未买卡、挂牌、出售、创建任务或发布。详见 [Gallery 自动出售与定时挂牌计划](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-03-自动出售与定时挂牌计划仅计划未接通交易)。
+
 2026-10-02 Gallery 成本搜索续做：候选池兼顾低价、评分和计分属性；增加按总价枚举与整组规则/价格段种子，单集合/联合规划共用，精确版本去重取代相同成本/进度合并。失败回归锁定 7/10 卡加成路线原本只返回约 85000 的合成方案，修复后为 6700/7000；不是账号实际报价。规划日志新增截断/报价/结果摘要和独立保留的四条脱敏回放，可离线重算，不再被同步事件挤掉。完整 verify 323 文件 / 3640 项、全套离线 browser self-test、产物/FSU 校验通过；FCAT 本地 27.0.4 / 831341 bytes，FSU 26.09.9 不变。真实 RC Deportivo 输入和最终费用待集中验证；未安装、消费、提交或发布。恢复点、hash、搜索边界及验收步骤见 [成本修复记录](FC27_GALLERY_COST_RECOVERY_ZH.md)。
 
 2026-10-02 Gallery 已有卡与比价兼容修复：单/联合规划排除 collected/inClub/held 的肯定持有版本，联合目标按精确版本共享持有证据，保留输入和 EA 收集事实；低价完整候选避免高价干扰卡挤出便宜补分组合。无需登录的公开脚本对照确认 EA 重混淆造成 `FC27_MARKET_METHOD_0_CHANGED`，13 个基线 hash 匹配、13 个解码函数结构一致，Market 独立加入本次精确兼容 hash，Club/保存/提交校验不放宽。完整 verify 319 文件 / 3604 项，构建仍为 27.0.4 / 800286 bytes；FSU Local 26.09.9 不变。登录账号的真实报价/最终方案仍待集中验收，未消费或发布。证据、范围与恢复点见 [Gallery 本轮故障修复](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-02-已有卡联合方案和比价故障修复)。

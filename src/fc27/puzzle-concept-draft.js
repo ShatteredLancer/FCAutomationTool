@@ -5,7 +5,8 @@ import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const blocked = reason => ({ status: 'blocked', reason, executable: false });
+const blocked = (reason, mismatch = null) => ({ status: 'blocked', reason, executable: false,
+  ...(typeof mismatch === 'string' ? { mismatch } : {}) });
 const scope = input => ({ context: input.context, challenge: input.challenge, policy: input.policy,
   clubLinks: input.clubLinks, chemistry: input.chemistry });
 const fields = ['id', 'definitionId', 'pile', 'rating', 'rarity', 'nationId', 'leagueId', 'teamId', 'positions', 'groups',
@@ -88,15 +89,15 @@ export function validateFc27PuzzleConceptDraft(plan, current, freshOwned) {
       selectedOwned: plan.slots.filter(ref => ref?.kind === 'owned').map(({ id, definitionId, rating, pile, slot }) => ({ id, definitionId, rating, pile, slot })),
       purchases: plan.purchases, purchaseCount: plan.purchaseCount,
     });
-    if (rebuilt.status !== 'prepared' || !same(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked('FC27_CONCEPT_PLAN_UNVERIFIED');
+    if (rebuilt.status !== 'prepared' || !same(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked('FC27_CONCEPT_PLAN_UNVERIFIED', 'plan');
     if (!Array.isArray(freshOwned) || freshOwned.length >= 250 || new Set(freshOwned.map(item => item.id)).size !== freshOwned.length
-        || freshOwned.some(item => !plan.owned.some(ref => ref.definitionId === item.definitionId))) return blocked('FC27_CONCEPT_ITEMS_CHANGED');
+        || freshOwned.some(item => !plan.owned.some(ref => ref.definitionId === item.definitionId))) return blocked('FC27_CONCEPT_ITEMS_CHANGED', 'club-shape');
     const owned = plan.owned.map(expected => {
       const fresh = freshOwned.find(item => item.id === expected.id);
       const actual = fresh && project({ ...fresh, protected: fresh.protected ?? expected.protected });
       return same(actual, expected) ? actual : null;
     });
-    if (owned.some(item => !item)) return blocked('FC27_CONCEPT_ITEMS_CHANGED');
+    if (owned.some(item => !item)) return blocked('FC27_CONCEPT_ITEMS_CHANGED', 'club-identity');
     return assess(current, plan.slots, owned, plan.purchases);
   } catch { return blocked('FC27_CONCEPT_PLAN_UNVERIFIED'); }
 }

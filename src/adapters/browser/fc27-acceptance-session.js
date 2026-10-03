@@ -1,4 +1,5 @@
 import { readFc27Context } from '../ea/fc27-local-read.js';
+import { ownData } from '../../fc27/prelaunch-contract.js';
 import { inspectFc27ChallengeCatalog } from '../ea/fc27-challenge-catalog.js';
 import { createFc27TraditionalProvider } from '../ea/fc27-traditional-provider.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
@@ -15,7 +16,7 @@ import { createFc27PuzzleFillTransaction } from '../../fc27/puzzle-fill-transact
 import { createFc27PuzzleProcurementSession } from '../../fc27/puzzle-procurement-session.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 import { createFc27MarketReadTransport, readFc27MarketPlayerName } from '../ea/fc27-market-read.js';
-import { createFc27PuzzleConceptSession, readFc27ConceptPending } from '../../fc27/puzzle-concept-session.js';
+import { createFc27PuzzleConceptSession, readFc27ConceptPending, readFc27ConceptReservation } from '../../fc27/puzzle-concept-session.js';
 import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
 import { createFc27PuzzleBuyAdapter, readFc27PuzzleBuyPlan } from '../ea/fc27-puzzle-buy.js';
 import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
@@ -133,6 +134,33 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       itemIds.add(ref.id); definitionIds.add(ref.definitionId);
     }
     return { value, itemIds, definitionIds };
+  };
+  const readCachedChallengeIds = setId => {
+    try {
+      const repository = ownData(ownData(root, 'services'), 'SBC')?.repository;
+      const sets = ownData(repository, 'sets');
+      const collection = ownData(sets, '_collection') ?? sets;
+      const set = ownData(collection, String(setId));
+      const challenges = ownData(set, 'challenges') ?? ownData(set, '_challenges');
+      const entries = ownData(challenges, '_collection') ?? challenges;
+      if (!entries || typeof entries !== 'object') return [];
+      const keys = Object.getOwnPropertyNames(entries).filter(key => key !== 'length');
+      if (keys.length > 50) return [];
+      const ids = keys.map(key => ownData(entries, key)?.id).filter(id => Number.isSafeInteger(id) && id > 0);
+      return [...new Set(ids)];
+    } catch { return []; }
+  };
+  const migratePuzzleReservations = async (setId, challengeId) => {
+    const current = await readPuzzleReservations(gmGetValue, scope);
+    const targets = [...current.targets]; let changed = false;
+    for (const candidate of readCachedChallengeIds(setId)) {
+      if (candidate === challengeId || targets.some(entry => entry.setId === setId && entry.challengeId === candidate)) continue;
+      const refs = await readFc27ConceptReservation(gmGetValue, scope, { setId, challengeId: candidate }, context);
+      if (!refs?.length) continue;
+      targets.push({ setId, challengeId: candidate, itemRefs: refs }); changed = true;
+    }
+    if (changed) await writePuzzleReservations(gmGetValue, gmSetValue, scope, { schema: 1, targets });
+    return reservationSnapshot();
   };
   const rememberPuzzleReservations = async (target, refs) => {
     const current = await readPuzzleReservations(gmGetValue, scope);
@@ -310,7 +338,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       // a second Set catalog GET is both redundant and prone to EA 429.
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked('FC27_PUZZLE_FILL_TARGET_CHANGED');
-      const reservations = await reservationSnapshot();
+      // Backfill reservations from terminal concept drafts written before the
+      // reservation index existed. This is local GM storage only; malformed or
+      // account-mismatched drafts are ignored and no EA request is added.
+      const reservations = await migratePuzzleReservations(setId, challengeId);
       // An explicitly empty current Challenge means the user cleared that
       // target. Release only its own reservation; other saved Challenges stay
       // protected across the continuous run.
@@ -723,6 +754,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       try {
         await diagnosticLog?.record?.({ area: 'puzzle', event: 'solve-result', setId: target.setId, challengeId: target.challengeId,
           status: result?.status, reason: result?.reason, source: log.catalogSource,
+          mismatch: result?.mismatch,
           safeCandidates: result?.plan?.safeCandidates, evaluations: result?.plan?.nodes,
           durationMs: log.finishedAt - log.startedAt });
         const purchase = result?.purchaseSuggestion, d = purchase?.diagnostics;

@@ -318,11 +318,19 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
           record({event:'sync-plan',phase:'incremental',status:'success',count:0,cached:true});
           return { status: 'observed', cached: true, scope: scope(), covered: state.coveredDefinitionIds.size };
         }
-        if (now() < state.retryAt) fail('FC27_GALLERY_PROGRESS_BACKOFF');
+        // A failed full/pool sweep may be rate-limited, but an explicit exact
+        // version read is the foreground operation used by planning/purchase
+        // and must not inherit that unrelated set's backoff.
+        if (definitionIds === null && now() < state.retryAt) fail('FC27_GALLERY_PROGRESS_BACKOFF');
         if (!install() || typeof root.UTSearchCriteriaDTO !== 'function' || typeof root.services?.Item?.searchConceptItems !== 'function'
             || root.GAME_NAME !== 'fc27') fail('FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED');
         record({event:'sync-plan',phase:force?'full':rechecking?'recheck':'incremental',status:'started',count:ids.length,cached:state.rows.size>0});
         const incoming = [], seen = new Set(), groups = Math.ceil(ids.length / 1000);
+        // EA can acknowledge a requested database family while omitting the
+        // exact Gallery version. Keep a bounded unknown marker for that exact
+        // requested id so the set stays honest and the same version is not
+        // queried again until its normal TTL expires.
+        let familyEvidence = false;
         let pages = 0;
         for (let start = 0; start < ids.length; start += 1000) {
           const batch = ids.slice(start, start + 1000), allowed = new Set(batch);
@@ -362,7 +370,15 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
             // Only sanitized network DTOs belong in the persistent cache; never
             // deep-clone or serialize the entity's private objects/prototypes.
             const nativeItems = new Map(data.items.map(item => [item?.definitionId, item]));
-            const rows = sanitizeRows(data.items.map(item => ({ definitionId: item.definitionId,
+            // EA may append an unrelated version to a multi-definition query.
+            // If at least one requested/family version is present, ignore that
+            // expansion and retain only the exact requested pool below. If no
+            // requested evidence is present, keep the original payload so the
+            // strict ID validator still fails closed for missing/foreign reads.
+            const acceptedItems = data.items.filter(item => id(item?.definitionId) && accepts(item.definitionId));
+            if (acceptedItems.length) familyEvidence = true;
+            const payloadItems = exactProjection && acceptedItems.length ? acceptedItems : data.items;
+            const rows = sanitizeRows(payloadItems.map(item => ({ definitionId: item.definitionId,
               isCollected: item.isCollected, gradingScore: item.gradingScore,
               cardData: nativeCardData(rawByItem.get(item) ?? item) })),
               pageAllowed, accepts, exactProjection && (pool || rechecking) ? 250 : pageAllowed.size);
@@ -397,6 +413,15 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
         }
         assert(context);
         if (operation.stopped) return { status: 'stopped', scope: scope() };
+        if ((pool || definitionIds !== null || rechecking) && incoming.length < ids.length && familyEvidence) {
+          const observed = new Set(incoming.map(row => row.definitionId));
+          for (const definitionId of ids) {
+            if (observed.has(definitionId)) continue;
+            incoming.push({ definitionId, isCollected: null, gradingScore: null, readAt: now(), familyOnly: true });
+          }
+          record({ event: 'concept-response', status: 'family-only', requestedCount: ids.length,
+            retainedCount: incoming.length, unknownCount: incoming.filter(row => row.familyOnly === true).length });
+        }
         if ((definitionIds !== null || rechecking) && incoming.length !== ids.length) fail('FC27_GALLERY_CONCEPT_INCOMPLETE');
         if (pool && incoming.length < ids.length && ids.every(id => state.rows.has(id))) fail('FC27_GALLERY_CONCEPT_INCOMPLETE');
         merge(state, incoming); state.fetchedAt = now();
