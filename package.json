@@ -32,7 +32,7 @@
     "verify": "npm run lint:syntax && npm run lint:undef && npm run check:config && npm run check:profiles && npm run check:architecture && npm run check:fsu-patch && npm test && npm run build && npm run check:dist && npm run check:fsu-release"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "globals": "^16.5.0",
     "vitest": "^4.1.10"
