@@ -6447,8 +6447,8 @@
     if (!Array.isArray(slots) || slots.length !== record.base.slots.length) return false;
     const old = puzzleBuySlotRefs(record.base, record.applied);
     const next = puzzleBuySlotRefs(record.base, record.entries);
-    const same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    return slots.every((slot, i) => same15(slot, old[i]) || same15(slot, next[i]));
+    const same16 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return slots.every((slot, i) => same16(slot, old[i]) || same16(slot, next[i]));
   }
 
   // src/adapters/ea/fc27-purchase-squad.js
@@ -7045,9 +7045,10 @@
     price: !["waiting", "collected", "buy-pending"].includes(entry.state) ? entry.price : null,
     reason: record.lastResult?.failures?.find((row) => row.definitionId === entry.definitionId)?.reason ?? null
   }));
-  function validate(record, scope2, context) {
+  function validateGalleryPurchaseRecord(record, scope2, context) {
     if (!record || record.schema !== 1 || record.scope !== scope2 || !same13(record.context, context) || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id5(entry.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
   }
+  var validate = validateGalleryPurchaseRecord;
   function createGalleryPurchaseSession({
     scope: scope2,
     context,
@@ -15139,6 +15140,80 @@
     });
   }
 
+  // src/gallery/listing-candidates.js
+  var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var blocked10 = (reason) => ({ status: "blocked", reason, entries: [] });
+  var pendingStates = /* @__PURE__ */ new Set(["buy-pending", "bought", "move-pending", "move-rejected"]);
+  function projectGalleryListingReceipts({
+    purchase,
+    scope: scope2,
+    context,
+    expectedOperationId,
+    expectedBinding,
+    pendingMarker = null
+  } = {}) {
+    try {
+      if (traditionalJournalScope(context) !== scope2) return blocked10("FC27_GALLERY_LISTING_SCOPE_CHANGED");
+      validateGalleryPurchaseRecord(purchase, scope2, context);
+      if (!expectedOperationId || purchase.operationId !== expectedOperationId || !expectedBinding || purchase.binding !== expectedBinding) return blocked10("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+      if (pendingMarker !== null || purchase.entries.some((entry) => pendingStates.has(entry.state))) {
+        return blocked10("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
+      }
+      if (purchase.collection?.status !== "confirmed") return blocked10("FC27_GALLERY_COLLECTION_UNCONFIRMED");
+      const acquired = purchase.entries.filter((entry) => entry.state === "club");
+      if (new Set(acquired.map((entry) => entry.itemId)).size !== acquired.length || new Set(acquired.map((entry) => entry.tradeId)).size !== acquired.length) {
+        return blocked10("FC27_GALLERY_LISTING_RECEIPT_CONFLICT");
+      }
+      return {
+        status: "observed",
+        scope: scope2,
+        context: structuredClone(context),
+        operationId: purchase.operationId,
+        binding: purchase.binding,
+        entries: acquired.map((entry) => ({
+          itemId: entry.itemId,
+          definitionId: entry.definitionId,
+          tradeId: entry.tradeId,
+          purchasePrice: entry.price
+        })),
+        skipped: purchase.entries.filter((entry) => entry.state !== "club").map((entry) => ({
+          definitionId: entry.definitionId,
+          reason: entry.state === "collected" ? "already-collected-not-purchased" : "not-purchased"
+        })),
+        executionEnabled: false
+      };
+    } catch {
+      return blocked10("FC27_GALLERY_LISTING_PURCHASE_UNCONFIRMED");
+    }
+  }
+  async function readGalleryListingSource({
+    scope: scope2,
+    context,
+    expectedOperationId,
+    expectedBinding,
+    get,
+    exclusive,
+    assertCurrent
+  } = {}) {
+    try {
+      const result = await exclusive(scope2, async () => {
+        assertCurrent();
+        const key = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
+        const purchase = structuredClone(await get(key, null)), marker = structuredClone(await get(pendingKey, null));
+        assertCurrent();
+        const source = projectGalleryListingReceipts({ purchase, scope: scope2, context, expectedOperationId, expectedBinding, pendingMarker: marker });
+        if (source.status !== "observed") return source;
+        const current2 = await get(key, null), pending2 = await get(pendingKey, null);
+        assertCurrent();
+        if (!same15(purchase, current2) || !same15(marker, pending2)) return blocked10("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+        return source;
+      });
+      return result ?? blocked10("FC27_GALLERY_PURCHASE_BUSY");
+    } catch (error2) {
+      return blocked10(/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_LISTING_SOURCE_UNAVAILABLE");
+    }
+  }
+
   // src/adapters/browser/fc27-gallery-purchase.js
   function createFc27GalleryPurchase({
     root,
@@ -15246,6 +15321,26 @@
     };
     purchase.stop = () => {
       stopped = true;
+    };
+    purchase.listingSource = async ({ expectedOperationId, expectedBinding, isCurrent = () => true } = {}) => {
+      if (busy) return { status: "blocked", reason: "FC27_GALLERY_PURCHASE_BUSY", entries: [] };
+      try {
+        const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
+        const persistence = createFc27TransactionPersistence({ context, gmGetValue, gmSetValue, lockManager: root.navigator.locks });
+        return await readGalleryListingSource({
+          scope: scope2,
+          context,
+          expectedOperationId,
+          expectedBinding,
+          get: gmGetValue,
+          exclusive: persistence.exclusive,
+          assertCurrent: () => {
+            if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root)) || !isCurrent()) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+          }
+        });
+      } catch {
+        return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED", entries: [] };
+      }
     };
     return Object.freeze(purchase);
   }
@@ -15500,7 +15595,7 @@
   } = {}) {
     const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
     let tail = Promise.resolve(), lastRequestAt = null, cooldownUntil = 0, identity5 = null;
-    const blocked10 = (reason) => ({ status: "blocked", reason, executable: false });
+    const blocked11 = (reason) => ({ status: "blocked", reason, executable: false });
     const inspectScope = () => {
       try {
         return scope2();
@@ -15517,14 +15612,14 @@
     };
     const changedScope = (phase) => {
       void diag({ event: "market-compare", phase, status: "blocked", reason: "FC27_GALLERY_COMPARE_SCOPE_CHANGED" });
-      return blocked10("FC27_GALLERY_COMPARE_SCOPE_CHANGED");
+      return blocked11("FC27_GALLERY_COMPARE_SCOPE_CHANGED");
     };
     return Object.freeze({
       compare: (definitionId) => {
         const account = inspectScope();
         if (!account || !Number.isSafeInteger(definitionId) || definitionId < 1) {
           void diag({ event: "market-compare", phase: "input", status: "blocked", reason: "FC27_GALLERY_COMPARE_INPUT_INVALID" });
-          return Promise.resolve(blocked10("FC27_GALLERY_COMPARE_INPUT_INVALID"));
+          return Promise.resolve(blocked11("FC27_GALLERY_COMPARE_INPUT_INVALID"));
         }
         if (identity5 !== account) {
           cache.clear();
@@ -15548,7 +15643,7 @@
           if (inspectScope() !== account) return changedScope("preflight");
           if (cooldownUntil > now()) {
             void diag({ event: "market-compare", phase: "preflight", status: "blocked", reason: "FC27_GALLERY_COMPARE_COOLDOWN", retryAt: cooldownUntil });
-            return { ...blocked10("FC27_GALLERY_COMPARE_COOLDOWN"), retryAt: cooldownUntil };
+            return { ...blocked11("FC27_GALLERY_COMPARE_COOLDOWN"), retryAt: cooldownUntil };
           }
           if (lastRequestAt !== null) await wait(Math.max(0, 800 - (now() - lastRequestAt)));
           if (inspectScope() !== account) return changedScope("preflight");
@@ -15561,7 +15656,7 @@
             if (inspectScope() !== account) return changedScope("response");
             if (result?.status !== "observed" || result.definitionId !== definitionId || result.executable !== false) {
               void diag({ event: "market-compare", phase: "response", status: "blocked", reason: "FC27_GALLERY_COMPARE_RESPONSE_UNVERIFIED" });
-              return blocked10("FC27_GALLERY_COMPARE_RESPONSE_UNVERIFIED");
+              return blocked11("FC27_GALLERY_COMPARE_RESPONSE_UNVERIFIED");
             }
             cache.set(key, { result, expiresAt: now() + ttlMs });
             while (cache.size > 100) cache.delete(cache.keys().next().value);
@@ -15570,7 +15665,7 @@
           } catch (error2) {
             if (inspectScope() !== account) return changedScope("response");
             const reason = /^FC27_(?:MARKET_[A-Z0-9_]+|CONTEXT_UNAVAILABLE)$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_COMPARE_FAILED";
-            const result = blocked10(reason);
+            const result = blocked11(reason);
             cache.set(key, { result, expiresAt: now() + ttlMs });
             if (/HTTP_429$/.test(reason)) cooldownUntil = now() + ttlMs;
             void diag({ event: "market-compare", phase: "response", status: "blocked", reason });

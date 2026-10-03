@@ -25,7 +25,7 @@ const itemResults = record => (record?.entries ?? []).map((entry, index) => ({ d
   name: record?.plan?.[index]?.name ?? '', state: entry.state,
   price: !['waiting', 'collected', 'buy-pending'].includes(entry.state) ? entry.price : null,
   reason: record.lastResult?.failures?.find(row => row.definitionId === entry.definitionId)?.reason ?? null }));
-function validate(record, scope, context) {
+export function validateGalleryPurchaseRecord(record, scope, context) {
   if (!record || record.schema !== 1 || record.scope !== scope || !same(record.context, context)
       || typeof record.operationId !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId)
       || typeof record.binding !== 'string' || !record.binding || record.binding.length > 12000
@@ -36,6 +36,7 @@ function validate(record, scope, context) {
       || record.entries.some((entry, index) => !id(entry.definitionId) || entry.definitionId !== record.plan[index].definitionId
         || !states.has(entry.state) || !['waiting', 'collected'].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED');
 }
+const validate = validateGalleryPurchaseRecord;
 export function createGalleryPurchaseSession({ scope, context, get, set, exclusive, createAdapter,
   assertCurrent = () => {}, checkOtherTransactions = async () => {}, shouldStop = () => false, onProgress = () => {}, operationId = () => `gallery-${Date.now()}-${Math.random().toString(16).slice(2)}` } = {}) {
   const key = galleryPurchaseKey(scope), pendingKey = galleryPurchasePendingKey(scope);

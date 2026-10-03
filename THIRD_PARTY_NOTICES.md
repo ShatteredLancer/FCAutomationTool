@@ -27,6 +27,15 @@ are retained in the source and bundled userscript. It does not call FSU's
 buttons, functions, settings or loader; FSU installation is not required for
 this purchase feature. Puzzle selection/submission keeps its separate policies.
 
+## Enhancer compatibility evidence
+
+`tests/fixtures/enhancer-listing-price-reference.js` retains a narrow price-tier
+helper excerpt from FC27 Enhancer 27.0.0.4 for same-input regression comparison.
+The observed bundle fingerprint is recorded in that fixture. The original
+authors retain their rights; this excerpt is not relicensed under FCAT's MIT
+license and is not included in the production userscript. FCAT does not bundle
+Enhancer's application, UI bundle, authentication, or private price service.
+
 ## Runtime Services
 
 FCAutomationTool can request player metadata or prices from FUT.GG, FUTBIN, and

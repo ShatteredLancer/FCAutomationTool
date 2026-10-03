@@ -1,5 +1,7 @@
 # FC Automation Tool 架构重构与里程碑
 
+2026-10-03 挂牌计划分步实施：此前改动已提交为 `de1c821`（未推送，仍 27.0.10）。T1/T2 新增精确购买回执投影、账号/operation/binding/Pending 双读隔离和购买服务显式只读 `listingSource()`，没有网络或存储写入；已收集跳过项不是购买实体。价格准备按 Enhancer 已观察的整数随机百分比、最近价格阶梯、Fixed/Steps、固定起拍价、逐卡覆盖和时长处理，超限跳过不夹价；1025 个阶梯输入与窄参考函数对照通过。T1 持久挂牌状态、T2 真实价格/EA limits、T3 UI/挂牌和 T4/T5 定时/重挂仍未完成；旧四张/10000 上限与私有报价服务差异需在写接口接线前明确，不能默默更改或宣称与参考完全等价。恢复点与验证见 [挂牌准备层](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-03-分步实施恢复点t1t2-准备层t3-尚未接通)。
+
 2026-10-03 Transfer List Bulk List 续查：Enhancer 在 Available/Unsold 共用 Bulk List 面板，默认 Percentage 100–100%、等待 3–5 秒；FSU 的分组列表也有批量拍卖，Fodder 有同名 Bulk List/Bulk Re-list，实际按钮来源尚缺页面 DOM 证据。建议 Gallery 已购实体与 Transfer List 复用 Enhancer 风格面板。Enhancer Auto Relist 按 1/5/10 分钟（默认 10）原价重挂全 Unsold；按批次重挂必须逐卡，不能误用全量接口。已纠正早期计划混用参考默认值、价格来源和错误处理的描述；旧交易数量/调度上限与参考的差异需先核对。仅更新计划，未新增交易代码或执行交易。详见 [Bulk List 与 Relist 计划](FC27_GALLERY_REMAINING_PLAN_ZH.md#transfer-list-bulk-list-来源与-fcat-复用边界)。
 
 2026-10-03 Gallery 自动出售/定时挂牌计划：已完成 Enhancer 27.0.0.4 与 Fodder GG 1.2.9 客户端行为取证。Enhancer 的 Gallery 买入后挂牌是可选的逐卡 `tPt → r8 → xAe`，默认 `sellPercent=0` 不出售；Fodder 将购买与 Bulk List/Bulk Re-list 分开，支持百分比、固定价、EA 价格阶梯、逐卡覆盖和 2–15 秒节奏。Fodder 的 `schedulePass` 仅为界面刷新，不是定时交易。FCAT 后续按 T1–T7 先接精确购买 Journal，再复用既有 Trade Adapter/Listing Transaction/Scheduler，实现买后挂牌与独立定时 Job；默认保留 Club，未知成交/入库/价格限制/身份变化 fail-closed。当前仅更新计划，未新增交易代码，未买卡、挂牌、出售、创建任务或发布。详见 [Gallery 自动出售与定时挂牌计划](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-03-自动出售与定时挂牌计划仅计划未接通交易)。

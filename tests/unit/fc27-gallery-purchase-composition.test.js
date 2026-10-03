@@ -55,3 +55,17 @@ it('resumes unknown receipt from durable version IDs without buying it again', a
   const result = await f.purchase({ approved: true, resume: true, expectedOperationId: summary.operationId, isCurrent: () => true });
   expect(result.purchased).toBe(2); expect(stub.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
 });
+
+it('exposes exact listing receipts without any new EA reads, adapter construction, or storage changes', async () => {
+  const f = fixture(); await f.purchase(f.input);
+  const calls = structuredClone(stub.calls), reads = structuredClone(f.reads), adapters = stub.adapters.length;
+  const storage = structuredClone([...f.store]);
+  const input = { expectedOperationId: 'gallery-test-operation', expectedBinding: f.input.binding };
+  expect(await f.purchase.listingSource(input)).toMatchObject({ status: 'observed', executionEnabled: false,
+    entries: [{ itemId: 110, definitionId: 10, tradeId: '1010', purchasePrice: 200 },
+      { itemId: 111, definitionId: 11, tradeId: '1011', purchasePrice: 200 }] });
+  expect(await f.purchase.listingSource({ ...input, isCurrent: () => false })).toMatchObject({ status: 'blocked' });
+  expect(await f.purchase.listingSource({ ...input, expectedOperationId: 'old' })).toMatchObject({ status: 'blocked' });
+  expect(stub.calls).toEqual(calls); expect(f.reads).toEqual(reads); expect(stub.adapters).toHaveLength(adapters);
+  expect([...f.store]).toEqual(storage);
+});

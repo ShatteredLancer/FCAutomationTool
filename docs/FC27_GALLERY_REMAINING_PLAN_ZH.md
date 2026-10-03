@@ -70,9 +70,23 @@ Enhancer 在 Transfer List 的 Available/Unsold 分区注入同一 Bulk List 面
 | T6 | 成交回读与净成本账本 | 只凭精确 sold 回执计税后收入；未售出不伪造利润；Gallery 目标/费用不被后台同步清空 |
 | T7 | 真实低价值账号验收 | 由用户单独授权，先 1 张买后挂牌，再 1 个定时 once，再验证 sold/unsold 恢复；不自动扩大到全 Club |
 
+#### 2026-10-03 分步实施恢复点：T1/T2 准备层，T3 尚未接通
+
+- 已提交此前改动作为恢复点：`de1c821 feat(fc27): document bulk listing and gallery follow-up plan`，包含此前 Gallery/Puzzle 修复、方案保留、FO 入口、净成本基础和挂牌计划。未推送、升版或发布；版本仍为 `27.0.10`。以下是该提交之后的新增工作。
+- 已完成购买回执准备层：`src/gallery/listing-candidates.js` 可从账号/赛季作用域的 Gallery Purchase Journal 投影挂牌回执，要求精确 operation/binding/context、Pending 标记已清除、购买/移入 Club 状态已确认、收集状态已复核；`collected`（购买前发现已收集）明确不作为本次购买实体。重复 item/trade 回执阻断，部分购买成功仅投影成功实体。浏览器购买服务新增显式 `listingSource()` 只读接口，持共享锁检查前后 Journal/Pending 未变化，不构造买家、不发 EA/价格/收集请求、不写 GM storage。候选过滤接收已经由 Adapter 解析的快照 DTO；精确版本、当前 Club pile、可交易和可挂牌资格事实缺一时跳过，不扫描/推销其它 Club 卡。
+- 已完成定价准备：按 Enhancer `gMt/xAe` 及 EA 当前 `PRICE_TIERS` 注入值实现 Percentage（整数随机百分比后最近阶梯取整）、Fixed（固定价格不取整）、Steps、固定起拍价、默认低一档起拍价及时长。未知限价不生成候选；已知超限逐项跳过，不夹价。模块不发请求、不写 storage、不调用 `services.Item.list()`，输出 `executionEnabled:false`。
+- 回归场景：25 个回执/来源用例、6 个价格用例和 1 个购买服务贯通用例；与既有购买回归共 52 项聚焦测试通过。覆盖错账号/operation/binding、Pending/Journal 变化、互斥锁不可用、存储失败、重复回执、已收集跳过、兄弟副本不能代替本次买入实体、partial 成功、实体移 pile/资格未知、输入不被修改与重复读取。价格同输入比较覆盖捕获的 Enhancer `vfe` 参考函数：25 个价格（含 1000/10000/50000/100000 前后）× -20..20 档，共 1025 次档位比较和 25 次最近阶梯比较；另测固定价不取整、固定起拍价仅 Fixed 生效、逐 item ID 覆盖、随机百分比、六种时长、未知/越界 limits 不夹价。测试参考摘录只用于兼容证据，不进生产包，归属见 `THIRD_PARTY_NOTICES.md`。
+- 与完整流程的 gap：T1/T2 目前是未接 UI 的准备层，T1 的 Active/Unsold/Sold 持久状态仍在 T3/T5，T2 的真实报价/EA fresh snapshot/price limits 读取尚未接通。用户目前不能点击挂牌。T3 仍需共享面板、挂牌 Journal、前台进度、精确写后对账、停止/恢复；Node 测试不能代替实购/挂牌/收集保留验收。价格最顶端多步上涨在本地停止于 14,999,000，避免参考递归停不下来的边界；未知 limits 按既定 FCAT 计划跳过，与 Enhancer 原函数允许缺失 limits 的行为不同，后续不得宣称全行为等价。
+- 已知批准边界：挂牌仅允许精确的 Gallery 购买批次或用户在 Transfer List 明确选中的实体。历史 Trade Job 的单次最多 4 张、Buy Now 10,000 上限不能被 T3 静默继承或悄悄绕开；接入前需完成调用链合同审计并按用户已批准的计划调整适用范围，同时保留单卡 EA limits、精确身份、Journal、互斥锁和恢复门禁。Gallery 的可用报价来源（Enhancer `U_.player.fetchPrices` 为其自身私有服务；FUT.GG 当前是否满足该面板的价格语义尚未验收）也必须显式呈现来源，不能冒充同源。
+- 本步无登录页面或真实 EA 交易操作；未调用 list/relist、未购买、未创建定时 Job、未升级/发布。首轮 `npm run verify` 332 文件 / 3730 项通过；随后补齐上述边界与浏览器购买服务只读接线，最终完整验证结果在下方补录。恢复下一步：先确定报价服务与历史四张/价格上限的适用范围，再接 T3 共用 UI/写事务；不把尚未接通的按钮或交易列为已交付。
+
+最终验证：`npm run verify` 333 文件 / 3757 项通过，产物 `27.0.10` / 891678 bytes，FSU `26.09.9` 补丁重放与产物一致性通过；日志 `artifacts/gallery-listing-preparation-verify.log`。全部浏览器 `--self-test` 最终通过，未使用登录账号；首次运行在旧 `traditional-persistence-smoke.mjs:96` 的关页释放 Web Lock 时序断言失败（返回 null），重跑通过全部检查，没有放宽生产锁，保留首轮失败日志 `artifacts/gallery-listing-preparation-browser.log`。本轮不声称真实挂牌已验收。
+
+写事务接线前的两项待决定：新手动 Bulk List 是否按全体选中项处理、取消旧 4 张 / 10000 的实验上限（仍遵守 EA limits 与账号显式规则；不自动扩大旧 Scheduler 授权）；参考报价是否允许使用当前 Gallery 已接的 FUT.GG 公开报价并明确标注来源，而不依赖 Enhancer 私有服务。当前先保留准备层，不更改这两项默认行为。确认后从 T3 的共用面板/价格查询/挂牌事务接线继续；无需用户现在登录或买卡。定时次数与重挂范围在 T4/T5 单独复核。
+
 #### 需要保持的边界
 
-本计划不授权 Agent 自动买卡、挂牌、出售或创建定时 Job。实现前必须先完成 T1/T2 的失败测试和参考行为对照；真实交易只在用户明确批准的精确计划内执行。FSU 原文件不改，Gallery 不调用或点击 FSU 按钮；只复用已经核验的价格阶梯、EA 交易 Adapter 和共享 Scheduler。当前状态仍为“未实现”，净成本账本只是只读基础。
+本计划不授权 Agent 自动买卡、挂牌、出售或创建定时 Job。实际接线前必须先完成 T1/T2 的失败测试和参考行为对照；真实交易只在用户明确批准的精确计划内执行。FSU 原文件不改，Gallery 不调用或点击 FSU 按钮；当前已实现上述准备层，净成本账本仍为只读基础，自动挂牌/重挂尚未实现。
 
 本轮恢复点：按用户要求在 Puzzle 修复后继续 Gallery，已完成明确的 R1/R2/R4 本地收尾和 FO 编辑回归。新增发现并修复“撤销丢 EA 首任事实”“写入失败误报成功”：持久化成功才提交本地覆盖，连续写入串行合并；撤销只去掉声明，保留独立的 EA 观察。卡片位置直接标记/撤销，无新 EA 请求；相同版本在已加载集合间同步更新，旧联合方案失效。后续统一执行下方集中验收，不反复拆成登录/采集步骤。
 

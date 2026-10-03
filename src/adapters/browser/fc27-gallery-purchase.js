@@ -1,4 +1,5 @@
 import { createGalleryPurchaseSession } from '../../gallery/purchase-session.js';
+import { readGalleryListingSource } from '../../gallery/listing-candidates.js';
 import { createFc27PuzzleBuyAdapter } from '../ea/fc27-puzzle-buy.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
@@ -74,5 +75,18 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
     try { return await create().inspect(); } catch { return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' }; }
   };
   purchase.stop = () => { stopped = true; };
+  // Explicit read only: does not construct the buyer or query collection,
+  // inventory, prices, or EA. All writes remain in their own transactions.
+  purchase.listingSource = async ({ expectedOperationId, expectedBinding, isCurrent = () => true } = {}) => {
+    if (busy) return { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY', entries: [] };
+    try {
+      const context = readFc27Context(root), scope = traditionalJournalScope(context);
+      const persistence = createFc27TransactionPersistence({ context, gmGetValue, gmSetValue, lockManager: root.navigator.locks });
+      return await readGalleryListingSource({ scope, context, expectedOperationId, expectedBinding,
+        get: gmGetValue, exclusive: persistence.exclusive, assertCurrent: () => {
+          if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root)) || !isCurrent()) throw Error('FC27_GALLERY_CONTEXT_CHANGED');
+        } });
+    } catch { return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED', entries: [] }; }
+  };
   return Object.freeze(purchase);
 }
