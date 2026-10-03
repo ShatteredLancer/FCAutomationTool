@@ -38,6 +38,8 @@ import { mergeGalleryAccountProgress } from '../gallery/progress.js';
 import { readCachedGalleryPrice } from '../gallery/prices.js';
 import { planGalleryGrade } from '../gallery/planner.js';
 import { createGalleryTargetStore } from '../gallery/targets.js';
+import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
+import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
 import { createUserEffectsAdapter } from '../adapters/browser/user-effects.js';
 
@@ -116,6 +118,8 @@ const galleryCatalog = createFc27GalleryCatalogProvider({ http: createFc27Galler
   gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
 const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
 const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
+const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
+  createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
   readSettings: () => current().inspectPuzzlePolicy() });
@@ -126,7 +130,7 @@ if (!galleryProgress.install()) {
 }
 const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
 let session;
-const current = () => session ??= createFc27AcceptanceSession(dependencies);
+const current = () => session ??= createFc27AcceptanceSession({ ...dependencies, diagnosticLog });
 // FSU's buyConceptPlayer presents one foreground loader while the batch runs.
 // FCAT keeps its own transaction and journal, but mirrors the same page-level
 // progress callbacks when the reviewed FSU event bridge is available.
@@ -176,9 +180,17 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   gallerySync,
   galleryAssets,
   galleryNativeRenderer,
+  galleryDiagnosticLog: diagnosticLog,
+  galleryFirstOwnerHistory: (definitionId, firstOwned) => galleryProgress.updateFirstOwner(definitionId, firstOwned),
   purchaseGallery: galleryPurchase,
   gradePlanner: planGalleryGrade,
   galleryPrices,
+  galleryMarketCompare: galleryComparison.compare,
+  galleryPriceLoader: ids => {
+    const context = readFc27Context(unsafeWindow);
+    const platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
+    return galleryCatalog.loadPriceSnapshot(ids, { platform });
+  },
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();

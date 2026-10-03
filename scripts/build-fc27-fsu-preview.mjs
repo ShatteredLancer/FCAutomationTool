@@ -21,6 +21,7 @@ export async function buildFsuPreview() {
     'FSU_mod/src/runner-support/native-provider.js', 'FSU_mod/src/runner-support/club-inventory.js',
     'FSU_mod/src/enhancements/prices.js', 'FSU_mod/src/enhancements/traditional-fill.js',
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-club-read.js',
+    'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-sbc-read.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/config/fsu-compat.js', 'src/config/runtime.js', 'src/domain/player-rarity.js',
     'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-preview.js',

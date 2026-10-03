@@ -1,0 +1,1453 @@
+{
+  "set": {
+    "id": "futgg:41",
+    "requiredCards": 15,
+    "grades": [
+      {
+        "name": "D",
+        "threshold": 10
+      },
+      {
+        "name": "C",
+        "threshold": 500
+      },
+      {
+        "name": "B",
+        "threshold": 3700
+      },
+      {
+        "name": "A",
+        "threshold": 5500
+      },
+      {
+        "name": "S",
+        "threshold": 7800
+      }
+    ]
+  },
+  "catalog": {
+    "source": "futgg",
+    "tags": [
+      {
+        "id": 1,
+        "name": "Rule 1",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "FIRST_OWNED",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "1"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 150
+          },
+          {
+            "minItems": 10,
+            "bonus": 300
+          },
+          {
+            "minItems": 20,
+            "bonus": 500
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "name": "Rule 2",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "RARE",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "72"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 2,
+            "bonus": 8
+          },
+          {
+            "minItems": 4,
+            "bonus": 12
+          },
+          {
+            "minItems": 6,
+            "bonus": 20
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "Rule 3",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "NATION",
+            "type": "MAX_COUNT_ALL_SAME",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "name": "Rule 4",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "LEVEL",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "bronze"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 20
+          },
+          {
+            "minItems": 10,
+            "bonus": 40
+          },
+          {
+            "minItems": 20,
+            "bonus": 80
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "name": "Rule 5",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "SKILL_MOVES",
+            "type": "MIN_COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "4"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 3,
+            "bonus": 3
+          },
+          {
+            "minItems": 5,
+            "bonus": 6
+          },
+          {
+            "minItems": 10,
+            "bonus": 12
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "name": "Rule 6",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "LEAGUEID",
+            "type": "COUNT_DIFF",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "name": "Rule 7",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "LEVEL",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "gold"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "name": "Rule 8",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "CLUB",
+            "type": "MAX_COUNT_ALL_SAME",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "name": "Rule 10",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "POSSIBLE_POSITIONS",
+            "type": "COUNT_ANY",
+            "target": "ATTRIBUTE",
+            "values": [
+              "GK"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 3,
+            "bonus": 3
+          },
+          {
+            "minItems": 6,
+            "bonus": 6
+          },
+          {
+            "minItems": 10,
+            "bonus": 15
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "name": "Rule 11",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "LEVEL",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "silver"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 15
+          },
+          {
+            "minItems": 10,
+            "bonus": 30
+          },
+          {
+            "minItems": 20,
+            "bonus": 60
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "name": "Rule 12",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "HYPER_COSMETIC_TYPE",
+            "type": "COUNT_ANY",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0",
+              "1"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 2,
+            "bonus": 8
+          },
+          {
+            "minItems": 4,
+            "bonus": 12
+          },
+          {
+            "minItems": 6,
+            "bonus": 20
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "name": "Rule 14",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "CLUB",
+            "type": "COUNT_DIFF",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "name": "Rule 15",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "BASE_DEF_ID",
+            "type": "MAX_COUNT_ALL_SAME",
+            "target": "BASE_DEF_ID",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 2,
+            "bonus": 10
+          },
+          {
+            "minItems": 3,
+            "bonus": 15
+          },
+          {
+            "minItems": 4,
+            "bonus": 20
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "name": "Rule 16",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "LEAGUEID",
+            "type": "MAX_COUNT_ALL_SAME",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 8
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "name": "Rule 17",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "NATION",
+            "type": "COUNT_DIFF",
+            "target": "ATTRIBUTE",
+            "values": [
+              "0"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 1
+          },
+          {
+            "minItems": 10,
+            "bonus": 2
+          },
+          {
+            "minItems": 20,
+            "bonus": 4
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "name": "Rule 18",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "RARE",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "3"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 3,
+            "bonus": 4
+          },
+          {
+            "minItems": 6,
+            "bonus": 8
+          },
+          {
+            "minItems": 10,
+            "bonus": 15
+          }
+        ]
+      },
+      {
+        "id": 19,
+        "name": "Rule 19",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "RARE",
+            "type": "COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "12"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 2,
+            "bonus": 10
+          },
+          {
+            "minItems": 4,
+            "bonus": 15
+          },
+          {
+            "minItems": 6,
+            "bonus": 25
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "name": "Rule 20",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "WEAK_FOOT",
+            "type": "MIN_COUNT",
+            "target": "ATTRIBUTE",
+            "values": [
+              "5"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 3,
+            "bonus": 3
+          },
+          {
+            "minItems": 5,
+            "bonus": 6
+          },
+          {
+            "minItems": 10,
+            "bonus": 12
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "name": "Rule 21",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "POSSIBLE_POSITIONS",
+            "type": "COUNT_ANY",
+            "target": "ATTRIBUTE",
+            "values": [
+              "RB",
+              "CB",
+              "LB"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 3
+          },
+          {
+            "minItems": 10,
+            "bonus": 6
+          },
+          {
+            "minItems": 15,
+            "bonus": 10
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "name": "Rule 22",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "POSSIBLE_POSITIONS",
+            "type": "COUNT_ANY",
+            "target": "ATTRIBUTE",
+            "values": [
+              "CDM",
+              "RM",
+              "CM",
+              "LM",
+              "CAM"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 3
+          },
+          {
+            "minItems": 10,
+            "bonus": 6
+          },
+          {
+            "minItems": 15,
+            "bonus": 10
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "name": "Rule 23",
+        "bonusType": "ITEM_SCORE_PERCENTAGE",
+        "thresholdType": "ITEM_COUNT",
+        "rules": [
+          {
+            "attribute": "POSSIBLE_POSITIONS",
+            "type": "COUNT_ANY",
+            "target": "ATTRIBUTE",
+            "values": [
+              "ST",
+              "LW",
+              "RW"
+            ]
+          }
+        ],
+        "tiers": [
+          {
+            "minItems": 5,
+            "bonus": 3
+          },
+          {
+            "minItems": 10,
+            "bonus": 6
+          },
+          {
+            "minItems": 15,
+            "bonus": 10
+          }
+        ]
+      }
+    ]
+  },
+  "progress": {
+    "season": "27",
+    "setId": 41,
+    "complete": true,
+    "candidateOnly": false,
+    "poolComplete": true,
+    "rows": [
+      {
+        "eaId": 67297431,
+        "playerEaId": 188567,
+        "overall": 86,
+        "gradingScore": 7688,
+        "galleryScore": 7688,
+        "nationEaId": 115,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 22,
+        "weakFoot": 4,
+        "skillMoves": 4,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": true,
+        "positions": [
+          "ST"
+        ]
+      },
+      {
+        "eaId": 50520215,
+        "playerEaId": 188567,
+        "overall": 86,
+        "gradingScore": 5125,
+        "galleryScore": 5125,
+        "nationEaId": 115,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 22,
+        "weakFoot": 4,
+        "skillMoves": 4,
+        "collected": true,
+        "held": null,
+        "inClub": null,
+        "firstOwned": false,
+        "holographic": false,
+        "positions": [
+          "ST"
+        ]
+      },
+      {
+        "eaId": 50548108,
+        "playerEaId": 216460,
+        "overall": 82,
+        "gradingScore": 340,
+        "galleryScore": 340,
+        "nationEaId": 60,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": true,
+        "held": true,
+        "inClub": true,
+        "firstOwned": true,
+        "holographic": false,
+        "positions": [
+          "CB"
+        ]
+      },
+      {
+        "eaId": 188567,
+        "playerEaId": 188567,
+        "overall": 79,
+        "gradingScore": 160,
+        "galleryScore": 160,
+        "nationEaId": 115,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 4,
+        "skillMoves": 4,
+        "collected": true,
+        "held": true,
+        "inClub": true,
+        "firstOwned": true,
+        "holographic": false,
+        "positions": [
+          "ST"
+        ]
+      },
+      {
+        "eaId": 220651,
+        "playerEaId": 220651,
+        "overall": 78,
+        "gradingScore": 140,
+        "galleryScore": 140,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 4,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "LB",
+          "LM"
+        ]
+      },
+      {
+        "eaId": 50604248,
+        "playerEaId": 272600,
+        "overall": 78,
+        "gradingScore": 140,
+        "galleryScore": 140,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 4,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 258466,
+        "playerEaId": 258466,
+        "overall": 77,
+        "gradingScore": 120,
+        "galleryScore": 120,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 1,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "GK"
+        ]
+      },
+      {
+        "eaId": 264492,
+        "playerEaId": 264492,
+        "overall": 77,
+        "gradingScore": 120,
+        "galleryScore": 120,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 4,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "LM",
+          "LW",
+          "ST"
+        ]
+      },
+      {
+        "eaId": 260463,
+        "playerEaId": 260463,
+        "overall": 75,
+        "gradingScore": 90,
+        "galleryScore": 90,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "CDM",
+          "CM",
+          "ST"
+        ]
+      },
+      {
+        "eaId": 236515,
+        "playerEaId": 236515,
+        "overall": 74,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 1,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "GK"
+        ]
+      },
+      {
+        "eaId": 277069,
+        "playerEaId": 277069,
+        "overall": 74,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "CM",
+          "LM",
+          "LW",
+          "RM",
+          "RW"
+        ]
+      },
+      {
+        "eaId": 239403,
+        "playerEaId": 239403,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB",
+          "CDM",
+          "RB"
+        ]
+      },
+      {
+        "eaId": 255580,
+        "playerEaId": 255580,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 27,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "LB",
+          "LM",
+          "LW"
+        ]
+      },
+      {
+        "eaId": 260877,
+        "playerEaId": 260877,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 268082,
+        "playerEaId": 268082,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 7,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB",
+          "CDM",
+          "RB"
+        ]
+      },
+      {
+        "eaId": 269228,
+        "playerEaId": 269228,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "RB",
+          "RM",
+          "RW"
+        ]
+      },
+      {
+        "eaId": 278035,
+        "playerEaId": 278035,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 4,
+        "skillMoves": 4,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "LM",
+          "LW",
+          "RB",
+          "RM",
+          "RW"
+        ]
+      },
+      {
+        "eaId": 278096,
+        "playerEaId": 278096,
+        "overall": 73,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 27,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 198023,
+        "playerEaId": 198023,
+        "overall": 72,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB",
+          "RB"
+        ]
+      },
+      {
+        "eaId": 251599,
+        "playerEaId": 251599,
+        "overall": 72,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 262398,
+        "playerEaId": 262398,
+        "overall": 72,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 34,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "ST"
+        ]
+      },
+      {
+        "eaId": 278001,
+        "playerEaId": 278001,
+        "overall": 71,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB"
+        ]
+      },
+      {
+        "eaId": 72246,
+        "playerEaId": 72246,
+        "overall": 69,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 13,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 5,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "CDM",
+          "CM",
+          "LM",
+          "LW",
+          "ST"
+        ]
+      },
+      {
+        "eaId": 82172,
+        "playerEaId": 82172,
+        "overall": 69,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 103,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "ST"
+        ]
+      },
+      {
+        "eaId": 212453,
+        "playerEaId": 212453,
+        "overall": 68,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 1,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "GK"
+        ]
+      },
+      {
+        "eaId": 266159,
+        "playerEaId": 266159,
+        "overall": 68,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB"
+        ]
+      },
+      {
+        "eaId": 76409,
+        "playerEaId": 76409,
+        "overall": 66,
+        "gradingScore": 35,
+        "galleryScore": 35,
+        "nationEaId": 37,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB"
+        ]
+      },
+      {
+        "eaId": 70041,
+        "playerEaId": 70041,
+        "overall": 64,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 34,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 2,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 79222,
+        "playerEaId": 79222,
+        "overall": 64,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "CM"
+        ]
+      },
+      {
+        "eaId": 73920,
+        "playerEaId": 73920,
+        "overall": 63,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "RM",
+          "ST"
+        ]
+      },
+      {
+        "eaId": 82751,
+        "playerEaId": 82751,
+        "overall": 63,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 3,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CAM",
+          "CM",
+          "LM",
+          "LW"
+        ]
+      },
+      {
+        "eaId": 73934,
+        "playerEaId": 73934,
+        "overall": 62,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 2,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CDM",
+          "CM",
+          "LB"
+        ]
+      },
+      {
+        "eaId": 75660,
+        "playerEaId": 75660,
+        "overall": 61,
+        "gradingScore": 20,
+        "galleryScore": 20,
+        "nationEaId": 45,
+        "clubEaId": 242,
+        "leagueEaId": 53,
+        "rarityEaId": 0,
+        "weakFoot": 3,
+        "skillMoves": 2,
+        "collected": false,
+        "held": null,
+        "inClub": null,
+        "firstOwned": null,
+        "holographic": false,
+        "positions": [
+          "CB",
+          "RB"
+        ]
+      }
+    ]
+  },
+  "prices": {
+    "70041": 200,
+    "72246": 450,
+    "73920": 200,
+    "73934": 200,
+    "75660": 200,
+    "76409": 450,
+    "79222": 200,
+    "82172": 450,
+    "82751": 300,
+    "188567": 1500,
+    "198023": 500,
+    "212453": 450,
+    "220651": 1200,
+    "236515": 500,
+    "239403": 500,
+    "251599": 500,
+    "255580": 650,
+    "258466": 3900,
+    "260463": 3500,
+    "260877": 400,
+    "262398": 450,
+    "264492": 650,
+    "266159": 450,
+    "268082": 450,
+    "269228": 600,
+    "277069": 550,
+    "278001": 500,
+    "278035": 750,
+    "278096": 550,
+    "50520215": 67500,
+    "50548108": 650,
+    "50604248": 650,
+    "67297431": 80500
+  },
+  "targetGrade": "S"
+}

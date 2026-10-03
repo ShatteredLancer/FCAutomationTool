@@ -9,7 +9,7 @@ it('builds with FSU storage identity and no legacy runtime, third-party requires
   expect(result.source).toContain('// @namespace    https://futcd.com/');
   expect(result.source).toContain('// @updateURL    none');
   expect(result.releaseEligible).toBe(false);
-  expect(result.inputs).toHaveLength(19);
+    expect(result.inputs).toHaveLength(20);
   expect(result.source).not.toMatch(/function futweb|lock_26|player-prices\/26|enhancer-api|@require|services\.Item\.move|submitChallenge|saveSquad/);
   const get = vi.fn();
   vm.runInNewContext(result.source, { unsafeWindow: { APP_YEAR_SHORT: 26 }, GM_getValue: get });

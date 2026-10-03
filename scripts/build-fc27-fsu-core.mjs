@@ -12,6 +12,7 @@ export async function buildFsuCore() {
   const allowed = new Set(['FSU_mod/src/runner-support/index.js', 'FSU_mod/src/runner-support/core.js',
     'FSU_mod/src/runner-support/native-provider.js', 'src/adapters/ea/fc27-local-read.js', 'src/fc27/prelaunch-contract.js',
     'FSU_mod/src/runner-support/club-inventory.js', 'src/adapters/ea/fc27-club-read.js',
+    'src/adapters/ea/fc27-item-factory-observer.js',
     'src/config/fsu-compat.js', 'src/config/runtime.js', 'src/domain/player-rarity.js']);
   if (inputs.some(name => !allowed.has(name))) throw new Error('Unreviewed FSU core dependency');
   return { source: result.outputFiles[0].text, inputs };

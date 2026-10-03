@@ -55,6 +55,17 @@ function matches(row, tag) {
   if (tag.mode === 'minimum') return Number(value) >= tag.threshold;
   return (Array.isArray(value) ? value : [value]).some(item => tag.values.includes(String(item)));
 }
+// Membership keys for cost-planning seeds use exactly the scoring matcher.
+// In particular LEVEL means bronze/silver/gold, not each individual rating.
+export function galleryRuleKeys(row, tags) {
+  return tags.flatMap(tag => {
+    if (tag.mode === 'same' || tag.mode === 'different') {
+      const value = attribute(row, tag.field);
+      return value == null ? [] : [`${tag.id}:${value}`];
+    }
+    return matches(row, tag) === true ? [`${tag.id}:match`] : [];
+  });
+}
 function groupsOf(rows, field) {
   const groups = new Map();
   for (const row of rows) {

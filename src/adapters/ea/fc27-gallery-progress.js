@@ -1,7 +1,9 @@
 import { ownData, contextKey } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../../gallery/progress.js';
+import { normalizeGalleryFirstOwnerHistory, toggleGalleryFirstOwnerHistory, removeGalleryFirstOwnerHistory } from '../../gallery/first-owner-history.js';
 import { GALLERY_TOP_CANDIDATE_LIMIT } from '../../gallery/pool.js';
+import { observeFc27ItemFactory } from './fc27-item-factory-observer.js';
 
 // Behavioral reference: Enhancer 27.0.0.4, b_/GAe/iFe/fy. Requests and
 // authentication belong to EA's service/DAO/queue, not to this adapter.
@@ -86,6 +88,24 @@ function readClubSnapshot(root) {
   return result;
 }
 
+function readHeldSnapshot(root) {
+  const result = [], sources = [
+    at(root, 'repositories.Item.storage'), at(root, 'repositories.Item.transfer'),
+    at(root, 'repositories.Item.unassigned'), at(root, 'services.Item.itemDao.itemRepo.storage'),
+    at(root, 'services.Item.itemDao.itemRepo.transfer'), at(root, 'services.Item.itemDao.itemRepo.unassigned'),
+  ];
+  for (let source of sources) {
+    source = ownData(source, 'items') ?? source;
+    for (let depth = 0; depth < 3 && ownData(source, '_collection'); depth++) source = ownData(source, '_collection');
+    if (!source || typeof source !== 'object') continue;
+    for (const key of Object.keys(source).slice(0, 20000)) {
+      const raw = ownData(source, key), definitionId = ownData(raw, 'definitionId');
+      if (id(definitionId) && id(ownData(raw, 'id')) && ownData(raw, 'type') === 'player' && ownData(raw, 'concept') === false) result.push({ definitionId });
+    }
+  }
+  return [...new Map(result.map(row => [row.definitionId, row])).values()];
+}
+
 export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, diagnosticLog, now = () => Date.now(), ttlMs = 300000 } = {}) {
   const states = new Map(), inFlight = new Map(), listeners = new Set(), rawByItem = new WeakMap(), nativePending = new Set();
   let tail = Promise.resolve(), running = null, disposed = false, factoryHook = null;
@@ -97,9 +117,9 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
   const notify = () => { for (const listener of listeners) try { listener(); } catch { /* UI only. */ } };
   const stateFor = context => {
     const key = contextKey(context, 'gallery-collection');
-    if (!states.has(key)) states.set(key, { key, context, rows: new Map(), reading: null, writing: Promise.resolve(),
+    if (!states.has(key)) states.set(key, { key, context, rows: new Map(), firstOwnerHistory: [], reading: null, writing: Promise.resolve(),
       fetchedAt: 0, syncedAt: null, fullSyncAt: null, coveredDefinitionIds: new Set(), setSyncedAt: {},
-      sessionSynced: false, retryAt: 0, timer: null, clubSnapshot: null, clubSnapshotAt: 0, displayEntities: new Map() });
+      sessionSynced: false, retryAt: 0, timer: null, clubSnapshot: null, clubSnapshotAt: 0, heldSnapshot: null, displayEntities: new Map() });
     return states.get(key);
   };
   const assert = context => { if (disposed || !same(context, readFc27Context(root))) fail('FC27_GALLERY_CONTEXT_CHANGED'); };
@@ -137,14 +157,23 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
         state.coveredDefinitionIds = new Set(saved.coveredDefinitionIds.filter(id));
       }
       state.setSyncedAt = saved.setSyncedAt && typeof saved.setSyncedAt === 'object' ? { ...saved.setSyncedAt } : {};
+      state.firstOwnerHistory = normalizeGalleryFirstOwnerHistory(saved.firstOwnerHistory);
     } catch { /* Damaged cache is never authoritative. */ }
   })();
-  const persist = state => {
-    const value = { schema: 3, context: state.context, concepts: [...state.rows.values()],
+  const persist = (state, updateHistory = null) => {
+    state.writing = state.writing.then(async () => {
+      const history = updateHistory ? updateHistory(state.firstOwnerHistory) : state.firstOwnerHistory;
+      const value = { schema: 3, context: state.context, concepts: [...state.rows.values()],
       fetchedAt: state.fetchedAt, syncedAt: state.syncedAt, fullSyncAt: state.fullSyncAt,
       coveredDefinitionIds: [...state.coveredDefinitionIds].slice(0, 100000),
-      setSyncedAt: { ...state.setSyncedAt } };
-    state.writing = state.writing.then(async () => { try { await gmSetValue?.(state.key, value); } catch { /* Memory remains usable. */ } });
+      setSyncedAt: { ...state.setSyncedAt }, firstOwnerHistory: normalizeGalleryFirstOwnerHistory(history) };
+      try {
+        if (typeof gmSetValue !== 'function') return false;
+        await gmSetValue(state.key, value);
+        if (updateHistory) state.firstOwnerHistory = history;
+        return true;
+      } catch { return false; /* Existing observations remain usable. */ }
+    });
     return state.writing;
   };
   const ownerCount = item => {
@@ -166,6 +195,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     const changed = merge(state, [{ definitionId, isCollected: true, gradingScore: Number.isFinite(item.gradingScore) ? item.gradingScore : null,
       cardData: nativeCardData(raw), ...(id(owners) ? { collectedOwners: owners } : {}) }]);
     state.clubSnapshot = null;
+    state.heldSnapshot = null;
     if (!changed) return;
     state.fetchedAt = now();
     if (state.timer === null) state.timer = setTimeout(() => {
@@ -179,13 +209,11 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     if (!prototype || typeof prototype.createItem !== 'function') return false;
     if (factoryHook?.prototype === prototype) return true;
     const original = prototype.createItem;
-    const wrapped = function(raw) {
+    const wrapped = observeFc27ItemFactory(original, (item, raw) => {
       let context = null;
       try { context = running?.context ?? readFc27Context(root); } catch { /* No account evidence yet. */ }
-      const item = original.apply(this, arguments);
-      try { observeItem(item, raw, context); } catch { /* Passive observation must not break EA/FSU factories. */ }
-      return item;
-    };
+      observeItem(item, raw, context);
+    });
     prototype.createItem = wrapped; factoryHook = { prototype, original, wrapped }; return true;
   };
   const validatePool = (pool, context) => {
@@ -202,13 +230,15 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     assert(state.context);
     const allowed = new Set(pool.items.map(row => row.eaId)), concepts = [...allowed].map(id => state.rows.get(id)).filter(Boolean);
     if (!state.clubSnapshot || now() - state.clubSnapshotAt >= 5000) {
-      state.clubSnapshot = readClubSnapshot(root); state.clubSnapshotAt = now();
+      state.clubSnapshot = readClubSnapshot(root); state.heldSnapshot = readHeldSnapshot(root); state.clubSnapshotAt = now();
     }
     const clubItems = state.clubSnapshot.filter(row => allowed.has(row.definitionId));
+    const heldItems = (state.heldSnapshot ?? []).filter(row => allowed.has(row.definitionId));
+    const collectionHistory = [...state.rows.values(), ...state.firstOwnerHistory];
     return { status: 'observed', scope: contextKey(state.context, 'gallery-view'), fetchedAt: state.fetchedAt,
       pool, runtimeCards: new Map(concepts.filter(row => row.cardData || state.displayEntities.has(row.definitionId))
         .map(row => [row.definitionId, state.displayEntities.get(row.definitionId) ?? row.cardData])),
-      progress: mergeGalleryAccountProgress(pool, { conceptItems: concepts, clubItems, collectionHistory: concepts }), ...extra };
+      progress: mergeGalleryAccountProgress(pool, { conceptItems: concepts, clubItems, heldItems, collectionHistory }), ...extra };
   };
   const project = async pool => {
     try {
@@ -415,11 +445,24 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     } catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
   };
   install();
-  return Object.freeze({ load, project, sync, syncState, scope, install, readVersions: definitionIds => sync(null, { definitionIds }), stop: () => { if (running) running.stopped = true; },
+  const updateFirstOwner = async (definitionId, firstOwned) => {
+    const context = readFc27Context(root), state = stateFor(context);
+    await restore(state); assert(context);
+    if (!id(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== 'boolean') fail('FC27_GALLERY_FO_INPUT_INVALID');
+    const saved = await persist(state, history => firstOwned === null
+      ? removeGalleryFirstOwnerHistory(history, Number(definitionId))
+      : toggleGalleryFirstOwnerHistory(history, Number(definitionId), firstOwned, now()));
+    if (!saved) fail('FC27_GALLERY_FO_SAVE_FAILED');
+    assert(context); notify();
+    return { status: 'observed', definitionId: Number(definitionId), firstOwned };
+  };
+  return Object.freeze({ load, project, sync, syncState, scope, install, updateFirstOwner,
+    readFirstOwnerHistory: async () => { const state = stateFor(readFc27Context(root)); await restore(state); return normalizeGalleryFirstOwnerHistory(state.firstOwnerHistory); },
+    readVersions: definitionIds => sync(null, { definitionIds }), stop: () => { if (running) running.stopped = true; },
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
     dispose: () => { disposed = true; if (running) running.stopped = true;
       for (const state of states.values()) if (state.timer !== null) clearTimeout(state.timer);
       if (factoryHook && factoryHook.prototype.createItem === factoryHook.wrapped) factoryHook.prototype.createItem = factoryHook.original;
-      for (const state of states.values()) { state.displayEntities.clear(); state.clubSnapshot = null; }
+      for (const state of states.values()) { state.displayEntities.clear(); state.clubSnapshot = null; state.heldSnapshot = null; }
       listeners.clear(); } });
 }

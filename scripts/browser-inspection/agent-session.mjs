@@ -237,12 +237,12 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. Commands: inspect, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-sync, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Login/2FA manually if requested. Commands: inspect, home, navigation-probe, provider, club, market-probe, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-sync, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     console.log('gallery-fallback temporarily changes the local Gallery proxy, tests the public catalog fallback, then restores the original setting; no EA write.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|navigation-probe|provider|club|market-probe|sbc|ai-test|gallery-fallback|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|home|navigation-probe|provider|club|market-probe|sbc|ai-test|gallery-fallback|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'ai-test') {
         try { const { testPuzzleAiConnection } = await loadHelpers(Date.now()); console.log(JSON.stringify(await testPuzzleAiConnection())); }
         catch { console.log('AI connection test unavailable; raw exception omitted.'); }
@@ -270,6 +270,16 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
         const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);
         const report = await collectPageReport(target);
         const runtime = await target.evaluate(observeRuntime);
+        if (command === 'home') {
+          let action = 'HOME_NAVIGATION_UNCONFIRMED';
+          try {
+            await target.goto(WEB_APP_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await target.waitForTimeout(1000);
+            action = 'HOME_NAVIGATION_REQUESTED';
+          } catch { /* Keep the page open for the next explicit inspection. */ }
+          console.log(JSON.stringify({ saved: reportFile, action, season: report.season, ui: await observePageUi(target) }));
+          continue;
+        }
         let action = 'NONE';
         let squadRead = null;
         let nativeProvider = null;

@@ -6,6 +6,11 @@ import { planGalleryJointSteps } from '../../gallery/joint-planner.js';
 import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
 import { reconcileGalleryTargets } from '../../gallery/targets.js';
 import { browseGallerySets } from '../../gallery/browse.js';
+import { filterGalleryCards, paginateGalleryCards, reconcileGallerySelection, selectCheapestGalleryCards, summarizeGallerySelection } from '../../gallery/selection.js';
+import { previewGallerySelectionSteps, planGalleryGradeOverviewSteps } from '../../gallery/preview.js';
+import { benchmarkGalleryPlans, planGallerySequentialSteps } from '../../gallery/benchmark.js';
+import { planGalleryRemainderSteps, isGalleryPurchaseReplanSafe, replanableGalleryFailures } from '../../gallery/replan.js';
+import { isGalleryOwned } from '../../gallery/planner.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -35,16 +40,34 @@ export function sameGalleryRuntimeCards(left, right) {
   return true;
 }
 
+export function galleryPlanningStateKey(detail) {
+  const progress = detail?.progress;
+  const fields = ['eaId', 'playerEaId', 'collected', 'inClub', 'held', 'gradingScore', 'galleryScore',
+    'firstOwned', 'holographic', 'overall', 'nationEaId', 'clubEaId', 'leagueEaId', 'rarityEaId',
+    'positions', 'weakFoot', 'skillMoves'];
+  const expired = detail?.priceSnapshot?.expiresAt != null && Date.now() >= detail.priceSnapshot.expiresAt;
+  const quotes = detail?.priceSnapshot ? expired ? {} : detail.priceSnapshot.freshPrices : detail?.prices;
+  return JSON.stringify([detail?.status, detail?.scope, detail?.stale === true, detail?.poolStale === true,
+    detail?.pool?.revision, progress?.complete !== false, progress?.candidateOnly === true, progress?.poolComplete !== false,
+    (progress?.rows ?? []).map(row => fields.map(key => row[key] ?? null)).sort((a, b) => a[0] - b[0]),
+    (progress?.rows ?? []).map(row => [row.eaId, quotes?.[row.eaId] ?? null]).sort((a, b) => a[0] - b[0])]);
+}
+
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
-export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, accountScope = () => null,
-  assets = null, prices = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null,
+export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, accountScope = () => null,
+  assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
   const add = (parent, tag, value = '', className = '') => {
     const child = document.createElement(tag); child.textContent = value; child.className = className; parent.append(child); return child;
   };
+  const diag = input => {
+    try { return Promise.resolve(diagnosticLog?.record?.({ area: 'gallery', ...input })).catch(() => false); }
+    catch { return Promise.resolve(false); }
+  };
   let buying = false, purchaseSummary = null;
+  let purchaseReplan = null;
   const refreshPurchases = async () => {
     if (typeof purchase?.inspect !== 'function' || buying) return;
     const identity = scope();
@@ -62,7 +85,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const dialog = node('gallery-purchase-dialog'), output = node('gallery-purchase-message');
     node('gallery-purchase-close').hidden = true; node('gallery-purchase-stop').hidden = false;
     node('gallery-purchase-stop').disabled = false;
-    node('gallery-purchase-progress').value = 0; output.textContent = '正在核对购买清单…'; dialog.showModal();
+    node('gallery-purchase-progress').value = 0; output.textContent = '正在核对购买清单…';
+    node('gallery-purchase-results')?.replaceChildren(); dialog.showModal();
     const phases = { search: '查价', buying: '买入', bought: '已买入', moving: '入库', completed: '已入库',
       'already-collected': '已收集，跳过', failed: '未买到，继续其余卡', progress: '处理中' };
     try {
@@ -73,23 +97,81 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           node('gallery-purchase-progress').value = progress.completed;
           output.textContent = `${phases[progress.phase] ?? '处理中'} ${progress.index}/${progress.total} · 已购买 ${progress.purchased} 张 · ${count(progress.spent)} 金币`;
         } });
+      if (disposed || !active || identity !== scope()) return;
       output.textContent = `${outcome.status === 'purchased' ? '购买完成' : '购买未完成'} · 已购买 ${outcome.purchased ?? 0} 张 · ${count(outcome.spent ?? 0)} 金币`;
       if (outcome.status !== 'purchased') output.textContent += ` · ${outcome.reason ?? outcome.status}`;
       if (outcome.collection?.status === 'pending') output.textContent += ' · 收集待确认；再次核对不会重复买入';
       if (outcome.failures?.length) output.textContent += ` · ${outcome.failures.length} 张未完成，可续购`;
+      const resultList = node('gallery-purchase-results');
+      if (resultList) {
+        resultList.replaceChildren();
+        for (const item of outcome.results ?? []) {
+          const state = ({ waiting: '待处理', 'buy-pending': '成交核对中', bought: '已买入，待入库', 'move-pending': '入库中',
+            'move-rejected': '入库失败', club: '已入库', collected: '已确认收集' })[item.state] ?? item.reason ?? item.state;
+          add(resultList, 'li', `${item.name || item.definitionId} · ${state}${item.price == null ? '' : ` · ${count(item.price)} 金币`}`);
+        }
+      }
+      purchaseReplan = null;
+      if (isGalleryPurchaseReplanSafe(outcome) && outcome.status !== 'purchased' && input.replanContext?.targets?.length) {
+        const remaining = replanableGalleryFailures(outcome);
+        if (remaining.length) {
+          purchaseReplan = { ...input.replanContext, outcome };
+          const acquired = (outcome.results ?? []).filter(item => ['club', 'collected'].includes(item.state)).length;
+          const replan = add(resultList ?? dialog, 'li', `已确认 ${acquired} 张；剩余 ${remaining.length} 张可重新计算方案`, 'gallery-replan-ready');
+          const replanButton = add(replan, 'button', '重新规划剩余目标'); replanButton.type = 'button';
+          replanButton.addEventListener('click', event => { if (event.isTrusted && !buying) { node('gallery-purchase-close').click(); renderPurchaseReplan(purchaseReplan); } });
+        }
+      }
     } catch { output.textContent = '购买结果待核对，记录已保留，请勿重复下单。'; }
     finally {
       buying = false; node('gallery-purchase-stop').hidden = true; node('gallery-purchase-close').hidden = false;
       void refreshPurchases();
     }
   };
-  const purchaseButton = (parent, items, binding, { budget = null, label = '批量购买', valid = () => true } = {}) => {
+  const renderPurchaseReplan = input => {
+    const target = node(input?.mode === 'joint' ? 'gallery-joint-output' : 'gallery-set-detail');
+    if (!target || !input?.targets?.length || !input.outcome) return;
+    const message = input.mode === 'joint' ? target
+      : target.querySelector('.gallery-plan-output') ?? add(target, 'div', '', 'gallery-plan-output');
+    message.replaceChildren();
+    message.textContent = '正在根据已确认收集和剩余预算重新规划…';
+    const identity = scope(), token = ++planningEpoch;
+    const catalogAtStart = result?.catalog, setAtStart = selectedSetId, jointAtStart = jointMode;
+    const current = () => !disposed && active && identity === scope() && token === planningEpoch
+      && message.isConnected && result?.catalog === catalogAtStart && selectedSetId === setAtStart && jointMode === jointAtStart;
+    const steps = planGalleryRemainderSteps({ targets: input.targets, outcome: input.outcome,
+      ledger: input.ledger, budget: input.budget, mode: input.mode ?? (input.targets.length === 1 ? 'single' : 'joint') });
+    void runGalleryPlan(steps, {
+      current,
+      progress: state => { message.textContent = `正在重算… ${state.evaluations} 个候选`; },
+    }).then(plan => {
+      if (!plan || !current()) return;
+      message.replaceChildren();
+      if (plan.status === 'ready') {
+        add(message, 'small', '原购买结果已保留；以下仅是新的本地替代方案，需要再次点击购买。', 'gallery-unknown');
+        for (const candidate of plan.plans) {
+          const detail = add(message, 'details'); add(detail, 'summary', `${candidate.items.length} 张 · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`}${candidate.score == null ? '' : ` · 最终 ${count(candidate.score)} 分`}`);
+          const list = add(detail, 'ul');
+          for (const item of candidate.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? '版本未知'} · ${item.price == null ? '价格未知' : `${count(item.price)} 金币`}`);
+          const executionBudget = plan.remainingBudget ?? input.budget;
+          purchaseButton(detail, candidate.items, `${input.binding ?? 'gallery'}:replan:${candidate.items.map(item => item.eaId).join(',')}`, {
+            budget: executionBudget, label: '购买替代方案',
+            replanContext: { targets: plan.targets, ledger: plan.ledger, budget: input.budget, mode: input.mode },
+            valid: () => current() && !buying });
+        }
+      } else if (plan.status === 'achieved') add(message, 'small', '当前目标已达到，无需继续购买。');
+      else add(message, 'small', `剩余目标暂不可规划：${plan.reason ?? plan.status}`, 'gallery-unknown');
+    }).catch(() => { if (current()) message.textContent = '剩余目标重规划失败，原 Journal 保留。'; });
+  };
+  const purchaseButton = (parent, items, binding, { budget = null, label = '批量购买', valid = () => true,
+    progress = null, targetGrade = null, replanContext = null } = {}) => {
     if (typeof purchase !== 'function' || !items.length) return null;
     const button = add(parent, 'button', label, 'primary gallery-purchase'); button.type = 'button';
     const identity = scope();
     button.addEventListener('click', event => {
       if (!event.isTrusted || buying || identity !== scope() || !valid()) return;
-      void runPurchase({ items, binding, budget });
+      void runPurchase({ items, binding, budget, progress, targetGrade,
+        replanContext: replanContext ? structuredClone(replanContext) : null });
     });
     return button;
   };
@@ -141,7 +223,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       // text fallback.
       try { native?.__fcatDealloc?.(); } catch { /* UI cleanup only. */ }
       try { native?.remove?.(); } catch { /* UI cleanup only. */ }
-      renderTextCard(parent, row);
+      const text = renderTextCard(parent, row);
+      parent.insertBefore(text, parent.querySelector('.gallery-card-select'));
     };
     try {
       // Slotted light-DOM children inherit EA's global card styles. Do not
@@ -161,6 +244,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const priceExpired = detail => detail?.priceSnapshot?.expiresAt != null && Date.now() >= detail.priceSnapshot.expiresAt;
   const planningPrices = detail => detail?.priceSnapshot
     ? priceExpired(detail) ? {} : detail.priceSnapshot.freshPrices : detail?.prices;
+  const needsPriceRefresh = detail => !detail?.priceSnapshot || priceExpired(detail)
+    || detail.priceSnapshot.expiresAt == null && !Object.keys(detail.priceSnapshot.freshPrices ?? {}).length;
   const statusIcon = (parent, value, label) => {
     const icon = add(parent, 'span', value === true ? '✓' : value === false ? '○' : '?', `gallery-status-icon ${value === true ? 'is-yes' : value === false ? 'is-no' : 'is-unknown'}`);
     icon.title = label; icon.setAttribute('aria-label', label); return icon;
@@ -312,6 +397,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     select.addEventListener('change', () => { select.dataset.edited = 'true'; });
     row.append(select);
     const button = add(row, 'button', '生成方案'); button.type = 'button';
+    const overviewButton = add(row, 'button', '各档费用'); overviewButton.type = 'button';
     const jointAdd = add(row, 'button', '+', 'gallery-joint-add'); jointAdd.type = 'button';
     jointAdd.title = '加入联合目标'; jointAdd.setAttribute('aria-label', '加入联合目标');
     jointAdd.disabled = restoringTargets || value.status !== 'observed' || value.stale === true || value.poolStale === true;
@@ -323,6 +409,19 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       jointAdd.title = '已加入联合目标';
     });
     const output = add(section, 'div', '', 'gallery-plan-output'); output.setAttribute('aria-live', 'polite');
+    const overview = add(section, 'div', '', 'gallery-grade-overview'); overview.setAttribute('aria-live', 'polite');
+    const overviewKey = JSON.stringify([scope(), set, result.catalog.tags, value.progress, planningPrices(value)]);
+    const showOverview = plan => {
+      overview.replaceChildren();
+      if (!plan) return;
+      for (const item of plan.grades ?? []) {
+        const line = add(overview, 'div', '', 'gallery-grade-overview-row');
+        add(line, 'strong', `${item.grade} · ${count(item.threshold)} 分`);
+        add(line, 'span', item.status === 'achieved' ? '已达到 · 0 金币'
+          : item.candidate?.totalPrice == null ? item.status === 'ready' ? '报价未知' : (item.reason ?? '暂不可达') : `${count(item.candidate.totalPrice)} 金币`);
+        if (item.candidate?.score != null) add(line, 'small', `${count(item.candidate.score)} 分`);
+      }
+    };
     const show = plan => {
       output.replaceChildren();
       if (!plan || plan.status === 'unavailable') { add(output, 'small', `暂不可规划：${plan?.reason ?? '输入不完整'}`, 'gallery-unknown'); return; }
@@ -336,14 +435,23 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (plan.status !== 'ready') { add(output, 'small', reasons[plan.reason] ?? '暂未找到可行方案', 'gallery-unknown'); return; }
       add(output, 'small', `找到 ${plan.plans.length} 个候选方案；只读结果，不代表 EA 已确认等级。`);
       if (!plan.searchComplete) add(output, 'small', '有界候选方案，不保证最低总价。', 'gallery-unknown');
+      if (plan.costAudit) add(output, 'small', `按单卡价格选取的完整组合为 ${count(plan.costAudit.totalPrice)} 金币、${count(plan.costAudit.score)} 分（目标 ${count(plan.costAudit.target)}）。`, 'gallery-unknown');
       for (const [index, candidate] of plan.plans.entries()) {
-        const details = add(output, 'details'); add(details, 'summary', `方案 ${index + 1} · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`} · ${count(candidate.score)} 分`);
+        const details = add(output, 'details');
+        const scoreNote = candidate.currentScore != null
+          ? `当前 ${count(candidate.currentScore)} + 新增 ${count(candidate.addedScore ?? 0)} = ${count(candidate.score)} 分`
+          : `${count(candidate.score)} 分`;
+        add(details, 'summary', `方案 ${index + 1} · ${candidate.items.length} 张 · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`} · ${scoreNote}`);
         const list = add(details, 'ul');
         for (const item of candidate.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? '版本未知'} · ${item.price == null ? '价格未知' : `${count(item.price)} 🪙`}${item.scoreSource === 'catalog' ? ' · 公开估分' : ''}`);
         if (candidate.missingPriceIds.length) add(details, 'small', `${candidate.missingPriceIds.length} 张卡缺少报价，执行前必须重新查价。`, 'gallery-unknown');
         if (candidate.unknownFields?.length) add(details, 'small', '部分计分属性未知，方案按已知贡献计算。', 'gallery-unknown');
         purchaseButton(details, candidate.items, `set:${set.id}:${value.pool?.revision}:${candidate.items.map(item => item.eaId).join(',')}`,
-          { valid: () => value.status === 'observed' && !value.stale && !value.poolStale && thisDetailCurrent(value, set.id) });
+          { progress: value.progress, targetGrade: candidate.targetGrade,
+            replanContext: { targets: [{ set, catalog: result.catalog, progress: value.progress,
+              prices: planningPrices(value), targetGrade: candidate.targetGrade, scope: currentScope }],
+              mode: 'single', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: null },
+            valid: () => value.status === 'observed' && !value.stale && !value.poolStale && thisDetailCurrent(value, set.id) });
       }
     };
     button.addEventListener('click', async event => {
@@ -355,19 +463,81 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const cancel = add(row, 'button', '取消'); cancel.type = 'button';
       cancel.addEventListener('click', () => { planningEpoch++; output.replaceChildren(); add(output, 'small', '计算已取消'); });
       try {
-        const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
+      const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
         const plan = gradePlanner === planGalleryGrade
           ? await runGalleryPlan(planGalleryGradeSteps(input), { current,
             progress: value => { output.textContent = `正在计算… ${value.evaluations} 个候选`; } })
           : await gradePlanner(input);
+        if (plan) void diag({ event: 'grade-plan', phase: 'planner',
+          replayInput: input,
+          status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
+          reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
+          count: plan.candidateCount, requestedCount: plan.requestedCandidates,
+          quotedCount: plan.quotedCandidateCount, eaScoreCount: plan.scoreSourceCounts?.ea,
+          catalogScoreCount: plan.scoreSourceCounts?.catalog, targetScore: plan.threshold,
+          currentScore: plan.currentScore, evaluations: plan.evaluations,
+          searchComplete: plan.searchComplete === true, scopeTruncated: plan.scopeTruncated === true,
+          beamTruncated: plan.beamTruncated === true, budgetExhausted: plan.budgetExhausted === true,
+          timeExhausted: plan.timeExhausted === true, expandedCount: plan.omittedCandidates,
+          cheapestPrice: plan.costAudit?.totalPrice, cheapestScore: plan.costAudit?.score,
+          bestPrice: plan.plans?.[0]?.totalPrice, bestScore: plan.plans?.[0]?.score,
+        });
         if (plan && current()) show(plan);
-      } catch { if (current()) show({ status: 'unavailable', reason: 'planner-failed' }); }
+      } catch { void diag({ event: 'grade-plan', phase: 'planner', status: 'failed', reason: 'FC27_GALLERY_GRADE_PLANNER_FAILED' }); if (current()) show({ status: 'unavailable', reason: 'planner-failed' }); }
       finally { button.disabled = false; cancel.remove(); }
+    });
+    overviewButton.addEventListener('click', async event => {
+      if (!event.isTrusted || overviewButton.disabled) return;
+      const cached = overviewCache.get(overviewKey);
+      if (cached) { showOverview(cached); return; }
+      overviewButton.disabled = true; overview.textContent = '正在计算各档费用…';
+      const token = ++planningEpoch, identity = scope(), revision = result;
+      try {
+        const plan = await runGalleryPlan(planGalleryGradeOverviewSteps({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }), {
+          current: () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && overview.isConnected,
+          maxMs: 8000, progress: state => { overview.textContent = `正在计算各档费用… ${state.completed}/${state.total}`; },
+        });
+        if (plan && token === planningEpoch) {
+          if (plan.status === 'observed') {
+            overviewCache.set(overviewKey, plan);
+            while (overviewCache.size > 8) overviewCache.delete(overviewCache.keys().next().value);
+          }
+          showOverview(plan);
+          if (plan.status === 'partial') add(overview, 'small', '费用计算未完成；已显示部分档位，可单独选择目标档位计算。', 'gallery-unknown');
+        }
+      } catch { if (token === planningEpoch) overview.textContent = '各档费用暂不可用'; }
+      finally { overviewButton.disabled = false; }
     });
   };
   const setIconSelections = new Map();
   let categoryId = null, result = null, pending = null, timer = null, active = false;
-  let selectedSetId = null, selection = 0, scopeTimer = null, filter = 'all';
+  let selectedSetId = null, selection = 0, scopeTimer = null, filter = 'all', cardPage = 1, cardQuery = '', cardOrder = 'catalog';
+  const selectedCards = new Map();
+  let selectionSource = null;
+  let selectionBudget = '';
+  const updateFooterGeometry = () => {
+    const footer = node('gallery-selection-footer');
+    if (!footer || footer.hidden) return;
+    const box = shadow.querySelector('.body')?.getBoundingClientRect();
+    const viewport = document.defaultView?.innerWidth ?? 0;
+    if (!box || box.width <= 0) return;
+    const inset = Math.min(24, box.width * .04), left = Math.max(8, box.left + inset);
+    footer.style.left = `${left}px`;
+    footer.style.width = `${Math.max(0, Math.min(box.width - inset * 2, viewport - left - 8))}px`;
+  };
+  const selectionContext = () => {
+    const rows = new Map(), prices = {}, confirmedMissing = new Set();
+    for (const detail of details.values()) {
+      const fresh = detail.status === 'observed' && detail.stale !== true && detail.poolStale !== true;
+      for (const row of detail.progress?.rows ?? []) {
+        const id = String(row.eaId), previous = rows.get(id);
+        if (!previous || row.collected === true || fresh && previous.collected !== true) rows.set(id, row);
+        if (fresh && !isGalleryOwned(row) && row.collected === false) confirmedMissing.add(id);
+      }
+      Object.assign(prices, planningPrices(detail) ?? {});
+    }
+    return { rows: [...rows.values()], prices, valid: [...selectedCards.keys()].every(id => confirmedMissing.has(id)) };
+  };
   const showBrowseLevel = () => {
     const detail = selectedSetId !== null, category = categoryId !== null;
     node('gallery-summary').hidden = detail || category;
@@ -381,8 +551,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       ? result?.catalog?.categories.flatMap(row => row.sets).find(row => row.id === selectedSetId)?.name ?? ''
       : result?.catalog?.categories.find(row => row.id === categoryId)?.name ?? '';
     node('gallery-browse-nav').hidden = jointMode || !detail && !category;
+    node('gallery-selection-footer').hidden = !active || !detail || jointMode;
+    updateFooterGeometry();
   };
   const details = new Map();
+  const overviewCache = new Map();
   const thisDetailCurrent = (value, id) => details.get(id) === value && selectedSetId === id && !jointMode;
   const jointTargets = new Map();
   let jointMode = false;
@@ -443,9 +616,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         }
       });
   };
-  const invalidateJoint = () => {
+  const invalidateJoint = (message = '') => {
     planningEpoch++;
-    node('gallery-joint-output').replaceChildren();
+    const output = node('gallery-joint-output');
+    const hadPlan = output.hasChildNodes();
+    output.replaceChildren();
+    if (message && hadPlan) add(output, 'small', message, 'gallery-unknown');
   };
   const renderJoint = () => {
     const container = node('gallery-joint-targets'); container.replaceChildren();
@@ -494,7 +670,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (set) renderSetDetail(details.get(selectedSetId), set);
     }
   };
-  const showJointPlan = plan => {
+  const showJointPlan = (plan, inputs = []) => {
     const output = node('gallery-joint-output'); output.replaceChildren();
     if (plan.status === 'achieved') { add(output, 'p', '当前联合目标已达到，无需补卡。'); return; }
     if (plan.status !== 'ready') {
@@ -509,11 +685,33 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       return;
     }
     if (!plan.searchComplete) add(output, 'small', '有界候选方案，不保证最低总价。', 'gallery-unknown');
+    if (plan.costAudit) add(output, 'small', `按单卡价格选取的完整组合为 ${count(plan.costAudit.totalPrice)} 金币，最低目标计分 ${count(plan.costAudit.score)} 分。`, 'gallery-unknown');
     for (const [index, planRow] of plan.plans.entries()) {
       const detail = add(output, 'details'); detail.open = index === 0;
       add(detail, 'summary', `方案 ${index + 1} · ${planRow.items.length} 张 · ${planRow.totalPrice == null ? '报价未知' : `${count(planRow.totalPrice)} 🪙`}`);
       if (planRow.remainingBudget != null) add(detail, 'small', `剩余预算 ${count(planRow.remainingBudget)} 🪙`);
       if (planRow.estimated) add(detail, 'small', '包含公开估分', 'gallery-unknown');
+      if (inputs.length) {
+        const benchmark = add(detail, 'button', '对照逐集合'); benchmark.type = 'button';
+        const comparison = add(detail, 'output', '', 'gallery-joint-benchmark');
+        const frozen = structuredClone(inputs), identity = scope();
+        benchmark.addEventListener('click', async event => {
+          if (!event.isTrusted || benchmark.disabled) return;
+          benchmark.disabled = true; comparison.textContent = '计算逐集合基准…';
+          const token = ++planningEpoch;
+          try {
+            const baseline = await runGalleryPlan(planGallerySequentialSteps({ targets: frozen }), {
+              current: () => active && !disposed && token === planningEpoch && identity === scope() && comparison.isConnected,
+            });
+            if (!baseline) return;
+            const value = baseline.status === 'observed' ? benchmarkGalleryPlans({ jointPlan: planRow, individualPlans: baseline.plans }) : baseline;
+            comparison.textContent = value.status === 'observed'
+              ? `逐集合 ${count(value.separatePrice)} 金币 · 联合 ${count(value.jointPrice)} 金币 · 差额 ${count(value.savings)} 金币`
+              : `基准未完整计算 · ${value.reason ?? '待核实'}`;
+          } catch { void diag({ event: 'joint-benchmark', phase: 'planner', status: 'failed', reason: 'FC27_GALLERY_JOINT_BENCHMARK_FAILED' }); if (comparison.isConnected) comparison.textContent = '基准暂不可用'; }
+          finally { benchmark.disabled = false; }
+        });
+      }
       const targets = add(detail, 'table');
       for (const target of planRow.targets) {
         const row = add(targets, 'tr'); add(row, 'th', `${target.name} · ${target.targetGrade}`);
@@ -526,7 +724,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const targetsBinding = JSON.stringify([...jointTargets]);
       const catalogAtPlan = result.catalog;
       purchaseButton(detail, planRow.items, `joint:${targetsBinding}:${planRow.items.map(item => item.eaId).join(',')}`,
-        { budget: targetValue().budget, valid: () => jointMode && result.catalog === catalogAtPlan && JSON.stringify([...jointTargets]) === targetsBinding });
+        { budget: targetValue().budget,
+          replanContext: { targets: inputs, mode: 'joint', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
+          valid: () => jointMode && result.catalog === catalogAtPlan && JSON.stringify([...jointTargets]) === targetsBinding });
     }
   };
   node('gallery-mode-browse').addEventListener('click', () => setJointMode(false));
@@ -540,24 +740,60 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     for (const [id, targetGrade] of jointTargets) {
       const value = details.get(id), set = sets.find(set => set.id === id);
       if (!set || !value?.progress || value.status !== 'observed' || value.stale || value.poolStale) {
+        void diag({ event: 'joint-plan', phase: 'preflight', status: 'blocked', reason: 'FC27_GALLERY_JOINT_TARGET_STATE_UNKNOWN', count: targets.length });
         showJointPlan({ status: 'partial', reason: 'target-state-unknown' }); return;
       }
       targets.push({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value),
         scope: currentScope, targetGrade });
     }
     const rawBudget = node('gallery-joint-budget').value.trim(), budget = rawBudget ? Number(rawBudget) : null;
-    const token = ++planningEpoch, identity = scope(), revision = result;
+    const token = ++planningEpoch, identity = scope();
     jointRun = token;
-    const current = () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && jointMode;
+    const current = () => !disposed && active && token === planningEpoch && identity === scope() && jointMode;
     const button = node('gallery-joint-plan'); button.disabled = true;
     const output = node('gallery-joint-output'); output.textContent = '正在计算…';
     const cancel = add(node('gallery-joint-controls') ?? button.parentElement, 'button', '取消');
     cancel.addEventListener('click', () => { planningEpoch++; output.textContent = '计算已取消'; });
     try {
+      const refreshIds = [...new Set(targets.filter(target => {
+        const value = details.get(target.set.id);
+        return needsPriceRefresh(value);
+      }).flatMap(target => target.progress.rows.filter(row => !isGalleryOwned(row)).map(row => row.eaId)))].sort((a, b) => a - b);
+      if (refreshIds.length && typeof loadPrices === 'function') {
+        output.textContent = '正在更新公开报价…';
+        const snapshots = [];
+        for (let start = 0; start < refreshIds.length; start += 250) {
+          if (!current()) return;
+          snapshots.push(await loadPrices(refreshIds.slice(start, start + 250)));
+        }
+        if (!current()) return;
+        const priceSnapshot = { prices: {}, freshPrices: {}, expiresAt: null };
+        for (const snapshot of snapshots) {
+          Object.assign(priceSnapshot.prices, snapshot?.prices ?? {});
+          Object.assign(priceSnapshot.freshPrices, snapshot?.freshPrices ?? {});
+          if (snapshot?.expiresAt != null) priceSnapshot.expiresAt = Math.min(priceSnapshot.expiresAt ?? Infinity, snapshot.expiresAt);
+        }
+        for (const target of targets) {
+          const previous = details.get(target.set.id);
+          if (!needsPriceRefresh(previous)) continue;
+          const value = { ...previous, priceSnapshot, prices: priceSnapshot.prices };
+          details.set(target.set.id, value); target.prices = planningPrices(value);
+        }
+      }
+      void diag({ event: 'joint-plan', phase: 'planner', status: 'started', count: targets.length });
       const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget }), { current,
         progress: value => { output.textContent = `正在计算… ${value.evaluations} 个候选`; } });
-      if (plan && current()) showJointPlan(plan);
-    } catch { if (current()) showJointPlan({ status: 'unavailable' }); }
+      if (plan) void diag({ event: 'joint-plan', phase: 'planner', status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
+        replayInput: { targets, budget },
+        reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_JOINT_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
+        evaluations: plan.evaluations, count: targets.length, requestedCount: plan.candidateCount,
+        retainedCount: plan.candidateCount, expandedCount: plan.omittedCandidates,
+        quotedCount: plan.quotedCandidateCount, bestPrice: plan.plans?.[0]?.totalPrice,
+        beamTruncated: plan.beamTruncated === true, budgetExhausted: plan.budgetExhausted === true,
+        timeExhausted: plan.timeExhausted === true,
+        searchComplete: plan.searchComplete === true, scopeTruncated: plan.scopeTruncated === true });
+      if (plan && current()) showJointPlan(plan, targets);
+    } catch { void diag({ event: 'joint-plan', phase: 'planner', status: 'failed', reason: 'FC27_GALLERY_JOINT_PLANNER_FAILED', count: targets.length }); if (current()) showJointPlan({ status: 'unavailable', reason: 'planner-failed' }); }
     finally {
       if (jointRun === token) { jointRun = null; button.disabled = !jointTargets.size || restoringTargets; }
       cancel.remove();
@@ -570,8 +806,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const checkScope = () => {
     const next = scope();
     if (next === currentScope) return true;
-    scoreQueue.cancel(); scoredSets.clear();
+    scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear();
     currentScope = next; selection++; selectedSetId = null; details.clear();
+    selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
     foregroundSync = null; resumeBackground = false;
     if (syncing) sync?.stop();
     jointTargets.clear(); node('gallery-joint-budget').value = '';
@@ -588,6 +825,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
 
   const renderSetDetail = (value, set) => {
     const target = node('gallery-set-detail'); disposeNativeCards(target); target.replaceChildren(); showBrowseLevel();
+    node('gallery-selection-footer').replaceChildren(); node('gallery-selection-footer').hidden = true;
     const heading = add(target, 'div', '', 'gallery-detail-heading');
     const headingIdentity = add(heading, 'div', '', 'gallery-identity');
     add(headingIdentity, 'h3', set.name);
@@ -638,42 +876,105 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (value.fetchedAt) add(target, 'small', `收集状态读取于 ${date(value.fetchedAt)}`);
     renderScoring(target, summary, value);
     renderPlan(target, value, set, summary);
-    const filters = add(target, 'div', '', 'row gallery-card-filters');
-    for (const [key, label] of [['all','全部'],['collected','已收集'],['missing','未收集'],['unknown','待核实']]) {
-      const button = add(filters, 'button', label); button.setAttribute('aria-pressed', String(filter === key));
-      button.addEventListener('click', () => { filter = key; renderSetDetail(value, set); });
+    if (selectionSource !== result?.source) {
+      selectedCards.clear(); selectionSource = result?.source ?? null; cardPage = 1;
     }
+    const filters = add(target, 'div', '', 'row gallery-card-filters');
+    for (const [key, label] of [['all','全部'],['collected','已收集'],['missing','未收集'],['unknown','待核实'],['held','持有'],['lineup','计分阵容'],['firstOwned','First Owner']]) {
+      const button = add(filters, 'button', label); button.setAttribute('aria-pressed', String(filter === key));
+      button.addEventListener('click', event => { if (!event.isTrusted) return; filter = key; cardPage = 1; renderSetDetail(value, set); });
+    }
+    const cardTools = add(target, 'div', '', 'row gallery-card-tools');
+    const search = add(cardTools, 'input'); search.type = 'search'; search.value = cardQuery; search.placeholder = '搜索球员'; search.setAttribute('aria-label', '搜索球员');
+    const order = document.createElement('select'); order.setAttribute('aria-label', '卡片排序');
+    for (const [key, label] of [['catalog', '目录顺序'], ['name', '名称'], ['score', 'Gallery 分数'], ['price', '价格']]) { const option = document.createElement('option'); option.value = key; option.textContent = label; option.selected = cardOrder === key; order.append(option); }
+    cardTools.append(order);
+    const clear = add(cardTools, 'button', '×'); clear.title = '清除选择'; clear.setAttribute('aria-label', '清除选择'); clear.type = 'button'; clear.disabled = !selectedCards.size;
+    const missingRows = progress.rows.filter(row => !isGalleryOwned(row) && row.collected === false);
+    const cheapCount = add(cardTools, 'input'); cheapCount.type = 'number'; cheapCount.min = '1'; cheapCount.max = String(Math.max(1, missingRows.length));
+    cheapCount.value = String(Math.max(1, set.requiredCards - progress.totals.collected)); cheapCount.setAttribute('aria-label', '最低价选卡数量'); cheapCount.className = 'gallery-cheapest-count';
+    const cheapest = add(cardTools, 'button', '最低价 N 张'); cheapest.type = 'button'; cheapest.disabled = typeof purchase !== 'function' || !missingRows.length;
+    const filtered = filterGalleryCards(progress.rows, { filter, query: cardQuery, order: cardOrder, prices: planningPrices(value) ?? {}, lineupIds: summary?.lineup?.map(row => row.eaId) ?? [] });
+    const page = paginateGalleryCards(filtered, { page: cardPage, pageSize: 24 }); cardPage = page.page;
+    add(cardTools, 'span', `${page.total ? `${(page.page - 1) * page.pageSize + 1}-${Math.min(page.page * page.pageSize, page.total)}` : 0} / ${page.total}`, 'gallery-card-page');
+    const previous = add(cardTools, 'button', '←'); previous.type = 'button'; previous.title = '上一页'; previous.setAttribute('aria-label', '上一页'); previous.disabled = page.page <= 1;
+    const next = add(cardTools, 'button', '→'); next.type = 'button'; next.title = '下一页'; next.setAttribute('aria-label', '下一页'); next.disabled = page.page >= page.pages;
+    const reconciled = reconcileGallerySelection(selectedCards, selectionContext().rows);
+    selectedCards.clear(); for (const [id, row] of reconciled) selectedCards.set(id, row);
     const list = add(target, 'div', '', 'gallery-card-list');
-    const selected = new Map();
-    const selectionBar = add(target, 'div', '', 'row gallery-purchase-selection');
-    const selectedBuy = typeof purchase === 'function' ? add(selectionBar, 'button', '购买所选（0）', 'primary gallery-purchase') : null;
+    const selectionBar = node('gallery-selection-footer'); selectionBar.hidden = typeof purchase !== 'function' || !selectedCards.size;
+    const selectedBuy = typeof purchase === 'function' ? add(selectionBar, 'button', 'Buy 0', 'primary gallery-purchase') : null;
+    const selectionSummary = add(selectionBar, 'span', '', 'gallery-selection-summary');
+    const preview = add(selectionBar, 'div', '', 'gallery-selection-preview'); preview.setAttribute('role', 'status');
+    let selectedSummary, previewEpoch = 0;
+    const updateSelected = () => {
+      const context = selectionContext();
+      selectedSummary = summarizeGallerySelection(selectedCards, context.rows, context.prices);
+      if (selectedBuy) { selectedBuy.disabled = !selectedSummary.count || buying || !context.valid || value.status !== 'observed' || value.stale || value.poolStale; selectedBuy.textContent = `Buy ${selectedSummary.count}`; }
+      selectionBar.hidden = typeof purchase !== 'function' || !selectedSummary.count;
+      updateFooterGeometry();
+      clear.disabled = !selectedSummary.count;
+      selectionSummary.textContent = `${selectedSummary.count} 张 · ${selectedSummary.totalPrice == null ? '报价未知' : `${count(selectedSummary.totalPrice)} 金币`}`;
+      for (const button of list.querySelectorAll('.gallery-card-select')) {
+        const id = button.closest('[data-definition-id]').dataset.definitionId, added = selectedCards.has(id);
+        button.textContent = added ? 'Added' : 'Buy'; button.setAttribute('aria-pressed', String(added));
+        button.style.color = added ? '#152c22' : ''; button.style.opacity = added ? '1' : ''; button.style.fontWeight = added ? '700' : '';
+        button.setAttribute('aria-label', `${added ? '移除' : '添加'} ${button.dataset.cardName}`);
+      }
+      const token = ++previewEpoch;
+      if (!selectedSummary.count) { preview.replaceChildren(); return; }
+      preview.textContent = '预计等级计算中…';
+      void runGalleryPlan(previewGallerySelectionSteps({ set, catalog: result.catalog, progress,
+        selectedIds: selectedSummary.selected.map(row => row.eaId) }), { current: () => token === previewEpoch && thisDetailCurrent(value, set.id) && preview.isConnected,
+        maxMs: 1500 }).then(summary => {
+        if (!summary) return;
+        preview.textContent = `预计 ${scoreText(summary)}${summary.estimated ? ' · 公开估分' : ''}`;
+      }).catch(() => { if (preview.isConnected && token === previewEpoch) preview.textContent = '预计等级暂不可用'; });
+    };
     if (selectedBuy) {
-      selectedBuy.disabled = true;
-      const budget = add(selectionBar, 'input'); budget.type = 'number'; budget.min = '0'; budget.max = '165000000'; budget.step = '1';
+      const budget = add(selectionBar, 'input'); budget.type = 'number'; budget.min = '0'; budget.max = '165000000'; budget.step = '1'; budget.value = selectionBudget;
       budget.placeholder = '总预算（可选）'; budget.setAttribute('aria-label', '购买总预算'); budget.style.maxWidth = '160px';
+      budget.addEventListener('input', event => { if (event.isTrusted) selectionBudget = budget.value; });
       selectedBuy.addEventListener('click', event => {
-        if (!event.isTrusted || !thisDetailCurrent(value, set.id) || value.stale || value.poolStale || buying) return;
+        if (!event.isTrusted || !thisDetailCurrent(value, set.id) || value.stale || value.poolStale || buying || checkScope() === false) return;
+        const context = selectionContext();
+        if (!context.valid) return;
+        const currentSelection = summarizeGallerySelection(selectedCards, context.rows, context.prices);
+        if (currentSelection.count !== selectedCards.size) { updateSelected(); return; }
         const total = budget.value.trim() ? Number(budget.value) : null;
-        void runPurchase({ items: [...selected.values()], binding: `cards:${set.id}:${value.pool?.revision}:${[...selected.keys()].join(',')}`, budget: total });
+        void runPurchase({ items: currentSelection.selected.map(row => ({ eaId: row.eaId, name: row.name, definitionId: row.eaId })), binding: `cards:${result.source}:${[...selectedCards.keys()].sort().join(',')}`, budget: total });
       });
     }
+    clear.disabled = !selectedCards.size;
+    clear.addEventListener('click', event => { if (!event.isTrusted) return; selectedCards.clear(); updateSelected(); });
+    cheapest.addEventListener('click', event => {
+      if (!event.isTrusted) return;
+      const candidates = selectCheapestGalleryCards(filtered, Number(cheapCount.value), planningPrices(value) ?? {});
+      for (const row of candidates) selectedCards.set(String(row.eaId), { eaId: row.eaId, name: row.name });
+      updateSelected();
+    });
+    search.addEventListener('change', event => { if (!event.isTrusted) return; cardQuery = search.value; cardPage = 1; renderSetDetail(value, set); });
+    order.addEventListener('change', event => { if (!event.isTrusted) return; cardOrder = order.value; cardPage = 1; renderSetDetail(value, set); });
+    previous.addEventListener('click', event => { if (!event.isTrusted) return; cardPage--; renderSetDetail(value, set); });
+    next.addEventListener('click', event => { if (!event.isTrusted) return; cardPage++; renderSetDetail(value, set); });
     const scoredIds = new Set(summary?.lineup?.map(row => row.eaId) ?? []);
-    for (const row of progress.rows.filter(row => filter === 'all' || row.status === filter)) {
+    for (const row of page.rows) {
       const card = add(list, 'article', '', 'gallery-card gallery-player-card');
       card.dataset.definitionId = String(row.eaId);
       card.dataset.rarityId = String(row.rarityEaId ?? '');
       const art = add(card, 'div', '', 'gallery-player-art');
       art.dataset.galleryCardArt = String(row.eaId);
-      if (selectedBuy && row.collected === false && value.status === 'observed' && !value.stale && !value.poolStale) {
-        // Keep the checkbox inside the art cell.  A direct grid child is
-        // auto-placed into the first column and the global input styles make
-        // it stretch into a white rectangle over the native card.
-        const check = add(art, 'input', '', 'gallery-card-select');
-        check.type = 'checkbox'; check.setAttribute('aria-label', `选择 ${row.name} ${row.version ?? ''}`);
-        check.addEventListener('change', event => {
+      if (selectedBuy && !isGalleryOwned(row) && row.collected === false && value.status === 'observed' && !value.stale && !value.poolStale) {
+        const select = add(art, 'button', selectedCards.has(String(row.eaId)) ? 'Added' : 'Buy', 'gallery-card-select');
+        select.type = 'button'; select.setAttribute('aria-label', `${selectedCards.has(String(row.eaId)) ? '移除' : '添加'} ${row.name} ${row.version ?? ''}`);
+        select.dataset.cardName = `${row.name} ${row.version ?? ''}`;
+        select.setAttribute('aria-pressed', String(selectedCards.has(String(row.eaId))));
+        if (selectedCards.has(String(row.eaId))) { select.style.color = '#152c22'; select.style.opacity = '1'; select.style.fontWeight = '700'; }
+        select.addEventListener('click', event => {
           if (!event.isTrusted) return;
-          if (check.checked) selected.set(row.eaId, { eaId: row.eaId, name: row.name }); else selected.delete(row.eaId);
-          selectedBuy.disabled = !selected.size; selectedBuy.textContent = `购买所选（${selected.size}）`;
+          if (selectedCards.has(String(row.eaId))) selectedCards.delete(String(row.eaId));
+          else selectedCards.set(String(row.eaId), { eaId: row.eaId, name: row.name });
+          updateSelected();
         });
       }
       const price = cachedPrice(row, value);
@@ -684,6 +985,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (stalePrice) { priceLabel.dataset.priceState = 'snapshot'; priceLabel.title = '旧报价快照，不用于方案成本'; priceLabel.classList.add('gallery-unknown'); }
       add(priceBar, 'span', `Gallery ${row.galleryScore == null ? '—' : row.galleryScore.toLocaleString()}`, 'gallery-card-gallery-score');
       cardImage(art, row, value.runtimeCards, set.id);
+      const selectControl = art.querySelector('.gallery-card-select');
+      if (selectControl) art.append(selectControl);
       const meta = add(card, 'div', '', 'gallery-player-meta');
       add(meta, 'strong', row.name);
       add(meta, 'span', `${row.overall ?? '—'} OVR · ${row.version ?? '版本未知'}`, 'gallery-player-version');
@@ -693,11 +996,80 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       image(logos, asset('nation', row.nationEaId), '国籍', 'gallery-mini-emblem');
       const flags = add(meta, 'div', '', 'gallery-player-flags');
       statusIcon(flags, row.collected, row.collected === true ? '已收集' : row.collected === false ? '未收集' : '收集状态未知');
-      statusIcon(flags, row.inClub, row.inClub === true ? 'Club 可见' : row.inClub === false ? 'Club 未看到' : 'Club 状态未知');
+      statusIcon(flags, row.inClub, row.inClub === true ? 'Club 可见' : row.inClub === false && row.held ? '其他库存区持有，Club 未看到' : row.inClub === false ? 'Club 未看到' : 'Club 状态未知');
       statusIcon(flags, row.firstOwned, row.firstOwned === true ? 'First Owner' : row.firstOwned === false ? '非 First Owner' : 'First Owner 未知');
       add(meta, 'span', `EA ${row.gradingScore == null ? '未知' : row.gradingScore}`, 'gallery-player-score');
+      if (typeof setFirstOwner === 'function') {
+        const localFirstOwner = row.firstOwnedSource === 'local-history';
+        const firstOwner = add(meta, 'button', localFirstOwner ? '清除本地 FO' : '标记本地 FO', 'gallery-first-owner-toggle');
+        firstOwner.type = 'button';
+        firstOwner.title = '仅保存本账号的本地历史声明，不改变 EA 收集状态；可再次点击清除';
+        firstOwner.addEventListener('click', async event => {
+          if (!event.isTrusted || checkScope() === false || !thisDetailCurrent(value, set.id)) return;
+          const identity = scope();
+          firstOwner.disabled = true;
+          try {
+            await setFirstOwner(row.eaId, localFirstOwner ? null : true);
+            const current = details.get(set.id);
+            if (!current || current !== value || identity !== scope() || !thisDetailCurrent(value, set.id)) return;
+            // Local history is shared by exact version across collections.
+            // Undo reveals observed EA evidence without another service read.
+            for (const [id, detail] of details) {
+              if (!detail.progress?.rows.some(item => item.eaId === row.eaId)) continue;
+              const rows = detail.progress.rows.map(item => {
+                if (item.eaId !== row.eaId) return item;
+                const observed = item.observedFirstOwned ?? (item.firstOwnedSource === 'ea-observed' ? item.firstOwned : null);
+                return { ...item, observedFirstOwned: observed, firstOwned: localFirstOwner ? observed : true,
+                  firstOwnedSource: localFirstOwner ? observed === null ? null : 'ea-observed' : 'local-history' };
+              });
+              details.set(id, { ...detail, progress: { ...detail.progress, rows, totals: { ...detail.progress.totals,
+                firstOwned: rows.filter(item => item.firstOwned === true).length,
+                firstOwnedUnknown: rows.filter(item => item.firstOwned === null).length } } });
+            }
+            invalidateJoint('First Owner 历史已更新，请重新生成');
+            renderSetDetail(details.get(set.id), set);
+          } catch {
+            firstOwner.title = '本地 FO 历史保存失败';
+            if (identity === scope() && thisDetailCurrent(value, set.id)) {
+              const failure = meta.querySelector('.gallery-first-owner-error') ?? add(meta, 'small', '', 'gallery-first-owner-error');
+              failure.textContent = '本地 FO 历史保存失败，请重试';
+            }
+          }
+          finally { if (firstOwner.isConnected) firstOwner.disabled = false; }
+        });
+      }
       if (scoredIds.has(row.eaId)) add(meta, 'span', '计分阵容成员', 'badge gallery-score-member');
+      if (typeof marketCompare === 'function' && !isGalleryOwned(row) && row.collected === false) {
+        const compare = add(meta, 'button', '比价', 'gallery-card-compare'); compare.type = 'button';
+        const comparison = add(meta, 'small', '', 'gallery-market-comparison');
+        compare.addEventListener('click', async event => {
+          if (!event.isTrusted || !thisDetailCurrent(value, set.id)) return;
+          compare.disabled = true; comparison.textContent = '读取 EA 可见最低价…';
+          meta.querySelector('.gallery-market-listings')?.remove();
+          const compareScope = scope();
+          try {
+            const quote = await marketCompare(row.eaId);
+            if (!comparison.isConnected || !thisDetailCurrent(value, set.id) || compareScope !== scope()) return;
+            if (quote?.status !== 'observed') {
+              comparison.textContent = `比价暂不可用 · ${quote?.reason ?? '未知'}`;
+              comparison.title = quote?.reason ?? '';
+              return;
+            }
+            comparison.title = '';
+            const reference = cachedPrice(row, value);
+            comparison.textContent = `EA ${quote.price == null ? '无有效挂牌' : `${count(quote.price)} 金币`} · 参考 ${reference == null ? '未知' : `${count(reference)} 金币`}`;
+            if (quote.listings?.length) {
+              const detail = add(meta, 'details', '', 'gallery-market-listings');
+              add(detail, 'summary', `EA 可见报价 ${quote.listings.length} 条`);
+              for (const listing of quote.listings.slice(0, 3)) add(detail, 'small', `${count(listing.buyNow)} 金币 · 剩余 ${listing.expires ?? '?'} 秒`);
+            }
+          } catch { void diag({ event: 'market-compare', phase: 'view', status: 'failed', reason: 'FC27_GALLERY_COMPARE_VIEW_FAILED' }); if (comparison.isConnected && thisDetailCurrent(value, set.id) && compareScope === scope()) comparison.textContent = '比价暂不可用'; }
+          finally { compare.disabled = false; }
+        });
+      }
     }
+    updateSelected();
+    updateFooterGeometry();
   };
 
   const loadSetDetails = (set, { force = false } = {}) => {
@@ -708,7 +1080,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     // The loader then performs the exact pool/progress read for this set.
     const priority = sync?.prioritize?.(set.id);
     categoryId = result?.catalog?.categories.find(row => row.sets.some(candidate => candidate.id === set.id))?.id ?? null;
+    const changingSet = selectedSetId !== set.id;
     selectedSetId = set.id;
+    if (changingSet) { cardPage = 1; cardQuery = ''; cardOrder = 'catalog'; }
     filter = 'all'; const token = ++selection, startedScope = currentScope, source = result?.source;
     force = force || invalidated.has(set.id);
     foregroundSync = { token, setId: set.id, name: set.name, progress: { phase: 'catalog', index: 0, total: 1, completed: 0 } };
@@ -728,7 +1102,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         checkScope();
         if (!value || token !== selection || source !== result?.source || startedScope !== currentScope || value.scope && value.scope !== currentScope) return;
         if (value.status === 'observed' && !value.poolStale) invalidated.delete(set.id);
-        details.set(set.id, value); invalidateJoint(); renderJoint(); renderSets();
+        const changed = galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
+        details.set(set.id, value);
+        if (changed && jointTargets.has(set.id)) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
+        renderJoint(); renderSets();
         const currentSet = result.catalog.categories.flatMap(category => category.sets).find(row => row.id === set.id);
         if (currentSet && !jointMode) renderSetDetail(value, currentSet);
       })
@@ -826,7 +1203,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
 
   const applySyncDetails = values => {
     const sets = result?.catalog?.categories.flatMap(category => category.sets) ?? [];
-    let changed = false, selectedChanged = false;
+    let changed = false, selectedChanged = false, jointChanged = false;
     for (const value of values ?? []) {
       const setId = value?.pool?.setId ?? value?.progress?.setId;
       const source = value?.pool?.source ?? value?.progress?.source;
@@ -837,11 +1214,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (previous && JSON.stringify(previous.progress) === JSON.stringify(value.progress)
           && previous.pool?.revision === value.pool?.revision && previous.stale === value.stale
           && sameGalleryRuntimeCards(previous.runtimeCards, value.runtimeCards)) continue;
-      details.set(id, { ...previous, ...value });
+      const merged = { ...previous, ...value };
+      if (jointTargets.has(id) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
+      details.set(id, merged);
       changed = true; if (id === selectedSetId) selectedChanged = true;
     }
     if (!changed) return;
-    invalidateJoint(); renderJoint(); renderSets();
+    if (jointChanged) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
+    renderJoint(); renderSets();
     if (selectedChanged && !foregroundSync && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
       const set = result?.catalog?.categories.flatMap(category => category.sets).find(row => row.id === selectedSetId);
       if (set) renderSetDetail(details.get(selectedSetId), set);
@@ -881,7 +1261,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const synchronize = async (setId = null, { background = false } = {}) => {
     if (!sync || syncing || !active || checkScope() === false) return;
     const identity = scope(), source = result?.source;
-    syncing = true; updateSyncButton(); planningEpoch++;
+    syncing = true; updateSyncButton();
     const dialog = node('gallery-sync-dialog');
     node('gallery-sync-message').textContent = '正在同步收集…';
     node('gallery-sync-progress').value = 0;
@@ -949,6 +1329,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     }
     if (sourceChanged || selectedRemoved) {
       disposeNativeCards();
+      selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
       if (sourceChanged) { details.clear(); invalidated.clear(); setIconSelections.clear(); }
       if (sourceChanged) {
         jointTargets.clear(); node('gallery-joint-budget').value = ''; targetsIdentity = null; ++targetsEpoch; restoringTargets = false;
@@ -958,8 +1339,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       node('gallery-set-detail').replaceChildren(); categoryId = null; showBrowseLevel();
     }
     if (!catalog.categories.some(row => row.id === categoryId)) categoryId = null;
+    const targetCatalogChanged = [...changed.requirements, ...changed.rewards, ...changed.removed, ...changed.renamed]
+      .some(id => jointTargets.has(id));
+    if (changed.tagsChanged || targetCatalogChanged || sourceChanged) invalidateJoint('目标规则已更新，请重新生成方案。');
     if (changed.tagsChanged || changed.requirements.length || changed.rewards.length || changed.removed.length
-        || changed.renamed.length || sourceChanged) invalidateJoint();
+        || changed.renamed.length || sourceChanged) overviewCache.clear();
     restoreTargets(); reconcileTargets(); renderJoint();
     node('gallery-source').textContent = value.source === 'futgg' ? 'FUT.GG' : 'Fodder · 回退目录';
     const sets = catalog.categories.reduce((sum, row) => sum + row.sets.length, 0);
@@ -1030,7 +1414,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const setActive = value => {
     const wasActive = active;
     active = value && !disposed;
-    if (!active) { planningEpoch++; scoreQueue.cancel(); selection++; selectedSetId = null; categoryId = null;
+    if (!active) { planningEpoch++; scoreQueue.cancel(); selection++; selectedSetId = null; categoryId = null; overviewCache.clear();
       disposeNativeCards(); node('gallery-set-detail').replaceChildren(); node('gallery-set-list').replaceChildren(); showBrowseLevel(); }
     if (timer !== null) timers?.clearInterval(timer);
     if (scopeTimer !== null) timers?.clearInterval(scopeTimer);
@@ -1040,7 +1424,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       void refreshPurchases();
       if (!wasActive) { jointMode = false; node('gallery-browse').hidden = false; node('gallery-joint').hidden = true;
         node('gallery-mode-browse').setAttribute('aria-pressed', 'true'); node('gallery-mode-joint').setAttribute('aria-pressed', 'false');
-        selectedSetId = null; categoryId = null; showBrowseLevel(); }
+        selectedSetId = null; categoryId = null; overviewCache.clear(); showBrowseLevel(); }
       check(); timer = timers?.setInterval(check, GALLERY_TTL_MS) ?? null;
       if (loadSet) scopeTimer = timers?.setInterval(checkScope, 1000) ?? null;
     }
@@ -1048,7 +1432,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   node('gallery-refresh').disabled = !provider;
   node('gallery-back').addEventListener('click', event => {
     if (!event.isTrusted) return;
-    if (selectedSetId !== null) { selection++; selectedSetId = null; disposeNativeCards(); node('gallery-set-detail').replaceChildren(); renderSets(); }
+    if (selectedSetId !== null) { selection++; selectedSetId = null; cardPage = 1; disposeNativeCards(); node('gallery-set-detail').replaceChildren(); renderSets(); }
     else if (categoryId !== null) { categoryId = null; node('gallery-set-list').replaceChildren(); showBrowseLevel(); }
   });
   node('gallery-search').addEventListener('input', renderSets);
@@ -1056,6 +1440,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   node('gallery-followed').addEventListener('change', renderSets);
   node('gallery-refresh').addEventListener('click', () => { if (provider && active) void load(true); });
   document.addEventListener('visibilitychange', check);
+  document.defaultView?.addEventListener('resize', updateFooterGeometry);
   if (!provider) {
     const message = '此检查入口未接入公开目录，请使用 FC Automation Tool 正式脚本。';
     node('gallery-status').textContent = message;
@@ -1063,5 +1448,6 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   }
   return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.();
     purchase?.stop?.(); node('gallery-purchase-dialog').close();
-    node('gallery-sync-dialog').close(); setActive(false); document.removeEventListener('visibilitychange', check); } });
+    node('gallery-sync-dialog').close(); setActive(false); document.removeEventListener('visibilitychange', check);
+    document.defaultView?.removeEventListener('resize', updateFooterGeometry); } });
 }

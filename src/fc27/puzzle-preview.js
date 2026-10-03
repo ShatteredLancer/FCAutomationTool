@@ -5,6 +5,25 @@ import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements,
 const DEFAULT_MAX_NODES = 50000;
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const blocked = (reason, extra = {}) => ({ status: 'blocked', reason, liveExecutionEnabled: false, selected: [], ...extra });
+export function finishPuzzleSearch(iterator) {
+  let step;
+  do { step = iterator.next(); } while (!step.done);
+  return step.value;
+}
+
+// The same iterator drives synchronous callers and the native cooperative UI.
+// A timer yields a browser task (a resolved Promise would not permit painting).
+export async function finishPuzzleSearchCooperatively(iterator, { assertCurrent = () => {},
+  yieldControl = () => new Promise(resolve => setTimeout(resolve, 0)), sliceMs = 8 } = {}) {
+  let deadline = 0;
+  try {
+    for (;;) {
+      if (Date.now() >= deadline) { assertCurrent(); await yieldControl(); assertCurrent(); deadline = Date.now() + sliceMs; }
+      const step = iterator.next();
+      if (step.done) { assertCurrent(); return step.value; }
+    }
+  } finally { iterator.return?.(); }
+}
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
@@ -157,11 +176,16 @@ function filterUnaryCandidates(candidates, itemRules, required, groupMatcher, re
   }));
 }
 
+
 // A bounded, deterministic first-feasible search. Not a minimum-cost proof. Team
 // evaluators operate on detached immutable snapshots; this module cannot access EA.
 
-export function previewFc27PuzzleSquad({ context, challenge, inventory, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
-  maxNodes = DEFAULT_MAX_NODES, searchHint = null } = {}) {
+export const previewFc27PuzzleSquad = input => finishPuzzleSearch(iterateFc27PuzzleSquad(input));
+export const previewFc27PuzzleSquadCooperatively = (input, options) =>
+  finishPuzzleSearchCooperatively(iterateFc27PuzzleSquad(input), options);
+
+export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
+  maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   if (challenge?.mechanism !== 'traditional-puzzle') return blocked('CHALLENGE_UNVERIFIED');
   const required = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
@@ -172,10 +196,16 @@ export function previewFc27PuzzleSquad({ context, challenge, inventory, policy, 
   } });
   if (pool.status !== 'candidates') return pool;
   const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, pool };
+  return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
+}
+
+export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
+  const { challenge, pool, groupMatcher, clubLinks } = options;
+  const required = pool.required;
   const rules = parseFc27SbcRequirements(challenge.rawRequirements, required);
   if (searchHint !== null || maxNodes < 1000 || pool.candidates.length <= required || rules.status !== 'observed'
       || !rules.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)) {
-    return searchFc27PuzzleCandidates({ ...options, maxNodes, searchHint });
+    return yield* iterateFc27PuzzleCandidates({ ...options, maxNodes, searchHint, onProgress });
   }
   // Deterministic multi-start traversal, not additional searches with a fresh
   // budget each time. Preserve every candidate and every protection. An
@@ -197,9 +227,17 @@ export function previewFc27PuzzleSquad({ context, challenge, inventory, policy, 
   }
   let nodes = 0; let result;
   const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+  const reportProgress = progress => {
+    if (typeof onProgress !== 'function') return;
+    try { onProgress({ ...progress, nodes: nodes + progress.nodes,
+      search: Object.fromEntries(Object.keys(search).map(key => [key, search[key] + (progress.search?.[key] ?? 0)])),
+      maxNodes, safeCandidates: pool.candidates.length, required, attempt: progress.attempt,
+      attempts: hints.length }); } catch { /* Progress presentation cannot affect the search. */ }
+  };
   for (const [index, hint] of hints.entries()) {
     const budget = Math.floor((maxNodes - nodes) / (hints.length - index));
-    result = searchFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint });
+    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint,
+      onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
     nodes += result.nodes ?? 0;
     for (const key of Object.keys(search)) search[key] += result.search?.[key] ?? 0;
     // Only a budget-limited traversal needs another start. Proven shortage,
@@ -214,8 +252,10 @@ export function previewFc27PuzzleSquad({ context, challenge, inventory, policy, 
 // Internal detached search seam shared by owned-only and procurement previews.
 // Catalog candidates are not inventory entities. No result from this function
 // is an executable transaction; callers must preserve that distinction.
-export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
-  maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null } = {}) {
+export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc27PuzzleCandidates(input));
+
+export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
+  maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   if (procurement && (!integer(procurement.budget, 0, 10000000) || !integer(procurement.maxPurchases, 0, 11)
@@ -351,16 +391,29 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
   }
   const finished = () => found && !procurement || best?.cost === 0;
   const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+  const reportProgress = (force = false) => {
+    if (typeof onProgress !== 'function') return;
+    const now = Date.now();
+    if (!force && (nodes % 256 !== 0 || now - lastProgressAt < 100)) return;
+    lastProgressAt = now;
+    try { onProgress({ phase: lastNodeKind, nodes, maxNodes, search: { ...search },
+      safeCandidates: candidates.length, required }); } catch { /* Progress presentation cannot affect the search. */ }
+  };
+  let lastProgressAt = 0;
+  let lastNodeKind = 'combination';
   const takeNode = kind => {
     if (nodes >= maxNodes) { exhausted = true; return false; }
-    nodes++; search[kind]++; return true;
+    nodes++; search[kind]++; lastNodeKind = kind === 'combinationNodes' ? 'combination'
+      : kind === 'placementNodes' ? 'placement' : kind === 'evaluations' ? 'evaluation' : 'bounds';
+    reportProgress(); return true;
   };
   const needsFacts = ruleNeedsTeamFacts(parsed.rules);
   const searchPositions = parsed.rules.some(rule => rule.kind.endsWith('-chemistry'));
   const minimumChemistry = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind))
     .map(rule => rule.value));
-  const visit = start => {
+  const visit = function* (start) {
     if (finished() || unavailable || exhausted || !takeNode('combinationNodes')) return;
+    yield;
     const remaining = required - chosen.length;
     if (procurement) {
       if (purchases > procurement.maxPurchases || spent > procurement.budget) return;
@@ -426,12 +479,13 @@ export function searchFc27PuzzleCandidates({ challenge, policy, evaluateSquad, b
       if (definitions.has(item.definitionId)) continue;
       for (const entry of counted) entry.used += Number(entry.matches[index]);
       spent += costs[index]; purchases += Number(costs[index] > 0);
-      chosen.push(item); definitions.add(item.definitionId); visit(index + 1); definitions.delete(item.definitionId); chosen.pop();
+      chosen.push(item); definitions.add(item.definitionId); yield* visit(index + 1); definitions.delete(item.definitionId); chosen.pop();
       spent -= costs[index]; purchases -= Number(costs[index] > 0);
       for (const entry of counted) entry.used -= Number(entry.matches[index]);
     }
   };
-  visit(0);
+  yield* visit(0);
+  reportProgress(true);
   if (procurement) found = best;
   if (unavailable) return blocked('FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE', { ...metrics, nodes, search, evaluatorReason: unavailable });
   if ((exhausted || deferredPlacements) && !found) return blocked('FC27_PUZZLE_SEARCH_LIMIT', { ...metrics, nodes, maxNodes, search });

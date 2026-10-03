@@ -43,3 +43,11 @@ it('never treats concept owners or a sold card as known First Owner ownership', 
   expect(result.rows[0]).toMatchObject({collected:true,inClub:null,firstOwned:null});
   expect(result.totals.firstOwnedUnknown).toBe(3);
 });
+
+it('shows held non-Club versions without treating them as Club submission evidence', () => {
+  const result = mergeGalleryAccountProgress(pool(), {
+    conceptItems: [{ definitionId: 900001, isCollected: true }],
+    clubItems: [], clubKnown: true, heldItems: [{ definitionId: 900001 }],
+  });
+  expect(result.rows[0]).toMatchObject({ inClub: false, held: true, collected: true });
+});

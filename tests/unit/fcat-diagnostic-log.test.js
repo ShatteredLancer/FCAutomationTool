@@ -63,6 +63,18 @@ it('rejects raw text in allowlisted fields and arbitrary payload fields', async 
   expect((await t.log.snapshot())[0]).toEqual({ at: 1000, area: 'gallery', event: 'request', version: '27.0.2' });
 });
 
+it('exports only known purchase method names and SHA256 evidence, never method source or arbitrary text', async () => {
+  const t = harness();
+  await t.log.record({ area: 'puzzle', event: 'buy-method-check', method: 'service.bid',
+    observedHash: 'a'.repeat(64), sourceCode: 'private-source', account: 'private-account' });
+  await t.log.record({ area: 'puzzle', event: 'buy-method-check', method: 'private-account', observedHash: 'private-token' });
+  const exported = await t.log.exportPayload();
+  expect(exported.entries[0]).toMatchObject({ method: 'service.bid', observedHash: 'a'.repeat(64) });
+  expect(exported.entries[1]).not.toHaveProperty('method');
+  expect(exported.entries[1]).not.toHaveProperty('observedHash');
+  expect(JSON.stringify(exported)).not.toContain('private-');
+});
+
 it('serializes writes during asynchronous restore and export waits for them', async () => {
   const store = new Map(); let restore;
   const log = createFcatDiagnosticLog({ gmGetValue: () => new Promise(resolve => { restore = resolve; }),

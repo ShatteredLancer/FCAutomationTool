@@ -1,5 +1,5 @@
-import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchases,
-  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchases } from './puzzle-procurement.js';
+import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
+  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively } from './puzzle-procurement.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
@@ -9,6 +9,17 @@ const stop = reason => ({ status: 'blocked', reason, executable: false, liveExec
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const id = value => Number.isSafeInteger(value) && value > 0;
 const AUTH_RETRY_DELAY = 30000;
+// A method fingerprint/dependency failure happens before an EA request is
+// sent. Keep its evidence for diagnostics, but allow the next explicit user
+// action to probe the current runtime again (the page or script may have
+// refreshed since the failure). It must never be treated as a stale quote or
+// an authentication retry.
+// A persisted catalog failure can predate a reviewed EA entity-chain fix.
+// Allow the next explicit action to revalidate these local runtime gates once;
+// quote/auth/auction failures remain sticky according to their own contracts.
+const retryableRuntimeFailure = reason => /^FC27_MARKET_METHOD_\d+_(?:MISSING|CHANGED)$/.test(reason)
+  || /^FC27_MARKET_ENTITY_UNVERIFIED(?:_[A-Z0-9_]+)?$/.test(reason)
+  || reason === 'FC27_MARKET_ENTITY_FACTORY_FAILED';
 const failureDetails = (reason, value) => {
   const match = /^FC27_MARKET_HTTP_([1-5]\d{2})$/.exec(reason);
   const eaCode = Object.getOwnPropertyDescriptor(value ?? {}, 'eaCode')?.value;
@@ -20,11 +31,13 @@ const failureDetails = (reason, value) => {
 // Persist attempts before sending: repeated clicks and reloads reuse evidence
 // or retain the recorded failure rather than automatically retrying EA.
 // A new user action may renew an expired success or an explicit HTTP 401 after
-// cooldown. No same-action retry; pending and other failures stay blocked.
+// cooldown, or revalidate a method fingerprint locally. No same-action retry;
+// pending and other failures stay blocked.
 // The caller holds the account lock across this operation.
 export function createFc27PuzzleProcurementSession({ createTransport, get, set, now = Date.now } = {}) {
   let busy = false;
-  return Object.freeze({ async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING } = {}) {
+  return Object.freeze({ async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
+    onProgress = null } = {}) {
     if (busy) return stop('FC27_PURCHASE_BUSY');
     busy = true;
     let requests = 0; let cacheHits = 0; let transport;
@@ -33,12 +46,23 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       truncated: null, catalogAttempts: 0, quoteAttempts: 0,
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
       excludedUnavailable: 0, replans: 0 };
+    let quoteCompleted = 0; let quoteTotal = 0;
+    const reportProgress = value => {
+      if (typeof onProgress !== 'function') return;
+      try { onProgress({ ...value, phase: value?.phase ?? diagnostics.stage, nodes: value?.nodes ?? null,
+        maxNodes: value?.maxNodes ?? null, checks: value?.checks ?? diagnostics.checks,
+        catalogPages: diagnostics.catalogPages, catalogCandidates: diagnostics.catalogCandidates,
+        usableCandidates: diagnostics.usableCandidates, catalogTotal: 3, requests, cacheHits,
+        quoteCompleted, quoteTotal }); } catch { /* Presentation cannot affect procurement. */ }
+    };
     const finish = result => ({ ...result, quoteCeiling, requests, cacheHits, diagnostics: { ...diagnostics, cacheHits } });
     try {
       if (!isPuzzleQuoteCeiling(quoteCeiling)) return finish(stop('FC27_PURCHASE_PRICE_LIMIT_INVALID'));
       const scope = traditionalJournalScope(input.context);
       assertCurrent();
-      const seed = findFc27PuzzleRepairSeed(input);
+      reportProgress();
+      const seed = await findFc27PuzzleRepairSeedCooperatively(input,
+        value => reportProgress({ ...value, phase: 'repair-seed' }), { assertCurrent });
       if (seed.status !== 'ready' && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_UNAVAILABLE') return finish(seed);
       diagnostics.route = seed.status === 'ready' ? 'repair' : 'joint';
       diagnostics.stage = 'query-planning';
@@ -46,6 +70,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       if (route.status !== 'ready') return finish(route);
       const cachedRead = async (kind, query) => {
         diagnostics.stage = kind === 'catalog' ? 'catalog-read' : 'quote-read';
+        reportProgress();
         assertCurrent();
         const key = `fcat-fc27-puzzle-market:${scope}:${kind}:${JSON.stringify(query)}`;
         const stored = await get(key, null);
@@ -57,17 +82,18 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             const reason = safeReason({ message: stored.reason ?? 'FC27_PURCHASE_READ_UNCONFIRMED' });
             const authFailure = stored.state === 'blocked' && reason === 'FC27_MARKET_HTTP_401';
             const remaining = Math.max(0, stored.at + AUTH_RETRY_DELAY - now());
-            if (!authFailure || remaining > 0) {
+            const runtimeFailure = stored.state === 'blocked' && retryableRuntimeFailure(reason);
+            if (!runtimeFailure && (!authFailure || remaining > 0)) {
               Object.assign(diagnostics, failureDetails(reason, stored.details), { failureSource: 'cache',
                 retryAfterSeconds: authFailure ? Math.ceil(remaining / 1000) : null });
               throw new Error(reason);
             }
-            diagnostics.authRecoveries++;
+            if (authFailure) diagnostics.authRecoveries++;
           } else {
             const ttl = kind === 'catalog' ? 86400000 : 600000;
             if (!id(stored.result?.observedAt) || stored.result.observedAt > now()) throw new Error('FC27_PURCHASE_CACHE_UNVERIFIED');
             if (now() - Math.min(stored.at, stored.result.observedAt) <= ttl) {
-              cacheHits++; return structuredClone(stored.result);
+              cacheHits++; reportProgress(); return structuredClone(stored.result);
             }
           }
         }
@@ -83,6 +109,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           transport ??= await createTransport({ maxRequests: PUZZLE_MARKET_READ_LIMIT });
           assertCurrent(); requests++;
           diagnostics[kind === 'catalog' ? 'catalogAttempts' : 'quoteAttempts']++;
+          reportProgress();
           attempted = true;
           const result = await (kind === 'catalog' ? transport.readCatalogPage(query) : transport.readQuotePage(query));
           await set(key, { ...record, state: 'observed', result });
@@ -112,13 +139,17 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         }
         diagnostics.catalogPages++;
         diagnostics.catalogCandidates = entries.size;
+        reportProgress();
         // Each unsuccessful pass removes at least one public version from the
         // bounded catalog. Re-solve locally before requesting another page.
         for (;;) {
           assertCurrent(); diagnostics.stage = 'local-market-search';
           const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId));
-          const suggestion = seed.status === 'ready' ? suggestFc27PuzzlePurchases(input, seed, available)
-            : suggestFc27PuzzleJointPurchases(input, available);
+          reportProgress();
+          const suggestion = seed.status === 'ready' ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
+            assertCurrent, onProgress: value => reportProgress(value) })
+            : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, { assertCurrent,
+              onProgress: value => reportProgress({ ...value, phase: 'local-market-search' }) });
           diagnostics.usableCandidates = suggestion.marketCandidates ?? null;
           diagnostics.localReason = suggestion.reason ?? null;
           diagnostics.checks = suggestion.checks ?? null;
@@ -128,6 +159,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.unpricedPlans = plans.length; hadPlans ||= plans.length > 0;
           let removed = false;
           for (const plan of plans) {
+            quoteTotal = plan.purchases.length;
+            quoteCompleted = plan.purchases.filter(item => quotes.get(item.definitionId)?.price > 0).length;
             for (const item of plan.purchases) {
               if (!quotes.has(item.definitionId)) {
                 const quote = await cachedRead('quote', { definitionId: item.definitionId, start: 0, count: 20, maxBuy: quoteCeiling });
@@ -138,6 +171,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
                     || (quote.eligible === 0 ? quote.price !== null : !Number.isInteger(quote.price) || quote.price < 150
                       || quote.price > (quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE))) throw new Error('FC27_PURCHASE_QUOTE_UNVERIFIED');
                 quotes.set(item.definitionId, quote);
+                quoteCompleted = plan.purchases.filter(card => quotes.get(card.definitionId)?.price > 0).length;
+                reportProgress();
               }
               if (quotes.get(item.definitionId).price === null) {
                 unavailable.add(item.definitionId); removed = true; break;

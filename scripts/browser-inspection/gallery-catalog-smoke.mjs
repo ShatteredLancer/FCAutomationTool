@@ -108,7 +108,9 @@ export async function exerciseGalleryCatalog(context, directory) {
     await page.evaluate(() => globalThis.galleryPanel.close());
     const progress = mergeGalleryAccountProgress(normalizeGalleryPool('futgg', futggGalleryPool(), 30), {
       conceptItems: [{definitionId:900001,isCollected:true,gradingScore:100},{definitionId:900002,isCollected:false}],
-      clubItems:[{definitionId:900002,owners:2}],
+      // Keep the second version genuinely missing for the selection smoke;
+      // an EA Club-held version is intentionally excluded from purchase.
+      clubItems:[],
     });
     await page.evaluate(({catalog,progress}) => {
       globalThis.gallerySetCalls=0;globalThis.galleryScope='fixture-a';globalThis.galleryHold=false;
@@ -160,10 +162,10 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.ok(await progressHost.locator('.gallery-category-icon').count() >= 1);
     assert.ok(await progressHost.locator('.gallery-set-icon').count() >= 1);
     assert.equal(await progressHost.locator('.gallery-text-card').count(),3);
-    assert.equal(await progressHost.locator('.gallery-player-card > input').count(),0,'checkbox must not occupy a card grid column');
+    assert.equal(await progressHost.locator('.gallery-player-card > input').count(),0,'selection controls must not occupy a card grid column');
     assert.equal(await progressHost.locator('.gallery-player-art > .gallery-card-select').count(),1);
-    await progressHost.locator('.gallery-card-select').check();
-    assert.equal(await progressHost.getByRole('button',{name:'购买所选（1）',exact:true}).isEnabled(),true);
+    await progressHost.locator('.gallery-card-select').first().click();
+    assert.equal(await progressHost.getByRole('button',{name:'Buy 1',exact:true}).isEnabled(),true);
     assert.equal(await progressHost.locator('.gallery-player-portrait,.gallery-player-card-image,.gallery-ea-card').count(),0);
     assert.ok(await progressHost.locator('.gallery-card-price').count() >= 1);
     assert.match(await progressHost.locator('.gallery-card-price').first().innerText(), /8,300/);
@@ -195,9 +197,9 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await page.evaluate(()=>globalThis.gallerySetCalls),2,'explicit set reopen invokes the cache-aware loader');
     for(const width of [1280,390]){
       await page.setViewportSize({width,height:800});
-      assert.deepEqual(await progressHost.locator('.gallery-card-select').evaluate(el=>{
-        const box=el.getBoundingClientRect();return {width:box.width,height:box.height};
-      }),{width:20,height:20},`checkbox stays compact at ${width}px`);
+      assert.ok(await progressHost.locator('.gallery-card-select').first().evaluate(el=>{
+        const box=el.getBoundingClientRect();return box.width > 40 && box.height >= 36;
+      }),`card Buy control stays usable at ${width}px`);
       assert.equal(await progressHost.evaluate(el=>el.scrollWidth>el.clientWidth+1),false,`Progress ${width} overflow`);
       await page.screenshot({path:path.join(directory,`gallery-progress-${width}.png`)});
     }
@@ -232,10 +234,16 @@ export async function exerciseGalleryCatalog(context, directory) {
     await page.evaluate(({catalog,progress})=>{
       globalThis.scoringState={status:'observed',source:'futgg',catalog,fetchedAt:Date.now()};
       globalThis.scoringCalls=0;
+      globalThis.foCalls=[]; globalThis.foFail=false;
       globalThis.scoringPanel=globalThis.GallerySmoke.mountFc27AcceptancePanel({document:globalThis.document,hostId:'gallery-score-test',targets:()=>[],
         galleryAccountScope:()=>globalThis.galleryScope,
         galleryCatalog:{peek:async()=>null,load:async()=>globalThis.scoringState,refresh:async()=>globalThis.scoringState},
         gallerySetLoader:async()=>{globalThis.scoringCalls++;return {status:'observed',scope:globalThis.galleryScope,progress};},
+        galleryFirstOwnerHistory: async (definitionId, firstOwned) => {
+          globalThis.foCalls.push([definitionId, firstOwned]);
+          if (globalThis.foFail) throw Error('FO_WRITE_FAILED');
+          return { status: 'observed', definitionId, firstOwned };
+        },
       });globalThis.scoringPanel.open();
     },{catalog:scoringCatalog,progress:scoringProgress});
     const scoringHost=page.locator('#gallery-score-test');
@@ -251,6 +259,18 @@ export async function exerciseGalleryCatalog(context, directory) {
     await scoringHost.locator('.gallery-score summary').click();
     assert.equal(await scoringHost.locator('.gallery-lineup li').count(),2);
     assert.match(await scoringHost.locator('.gallery-bonuses').innerText(),/未知项满足时 1,500/);
+    const fo = scoringHost.locator('.gallery-first-owner-toggle').first();
+    assert.equal(await fo.innerText(), '标记本地 FO');
+    await fo.click();
+    assert.equal(await fo.innerText(), '清除本地 FO');
+    assert.equal(await scoringHost.locator('.gallery-player-flags [aria-label="First Owner"]').count(), 1);
+    await scoringHost.locator('.gallery-first-owner-toggle').first().click();
+    assert.equal(await scoringHost.locator('.gallery-first-owner-toggle').first().innerText(), '标记本地 FO');
+    assert.deepEqual(await page.evaluate(() => globalThis.foCalls), [[900001, true], [900001, null]]);
+    await page.evaluate(() => { globalThis.foFail = true; });
+    await scoringHost.locator('.gallery-first-owner-toggle').first().click();
+    assert.match(await scoringHost.locator('.gallery-first-owner-error').innerText(), /保存失败/);
+    await page.evaluate(() => { globalThis.foFail = false; });
     await scoringHost.getByRole('button',{name:'已收集',exact:true}).click();
     assert.equal(await scoringHost.locator('.gallery-card').count(),2);
     assert.equal(await page.evaluate(()=>globalThis.scoringCalls),1);
@@ -274,7 +294,7 @@ export async function exerciseGalleryCatalog(context, directory) {
 
     await page.evaluate(() => globalThis.scoringPanel.close());
     const planInput = futggGallery();
-    planInput.data.categories[0].sets[0].requiredCards = 2;
+    planInput.data.categories[0].sets[0].requiredCards = 3;
     planInput.data.categories[0].sets[0].grades[0].threshold = 400;
     planInput.data.tags = [{ id: 1, name: 'No bonus', bonusType: 'ITEM_SCORE_PERCENTAGE', thresholdType: 'ITEM_COUNT',
       rules: [{ type: 'COUNT', target: 'ATTRIBUTE', attribute: 'RARE', values: ['999'] }], tiers: [{ minItems: 1, bonus: 0 }] }];
@@ -285,6 +305,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     });
     await page.evaluate(({ catalog, progress }) => {
       globalThis.planningCalls = 0;
+      globalThis.compareCalls = 0;
       globalThis.planningDetail = { status: 'observed', scope: globalThis.galleryScope, progress,
         prices: { 900003: 200 }, priceError: 'HTTP 429', priceSnapshot: {
           prices: { 900003: 200 }, freshPrices: {}, stale: true, staleIds: [900003],
@@ -294,6 +315,12 @@ export async function exerciseGalleryCatalog(context, directory) {
         hostId: 'gallery-plan-test', targets: () => [], galleryAccountScope: () => globalThis.galleryScope,
         galleryCatalog: { peek: async () => null, load: async () => ({ status: 'observed', source: 'futgg', catalog }) },
         gallerySetLoader: async () => { globalThis.planningCalls++; return globalThis.planningDetail; },
+        galleryMarketCompare: async () => {
+          globalThis.compareCalls++;
+          return globalThis.compareCalls === 1
+            ? { status: 'blocked', reason: 'FC27_MARKET_METHOD_7_CHANGED' }
+            : { status: 'observed', price: 200, listings: [{ buyNow: 200, expires: 59 }] };
+        },
       });
       globalThis.planningPanel.open();
     }, { catalog: normalizeGalleryCatalog('futgg', planInput), progress: planningProgress });
@@ -335,6 +362,17 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /200/);
     assert.doesNotMatch(await planningHost.locator('#gallery-set-detail').innerText(), /价格读取失败|报价快照待更新/);
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
+    const planBeforeCompare = await planningHost.locator('.gallery-plan-output').innerText();
+    await planningHost.getByRole('button', { name: '比价', exact: true }).click();
+    assert.match(await planningHost.locator('.gallery-market-comparison').innerText(), /FC27_MARKET_METHOD_7_CHANGED/);
+    assert.equal(await planningHost.locator('.gallery-plan-output').innerText(), planBeforeCompare);
+    assert.equal(await page.evaluate(() => globalThis.compareCalls), 1);
+    await planningHost.getByRole('button', { name: '比价', exact: true }).click();
+    assert.match(await planningHost.locator('.gallery-market-comparison').innerText(), /EA 200 金币/);
+    assert.match(await planningHost.locator('.gallery-market-listings').innerText(), /EA 可见报价 1 条/);
+    assert.equal(await planningHost.locator('.gallery-plan-output').innerText(), planBeforeCompare);
+    assert.equal(await page.evaluate(() => globalThis.compareCalls), 2);
+    assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
     await page.evaluate(() => {
       const original = globalThis.planningDetail.progress.rows[2];
       globalThis.planningDetail.progress = { ...globalThis.planningDetail.progress,
@@ -348,7 +386,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
     await page.waitForFunction(() => !globalThis.document.querySelector('#gallery-plan-test').shadowRoot
       .querySelector('.gallery-plan button').disabled, null, { timeout: 20000 });
-    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /(?:搜索预算耗尽|计算时间预算已用完)，尚不能确认无解/);
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /(?:搜索预算耗尽|计算时间预算已用完|有界搜索未找到方案)，尚不能确认无解/);
     assert.ok(await page.evaluate(() => { globalThis.clearInterval(globalThis.planningHeartbeatTimer);
       return globalThis.planningHeartbeats > 1; }), 'planning yields to browser heartbeat');
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
@@ -361,7 +399,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     });
     await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
     await planningHost.locator('.gallery-big-count').waitFor();
-    assert.equal(await planningHost.locator('.gallery-big-count').innerText(), '?/2');
+    assert.equal(await planningHost.locator('.gallery-big-count').innerText(), '?/3');
     assert.match(await planningHost.locator('#gallery-set-detail').innerText(), /账号状态未同步 · FC27_GALLERY_HTTP_401/);
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 800 });
@@ -377,7 +415,12 @@ export async function exerciseGalleryCatalog(context, directory) {
       globalThis.planningDetail = { status: 'observed', scope: globalThis.galleryScope, pool, progress };
     }, { pool: limitedPool, progress: limitedProgress });
     await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
-    assert.equal(await planningHost.locator('#gallery-set-detail .gallery-player-card').count(), 100);
+    assert.equal(await planningHost.locator('#gallery-set-detail .gallery-player-card').count(), 24);
+    assert.match(await planningHost.locator('.gallery-card-page').innerText(), /1-24 \/ 100/);
+    await planningHost.getByRole('button', { name: '下一页', exact: true }).click();
+    assert.equal(await planningHost.locator('#gallery-set-detail .gallery-player-card').count(), 24);
+    assert.match(await planningHost.locator('.gallery-card-page').innerText(), /25-48 \/ 100/);
+    await planningHost.getByRole('button', { name: '上一页', exact: true }).click();
     assert.match(await planningHost.locator('.gallery-overview').innerText(), /高分候选 100 \/ 全部 19489/);
     assert.match(await planningHost.locator('.gallery-overview').innerText(), /候选内已收集/);
     for (const width of [1280, 390]) {

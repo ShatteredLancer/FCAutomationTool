@@ -13,6 +13,7 @@ export async function inspectFc27MarketRuntime(page) {
     resolveDir: root, sourcefile: 'fc27-market-probe.js',
   }, bundle: true, metafile: true, write: false, format: 'iife', globalName: 'MarketProbe', target: 'chrome120' });
   const allowed = new Set(['fc27-market-probe.js', 'src/adapters/ea/fc27-market-read.js',
+    'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-club-read.js', 'src/adapters/ea/fc27-local-read.js',
     'src/fc27/prelaunch-contract.js', 'src/domain/player-rarity.js', 'src/fc27/puzzle-procurement-policy.js']);
   if (Object.keys(bundle.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) {

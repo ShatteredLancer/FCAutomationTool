@@ -7,7 +7,7 @@ import { traditionalJournalScope, isTerminalTraditionalJournal, assessTraditiona
 import { inspectFc27VerifiedPuzzlePlan } from '../ea/fc27-puzzle-verify.js';
 import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks, readFc27PuzzleChemistry } from '../ea/fc27-puzzle-read.js';
 import { readFc27PuzzlePage, readFc27PuzzlePageSnapshot, readFc27CurrentPuzzleChallenge } from '../ea/fc27-puzzle-page.js';
-import { previewFc27PuzzleSquad } from '../../fc27/puzzle-preview.js';
+import { previewFc27PuzzleSquadCooperatively } from '../../fc27/puzzle-preview.js';
 import { DEFAULT_PUZZLE_MAX_RATING } from '../../fc27/puzzle-material-policy.js';
 import { readFc27PuzzlePolicy } from '../ea/fc27-fsu-read.js';
 import { createFc27PuzzleFillPersistence } from '../../fc27/puzzle-fill-journal.js';
@@ -70,7 +70,7 @@ const readCachedCatalog = async (gmGetValue, scope, setId, challengeId = undefin
 };
 
 // Kept in the userscript sandbox. No page-global command, permit or GM bridge.
-export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRequest, lockManager, liveEnabled = false }) {
+export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRequest, lockManager, diagnosticLog, liveEnabled = false }) {
   const context = readFc27Context(root);
   const scope = traditionalJournalScope(context);
   const referencePrice = createFsuReferencePrice({ season: context.season, platform: context.platform,
@@ -284,12 +284,14 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       const puzzleOptions = { setId, challengeId: candidates[0].id, maxRating: requestedMaxRating,
         catalog, layout: pageSnapshot?.layout };
       const report = nativeOnly ? await inspectFc27PuzzlePlan(root, puzzleOptions, async inputs => {
-        const preview = previewFc27PuzzleSquad(inputs);
+        const preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
+          onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
         privateData = { inputs, preview };
         if (inputs.squadEmpty === true && ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(preview.reason)) {
           progress('procurement');
-          const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling, assertCurrent: () => {
+          const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling,
+            onProgress: value => progress({ ...value, stage: 'procurement' }), assertCurrent: () => {
             assertTarget(); unchanged();
             const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
             if (!latest?.layout?.squadEmpty || JSON.stringify(latest.challenge.requirements) !== JSON.stringify(inputs.challenge.rawRequirements)
@@ -486,6 +488,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       if (liveEnabled !== true || approval?.approved !== true || typeof isCurrent !== 'function') return blocked('FC27_BUY_APPROVAL_REQUIRED');
       buyStopped = false; armed = true;
       const events = [];
+      let result;
       const assertTarget = () => { unchanged(); if (!isCurrent()) throw new Error('FC27_BUY_TARGET_CHANGED'); };
       try {
         const settings = await readPuzzleSettings();
@@ -499,21 +502,45 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
                 || await readFc27ConceptPending(gmGetValue, scope, currentTarget) !== null) throw new Error('FC27_CONCEPT_RECOVERY_REQUIRED');
             return readBuyDraft(currentTarget);
           },
-          createAdapter: () => createFc27PuzzleBuyAdapter(root, { assertTarget, referencePrice,
-            attempts: settings.queriesNumber,
-            onEvent: event => { if (events.length < 300) events.push(event); },
-            canWrite: () => liveEnabled === true && armed && persistence.inspect().active,
-          }),
+          createAdapter: async () => {
+            try {
+              return await createFc27PuzzleBuyAdapter(root, { assertTarget, referencePrice,
+                attempts: settings.queriesNumber,
+                onEvent: event => { if (events.length < 300) events.push(event); },
+                canWrite: () => liveEnabled === true && armed && persistence.inspect().active,
+              });
+            } catch (error) {
+              if (error?.message === 'FC27_TRANSACTION_METHOD_UNREVIEWED') {
+                events.push({ stage: 'method-check', method: error.methodPath,
+                  status: 'blocked', reason: error.message, observedHash: error.observedHash });
+              }
+              throw error;
+            }
+          },
         });
         const summary = await inspectPurchases(target);
         const coins = root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount;
-        return await buyer.execute(target, { ...approval,
+        result = await buyer.execute(target, { ...approval,
           budget: approval.budget ?? (Number.isSafeInteger(coins) && coins >= 0 ? Math.min(165000000, coins + summary.spent) : null),
           quoteCeiling: settings.quoteCeiling });
+        return result;
+      } catch (error) {
+        result = blocked(safeReason(error));
+        throw error;
       } finally {
         armed = false; invalidate();
         try { await gmSetValue(`fcat-fc27-buy-trace:${scope}`, { target: { setId: target.setId, challengeId: target.challengeId }, at: Date.now(), events }); }
         catch { /* Diagnostic storage never changes the mandatory purchase journal. */ }
+        try {
+          for (const event of events.filter(event => event.stage === 'method-check')) {
+            await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-method-check',
+              setId: target.setId, challengeId: target.challengeId, phase: event.stage,
+              status: event.status, reason: event.reason, method: event.method, observedHash: event.observedHash });
+          }
+          await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-result',
+            setId: target.setId, challengeId: target.challengeId, status: result?.status, reason: result?.reason,
+            count: result?.purchased, spent: result?.spent });
+        } catch { /* Optional export cannot change a purchase result or recovery. */ }
       }
     }),
     inspectPuzzlePolicy: () => run(async () => ({ status: 'observed', ...await readPuzzleSettings() })),
@@ -541,9 +568,20 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       // Private diagnostics, never a permit or a substitute for the journal.
       const log = { schema: 1, setId: target.setId, challengeId: target.challengeId,
         startedAt: Date.now(), action: 'fill-only', stages: [], submitted: false };
-      const progress = stage => {
-        log.stages.push({ stage, at: Date.now() }); log.stages = log.stages.slice(-20);
-        try { onProgress?.(stage); } catch { /* Presentation cannot change a transaction. */ }
+      let lastCallbackStage = null;
+      const progress = update => {
+        const stage = typeof update === 'string' ? update : update?.stage ?? update?.phase ?? 'planning';
+        const evidence = typeof update === 'string' ? { stage } : { ...update, stage };
+        log.stages.push({ ...evidence, at: Date.now() }); log.stages = log.stages.slice(-40);
+        try {
+          // Preserve the historical string-only callback contract for callers
+          // that do not opt in to detailed search evidence. The native button
+          // opts in so it can render live node counts.
+          if (onProgress?.wantsPuzzleProgress === true || stage !== lastCallbackStage) {
+            onProgress?.(typeof update === 'object' && onProgress.wantsPuzzleProgress !== true ? stage : update);
+            lastCallbackStage = stage;
+          }
+        } catch { /* Presentation cannot change a transaction. */ }
       };
       const persistLog = async () => {
         try { await gmSetValue(`fcat-fc27-puzzle-last:${scope}`, structuredClone(log)); }
@@ -597,6 +635,20 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       } catch (error) { result = blocked(safeReason(error)); }
       finally { invalidate(); }
       log.result = result; log.finishedAt = Date.now(); await persistLog();
+      // Export only aggregate evidence from this attempt. Never reread EA or
+      // copy the private journal, raw inventory, account scope or credentials.
+      try {
+        await diagnosticLog?.record?.({ area: 'puzzle', event: 'solve-result', setId: target.setId, challengeId: target.challengeId,
+          status: result?.status, reason: result?.reason, source: log.catalogSource,
+          safeCandidates: result?.plan?.safeCandidates, evaluations: result?.plan?.nodes,
+          durationMs: log.finishedAt - log.startedAt });
+        const purchase = result?.purchaseSuggestion, d = purchase?.diagnostics;
+        if (purchase) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-result',
+          setId: target.setId, challengeId: target.challengeId, status: purchase.status, reason: purchase.reason,
+          source: d?.failureSource, phase: d?.stage, route: d?.route, httpStatus: d?.httpStatus,
+          requests: purchase.requests, catalogAttempts: d?.catalogAttempts, quoteAttempts: d?.quoteAttempts,
+          count: d?.catalogCandidates, evaluations: d?.nodes, cached: purchase.cacheHits > 0 });
+      } catch { /* Diagnostic failure never changes a solve/save result. */ }
       if (result?.status === 'recovery-required') {
         // Later blocked clicks may replace last-attempt, never this first write failure.
         try { await gmSetValue(`fcat-fc27-puzzle-write-failure:${scope}`, structuredClone(log)); }

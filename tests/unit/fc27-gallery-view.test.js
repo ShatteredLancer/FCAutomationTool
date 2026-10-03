@@ -1,5 +1,20 @@
 import { expect, it } from 'vitest';
-import { sameGalleryRuntimeCards, galleryGradeSegments, selectGallerySetIcon } from '../../src/adapters/browser/fc27-gallery-view.js';
+import { sameGalleryRuntimeCards, galleryGradeSegments, selectGallerySetIcon, galleryPlanningStateKey } from '../../src/adapters/browser/fc27-gallery-view.js';
+
+it('invalidates planning for business inputs, not display hydration or observation timestamps', () => {
+  const detail = { status: 'observed', scope: 'a', progress: { complete: true,
+    rows: [{ eaId: 1, gradingScore: 100, collected: true, firstOwned: false }, { eaId: 2, galleryScore: 200, collected: false }] },
+    priceSnapshot: { freshPrices: { 2: 300 }, expiresAt: Date.now() + 300000 } };
+  const key = galleryPlanningStateKey(detail);
+  expect(galleryPlanningStateKey({ ...detail, runtimeCards: new Map([[1, {}]]), fetchedAt: Date.now() })).toBe(key);
+  expect(galleryPlanningStateKey({ ...detail, progress: { ...detail.progress, rows: [...detail.progress.rows].reverse(), updatedAt: 100 } })).toBe(key);
+  for (const field of ['collected', 'inClub', 'held', 'gradingScore', 'firstOwned', 'holographic', 'positions']) {
+    const changed = structuredClone(detail); changed.progress.rows[1][field] = field === 'positions' ? ['ST'] : field === 'gradingScore' ? 201 : true;
+    expect(galleryPlanningStateKey(changed)).not.toBe(key);
+  }
+  expect(galleryPlanningStateKey({ ...detail, priceSnapshot: { ...detail.priceSnapshot, freshPrices: { 2: 400 } } })).not.toBe(key);
+  expect(galleryPlanningStateKey({ ...detail, stale: true })).not.toBe(key);
+});
 
 it('draws score progress before all counting cards are collected, as Enhancer yPt does', () => {
   const grades = [10, 1300, 1800, 2800, 4100].map((threshold, index) => ({ name: ['D','C','B','A','S'][index], threshold }));

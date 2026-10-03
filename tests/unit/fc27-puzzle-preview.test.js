@@ -206,6 +206,22 @@ it('does not call a market shortage proven when only a search limit was reached'
   expect(result).not.toHaveProperty('deficits'); expect(result.nodes).toBeLessThanOrEqual(201);
 });
 
+it('reports throttled bounded search progress without changing the search result', () => {
+  const input = fixture(); input.challenge.slotCount = 11;
+  input.challenge.rawRequirements = [row(35, 33)];
+  input.inventory.items = Array.from({ length: 300 }, (_, index) => ({
+    ...input.inventory.items[0], id: index + 1, definitionId: 1000 + index,
+  }));
+  const progress = [];
+  const result = previewFc27PuzzleSquad({ ...input, maxNodes: 1000,
+    evaluateSquad: () => ({ chemistry: 0 }), onProgress: value => progress.push(value) });
+  expect(result.reason).toBe('FC27_PUZZLE_SEARCH_LIMIT');
+  expect(progress.length).toBeGreaterThan(1);
+  expect(progress.at(-1)).toMatchObject({ nodes: 1000, maxNodes: 1000, required: 11 });
+  expect(progress.every(value => value.nodes >= 0 && value.nodes <= value.maxNodes)).toBe(true);
+  expect(progress.every((value, index) => index === 0 || value.nodes >= progress[index - 1].nodes)).toBe(true);
+});
+
 it('continues bounded multi-start search when a frequent group disappears under native quality rules', () => {
   const input = fixture(); input.challenge.slotCount = 11;
   input.challenge.rawRequirements = [row(3, 1, -1, 2), row(35, 33)];

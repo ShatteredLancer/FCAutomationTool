@@ -6,7 +6,7 @@ import { planGalleryJoint, planGalleryJointSteps } from '../../src/gallery/joint
 const catalog = { source: 'futgg', tags: [{ id: 1, name: 'Gold', bonusType: 'ITEM_SCORE_PERCENTAGE',
   thresholdType: 'ITEM_COUNT', rules: [{ attribute: 'LEVEL', type: 'COUNT', target: 'ATTRIBUTE', values: ['gold'] }],
   tiers: [{ minItems: 2, bonus: 4 }] }] };
-const set = { id: 'futgg:30', requiredCards: 2, grades: [{ name: 'C', threshold: 300, rewards: [] }] };
+const set = { id: 'futgg:30', requiredCards: 3, grades: [{ name: 'C', threshold: 300, rewards: [] }] };
 const progress = { season: '27', setId: 30, complete: true, rows: [1, 2, 3, 4].map(eaId =>
   ({ eaId, overall: 80, gradingScore: eaId * 60, firstOwned: false, collected: eaId < 3 })) };
 const input = { set, catalog, progress, targetGrade: 'C', prices: {3: 200, 4: 300} };
@@ -37,7 +37,7 @@ it('account/navigation cancellation discards results and closes iterator', async
 });
 
 it('yields and cancels a realistic 56-version pool with 20 collected cards without changing score rules or inputs', async () => {
-  const value = { ...input, set: { ...set, requiredCards: 20 }, targetGrade: 99999999,
+  const value = { ...input, set: { ...set, requiredCards: 21 }, targetGrade: 99999999,
     progress: { ...progress, rows: Array.from({ length: 56 }, (_, i) => ({ eaId: 900000 + i,
       playerEaId: 200000 + i, overall: 80, gradingScore: 1000 + i * 100, firstOwned: false, collected: i < 20 })) } };
   const before = structuredClone(value); let active = true, yields = 0;

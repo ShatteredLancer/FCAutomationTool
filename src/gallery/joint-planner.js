@@ -1,4 +1,8 @@
 import { compileGalleryScoringRules, summarizeGalleryScore } from './scoring.js';
+import { isGalleryOwned, galleryCostSearchKeys } from './planner.js';
+import { refineGalleryCostSteps } from './cost-search.js';
+import { selectGalleryCandidatePool } from './candidate-pool.js';
+import { galleryPriceBandSeedSteps } from './price-band-seeds.js';
 
 const validId = value => Number.isSafeInteger(value) && value > 0;
 const validScore = value => Number.isSafeInteger(value) && value >= 0 && value <= 100000000;
@@ -8,13 +12,13 @@ const fail = (status, reason, extra = {}) => ({ status, reason, plans: [], ...ex
 
 function evaluate(targets, selected) {
   return targets.map(target => {
-    const key = target.progress.rows.filter(row => selected.has(row.eaId) && !row.collected).map(row => row.eaId).sort((a, b) => a - b).join(',');
+    const key = target.progress.rows.filter(row => selected.has(row.eaId) && !isGalleryOwned(row)).map(row => row.eaId).sort((a, b) => a - b).join(',');
     let summary = target.summaries.get(key);
     if (!summary) {
       summary = summarizeGalleryScore({ set: target.set, catalog: target.catalog, progress: {
       ...target.progress, season: '27', setId: Number(target.set.id.slice(6)), complete: true,
-      rows: target.progress.rows.map(row => selected.has(row.eaId) && !row.collected
-        ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row),
+      rows: target.progress.rows.map(row => isGalleryOwned(row) ? { ...row, collected: true }
+        : selected.has(row.eaId) ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row),
       } });
       target.summaries.set(key, summary);
     }
@@ -65,7 +69,7 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
   if (budget != null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 1000000000)) return fail('unavailable', 'budget-invalid');
   if (![maxPlans, maxCandidates, maxEvaluations, beamWidth].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || maxCandidates > 512 || maxEvaluations > 20000 || beamWidth > 256) return fail('unavailable', 'search-options-invalid');
-  const targetIds = new Set(), identities = new Map(), allCandidates = new Map(), prepared = [];
+  const targetIds = new Set(), identities = new Map(), allCandidates = new Map(), prepared = [], ownedIds = new Set();
   const scopes = new Set(targets.map(target => target.scope).filter(value => value != null));
   const platforms = new Set(targets.map(target => target.platform).filter(value => value != null));
   if (scopes.size > 1 || platforms.size > 1) return fail('unavailable', 'target-context-mismatch');
@@ -82,7 +86,7 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
     const compiled = compileGalleryScoringRules(catalog);
     if (compiled.status !== 'ready') return fail('unavailable', compiled.reason);
     if (progress.complete === false || progress.rows.some(row => typeof row.collected !== 'boolean'
-        || row.collected && !validScore(row.gradingScore))) return fail('partial', 'target-state-unknown');
+        || isGalleryOwned(row) && !validScore(row.gradingScore))) return fail('partial', 'target-state-unknown');
     const seen = new Set();
     for (const row of progress.rows) {
       if (!validId(row.eaId) || seen.has(row.eaId)) return fail('unavailable', 'duplicate-version');
@@ -93,21 +97,29 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
         'clubEaId', 'leagueEaId', 'nationEaId', 'overall', 'weakFoot', 'skillMoves', 'positions'].some(key =>
         JSON.stringify(previous[key] ?? null) !== JSON.stringify(row[key] ?? null))) return fail('partial', 'version-facts-conflict');
       identities.set(row.eaId, row);
-      if (row.collected) continue;
+      if (isGalleryOwned(row)) { ownedIds.add(row.eaId); continue; }
       const quote = target.prices?.[row.eaId], price = validPrice(quote) ? quote : null;
       const existing = allCandidates.get(row.eaId);
       if (existing) {
         existing.memberships++;
+        existing.diversityKeys.push(...galleryCostSearchKeys(row, compiled.tags).map(key => `${set.id}:${key}`));
         if (existing.price != null && price != null && existing.price !== price) existing.priceConflict = true;
         existing.price = existing.priceConflict ? null : price ?? existing.price;
-      } else allCandidates.set(row.eaId, { row, price, memberships: 1 });
+      } else allCandidates.set(row.eaId, { row, price, memberships: 1,
+        diversityKeys: galleryCostSearchKeys(row, compiled.tags).map(key => `${set.id}:${key}`) });
     }
     prepared.push({ ...target, grade, threshold: grade.threshold, summaries: new Map() });
   }
+  // Ownership is account-wide, while per-set observations can arrive at
+  // different times. Project positive exact-version evidence across targets
+  // without changing the caller's collection facts or granting FO credit.
+  for (const id of ownedIds) allCandidates.delete(id);
+  for (const target of prepared) target.progress = { ...target.progress, rows: target.progress.rows.map(row =>
+    ownedIds.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row) };
   const candidateRows = [...allCandidates.values()].filter(candidate => score(candidate.row) != null)
-    .sort((a, b) => b.memberships - a.memberships || score(b.row) - score(a.row) || a.row.eaId - b.row.eaId);
-  const omittedCandidates = allCandidates.size - Math.min(candidateRows.length, maxCandidates);
-  const selectedCandidates = candidateRows.slice(0, maxCandidates);
+    .map(candidate => ({ ...candidate, id: candidate.row.eaId, score: score(candidate.row) }));
+  const selectedCandidates = selectGalleryCandidatePool(candidateRows, maxCandidates);
+  const omittedCandidates = allCandidates.size - selectedCandidates.length;
   const candidateMap = new Map(selectedCandidates.map(candidate => [candidate.row.eaId, candidate]));
   const base = { ids: [], nextIndex: 0, cost: 0, missingPrices: false, results: evaluate(prepared, new Set()) };
   if (base.results.some(result => !result.summary.low)) return fail('unavailable', 'scoring-unavailable');
@@ -117,7 +129,65 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
   let scoringBounded = base.results.some(result => result.summary.selection === 'bounded-search');
   let uncertain = base.results.some(result => result.summary.status === 'uncertain'), missingPrice = false, overBudget = false;
   const plans = [], depthLimit = prepared.reduce((sum, target) => sum + target.set.requiredCards, 0);
-  for (let depth = 0; depth < depthLimit && states.length; depth++) {
+  let cheapestComplete = null;
+  // Construct complete cheap/high-score bundles before beam expansion. A wide
+  // pool can exhaust the beam budget at depth two while twelve slots are empty.
+  // These remain candidates, not a proof of optimality; all targets and the
+  // shared exact-version budget are evaluated again before exposing them.
+  for (const mode of ['price', 'score']) {
+    if (evaluations >= maxEvaluations) break;
+    const selected = new Set();
+    for (const target of prepared) {
+      const missingSlots = Math.max(0, target.set.requiredCards - target.progress.rows.filter(isGalleryOwned).length);
+      const candidates = target.progress.rows.filter(row => !isGalleryOwned(row) && candidateMap.has(row.eaId))
+        .map(row => candidateMap.get(row.eaId)).sort((a, b) => {
+          const price = (a.price ?? Infinity) - (b.price ?? Infinity);
+          return (mode === 'price' ? price : score(b.row) - score(a.row))
+            || score(b.row) - score(a.row) || a.row.eaId - b.row.eaId;
+        });
+      for (const candidate of candidates.slice(0, Math.max(1, missingSlots))) selected.add(candidate.row.eaId);
+    }
+    if (!selected.size) continue;
+    const ids = [...selected], cost = ids.reduce((sum, id) => sum + (candidateMap.get(id).price ?? 0), 0);
+    const missingPrices = ids.some(id => candidateMap.get(id).price == null);
+    if (budget != null && (missingPrices || cost > budget)) continue;
+    const results = evaluate(prepared, selected); evaluations++;
+    const value = { ids, nextIndex: selectedCandidates.length, cost, missingPrices, results };
+    if (!missingPrices && !results.every(result => result.reached)
+        && (!cheapestComplete || cost < cheapestComplete.cost)) cheapestComplete = value;
+    if (rank(value, bestSeen, prepared.length) < 0) bestSeen = value;
+    if (results.every(result => result.reached)) plans.push(value);
+    if (yield { evaluations }) { timeExhausted = true; break; }
+    if (mode === 'price' && !missingPrices && !results.every(result => result.reached)) {
+      const refinement = refineGalleryCostSteps({ initial: value,
+        seedSteps: galleryPriceBandSeedSteps({ targets: prepared,
+          candidates: selectedCandidates.map(candidate => ({ id: candidate.row.eaId, price: candidate.price, score: score(candidate.row) })) }),
+        candidates: selectedCandidates.map(candidate => ({ id: candidate.row.eaId, price: candidate.price,
+          score: score(candidate.row), diversityKeys: candidate.diversityKeys })),
+        maxEvaluations: maxEvaluations - evaluations,
+        measure: state => ({ reached: state.results.every(result => result.reached),
+          progress: state.results.reduce((sum, result) => sum + Math.min(1,
+            (result.summary.low?.total ?? 0) / Math.max(1, result.target.threshold)), 0),
+          diversityKey: state.results.map(result => (result.summary.low?.tags ?? [])
+            .map(tag => `${result.target.set.id}:${tag.id}:${tag.count}:${tag.pct}`).join('|')).join(';') }),
+        evaluate: ids => {
+          const cost = ids.reduce((sum, id) => sum + (candidateMap.get(id).price ?? 0), 0);
+          if (budget != null && cost > budget) return null;
+          return { ids, nextIndex: selectedCandidates.length, cost,
+            missingPrices: ids.some(id => candidateMap.get(id).price == null), results: evaluate(prepared, new Set(ids)) };
+        } });
+      let step = refinement.next();
+      while (!step.done) {
+        const stop = yield { evaluations: evaluations + step.value.evaluations };
+        if (stop) timeExhausted = true;
+        step = refinement.next(stop);
+      }
+      evaluations += step.value.evaluations; plans.push(...step.value.plans);
+      beamTruncated ||= step.value.truncated === true;
+      if (timeExhausted) break;
+    }
+  }
+  for (let depth = 0; depth < depthLimit && states.length && !timeExhausted; depth++) {
     const next = [];
     expansion: for (const state of states) for (let index = state.nextIndex; index < selectedCandidates.length; index++) {
       if (evaluations >= maxEvaluations) { budgetExhausted = true; break expansion; }
@@ -141,11 +211,20 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
     if (budgetExhausted || timeExhausted) break;
   }
   const scopeTruncated = prepared.some(target => target.progress.candidateOnly === true || target.progress.poolComplete === false);
-  const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain && !missingPrice;
-  const common = { budget, evaluations, searchComplete, scopeTruncated, timeExhausted, candidateCount: selectedCandidates.length, omittedCandidates };
+  const proofInputsKnown = candidateRows.every(candidate => validScore(candidate.row.gradingScore) && candidate.price != null)
+    && plans.every(state => state.results.every(result => result.summary.selection !== 'bounded-search'
+      && !result.summary.ruleDifference && result.summary.low?.total === result.summary.high?.total));
+  const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates
+    && !scoringBounded && !uncertain && !missingPrice && proofInputsKnown;
+  const common = { budget, evaluations, searchComplete, scopeTruncated, timeExhausted, beamTruncated, budgetExhausted,
+    candidateCount: selectedCandidates.length, omittedCandidates, requestedCandidates: allCandidates.size,
+    quotedCandidateCount: candidateRows.filter(candidate => candidate.price != null).length };
   const output = plans.sort((a, b) => rank(a, b, prepared.length)).slice(0, maxPlans)
     .map(state => materialize(state, candidateMap, budget));
-  if (output.length) return { status: 'ready', ...common, plans: output };
+  const costAudit = cheapestComplete ? { totalPrice: cheapestComplete.cost,
+    score: Math.min(...cheapestComplete.results.map(result => result.summary.low?.total ?? 0)),
+    target: Math.max(...prepared.map(target => target.threshold)), reached: false } : null;
+  if (output.length) return { status: 'ready', ...common, costAudit, plans: output };
   const reason = timeExhausted ? 'search-time-exhausted' : budgetExhausted ? 'search-budget-exhausted' : omittedCandidates ? 'candidate-search-truncated'
     : beamTruncated ? 'beam-search-truncated' : missingPrice ? 'price-unknown'
       : uncertain ? 'score-conditions-unknown' : scoringBounded ? 'score-selection-bounded'

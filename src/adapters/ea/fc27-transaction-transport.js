@@ -1,19 +1,37 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
-import { FC27_CLUB_READ_METHODS } from './fc27-club-read.js';
+import { FC27_CLUB_READ_METHODS, FC27_CLUB_COMPATIBLE_HASHES } from './fc27-club-read.js';
 
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const fail = reason => { throw new Error(reason); };
-export async function verifyFc27Methods(root, definitions) {
+export async function verifyFc27Methods(root, definitions, compatibleHashes = {}) {
   const methods = new Map();
   for (const [path, expected] of definitions) {
+    // The transaction transport never materializes entities. Gallery/FSU and
+    // Enhancer are allowed to decorate this pure factory; Club/Market readers
+    // enforce its exact output identity separately. Keep all request, auth,
+    // save and submit methods strict here.
+    if (path === 'UTItemEntityFactory.prototype.createItem') continue;
     const fn = at(root, path);
-    if (typeof fn !== 'function') return fail('FC27_TRANSACTION_METHOD_UNREVIEWED');
+    if (typeof fn !== 'function') {
+      const error = new Error('FC27_TRANSACTION_METHOD_UNREVIEWED');
+      error.methodPath = path; error.observedHash = null;
+      throw error;
+    }
     const source = Function.prototype.toString.call(fn).replace(/\r\n/g, '\n');
-    if (source.length > 20000) return fail('FC27_TRANSACTION_METHOD_UNREVIEWED');
+    if (source.length > 20000) {
+      const error = new Error('FC27_TRANSACTION_METHOD_UNREVIEWED');
+      error.methodPath = path; error.observedHash = 'oversized';
+      throw error;
+    }
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(source));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected) return fail('FC27_TRANSACTION_METHOD_UNREVIEWED');
+    if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path)
+        && hash !== ownData(compatibleHashes, path)) {
+      const error = new Error('FC27_TRANSACTION_METHOD_UNREVIEWED');
+      error.methodPath = path; error.observedHash = hash; error.expectedHash = expected;
+      throw error;
+    }
     methods.set(path, fn);
   }
   return () => {

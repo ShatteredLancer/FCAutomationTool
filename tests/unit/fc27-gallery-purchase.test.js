@@ -42,6 +42,15 @@ it('continues unavailable search and applies the explicit total budget without u
   const limited = fixture(); expect(await limited.create().execute({ ...limited.input, budget: 200 })).toMatchObject({ status: 'partial', spent: 200 });
   expect(limited.calls.filter(([name]) => name === 'buy')).toEqual([['buy',10]]);
 });
+it('records the actual rejected-budget quote for local replanning without bidding', async () => {
+  const f = fixture(); f.control.quote = definitionId => ({ definitionId, itemId: definitionId + 100,
+    tradeId: String(definitionId + 1000), price: definitionId === 10 ? 200 : 600 });
+  const outcome = await f.create().execute({ ...f.input, budget: 500 });
+  expect(outcome).toMatchObject({ status: 'partial', spent: 200, collection: { status: 'confirmed' },
+    failures: [{ definitionId: 11, reason: 'FC27_GALLERY_BUDGET_EXCEEDED', observedPrice: 600 }] });
+  expect(f.calls).toEqual([['find',10],['buy',10],['move',10],['find',11]]);
+  expect(f.store.get(galleryPurchaseKey(f.args.scope)).lastResult.failures[0].observedPrice).toBe(600);
+});
 it('retains unknown bid receipt and forbids rebuy after reload until exact location is confirmed', async () => {
   const f = fixture(); f.control.buy = () => ({ status: 'unknown' });
   expect((await f.create().execute(f.input)).status).toBe('recovery-required');

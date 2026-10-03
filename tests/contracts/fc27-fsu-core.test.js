@@ -78,7 +78,7 @@ describe('offline FSU Runner-support core', () => {
   });
   it('builds independently without evaluating old FSU enhancement code', async () => {
     const result = await buildFsuCore();
-    expect(result.inputs).toHaveLength(10);
+    expect(result.inputs).toHaveLength(11);
     expect(result.inputs).toEqual(expect.arrayContaining([
       'src/adapters/ea/fc27-club-read.js', 'FSU_mod/src/runner-support/club-inventory.js',
     ]));

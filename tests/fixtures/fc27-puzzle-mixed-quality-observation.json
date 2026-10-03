@@ -1,0 +1,2351 @@
+{
+  "schema": 1,
+  "description": "2026-10-03 read-only requirement and safe bronze/silver attribute observation; physical/account IDs omitted; synthetic definitions assigned on replay; catalog is public EA data, not ownership evidence.",
+  "scope": "safe-bronze-silver-shapes",
+  "candidates": [
+    [
+      57,
+      0,
+      35,
+      65,
+      563,
+      [
+        0
+      ]
+    ],
+    [
+      58,
+      0,
+      54,
+      350,
+      131735,
+      [
+        25
+      ]
+    ],
+    [
+      59,
+      0,
+      46,
+      56,
+      433,
+      [
+        16,
+        25,
+        27
+      ]
+    ],
+    [
+      60,
+      0,
+      42,
+      50,
+      79,
+      [
+        16,
+        25,
+        27
+      ]
+    ],
+    [
+      61,
+      0,
+      46,
+      56,
+      321,
+      [
+        3,
+        12,
+        23
+      ]
+    ],
+    [
+      62,
+      0,
+      14,
+      60,
+      1937,
+      [
+        5
+      ]
+    ],
+    [
+      62,
+      0,
+      51,
+      2221,
+      116306,
+      [
+        25
+      ]
+    ],
+    [
+      62,
+      0,
+      48,
+      68,
+      101032,
+      [
+        3,
+        5,
+        10
+      ]
+    ],
+    [
+      63,
+      0,
+      52,
+      39,
+      112893,
+      [
+        0
+      ]
+    ],
+    [
+      63,
+      0,
+      85,
+      10,
+      100638,
+      [
+        7,
+        12,
+        16,
+        27
+      ]
+    ],
+    [
+      63,
+      0,
+      36,
+      41,
+      1756,
+      [
+        5
+      ]
+    ],
+    [
+      63,
+      0,
+      101,
+      39,
+      694,
+      [
+        16,
+        23,
+        27
+      ]
+    ],
+    [
+      64,
+      0,
+      60,
+      1014,
+      113143,
+      [
+        12,
+        16,
+        23,
+        27
+      ]
+    ],
+    [
+      64,
+      0,
+      39,
+      330,
+      110750,
+      [
+        5
+      ]
+    ],
+    [
+      64,
+      0,
+      83,
+      341,
+      111678,
+      [
+        7
+      ]
+    ],
+    [
+      65,
+      0,
+      54,
+      39,
+      111928,
+      [
+        7,
+        14,
+        16,
+        27
+      ]
+    ],
+    [
+      65,
+      0,
+      136,
+      39,
+      113018,
+      [
+        5
+      ]
+    ],
+    [
+      65,
+      0,
+      167,
+      83,
+      110765,
+      [
+        3,
+        12
+      ]
+    ],
+    [
+      65,
+      0,
+      95,
+      39,
+      113149,
+      [
+        3,
+        7,
+        10,
+        14
+      ]
+    ],
+    [
+      66,
+      0,
+      34,
+      10,
+      1915,
+      [
+        12,
+        16,
+        18,
+        23,
+        25,
+        27
+      ]
+    ],
+    [
+      66,
+      0,
+      18,
+      17,
+      379,
+      [
+        16,
+        18,
+        25,
+        27
+      ]
+    ],
+    [
+      66,
+      0,
+      14,
+      60,
+      1944,
+      [
+        5
+      ]
+    ],
+    [
+      67,
+      0,
+      54,
+      83,
+      112554,
+      [
+        3,
+        7,
+        12,
+        16
+      ]
+    ],
+    [
+      67,
+      0,
+      81,
+      39,
+      114162,
+      [
+        10,
+        14
+      ]
+    ],
+    [
+      67,
+      0,
+      54,
+      330,
+      113378,
+      [
+        3,
+        12
+      ]
+    ],
+    [
+      67,
+      0,
+      39,
+      330,
+      110075,
+      [
+        0
+      ]
+    ],
+    [
+      67,
+      0,
+      5,
+      2215,
+      132533,
+      [
+        3,
+        5,
+        7
+      ]
+    ],
+    [
+      68,
+      0,
+      52,
+      2267,
+      1598,
+      [
+        12,
+        16,
+        23,
+        27
+      ]
+    ],
+    [
+      68,
+      0,
+      24,
+      10,
+      100632,
+      [
+        3
+      ]
+    ],
+    [
+      69,
+      0,
+      21,
+      20,
+      110329,
+      [
+        7,
+        14,
+        16,
+        27
+      ]
+    ],
+    [
+      69,
+      0,
+      10,
+      66,
+      1871,
+      [
+        0
+      ]
+    ],
+    [
+      69,
+      0,
+      37,
+      66,
+      111083,
+      [
+        0
+      ]
+    ],
+    [
+      69,
+      0,
+      52,
+      353,
+      1013,
+      [
+        16,
+        25,
+        27
+      ]
+    ],
+    [
+      69,
+      0,
+      126,
+      14,
+      109,
+      [
+        10,
+        14
+      ]
+    ],
+    [
+      69,
+      0,
+      14,
+      14,
+      1947,
+      [
+        3,
+        12
+      ]
+    ],
+    [
+      69,
+      0,
+      56,
+      353,
+      1013,
+      [
+        5
+      ]
+    ],
+    [
+      69,
+      0,
+      163,
+      14,
+      1919,
+      [
+        12,
+        14,
+        18,
+        23
+      ]
+    ],
+    [
+      70,
+      0,
+      45,
+      330,
+      100759,
+      [
+        10,
+        14
+      ]
+    ],
+    [
+      70,
+      0,
+      83,
+      341,
+      112678,
+      [
+        0
+      ]
+    ],
+    [
+      71,
+      0,
+      55,
+      1014,
+      101105,
+      [
+        3,
+        10,
+        14
+      ]
+    ],
+    [
+      71,
+      0,
+      21,
+      2215,
+      132866,
+      [
+        5
+      ]
+    ],
+    [
+      72,
+      0,
+      37,
+      68,
+      111339,
+      [
+        16,
+        25,
+        27
+      ]
+    ],
+    [
+      72,
+      0,
+      21,
+      2215,
+      132865,
+      [
+        0
+      ]
+    ],
+    [
+      73,
+      0,
+      14,
+      14,
+      1794,
+      [
+        5
+      ]
+    ],
+    [
+      73,
+      0,
+      111,
+      2172,
+      111701,
+      [
+        5
+      ]
+    ],
+    [
+      73,
+      0,
+      52,
+      353,
+      101083,
+      [
+        10,
+        14,
+        16,
+        27
+      ]
+    ],
+    [
+      74,
+      0,
+      129,
+      2218,
+      116417,
+      [
+        12,
+        16,
+        23,
+        25,
+        27
+      ]
+    ],
+    [
+      74,
+      0,
+      12,
+      2236,
+      116282,
+      [
+        0
+      ]
+    ],
+    [
+      74,
+      0,
+      164,
+      83,
+      982,
+      [
+        5
+      ]
+    ],
+    [
+      74,
+      0,
+      52,
+      2209,
+      101100,
+      [
+        0
+      ]
+    ]
+  ],
+  "formation": {
+    "id": 29,
+    "positions": [
+      0,
+      3,
+      5,
+      5,
+      5,
+      7,
+      14,
+      14,
+      18,
+      25,
+      25
+    ]
+  },
+  "rawRequirements": [
+    {
+      "count": 1,
+      "scope": 0,
+      "pairs": [
+        {
+          "key": 10,
+          "values": [
+            39,
+            46
+          ]
+        }
+      ]
+    },
+    {
+      "count": -1,
+      "scope": 0,
+      "pairs": [
+        {
+          "key": 9,
+          "values": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "scope": 0,
+      "pairs": [
+        {
+          "key": 17,
+          "values": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "count": -1,
+      "scope": 0,
+      "pairs": [
+        {
+          "key": 3,
+          "values": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "count": -1,
+      "scope": 0,
+      "pairs": [
+        {
+          "key": 35,
+          "values": [
+            14
+          ]
+        }
+      ]
+    }
+  ],
+  "chemistry": {
+    "parameters": [
+      {
+        "id": 1,
+        "thresholds": [
+          {
+            "requirement": 2,
+            "points": 1
+          },
+          {
+            "requirement": 5,
+            "points": 1
+          },
+          {
+            "requirement": 8,
+            "points": 1
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "thresholds": [
+          {
+            "requirement": 3,
+            "points": 1
+          },
+          {
+            "requirement": 5,
+            "points": 1
+          },
+          {
+            "requirement": 8,
+            "points": 1
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "thresholds": [
+          {
+            "requirement": 2,
+            "points": 1
+          },
+          {
+            "requirement": 4,
+            "points": 1
+          },
+          {
+            "requirement": 7,
+            "points": 1
+          }
+        ]
+      }
+    ],
+    "links": {
+      "schema": 1,
+      "complete": true,
+      "links": [
+        [
+          116009,
+          1
+        ],
+        [
+          116015,
+          2
+        ],
+        [
+          116010,
+          5
+        ],
+        [
+          116016,
+          7
+        ],
+        [
+          116343,
+          9
+        ],
+        [
+          116017,
+          10
+        ],
+        [
+          116012,
+          11
+        ],
+        [
+          116011,
+          18
+        ],
+        [
+          116014,
+          19
+        ],
+        [
+          115995,
+          21
+        ],
+        [
+          116002,
+          25
+        ],
+        [
+          132533,
+          28
+        ],
+        [
+          116003,
+          31
+        ],
+        [
+          115996,
+          32
+        ],
+        [
+          132865,
+          36
+        ],
+        [
+          116004,
+          38
+        ],
+        [
+          116280,
+          45
+        ],
+        [
+          116282,
+          52
+        ],
+        [
+          132588,
+          64
+        ],
+        [
+          116033,
+          66
+        ],
+        [
+          116037,
+          70
+        ],
+        [
+          116417,
+          71
+        ],
+        [
+          116034,
+          73
+        ],
+        [
+          131724,
+          76
+        ],
+        [
+          116019,
+          88
+        ],
+        [
+          132867,
+          89
+        ],
+        [
+          132866,
+          169
+        ],
+        [
+          131386,
+          171
+        ],
+        [
+          115998,
+          175
+        ],
+        [
+          132370,
+          219
+        ],
+        [
+          131358,
+          234
+        ],
+        [
+          116327,
+          240
+        ],
+        [
+          116325,
+          241
+        ],
+        [
+          131720,
+          242
+        ],
+        [
+          116326,
+          243
+        ],
+        [
+          131359,
+          245
+        ],
+        [
+          116332,
+          260
+        ],
+        [
+          131360,
+          266
+        ],
+        [
+          116328,
+          448
+        ],
+        [
+          131733,
+          452
+        ],
+        [
+          116336,
+          457
+        ],
+        [
+          116339,
+          461
+        ],
+        [
+          116329,
+          463
+        ],
+        [
+          116331,
+          467
+        ],
+        [
+          116337,
+          481
+        ],
+        [
+          116306,
+          698
+        ],
+        [
+          132816,
+          711
+        ],
+        [
+          131361,
+          894
+        ],
+        [
+          132889,
+          919
+        ],
+        [
+          116416,
+          1738
+        ],
+        [
+          131725,
+          1799
+        ],
+        [
+          116013,
+          1808
+        ],
+        [
+          132831,
+          1809
+        ],
+        [
+          115997,
+          1824
+        ],
+        [
+          132589,
+          1831
+        ],
+        [
+          132891,
+          1908
+        ],
+        [
+          115999,
+          10029
+        ],
+        [
+          131391,
+          110832
+        ],
+        [
+          131478,
+          111065
+        ],
+        [
+          116302,
+          111140
+        ],
+        [
+          116300,
+          111144
+        ],
+        [
+          116035,
+          111817
+        ],
+        [
+          116021,
+          112172
+        ],
+        [
+          116307,
+          112606
+        ]
+      ]
+    },
+    "maxChemistryPerPlayer": 3,
+    "profilesEnabled": true,
+    "profiles": {
+      "complete": true,
+      "entries": [
+        {
+          "id": 1,
+          "maxChem": false,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "maxChem": true,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 0
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "maxChem": true,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 2,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "maxChem": false,
+          "applicableRarityIds": [
+            69
+          ],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 2
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "maxChem": true,
+          "applicableRarityIds": [
+            44
+          ],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 3
+            }
+          ]
+        }
+      ]
+    },
+    "identities": {
+      "legendClubId": 112658,
+      "legendLeagueId": 2118,
+      "heroClubId": 114605,
+      "hallOfFutClubId": 132794
+    },
+    "superChemRarityIds": [],
+    "rating": {
+      "floatCalculationEnabled": true
+    }
+  },
+  "clubLinks": {
+    "schema": 1,
+    "complete": true,
+    "links": [
+      [
+        116009,
+        1
+      ],
+      [
+        116015,
+        2
+      ],
+      [
+        116010,
+        5
+      ],
+      [
+        116016,
+        7
+      ],
+      [
+        116343,
+        9
+      ],
+      [
+        116017,
+        10
+      ],
+      [
+        116012,
+        11
+      ],
+      [
+        116011,
+        18
+      ],
+      [
+        116014,
+        19
+      ],
+      [
+        115995,
+        21
+      ],
+      [
+        116002,
+        25
+      ],
+      [
+        132533,
+        28
+      ],
+      [
+        116003,
+        31
+      ],
+      [
+        115996,
+        32
+      ],
+      [
+        132865,
+        36
+      ],
+      [
+        116004,
+        38
+      ],
+      [
+        116280,
+        45
+      ],
+      [
+        116282,
+        52
+      ],
+      [
+        132588,
+        64
+      ],
+      [
+        116033,
+        66
+      ],
+      [
+        116037,
+        70
+      ],
+      [
+        116417,
+        71
+      ],
+      [
+        116034,
+        73
+      ],
+      [
+        131724,
+        76
+      ],
+      [
+        116019,
+        88
+      ],
+      [
+        132867,
+        89
+      ],
+      [
+        132866,
+        169
+      ],
+      [
+        131386,
+        171
+      ],
+      [
+        115998,
+        175
+      ],
+      [
+        132370,
+        219
+      ],
+      [
+        131358,
+        234
+      ],
+      [
+        116327,
+        240
+      ],
+      [
+        116325,
+        241
+      ],
+      [
+        131720,
+        242
+      ],
+      [
+        116326,
+        243
+      ],
+      [
+        131359,
+        245
+      ],
+      [
+        116332,
+        260
+      ],
+      [
+        131360,
+        266
+      ],
+      [
+        116328,
+        448
+      ],
+      [
+        131733,
+        452
+      ],
+      [
+        116336,
+        457
+      ],
+      [
+        116339,
+        461
+      ],
+      [
+        116329,
+        463
+      ],
+      [
+        116331,
+        467
+      ],
+      [
+        116337,
+        481
+      ],
+      [
+        116306,
+        698
+      ],
+      [
+        132816,
+        711
+      ],
+      [
+        131361,
+        894
+      ],
+      [
+        132889,
+        919
+      ],
+      [
+        116416,
+        1738
+      ],
+      [
+        131725,
+        1799
+      ],
+      [
+        116013,
+        1808
+      ],
+      [
+        132831,
+        1809
+      ],
+      [
+        115997,
+        1824
+      ],
+      [
+        132589,
+        1831
+      ],
+      [
+        132891,
+        1908
+      ],
+      [
+        115999,
+        10029
+      ],
+      [
+        131391,
+        110832
+      ],
+      [
+        131478,
+        111065
+      ],
+      [
+        116302,
+        111140
+      ],
+      [
+        116300,
+        111144
+      ],
+      [
+        116035,
+        111817
+      ],
+      [
+        116021,
+        112172
+      ],
+      [
+        116307,
+        112606
+      ]
+    ]
+  },
+  "pages": [
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "bronze",
+        "nation": 46
+      },
+      "entries": [
+        {
+          "definitionId": 85132,
+          "rating": 53,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85303,
+          "rating": 53,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85903,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 113458,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85125,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 1439,
+          "positions": [
+            14,
+            18,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 86814,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 1439,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 75789,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82293,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112180,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85286,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 1,
+          "teamId": 1788,
+          "positions": [
+            5,
+            7
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 81759,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            10,
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76877,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 708,
+          "positions": [
+            5,
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76868,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112072,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76520,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            3
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 86807,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 113458,
+          "positions": [
+            0
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76878,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            16,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82150,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 433,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 78941,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 77076,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 41,
+          "teamId": 2041,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 72190,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 433,
+          "positions": [
+            16,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82869,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            3
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 278948,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            3
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        }
+      ]
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "silver",
+        "nation": 46
+      },
+      "entries": [
+        {
+          "definitionId": 270535,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 321,
+          "positions": [
+            16,
+            18,
+            25,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 278582,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 66,
+          "teamId": 114326,
+          "positions": [
+            14,
+            18,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 77575,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 2216,
+          "teamId": 116011,
+          "positions": [
+            3,
+            12
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 255700,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 66,
+          "teamId": 111092,
+          "positions": [
+            3,
+            12,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 254514,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 308,
+          "teamId": 718,
+          "positions": [
+            5,
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 243360,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 20,
+          "teamId": 503,
+          "positions": [
+            14,
+            16,
+            18,
+            25,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 260991,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112180,
+          "positions": [
+            16,
+            18,
+            25,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 271403,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 2221,
+          "teamId": 116306,
+          "positions": [
+            12,
+            23
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 259402,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 41,
+          "teamId": 1757,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 200718,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 706,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 242200,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 321,
+          "positions": [
+            0
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 87630,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 10,
+          "teamId": 1971,
+          "positions": [
+            12,
+            14,
+            18,
+            23,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 50402128,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 31,
+          "teamId": 110374,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 246777,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111594,
+          "positions": [
+            12,
+            18,
+            23,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 74621,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            0
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 70085,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112180,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 71994,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            7,
+            16
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 86649,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 2232,
+          "teamId": 132816,
+          "positions": [
+            16,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 256429,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 41,
+          "teamId": 418,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76519,
+          "rating": 65,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 19,
+          "teamId": 1824,
+          "positions": [
+            14,
+            16,
+            18,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        }
+      ]
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "bronze",
+        "league": 56
+      },
+      "entries": [
+        {
+          "definitionId": 79272,
+          "rating": 52,
+          "rarity": 0,
+          "nationId": 15,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85132,
+          "rating": 53,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85303,
+          "rating": 53,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 319,
+          "positions": [
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85903,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 113458,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85125,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 1439,
+          "positions": [
+            14,
+            18,
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 86814,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 1439,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 75789,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82293,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112180,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 83186,
+          "rating": 54,
+          "rarity": 0,
+          "nationId": 133,
+          "leagueId": 56,
+          "teamId": 1439,
+          "positions": [
+            7
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 81759,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            10,
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76877,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 708,
+          "positions": [
+            5,
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76868,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 112072,
+          "positions": [
+            10,
+            14
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 85122,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 108,
+          "leagueId": 56,
+          "teamId": 708,
+          "positions": [
+            14,
+            18
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76520,
+          "rating": 55,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            3
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 86807,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 113458,
+          "positions": [
+            0
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 76878,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            16,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82150,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 433,
+          "positions": [
+            25
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 78941,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 320,
+          "positions": [
+            5
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 72190,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 433,
+          "positions": [
+            16,
+            27
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        },
+        {
+          "definitionId": 82869,
+          "rating": 56,
+          "rarity": 0,
+          "nationId": 46,
+          "leagueId": 56,
+          "teamId": 111705,
+          "positions": [
+            3
+          ],
+          "groups": [],
+          "special": false,
+          "evolution": false,
+          "cosmetic": false
+        }
+      ]
+    }
+  ]
+}

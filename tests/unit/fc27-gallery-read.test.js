@@ -65,3 +65,49 @@ it('retains exact-version display fields and drops account and transport data', 
   expect(sanitizeGalleryNativeCard({ ...raw, attributeArray: [80] })).toBeNull();
   expect(raw).not.toHaveProperty('id');
 });
+
+it('reads already-cached held piles once and leaves absence unknown', async () => {
+  const f = fixture();
+  f.root.repositories.Item.storage = { _collection: {
+    one: { id: 123, definitionId: 900001, type: 'player', concept: false },
+    concept: { id: 124, definitionId: 900002, type: 'player', concept: true },
+  } };
+  const reader = f.reader(), result = await reader.project(f.pool);
+  expect(result.progress.rows[0]).toMatchObject({ held: true, inClub: null, collected: null });
+  expect(result.progress.rows[1]).toMatchObject({ held: null });
+  reader.dispose();
+});
+
+it('persists local FO by account and restores EA evidence after undo without network reads', async () => {
+  const f = fixture(); f.store.set(f.key, { schema: 3, context: f.context, fetchedAt: 900,
+    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: 2 }] });
+  let reader = f.reader();
+  await reader.updateFirstOwner(900001, true);
+  expect((await reader.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: true, observedFirstOwned: false, firstOwnedSource: 'local-history', collected: true });
+  reader.dispose(); reader = f.reader();
+  expect((await reader.project(f.pool)).progress.rows[0].firstOwned).toBe(true);
+  f.club.platform = 'other';
+  expect((await reader.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
+  f.club.platform = 'pc';
+  await reader.updateFirstOwner(900001, null);
+  expect((await reader.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: false, firstOwnedSource: 'ea-observed', collected: true });
+  reader.dispose();
+});
+
+it('serializes concurrent local declarations without losing another version or poisoning later writes', async () => {
+  const f = fixture(), reader = f.reader();
+  await Promise.all([reader.updateFirstOwner(900001, true), reader.updateFirstOwner(900002, true)]);
+  expect(await reader.readFirstOwnerHistory()).toHaveLength(2);
+  await reader.updateFirstOwner(900001, null);
+  expect(await reader.readFirstOwnerHistory()).toEqual([{ definitionId: 900002, firstOwned: true, updatedAt: 1000 }]);
+  reader.dispose();
+});
+
+it('does not report a failed local FO write as saved or leave an optimistic override', async () => {
+  const f = fixture(); f.options.gmSetValue = () => { throw Error('disk full'); };
+  const reader = f.reader();
+  await expect(reader.updateFirstOwner(900001, true)).rejects.toThrow('FC27_GALLERY_FO_SAVE_FAILED');
+  expect(await reader.readFirstOwnerHistory()).toEqual([]);
+  expect((await reader.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
+  reader.dispose();
+});

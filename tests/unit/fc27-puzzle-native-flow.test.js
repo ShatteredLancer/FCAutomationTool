@@ -7,6 +7,7 @@ import { planFc27PuzzleShortageQueries } from '../../src/fc27/puzzle-procurement
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
+import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 import { fc27ConceptPendingKey } from '../../src/fc27/puzzle-concept-session.js';
 import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.js';
 import observation from '../fixtures/fc27-puzzle-plan-observation.json';
@@ -20,7 +21,7 @@ const fsuBuyBody = fsuSource.slice(fsuBuyStart, fsuSource.indexOf('events.buyPla
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1000000); });
 afterEach(() => vi.useRealTimers());
 
-function fixture({ bricks = [], gold = false, marquee = false } = {}) {
+function fixture({ bricks = [], gold = false, marquee = false, diagnosticLog } = {}) {
   const x = executionRuntime(); const { root, state, challenge } = x;
   state.players = state.players.slice(0, 11 - bricks.length);
   root.repositories.Item.club.items._collection = {};
@@ -85,7 +86,7 @@ function fixture({ bricks = [], gold = false, marquee = false } = {}) {
     currentController: { currentController: controller },
   } }) });
   const data = new Map();
-  const restart = () => createFc27AcceptanceSession({ root, liveEnabled: true,
+  const restart = () => createFc27AcceptanceSession({ root, liveEnabled: true, diagnosticLog,
     gmRequest: options => options.onload({ status: 200, responseText: JSON.stringify({ data:
       Array.from({ length: 32 }, (_, i) => ({ resource_id: 901 + i, ID: 101 + i, Player_Resource: 901 + i, LCPrice: 200 })) }) }),
     gmGetValue: async (key, fallback) => structuredClone(data.get(key) ?? fallback),
@@ -111,8 +112,38 @@ it('runs the real page reader, planner, session and provider with one selected-C
   expect([...x.data.values()].find(value => value?.kind === 'puzzle-fill')).toMatchObject({ phase: 'saved', submitted: false });
 });
 
-async function missingFixture(missing = 1) {
-  const x = fixture();
+it('exports native Puzzle search and pre-request market failures without raw inventory or account data', async () => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.4' });
+  const x = fixture({ diagnosticLog });
+  const removed = x.state.players.pop(); delete x.root.repositories.Item.club.items._collection[removed.id];
+  x.root.UTHttpRequest = function unreviewedRequest() { throw new Error('must not run'); };
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE',
+    purchaseSuggestion: { reason: 'FC27_MARKET_METHOD_0_CHANGED', requests: 0 } });
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toEqual(expect.arrayContaining([
+    expect.objectContaining({ area: 'puzzle', event: 'solve-result', setId: 4, challengeId: 16,
+      reason: 'SAFE_MATERIAL_SHORTAGE', safeCandidates: 10 }),
+    expect.objectContaining({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_MARKET_METHOD_0_CHANGED',
+      source: 'transport', requests: 0, catalogAttempts: 0, quoteAttempts: 0 }),
+  ]));
+  expect(JSON.stringify(payload)).not.toMatch(/accountScope|definitionId|selected|unreviewedRequest|must not run/);
+  expect(x.calls).toHaveLength(0);
+});
+
+it.each(['throw', 'reject'])('keeps native fill behavior when optional diagnostics %s', async mode => {
+  const diagnosticLog = { record: () => {
+    if (mode === 'throw') throw new Error('log unavailable');
+    return Promise.reject(new Error('log unavailable'));
+  } };
+  const x = fixture({ diagnosticLog });
+  expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+});
+
+async function missingFixture(missing = 1, options = {}) {
+  const x = fixture(options);
   for (let i = 0; i < missing; i++) {
     const removed = x.state.players.pop(); delete x.root.repositories.Item.club.items._collection[removed.id];
   }
@@ -181,8 +212,8 @@ it('continues from filtered internal routes into cached procurement on repeated 
   expect([...x.data.values()].some(value => value?.phase === 'save-pending')).toBe(false);
 }, 30000);
 
-async function buyingFixture(count = 1) {
-  const x = await missingFixture(count);
+async function buyingFixture(count = 1, options = {}) {
+  const x = await missingFixture(count, options);
   expect((await x.fill()).status).toBe('concept-filled');
   const { root, state } = x; state.filterClubQueries = true;
   Object.assign(root.ItemPile, { PURCHASED: 6 }); root.GameCurrency = { COINS: 'COINS' }; root.MAX_NEW_ITEMS = 100;
@@ -230,7 +261,7 @@ async function buyingFixture(count = 1) {
   root.crypto.subtle.digest = async (algorithm, bytes) => {
     const source = new TextDecoder().decode(bytes).replace(/\r\n/g, '\n');
     const method = FC27_BUY_SERVICE_METHODS.find(([name]) => String(ItemService.prototype[name]).replace(/\r\n/g, '\n') === source);
-    return method ? Uint8Array.from(Buffer.from(method[1], 'hex')).buffer : digest(algorithm, bytes);
+    return method ? Uint8Array.from(Buffer.from(state.buyMethodHashes?.[method[0]] ?? method[1], 'hex')).buffer : digest(algorithm, bytes);
   };
   const buy = async budget => {
     const target = { setId: 4, challengeId: 16 };
@@ -240,6 +271,45 @@ async function buyingFixture(count = 1) {
   };
   return { ...x, buy, purchased, purchases };
 }
+
+it('buys with the independently reviewed October 3 bid/move fingerprints', async () => {
+  const x = await buyingFixture(3);
+  x.state.buyMethodHashes = {
+    bid: '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
+    move: '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef',
+  };
+  expect(await x.buy()).toMatchObject({ purchased: 3, spent: 600 });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(3);
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(3);
+});
+
+it.each(['bid', 'move'])('rejects an unknown %s fingerprint before searching or writing a buy journal', async name => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value) });
+  const x = await buyingFixture(1, { diagnosticLog });
+  x.state.buyMethodHashes = { [name]: '0'.repeat(64) };
+  expect(await x.buy()).toMatchObject({ reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', purchased: 0, spent: 0 });
+  expect(x.calls.filter(call => ['search', 'buy', 'move'].includes(call.kind))).toEqual([]);
+  expect([...x.data.keys()].filter(key => /^fcat-fc27-puzzle-buy(?:-pending)?:/.test(key))).toEqual([]);
+  const trace = [...x.data.entries()].find(([key]) => key.startsWith('fcat-fc27-buy-trace:'))?.[1];
+  expect(trace.events).toContainEqual(expect.objectContaining({ stage: 'method-check', method: `service.${name}`,
+    status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', observedHash: '0'.repeat(64) }));
+  const exported = await diagnosticLog.exportPayload();
+  expect(exported.entries).toContainEqual(expect.objectContaining({ event: 'buy-method-check', method: `service.${name}`,
+    observedHash: '0'.repeat(64), reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED' }));
+  expect(exported.entries).toContainEqual(expect.objectContaining({ event: 'buy-result', count: 0, spent: 0 }));
+});
+
+it.each(['throws', 'rejects'])('keeps purchasing unchanged when optional diagnostics %s', async mode => {
+  const x = await buyingFixture(1, { diagnosticLog: { record: () => {
+    if (mode === 'throws') throw Error('diagnostic unavailable');
+    return Promise.reject(Error('diagnostic unavailable'));
+  } } });
+  expect(await x.buy()).toMatchObject({ purchased: 1, spent: 200 });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+});
+
 
 it.each(['normal', 'expired-cheapest', 'same-price', 'permission-denied', 'explicit-rejection', 'move-rejected', 'cannot-buy'])
 ('matches the original FSU buyConceptPlayer buy/move selection and continuation: %s', async scenario => {

@@ -1,7 +1,30 @@
 import { expect, it, vi } from 'vitest';
 import { FC27_MARKET_READ_METHODS, createFc27MarketReadTransport, probeFc27MarketRuntime, readFc27MarketPlayerName } from '../../src/adapters/ea/fc27-market-read.js';
+import { createFc27ClubReadTransport } from '../../src/adapters/ea/fc27-club-read.js';
+import { verifyFc27Methods } from '../../src/adapters/ea/fc27-transaction-transport.js';
+import { createFc27GalleryProgressReader } from '../../src/adapters/ea/fc27-gallery-progress.js';
+import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
 
-function fixture() {
+// Public runtime captured without login on 2026-10-02, independently of the
+// production allowlist. All thirteen decoded methods match the old structure.
+const currentHashes = [
+  '2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
+  '76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
+  'a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
+  'da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
+  'd19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
+  'b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
+  'a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
+  'fc0713a05642d8d4fcebac3d20ebee458edd59f6d44e4a8a3ed84ae237391491',
+  '6147c9f404a3638daa032c5ab89818f0856e56f7bb7192ae4e7a0ca988e5ce72',
+  'edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc',
+  'dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111',
+  '963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2',
+  'b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949',
+  '2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4',
+];
+
+function fixture(methodHashes = null) {
   const calls = []; const cleanups = []; const identified = [];
   const control = { status: 200, timeout: false, wrongOwner: false };
   const player = { id: 900001, resourceId: 101, itemType: 'player', untradeable: false };
@@ -30,6 +53,9 @@ function fixture() {
         nationId: 14, teamId: 22, leagueId: 33, basePossiblePositions: [12, 23], groups: [],
         upgrades: null, cosmetics: [], _hyperCosmeticDTOs: {}, ...control.entity };
     }
+    generateItemsFromItemData(rows, duplicates) {
+      return rows.map(raw => this.createItem(raw));
+    }
   }
   class Identification {
     handleRequest(request) { identified.push(['request', request]); }
@@ -53,9 +79,11 @@ function fixture() {
         clearTransferMarketCache: forbidden, bid: forbidden, list: forbidden } },
     UTHttpRequest, EAHttpRequest, UTItemEntityFactory, UTItemDAO, FCAuthenticationService, Identification,
     factories: { Item: new UTItemEntityFactory() }, HttpRequestMethod: { GET: 'GET' } };
-  const hashes = new Map(FC27_MARKET_READ_METHODS.map(([path, hash]) => {
-    const fn = path.split('.').reduce((v, key) => v[key], root);
-    return [Function.prototype.toString.call(fn), hash];
+  const hashes = new Map(FC27_MARKET_READ_METHODS.map(([path, hash], index) => {
+    const fn = path === 'factories.Item.generateItemsFromItemData'
+      ? Object.getPrototypeOf(root.factories.Item).generateItemsFromItemData
+      : path.split('.').reduce((v, key) => v[key], root);
+    return [Function.prototype.toString.call(fn), methodHashes?.[index] ?? hash];
   }));
   root.crypto = { subtle: { digest: vi.fn(async (_algo, bytes) => {
     const hash = hashes.get(new TextDecoder().decode(bytes)) ?? '0'.repeat(64);
@@ -65,6 +93,170 @@ function fixture() {
 }
 const catalogQuery = { start: 0, count: 20, level: 'silver' };
 const quoteQuery = { definitionId: 101, start: 0, count: 20, maxBuy: 2000 };
+
+it('accepts the independently captured current public runtime for one exact-version read', async () => {
+  const f = fixture(currentHashes);
+  const result = await (await createFc27MarketReadTransport(f.root)).readQuotePage(quoteQuery);
+  expect(result).toMatchObject({ definitionId: 101, price: 450, eligible: 1 });
+  expect(f.calls).toHaveLength(1);
+  expect(f.identified.map(row => row[0])).toEqual(['request', 'response']);
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it.each(FC27_MARKET_READ_METHODS.map(([path], index) => [path, index]).filter(([, index]) => index !== 7))
+('rejects a new unreviewed hash for %s before sending', async (_path, index) => {
+  const hashes = [...currentHashes]; hashes[index] = '0'.repeat(64);
+  const f = fixture(hashes);
+  await expect(createFc27MarketReadTransport(f.root)).rejects.toThrow(`METHOD_${index}_CHANGED`);
+  expect(f.calls).toEqual([]);
+});
+
+it('keeps runtime replacement blocked after accepting the current fingerprint', async () => {
+  const f = fixture(currentHashes); const transport = await createFc27MarketReadTransport(f.root);
+  f.root.UTHttpRequest.prototype.send = () => {};
+  await expect(transport.readQuotePage(quoteQuery)).rejects.toThrow('RUNTIME_CHANGED');
+  expect(f.calls).toEqual([]);
+});
+
+it('keeps unknown hashes blocked in Club and transaction verification', async () => {
+  const f = fixture(currentHashes);
+  f.root.UTHttpRequest = function unknownRequest() {};
+  await expect(createFc27ClubReadTransport(f.root)).rejects.toThrow('METHOD_0_CHANGED');
+  await expect(verifyFc27Methods(f.root, FC27_MARKET_READ_METHODS.slice(0, 7))).rejects.toThrow('FC27_TRANSACTION_METHOD_UNREVIEWED');
+  expect(f.calls).toEqual([]);
+});
+
+it('accepts the reviewed FC27-2026-10-02 EAObservable notify fingerprint', async () => {
+  const f = fixture();
+  class EAObservable { notify() { return this; } }
+  f.root.EAObservable = EAObservable;
+  const current = '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2';
+  const digest = f.root.crypto.subtle.digest;
+  f.root.crypto.subtle.digest = async (algorithm, bytes) => {
+    if (new TextDecoder().decode(bytes) === Function.prototype.toString.call(EAObservable.prototype.notify)) {
+      return Uint8Array.from(current.match(/../g).map(pair => parseInt(pair, 16))).buffer;
+    }
+    return digest(algorithm, bytes);
+  };
+  const guard = await verifyFc27Methods(f.root, [['EAObservable.prototype.notify',
+    '1e483385deb8aa65cce0dfa60efb7344d85a8caa8dff9e443a1c6ae9bab8559c']]);
+  expect(() => guard()).not.toThrow();
+});
+
+it('reads quotes without the entity factory wrapped by Gallery, but does not permit catalog reads', async () => {
+  const f = fixture();
+  f.root.UTItemEntityFactory.prototype.createItem = () => { throw new Error('factory must not be used for quotes'); };
+  const transport = await createFc27MarketReadTransport(f.root, { maxRequests: 1, quotesOnly: true });
+  await expect(transport.readCatalogPage(catalogQuery)).rejects.toThrow('CATALOG_DISABLED');
+  expect(await transport.readQuotePage(quoteQuery)).toMatchObject({ price: 450, definitionId: 101 });
+  expect(f.calls).toHaveLength(1);
+  await expect((await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery)).rejects.toThrow();
+});
+
+it('ignores factory hydration after quotes-only creation while still rejecting quote dependency drift', async () => {
+  const f = fixture();
+  const transport = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  f.root.UTItemEntityFactory.prototype.createItem = () => {};
+  expect(await transport.readQuotePage(quoteQuery)).toMatchObject({ price: 450 });
+  f.root.UTHttpRequest.prototype.send = () => {};
+  await expect(transport.readQuotePage(quoteQuery)).rejects.toThrow('RUNTIME_CHANGED');
+  expect(f.calls).toHaveLength(1);
+});
+
+it('compares a Gallery card after the real collection reader installs its factory hook', async () => {
+  const f = fixture(currentHashes), original = f.root.UTItemEntityFactory.prototype.createItem;
+  const reader = createFc27GalleryProgressReader(f.root);
+  try {
+    expect(f.root.UTItemEntityFactory.prototype.createItem).not.toBe(original);
+    const service = createGalleryMarketComparison({ scope: reader.scope,
+      createTransport: options => createFc27MarketReadTransport(f.root, options) });
+    expect(await service.compare(101)).toMatchObject({ status: 'observed', price: 450, executable: false });
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0].url).toMatch(/\/transfermarket$/);
+    expect(f.forbidden).not.toHaveBeenCalled();
+  } finally { reader.dispose(); }
+  expect(f.root.UTItemEntityFactory.prototype.createItem).toBe(original);
+});
+
+it('reads Puzzle catalog data through the reviewed factory beneath the FCAT observer', async () => {
+  const f = fixture(currentHashes);
+  const reader = createFc27GalleryProgressReader(f.root);
+  try {
+    const wrapped = f.root.UTItemEntityFactory.prototype.createItem;
+    const transport = await createFc27MarketReadTransport(f.root);
+    expect(await transport.readCatalogPage(catalogQuery)).toMatchObject({ entries: [{ definitionId: 101, rating: 70 }] });
+    expect(f.root.UTItemEntityFactory.prototype.createItem).toBe(wrapped);
+    expect(f.calls).toHaveLength(1);
+    f.root.UTItemEntityFactory.prototype.createItem = function() { return {}; };
+    await expect(transport.readCatalogPage(catalogQuery)).rejects.toThrow('RUNTIME_CHANGED');
+    expect(f.calls).toHaveLength(1);
+  } finally { reader.dispose(); }
+});
+
+it('uses EA generateItemsFromItemData for catalog hydration', async () => {
+  const f = fixture(currentHashes);
+  const factory = f.root.factories.Item;
+  const native = factory.generateItemsFromItemData;
+  const calls = [];
+  factory.generateItemsFromItemData = function(rows, duplicates) {
+    calls.push({ rows, duplicates });
+    return native.call(this, rows, duplicates);
+  };
+  // The test wrapper changes the inspected function identity, so provide its
+  // reviewed digest while retaining the runtime identity guard contract.
+  const originalDigest = f.root.crypto.subtle.digest;
+  f.root.crypto.subtle.digest = async (algorithm, bytes) => {
+    if (new TextDecoder().decode(bytes) === Function.prototype.toString.call(factory.generateItemsFromItemData)) {
+      return Uint8Array.from('6147c9f404a3638daa032c5ab89818f0856e56f7bb7192ae4e7a0ca988e5ce72'.match(/../g).map(pair => parseInt(pair, 16))).buffer;
+    }
+    return originalDigest(algorithm, bytes);
+  };
+  const result = await (await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery);
+  expect(result.entries).toHaveLength(1);
+  expect(calls).toHaveLength(1);
+  expect(calls[0].rows[0].resourceId).toBe(101);
+});
+
+it('accepts public catalog entities without an owned item id or with concept state', async () => {
+  const f = fixture();
+  f.catalog.itemData = [{ resourceId: 101, itemType: 'player' }];
+  f.control.entity = { concept: true };
+  const result = await (await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery);
+  expect(result.entries[0]).toMatchObject({ definitionId: 101, rating: 70 });
+});
+
+it('rejects invalid factory output beneath the FCAT observer and stops further reads', async () => {
+  const f = fixture(currentHashes);
+  f.root.UTItemEntityFactory.prototype.createItem = function() { return {}; };
+  const reader = createFc27GalleryProgressReader(f.root);
+  try {
+    const transport = await createFc27MarketReadTransport(f.root);
+    await expect(transport.readCatalogPage(catalogQuery)).rejects.toThrow('ENTITY_UNVERIFIED');
+    await expect(transport.readCatalogPage(catalogQuery)).rejects.toThrow('READ_BLOCKED');
+    expect(f.calls).toHaveLength(1);
+  } finally { reader.dispose(); }
+});
+
+it.each([false, true])('accepts an external metadata wrapper, including FCAT observation above it (%s)', async observed => {
+  const f = fixture(currentHashes), original = f.root.UTItemEntityFactory.prototype.createItem;
+  f.root.UTItemEntityFactory.prototype.createItem = function(raw) {
+    return Object.assign(original.call(this, raw), { gradingScore: 123, isCollected: false });
+  };
+  const reader = observed ? createFc27GalleryProgressReader(f.root) : null;
+  try {
+    const transport = await createFc27MarketReadTransport(f.root);
+    expect(f.calls).toHaveLength(0);
+    expect(await transport.readCatalogPage(catalogQuery)).toMatchObject({ entries: [{ definitionId: 101, rating: 70 }] });
+    expect(f.calls).toHaveLength(1);
+    expect(f.forbidden).not.toHaveBeenCalled();
+  } finally { reader?.dispose(); }
+});
+
+it.each([{ id: 2 }, { definitionId: 999 }, { type: 'manager' }])('rejects incorrect external factory identity %j', async patch => {
+  const f = fixture(), original = f.root.UTItemEntityFactory.prototype.createItem;
+  f.root.UTItemEntityFactory.prototype.createItem = function(raw) { return { ...original.call(this, raw), ...patch }; };
+  await expect((await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery)).rejects.toThrow('ENTITY_UNVERIFIED');
+});
 
 it('hydrates display names by exact public asset identity without calling a repository method', () => {
   const root = {ItemIdMask:{DATABASE:0xffffff},repositories:{Item:{staticData:{_collection:{

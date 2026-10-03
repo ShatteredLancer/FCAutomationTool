@@ -49,6 +49,20 @@ it('queries only proven replacement versions, preserves untradeable-only, and re
   expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(1);
 });
 
+it('reports catalog, search and completed quote counters on real awaits and cached reads', async () => {
+  const x = fixture(); const progress = [];
+  const result = await x.session.plan(x.input, { onProgress: value => progress.push(value) });
+  expect(result.status).toBe('suggested');
+  expect(progress).toEqual(expect.arrayContaining([
+    expect.objectContaining({ phase: 'catalog-read', catalogPages: 1, catalogCandidates: 1 }),
+    expect.objectContaining({ phase: 'local-market-search', nodes: expect.any(Number), maxNodes: 20000 }),
+    expect.objectContaining({ phase: 'quote-read', quoteCompleted: 1, quoteTotal: 1, requests: 2 }),
+  ]));
+  const cached = [];
+  expect((await x.session.plan(x.input, { onProgress: value => cached.push(value) })).requests).toBe(0);
+  expect(cached.at(-1)).toMatchObject({ quoteCompleted: 1, quoteTotal: 1, requests: 0, cacheHits: 2 });
+});
+
 it('focuses the next catalog page from observed clubs and reuses the complete route on another click', async () => {
   const x = fixture(); x.input.inventory.items = [];
   x.input.challenge.rawRequirements = [
@@ -78,6 +92,29 @@ it('persists a rate limit and never automatically retries it on another click', 
   expect(await x.session.plan(x.input)).toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_HTTP_429' });
   expect(await createFc27PuzzleProcurementSession(x.options).plan(x.input)).toMatchObject({ requests: 0, reason: 'FC27_MARKET_HTTP_429' });
   expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(1);
+});
+
+it.each(['FC27_MARKET_METHOD_0_CHANGED', 'FC27_MARKET_METHOD_7_MISSING'])('re-probes cached %s on the next explicit action', async reason => {
+  const x = fixture();
+  x.options.createTransport.mockRejectedValueOnce(new Error(reason));
+  expect(await x.session.plan(x.input)).toMatchObject({ status: 'blocked', reason, requests: 0 });
+  x.transport.readCatalogPage.mockImplementationOnce(async query => ({ status: 'observed', season: '27', source: 'ea-defid',
+    query, observedAt: x.now, entries: [{ definitionId: 901, rating: 60, rarity: 0, nationId: 1, leagueId: 1,
+      teamId: 11, positions: [5], groups: [], special: false, evolution: false, cosmetic: false }] }));
+  expect(await createFc27PuzzleProcurementSession(x.options).plan(x.input)).toMatchObject({ status: 'suggested', requests: 2,
+    diagnostics: { failureSource: null } });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(1);
+});
+
+it('checks a still-unknown runtime only once per explicit click without sending a request', async () => {
+  const x = fixture();
+  x.options.createTransport.mockRejectedValue(new Error('FC27_MARKET_METHOD_0_CHANGED'));
+  for (let i = 0; i < 2; i++) {
+    expect(await x.session.plan(x.input)).toMatchObject({ reason: 'FC27_MARKET_METHOD_0_CHANGED', requests: 0 });
+    expect(x.options.createTransport).toHaveBeenCalledTimes(i + 1);
+  }
+  expect(x.transport.readCatalogPage).not.toHaveBeenCalled();
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
 });
 
 it.each(['catalog', 'quote'])('recovers a cached %s 401 on a later action, retaining successful data', async kind => {
@@ -125,6 +162,19 @@ it('recovers legacy 401 records without clearing journals and stops after one fr
   });
   expect(x.transport.readQuotePage).toHaveBeenCalledTimes(2);
   expect(x.cache.get('unrelated-journal')).toEqual(journal);
+});
+
+it('retries a cached market entity failure after the reviewed factory chain changes', async () => {
+  const x = fixture();
+  await x.session.plan(x.input);
+  const key = [...x.cache.keys()].find(value => value.includes(':catalog:'));
+  const old = x.cache.get(key);
+  x.cache.set(key, { schema: 1, kind: old.kind, query: old.query, at: x.now - 1000,
+    state: 'blocked', reason: 'FC27_MARKET_ENTITY_UNVERIFIED' });
+  const result = await createFc27PuzzleProcurementSession(x.options).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', requests: 1,
+    diagnostics: { failureSource: null, catalogAttempts: 1 } });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
 });
 
 it.each(['pending', 'unknown', '403', '429', '500'])('does not renew %s as an authentication failure', async state => {

@@ -1,4 +1,30 @@
 const stageText = { planning: '正在解题…', procurement: '正在计算补卡方案并查询候选报价…', validating: '正在复核材料…', saving: '正在填阵保存…', verifying: '正在核验保存结果…', recovering: '正在核对已保存阵容并恢复显示…' };
+const progressCount = value => Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString() : '?';
+export const formatFc27PuzzleProgress = progress => {
+  if (typeof progress === 'string') return stageText[progress] ?? '正在处理…';
+  if (!progress || typeof progress !== 'object') return '正在处理…';
+  const procurementPhases = { 'repair-seed': '正在寻找补卡起点…', 'query-planning': '正在规划卡池查询…',
+    'catalog-read': '正在读取候选卡池…', 'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
+  const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
+  const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);
+  const lines = [hasBudget ? `${stage}\n节点 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
+  const search = progress.search;
+  if (search && typeof search === 'object') {
+    const parts = [['combinationNodes', '组合'], ['placementNodes', '阵位'], ['evaluations', '评估'], ['bounds', '剪枝']]
+      .filter(([key]) => Number.isSafeInteger(search[key])).map(([key, label]) => `${label} ${progressCount(search[key])}`);
+    if (parts.length) lines.push(parts.join(' · '));
+  }
+  const candidates = progress.safeCandidates ?? progress.marketCandidates;
+  if (Number.isSafeInteger(candidates)) lines.push(`候选 ${progressCount(candidates)} 人`);
+  if (Number.isSafeInteger(progress.attempts) && Number.isSafeInteger(progress.attempt)) {
+    lines.push(`策略 ${progress.attempt} / ${progress.attempts}`);
+  }
+  if (Number.isSafeInteger(progress.checks) && !search) lines.push(`评估 ${progressCount(progress.checks)} / ${progressCount(progress.maxNodes)}`);
+  if (Number.isSafeInteger(progress.catalogPages)) lines.push(`卡池 ${progressCount(progress.catalogPages)} / ${progressCount(progress.catalogTotal)} 页 · ${progressCount(progress.catalogCandidates)} 个版本`);
+  if (progress.phase === 'quote-read') lines.push(`报价 ${progressCount(progress.quoteCompleted)} / ${progressCount(progress.quoteTotal)}`);
+  if (Number.isSafeInteger(progress.requests)) lines.push(`请求 ${progressCount(progress.requests)} · 缓存 ${progressCount(progress.cacheHits)}`);
+  return lines.join('\n');
+};
 const sameTarget = (a, b) => !!(a && b && a.setId === b.setId && a.challengeId === b.challengeId && a.anchor === b.anchor);
 const resultText = result => {
   if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
@@ -63,7 +89,9 @@ export function formatFc27PuzzleNativeResult(result) {
   const purchase = result?.purchaseSuggestion;
   if (purchase?.status !== 'blocked') return message;
   const reason = code(purchase.reason);
-  const lines = [message, `补卡：${purchaseReasons[reason] ?? '规划未完成'}${reason ? `（${reason}）` : ''}。`];
+  const runtimeFailure = /^FC27_MARKET_METHOD_\d+_(?:MISSING|CHANGED)$/.test(reason);
+  const explanation = runtimeFailure ? '市场运行时方法兼容性检查失败，未发送 EA 市场请求' : purchaseReasons[reason] ?? '规划未完成';
+  const lines = [message, `补卡：${explanation}${reason ? `（${reason}）` : ''}。`];
   if (Object.hasOwn(purchase, 'quoteCeiling')) lines.push(purchase.quoteCeiling === null
     ? '单卡报价：不限。' : `单卡报价上限：${countText(purchase.quoteCeiling)} 金币。`);
   const inventory = result.plan;
@@ -76,6 +104,9 @@ export function formatFc27PuzzleNativeResult(result) {
       lines.push(`确认 Web App 已正常登录后，请等待 ${d.retryAfterSeconds} 秒，再次点击“FCAT 解题填充”；只重查失败项，成功资料继续复用（过期则更新），不会自动循环重试。`);
     }
     if (Number.isSafeInteger(d.eaCode) && d.eaCode >= 0 && d.eaCode <= 0x7fffffff) lines.push(`EA 错误码：${d.eaCode}。`);
+    if (runtimeFailure) {
+      lines.push('这是运行时兼容性检查失败，不是库存无解；本次没有发送市场请求。刷新 Web App 后再次点击可重新探测。');
+    }
     const stage = ({ 'repair-seed': '寻找库存基础阵容', 'query-planning': '规划资料查询',
       'catalog-read': '读取球员资料', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
     const route = ({ repair: '局部替换 1–2 张', joint: '库存与候选联合求解' })[d.route] ?? '尚未确定';
@@ -116,10 +147,11 @@ export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
     if (!sameTarget(next, target)) { update(); return; }
     const origin = { ...next };
     const isCurrent = () => !disposed && origin.anchor.isConnected && sameTarget(read(), origin);
-    const onProgress = stage => {
+    const onProgress = progress => {
       if (!isCurrent()) return;
-      status.hidden = false; status.textContent = stageText[stage] ?? '正在处理…';
+      status.hidden = false; status.textContent = formatFc27PuzzleProgress(progress);
     };
+    onProgress.wantsPuzzleProgress = true;
     busy = true; button.disabled = true; button.textContent = 'FCAT 正在填充…';
     onProgress('planning');
     try {

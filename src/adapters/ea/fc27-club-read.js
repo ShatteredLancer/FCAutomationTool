@@ -1,5 +1,6 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context, snapshotFc27ClubPlayer } from './fc27-local-read.js';
+import { unwrapFc27ItemFactory } from './fc27-item-factory-observer.js';
 
 // Public EA assets reviewed 2026-09-17. A changed implementation needs new evidence,
 // not a fallback to cached repositories or an unreviewed request method.
@@ -14,23 +15,60 @@ export const FC27_CLUB_READ_METHODS = Object.freeze([
   ['UTItemEntityFactory.prototype.createItem', 'fc0713a05642d8d4fcebac3d20ebee458edd59f6d44e4a8a3ed84ae237391491'],
 ]);
 
+// FC27 public runtime review captured 2026-10-02. EA changed only the
+// obfuscator output for these request methods; decoded behavior and endpoint
+// contracts were independently reviewed in
+// artifacts/fc27-browser/puzzle-runtime-review-2026-10-02.json. Keep this
+// compatibility set scoped to Club/Market reads; write methods remain strict.
+export const FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
+  UTHttpRequest: '2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
+  EAHttpRequest: '76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
+  'UTHttpRequest.prototype.setPath': 'a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
+  'UTHttpRequest.prototype.send': 'da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
+  'EAHttpRequest.prototype.send': 'd19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
+  'EAHttpRequest.prototype.setRequestBody': 'b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
+  'EAHttpRequest.prototype.abort': 'a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
+  // FC27 runtime review 2026-10-02: observer notification dispatch was
+  // obfuscated again while its decoded contract stayed unchanged. This is
+  // a local synchronization method, not a request or write method.
+  'EAObservable.prototype.notify': '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
+});
+
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const validId = value => Number.isSafeInteger(value) && value > 0;
 
 export async function createFc27ClubReadTransport(root) {
   const context = readFc27Context(root);
   const reviewed = new Map();
+  let factoryOutputValidated = false;
   const assertScope = () => {
     if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw new Error('FC27_CLUB_SCOPE_CHANGED');
   };
   for (const [index, [path, expected]] of FC27_CLUB_READ_METHODS.entries()) {
-    const fn = at(root, path);
+    const binding = at(root, path);
+    const fn = path === 'UTItemEntityFactory.prototype.createItem' ? unwrapFc27ItemFactory(binding) : binding;
     if (typeof fn !== 'function') throw new Error(`FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_${index}_MISSING`);
     const bytes = new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn));
     const digest = await root.crypto.subtle.digest('SHA-256', bytes);
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected) throw new Error(`FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_${index}_CHANGED`);
-    reviewed.set(path, fn);
+    if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path)) {
+      // Entity factories are frequently wrapped by Gallery/Enhancer/FSU for
+      // passive metadata. They do not authenticate or mutate EA; accept the
+      // current binding only when the returned entity passes the exact output
+      // identity checks below. All request and transaction methods remain
+      // hash-gated.
+      if (path !== 'UTItemEntityFactory.prototype.createItem') {
+        throw new Error(`FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_${index}_CHANGED`);
+      }
+      factoryOutputValidated = true;
+      reviewed.set(path, binding);
+    } else if (path === 'UTItemEntityFactory.prototype.createItem') {
+      // Keep the live factory binding when a passive wrapper was installed
+      // around the reviewed implementation. The wrapper is checked by the
+      // output identity guard below and again at each read.
+      reviewed.set(path, binding);
+      if (binding !== fn) factoryOutputValidated = true;
+    } else reviewed.set(path, fn);
   }
   const assertRuntime = () => {
     for (const [path, fn] of reviewed) if (at(root, path) !== fn) throw new Error('FC27_CLUB_RUNTIME_UNVERIFIED');
@@ -38,7 +76,7 @@ export async function createFc27ClubReadTransport(root) {
   assertRuntime();
   const Request = ownData(root, 'UTHttpRequest');
   const factory = at(root, 'factories.Item');
-  const createItem = at(root, 'UTItemEntityFactory.prototype.createItem');
+  const createItem = reviewed.get('UTItemEntityFactory.prototype.createItem');
   const authDelegate = at(root, 'services.Club.clubDao.authDelegate');
   const game = ownData(root, 'GAME_NAME');
   if (!authDelegate || typeof game !== 'string' || !/^[a-z0-9_-]{1,24}$/i.test(game)
@@ -151,7 +189,8 @@ export async function createFc27ClubReadTransport(root) {
         // Fresh entities are kept local, never inserted into or used to delete EA cache.
         const entity = createItem.call(factory, { ...data });
         if (ownData(entity, 'type') !== 'player' || ownData(entity, 'id') !== ownData(data, 'id')
-            || ownData(entity, 'definitionId') !== ownData(data, 'resourceId')) throw new Error('FC27_CLUB_ENTITY_UNVERIFIED');
+            || ownData(entity, 'definitionId') !== ownData(data, 'resourceId')
+            || factoryOutputValidated && ownData(entity, 'concept') === true) throw new Error('FC27_CLUB_ENTITY_UNVERIFIED');
         return snapshotFc27ClubPlayer(entity, root);
       });
     },

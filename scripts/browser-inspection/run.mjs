@@ -85,6 +85,8 @@ if (help) {
       await exerciseRunnerPanel(page, out);
       const { exercisePuzzleResultPanel } = await import('./puzzle-result-smoke.mjs');
       await exercisePuzzleResultPanel(page, out);
+      const { exercisePuzzleProgress } = await import('./puzzle-progress-smoke.mjs');
+      await exercisePuzzleProgress(context);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');
       await exerciseTraditionalPersistence(context, out);
       const { exerciseProductionLivePanel } = await import('./production-live-smoke.mjs');
@@ -95,6 +97,10 @@ if (help) {
       await exerciseGalleryCatalog(context, out);
       const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');
       await exerciseGalleryJoint(context, out);
+      const { exerciseGalleryReplan } = await import('./gallery-replan-smoke.mjs');
+      await exerciseGalleryReplan(context, out);
+      const { exerciseGalleryCostReplay } = await import('./gallery-cost-replay-smoke.mjs');
+      await exerciseGalleryCostReplay(context, out);
       const { exerciseGalleryTargets } = await import('./gallery-targets-smoke.mjs');
       await exerciseGalleryTargets(context, out);
       const { exerciseGallerySync } = await import('./gallery-sync-smoke.mjs');

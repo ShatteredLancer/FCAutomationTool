@@ -1,5 +1,18 @@
 import { expect, it } from 'vitest';
-import { formatFc27PuzzleNativeResult } from '../../src/adapters/browser/fc27-puzzle-native-button.js';
+import { formatFc27PuzzleNativeResult, formatFc27PuzzleProgress } from '../../src/adapters/browser/fc27-puzzle-native-button.js';
+
+it('shows live bounded search progress and stage counters', () => {
+  const text = formatFc27PuzzleProgress({ stage: 'planning', nodes: 12544, maxNodes: 50000,
+    safeCandidates: 237, search: { combinationNodes: 9210, placementNodes: 2876, evaluations: 458, bounds: 0 } });
+  expect(text).toContain('12,544 / 50,000');
+  expect(text).toContain('候选 237 人');
+  expect(text).toContain('组合 9,210');
+  expect(text).toContain('评估 458');
+});
+
+it('keeps old string stage progress compatible', () => {
+  expect(formatFc27PuzzleProgress('planning')).toContain('正在解题');
+});
 
 it('explains exhausted inventory and joint search without claiming no solution', () => {
   const text = formatFc27PuzzleNativeResult({ reason: 'FC27_PUZZLE_SEARCH_LIMIT',
@@ -32,6 +45,18 @@ it('keeps unknown diagnostics unknown and does not display arbitrary error text'
   const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE',
     purchaseSuggestion: { status: 'blocked', reason: '<script>secret</script>' } });
   expect(text).not.toContain('secret'); expect(text).not.toContain('候选 0');
+});
+
+it('distinguishes a market runtime fingerprint stop from a puzzle shortage', () => {
+  const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE', purchaseSuggestion: {
+    status: 'blocked', reason: 'FC27_MARKET_METHOD_0_CHANGED',
+    diagnostics: { stage: 'query-planning', route: 'joint', catalogPages: 0, catalogCandidates: 0,
+      usableCandidates: null, catalogAttempts: 0, quoteAttempts: 0, cacheHits: 0 },
+  } });
+  expect(text).toContain('FC27_MARKET_METHOD_0_CHANGED');
+  expect(text).toContain('未发送 EA 市场请求');
+  expect(text).toContain('不是库存无解');
+  expect(text).not.toContain('补卡：规划未完成');
 });
 
 it('preserves the verified save message', () => {

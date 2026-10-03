@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { FC27_CLUB_READ_METHODS, createFc27ClubReadTransport } from '../../src/adapters/ea/fc27-club-read.js';
+import { observeFc27ItemFactory } from '../../src/adapters/ea/fc27-item-factory-observer.js';
 
 function fixture() {
   const calls = [];
@@ -54,6 +55,27 @@ it('uses an owned native request, disables retries and exports fresh count only'
   expect(transport.getRequestCount()).toBe(1);
 });
 
+it('accepts the reviewed FC27-27 current request runtime compatibility set', async () => {
+  const { root } = fixture();
+  const current = [
+    '2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
+    '76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
+    'a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
+    'da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
+    'd19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
+    'b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
+    'a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
+  ];
+  const sourceToHash = new Map(FC27_CLUB_READ_METHODS.slice(0, 7).map(([path], index) => [
+    Function.prototype.toString.call(path.split('.').reduce((object, key) => object[key], root)), current[index],
+  ]));
+  root.crypto.subtle.digest = vi.fn(async (_algo, bytes) => {
+    const hash = sourceToHash.get(new TextDecoder().decode(bytes)) ?? '0'.repeat(64);
+    return Uint8Array.from(hash.match(/../g).map(pair => parseInt(pair, 16))).buffer;
+  });
+  await expect(createFc27ClubReadTransport(root)).resolves.toBeTruthy();
+});
+
 it('posts only fixed Club search fields and materializes only the exact response entities', async () => {
   const { root, response, calls } = fixture();
   response.response = { itemData: [{ id: 1, resourceId: 101, itemType: 'player' }] };
@@ -70,6 +92,30 @@ it('blocks unreviewed methods before network and detects replacement after valid
   await expect(createFc27ClubReadTransport(root)).rejects.toThrow('RUNTIME_UNVERIFIED');
   await expect(transport.readCount()).rejects.toThrow('RUNTIME_UNVERIFIED');
   expect(calls).toEqual([]);
+});
+
+it.each(['fcat', 'external', 'both'])('reads exact Club entities with a %s factory wrapper', async kind => {
+  const { root, response, calls } = fixture();
+  response.response = { itemData: [{ id: 1, resourceId: 101, itemType: 'player' }] };
+  const proto = root.UTItemEntityFactory.prototype, original = proto.createItem;
+  if (kind !== 'fcat') proto.createItem = function(raw) { return { ...original.call(this, raw), gradingScore: 20 }; };
+  if (kind !== 'external') proto.createItem = observeFc27ItemFactory(proto.createItem, () => {});
+  const transport = await createFc27ClubReadTransport(root);
+  expect(await transport.readPage({ start: 0, count: 20, definitionIds: [101] }))
+    .toMatchObject([{ id: 1, definitionId: 101, concept: false }]);
+  proto.createItem = function() {};
+  await expect(transport.readCount()).rejects.toThrow('RUNTIME_UNVERIFIED');
+  expect(calls.filter(call => typeof call === 'object')).toHaveLength(1);
+});
+
+it.each([{ id: 2 }, { definitionId: 999 }, { type: 'manager' }, { concept: true }])
+('rejects altered owned-card identity from an external wrapper %j', async patch => {
+  const { root, response } = fixture();
+  response.response = { itemData: [{ id: 1, resourceId: 101, itemType: 'player' }] };
+  const original = root.UTItemEntityFactory.prototype.createItem;
+  root.UTItemEntityFactory.prototype.createItem = function(raw) { return { ...original.call(this, raw), ...patch }; };
+  await expect((await createFc27ClubReadTransport(root)).readPage({ start: 0, count: 20, definitionIds: [101] }))
+    .rejects.toThrow('ENTITY_UNVERIFIED');
 });
 
 it.each([304, 401, 429, 500])('refuses status %s without retry or fallback', async status => {

@@ -15,6 +15,10 @@ const summary = record => {
   return { total: entries.length, purchased: acquired.length, completed: entries.filter(entry => ['club', 'collected'].includes(entry.state)).length,
     spent: acquired.reduce((sum, entry) => sum + (entry.price ?? 0), 0) };
 };
+const itemResults = record => (record?.entries ?? []).map((entry, index) => ({ definitionId: entry.definitionId,
+  name: record?.plan?.[index]?.name ?? '', state: entry.state,
+  price: !['waiting', 'collected', 'buy-pending'].includes(entry.state) ? entry.price : null,
+  reason: record.lastResult?.failures?.find(row => row.definitionId === entry.definitionId)?.reason ?? null }));
 function validate(record, scope, context) {
   if (!record || record.schema !== 1 || record.scope !== scope || !same(record.context, context)
       || typeof record.operationId !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId)
@@ -34,7 +38,7 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
     async inspect() { try { assertCurrent(); const record = await get(key, null); assertCurrent();
       if (!record) return { status: 'absent' }; validate(record, scope, context);
       return { status: 'observed', recovery: pending(record), remaining: record.entries.filter(entry => entry.state === 'waiting').length,
-        operationId: record.operationId, collection: record.collection, ...summary(record) };
+        operationId: record.operationId, collection: record.collection, results: itemResults(record), ...summary(record) };
     } catch (error) { return { status: 'blocked', reason: safeReason(error) }; } },
     async execute({ items, binding, resume = false, expectedOperationId = null, budget = null, quoteCeiling = null, approved = false } = {}) {
       if (approved !== true || !resume && (!Array.isArray(items) || !items.length || items.length > 256 || typeof binding !== 'string' || !binding || binding.length > 12000)
@@ -77,7 +81,7 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
                 report('search', entry); const found = await adapter.find(entry.definitionId, quoteCeiling ?? Infinity);
                 if (!found || found.unavailable) { failures.push({ definitionId: entry.definitionId, reason: found?.reason ?? 'FC27_GALLERY_NO_LISTING' }); report('failed', entry); continue; }
                 if (!quote(found, entry.definitionId) || quoteCeiling !== null && found.price > quoteCeiling) throw new Error('FC27_BUY_QUOTE_UNVERIFIED');
-                if (budget !== null && summary(record).spent + found.price > budget) { failures.push({ definitionId: entry.definitionId, reason: 'FC27_GALLERY_BUDGET_EXCEEDED' }); report('failed', entry); continue; }
+                if (budget !== null && summary(record).spent + found.price > budget) { failures.push({ definitionId: entry.definitionId, reason: 'FC27_GALLERY_BUDGET_EXCEEDED', observedPrice: found.price }); report('failed', entry); continue; }
                 assertCurrent(); await adapter.verifyCurrent(record);
                 if (shouldStop()) { stopReason = 'FC27_GALLERY_PURCHASE_STOPPED'; break; }
                 Object.assign(entry, found, { state: 'buy-pending' }); await mark();
@@ -100,16 +104,16 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
             if (stopReason) break;
           }
           record.lastResult = { reason: stopReason ?? failures[0]?.reason ?? 'FC27_GALLERY_PURCHASE_COMPLETED', failures }; await save();
-          if (pending(record)) return { status: 'recovery-required', ...record.lastResult, ...summary(record) };
+          if (pending(record)) return { status: 'recovery-required', ...record.lastResult, results: itemResults(record), ...summary(record) };
           try { record.collection = await adapter.confirmCollection(record.entries.filter(entry => ['club', 'collected'].includes(entry.state)).map(entry => entry.definitionId)); }
           catch (error) { record.collection = { status: 'pending', reason: safeReason(error) }; }
           assertCurrent(); await save();
           if (record.collection?.status === 'confirmed' || summary(record).spent === 0) await write(pendingKey, null);
           else await write(pendingKey, { schema: 1, operationId: record.operationId });
-          return { status: record.entries.every(entry => ['club', 'collected'].includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, ...summary(record), collection: record.collection, submitted: false };
+          return { status: record.entries.every(entry => ['club', 'collected'].includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, results: itemResults(record), ...summary(record), collection: record.collection, submitted: false };
         });
         return result ?? { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };
-      } catch (error) { return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), ...summary(record) }; }
+      } catch (error) { return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), results: itemResults(record), ...summary(record) }; }
       finally { adapter?.cancel?.(); }
     },
   });

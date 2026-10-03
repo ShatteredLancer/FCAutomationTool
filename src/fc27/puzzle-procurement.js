@@ -1,4 +1,5 @@
-import { previewFc27PuzzleSquad, searchFc27PuzzleCandidates } from './puzzle-preview.js';
+import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
+  finishPuzzleSearch, finishPuzzleSearchCooperatively } from './puzzle-preview.js';
 import { planFc27MarketQueryRoute } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
@@ -20,17 +21,29 @@ const validSeed = (input, seed) => seeds.get(seed) === signature(input);
 // A search anchor is explicitly NOT an eligible squad or a fill plan. Relax
 // only a detached chemistry minimum to locate a near-solution; preserve the
 // actual Challenge and every material/quality rule for candidate verification.
-export function findFc27PuzzleRepairSeed(input) {
+export const findFc27PuzzleRepairSeed = (input, onProgress) => finishPuzzleSearch(iterateRepairSeed(input, onProgress));
+export const findFc27PuzzleRepairSeedCooperatively = (input, onProgress, options) =>
+  finishPuzzleSearchCooperatively(iterateRepairSeed(input, onProgress), options);
+function* iterateRepairSeed(input, onProgress = null) {
   const parsed = parseFc27SbcRequirements(input?.challenge?.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
   const chemistry = parsed.rules.filter(rule => rule.kind.endsWith('-chemistry'));
   if (chemistry.length !== 1 || chemistry[0].kind !== 'min-chemistry') return stop('FC27_PURCHASE_REPAIR_SEED_UNAVAILABLE');
   const original = chemistry[0].value;
-  for (let difference = 1; difference <= Math.min(4, original); difference++) {
+  // Prefer a near-complete anchor as before, but share one 50k budget instead
+  // of repeating four full 50k searches. A weaker anchor may require more than
+  // the repair route's two replacements, so do not jump directly to minus four.
+  const differences = Array.from({ length: Math.max(1, Math.min(4, original)) }, (_, index) => Math.min(index + 1, original));
+  let nodes = 0;
+  for (const [attempt, difference] of differences.entries()) {
     const challenge = structuredClone(input.challenge);
     const index = parsed.rules.indexOf(chemistry[0]);
     challenge.rawRequirements[index].pairs[0].values = [original - difference];
-    const preview = previewFc27PuzzleSquad({ ...input, challenge, maxNodes: 50000 });
+    const maxNodes = Math.floor((50000 - nodes) / (differences.length - attempt));
+    const preview = yield* iterateFc27PuzzleSquad({ ...input, challenge, maxNodes,
+      onProgress: typeof onProgress === 'function' ? value => onProgress({ ...value,
+        nodes: nodes + value.nodes, maxNodes: 50000, repairAttempt: attempt + 1, repairAttempts: differences.length }) : null });
+    nodes += preview.nodes ?? 0;
     if (preview.status !== 'preview') continue;
     const squad = Array(input.challenge.slotCount).fill(null);
     for (const ref of preview.selected) squad[ref.slot] = { ...structuredClone(input.inventory.items.find(item => item.id === ref.id)), slot: ref.slot };
@@ -69,7 +82,11 @@ export function planFc27PuzzleRepairQueries(input, seed) {
 // Owned cards continue through the unchanged untradeable-only safety filter.
 // A resulting suggestion still needs exact purchase/material approval and a
 // new inventory plan; it cannot be passed to the save transaction.
-export function suggestFc27PuzzlePurchases(input, seed, entries, { maxChecks = 20000 } = {}) {
+export const suggestFc27PuzzlePurchases = (input, seed, entries, options) =>
+  finishPuzzleSearch(iteratePurchases(input, seed, entries, options));
+export const suggestFc27PuzzlePurchasesCooperatively = (input, seed, entries, options) =>
+  finishPuzzleSearchCooperatively(iteratePurchases(input, seed, entries, options), options);
+function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress = null } = {}) {
   if (!validSeed(input, seed)) return stop('FC27_PURCHASE_REPAIR_INPUTS_CHANGED');
   if (!Array.isArray(entries) || entries.length > 60 || !Number.isInteger(maxChecks) || maxChecks < 1 || maxChecks > 50000) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   const pool = poolOf(input);
@@ -81,10 +98,18 @@ export function suggestFc27PuzzlePurchases(input, seed, entries, { maxChecks = 2
   const material = puzzleMaterialRules(parsed.rules, required(input));
   const candidates = marketCandidates(input, entries);
   const slots = seed.squad.flatMap((item, index) => item ? [index] : []);
-  const plans = []; const combinations = new Set(); let checks = 0;
+  const plans = []; const combinations = new Set(); let checks = 0; let lastProgressAt = 0;
+  const reportProgress = (force = false) => {
+    if (typeof onProgress !== 'function') return;
+    const now = Date.now();
+    if (!force && (checks % 256 !== 0 || now - lastProgressAt < 100)) return;
+    lastProgressAt = now;
+    try { onProgress({ phase: 'local-market-search', nodes: checks, maxNodes: maxChecks,
+      checks, marketCandidates: candidates.length }); } catch { /* Presentation cannot affect planning. */ }
+  };
   const assess = squad => {
     if (checks >= maxChecks) return;
-    checks++;
+    checks++; reportProgress();
     const players = squad.filter(Boolean);
     if (new Set(players.map(item => item.definitionId)).size !== players.length) return;
     if (material.length && matchFc27SbcRequirements({ requirements: material, squad: players }).status !== 'satisfied') return;
@@ -104,6 +129,7 @@ export function suggestFc27PuzzlePurchases(input, seed, entries, { maxChecks = 2
     const squad = seed.squad.slice();
     squad[removed] = squad[target]; squad[target] = card;
     assess(squad);
+    yield;
   }
   // Only search two-card substitutions when one-card substitutions failed.
   // A bounded sample never proves a globally minimal purchase count.
@@ -111,8 +137,10 @@ export function suggestFc27PuzzlePurchases(input, seed, entries, { maxChecks = 2
     for (const first of slots) for (const second of slots) {
       if (first === second || checks >= maxChecks) continue;
       const squad = seed.squad.slice(); squad[first] = candidates[a]; squad[second] = candidates[b]; assess(squad);
+      yield;
     }
   }
+  reportProgress(true);
   plans.sort((a, b) => a.purchaseCount - b.purchaseCount || b.teamFacts.chemistry - a.teamFacts.chemistry
     || a.purchases.reduce((n, card) => n + card.rating, 0) - b.purchases.reduce((n, card) => n + card.rating, 0));
   return { status: plans.length ? 'suggested' : 'blocked', reason: plans.length ? 'FC27_PURCHASE_SUGGESTIONS_READY' : 'FC27_PURCHASE_REPAIR_NO_PLAN',
@@ -172,6 +200,25 @@ export function planFc27PuzzleShortageQueries(input, entries = []) {
     if (queries.length < 3 && !queries.some(existing => JSON.stringify(existing) === JSON.stringify(query))) queries.push(query);
   };
   const cappedClubs = parsed.rules.some(rule => rule.kind === 'distinct-clubs' && rule.mode !== 'min' && rule.value < required(input));
+  const chemistryNeeded = parsed.rules.some(rule => rule.kind === 'min-chemistry' && rule.value > 0);
+  const nations = parsed.rules.filter(rule => rule.kind === 'from-nations' && rule.mode === 'min' && rule.count > 0)
+    .flatMap(rule => rule.ids);
+  if (!cappedClubs && chemistryNeeded && tiers.length > 1 && nations.length) {
+    // All three old pages could be silver although eight bronze fillers were
+    // mandatory. Cover the required tiers around one existing national link,
+    // then widen its league. This is a bounded sample, never proof of no plan.
+    const ranked = [...new Set(nations)].map(nation => ({ nation,
+      items: pool.candidates.filter(item => item.nationId === nation && tiers.includes(levelOf(quality(item.rating)))) }))
+      .sort((a, b) => b.items.filter(item => levelOf(quality(item.rating)) === tiers[0]).length
+        - a.items.filter(item => levelOf(quality(item.rating)) === tiers[0]).length || b.items.length - a.items.length || a.nation - b.nation);
+    const anchor = ranked[0];
+    for (const level of tiers) add({ start: 0, count: 20, level, nation: anchor.nation });
+    const leagues = new Map();
+    for (const item of anchor.items) leagues.set(item.leagueId, (leagues.get(item.leagueId) ?? 0) + 1);
+    const league = [...leagues].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+    add({ start: 0, count: 20, level: tiers[0], ...(positive(league) ? { league } : {}) });
+    return { status: 'ready', executable: false, queries, complete: false };
+  }
   if (cappedClubs) {
     const resolveClub = createFc27ClubResolver(input.clubLinks);
     if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
@@ -211,7 +258,11 @@ export function planFc27PuzzleShortageQueries(input, entries = []) {
   return { status: 'ready', executable: false, queries, complete: false };
 }
 
-export function suggestFc27PuzzleJointPurchases(input, entries, { maxNodes = 50000 } = {}) {
+export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
+  finishPuzzleSearch(iterateJointPurchases(input, entries, options));
+export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
+  finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
+function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   const pool = poolOf(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
@@ -226,9 +277,9 @@ export function suggestFc27PuzzleJointPurchases(input, entries, { maxNodes = 500
     truncated: false, marketWideInfeasibilityProven: false };
   // Unit weights optimize number of missing versions, not invented coin prices.
   // Only versions in a complete valid solution are quoted by the session.
-  const result = searchFc27PuzzleCandidates({ ...input, maxNodes,
+  const result = yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes,
     pool: { ...pool, candidates: [...pool.candidates, ...market] },
-    procurement: { budget: required(input), maxPurchases: required(input), costOf: item => item.catalogRef ? 1 : 0 } });
+    procurement: { budget: required(input), maxPurchases: required(input), costOf: item => item.catalogRef ? 1 : 0 }, onProgress });
   if (result.status !== 'preview') return { ...stop(result.reason), marketCandidates: market.length,
     nodes: result.nodes ?? 0, truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT' };
   const squad = Array(input.challenge.slotCount).fill(null);

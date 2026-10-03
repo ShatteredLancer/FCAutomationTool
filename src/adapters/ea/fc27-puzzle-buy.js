@@ -13,6 +13,12 @@ export const FC27_BUY_SERVICE_METHODS = Object.freeze([
   ['bid', '998a2fe52b55da1fd5a4e96263dcefb153769ced27d093117af1e9bfac1e820a'],
   ['move', '021d1826feb561a8e66721559bc223b69346f51287f2993b4eadbb0c3bf353f4'],
 ]);
+// Public EA runtime captured 2026-10-03. Decoded bodies are identical to the
+// baseline after renaming obfuscated identifiers; no buy/move behavior changed.
+export const FC27_BUY_COMPATIBLE_HASHES = Object.freeze({
+  'service.bid': '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
+  'service.move': '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef',
+});
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const id = n => Number.isSafeInteger(n) && n > 0;
 const fail = reason => { throw new Error(reason); };
@@ -41,7 +47,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   const context = readFc27Context(root); const service = root.services.Item;
   const proto = Object.getPrototypeOf(service);
   const runtime = await verifyFc27Methods({ service: proto, crypto: root.crypto },
-    FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [`service.${name}`, hash]));
+    FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [`service.${name}`, hash]), FC27_BUY_COMPATIBLE_HASHES);
   const functions = Object.fromEntries(['bid', 'move', 'searchTransferMarket', 'clearTransferMarketCache', 'requestUnassignedItems']
     .map(name => [name, service[name]]));
   if (Object.values(functions).some(fn => typeof fn !== 'function') || root.ItemPile.CLUB !== 7

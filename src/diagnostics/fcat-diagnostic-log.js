@@ -1,10 +1,15 @@
+import { createGalleryPlanReplay } from '../gallery/plan-replay.js';
+
 const DEFAULT_MAX_ENTRIES = 300;
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'status', 'reason', 'route']);
-const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'retryAt', 'durationMs',
-  'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck']);
+const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
+  'catalogAttempts', 'quoteAttempts', 'safeCandidates',
+  'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
+  'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount',
+  'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
@@ -16,9 +21,11 @@ function sanitizeEntry(input, now) {
   const at = now();
   if (!Number.isSafeInteger(at) || at < 0) return null;
   const entry = { at };
+  if (['service.bid', 'service.move'].includes(input.method)) entry.method = input.method;
+  if (typeof input.observedHash === 'string' && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
   for (const key of STRING_FIELDS) {
     const value = key === 'reason'
-      ? typeof input.reason === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|request-failed)$/.test(input.reason) ? input.reason : null
+      ? typeof input.reason === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input.reason) ? input.reason : null
       : boundedString(input[key]);
     if (value !== null) entry[key] = value;
   }
@@ -45,6 +52,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     throw new TypeError('FCAT_DIAGNOSTIC_LOG_INVALID');
   }
   let entries = [];
+  let planning = [];
   let loaded = false;
   let loading = null;
   let writing = Promise.resolve();
@@ -54,22 +62,30 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       const saved = await gmGetValue(key, null);
       if (saved?.schema === 1 && Array.isArray(saved.entries)) {
         entries = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
+        planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map(row => {
+          const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
+          return event && replay ? { event, replay } : null;
+        }).filter(Boolean);
       }
     } catch { /* Diagnostics are optional and must never block business actions. */ }
     loaded = true;
   })().finally(() => { loading = null; });
   const persist = () => {
     const payload = { schema: 1, product: 'FC Automation Tool', season: '27', version: version ?? null,
-      entries: entries.map(entry => ({ ...entry })) };
+      entries: entries.map(entry => ({ ...entry })), planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
   const record = input => {
-    let entry;
-    try { entry = sanitizeEntry({ ...input, version }, now); } catch { return Promise.resolve(false); }
+    let entry, replay;
+    try {
+      entry = sanitizeEntry({ ...input, version }, now);
+      if (input.area === 'gallery' && ['grade-plan', 'joint-plan'].includes(input.event)) replay = createGalleryPlanReplay(input.replayInput);
+    } catch { return Promise.resolve(false); }
     if (!entry) return Promise.resolve(false);
     writing = writing.then(async () => {
       await load();
       entries = [...entries, entry].slice(-maxEntries);
+      if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
       await persist();
     }).catch(() => undefined);
     return writing.then(() => true);
@@ -78,14 +94,16 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     await writing; await load();
     return entries.map(entry => ({ ...entry }));
   };
-  const exportPayload = async () => ({
+  const exportPayload = async () => {
+    const exportedEntries = await snapshot();
+    return {
     schema: 1,
     product: 'FC Automation Tool',
     season: '27',
     version: version ?? null,
     exportedAt: now(),
-    redaction: 'Only bounded event/status/count fields are included. URLs, response bodies, credentials, account identifiers and card objects are excluded.',
-    entries: await snapshot(),
-  });
+    redaction: 'Bounded events plus four Gallery planning replays (public version IDs, scoring attributes, ownership flags and quotes). URLs, credentials, account identifiers and raw card objects are excluded.',
+    entries: exportedEntries, planning: structuredClone(planning),
+  }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

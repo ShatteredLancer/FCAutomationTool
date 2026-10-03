@@ -1,18 +1,37 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { FC27_CLUB_READ_METHODS } from './fc27-club-read.js';
+import { unwrapFc27ItemFactory } from './fc27-item-factory-observer.js';
 import { MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 
 // Public FC27 sources reviewed 2026-09-26, captured 2026-09-17. No service
 // market search: its page cache can contain another caller's search results.
 export const FC27_MARKET_READ_METHODS = Object.freeze([
   ...FC27_CLUB_READ_METHODS,
+  ['factories.Item.generateItemsFromItemData', '6147c9f404a3638daa032c5ab89818f0856e56f7bb7192ae4e7a0ca988e5ce72'],
   ['UTItemDAO.prototype.searchConceptItems', '6d5080a272138db4e8ba514633e7678d43d065fde141d1cad0fa1246818aa788'],
   ['UTItemDAO.prototype.searchTransferMarket', '3894f730c0e1bbcf0ff8dc1f5290f35c21e8906fdcf6a6344714e66d0739d90e'],
   ['FCAuthenticationService.prototype.getIdentifier', '30d1c91b414f508725e07f81c0577e40308be93ea92925051b21740c2781dbc3'],
   ['Identification.prototype.handleRequest', '74627d97570009ea15aea10dd2ff26d4ac85c8eeaea55f53253b6d3f9bb0eb09'],
   ['Identification.prototype.handleResponse', 'cc4de06cc8696a4723f9539159c912c6d7cd4b7263ccaf7db9d7198b2f31ff01'],
 ]);
+// Public runtime reviewed 2026-10-02: decoded bodies are unchanged; only EA's
+// obfuscator identifiers/string indexes changed. Scope these hashes to Market
+// reads, not Club or write transactions. Evidence: market-runtime-review.mjs.
+const compatibleHashes = Object.freeze({
+  'UTHttpRequest': '2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
+  'EAHttpRequest': '76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
+  'UTHttpRequest.prototype.setPath': 'a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
+  'UTHttpRequest.prototype.send': 'da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
+  'EAHttpRequest.prototype.send': 'd19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
+  'EAHttpRequest.prototype.setRequestBody': 'b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
+  'EAHttpRequest.prototype.abort': 'a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
+  'UTItemDAO.prototype.searchConceptItems': 'edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc',
+  'UTItemDAO.prototype.searchTransferMarket': 'dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111',
+  'FCAuthenticationService.prototype.getIdentifier': '963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2',
+  'Identification.prototype.handleRequest': 'b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949',
+  'Identification.prototype.handleResponse': '2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4',
+});
 const at = (root, path) => path.split('.').reduce((v, key) => ownData(v, key), root);
 const valid = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
 const num = (v, min = 1, max = 1e9) => valid(v, min, max) ? v : null;
@@ -41,7 +60,8 @@ function numbers(value, limit, max) {
   return result.includes(null) || new Set(result).size !== result.length ? null : result;
 }
 function publicPlayer(entity, resourceId) {
-  if (ownData(entity, 'definitionId') !== resourceId || ownData(entity, 'type') !== 'player') throw error('ENTITY_UNVERIFIED');
+  if (ownData(entity, 'definitionId') !== resourceId) throw error('ENTITY_UNVERIFIED_DEFINITION_MISMATCH');
+  if (ownData(entity, 'type') !== 'player') throw error('ENTITY_UNVERIFIED_TYPE_MISMATCH');
   const get = key => ownData(entity, key);
   const rarity = num(get('_rareflag'), 0, 10000);
   const upgrades = get('upgrades');
@@ -62,6 +82,18 @@ function publicPlayer(entity, resourceId) {
     cosmetic: Array.isArray(cosmetics) && hyper && typeof hyper === 'object' && !Array.isArray(hyper)
       ? cosmetics.length > 0 || Object.getOwnPropertyNames(hyper).length > 0 : null };
 }
+const publicCatalogIdentityError = (entity, raw, definitionId) => {
+  if (ownData(entity, 'definitionId') !== definitionId) return error('ENTITY_UNVERIFIED_DEFINITION_MISMATCH');
+  if (ownData(entity, 'type') !== 'player') return error('ENTITY_UNVERIFIED_TYPE_MISMATCH');
+  // The public /defid endpoint returns database versions, not owned Club
+  // entities. Its item id is absent or a non-owned placeholder in some FC27
+  // responses, and the native factory may normalize that value. Enforce an id
+  // match only when both sides expose a real positive item identity.
+  const rawId = ownData(raw, 'id');
+  const entityId = ownData(entity, 'id');
+  if (num(rawId) !== null && num(entityId) !== null && rawId !== entityId) return error('ENTITY_UNVERIFIED_ID_MISMATCH');
+  return null;
+};
 function method(object, key) {
   for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
     const d = Object.getOwnPropertyDescriptor(object, key);
@@ -69,33 +101,54 @@ function method(object, key) {
   }
 }
 
-export async function createFc27MarketReadTransport(root, { maxRequests = 8 } = {}) {
-  if (!valid(maxRequests, 1, PUZZLE_MARKET_READ_LIMIT)) throw error('QUERY_INVALID');
+export async function createFc27MarketReadTransport(root, { maxRequests = 8, quotesOnly = false } = {}) {
+  if (!valid(maxRequests, 1, PUZZLE_MARKET_READ_LIMIT) || typeof quotesOnly !== 'boolean') throw error('QUERY_INVALID');
   const context = readFc27Context(root);
   const reviewed = new Map();
+  const bindings = new Map();
+  let factoryOutputValidated = false;
+  const marketFactory = quotesOnly ? null : at(root, 'factories.Item');
   for (const [index, [path, expected]] of FC27_MARKET_READ_METHODS.entries()) {
-    const fn = at(root, path);
+    if (quotesOnly && ['UTItemEntityFactory.prototype.createItem', 'factories.Item.generateItemsFromItemData',
+      'UTItemDAO.prototype.searchConceptItems'].includes(path)) continue;
+    const binding = path === 'factories.Item.generateItemsFromItemData'
+      ? method(marketFactory, 'generateItemsFromItemData') : at(root, path);
+    const fn = path === 'UTItemEntityFactory.prototype.createItem' ? unwrapFc27ItemFactory(binding) : binding;
     if (typeof fn !== 'function') throw error(`METHOD_${index}_MISSING`);
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected) throw error(`METHOD_${index}_CHANGED`);
-    reviewed.set(path, fn);
+    if (hash !== expected && hash !== ownData(compatibleHashes, path)) {
+      if (path !== 'UTItemEntityFactory.prototype.createItem') throw error(`METHOD_${index}_CHANGED`);
+      // Gallery/Enhancer/FSU may decorate EA's pure entity factory. Keep the
+      // live binding, then enforce exact output identity in materialize(); no
+      // request or write method is accepted by this fallback.
+      factoryOutputValidated = true;
+      reviewed.set(path, binding);
+    } else reviewed.set(path, fn);
+    bindings.set(path, binding);
   }
   const Request = at(root, 'UTHttpRequest');
   const auth = at(root, 'services.Item.itemDao.authDelegate');
-  const factory = at(root, 'factories.Item');
+  const factory = marketFactory;
+  const generateItems = quotesOnly ? null : reviewed.get('factories.Item.generateItemsFromItemData');
   const createItem = reviewed.get('UTItemEntityFactory.prototype.createItem');
   const identifier = ownData(auth, 'identification');
   const assertRuntime = () => {
     if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw error('SCOPE_CHANGED');
-    for (const [path, fn] of reviewed) if (at(root, path) !== fn) throw error('RUNTIME_CHANGED');
+    for (const [path, fn] of bindings) {
+      const current = path === 'factories.Item.generateItemsFromItemData'
+        ? method(factory, 'generateItemsFromItemData') : at(root, path);
+      if (current !== fn) throw error('RUNTIME_CHANGED');
+    }
     if (at(root, 'GAME_NAME') !== 'fc27' || at(root, 'HttpRequestMethod.GET') !== 'GET'
         || at(root, 'services.Item.itemDao.authDelegate') !== auth || !auth || !identifier
         || ownData(auth, 'identification') !== identifier
         || method(auth, 'getIdentifier') !== reviewed.get('FCAuthenticationService.prototype.getIdentifier')
         || method(identifier, 'handleRequest') !== reviewed.get('Identification.prototype.handleRequest')
         || method(identifier, 'handleResponse') !== reviewed.get('Identification.prototype.handleResponse')
-        || at(root, 'factories.Item') !== factory || method(factory, 'createItem') !== createItem) throw error('DEPENDENCIES_UNVERIFIED');
+        || !quotesOnly && (at(root, 'factories.Item') !== factory
+          || method(factory, 'createItem') !== bindings.get('UTItemEntityFactory.prototype.createItem')
+          || method(factory, 'generateItemsFromItemData') !== bindings.get('factories.Item.generateItemsFromItemData'))) throw error('DEPENDENCIES_UNVERIFIED');
   };
   assertRuntime();
   let busy = false; let stopped = false; let requests = 0; let lastRequestAt = null;
@@ -170,11 +223,30 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8 } = 
     const definitionId = num(ownData(raw, 'resourceId'), 1, Number.MAX_SAFE_INTEGER);
     if (definitionId === null || ![undefined, 'player'].includes(ownData(raw, 'itemType'))
         || ownData(raw, 'count') !== undefined || ownData(raw, 'cardassetid') !== undefined) throw error('PAYLOAD_UNVERIFIED');
-    return publicPlayer(createItem.call(factory, structuredClone(raw)), definitionId);
+    const source = structuredClone(raw);
+    let entity;
+    try {
+      // Match EA's native /defid path: generateItemsFromItemData owns the
+      // createItem call and applies the same consumable/entity normalization
+      // used by the Web App. Keep the result local and never insert it into a
+      // repository or treat it as an owned card.
+      const generated = generateItems.call(factory, [source]);
+      if (!Array.isArray(generated) || generated.length !== 1) throw new Error('factory output');
+      entity = generated[0];
+    } catch { throw error('ENTITY_FACTORY_FAILED'); }
+    const identityError = publicCatalogIdentityError(entity, raw, definitionId);
+    if (identityError) throw identityError;
+    const projected = publicPlayer(entity, definitionId);
+    // A catalog version is intentionally represented as a concept candidate;
+    // concept=true is expected for some native FC27 /defid payloads and does
+    // not authorize a save or submit. The Puzzle planner treats every catalog
+    // result as purchase-only until an exact Club receipt is materialized.
+    return projected;
   }
   return Object.freeze({
     getRequestCount: () => requests,
     readCatalogPage: async (query = {}) => {
+      if (quotesOnly) throw error('CATALOG_DISABLED');
       if (!query || Object.keys(query).some(k => !['start', 'count', 'level', 'nation', 'league', 'team'].includes(k))
           || !valid(query.start, 0, 1000) || !valid(query.count, 1, 50) || !['bronze', 'silver', 'gold'].includes(query.level)
           || ['nation', 'league', 'team'].some(k => query[k] !== undefined && !valid(query[k], 1, 1e9))) throw error('QUERY_INVALID');
@@ -195,7 +267,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8 } = 
         num: query.count, ...(query.maxBuy === null ? {} : { maxb: query.maxBuy }) }, body => {
         const rows = ownData(body, 'auctionInfo');
         if (!Array.isArray(rows) || rows.length > query.count) throw error('PAYLOAD_UNVERIFIED');
-        const ids = new Set(); const prices = [];
+        const ids = new Set(); const prices = []; const listings = [];
         for (const row of rows) {
           const item = ownData(row, 'itemData');
           if (ownData(item, 'resourceId') !== query.definitionId) throw error('DEFINITION_MISMATCH');
@@ -206,11 +278,18 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8 } = 
           const price = ownData(row, 'buyNowPrice');
           if (ownData(row, 'tradeState') === 'active' && valid(ownData(row, 'expires'), 1, 604800)
               && valid(price, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE) && ownData(row, 'tradeOwner') === false
-              && ownData(item, 'untradeable') === false) prices.push(price);
+              && ownData(item, 'untradeable') === false) {
+            prices.push(price);
+            const bid = ownData(row, 'currentBid'), starting = ownData(row, 'startingBid');
+            listings.push({ buyNow: price, expires: ownData(row, 'expires'),
+              currentBid: valid(bid, 0, MAX_PUZZLE_QUOTE_PRICE) ? bid : null,
+              startingBid: valid(starting, 150, MAX_PUZZLE_QUOTE_PRICE) ? starting : null });
+          }
         }
         return { status: 'observed', season: '27', platform: context.platform, definitionId: query.definitionId,
           source: 'ea-visible-buy-now', observedAt: Date.now(), returned: rows.length, eligible: prices.length,
           price: prices.length ? Math.min(...prices) : null, complete: false,
+          listings: listings.sort((a, b) => a.buyNow - b.buyNow || a.expires - b.expires),
           executable: false, marketAvailabilityVerified: false };
       });
     },

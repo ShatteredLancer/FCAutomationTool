@@ -36,3 +36,8 @@ own terms and privacy policies.
 
 EA, EA SPORTS, Ultimate Team, and related marks belong to Electronic Arts.
 This project is unofficial and is not endorsed by or affiliated with EA.
+
+`tests/fixtures/fc27-buy-method-observation.json` retains limited public EA Web
+App method excerpts solely as compatibility regression evidence. These EA
+excerpts remain the property of Electronic Arts and are not relicensed under
+this project's MIT license or included in the production userscript.
