@@ -10,7 +10,7 @@ import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
 
 export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequest, reader, liveEnabled,
-  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }) }) {
+  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), diagnosticLog = null }) {
   let busy = false, stopped = false;
   const create = ({ onProgress, isCurrent = () => true } = {}) => {
     const context = readFc27Context(root), scope = traditionalJournalScope(context);
@@ -67,7 +67,12 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
     if (liveEnabled !== true) return { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_DISABLED' };
     if (busy) return { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };
     busy = true; stopped = false;
-    try { return await create(input).execute(input); }
+    try {
+      const result = await create(input).execute(input);
+      try { await diagnosticLog?.record?.({ area: 'gallery', event: 'purchase-outcome', phase: 'execute',
+        status: result.status, reason: result.reason, count: result.purchased ?? 0, spent: result.spent ?? 0 }); } catch { /* diagnostics only */ }
+      return result;
+    }
     catch (error) { return { status: 'blocked', reason: /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_GALLERY_PURCHASE_UNCONFIRMED' }; }
     finally { busy = false; }
   };

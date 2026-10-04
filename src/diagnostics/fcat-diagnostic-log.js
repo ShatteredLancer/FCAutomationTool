@@ -1,6 +1,7 @@
 import { createGalleryPlanReplay } from '../gallery/plan-replay.js';
 
 const DEFAULT_MAX_ENTRIES = 300;
+const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'route', 'mismatch']);
@@ -46,12 +47,17 @@ function validSavedEntry(value) {
 }
 
 export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc27-diagnostic-log-v1',
-  version = null, now = () => Date.now(), maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
+  version = null, now = () => Date.now(), maxEntries = DEFAULT_MAX_ENTRIES,
+  maxCriticalEntries = DEFAULT_MAX_CRITICAL_ENTRIES } = {}) {
   if (typeof gmGetValue !== 'function' || typeof gmSetValue !== 'function'
       || typeof key !== 'string' || !key || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 2000) {
     throw new TypeError('FCAT_DIAGNOSTIC_LOG_INVALID');
   }
+  if (!Number.isSafeInteger(maxCriticalEntries) || maxCriticalEntries < 1 || maxCriticalEntries > 500) {
+    throw new TypeError('FCAT_DIAGNOSTIC_LOG_INVALID');
+  }
   let entries = [];
+  let criticalEntries = [];
   let planning = [];
   let loaded = false;
   let loading = null;
@@ -62,6 +68,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       const saved = await gmGetValue(key, null);
       if (saved?.schema === 1 && Array.isArray(saved.entries)) {
         entries = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
+        criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : [])
+          .slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
         planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map(row => {
           const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
           return event && replay ? { event, replay } : null;
@@ -72,7 +80,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   })().finally(() => { loading = null; });
   const persist = () => {
     const payload = { schema: 1, product: 'FC Automation Tool', season: '27', version: version ?? null,
-      entries: entries.map(entry => ({ ...entry })), planning: structuredClone(planning) };
+      entries: entries.map(entry => ({ ...entry })), criticalEntries: criticalEntries.map(entry => ({ ...entry })),
+      planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
   const record = input => {
@@ -85,6 +94,14 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     writing = writing.then(async () => {
       await load();
       entries = [...entries, entry].slice(-maxEntries);
+      // Directory polling can be very chatty and used to evict the only
+      // useful listing/market failure from the export. Keep a separate small
+      // bounded stream for trade and purchase lifecycle events. It carries the
+      // same allowlisted, redacted fields and never affects business control.
+      if (entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
+          ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
+        criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
+      }
       if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
       await persist();
     }).catch(() => undefined);
@@ -102,8 +119,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     season: '27',
     version: version ?? null,
     exportedAt: now(),
-    redaction: 'Bounded events plus four Gallery planning replays (public version IDs, scoring attributes, ownership flags and quotes). URLs, credentials, account identifiers and raw card objects are excluded.',
-    entries: exportedEntries, planning: structuredClone(planning),
+    redaction: 'Bounded events, critical Gallery trade events and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.',
+    entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })), planning: structuredClone(planning),
   }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

@@ -1,0 +1,212 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
+import { createFc27GalleryListing } from '../../src/adapters/browser/fc27-gallery-listing.js';
+import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
+import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
+import { galleryPurchaseKey } from '../../src/gallery/purchase-session.js';
+
+afterEach(() => vi.restoreAllMocks());
+
+function fixture() {
+  let at = 1000;
+  vi.spyOn(Date, 'now').mockImplementation(() => at);
+  const { root } = executionRuntime(), values = new Map(), locks = new Set(), listed = new Map();
+  const context = readFc27Context(root), scope = traditionalJournalScope(context);
+  root.navigator = { locks: { request: async (name, _options, task) => {
+    if (locks.has(name)) return task(null);
+    locks.add(name); try { return await task({ name, mode: 'exclusive' }); } finally { locks.delete(name); }
+  } } };
+  root.crypto.randomUUID = () => 'listing-run';
+  const snapshot = { status: 'observed', operationId: 'purchase-1', binding: 'purchase-bind' };
+  const record = { schema: 1, scope, context, operationId: snapshot.operationId, binding: snapshot.binding,
+    plan: [{ definitionId: 111 }], entries: [{ definitionId: 111, itemId: 11, tradeId: '9011', price: 200, state: 'club' }], collection: { status: 'confirmed' } };
+  values.set(galleryPurchaseKey(scope), record);
+  const adapter = {
+    refreshTransferItems: vi.fn(async () => ({ status: 'completed' })),
+    inspectListingItem: ref => ({ status: 'loaded', candidate: { item: { ...ref }, tradeable: true,
+      evolution: false, limitedUse: false, concept: false, academyEnrolled: false,
+      auction: listed.get(ref.id) ?? { state: 'none' } } }),
+    inspectCapabilities: () => ({ transferCapacity: { free: 100 } }),
+    inspectPriceLimits: async () => ({ status: 'loaded', refreshStatus: 'completed', after: { minimum: 150, maximum: 1000 } }),
+    acquireRequestPermit: async () => ({ status: 'acquired', permit: {} }),
+    listItem: vi.fn(async (ref, entry) => {
+      listed.set(ref.id, { state: 'active', tradeId: '9999', startingBid: entry.startPrice, buyNowPrice: entry.buyNow });
+      return { status: 'accepted', response: { success: true, status: 200 } };
+    }),
+  };
+  const deps = { root, gmGetValue: (key, fallback) => structuredClone(values.get(key) ?? fallback),
+    gmSetValue: (key, value) => { values.set(key, structuredClone(value)); },
+    purchase: { inspect: async () => structuredClone(snapshot) }, liveEnabled: true, schedulingEnabled: true,
+    adapterFactory: () => adapter, loadPrices: async () => ({ freshPrices: { 111: 200 }, expiresAt: 100000 }), sleep: async () => {} };
+  const service = createFc27GalleryListing(deps);
+  const settings = { priceMode: 'fixed', fixedPrice: 200, fixedStartPrice: 150, durationSeconds: 3600 };
+  const prepare = async () => { expect((await service.prepare()).status).toBe('ready'); return service.plan({ selectedIds: [11], settings }); };
+  const save = async () => { const plan = await prepare();
+    expect((await service.saveSchedule({ approved: true, plan, settings, schedule: { type: 'once', runAt: 2000 } })).status).toBe('saved');
+    expect((await service.armSchedule({ approved: true })).status).toBe('armed'); return plan; };
+  return { service, deps, adapter, snapshot, values, record, scope, settings, prepare, save, advance: value => { at = value; } };
+}
+
+it('runs a due saved batch through prepare, frozen prices and the real listing journal only once', async () => {
+  const f = fixture(); await f.save(); f.advance(2010);
+  const result = await f.service.tickSchedule({ approved: true });
+  expect(result).toMatchObject({ status: 'completed', accepted: 1 });
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+  expect(await createFc27GalleryListing(f.deps).tickSchedule({ approved: true })).toMatchObject({ status: 'completed' });
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('cannot save an arbitrary or altered plan outside the current prepared batch', async () => {
+  const f = fixture(); const plan = await f.prepare(); plan.entries[0].buyNow = 600;
+  expect(await f.service.saveSchedule({ approved: true, plan, schedule: { type: 'once', runAt: 2000 } }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_PLAN_CHANGED' });
+});
+
+it('does not arm a schedule after the purchase batch changes', async () => {
+  const f = fixture(); await f.save(); await f.service.disarmSchedule(); f.snapshot.operationId = 'purchase-2';
+  expect(await f.service.armSchedule({ approved: true })).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_PURCHASE_CHANGED' });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('stops if the purchase changes while preparing the scheduled plan', async () => {
+  const f = fixture(); await f.save(); f.advance(2000);
+  f.adapter.refreshTransferItems.mockImplementation(async () => { f.snapshot.operationId = 'purchase-2'; return { status: 'completed' }; });
+  expect((await f.service.tickSchedule({ approved: true })).status).toBe('blocked');
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('keeps unknown outcomes for explicit recovery rather than scheduling another mutation', async () => {
+  const f = fixture(); await f.save(); f.advance(2000);
+  f.adapter.listItem.mockResolvedValue({ status: 'unknown' });
+  expect((await f.service.tickSchedule({ approved: true })).status).toBe('partial');
+  expect((await createFc27GalleryListing(f.deps).tickSchedule({ approved: true })).status).toBe('blocked');
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('serializes competing scheduled ticks across service instances', async () => {
+  const f = fixture(); await f.save(); f.advance(2000);
+  const results = await Promise.all([f.service.tickSchedule({ approved: true }), createFc27GalleryListing(f.deps).tickSchedule({ approved: true })]);
+  expect(results.filter(result => result.status === 'completed')).toHaveLength(1);
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('rechecks the purchase binding after waiting for an EA request permit', async () => {
+  const f = fixture(); await f.save(); f.advance(2000);
+  f.adapter.acquireRequestPermit = async () => {
+    f.snapshot.binding = 'replacement'; return { status: 'acquired', permit: {} };
+  };
+  expect(await f.service.tickSchedule({ approved: true }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_PURCHASE_CHANGED' });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('does not let a competing service disarm or replace a claimed occurrence', async () => {
+  const f = fixture(); await f.save(); f.advance(2000);
+  const competitor = createFc27GalleryListing(f.deps);
+  let disarmed;
+  f.adapter.refreshTransferItems.mockImplementationOnce(async () => {
+    disarmed = await competitor.disarmSchedule(); return { status: 'completed' };
+  });
+  expect((await f.service.tickSchedule({ approved: true })).status).toBe('completed');
+  expect(disarmed).toMatchObject({ status: 'blocked', reason: 'FC27_EXCLUSIVE_ACCESS_UNAVAILABLE' });
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('does not run a manual preview against a replacement purchase batch', async () => {
+  const f = fixture(); const plan = await f.prepare(); f.snapshot.operationId = 'replacement';
+  expect(await f.service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_PURCHASE_CHANGED' });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('prepares a new purchase batch without resuming an unrelated old listing', async () => {
+  const f = fixture(), first = await f.prepare();
+  f.adapter.listItem.mockResolvedValueOnce({ status: 'unknown' });
+  await f.service.execute({ approved: true, plan: first, settings: f.settings, isCurrent: () => true });
+  expect((await f.service.prepare()).status).toBe('resume-required');
+  f.snapshot.operationId = 'purchase-2';
+  f.record.operationId = 'purchase-2'; f.record.entries[0].itemId = 22;
+  expect(await f.service.prepare()).toMatchObject({ status: 'ready', candidates: [{ item: { id: 22 } }] });
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('returns an explicit old listing read failure without issuing EA requests', async () => {
+  const f = fixture();
+  const service = createFc27GalleryListing({ ...f.deps, gmGetValue: (key, fallback) => {
+    if (key.startsWith('fcat-fc27-gallery-bulk-list-v1:')) throw Error('storage offline');
+    return f.deps.gmGetValue(key, fallback);
+  } });
+  expect(await service.prepare()).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED' });
+  expect(f.adapter.refreshTransferItems).not.toHaveBeenCalled();
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('persists a missed occurrence so reload cannot arm it again', async () => {
+  const f = fixture(); await f.save(); f.advance(40000);
+  expect((await f.service.tickSchedule({ approved: true })).status).toBe('missed');
+  await f.service.disarmSchedule();
+  expect((await createFc27GalleryListing(f.deps).armSchedule({ approved: true })).status).toBe('blocked');
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('does not expose background schedule mutation until shared Scheduler authorization is wired', async () => {
+  const f = fixture();
+  const service = createFc27GalleryListing({ ...f.deps, schedulingEnabled: false });
+  expect(service.scheduleCapability()).toMatchObject({ enabled: false, reason: 'FC27_GALLERY_LISTING_SCHEDULER_PENDING' });
+  expect(await service.pollSchedule()).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_SCHEDULER_PENDING' });
+  expect(await service.armSchedule({ approved: true })).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_SCHEDULER_PENDING' });
+  expect(await service.tickSchedule({ approved: true })).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_SCHEDULER_PENDING' });
+  expect(await service.saveSchedule({ approved: true })).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_SCHEDULER_PENDING' });
+  expect(f.adapter.refreshTransferItems).not.toHaveBeenCalled();
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+  expect((await service.prepare()).status).toBe('ready');
+  const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+});
+
+it('matches Enhancer persistence: retains preferences but not session-only fixed prices', async () => {
+  const f = fixture();
+  await f.service.writeSettings({ ...f.settings, delaySeconds: [3, 5] });
+  expect(await createFc27GalleryListing(f.deps).readSettings()).toMatchObject({
+    priceMode: 'fixed', fixedPrice: null, fixedStartPrice: null, durationSeconds: 3600, delaySeconds: [3, 5],
+  });
+});
+
+it('handles missing price-limit responses without losing the entire preparation stage', async () => {
+  const f = fixture(), events = [];
+  f.adapter.inspectPriceLimits = async () => undefined;
+  const service = createFc27GalleryListing({ ...f.deps, diagnosticLog: { record: row => events.push(row) } });
+  expect(await service.prepare()).toMatchObject({ status: 'ready' });
+  expect(service.plan({ selectedIds: [11], settings: f.settings })).toMatchObject({ entries: [],
+    skipped: [{ itemId: 11, reason: 'price-limits-unavailable' }] });
+  expect(events).toContainEqual(expect.objectContaining({ event: 'listing-stage', phase: 'price-limits', status: 'unknown' }));
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('reports failed preparation phase and safely isolates diagnostic failures', async () => {
+  const f = fixture(), events = [];
+  f.adapter.refreshTransferItems.mockResolvedValue({ status: 'error', error: { code: 401 } });
+  const service = createFc27GalleryListing({ ...f.deps, diagnosticLog: { record(row) { events.push(row); throw new Error('log'); } } });
+  expect(await service.prepare()).toMatchObject({ status: 'blocked', phase: 'transfer-refresh', reason: 'FC27_GALLERY_TRANSFER_UNCONFIRMED' });
+  expect(events).toContainEqual(expect.objectContaining({ phase: 'transfer-refresh', httpStatus: 401 }));
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('cancels a saved occurrence without requesting EA and leaves it disarmed after reload', async () => {
+  const f = fixture(); await f.save();
+  f.adapter.refreshTransferItems.mockClear();
+  expect((await f.service.disarmSchedule('user-cancelled')).status).toBe('disarmed');
+  f.advance(2000);
+  expect((await createFc27GalleryListing(f.deps).pollSchedule()).status).toBe('disarmed');
+  expect(f.adapter.refreshTransferItems).not.toHaveBeenCalled();
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('reports unavailable Web Locks without rejecting the UI promise or sending EA requests', async () => {
+  const f = fixture(); const plan = await f.prepare();
+  f.deps.root.navigator.locks.request = async () => { throw new Error('lock unavailable'); };
+  expect(await f.service.saveSchedule({ approved: true, plan, settings: f.settings, schedule: { type: 'once', runAt: 2000 } }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_UNAVAILABLE' });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});

@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { createFc27GalleryPurchase } from '../../src/adapters/browser/fc27-gallery-purchase.js';
+import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
+import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 
 const stub = vi.hoisted(() => ({ adapters: [], calls: [], unknown: false, location: 'club', settings: null }));
 vi.mock('../../src/adapters/ea/fc27-puzzle-buy.js', () => ({ createFc27PuzzleBuyAdapter: async (_root, options) => {
@@ -17,20 +19,21 @@ vi.mock('../../src/adapters/ea/fc27-puzzle-buy.js', () => ({ createFc27PuzzleBuy
     collectionState: options.collectionState, confirmCollection: options.confirmCollection, cancel() {}, afterPlayer() {},
   };
 } }));
-function fixture() {
+function fixture(options = {}) {
   stub.adapters = []; stub.calls = []; stub.unknown = false; stub.location = 'club';
-  const { root } = executionRuntime(), store = new Map(), reads = [];
+  const { root } = executionRuntime(), store = new Map(), reads = [], storageReads = [];
   root.crypto.randomUUID = () => 'gallery-test-operation';
   root.navigator = { locks: { request: async (name, _options, task) => task({ name, mode: 'exclusive' }) } };
   const reader = { readVersions: async ids => { reads.push([...ids]); return { status: 'observed', rows: ids.map(definitionId => ({
     definitionId, isCollected: stub.calls.some(([name, id]) => name === 'move' && id === definitionId),
     cardData: { rating: 80, nation: 1, teamId: 2, leagueId: 3, preferredPosition: 'ST' },
   })) }; } };
-  const purchase = createFc27GalleryPurchase({ root, gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+  const purchase = createFc27GalleryPurchase({ root, gmGetValue: (key, fallback) => { storageReads.push(key); return store.get(key) ?? fallback; },
     gmSetValue: (key, value) => store.set(key, structuredClone(value)), reader, liveEnabled: true,
-    readSettings: async () => ({ status: 'observed', queriesNumber: 3, quoteCeiling: 450 }) });
+    readSettings: async () => ({ status: 'observed', queriesNumber: 3, quoteCeiling: 450 }), ...options });
   const input = { items: [{ eaId: 10 }, { eaId: 11 }], binding: 'test-pool-revision', approved: true, isCurrent: () => true };
-  return { purchase, store, reads, input };
+  const context = readFc27Context(root);
+  return { purchase, store, reads, storageReads, input, context, scope: traditionalJournalScope(context), root };
 }
 it('composes the original FSU buyer without any SBC target and uses explicit account settings', async () => {
   const f = fixture();
@@ -68,4 +71,72 @@ it('exposes exact listing receipts without any new EA reads, adapter constructio
   expect(await f.purchase.listingSource({ ...input, expectedOperationId: 'old' })).toMatchObject({ status: 'blocked' });
   expect(stub.calls).toEqual(calls); expect(f.reads).toEqual(reads); expect(stub.adapters).toHaveLength(adapters);
   expect([...f.store]).toEqual(storage);
+});
+
+it('ignores an unrelated old listing journal during a new purchase', async () => {
+  const f = fixture();
+  f.store.set('fcat-fc27-gallery-bulk-list-v1:unrelated-old-run', { schema: 0, status: 'recovery-required' });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'purchased', purchased: 2 });
+  expect(stub.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+});
+
+it('does not read or block on the current account listing journal', async () => {
+  const f = fixture();
+  const listingKey = `fcat-fc27-gallery-bulk-list-v1:${f.scope}`;
+  f.store.set(listingKey, { schema: 0, status: 'recovery-required' });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'purchased', purchased: 2 });
+  expect(stub.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+  expect(f.storageReads).not.toContain(listingKey);
+  expect(f.store.get(listingKey)).toEqual({ schema: 0, status: 'recovery-required' });
+});
+
+it.each([{ schema: 0 }, { schema: 1, entries: {} }, { schema: 1, entries: [null] }])('blocks malformed purchase journal with a clear recovery reason: %j', async malformed => {
+  const f = fixture();
+  f.store.set(`fcat-fc27-gallery-purchase:${f.scope}`, malformed);
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it('reports failed reads of old purchase records without starting buyer calls', async () => {
+  const f = fixture({ gmGetValue: (key, fallback) => {
+    if (key.startsWith('fcat-fc27-gallery-purchase:')) throw Error('storage offline');
+    return fallback;
+  } });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED' });
+  expect(await f.purchase.inspect()).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it.each(['plan', 'entries'])('reports a corrupted %s row as an invalid purchase record without rebuying', async field => {
+  const f = fixture(); await f.purchase(f.input);
+  const key = `fcat-fc27-gallery-purchase:${f.scope}`;
+  f.store.get(key)[field][0] = null; stub.calls = [];
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it('keeps an unresolved purchase receipt from triggering another buy', async () => {
+  const f = fixture(); stub.unknown = true;
+  await f.purchase(f.input); const state = await f.purchase.inspect();
+  stub.calls = []; stub.location = 'unknown';
+  expect(await f.purchase({ approved: true, resume: true, expectedOperationId: state.operationId, isCurrent: () => true }))
+    .toMatchObject({ status: 'recovery-required', reason: 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it('does not buy if its own journal write cannot be confirmed', async () => {
+  const f = fixture({ gmSetValue: () => {} });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it('reports a thrown storage write failure before any purchase', async () => {
+  const f = fixture({ gmSetValue: () => { throw Error('storage full'); } });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED' });
+  expect(stub.calls).toEqual([]);
+});
+
+it('isolates diagnostic failures from completed purchases', async () => {
+  const f = fixture({ diagnosticLog: { record: () => { throw Error('log offline'); } } });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'purchased', purchased: 2 });
 });

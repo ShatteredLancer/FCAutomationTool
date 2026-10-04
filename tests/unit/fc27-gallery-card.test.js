@@ -29,6 +29,18 @@ function fixture() {
   return { root, entity, view, parent, events, renderer: createFc27GalleryNativeRenderer(root,{document,diagnosticLog:{record:entry=>events.push(entry)}}) };
 }
 afterEach(() => vi.useRealTimers());
+it('renders an owned native entity only through the explicit display-only path', () => {
+  const f = fixture(); f.entity.concept = false;
+  f.root.UTItemViewFactory.createSmallItem = vi.fn(() => f.view);
+  expect(f.renderer.render({ parent: f.parent, raw: f.entity })).toBeNull();
+  const wrapper = f.renderer.renderOwned({ parent: f.parent, raw: f.entity });
+  expect(wrapper).toBeTruthy();
+  expect(f.view.render.mock.calls[0][0]).not.toBe(f.entity);
+  expect(f.entity.concept).toBe(false);
+  expect(f.root.UTItemViewFactory.createSmallItem).toHaveBeenCalledOnce();
+  expect(f.root.UTItemViewFactory.createLargeItem).not.toHaveBeenCalled();
+  wrapper.__fcatDealloc();
+});
 it.skipIf(!eaSource).each(['normal','portrait-retry','shell-retry','terminal-failure','stalled'])
 ('replays captured EA image loading and completion: %s', scenario => {
   vi.useFakeTimers(); const f=fixture(), fallback=vi.fn(), urls=[];

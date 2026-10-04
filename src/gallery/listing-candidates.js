@@ -159,8 +159,10 @@ export function planGalleryListingPrices({ candidates = [], marketPrices = new M
     const itemId = candidate.item.id, definitionId = candidate.item.definitionId;
     const quote = readValue(marketPrices, definitionId), market = quote?.price ?? quote;
     const override = readValue(overridesByItem, itemId);
+    const overrideBuyNow = override && typeof override === 'object' ? override.buyNow : override;
+    const overrideStartPrice = override && typeof override === 'object' ? override.startPrice : null;
     let buyNow;
-    if (override != null) buyNow = override;
+    if (overrideBuyNow != null) buyNow = overrideBuyNow;
     else if (mode === 'fixed') buyNow = settings.fixedPrice;
     else if (!Number.isFinite(market) || market < GALLERY_LISTING_MIN_PRICE) {
       skipped.push({ itemId, definitionId, reason: 'market-price-unavailable' }); continue;
@@ -175,7 +177,7 @@ export function planGalleryListingPrices({ candidates = [], marketPrices = new M
     if (!Number.isFinite(buyNow) || buyNow < GALLERY_LISTING_MIN_PRICE || buyNow > 15000000) {
       skipped.push({ itemId, definitionId, reason: 'listing-price-invalid' }); continue;
     }
-    const startPrice = mode === 'fixed' && settings.fixedStartPrice != null
+    const startPrice = overrideStartPrice != null ? overrideStartPrice : mode === 'fixed' && settings.fixedStartPrice != null
       ? settings.fixedStartPrice : moveGalleryListingPrice(buyNow, -1, priceTiers);
     if (!Number.isFinite(startPrice) || startPrice < GALLERY_LISTING_MIN_PRICE || startPrice > buyNow) {
       skipped.push({ itemId, definitionId, reason: 'start-price-invalid' }); continue;

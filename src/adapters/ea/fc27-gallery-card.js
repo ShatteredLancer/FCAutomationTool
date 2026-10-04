@@ -28,12 +28,12 @@ function isNativeEntity(root, source) {
   return typeof Entity === 'function' && source instanceof Entity;
 }
 
-function validEntity(entity, source, native) {
+function validEntity(entity, source, native, ownedDisplay) {
   const definitionId = sourceDefinitionId(source);
   const player = typeof entity?.isPlayer === 'function' && entity.isPlayer();
   return entity && validId(entity.definitionId) && validId(definitionId)
     && entity.definitionId === definitionId && player
-    && entity.concept === true && (native || source?.dream === true)
+    && (ownedDisplay ? native && entity.concept === false : entity.concept === true && (native || source?.dream === true))
     && (own(source, 'resourceId') == null || own(source, 'resourceId') === definitionId)
     && (own(source, 'definitionId') == null || own(source, 'definitionId') === definitionId);
 }
@@ -47,12 +47,13 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
     try { Promise.resolve(diagnosticLog?.record?.({ area:'gallery', event:'card-render', source:'ea', phase, status, ...(reason ? { reason } : {}) })).catch(() => {}); }
     catch { /* Diagnostics never affect rendering. No card/account data. */ }
   };
-  const render = ({ parent, raw, label = '', slot = '', onUnavailable = () => {} } = {}) => {
-    const viewFactory = at(root, 'UTItemViewFactory'), createLargeItem = viewFactory?.createLargeItem;
+  const render = ({ parent, raw, label = '', slot = '', onUnavailable = () => {} } = {}, ownedDisplay = false) => {
+    const viewFactory = at(root, 'UTItemViewFactory');
+    const createView = ownedDisplay ? viewFactory?.createSmallItem : viewFactory?.createLargeItem;
     const native = isNativeEntity(root, raw);
     const phase = native ? 'native-entity' : 'cached-dto';
     if (!document || !parent || !raw || (!native && (raw.itemType !== 'player' || raw.dream !== true))
-        || typeof root?.UTItemEntity !== 'function' || typeof createLargeItem !== 'function') {
+        || typeof root?.UTItemEntity !== 'function' || typeof createView !== 'function') {
       record(phase, 'FC27_GALLERY_CARD_INPUT_UNAVAILABLE'); return null;
     }
     let view, wrapper, timer, disposed = false, unavailableReported = false;
@@ -73,12 +74,12 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
         if (typeof createItem !== 'function') { record(phase, 'FC27_GALLERY_CARD_FACTORY_UNAVAILABLE'); return null; }
         entity = createItem.call(root.factories.Item, cloneCardData(raw));
       }
-      if (!validEntity(entity, raw, native)) { record(phase, 'FC27_GALLERY_CARD_ENTITY_UNVERIFIED'); return null; }
+      if (!validEntity(entity, raw, native, ownedDisplay)) { record(phase, 'FC27_GALLERY_CARD_ENTITY_UNVERIFIED'); return null; }
       const display = Object.assign(new root.UTItemEntity(), entity);
       // Enhancer's formItemWithoutConcept applies this only to a display copy.
       // Never publish that copy to inventory or treat it as ownership evidence.
       display.concept = false;
-      view = createLargeItem.call(viewFactory, display);
+      view = createView.call(viewFactory, display);
       if (!view || typeof view.init !== 'function' || typeof view.render !== 'function'
           || typeof view.getRootElement !== 'function') { record(phase, 'FC27_GALLERY_CARD_VIEW_UNAVAILABLE'); dispose(); return null; }
       view.init();
@@ -136,5 +137,5 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
       return wrapper;
     } catch { record(phase, 'FC27_GALLERY_CARD_RENDER_FAILED'); dispose(); return null; }
   };
-  return Object.freeze({ render });
+  return Object.freeze({ render: options => render(options), renderOwned: options => render(options, true) });
 }

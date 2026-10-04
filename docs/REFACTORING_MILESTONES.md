@@ -1,6 +1,15 @@
 # FC Automation Tool 架构重构与里程碑
 
-2026-10-03 挂牌计划分步实施：此前改动已提交为 `de1c821`（未推送，仍 27.0.10）。T1/T2 新增精确购买回执投影、账号/operation/binding/Pending 双读隔离和购买服务显式只读 `listingSource()`，没有网络或存储写入；已收集跳过项不是购买实体。价格准备按 Enhancer 已观察的整数随机百分比、最近价格阶梯、Fixed/Steps、固定起拍价、逐卡覆盖和时长处理，超限跳过不夹价；1025 个阶梯输入与窄参考函数对照通过。T1 持久挂牌状态、T2 真实价格/EA limits、T3 UI/挂牌和 T4/T5 定时/重挂仍未完成；旧四张/10000 上限与私有报价服务差异需在写接口接线前明确，不能默默更改或宣称与参考完全等价。恢复点与验证见 [挂牌准备层](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-03-分步实施恢复点t1t2-准备层t3-尚未接通)。
+## 2026-10-04 Gallery 购买/挂牌 Journal 解耦修正（最新）
+
+购买流程不再读取或核对账号范围内的 Gallery Bulk List Journal；上一批挂牌记录不能阻断新的方案购买。挂牌 Journal 只由“挂牌已购卡”的准备/恢复路径读取，且只恢复同一批次。购买 Journal 的损坏、未知成交、入库或收集回执失败必须返回明确的购买恢复原因；挂牌 Journal 的格式、上下文、写回或未知回执失败必须在 Bulk List 原位置给出明确提示。旧版“购买前挂牌核对”的描述仅作历史记录，不再是当前合同。
+购买 Journal 的底层读取失败、写入失败和回读不一致也必须使用独立停止码；Gallery 工具栏显示读取失败且隐藏续购入口。Bulk List 创建、更新或归档 Journal 写入失败必须阻止后续挂牌，并显示写入失败提示。
+
+2026-10-04 Gallery 购买恢复门禁修复：截图停止码与源码确认买卡前被旧 Bulk List Journal 阻断，导出尚缺旧记录状态。修复明确挂牌拒绝误存 unknown，购买前增加账号锁内的一次只读活动挂牌核对，保留真实未知/损坏/身份变化保护及待挂牌项；不自动挂牌。新增恢复状态与购买结果诊断、回归及浏览器提示检查，真实账号交易仍待用户点击。详见 [当前恢复记录](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-04-gallery-购买被旧挂牌恢复记录阻断已修复待实机核对)。
+
+2026-10-04 Gallery 跨页面购买与挂牌修复：单集合/联合方案从缓存恢复后按账号、集合规则、卡片事实和有效报价核对，不再因旧对象引用失效静默阻断；确实过期或账号变化时在原按钮旁说明原因。Bulk List 按 Enhancer 的价格/时长/间隔分组、卡片/表格和逐卡结果调整，补充准备阶段错误、部分成功及未知回执提示。完整 `npm run verify` 337 文件 / 3804 项、离线浏览器 self-test、root/dist 一致性通过，本地版本仍为 27.0.10；尚未安装到真实会话或执行交易，不能宣称实机挂牌已修复。下一步由用户更新产物后集中核对跨 Tab 购买及真实挂牌；旧日志缺少交易阶段证据，新日志已补记录。详见 [修复与验收恢复点](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-04-跨-tab-购买反馈与-bulk-list-错误可见性修正)。
+
+2026-10-03 挂牌计划分步实施：此前改动已提交为 `de1c821`（未推送，仍 27.0.10）。T1/T2 精确购买回执投影、账号/operation/binding/Pending 隔离、价格模式和 EA limits 已接通；T3 Gallery Bulk List 已有前台逐卡进度、停止、Journal、未知回执恢复和离线浏览器贯通。T4 定时计划只保留隔离的数据模型与单测，生产入口不启动后台定时器，等待接入既有 Scheduler 的有限授权、Lease、Continuation、429 冷却和公平轮转；T5 重挂仍未接通。新 FCAT Bulk List 的全选授权不扩大旧 Scheduler 或自动任务。恢复点与验证见 [挂牌准备层](FC27_GALLERY_REMAINING_PLAN_ZH.md#2026-10-03-分步实施恢复点t1t2-准备层t3-尚未接通)。
 
 2026-10-03 Transfer List Bulk List 续查：Enhancer 在 Available/Unsold 共用 Bulk List 面板，默认 Percentage 100–100%、等待 3–5 秒；FSU 的分组列表也有批量拍卖，Fodder 有同名 Bulk List/Bulk Re-list，实际按钮来源尚缺页面 DOM 证据。建议 Gallery 已购实体与 Transfer List 复用 Enhancer 风格面板。Enhancer Auto Relist 按 1/5/10 分钟（默认 10）原价重挂全 Unsold；按批次重挂必须逐卡，不能误用全量接口。已纠正早期计划混用参考默认值、价格来源和错误处理的描述；旧交易数量/调度上限与参考的差异需先核对。仅更新计划，未新增交易代码或执行交易。详见 [Bulk List 与 Relist 计划](FC27_GALLERY_REMAINING_PLAN_ZH.md#transfer-list-bulk-list-来源与-fcat-复用边界)。
 
@@ -1298,3 +1307,7 @@ EA 公开运行时的 bid/move 重新混淆导致两个 hash 漂移，解码统�
 新增精确兼容表并保留旧版和未知指纹阻断；Puzzle/Gallery 共用，不改 FSU 购买行为或恢复 Journal。
 购买初始化失败的方法/hash 及最终结果现在进入脱敏 diagnostics。公开无登录浏览器已验证两套原生方法，
 实际买断/入 Club/替换仍需用户点击验收。恢复点与证据见 `FC27_PUZZLE_STABILITY_ZH.md` 的 27.0.9 记录。
+
+### 2026-10-03 Gallery 集合图标类型修复
+
+集合列表此前统一以 TeamConfig/卡池俱乐部队徽作为图标，导致 Leagues 下的 Premier League、Frauen-Bundesliga 等显示成 Manchester City 或其它俱乐部。现按 Enhancer 的 EA 原生 filter 语义区分 `LEAGUE`、`RARITY` 和 `CLUB`；已知公开集合使用稳定 EA ID，未知联赛仅在卡池的联赛 ID 全部一致时使用该 ID，混合或未知值保留文字回退。新增 6 项资产回归；诊断导出已有离线下载 smoke。2026-10-03 的集中 Gallery 只读验收已取得真实导出文件 `artifacts/fc27-browser/gallery-acceptance-diagnostics.json`（FCAT 27.0.10、300 条脱敏事件），并核对分类、集合、卡面、价格和比价；后续仍需按 Gallery 计划中的矩阵分别验收写操作和恢复场景。

@@ -10,6 +10,23 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains bounded redacted trade stages independently of sync floods and reloads', async () => {
+  const t = harness({ maxEntries: 2, maxCriticalEntries: 2 });
+  for (const phase of ['prepare', 'mutation', 'readback']) await t.log.record({ area: 'gallery', event: 'listing-stage',
+    phase, status: 'failed', reason: 'FC27_GALLERY_LISTING_READBACK_UNCONFIRMED', httpStatus: 429,
+    token: 'private-secret', itemId: 123, account: 'private-account' });
+  for (let count = 0; count < 5; count++) await t.log.record({ area: 'gallery', event: 'pool-request', count });
+  const reloaded = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set, maxEntries: 2, maxCriticalEntries: 2 });
+  const exported = await reloaded.exportPayload();
+  expect(exported.entries.map(row => row.event)).toEqual(['pool-request', 'pool-request']);
+  expect(exported.criticalEntries.map(row => row.phase)).toEqual(['mutation', 'readback']);
+  expect(exported.criticalEntries[0]).toMatchObject({ httpStatus: 429 });
+  expect(JSON.stringify(exported.criticalEntries)).not.toMatch(/private-|itemId|account/);
+  expect(JSON.stringify(exported.entries)).not.toMatch(/private-|itemId|account/);
+  exported.criticalEntries[0].phase = 'changed';
+  expect((await reloaded.exportPayload()).criticalEntries[0].phase).toBe('mutation');
+});
+
 it('persists a bounded, allowlisted and redacted event stream', async () => {
   const t = harness({ maxEntries: 2 });
   await t.log.record({ area: 'gallery', event: 'catalog-request', source: 'futgg', status: 'failed',

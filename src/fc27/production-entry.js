@@ -32,6 +32,7 @@ import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalize
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
 import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
 import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
+import { createFc27GalleryListing } from '../adapters/browser/fc27-gallery-listing.js';
 import { createFc27GalleryNativeRenderer } from '../adapters/ea/fc27-gallery-card.js';
 import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../gallery/progress.js';
@@ -76,6 +77,18 @@ const galleryAssets = Object.freeze({
   },
   club: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.CLUB, Number(id)) || ''; } catch { return ''; } },
   league: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.LEAGUE, Number(id)) || ''; } catch { return ''; } },
+  rarity: id => {
+    try {
+      const rarity = unsafeWindow.repositories?.Rarity?.get?.(Number(id));
+      const u = unsafeWindow.AssetLocationUtils;
+      if (!rarity || typeof u?.getShellUri !== 'function') return '';
+      // Enhancer Qce/getItemShell: player shell, large size, rarity tier/guid.
+      const size = unsafeWindow.ItemViewSize?.LARGE;
+      const tier = rarity.levels ? unsafeWindow.ItemRatingTier?.GOLD : unsafeWindow.ItemRatingTier?.NONE;
+      if (size == null || tier == null || typeof rarity.getGuid !== 'function') return '';
+      return u.getShellUri(size, 1, Number(rarity.id ?? id), tier, rarity.getGuid()) || '';
+    } catch { return ''; }
+  },
   nation: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.NATION, Number(id)) || ''; } catch { return ''; } },
   category: (slug, name = '') => {
     const key = `${String(slug ?? '')} ${String(name ?? '')}`.toLocaleLowerCase();
@@ -84,15 +97,49 @@ const galleryAssets = Object.freeze({
       ? [13, 2216]
       : key.includes('spain') || key.includes('laliga') || key.includes('liga-f') || key.includes('la-liga')
         ? [53, 2222]
-      : key.includes('germany') || key.includes('bundesliga') ? [19, 2221]
+      : key.includes('germany') || key.includes('bundesliga') ? [19, 2215]
           : key.includes('france') || key.includes('ligue') || key.includes('arkema') ? [16, 2218]
             : key.includes('italy') || key.includes('serie-a') || key.includes('serie a') ? [31]
-              : key.includes('leagues') || key === 'league' ? [13, 53, 19, 2221, 16, 31]
+              : key.includes('leagues') || key === 'league' ? [13, 53, 19, 2215, 16, 31]
                 : rarityCategory ? [1, 3, 4, 5, 6] : [];
-    return ids.map(id => rarityCategory ? galleryAssets.filter('RARITY', id) : galleryAssets.league(id)).filter(Boolean);
+    // Enhancer uses the rendered player shell for rarity/foil icons (Qce),
+    // while league categories use the EA filter emblem route.
+    return ids.map(id => rarityCategory ? galleryAssets.rarity(id) : galleryAssets.league(id)).filter(Boolean);
   },
-  set: name => {
+  set: (name, category = {}, set = {}, pool = []) => {
     try {
+      // Enhancer exe/gPt uses the set's filter kind, not an arbitrary club
+      // from its players. Public catalogue aliases bridge FUT.GG's missing IDs.
+      const kind = category.slug === 'leagues' ? 'LEAGUE' : category.slug === 'rarities' ? 'RARITY' : 'CLUB';
+      const idsFor = values => [...new Set((values ?? []).map(Number))].filter(id => Number.isSafeInteger(id) && id > 0);
+      const explicit = idsFor(set.conditions?.[kind === 'LEAGUE' ? 'leagues' : kind === 'RARITY' ? 'rareflags' : 'clubs']);
+      if (kind === 'RARITY' && (set.slug === 'holographics' || set.conditions?.holo === true)) {
+        return [galleryAssets.rarity(12)].filter(Boolean); // Enhancer foil: Qce(12).
+      }
+      if (explicit.length) return explicit.map(id => kind === 'RARITY' ? galleryAssets.rarity(id) : galleryAssets.filter(kind, id)).filter(Boolean);
+      if (kind !== 'CLUB') {
+        const leagueIds = { 'premier-league': [13], 'barclays-wsl': [2216], 'ligue-1-mcdonalds': [16],
+          'arkema-pl': [2218], 'laliga-ea-sports': [53], 'liga-f-moeve': [2222],
+          'serie-a-enilive': [31], bundesliga: [19], 'frauen-bundesliga': [2215] };
+        const rarityIds = { totw: [3], heroes: [72],
+          'squad-foundations': [87], 'season-1': [150, 22, 71] };
+        const known = (kind === 'LEAGUE' ? leagueIds : rarityIds)[set.slug];
+        const field = kind === 'LEAGUE' ? 'leagueEaId' : 'rarityEaId';
+        const observed = idsFor(pool.map(item => item[field]));
+        const uniform = observed.length === 1 && pool.every(item => Number(item[field]) === observed[0]);
+        let loaded = [];
+        if (kind === 'LEAGUE') {
+          const rows = unsafeWindow.factories?.DataProvider?.getLeagueDP?.() ?? unsafeWindow.repositories?.League?.getAll?.() ?? [];
+          const normalize = value => String(value ?? '').toLocaleLowerCase().replace(/[.'’_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+          const wanted = normalize(set.slug), nameValue = normalize(name);
+          loaded = (Array.isArray(rows) ? rows : Object.values(rows)).filter(row => {
+            const rowName = normalize(row?.label ?? row?.name ?? row?.sortName);
+            return rowName === nameValue || rowName === wanted;
+          }).map(row => Number(row?.id ?? row?.leagueId ?? row?.eaId)).filter(id => Number.isSafeInteger(id) && id > 0);
+        }
+        const ids = known ?? (loaded.length ? [...new Set(loaded)] : uniform ? observed : []);
+        return ids.map(id => kind === 'RARITY' ? galleryAssets.rarity(id) : galleryAssets.filter(kind, id)).filter(Boolean);
+      }
       const raw = unsafeWindow.repositories?.TeamConfig?.getTeams?.() ?? [];
       const teams = Array.isArray(raw) ? raw
         : raw && typeof raw[Symbol.iterator] === 'function' ? [...raw]
@@ -104,7 +151,8 @@ const galleryAssets = Object.freeze({
         .filter(row => row.value && row.value === needle);
       const ids = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId))
         .filter(value => Number.isSafeInteger(value) && value > 0).slice(0, 3);
-      return [...new Set(ids)].map(id => galleryAssets.club(id)).filter(Boolean);
+      return (ids.length ? [...new Set(ids)] : idsFor(pool.slice(0, 3).map(item => item.clubEaId)))
+        .map(id => galleryAssets.club(id)).filter(Boolean);
     } catch { return []; }
   },
 });
@@ -125,7 +173,17 @@ const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
-  readSettings: () => current().inspectPuzzlePolicy() });
+  readSettings: () => current().inspectPuzzlePolicy(), diagnosticLog });
+const galleryListing = createFc27GalleryListing({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
+  purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled,
+  loadPrices: ids => {
+    const context = readFc27Context(unsafeWindow);
+    const platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
+    return galleryCatalog.loadPriceSnapshot(ids, { platform });
+  }, diagnosticLog });
+// T4 schedule drafts are persisted separately. Production activation awaits
+// the shared Scheduler's finite authorization/lease/continuation integration.
+// Manual Bulk List approval must not implicitly authorize a background job.
 if (!galleryProgress.install()) {
   const factoryReady = unsafeWindow.setInterval(() => {
     if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
@@ -186,6 +244,7 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryDiagnosticLog: diagnosticLog,
   galleryFirstOwnerHistory: (definitionId, firstOwned) => galleryProgress.updateFirstOwner(definitionId, firstOwned),
   purchaseGallery: galleryPurchase,
+  galleryListing,
   gradePlanner: planGalleryGrade,
   galleryPrices,
   galleryMarketCompare: galleryComparison.compare,

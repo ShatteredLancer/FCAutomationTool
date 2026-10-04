@@ -32,20 +32,33 @@ export function validateGalleryPurchaseRecord(record, scope, context) {
       || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165000000)
       || !Array.isArray(record.plan) || !Array.isArray(record.entries)
       || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length
+      || record.plan.some(item => !id(item?.definitionId))
       || new Set(record.plan.map(item => item.definitionId)).size !== record.plan.length
-      || record.entries.some((entry, index) => !id(entry.definitionId) || entry.definitionId !== record.plan[index].definitionId
+      || record.entries.some((entry, index) => !id(entry?.definitionId) || entry.definitionId !== record.plan[index].definitionId
         || !states.has(entry.state) || !['waiting', 'collected'].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED');
 }
 const validate = validateGalleryPurchaseRecord;
 export function createGalleryPurchaseSession({ scope, context, get, set, exclusive, createAdapter,
   assertCurrent = () => {}, checkOtherTransactions = async () => {}, shouldStop = () => false, onProgress = () => {}, operationId = () => `gallery-${Date.now()}-${Math.random().toString(16).slice(2)}` } = {}) {
   const key = galleryPurchaseKey(scope), pendingKey = galleryPurchasePendingKey(scope);
-  const write = async (storageKey, value) => { await set(storageKey, structuredClone(value)); if (!same(await get(storageKey, null), value)) throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED'); };
+  const read = async storageKey => {
+    try { return await get(storageKey, null); }
+    catch { throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED'); }
+  };
+  const write = async (storageKey, value) => {
+    try {
+      await set(storageKey, structuredClone(value));
+      if (!same(await get(storageKey, null), value)) throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED');
+    } catch (error) {
+      if (error?.message === 'FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED') throw error;
+      throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED');
+    }
+  };
   return Object.freeze({
-    async inspect() { try { assertCurrent(); const record = await get(key, null); assertCurrent();
+    async inspect() { try { assertCurrent(); const record = await read(key); assertCurrent();
       if (!record) return { status: 'absent' }; validate(record, scope, context);
       return { status: 'observed', recovery: pending(record), remaining: record.entries.filter(entry => entry.state === 'waiting').length,
-        operationId: record.operationId, collection: record.collection, results: itemResults(record), ...summary(record) };
+        operationId: record.operationId, binding: record.binding, collection: record.collection, results: itemResults(record), ...summary(record) };
     } catch (error) { return { status: 'blocked', reason: safeReason(error) }; } },
     async execute({ items, binding, resume = false, expectedOperationId = null, budget = null, quoteCeiling = null, approved = false } = {}) {
       if (approved !== true || !resume && (!Array.isArray(items) || !items.length || items.length > 256 || typeof binding !== 'string' || !binding || binding.length > 12000)
@@ -54,8 +67,10 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
       let record, adapter;
       try {
         const result = await exclusive(scope, async () => {
-          assertCurrent(); await checkOtherTransactions(); record = await get(key, null); const oldPending = await get(pendingKey, null); assertCurrent();
-          if (record) validate(record, scope, context);
+          assertCurrent(); await checkOtherTransactions();
+          const raw = await read(key), oldPending = await read(pendingKey); assertCurrent();
+          if (raw !== null) validate(raw, scope, context);
+          record = raw;
           if (oldPending && (!record || oldPending.operationId !== record.operationId)) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
           if (resume && (!record || expectedOperationId !== record.operationId)) throw new Error('FC27_GALLERY_PURCHASE_PLAN_CHANGED');
           const plan = resume ? record.plan : items.map(item => ({ definitionId: item.definitionId ?? item.eaId,
@@ -68,10 +83,13 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
           if (!record || changed) record = { schema: 1, scope, context, operationId: operationId(), binding, budget,
             plan: structuredClone(plan), entries: plan.map(item => ({ definitionId: item.definitionId, state: 'waiting' })) };
           else if (!resume) record.budget = budget;
-          validate(record, scope, context); await write(key, record); adapter = await createAdapter(record); await adapter.verifySquad(record);
+          validate(record, scope, context); await write(key, record);
           const failures = [], save = () => write(key, record), mark = async () => { await write(pendingKey, { schema: 1, operationId: record.operationId }); await save(); };
           const report = (phase, entry, extra = {}) => { try { onProgress({ ...summary(record), phase,
-            index: entry ? record.entries.indexOf(entry) + 1 : 0, definitionId: entry?.definitionId ?? null, failures: [...failures], ...extra }); } catch {} };
+            index: entry ? record.entries.indexOf(entry) + 1 : 0, definitionId: entry?.definitionId ?? null,
+            results: itemResults({ ...record, lastResult: { failures } }), failures: [...failures], ...extra }); } catch {} };
+          report('preparing', null);
+          adapter = await createAdapter(record); await adapter.verifySquad(record);
           let stopReason = null;
           for (const entry of record.entries) {
             if (entry.state === 'club' || entry.state === 'collected') continue;
@@ -120,7 +138,11 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
           return { status: record.entries.every(entry => ['club', 'collected'].includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, results: itemResults(record), ...summary(record), collection: record.collection, submitted: false };
         });
         return result ?? { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };
-      } catch (error) { return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), results: itemResults(record), ...summary(record) }; }
+      } catch (error) {
+        // Only validated records reach these summary helpers. A malformed old
+        // record must retain its original failure reason and stay untouched.
+        return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), results: itemResults(record), ...summary(record) };
+      }
       finally { adapter?.cancel?.(); }
     },
   });

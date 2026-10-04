@@ -12,6 +12,7 @@ import { benchmarkGalleryPlans, planGallerySequentialSteps } from '../../gallery
 import { planGalleryRemainderSteps, isGalleryPurchaseReplanSafe, replanableGalleryFailures } from '../../gallery/replan.js';
 import { isGalleryOwned } from '../../gallery/planner.js';
 import { galleryFirstOwnerHistoryAction } from '../../gallery/first-owner-history.js';
+import { mountFc27BulkListView } from './fc27-bulk-list-view.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -57,10 +58,18 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null,
+  planStore = null, listing = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
+  const bulkList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
+  const listingButton = node('gallery-list-purchased');
+  if (listingButton) {
+    listingButton.hidden = !bulkList;
+    listingButton.addEventListener('click', event => {
+      if (event.isTrusted && bulkList) void bulkList.open();
+    });
+  }
   const add = (parent, tag, value = '', className = '') => {
     const child = document.createElement(tag); child.textContent = value; child.className = className; parent.append(child); return child;
   };
@@ -79,8 +88,26 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       purchaseSummary = value;
       node('gallery-purchase-resume').hidden = value.status !== 'observed'
         || !(value.recovery || value.remaining > 0 || value.collection?.status === 'pending');
-    } catch { /* Optional presentation; execute validates the journal again. */ }
+      const status = node('gallery-purchase-journal-status');
+      if (status) {
+        status.hidden = value.status !== 'blocked';
+        status.textContent = value.status === 'blocked' ? purchaseReasonText(value.reason) : '';
+      }
+    } catch {
+      if (disposed || !active || identity !== scope()) return;
+      purchaseSummary = null;
+      node('gallery-purchase-resume').hidden = true;
+      const status = node('gallery-purchase-journal-status');
+      if (status) { status.hidden = false; status.textContent = '读取购买记录失败；未发送买卡请求，请重试或导出诊断日志。'; }
+    }
   };
+  const purchaseReasonText = reason => ({
+    FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED: '读取旧购买记录失败；未发送买卡请求，请重试，仍失败请导出诊断日志。',
+    FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED: '购买记录写入失败；未发送后续买卡请求，请检查存储并导出诊断日志。',
+    FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED: '购买记录格式或保存状态无法确认；未继续下单，请保留记录并导出诊断日志。',
+    FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED: '买入结果无法确认，未自动重试；请核对购买记录后再继续。',
+    FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: '购买记录仍有未核对回执，未重新下单；请使用当前购买记录继续恢复。',
+  })[reason] ?? (reason ? `购买记录无法确认，未开始买卡（${reason}）。` : '购买记录检查失败，未开始买卡。');
   const runPurchase = async input => {
     if (buying || typeof purchase !== 'function' || checkScope() === false) return;
     const identity = scope(); buying = true;
@@ -100,8 +127,19 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           output.textContent = `${phases[progress.phase] ?? '处理中'} ${progress.index}/${progress.total} · 已购买 ${progress.purchased} 张 · ${count(progress.spent)} 金币`;
         } });
       if (disposed || !active || identity !== scope()) return;
+      void diag({ event: 'purchase-result', phase: 'execute', status: outcome.status === 'purchased' ? 'success' : 'blocked',
+        reason: outcome.reason, count: outcome.purchased ?? 0, spent: outcome.spent ?? 0 });
       output.textContent = `${outcome.status === 'purchased' ? '购买完成' : '购买未完成'} · 已购买 ${outcome.purchased ?? 0} 张 · ${count(outcome.spent ?? 0)} 金币`;
       if (outcome.status !== 'purchased') output.textContent += ` · ${outcome.reason ?? outcome.status}`;
+      const purchaseMessages = {
+        FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: '购买记录仍有未核对回执，未重新下单；请使用当前购买记录继续恢复。',
+        FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED: '买入结果无法确认，未自动重试；请核对购买记录后再继续。',
+        FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED: '购买记录格式或保存状态无法确认，未继续下单；请保留记录并导出诊断日志。',
+        FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED: '读取旧购买记录失败，未发送新的买卡请求；请重试，仍失败请导出诊断日志。',
+        FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED: '写入购买记录失败，未发送后续买卡请求；请检查存储并导出诊断日志。',
+        FC27_GALLERY_COLLECTION_UNCONFIRMED: '收集状态无法确认，已停止后续购买；请刷新后重试。',
+      };
+      if (outcome.reason && purchaseMessages[outcome.reason]) output.textContent += ` · ${purchaseMessages[outcome.reason]}`;
       output.textContent += ' · 出售计划：买入后默认进入 Club 并保留，不自动挂牌；挂牌/重挂需单独确认。';
       if (outcome.collection?.status === 'pending') output.textContent += ' · 收集待确认；再次核对不会重复买入';
       if (outcome.failures?.length) output.textContent += ` · ${outcome.failures.length} 张未完成，可续购`;
@@ -171,8 +209,22 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (typeof purchase !== 'function' || !items.length) return null;
     const button = add(parent, 'button', label, 'primary gallery-purchase'); button.type = 'button';
     const identity = scope();
+    const blocked = (reason, message) => {
+      let notice = parent.querySelector('.gallery-purchase-error');
+      if (!notice) { notice = add(parent, 'small', '', 'gallery-purchase-error'); notice.setAttribute('role', 'status'); }
+      notice.textContent = message;
+      void diag({ event: 'purchase-click', phase: 'preflight', status: 'blocked', reason });
+    };
     button.addEventListener('click', event => {
-      if (!event.isTrusted || buying || identity !== scope() || !valid()) return;
+      if (!event.isTrusted) { blocked('FC27_GALLERY_PURCHASE_CLICK_UNTRUSTED', '请直接点击购买按钮'); return; }
+      if (buying) { blocked('FC27_GALLERY_PURCHASE_BUSY', '已有购买正在处理，请等待当前购买结束'); return; }
+      if (identity !== scope()) { blocked('FC27_GALLERY_ACCOUNT_CHANGED', '账号已变化，请重新打开当前集合'); return; }
+      if (!valid()) {
+        blocked('FC27_GALLERY_PURCHASE_PLAN_STALE', '数据或报价已更新，请重新生成方案后再购买');
+        return;
+      }
+      parent.querySelector('.gallery-purchase-error')?.remove();
+      void diag({ event: 'purchase-click', phase: 'preflight', status: 'accepted', count: items.length });
       void runPurchase({ items, binding, budget, progress, targetGrade,
         replanContext: replanContext ? structuredClone(replanContext) : null });
     });
@@ -430,7 +482,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         if (candidate?.score != null) add(line, 'small', `${count(candidate.score)} 分 · ${candidate.items?.length ?? 0} 张补卡`);
       }
     };
-    const show = plan => {
+    const show = (plan, expectedPlanBinding = planCache.get(set.id)?.binding) => {
       output.replaceChildren();
       if (!plan || plan.status === 'unavailable') { add(output, 'small', `暂不可规划：${plan?.reason ?? '输入不完整'}`, 'gallery-unknown'); return; }
       if (plan.status === 'achieved') { add(output, 'small', `当前已达到 ${plan.targetGrade} 档，无需补卡。`); return; }
@@ -454,13 +506,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         for (const item of candidate.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? '版本未知'} · ${item.price == null ? '价格未知' : `${count(item.price)} 🪙`}${item.scoreSource === 'catalog' ? ' · 公开估分' : ''}`);
         if (candidate.missingPriceIds.length) add(details, 'small', `${candidate.missingPriceIds.length} 张卡缺少报价，执行前必须重新查价。`, 'gallery-unknown');
         if (candidate.unknownFields?.length) add(details, 'small', '部分计分属性未知，方案按已知贡献计算。', 'gallery-unknown');
-        const planIsCurrent = !planCache.get(set.id)?.stale && planCache.get(set.id)?.binding === planBinding(value, set);
         purchaseButton(details, candidate.items, `set:${set.id}:${value.pool?.revision}:${candidate.items.map(item => item.eaId).join(',')}`,
           { progress: value.progress, targetGrade: candidate.targetGrade,
             replanContext: { targets: [{ set, catalog: result.catalog, progress: value.progress,
               prices: planningPrices(value), targetGrade: candidate.targetGrade, scope: currentScope }],
               mode: 'single', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: null },
-            valid: () => planIsCurrent && value.status === 'observed' && !value.stale && !value.poolStale && thisDetailCurrent(value, set.id) });
+            valid: () => currentDetailMatches(set.id, expectedPlanBinding) });
       }
     };
     const saved = planCache.get(set.id);
@@ -585,7 +636,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   // Planning output is independent from the DOM. A sync/render cycle may
   // replace the detail subtree, but it must not erase the user's last plan.
   const planCache = new Map();
-  const planBinding = (value, set) => JSON.stringify([scope(), result?.source, set, result?.catalog?.tags, galleryPlanningStateKey(value)]);
+  const restoringPlans = new Map();
+  const setIdentity = set => ({ id: set?.id, name: set?.name, slug: set?.slug, requiredCards: set?.requiredCards,
+    rules: set?.rules,
+    grades: (set?.grades ?? []).map(grade => ({ name: grade.name, threshold: grade.threshold, rewards: grade.rewards })) });
+  const planBinding = (value, set) => JSON.stringify([scope(), result?.source, setIdentity(set), result?.catalog?.tags, galleryPlanningStateKey(value)]);
   const savePlanCache = (set, value, patch) => {
     const current = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
     const next = { ...current, ...patch, binding: patch.binding ?? current.binding, stale: false };
@@ -598,18 +653,38 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const restorePlanCache = async (set, value) => {
     if (!planStore || !currentScope || !result?.source) return;
-    const scopeAtStart = currentScope, source = result.source, expected = planBinding(value, set);
+    const scopeAtStart = currentScope, source = result.source;
     if (planCache.has(set.id)) return;
-    try {
+    const key = JSON.stringify([scopeAtStart, source, set.id]);
+    if (restoringPlans.has(key)) return restoringPlans.get(key);
+    const task = Promise.resolve().then(async () => { try {
       const loaded = await planStore.load(scopeAtStart, source, set.id);
-      if (disposed || scopeAtStart !== currentScope || source !== result?.source || selectedSetId !== set.id) return;
+      if (disposed || scopeAtStart !== currentScope || source !== result?.source || planCache.has(set.id)) return;
       if (loaded?.status === 'observed') {
         const record = loaded.record;
+        const expected = planBinding(details.get(set.id) ?? value, currentGallerySet(set.id) ?? set);
         planCache.set(set.id, { binding: record.binding, overviewBinding: record.overviewBinding, plan: record.plan, overview: record.overview, stale: record.binding !== expected });
       }
     } catch { /* A missing cache never blocks live collection reads. */ }
+    finally { if (restoringPlans.get(key) === task) restoringPlans.delete(key); } });
+    restoringPlans.set(key, task);
+    return task;
   };
+  const currentGallerySet = id => result?.catalog?.categories?.flatMap(category => category.sets ?? [])
+    .find(set => set.id === id) ?? null;
+  // A sync refresh is allowed to replace the detail object while preserving
+  // the same account, set, cards and prices.  Buttons must follow that
+  // semantic state instead of retaining the old object reference.  The
+  // reference check was the reason a plan button silently did nothing after
+  // leaving and re-entering a set.
   const thisDetailCurrent = (value, id) => details.get(id) === value && selectedSetId === id && !jointMode;
+  const currentDetailMatches = (id, expectedBinding) => {
+    const current = details.get(id), set = currentGallerySet(id);
+    if (!set || selectedSetId !== id || jointMode || current?.status !== 'observed'
+      || current.stale || current.poolStale) return false;
+    return planBinding(current, set) === expectedBinding
+      && planCache.get(id)?.binding === expectedBinding;
+  };
   const jointTargets = new Map();
   let jointMode = false;
   let targetsIdentity = null, targetsEpoch = 0, restoringTargets = false;
@@ -776,11 +851,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const list = add(detail, 'ul');
       for (const item of planRow.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? ''} · ${item.price == null ? '价格未知' : `${count(item.price)} 🪙`}${item.targetIds.length > 1 ? ` · 共用 ${item.targetIds.length} 个目标` : ''}`);
       const targetsBinding = JSON.stringify([...jointTargets]);
-      const catalogAtPlan = result.catalog;
+      const jointBinding = () => JSON.stringify([targetValue().budget, [...jointTargets].map(([id, grade]) => [id, grade,
+        planBinding(details.get(id), currentGallerySet(id))]).sort((a, b) => a[0].localeCompare(b[0]))]);
+      const jointSemanticBinding = jointBinding();
       purchaseButton(detail, planRow.items, `joint:${targetsBinding}:${planRow.items.map(item => item.eaId).join(',')}`,
         { budget: targetValue().budget,
           replanContext: { targets: inputs, mode: 'joint', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
-          valid: () => jointMode && result.catalog === catalogAtPlan && JSON.stringify([...jointTargets]) === targetsBinding });
+          valid: () => jointMode && JSON.stringify([...jointTargets]) === targetsBinding
+            && jointBinding() === jointSemanticBinding });
     }
   };
   node('gallery-mode-browse').addEventListener('click', () => setJointMode(false));
@@ -930,7 +1008,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (value.fetchedAt) add(target, 'small', `收集状态读取于 ${date(value.fetchedAt)}`);
     renderScoring(target, summary, value);
     const cachedPlan = planCache.get(set.id);
-    if (cachedPlan && cachedPlan.binding !== planBinding(value, set)) cachedPlan.stale = true;
+    if (cachedPlan) cachedPlan.stale = cachedPlan.binding !== planBinding(value, set);
     renderPlan(target, value, set, summary);
     if (selectionSource !== result?.source) {
       selectedCards.clear(); selectionSource = result?.source ?? null; cardPage = 1;
@@ -1168,7 +1246,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         if (changed && jointTargets.has(set.id)) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
         renderJoint(); renderSets();
         const currentSet = result.catalog.categories.flatMap(category => category.sets).find(row => row.id === set.id);
-        if (currentSet && !jointMode) renderSetDetail(value, currentSet);
+        if (currentSet && !jointMode) renderSetDetail(details.get(set.id) ?? value, currentSet);
       })
       .catch(error => {
         checkScope();
@@ -1201,13 +1279,15 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     for (const { set } of filtered) {
       const card = add(list, 'article', '', 'gallery-set'); card.dataset.setId = set.id;
       const title = add(card, 'div', '', 'gallery-set-title');
-      const configuredIcons = assets?.set?.(set.name);
+      const configuredIcons = assets?.set?.(set.name, category, set, details.get(set.id)?.pool?.items ?? []);
       const titleIcons = Array.isArray(configuredIcons) && configuredIcons.length
         ? configuredIcons
-        : details.get(set.id)?.pool?.items?.slice(0, 3).map(item => asset('club', item.clubEaId)) ?? [];
+        : ['leagues', 'rarities'].includes(category.slug) ? []
+          : details.get(set.id)?.pool?.items?.slice(0, 3).map(item => asset('club', item.clubEaId)) ?? [];
       const iconBox = add(title, 'span', '', 'gallery-set-icons');
+      const iconKind = category.slug === 'leagues' ? 'league' : category.slug === 'rarities' ? 'rarity' : 'club';
       const candidates = (Array.isArray(titleIcons) ? titleIcons : [titleIcons]).map(value =>
-        typeof value === 'string' && value.startsWith('https://') ? value : asset('club', value)).filter(Boolean);
+        typeof value === 'string' && value.startsWith('https://') ? value : asset(iconKind, value)).filter(Boolean);
       let chosen = setIconSelections.get(set.id);
       if (!chosen || chosen.key !== JSON.stringify(candidates)) {
         chosen = { key: JSON.stringify(candidates), src: selectGallerySetIcon(candidates) };
@@ -1507,7 +1587,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     node('gallery-status').textContent = message;
     node('gallery-progress-note').textContent = message;
   }
-  return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.();
+  return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.(); bulkList?.dispose?.();
     purchase?.stop?.(); node('gallery-purchase-dialog').close();
     node('gallery-sync-dialog').close(); setActive(false); document.removeEventListener('visibilitychange', check);
     document.defaultView?.removeEventListener('resize', updateFooterGeometry); } });

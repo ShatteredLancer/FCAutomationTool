@@ -24,6 +24,7 @@ import { readFc27PurchasePageSlots } from '../ea/fc27-puzzle-page.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
 import { galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
+import { assertNoGalleryListingPending } from '../../gallery/bulk-list-session.js';
 
 const blocked = reason => ({ status: 'blocked', reason });
 const safeReason = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message) ? error.message : 'FC27_ACCEPTANCE_UNCONFIRMED';
@@ -181,6 +182,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     preparedPuzzle?.adapter.cancel(); preparedPuzzle = null;
   };
   const traditionalExclusive = (requestedScope, task) => persistence.exclusive(requestedScope, async () => {
+    await assertNoGalleryListingPending(gmGetValue, scope);
     if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     return task();
   });
@@ -188,6 +190,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw new Error('FC27_TRANSACTION_CONTEXT_CHANGED');
   };
   const assertNoPuzzlePending = async target => {
+    await assertNoGalleryListingPending(gmGetValue, scope);
     if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) throw new Error('FC27_BUY_RECOVERY_REQUIRED');
     if ((await puzzlePersistence.journal.read(scope, target))?.phase === 'save-pending') throw new Error('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');

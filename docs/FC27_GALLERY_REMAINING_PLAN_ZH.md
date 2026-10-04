@@ -1,6 +1,105 @@
 # Gallery 27.0.10：差异清单与后续实施计划
 
+## 2026-10-04 业务检查点提交验证
+
+本次归档现有 Gallery Bulk List、购买/挂牌 Journal 解耦、跨 Tab 方案购买、错误诊断、图标与对话框布局改动。定时挂牌只包含隔离模型和测试，生产调度仍未开启。版本保持 FCAT 27.0.10 / FSU Local 26.09.9。
+
+- `npm run verify` 通过：工作区 338 个文件 / 3829 项；其中未纳入提交的价格草稿测试占 1 个文件 / 3 项，业务提交对应 337 个文件 / 3826 项。已检查业务源和测试没有导入这些草稿。
+- `node scripts/verify-fc27-prelaunch.mjs --browser` 通过：84 个文件 / 1379 项，并执行了 `run.mjs --self-test` 的完整离线浏览器检查。Bulk List 覆盖 25 张卡、三页、原生卡面清理、三种价格模式、重新打开、单次执行和逐卡结果；Gallery 覆盖跨 Tab、恢复、同步与目录更新。
+- 重新构建后 root/dist userscript SHA256 均为 `65149D50DFB4E19DBC30EC54C452463697309061D8C2148AC49FD6F693A5A68A`；FSU 补丁重放和产物一致性通过。
+- 当前购买仍未把公开估价约束为硬上限，挂牌完整 Enhancer 行为对照仍未完成；双滑块的全部拖动/输入联动场景、购买过程逐卡实时清单和真实交易仍需后续验收。离线通过不等于这些需求完成。本次仅保存开发检查点，不升版、推送、发布或执行真实买卖。
+
+## 2026-10-04 购买与挂牌 Journal 解耦（最新恢复规则）
+
+- Gallery 方案中的“批量购买”只读取当前购买方案和购买 Journal；上一批“挂牌已购卡”的 Journal 即使存在、损坏、过期或有未知回执，也不会被购买流程读取或阻断。旧挂牌记录仍保留用于审计和恢复。
+- “挂牌已购卡”只处理当前购买 Journal 中已经确认进入 Club 的实体。只有恢复同一批中断挂牌时，才读取挂牌 Journal，并在原 Bulk List 位置显示“核对并继续”。
+- 购买自身的 Journal 读取、格式校验、未知成交、入库和收集确认失败会分别返回明确的购买恢复提示；不会通过重新购买或清空记录来绕过保护。
+- 购买 Journal 的存储读取异常和写入/回读异常分别提示“读取旧购买记录失败”和“写入购买记录失败”；Gallery 工具栏也会显示后台读取失败，续购按钮保持隐藏，避免误以为可以安全重试。
+- 挂牌 Journal 读取失败也必须停在挂牌流程并给出明确提示：格式损坏、账号/会话不符、未确认写回和未知挂牌回执分别说明下一步；不把内部停止码直接当作用户提示。
+- 挂牌 Journal 的新建、更新或跨批次归档写入异常返回 `FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED`，在 Bulk List 原位置显示“未发送后续挂牌请求”；旧记录保留，不以部分写入状态继续交易。
+- 相关回归覆盖：旧挂牌记录不影响新购买、购买 Journal 损坏阻断、挂牌恢复状态提示和未知回执不重试。真实账号交易仍需用户主动点击验收。
+
+## 2026-10-04 Gallery 购买被旧挂牌恢复记录阻断（已修复，待实机核对）
+
+- 新日志只有一次可信的 `purchase-click`，购买在查价/买卡前返回 `FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED`，因此“已购买 0 张”不是 EA 买断失败或 FUT.GG 报价失败，而是账号范围内旧 Bulk List Journal 的安全恢复门禁。
+- 源码与失败回归确认：旧实现把 EA 明确拒绝（401/403/427/429）部分记录成 `unknown`，可能持续阻断后续购买。本次改为保留拒绝回执并标记该卡 `rejected`，未处理卡仍留在 Journal，不能被误报为成功。用户导出没有旧 Journal 内容，尚不能认定其记录就是这一分支；格式损坏或真正未知回执需新版诊断区分。
+- 购买前增加一次只读、账号锁内的挂牌核对：仅精确匹配 item/definition、Transfer pile、active tradeId、起拍价和一口价的挂牌可被确认；缺失、过期、价格/身份不符、刷新失败、格式异常或账号变化继续 fail-closed，绝不自动重新挂牌或重复买卡。确认旧记录后才进入原有购买查价流程。
+- 诊断新增 `purchase-preflight`、`listing-recovery-state` 和 `purchase-outcome`，记录总数/待恢复数/状态分类；诊断失败不会改变交易语义。界面会提示“旧挂牌记录待核对”，不再只显示无行动的原始错误码。
+- 新增 401/403/427/429、精确活动挂牌、缺失/过期/错价/错身份、刷新失败、格式损坏、账号变化、Journal 写回失败、无旧记录及诊断存储失败回归。完整交易仍需用户在新版本主动点击验收；本轮没有代用户买卡或挂牌。
+- 验证完成：`npm run verify` 337 文件 / 3821 项通过；`node scripts/verify-fc27-prelaunch.mjs --browser` 84 文件 / 1379 项及全部离线浏览器通过，新增两个购买恢复提示场景通过；`git diff --check` 通过。版本仍为 27.0.10，root/dist SHA256 均为 `77B8B66406F4E26220EDD5EA105090159774FE32FFEDC685925A89BC879E82E9`，FSU Local 26.09.9 不变。证据：`artifacts/gallery-recovery-verify.log`、`artifacts/gallery-recovery-browser-verify.log`。
+- 恢复点：安装本次重新生成的同版本脚本，刷新后重新点击原购买按钮，无需清空记录。已明确拒绝或能确认活动挂牌的旧项自动核对；真正未知、已过期但缺乏确切挂牌回执、记录损坏仍不能假装恢复。若继续阻断，新导出会区分状态；用户旧 Journal 的实际类别及真实交易仍待验收。本轮未安装到真实会话、未提交或发布。
+
+## 2026-10-04 跨 Tab 购买反馈与 Bulk List 错误可见性修正
+
+- 单集合/联合方案从缓存恢复后，购买有效性改为核对账号、集合规则、卡片事实和有效报价，不再依赖离开页面前的对象引用；输入事实未变化可继续购买。非可信脚本触发、购买进行中、账号变化和方案/报价过期分别显示在按钮旁，并写入独立诊断原因；这些情况仍然阻断购买，不会绕过语义校验。
+- Bulk List 现在保留准备阶段的安全错误码、阶段和 HTTP 状态；执行结果显示已挂牌、失败、跳过、待处理的逐项统计。未知回执显示“结果待核对”并保留恢复记录，部分成功不会被伪报为完成，准备失败明确显示“未发送挂牌请求”。
+- 新增离线场景覆盖跨 Tab/恢复购买按钮、挂牌部分成功、未知回执、执行 429 和准备阶段 401；未发出 EA、市场或挂牌请求。`npm run verify` 通过 337 个测试文件 / 3804 项，离线浏览器 self-test 和 `git diff --check` 通过；构建 root/dist SHA256 一致。
+- 两份用户诊断日志没有 `purchase`、`listing`、`buy` 或 `market` 事件，因此仍不能据此判断 EA 的真实买卡/挂牌拒绝原因。真实账号买卡、挂牌、重挂和成交回读继续需要用户主动点击验收；本轮未执行任何金币或卡片交易。
+
+## 2026-10-04 当前修复计划与恢复点
+
+用户报告：挂牌面板不符合 Enhancer、挂牌报错，以及生成方案离开再返回后批量购买无响应。本轮只修这条完整流程，不扩展后台定时或自动交易。两份 10-03 诊断均未保留挂牌/购买阶段事件，不能据此推断 EA 拒绝的具体原因。
+
+1. 对齐 Enhancer `Qh/oMt/yMt/xAe`：分组时长、Fixed/Percentage/Steps、范围滑条、卡面/表格、逐卡卖价/购价/税后盈亏和前台进度。选中变化不重新随机定价，覆盖价不因设置变化被删除；固定价只存当前会话（原实现误持久化），其他设置按账号保存。公开报价继续使用已批准的 FUT.GG。
+2. 修复单/联合方案购买的对象引用失效，改为账号、目录规则、卡片状态、有效报价及预算的语义核对；真正过期时就地提示，不静默返回。
+3. 补充准备、价格范围、公开报价、写入回执、回读阶段日志，关键事件独立有界保留，错误展示完整安全码。日志异常不得改变交易结果。
+4. 场景：切页/同值同步后购买、实际数据过期、设置联动、勾选不调价、覆盖价保留、未知报价、缺失价格范围、单卡拒绝继续、未知回执恢复、诊断洪泛/存储失败。完成单测、完整 verify 与离线浏览器后集中留下真实点击验收。
+
+继承工作区 27.0.10 未提交改动；不重做已有 Gallery UI/FO/事务功能，不买卡、挂牌、升版或提交。本轮 UI 与事务真实 EA 验收仍待用户主动点击。
+
 更新时间：2026-10-03。实现基线为当前工作区 / FCAT 27.0.10 / FSU Local 26.09.9；下列新增实现尚未提交。本文件是后续工作的当前入口；旧 Gallery 计划中 G4 Pending、关注仅内存、特殊卡面未验证等阶段描述不再代表全部现状。
+
+#### 2026-10-03 专用浏览器集中只读验收结果（最新）
+
+- 使用带 `socks5://127.0.0.1:1080` 的专用 Chrome、FCAT `27.0.10` 和已登录 Web App 完成了 Gallery 分类、集合和详情检查。Gallery 分类首页包含 7 类、无“全部”；从详情返回 Gallery 后仍回到分类首页；详情页的置顶返回、非模态同步状态和挂牌入口均可见。
+- Arsenal 集合详情成功读取 60 张卡池中的当前页 24 张卡；24 张均使用 EA 原生卡面，没有文字头像回退，并且每张都有报价。页面包含一个等级/计分轨道，详情状态无同步模态遮挡。
+- 只读比价成功：页面状态记录为 `EA 530,000 金币 · 参考 532,000 金币`，同一次状态采集中的卡片、价格和集合详情均有效。后续审计文件 `audit-current-1791040375364.json` 的 `status=failed` 仅来自检查器对已滚动元素截图时的 `page.screenshot: Clipped area is either empty or outside the resulting image`，不是页面读取或比价失败。
+- 分类和集合图标已核对：Rarities 使用 EA 卡壳资源，Leagues 使用 EA `LEAGUE` filter 资源，集合内 `Frauen-Bundesliga` 使用 `2215`；俱乐部集合使用 `CLUB` 资源。未知资源仍按既定规则回退文字。
+- 诊断导出已有可解析的真实导出文件 `artifacts/fc27-browser/gallery-acceptance-diagnostics.json`（FCAT `27.0.10`、300 条脱敏事件、72,235 字节），且设置页导出代码和离线下载断言通过。随后一次重试因专用浏览器上下文已关闭而未能再次保存；因此把“已有导出证据”与“本次重试失败”分开记录，不把关闭后的重试当作业务故障。
+- 本轮未买卡、挂牌、重挂、提交 SBC、领取奖励或创建定时任务。专用浏览器检查进程已正常退出，不能继续复用旧会话 ID `86357`；不要求用户为同一只读证据重复登录。
+
+本次集中检查后的下一项实机验收是：用户主动选定少量 Gallery 卡并完成一次购买后，核对入 Club/收集确认，再用“挂牌已购卡”进行精确批次的手动挂牌；定时挂牌、自动原价重挂、成交后的净成本闭环仍未接入生产调度。FO 持久化、账号切换、冷/暖缓存、后台同步性能、购买恢复及其它矩阵项仍按下方持续验收矩阵单独追踪。若没有已确认购买回执，挂牌面板显示 0 行并返回 `FC27_GALLERY_LISTING_NO_PURCHASE` 属于正常安全结果。
+
+#### 2026-10-03 集合图标与诊断导出恢复点
+
+- 已修复集合层图标类型混用：Leagues 集合按 EA `LEAGUE` filter 资源显示（含 `Frauen-Bundesliga=2215`），Rarities 按 `RARITY` filter 资源显示，俱乐部集合继续使用 Club 资源。未知或混合卡池不再回退到无关俱乐部队徽，而显示文字标题；新增映射/混合池回归覆盖。
+- Rarities 分类总览现与 Enhancer 一致，使用 `getItemShell` 卡壳资源；Leagues 仍使用 `LEAGUE` filter，俱乐部仍使用 `CLUB` filter。未知资源继续文字回退。
+- Settings 的诊断导出代码和浏览器 smoke 已具备真实下载断言；专用浏览器此前的 `diagnostics-export` 尚未取得下载证据，待下一次集中只读验收复核。此项不改变日志内容、权限或业务请求。
+- 当前集中验收只需一次登录会话：Rarities、Leagues 集合图标、详情、比价、Settings 导出；Bulk List 仅在存在已确认购买回执时只读检查。验收期间不买卡、不挂牌、不填阵、不提交。
+
+#### 2026-10-03 专用浏览器只读检查恢复点
+
+已登录、带 `socks5://127.0.0.1:1080` 代理的专用 Chrome 安装了 FCAT 27.0.10，本地安装脚本 SHA256 为 `70def25becb21c589398338f56d1b10403a9257694ecf2060f3e935ed588cba4`。只读检查确认左侧 FCAT 与 Settings 入口可见；Gallery 载入 FUT.GG 的 7 类、127 集合，重进后回到无“全部”的分类首页。Arsenal 详情加载 60 张卡池、21 张已收集卡，卡片使用 EA 原生视图且 24 张当前页均显示价格；置顶返回、分类图标和非模态同步状态可见。德国分类的 Frauen-Bundesliga 使用正确的 EA 联赛 ID `2215`，图像已加载。证据：`artifacts/fc27-browser/audit-home-20261003-1.json`、`audit-arsenal-cards.json` 及同名截图。
+
+新发现的展示缺口：`Leagues` 分类内的各联赛集合图标仍从队伍/卡池取 `clubs/dark` 队徽，例如 Premier League 显示 Manchester City 队徽、Frauen-Bundesliga 显示俱乐部徽章；分类首页的联赛徽标正确。原因位于 `production-entry.js` 的 `galleryAssets.set(name)` 仅查询 TeamConfig，`fc27-gallery-view.js` 的 `renderSets()` 又以 Club 卡池兜底。需按集合类型提供联赛资源映射并补回归，不能把分类修复视为集合修复。证据：`audit-leagues.json` / `.png`。
+
+“挂牌已购卡”面板可以打开，显示 FUT.GG 报价来源与定价模式；当前账号没有 Gallery 购买记录，返回 `FC27_GALLERY_LISTING_NO_PURCHASE`、0 行，生产定时控件隐藏。不能据此宣称真实报价、挂牌、入库或售出闭环通过。Rarities 分类的本次自动点击超过检查器等待窗口，属于未验收而非已证实的业务失败；诊断导出命令也未成功，尚无可用导出证据。随后检查器 `tabs` 返回空列表，当前专用 EA 标签页已不可接管。临时浏览器审计接线已撤除；本轮未买卡、挂牌、填阵或提交，也未升版、提交或发布。后续先修集合图标并离线验收，再在可控会话集中复核 Rarities、比价、诊断导出及有购买回执时的 Bulk List；真实金币交易仍需用户主动点击。
+
+#### 2026-10-03 Frauen-Bundesliga 图标映射修正
+
+分类页曾将德国女足联赛误映射为 EA 联赛 ID `2221`，该资源对应用户报告的美国女足联赛图标。FUT.GG Gallery 客户端的公开映射确认 `Bundesliga=19`、`Frauen-Bundesliga=2215`；已独立下载并查看 EA 原始 PNG，`2215` 确为 Google Pixel Frauen-Bundesliga、`2221` 为 NWSL。德国分类改为 `[19, 2215]`，Leagues 总览中同一错误引用也同步更正，其余图标不变。图标仍通过 EA 已加载的 `AssetLocationUtils.getFilterImage(FILTER.LEAGUE, id)` 获取，运行时不新增业务查询；若 EA 运行时不提供资源，保留现有文字回退。
+
+新增三项入口接线回归，修改前两个失败、修改后全部通过；完整 `npm run verify` 336 文件 / 3770 项通过，版本仍 27.0.10，root/dist SHA256 同为 `A27D3BE6715EBAAD384B7438E08F93035086FAEF2DCCC8337AAA49A3919274D5`。FC27 补充验证 84 文件 / 1379 项通过；首次离线浏览器在既有 owner-close Web Lock 场景返回 `null` 而非 `save-pending`，完整 self-test 重跑通过，未更改事务保护或测试断言。日志为 `artifacts/gallery-icon-browser-verify.log`、`artifacts/gallery-icon-browser-retry.log`，EA 图片为 `artifacts/fc27-browser/gallery-league-2215.png` 和 `gallery-league-2221.png`。
+
+本次未在已登录页面重装或验收，更新本地产物并刷新后可直接核对两个分类图标，无需清除 Gallery 缓存。未提交、升版或交易。T4 保留为隔离的计划数据模型；生产入口不启动后台定时器，直到接入现有 Trade Scheduler 的有限授权、Lease、Continuation、429 冷却和公平调度。Bulk List 的手动挂牌不受此限制；定时 API 在未接通时明确返回 `FC27_GALLERY_LISTING_SCHEDULER_PENDING`，不会误发 EA 写请求。
+
+#### 2026-10-03 用户确认 T3 边界
+
+#### 2026-10-03 T3/T4 收口：手动 Bulk List 可验证，后台定时保持关闭
+
+- 手动“挂牌已购卡”继续复用 Gallery Listing Transaction，使用精确购买批次、FUT.GG 公开报价、EA price limits、逐卡进度和未知回执 Journal。固定 Buy Now/Start Bid 设置会按账号保存，刷新后恢复；单卡失败不会伪造成功或重复发送。
+- 新增离线浏览器 smoke：固定价恢复、逐卡成功/失败展示、一次可信点击、没有计划时不显示定时控件且不产生请求。针对性单测覆盖 32 项；完整 `npm run verify` 通过 337 文件 / 3795 项，产物 root/dist SHA256 一致，FSU Local 26.09.9 校验通过。
+- 定时计划模型仍支持 once/daily/interval/window 的持久化和 missed/blocked/账号绑定状态，但生产 `schedulingEnabled=false`，不会在页面后台自行挂牌。未接入时所有 poll/arm/tick/save 返回 `FC27_GALLERY_LISTING_SCHEDULER_PENDING`；待后续通过现有 Trade Scheduler 的有限授权、Lease、Continuation、公平调度和真实 EA 验收后再开放。
+- Frauen-Bundesliga 使用 EA league ID `2215`，避免误显示 NWSL `2221`；该修复只复用已加载的 EA 图标资源，不新增网络请求。
+
+#### 2026-10-03 T4 恢复：Gallery 购买批次定时挂牌模型已隔离
+
+- 新增 `src/gallery/listing-scheduler.js`，保存精确购买 Journal 的 `operationId + binding` 以及每张卡的 `itemId + definitionId + purchaseTradeId`。它不扫描 Club，也不把旧 Scheduler 的四张、单卡价格或总预算限制带入 Gallery Bulk List。
+- `listing-scheduler.js` 保留一次/每日/间隔/时间窗的数据模型、购买 binding、错过时间和终态不可重挂规则。Bulk List 的定时控件暂不在生产面板显示；未接通时服务返回 `FC27_GALLERY_LISTING_SCHEDULER_PENDING`。
+- `readSchedule/saveSchedule/armSchedule/disarmSchedule` 可供离线贯通测试使用；已修复公开 API 提前返回导致内部调用失效、到期时间被推向未来、missed 被视为完成、重复启用和双标签竞争等问题。生产执行仍须接入既有 Trade Scheduler，不能宣称自动定时挂牌已完成或已实机验证。
+
+- 新 FCAT Gallery/Transfer Bulk List 按用户选中的全部卡处理，不继承旧 Scheduler 的四张、单卡 2000 或总预算 8000 限制；仍逐卡遵守 EA price limits、可交易/身份/容量、一次明确批准、Journal、互斥锁、未知回执停机和恢复规则。该确认只适用于新的 FCAT Bulk List，不扩大旧 Scheduler 或自动任务。
+- 报价使用当前已接通的 FUT.GG 公开报价，并在面板标明“来源：FUT.GG”；不能声称与 Enhancer 私有报价后端同源。报价缺失时保留未知并跳过该项，不把缺失报价当作零价。
 
 ### 2026-10-03 历史 FO 入口收敛
 
@@ -70,23 +169,23 @@ Enhancer 在 Transfer List 的 Available/Unsold 分区注入同一 Bulk List 面
 | T6 | 成交回读与净成本账本 | 只凭精确 sold 回执计税后收入；未售出不伪造利润；Gallery 目标/费用不被后台同步清空 |
 | T7 | 真实低价值账号验收 | 由用户单独授权，先 1 张买后挂牌，再 1 个定时 once，再验证 sold/unsold 恢复；不自动扩大到全 Club |
 
-#### 2026-10-03 分步实施恢复点：T1/T2 准备层，T3 尚未接通
+#### 2026-10-03 分步实施恢复点：T3 已接入代码，等待真实挂牌验收
 
 - 已提交此前改动作为恢复点：`de1c821 feat(fc27): document bulk listing and gallery follow-up plan`，包含此前 Gallery/Puzzle 修复、方案保留、FO 入口、净成本基础和挂牌计划。未推送、升版或发布；版本仍为 `27.0.10`。以下是该提交之后的新增工作。
 - 已完成购买回执准备层：`src/gallery/listing-candidates.js` 可从账号/赛季作用域的 Gallery Purchase Journal 投影挂牌回执，要求精确 operation/binding/context、Pending 标记已清除、购买/移入 Club 状态已确认、收集状态已复核；`collected`（购买前发现已收集）明确不作为本次购买实体。重复 item/trade 回执阻断，部分购买成功仅投影成功实体。浏览器购买服务新增显式 `listingSource()` 只读接口，持共享锁检查前后 Journal/Pending 未变化，不构造买家、不发 EA/价格/收集请求、不写 GM storage。候选过滤接收已经由 Adapter 解析的快照 DTO；精确版本、当前 Club pile、可交易和可挂牌资格事实缺一时跳过，不扫描/推销其它 Club 卡。
 - 已完成定价准备：按 Enhancer `gMt/xAe` 及 EA 当前 `PRICE_TIERS` 注入值实现 Percentage（整数随机百分比后最近阶梯取整）、Fixed（固定价格不取整）、Steps、固定起拍价、默认低一档起拍价及时长。未知限价不生成候选；已知超限逐项跳过，不夹价。模块不发请求、不写 storage、不调用 `services.Item.list()`，输出 `executionEnabled:false`。
 - 回归场景：25 个回执/来源用例、6 个价格用例和 1 个购买服务贯通用例；与既有购买回归共 52 项聚焦测试通过。覆盖错账号/operation/binding、Pending/Journal 变化、互斥锁不可用、存储失败、重复回执、已收集跳过、兄弟副本不能代替本次买入实体、partial 成功、实体移 pile/资格未知、输入不被修改与重复读取。价格同输入比较覆盖捕获的 Enhancer `vfe` 参考函数：25 个价格（含 1000/10000/50000/100000 前后）× -20..20 档，共 1025 次档位比较和 25 次最近阶梯比较；另测固定价不取整、固定起拍价仅 Fixed 生效、逐 item ID 覆盖、随机百分比、六种时长、未知/越界 limits 不夹价。测试参考摘录只用于兼容证据，不进生产包，归属见 `THIRD_PARTY_NOTICES.md`。
-- 与完整流程的 gap：T1/T2 目前是未接 UI 的准备层，T1 的 Active/Unsold/Sold 持久状态仍在 T3/T5，T2 的真实报价/EA fresh snapshot/price limits 读取尚未接通。用户目前不能点击挂牌。T3 仍需共享面板、挂牌 Journal、前台进度、精确写后对账、停止/恢复；Node 测试不能代替实购/挂牌/收集保留验收。价格最顶端多步上涨在本地停止于 14,999,000，避免参考递归停不下来的边界；未知 limits 按既定 FCAT 计划跳过，与 Enhancer 原函数允许缺失 limits 的行为不同，后续不得宣称全行为等价。
-- 已知批准边界：挂牌仅允许精确的 Gallery 购买批次或用户在 Transfer List 明确选中的实体。历史 Trade Job 的单次最多 4 张、Buy Now 10,000 上限不能被 T3 静默继承或悄悄绕开；接入前需完成调用链合同审计并按用户已批准的计划调整适用范围，同时保留单卡 EA limits、精确身份、Journal、互斥锁和恢复门禁。Gallery 的可用报价来源（Enhancer `U_.player.fetchPrices` 为其自身私有服务；FUT.GG 当前是否满足该面板的价格语义尚未验收）也必须显式呈现来源，不能冒充同源。
-- 本步无登录页面或真实 EA 交易操作；未调用 list/relist、未购买、未创建定时 Job、未升级/发布。首轮 `npm run verify` 332 文件 / 3730 项通过；随后补齐上述边界与浏览器购买服务只读接线，最终完整验证结果在下方补录。恢复下一步：先确定报价服务与历史四张/价格上限的适用范围，再接 T3 共用 UI/写事务；不把尚未接通的按钮或交易列为已交付。
+- T3 当前已接入 Gallery 的“挂牌已购卡”入口、逐项 EA price limits、FUT.GG 报价预览、全选/逐卡选择、Percentage/Fixed/Steps、六种时长、前台进度、停止、Journal 和未知回执恢复。超过旧 Scheduler 四张/价格/总预算限制的授权仅适用于此入口。Node 回归已覆盖 6 个会话场景；真实 EA 挂牌、429/427 持久冷却、Transfer 页面入口和 Unsold 重挂仍未验收，不能把离线成功表述为生产交易已完成。价格最顶端多步上涨在本地停止于 14,999,000；未知 limits 会显式跳过。
+- 已知批准边界：挂牌仅允许精确的 Gallery 购买批次或用户在 Transfer List 明确选中的实体。新 FCAT Bulk List 已按用户确认处理全部选中卡，旧 Scheduler 的四张、价格和总预算限制不继承；单卡 EA limits、精确身份、Journal、互斥锁和恢复门禁继续有效。FUT.GG 报价在界面标明来源，不能冒充 Enhancer 私有后端同源。
+- 本步无登录页面或真实 EA 交易操作；未调用 list/relist、未购买、未创建定时 Job、未升级/发布。恢复下一步：在专用浏览器登录后打开 Gallery，点击“挂牌已购卡”，确认只读准备、价格预览和逐卡状态；确认无误后由用户明确点击“挂牌选中卡”完成真实验收。
 
-最终验证：`npm run verify` 333 文件 / 3757 项通过，产物 `27.0.10` / 891678 bytes，FSU `26.09.9` 补丁重放与产物一致性通过；日志 `artifacts/gallery-listing-preparation-verify.log`。全部浏览器 `--self-test` 最终通过，未使用登录账号；首次运行在旧 `traditional-persistence-smoke.mjs:96` 的关页释放 Web Lock 时序断言失败（返回 null），重跑通过全部检查，没有放宽生产锁，保留首轮失败日志 `artifacts/gallery-listing-preparation-browser.log`。本轮不声称真实挂牌已验收。
+最终验证：`npm run verify` 334 文件 / 3763 项通过，产物 `27.0.10` / 1016144 bytes，FSU `26.09.9` 补丁重放与产物一致性通过；`node scripts/browser-inspection/run.mjs --self-test` 全部离线面板通过，新增“挂牌已购卡”可信点击 smoke 通过。未使用登录账号或执行真实交易；真实挂牌、429/427 恢复、Transfer 入口和 Unsold 重挂仍待用户验收。
 
-写事务接线前的两项待决定：新手动 Bulk List 是否按全体选中项处理、取消旧 4 张 / 10000 的实验上限（仍遵守 EA limits 与账号显式规则；不自动扩大旧 Scheduler 授权）；参考报价是否允许使用当前 Gallery 已接的 FUT.GG 公开报价并明确标注来源，而不依赖 Enhancer 私有服务。当前先保留准备层，不更改这两项默认行为。确认后从 T3 的共用面板/价格查询/挂牌事务接线继续；无需用户现在登录或买卡。定时次数与重挂范围在 T4/T5 单独复核。
+历史“是否取消旧四张/价格限制”和“是否使用 FUT.GG 公开报价”的待决定项已由用户确认：仅新 FCAT Bulk List 按全选处理并使用 FUT.GG，旧 Scheduler 不变；定时次数与重挂范围仍在 T4/T5 单独复核。
 
 #### 需要保持的边界
 
-本计划不授权 Agent 自动买卡、挂牌、出售或创建定时 Job。实际接线前必须先完成 T1/T2 的失败测试和参考行为对照；真实交易只在用户明确批准的精确计划内执行。FSU 原文件不改，Gallery 不调用或点击 FSU 按钮；当前已实现上述准备层，净成本账本仍为只读基础，自动挂牌/重挂尚未实现。
+本计划不授权 Agent 自动买卡、挂牌、出售或创建定时 Job。真实交易只在用户明确批准的精确计划内执行。FSU 原文件不改，Gallery 不调用或点击 FSU 按钮；当前已实现 T3 的代码和离线验证，净成本账本仍为只读基础，自动挂牌/重挂和真实交易验收仍未完成。
 
 本轮恢复点：按用户要求在 Puzzle 修复后继续 Gallery，已完成明确的 R1/R2/R4 本地收尾和 FO 编辑回归。新增发现并修复“撤销丢 EA 首任事实”“写入失败误报成功”：持久化成功才提交本地覆盖，连续写入串行合并；撤销只去掉声明，保留独立的 EA 观察。卡片位置直接标记/撤销，无新 EA 请求；相同版本在已加载集合间同步更新，旧联合方案失效。后续统一执行下方集中验收，不反复拆成登录/采集步骤。
 

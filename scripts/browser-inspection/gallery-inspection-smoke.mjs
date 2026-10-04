@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { build } from 'esbuild';
+import { exerciseGalleryBulkList } from './gallery-bulk-list-smoke.mjs';
 import { readProductionGallery } from './agent-session.mjs';
 import { inspectGalleryFallback } from './gallery-proxy-inspection.mjs';
 import { clickPanelControl, panelCall } from './production-panel-inspection.mjs';
@@ -12,6 +13,7 @@ import { futggGallery, fodderGallery, futggGalleryPool } from '../../tests/fixtu
 // Use the real closed shadow root and native scrolling host. The earlier
 // Gallery smoke only exercised open-shadow Playwright locators in a modal.
 export async function exerciseGalleryInspection(context) {
+  await exerciseGalleryBulkList(context);
   const page = await context.newPage();
   const root = path.resolve(import.meta.dirname, '../..');
   const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
@@ -37,12 +39,19 @@ export async function exerciseGalleryInspection(context) {
     await page.evaluate(({ catalog, progress }) => {
       globalThis.gallerySetCalls = 0;
       globalThis.gallerySetArgs = [];
+      globalThis.galleryListingOpens = 0;
       const state = { status: 'observed', source: 'futgg', catalog, fetchedAt: Date.now() };
       globalThis.galleryPanel = globalThis.GallerySmoke.mountFc27AcceptancePanel({
         document: globalThis.document, hostId: 'fcat-fc27-production', targets: () => [],
         galleryAccountScope: () => 'fixture',
         galleryCatalog: { peek: async () => state, load: async () => state },
         gallerySetLoader: async args => { globalThis.gallerySetCalls++; globalThis.gallerySetArgs.push(args); return { status: 'observed', scope: 'fixture', progress }; },
+        galleryListing: {
+          prepare: async () => { globalThis.galleryListingOpens++; return { status: 'ready', candidates: [], prices: {}, liveEnabled: false }; },
+          plan: () => ({ status: 'observed', entries: [], skipped: [] }),
+          execute: async () => ({ status: 'completed', entries: [] }), inspect: async () => ({ status: 'absent' }),
+          dispose() {}, stop() {},
+        },
       });
       globalThis.galleryPanel.open(globalThis.document.getElementById('native'));
     }, { catalog, progress });
@@ -54,6 +63,13 @@ export async function exerciseGalleryInspection(context) {
     assert.equal(report.overview.categories, catalog.categories.length);
     assert.equal(report.overview.categoryButtons, catalog.categories.length);
     assert.equal(await page.evaluate(() => globalThis.gallerySetCalls), 1);
+    const listingControl = await panelCall(context, page, function () {
+      const button = this.getElementById('gallery-list-purchased');
+      return button ? { hidden: button.hidden, disabled: button.disabled, visible: button.checkVisibility?.() ?? false } : null;
+    });
+    assert.deepEqual(listingControl, { hidden: false, disabled: false, visible: true });
+    await clickPanelControl(context, page, '#gallery-list-purchased');
+    assert.equal(await page.evaluate(() => globalThis.galleryListingOpens), 1);
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
     console.log('Offline Gallery inspection smoke passed: closed shadow, 127 sets, native scroll, filter/back, one set read.');
 
