@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { normalizeGalleryPool, galleryPoolCachePayload } from '../../src/gallery/pool.js';
 import { futggGallery, futggGalleryPool, futggTruncatedGalleryPool } from '../fixtures/fc27-gallery.js';
-import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalizeFc27GalleryProxy } from '../../src/adapters/browser/fc27-gallery-catalog.js';
+import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '../../src/adapters/browser/fc27-gallery-catalog.js';
 
 it('normalizes a complete FUT.GG pool and keeps exact version identities', () => {
   const pool = normalizeGalleryPool('futgg', futggGalleryPool(), 30);
@@ -77,15 +77,13 @@ it('transport only permits numeric FUT.GG pool paths', async () => {
   await expect(transport.getPool('30')).rejects.toThrow('FC27_GALLERY_POOL_ID_INVALID');
 });
 
-it('routes FUT.GG Gallery requests through the configured HTTPS forwarding proxy', async () => {
-  let request; const transport = createFc27GalleryTransport(value => { request = value; }, { proxy: 'https://proxy.example/futgg/' });
+it('always sends FUT.GG Gallery requests to the public origin', async () => {
+  let request; const transport = createFc27GalleryTransport(value => { request = value; });
   const pending = transport.getPool(30);
   expect(request).toMatchObject({ method: 'GET', anonymous: true,
-    url: 'https://proxy.example/futgg?futggapi=gallery/fc27/sets/30/pool/' });
+    url: 'https://www.fut.gg/api/fut/gallery/fc27/sets/30/pool/' });
   request.onload({ status: 200, responseText: '{}', responseHeaders: '', finalUrl: request.url });
   await expect(pending).resolves.toMatchObject({ status: 200 });
-  expect(() => normalizeFc27GalleryProxy('http://127.0.0.1:1080')).toThrow('FC27_GALLERY_PROXY_INVALID');
-  expect(() => normalizeFc27GalleryProxy('socks5://127.0.0.1:1080')).toThrow('FC27_GALLERY_PROXY_INVALID');
 });
 
 it('restores pool cache with 304 and rejects unknown sources and invalid persisted seasons', async () => {

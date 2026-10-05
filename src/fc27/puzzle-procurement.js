@@ -5,6 +5,7 @@ import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
+import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 
 const seeds = new WeakMap();
 const stop = reason => ({ status: 'blocked', reason, executable: false, plans: [] });
@@ -86,7 +87,7 @@ export const suggestFc27PuzzlePurchases = (input, seed, entries, options) =>
   finishPuzzleSearch(iteratePurchases(input, seed, entries, options));
 export const suggestFc27PuzzlePurchasesCooperatively = (input, seed, entries, options) =>
   finishPuzzleSearchCooperatively(iteratePurchases(input, seed, entries, options), options);
-function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress = null } = {}) {
+function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress = null, prices = null } = {}) {
   if (!validSeed(input, seed)) return stop('FC27_PURCHASE_REPAIR_INPUTS_CHANGED');
   if (!Array.isArray(entries) || entries.length > 60 || !Number.isInteger(maxChecks) || maxChecks < 1 || maxChecks > 50000) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   const pool = poolOf(input);
@@ -97,8 +98,11 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
   if (parsed.status !== 'observed') return stop(parsed.reason);
   const material = puzzleMaterialRules(parsed.rules, required(input));
   const candidates = marketCandidates(input, entries);
+  if (prices) candidates.sort((a, b) => prices.get(a.definitionId) - prices.get(b.definitionId));
   const slots = seed.squad.flatMap((item, index) => item ? [index] : []);
   const plans = []; const combinations = new Set(); let checks = 0; let lastProgressAt = 0;
+  const cost = plan => prices ? plan.purchases.reduce((sum, item) => sum + prices.get(item.definitionId), 0) : 0;
+  let bestCost = Infinity;
   const reportProgress = (force = false) => {
     if (typeof onProgress !== 'function') return;
     const now = Date.now();
@@ -123,6 +127,7 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
     if (combinations.has(key)) return;
     combinations.add(key);
     plans.push(plan);
+    if (prices) bestCost = Math.min(bestCost, cost(plan));
   };
   for (const card of candidates) for (const removed of slots) for (const target of slots) {
     if (checks >= maxChecks) break;
@@ -131,9 +136,11 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
     assess(squad);
     yield;
   }
-  // Only search two-card substitutions when one-card substitutions failed.
-  // A bounded sample never proves a globally minimal purchase count.
-  if (!plans.length) for (let a = 0; a < Math.min(12, candidates.length); a++) for (let b = a + 1; b < Math.min(12, candidates.length); b++) {
+  // A cheap pair can cost less than one replacement. Preserve the finite
+  // sample/check budget and skip pairs that cannot improve added spend.
+  // The unpriced inspection path retains its original fewest-card behavior.
+  if (prices || !plans.length) for (let a = 0; a < Math.min(12, candidates.length); a++) for (let b = a + 1; b < Math.min(12, candidates.length); b++) {
+    if (prices && prices.get(candidates[a].definitionId) + prices.get(candidates[b].definitionId) >= bestCost) continue;
     for (const first of slots) for (const second of slots) {
       if (first === second || checks >= maxChecks) continue;
       const squad = seed.squad.slice(); squad[first] = candidates[a]; squad[second] = candidates[b]; assess(squad);
@@ -141,14 +148,14 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
     }
   }
   reportProgress(true);
-  plans.sort((a, b) => a.purchaseCount - b.purchaseCount || b.teamFacts.chemistry - a.teamFacts.chemistry
+  plans.sort((a, b) => cost(a) - cost(b) || a.purchaseCount - b.purchaseCount || b.teamFacts.chemistry - a.teamFacts.chemistry
     || a.purchases.reduce((n, card) => n + card.rating, 0) - b.purchases.reduce((n, card) => n + card.rating, 0));
   return { status: plans.length ? 'suggested' : 'blocked', reason: plans.length ? 'FC27_PURCHASE_SUGGESTIONS_READY' : 'FC27_PURCHASE_REPAIR_NO_PLAN',
     executable: false, plans: plans.slice(0, 8), marketCandidates: candidates.length, checks, truncated: checks >= maxChecks || plans.length > 8,
     marketWideInfeasibilityProven: false };
 }
 
-function marketCandidates(input, entries) {
+export function marketCandidates(input, entries) {
   const owned = new Set(input.inventory.items.map(item => item.definitionId));
   const seen = new Set();
   return entries.filter(item => {
@@ -262,7 +269,7 @@ export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
   finishPuzzleSearch(iterateJointPurchases(input, entries, options));
 export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
-function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null } = {}) {
+function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   const pool = poolOf(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
@@ -275,17 +282,26 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   // and may continue with its normal bounded catalog route.
   if (!market.length) return { ...stop('FC27_PURCHASE_REPAIR_NO_PLAN'), marketCandidates: 0, nodes: 0,
     truncated: false, marketWideInfeasibilityProven: false };
-  // Unit weights optimize number of missing versions, not invented coin prices.
-  // Only versions in a complete valid solution are quoted by the session.
+  // Public quotes, when supplied, price the full eligible candidate pool.
+  // The legacy inspection path keeps unit weights, never fabricated coins.
   const result = yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes,
     pool: { ...pool, candidates: [...pool.candidates, ...market] },
-    procurement: { budget: required(input), maxPurchases: required(input), costOf: item => item.catalogRef ? 1 : 0 }, onProgress });
+    procurement: { budget: prices ? required(input) * MAX_PUZZLE_QUOTE_PRICE : required(input), maxPurchases: required(input),
+      priceAware: prices instanceof Map,
+      costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1 : 0 }, onProgress });
   if (result.status !== 'preview') return { ...stop(result.reason), marketCandidates: market.length,
-    nodes: result.nodes ?? 0, truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT' };
+    nodes: result.nodes ?? 0, truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT',
+    localReason: result.reason, searchComplete: false, optimalWithinPool: false,
+    safeCandidates: result.safeCandidates ?? null, search: result.search ?? null,
+    priceSource };
   const squad = Array(input.challenge.slotCount).fill(null);
   for (const ref of result.selected) squad[ref.slot] = ref.catalogRef
     ? market.find(item => item.catalogRef === ref.catalogRef) : pool.candidates.find(item => item.id === ref.id);
   return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false,
-    plans: [projectSuggestion(squad, result.teamFacts, parsed.rules.length)], marketCandidates: market.length, nodes: result.nodes,
-    truncated: result.searchComplete === false, marketWideInfeasibilityProven: false };
+    plans: [{ ...projectSuggestion(squad, result.teamFacts, parsed.rules.length),
+      estimatedCost: result.estimatedCost }], marketCandidates: market.length, nodes: result.nodes,
+    truncated: result.searchComplete === false, searchComplete: result.searchComplete === true,
+    optimalWithinPool: result.optimalWithinPool === true, estimatedCost: result.estimatedCost,
+    safeCandidates: result.safeCandidates ?? null, search: result.search ?? null,
+    priceSource, marketWideInfeasibilityProven: false };
 }

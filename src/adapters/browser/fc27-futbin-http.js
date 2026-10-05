@@ -6,12 +6,14 @@ export function createFc27FutbinHttp(gmRequest) {
         || parsed.username || parsed.password || typeof gmRequest !== 'function') {
       reject(Error('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE')); return;
     }
-    gmRequest({ method: 'GET', url, anonymous: true, headers: { 'Content-Type': 'application/json' },
+    gmRequest({ method: 'GET', url, anonymous: true, timeout: 15000, headers: { 'Content-Type': 'application/json' },
       onload: response => {
-        if (![200, 201].includes(response.status)) reject(Error(`FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`));
+        if (response.finalUrl && response.finalUrl !== url) reject(Error('FC27_BUY_REFERENCE_REDIRECT'));
+        else if (![200, 201].includes(response.status)) reject(Error(`FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`));
         else resolve(response.responseText);
       },
       onerror: () => reject(Error('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE')),
+      ontimeout: () => reject(Error('FC27_BUY_REFERENCE_TIMEOUT')),
     });
   });
 }

@@ -264,7 +264,10 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
             await write(record); report(record, entry.status, index + 1);
             if (MUTATING.has(entry.status) || mustStop(result)) break;
             const [min, max] = record.delaySeconds;
-            await sleep((min + random() * (max - min)) * 1000);
+            // Enhancer uses getRandomNumberBetween: an inclusive integer
+            // number of seconds, not a continuous fractional delay.
+            const delay = Math.round(random() * (max - min) + min);
+            await sleep(delay * 1000);
           }
           record.status = record.entries.some(e => MUTATING.has(e.status)) ? 'recovery-required'
             : record.entries.every(e => TERMINAL.has(e.status)) ? 'completed' : 'active';

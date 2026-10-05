@@ -437,11 +437,9 @@ it('records only bounded Gallery request outcomes for offline export', async () 
   expect(JSON.stringify(entries)).not.toContain('https://');
 });
 
-it('logs transport phase and forwarding mode without persisting signed URLs or proxy settings', async () => {
+it('logs transport phase without persisting signed URLs or proxy settings', async () => {
   const events = [], requests = [];
-  const transport = createFc27GalleryTransport(value => requests.push(value), {
-    proxy: 'https://proxy.example/?private=secret', diagnosticLog: { record: event => events.push(event) },
-  });
+  const transport = createFc27GalleryTransport(value => requests.push(value), { diagnosticLog: { record: event => events.push(event) } });
   const pending = transport.getPrices([1]);
   requests[0].onload({ status: 200, responseText: JSON.stringify({ data: {
     url: '/api/fut/player-prices/27/?ids=1&verify=private-signature',
@@ -450,10 +448,10 @@ it('logs transport phase and forwarding mode without persisting signed URLs or p
   requests[1].onload({ status: 403, responseText: 'private response body', finalUrl: requests[1].url });
   expect(await pending).toMatchObject({ status: 403 });
   expect(events).toEqual([
-    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-sign', route: 'forwarding', status: 'started' },
-    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-sign', route: 'forwarding', status: 'received', httpStatus: 200 },
-    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-read', route: 'forwarding', status: 'started' },
-    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-read', route: 'forwarding', status: 'received', httpStatus: 403 },
+    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-sign', route: 'direct', status: 'started' },
+    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-sign', route: 'direct', status: 'received', httpStatus: 200 },
+    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-read', route: 'direct', status: 'started' },
+    { area: 'gallery', event: 'transport-request', source: 'futgg', phase: 'price-read', route: 'direct', status: 'received', httpStatus: 403 },
   ]);
   expect(JSON.stringify(events)).not.toMatch(/private|proxy\.example|signature/);
 });

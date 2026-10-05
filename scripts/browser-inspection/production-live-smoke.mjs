@@ -173,6 +173,12 @@ export async function exerciseProductionLivePanel(context, directory) {
     await page.setViewportSize({ width: 1280, height: 800 });
     await button('tab-sbc').click();
     await button('puzzle-rating').fill('83');
+    await button('puzzle-quote-ceiling').fill('950');
+    await host.getByRole('button', { name: '补卡单卡报价上限 增加', exact: true }).click();
+    assert.equal(await button('puzzle-quote-ceiling').inputValue(), '1000');
+    await button('puzzle-quote-ceiling').press('ArrowDown');
+    assert.equal(await button('puzzle-quote-ceiling').inputValue(), '950');
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.policySaves), 0);
     await button('puzzle-quote-ceiling').fill('7500');
     await button('puzzle-policy-save').evaluate(node => node.click());
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.policySaves), 0);

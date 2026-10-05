@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.10
+// @version      27.0.11
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -443,12 +443,12 @@
       const formation = data(squad, "_formation");
       const id10 = data(formation, "id");
       const raw = data(formation, "positions");
-      let positions2 = null;
+      let positions3 = null;
       if (Array.isArray(raw) && data(raw, "length") === 11) {
         const copied = Array.from({ length: 11 }, (_, index) => data(data(raw, String(index)), "typeId"));
-        if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions2 = copied;
+        if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions3 = copied;
       }
-      return { id: Number.isSafeInteger(id10) && id10 >= 0 && id10 < 1e9 ? id10 : null, positions: positions2 };
+      return { id: Number.isSafeInteger(id10) && id10 >= 0 && id10 < 1e9 ? id10 : null, positions: positions3 };
     }
     function find() {
       if (![27, "27"].includes(data(root, "APP_YEAR_SHORT"))) return null;
@@ -1351,27 +1351,27 @@
 
   // src/adapters/ea/fc27-puzzle-layout.js
   function projectFc27PuzzleLayout(root, squad, { setId, challengeId }) {
-    const fail22 = () => {
+    const fail25 = () => {
       throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
     };
     const slots = ownData(squad, "_players");
     const simple = ownData(squad, "simpleBrickIndices");
     const custom = ownData(squad, "customBrickIndices");
-    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail22();
+    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail25();
     const bricks = [...simple, ...custom];
-    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail22();
+    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail25();
     const ids = Array.from({ length: slots.length }, (_, index) => {
       const slot = ownData(slots, String(index));
       const id11 = ownData(ownData(slot, "_item"), "id");
-      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id11) || id11 < -1 || (index >= 11 || simple.includes(index)) && id11 > 0) return fail22();
+      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id11) || id11 < -1 || (index >= 11 || simple.includes(index)) && id11 > 0) return fail25();
       return id11;
     });
     const formation = ownData(squad, "_formation");
     const id10 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
-    if (!Number.isSafeInteger(id10) || id10 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail22();
-    const positions2 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
-    if (positions2.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail22();
+    if (!Number.isSafeInteger(id10) || id10 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail25();
+    const positions3 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
+    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail25();
     return {
       status: "observed",
       setId,
@@ -1380,7 +1380,7 @@
       simpleBrickIndices: [...simple],
       customBrickIndices: [...custom],
       requiredPlayerCount: 11 - bricks.length,
-      formation: { id: id10, positions: positions2 },
+      formation: { id: id10, positions: positions3 },
       squadEmpty: ids.every((value) => value === 0 || value === -1)
     };
   }
@@ -1529,17 +1529,17 @@
     return synchronize(root, target, savedSquad, refs3, assertContext, refs3.some((ref) => ref.kind === "concept"), previousRefs);
   }
   async function synchronize(root, target, savedSquad, refs3, assertContext, concepts, previousRefs = null) {
-    const fail22 = () => {
+    const fail25 = () => {
       throw new Error("FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED");
     };
     const runtime = await verifyFc27Methods(root, FC27_PUZZLE_SYNC_METHODS);
     assertContext();
     const challenge = currentChallengeEntity(root, target);
-    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail22();
+    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail25();
     const local = ownData(challenge, "squad");
     const layout = projectFc27PuzzleLayout(root, local, target);
     const savedLayout = projectFc27PuzzleLayout(root, savedSquad, target);
-    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail22();
+    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail25();
     const matches2 = (squad) => refs3.every((ref) => {
       const item2 = ownData(ownData(squad, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (concepts && ref.kind === "concept");
@@ -1548,10 +1548,10 @@
       const item2 = ownData(ownData(local, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (ref.kind === "concept");
     });
-    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail22();
-    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail22();
+    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail25();
+    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail25();
     runtime();
-    if (currentChallengeEntity(root, target) !== challenge) return fail22();
+    if (currentChallengeEntity(root, target) !== challenge) return fail25();
     local.update(savedSquad);
     if (!matches2(local) && (layout.squadEmpty || previousMatches())) {
       const retained = ownData(ownData(ownData(root, "call"), "squad"), "setPlayers");
@@ -1560,16 +1560,16 @@
       assertContext();
       runtime();
       checkPlayers();
-      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail22();
+      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail25();
       const players = ownData(savedSquad, "_players").map((slot, index) => refs3.some((ref) => ref.slot === index) ? ownData(slot, "_item") : null);
       const setPlayers = retained ?? ownData(ownData(ownData(root, "UTSquadEntity"), "prototype"), "setPlayers");
       setPlayers.call(local, players);
     }
-    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail22();
+    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail25();
     challenge.onDataChange.notify({ squad: local });
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContext();
-    if (!matches2(local)) return fail22();
+    if (!matches2(local)) return fail25();
     return { status: "synchronized", selectedCount: refs3.length };
   }
 
@@ -3308,6 +3308,7 @@
 
   // src/fc27/puzzle-preview.js
   var DEFAULT_MAX_NODES = 5e4;
+  var MAX_PUZZLE_QUOTE_PRICE = 15e6;
   var integer5 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
   var blocked2 = (reason, extra = {}) => ({ status: "blocked", reason, liveExecutionEnabled: false, selected: [], ...extra });
   function finishPuzzleSearch(iterator) {
@@ -3542,6 +3543,7 @@
   }
   function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
     const { challenge, pool, groupMatcher, clubLinks } = options;
+    const procurementMode = !!options.procurement;
     const required2 = pool.required;
     const rules = parseFc27SbcRequirements(challenge.rawRequirements, required2);
     if (searchHint !== null || maxNodes < 1e3 || pool.candidates.length <= required2 || rules.status !== "observed" || !rules.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0)) {
@@ -3566,6 +3568,8 @@
     }
     let nodes = 0;
     let result;
+    let bestResult = null;
+    let hadTruncatedRoute = false;
     const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
     const reportProgress = (progress) => {
       if (typeof onProgress !== "function") return;
@@ -3589,13 +3593,57 @@
         ...options,
         maxNodes: budget,
         searchHint: hint,
+        ...bestResult && bestResult.estimatedCost > 0 ? { procurement: {
+          ...options.procurement,
+          budget: Math.min(options.procurement.budget, bestResult.estimatedCost - 1)
+        } } : {},
         onProgress: (progress) => reportProgress({ ...progress, attempt: index + 1 })
       });
       nodes += result.nodes ?? 0;
       for (const key of Object.keys(search)) search[key] += result.search?.[key] ?? 0;
+      if (procurementMode && result.status === "preview") {
+        if (!bestResult || result.estimatedCost < bestResult.estimatedCost) bestResult = result;
+        if (result.searchComplete === false) hadTruncatedRoute = true;
+        if (result.searchComplete !== false) {
+          const selected = bestResult ?? result;
+          return {
+            ...selected,
+            nodes,
+            maxNodes,
+            search,
+            strategyAttempts: index + 1,
+            searchComplete: selected.searchComplete === true && !hadTruncatedRoute,
+            optimalWithinPool: selected.optimalWithinPool === true && !hadTruncatedRoute
+          };
+        }
+        continue;
+      }
+      if (procurementMode && bestResult && result.reason !== "FC27_PUZZLE_SEARCH_LIMIT") {
+        return {
+          ...bestResult,
+          nodes,
+          maxNodes,
+          search,
+          strategyAttempts: index + 1,
+          searchComplete: false,
+          optimalWithinPool: false
+        };
+      }
       if (result.reason !== "FC27_PUZZLE_SEARCH_LIMIT") {
         return { ...result, ...result.nodes !== void 0 ? { nodes, maxNodes, search, strategyAttempts: index + 1 } : {} };
       }
+      hadTruncatedRoute = true;
+    }
+    if (procurementMode && bestResult) {
+      return {
+        ...bestResult,
+        nodes,
+        maxNodes,
+        search,
+        strategyAttempts: hints.length,
+        searchComplete: false,
+        optimalWithinPool: false
+      };
     }
     return { ...result, nodes, maxNodes, search, strategyAttempts: hints.length };
   }
@@ -3614,7 +3662,7 @@
   } = {}) {
     if (!integer5(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
-    if (procurement && (!integer5(procurement.budget, 0, 1e7) || !integer5(procurement.maxPurchases, 0, 11) || typeof procurement.costOf !== "function")) return blocked2("FC27_MARKET_POLICY_INVALID");
+    if (procurement && (!integer5(procurement.budget, 0, 11 * MAX_PUZZLE_QUOTE_PRICE) || !integer5(procurement.maxPurchases, 0, 11) || typeof procurement.costOf !== "function")) return blocked2("FC27_MARKET_POLICY_INVALID");
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required2);
     if (parsed.status === "unsupported") return blocked2("FC27_REQUIREMENT_UNSUPPORTED", { unsupported: parsed.unsupported });
     if (parsed.status !== "observed") return blocked2(parsed.reason);
@@ -3628,6 +3676,7 @@
       return blocked2("FC27_PUZZLE_STRATEGY_INVALID");
     }
     let candidates = filterUnaryCandidates(pool.candidates, itemRules, required2, groupMatcher, resolveClub);
+    let traversalScores = null;
     if (searchHint?.strategy !== "low-rating" && parsed.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0)) {
       const fields4 = [
         (item2) => item2.nationId,
@@ -3645,6 +3694,7 @@
         return groups;
       });
       const scores = new Map(candidates.map((item2) => [item2, fields4.reduce((sum2, read, index) => sum2 + Math.min(required2, frequencies[index].get(read(item2))?.size ?? 0), 0)]));
+      traversalScores = scores;
       candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || scores.get(b) - scores.get(a) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
     }
     if (["nation", "league", "club"].includes(searchHint?.strategy)) {
@@ -3676,8 +3726,15 @@
       candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)));
     }
     const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
-    const costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
-    if (costs.some((cost) => !integer5(cost, 0, 1e7))) return blocked2("FC27_MARKET_QUOTE_INVALID");
+    let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
+    if (costs.some((cost) => !integer5(cost, 0, MAX_PUZZLE_QUOTE_PRICE))) return blocked2("FC27_MARKET_QUOTE_INVALID");
+    if (procurement?.priceAware) {
+      const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
+      const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
+      const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      costs = candidates.map((item2) => quoted.get(item2));
+    }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
     if (uniqueDefinitions < required2) return blocked2("SAFE_MATERIAL_SHORTAGE", { ...metrics, uniqueDefinitions, required: required2 });
     const counted = itemRules.map((rule) => ({
@@ -4041,13 +4098,13 @@
     35: "CHEMISTRY_POINTS"
   };
   function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
-    const failed = (mismatch2 = "shape") => ({
+    const failed2 = (mismatch2 = "shape") => ({
       status: "blocked",
       reason: "FC27_EXACT_ITEMS_CHANGED",
       mismatch: typeof mismatch2 === "string" && /^[a-z-]{1,40}$/.test(mismatch2) ? mismatch2 : "shape"
     });
-    const validId12 = (value) => Number.isSafeInteger(value) && value > 0;
-    if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11 || freshItems.length >= 250 || !Array.isArray(plannedItems) || plannedItems.length !== selected.length) return failed();
+    const validId13 = (value) => Number.isSafeInteger(value) && value > 0;
+    if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11 || freshItems.length >= 250 || !Array.isArray(plannedItems) || plannedItems.length !== selected.length) return failed2();
     const fields4 = [
       "id",
       "definitionId",
@@ -4075,14 +4132,14 @@
     ];
     const expected = new Map(plannedItems.map((item2) => [item2?.id, item2]));
     const byId = new Map(freshItems.map((item2) => [item2?.id, item2]));
-    if (byId.size !== freshItems.length || expected.size !== selected.length || freshItems.some((item2) => !validId12(item2?.id) || !validId12(item2?.definitionId) || !selected.some((ref) => ref.definitionId === item2.definitionId))) return failed();
+    if (byId.size !== freshItems.length || expected.size !== selected.length || freshItems.some((item2) => !validId13(item2?.id) || !validId13(item2?.definitionId) || !selected.some((ref) => ref.definitionId === item2.definitionId))) return failed2();
     const seenIds = /* @__PURE__ */ new Set();
     const seenDefinitions = /* @__PURE__ */ new Set();
     for (const plan of selected) {
       const current2 = byId.get(plan?.id);
       const before = expected.get(plan?.id);
-      if (!validId12(plan?.id) || !validId12(plan?.definitionId) || plan.pile !== "club" || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key) => !Object.hasOwn(current2, key) || !Object.hasOwn(before, key) || JSON.stringify(current2[key]) !== JSON.stringify(before[key])) || current2.type !== "player" || current2.pile !== "club" || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || current2.tradeable !== false) {
-        return failed("identity");
+      if (!validId13(plan?.id) || !validId13(plan?.definitionId) || plan.pile !== "club" || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key) => !Object.hasOwn(current2, key) || !Object.hasOwn(before, key) || JSON.stringify(current2[key]) !== JSON.stringify(before[key])) || current2.type !== "player" || current2.pile !== "club" || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || current2.tradeable !== false) {
+        return failed2("identity");
       }
       seenIds.add(plan.id);
       seenDefinitions.add(plan.definitionId);
@@ -4756,18 +4813,18 @@
     const plans = /* @__PURE__ */ new WeakMap();
     const permits = /* @__PURE__ */ new WeakMap();
     let busy = false;
-    const time = () => {
+    const time2 = () => {
       const value = now();
       if (!Number.isSafeInteger(value) || value < 0) fail11("FC27_PUZZLE_CLOCK_UNVERIFIED");
       return value;
     };
     const alive = (created) => {
-      const age = time() - created;
+      const age = time2() - created;
       if (age < 0 || age > 6e4) fail11("FC27_PUZZLE_FILL_EXPIRED");
       if (shouldStop() !== false) fail11("FC27_PUZZLE_FILL_STOPPED");
     };
     const evidence = (reply, plan) => {
-      const age = time() - reply?.observedAt;
+      const age = time2() - reply?.observedAt;
       if (!reply || reply.fresh !== true || !Number.isSafeInteger(reply.observedAt) || age < 0 || age > 15e3 || !same6(reply.context, plan.context) || reply.setId !== plan.challenge.setId || reply.challengeId !== plan.challenge.id) fail11("FC27_PUZZLE_FILL_EVIDENCE_UNVERIFIED");
     };
     const validate2 = (result) => {
@@ -4777,7 +4834,7 @@
     return Object.freeze({
       prepare(input, preview) {
         const plan = prepareFc27PuzzleFillPlan(input, preview);
-        if (plan.status === "prepared") plans.set(plan, { created: time(), used: false });
+        if (plan.status === "prepared") plans.set(plan, { created: time2(), used: false });
         return plan;
       },
       approve(plan, approval) {
@@ -4841,7 +4898,7 @@
               itemRefs: plan.selected.map(({ id: id10, definitionId, pile, slot }) => ({ id: id10, definitionId, pile, slot })),
               phase: "save-pending",
               submitted: false,
-              updatedAt: time()
+              updatedAt: time2()
             };
             let current2;
             let exact;
@@ -4895,7 +4952,7 @@
                 return [];
               },
               postSaveValidators: [async () => {
-                await journal.write(scope2, { ...record, phase: "saved", updatedAt: time() });
+                await journal.write(scope2, { ...record, phase: "saved", updatedAt: time2() });
                 const completed = await journal.read(scope2, target);
                 if (!completed || !same6({ ...completed, phase: record.phase, updatedAt: record.updatedAt }, record) || completed.phase !== "saved") fail11("FC27_PUZZLE_FILL_JOURNAL_UNCONFIRMED");
               }]
@@ -4960,6 +5017,12 @@
       reasons: ["BOUNDED_CATALOG_SAMPLE", "MARKET_QUOTES_NOT_YET_READ"]
     };
   }
+
+  // src/fc27/puzzle-procurement-policy.js
+  var DEFAULT_PUZZLE_QUOTE_CEILING = null;
+  var MAX_PUZZLE_QUOTE_PRICE2 = 15e6;
+  var PUZZLE_MARKET_READ_LIMIT = 25;
+  var isPuzzleQuoteCeiling = (value) => value === null || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE2;
 
   // src/fc27/puzzle-procurement.js
   var seeds = /* @__PURE__ */ new WeakMap();
@@ -5043,7 +5106,7 @@
     return { status: "ready", executable: false, queries, complete: false };
   }
   var suggestFc27PuzzlePurchasesCooperatively = (input, seed, entries2, options) => finishPuzzleSearchCooperatively(iteratePurchases(input, seed, entries2, options), options);
-  function* iteratePurchases(input, seed, entries2, { maxChecks = 2e4, onProgress = null } = {}) {
+  function* iteratePurchases(input, seed, entries2, { maxChecks = 2e4, onProgress = null, prices = null } = {}) {
     if (!validSeed(input, seed)) return stop4("FC27_PURCHASE_REPAIR_INPUTS_CHANGED");
     if (!Array.isArray(entries2) || entries2.length > 60 || !Number.isInteger(maxChecks) || maxChecks < 1 || maxChecks > 5e4) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     const pool = poolOf(input);
@@ -5053,11 +5116,14 @@
     if (parsed.status !== "observed") return stop4(parsed.reason);
     const material = puzzleMaterialRules(parsed.rules, required(input));
     const candidates = marketCandidates(input, entries2);
+    if (prices) candidates.sort((a, b) => prices.get(a.definitionId) - prices.get(b.definitionId));
     const slots = seed.squad.flatMap((item2, index) => item2 ? [index] : []);
     const plans = [];
     const combinations = /* @__PURE__ */ new Set();
     let checks = 0;
     let lastProgressAt = 0;
+    const cost = (plan) => prices ? plan.purchases.reduce((sum2, item2) => sum2 + prices.get(item2.definitionId), 0) : 0;
+    let bestCost = Infinity;
     const reportProgress = (force = false) => {
       if (typeof onProgress !== "function") return;
       const now = Date.now();
@@ -5096,6 +5162,7 @@
       if (combinations.has(key)) return;
       combinations.add(key);
       plans.push(plan);
+      if (prices) bestCost = Math.min(bestCost, cost(plan));
     };
     for (const card of candidates) for (const removed of slots) for (const target of slots) {
       if (checks >= maxChecks) break;
@@ -5105,7 +5172,8 @@
       assess3(squad);
       yield;
     }
-    if (!plans.length) for (let a = 0; a < Math.min(12, candidates.length); a++) for (let b = a + 1; b < Math.min(12, candidates.length); b++) {
+    if (prices || !plans.length) for (let a = 0; a < Math.min(12, candidates.length); a++) for (let b = a + 1; b < Math.min(12, candidates.length); b++) {
+      if (prices && prices.get(candidates[a].definitionId) + prices.get(candidates[b].definitionId) >= bestCost) continue;
       for (const first of slots) for (const second of slots) {
         if (first === second || checks >= maxChecks) continue;
         const squad = seed.squad.slice();
@@ -5116,7 +5184,7 @@
       }
     }
     reportProgress(true);
-    plans.sort((a, b) => a.purchaseCount - b.purchaseCount || b.teamFacts.chemistry - a.teamFacts.chemistry || a.purchases.reduce((n, card) => n + card.rating, 0) - b.purchases.reduce((n, card) => n + card.rating, 0));
+    plans.sort((a, b) => cost(a) - cost(b) || a.purchaseCount - b.purchaseCount || b.teamFacts.chemistry - a.teamFacts.chemistry || a.purchases.reduce((n, card) => n + card.rating, 0) - b.purchases.reduce((n, card) => n + card.rating, 0));
     return {
       status: plans.length ? "suggested" : "blocked",
       reason: plans.length ? "FC27_PURCHASE_SUGGESTIONS_READY" : "FC27_PURCHASE_REPAIR_NO_PLAN",
@@ -5184,7 +5252,7 @@
     const generic = planFc27MarketQueryRoute(input);
     if (generic.status !== "ready") return generic;
     const levelOf = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
-    const tiers = material.length ? material.filter((rule) => rule.count > 0).sort((a, b) => Number(missing.includes(b)) - Number(missing.includes(a)) || b.count - a.count).map((rule) => levelOf(rule.qualities[0])) : [...new Set(generic.queries.map((query) => query.level))];
+    const tiers2 = material.length ? material.filter((rule) => rule.count > 0).sort((a, b) => Number(missing.includes(b)) - Number(missing.includes(a)) || b.count - a.count).map((rule) => levelOf(rule.qualities[0])) : [...new Set(generic.queries.map((query) => query.level))];
     const queries = [];
     const add = (query) => {
       if (queries.length < 3 && !queries.some((existing) => JSON.stringify(existing) === JSON.stringify(query))) queries.push(query);
@@ -5192,24 +5260,24 @@
     const cappedClubs = parsed.rules.some((rule) => rule.kind === "distinct-clubs" && rule.mode !== "min" && rule.value < required(input));
     const chemistryNeeded = parsed.rules.some((rule) => rule.kind === "min-chemistry" && rule.value > 0);
     const nations = parsed.rules.filter((rule) => rule.kind === "from-nations" && rule.mode === "min" && rule.count > 0).flatMap((rule) => rule.ids);
-    if (!cappedClubs && chemistryNeeded && tiers.length > 1 && nations.length) {
+    if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && nations.length) {
       const ranked = [...new Set(nations)].map((nation) => ({
         nation,
-        items: pool.candidates.filter((item2) => item2.nationId === nation && tiers.includes(levelOf(quality(item2.rating))))
-      })).sort((a, b) => b.items.filter((item2) => levelOf(quality(item2.rating)) === tiers[0]).length - a.items.filter((item2) => levelOf(quality(item2.rating)) === tiers[0]).length || b.items.length - a.items.length || a.nation - b.nation);
+        items: pool.candidates.filter((item2) => item2.nationId === nation && tiers2.includes(levelOf(quality(item2.rating))))
+      })).sort((a, b) => b.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length - a.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length || b.items.length - a.items.length || a.nation - b.nation);
       const anchor = ranked[0];
-      for (const level of tiers) add({ start: 0, count: 20, level, nation: anchor.nation });
+      for (const level of tiers2) add({ start: 0, count: 20, level, nation: anchor.nation });
       const leagues2 = /* @__PURE__ */ new Map();
       for (const item2 of anchor.items) leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       const league = [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
-      add({ start: 0, count: 20, level: tiers[0], ...positive7(league) ? { league } : {} });
+      add({ start: 0, count: 20, level: tiers2[0], ...positive7(league) ? { league } : {} });
       return { status: "ready", executable: false, queries, complete: false };
     }
     if (cappedClubs) {
       const resolveClub = createFc27ClubResolver(input.clubLinks);
       if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
       const candidates = [...pool.candidates, ...marketCandidates(input, entries2)];
-      const lanes = tiers.map((level) => {
+      const lanes = tiers2.map((level) => {
         const groups = /* @__PURE__ */ new Map();
         for (const item2 of candidates.filter((item3) => levelOf(quality(item3.rating)) === level)) {
           const team = item2.teamId;
@@ -5221,17 +5289,17 @@
         return [...groups.values()].sort((a, b) => b.ids.size - a.ids.size || a.team - b.team).map(({ team }) => ({ start: 0, count: 20, level, team }));
       });
       for (const query of generic.queries.filter((query2) => query2.team || query2.nation || query2.league)) {
-        if (tiers.includes(query.level)) add(query);
+        if (tiers2.includes(query.level)) add(query);
       }
-      lanes.forEach((lane, index) => add(lane[0] ?? { start: 0, count: 20, level: tiers[index] }));
+      lanes.forEach((lane, index) => add(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
       for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add(lane[index]);
     }
     if (!missing.length) {
-      for (const query of generic.queries) if (tiers.includes(query.level)) add(query);
+      for (const query of generic.queries) if (tiers2.includes(query.level)) add(query);
     } else {
       for (const rule of missing) add({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
     }
-    if (!queries.length) for (const level of tiers) add({ start: 0, count: 20, level });
+    if (!queries.length) for (const level of tiers2) add({ start: 0, count: 20, level });
     const baseQueries = queries.slice();
     const leagues = /* @__PURE__ */ new Map();
     for (const item2 of pool.candidates) leagues.set(item2.leagueId, (leagues.get(item2.leagueId) ?? 0) + 1);
@@ -5242,7 +5310,7 @@
     return { status: "ready", executable: false, queries, complete: false };
   }
   var suggestFc27PuzzleJointPurchasesCooperatively = (input, entries2, options) => finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries2, options), options);
-  function* iterateJointPurchases(input, entries2, { maxNodes = 5e4, onProgress = null } = {}) {
+  function* iterateJointPurchases(input, entries2, { maxNodes = 5e4, onProgress = null, prices = null, priceSource = null } = {}) {
     if (!Array.isArray(entries2) || entries2.length > 60) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     const pool = poolOf(input);
     if (pool.status !== "candidates") return stop4(pool.reason);
@@ -5260,14 +5328,25 @@
       ...input,
       maxNodes,
       pool: { ...pool, candidates: [...pool.candidates, ...market] },
-      procurement: { budget: required(input), maxPurchases: required(input), costOf: (item2) => item2.catalogRef ? 1 : 0 },
+      procurement: {
+        budget: prices ? required(input) * MAX_PUZZLE_QUOTE_PRICE2 : required(input),
+        maxPurchases: required(input),
+        priceAware: prices instanceof Map,
+        costOf: (item2) => item2.catalogRef ? prices ? prices.get(item2.definitionId) : 1 : 0
+      },
       onProgress
     });
     if (result.status !== "preview") return {
       ...stop4(result.reason),
       marketCandidates: market.length,
       nodes: result.nodes ?? 0,
-      truncated: result.reason === "FC27_PUZZLE_SEARCH_LIMIT"
+      truncated: result.reason === "FC27_PUZZLE_SEARCH_LIMIT",
+      localReason: result.reason,
+      searchComplete: false,
+      optimalWithinPool: false,
+      safeCandidates: result.safeCandidates ?? null,
+      search: result.search ?? null,
+      priceSource
     };
     const squad = Array(input.challenge.slotCount).fill(null);
     for (const ref of result.selected) squad[ref.slot] = ref.catalogRef ? market.find((item2) => item2.catalogRef === ref.catalogRef) : pool.candidates.find((item2) => item2.id === ref.id);
@@ -5275,20 +5354,203 @@
       status: "suggested",
       reason: "FC27_PURCHASE_SUGGESTIONS_READY",
       executable: false,
-      plans: [projectSuggestion(squad, result.teamFacts, parsed.rules.length)],
+      plans: [{
+        ...projectSuggestion(squad, result.teamFacts, parsed.rules.length),
+        estimatedCost: result.estimatedCost
+      }],
       marketCandidates: market.length,
       nodes: result.nodes,
       truncated: result.searchComplete === false,
+      searchComplete: result.searchComplete === true,
+      optimalWithinPool: result.optimalWithinPool === true,
+      estimatedCost: result.estimatedCost,
+      safeCandidates: result.safeCandidates ?? null,
+      search: result.search ?? null,
+      priceSource,
       marketWideInfeasibilityProven: false
     };
   }
 
+  // src/gallery/public-price-policy.js
+  var PUBLIC_PRICE_POLICY_KEY = "fcat-fc27-public-price-policy-v1";
+  var validPublicPrice = (n) => Number.isSafeInteger(n) && n >= 150 && n <= 15e6;
+  function normalizeGalleryPricePolicy(value = {}) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+    const readSources = value.readSources ?? (value.futbinEnabled === false ? "futgg" : "both");
+    const policy = {
+      source: value.source ?? (readSources === "futbin" ? "futbin" : "futgg"),
+      premiumMode: value.premiumMode ?? "fixed",
+      premium: value.premium ?? 0,
+      purchaseAttempts: value.purchaseAttempts ?? 3,
+      futbinEnabled: value.futbinEnabled ?? readSources !== "futgg",
+      futbinRefresh: value.futbinRefresh ?? "cache",
+      readSources,
+      listingSource: value.listingSource ?? (readSources === "futbin" ? "futbin" : "futgg")
+    };
+    if (!["futgg", "futbin"].includes(policy.source) || !["fixed", "percent"].includes(policy.premiumMode) || !Number.isSafeInteger(policy.premium) || policy.premium < 0 || !Number.isSafeInteger(policy.purchaseAttempts) || policy.purchaseAttempts < 1 || typeof policy.futbinEnabled !== "boolean" || !policy.futbinEnabled && policy.source === "futbin" || !["futgg", "futbin", "both"].includes(readSources) || policy.futbinEnabled !== (readSources !== "futgg") || !["futgg", "futbin"].includes(policy.listingSource) || readSources !== "both" && (policy.source !== readSources || policy.listingSource !== readSources) || !["cache", "force"].includes(policy.futbinRefresh)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+    return Object.freeze(policy);
+  }
+  var publicPriceSourceEnabled = (policy, source) => (policy.readSources == null || policy.readSources === "both" || policy.readSources === source) && (source !== "futbin" || policy.futbinEnabled !== false);
+  function galleryReferenceQuote(values6, settings = {}) {
+    const policy = normalizeGalleryPricePolicy(settings);
+    const futgg = validPublicPrice(values6?.futgg) ? values6.futgg : null;
+    const futbin = validPublicPrice(values6?.futbin) ? values6.futbin : null;
+    const estimate = policy.source === "futgg" ? futgg : futbin;
+    const maxBuy = estimate === null ? null : Math.min(15e6, Math.floor(estimate + (policy.premiumMode === "fixed" ? policy.premium : estimate * policy.premium / 100)));
+    return { futgg, futbin, estimate, maxBuy, policy };
+  }
+  function publicPricePolicyKey(scope2) {
+    if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3) throw Error("FC27_PUBLIC_PRICE_SCOPE_INVALID");
+    return `${PUBLIC_PRICE_POLICY_KEY}:${scope2}`;
+  }
+  function createPublicPricePolicyStore({ get, set }) {
+    const currentSettings = (value) => {
+      const policy = normalizeGalleryPricePolicy(value);
+      return normalizeGalleryPricePolicy({ ...policy, listingSource: policy.source, futbinRefresh: "cache" });
+    };
+    const read = async (scope2) => {
+      let saved;
+      try {
+        saved = await get(publicPricePolicyKey(scope2), null);
+      } catch {
+        throw Error("FC27_PUBLIC_PRICE_POLICY_READ_FAILED");
+      }
+      if (saved === null) return normalizeGalleryPricePolicy();
+      if (saved?.schema !== 1 || saved.scope !== scope2 || !saved.policy) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+      return currentSettings(saved.policy);
+    };
+    return Object.freeze({ read, async save(scope2, value) {
+      const policy = currentSettings(value), key = publicPricePolicyKey(scope2);
+      try {
+        await set(key, { schema: 1, scope: scope2, policy });
+        if (JSON.stringify(await read(scope2)) !== JSON.stringify(policy)) throw Error();
+      } catch {
+        throw Error("FC27_PUBLIC_PRICE_POLICY_SAVE_FAILED");
+      }
+      return policy;
+    } });
+  }
+  function purchasePriceCap({
+    maxBuy,
+    approvedCap = null,
+    absoluteCap = null,
+    remainingBudget = null,
+    balance = null,
+    eaLimits = null,
+    priceTiers
+  }) {
+    const limits = [maxBuy, approvedCap, absoluteCap, remainingBudget, balance, eaLimits?.maximum].filter((n) => n != null);
+    if (!validPublicPrice(maxBuy) || limits.some((n) => !Number.isSafeInteger(n) || n < 0) || !Array.isArray(priceTiers) || !priceTiers.length || priceTiers.length > 32 || priceTiers.some((tier2, index) => !Number.isSafeInteger(tier2?.min) || tier2.min < 0 || !Number.isSafeInteger(tier2.inc) || tier2.inc < 1 || index > 0 && tier2.min >= priceTiers[index - 1].min) || eaLimits != null && (!validPublicPrice(eaLimits.minimum) || !validPublicPrice(eaLimits.maximum) || eaLimits.maximum < eaLimits.minimum)) return null;
+    const cap = Math.min(...limits), tier = priceTiers.find((row) => cap >= row.min);
+    if (!tier) return null;
+    const rounded = Math.floor(cap / tier.inc) * tier.inc;
+    return rounded >= Math.max(150, eaLimits?.minimum ?? 150) ? rounded : null;
+  }
+
+  // src/fc27/purchase-price-approval.js
+  var fail12 = () => {
+    throw Error("FC27_BUY_PRICE_APPROVAL_INVALID");
+  };
+  var integer7 = (value) => Number.isSafeInteger(value) && value >= 0;
+  var validId3 = (value) => integer7(value) && value > 0;
+  var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var sources = ["futgg", "futbin"];
+  function copyQuotes(reference, definitionId, season, platform) {
+    if (reference?.definitionId !== definitionId || reference.season !== season || reference.platform !== platform) fail12();
+    return Object.fromEntries(sources.map((source) => {
+      const row = reference.quotes?.[source];
+      if (row?.schema !== 2 || row.source !== source || row.definitionId !== definitionId || row.season !== season || row.platform !== platform || row.price !== null && !validPublicPrice(row.price) || !integer7(row.fetchedAt) || !integer7(row.expiresAt) || row.expiresAt <= row.fetchedAt || row.sourceUpdatedAt !== null && (!integer7(row.sourceUpdatedAt) || row.sourceUpdatedAt > row.fetchedAt) || row.error !== null && !/^FC27_[A-Z0-9_]+$/.test(row.error)) fail12();
+      return [source, {
+        schema: 2,
+        source,
+        definitionId,
+        season,
+        platform,
+        price: row.price,
+        fetchedAt: row.fetchedAt,
+        sourceUpdatedAt: row.sourceUpdatedAt,
+        expiresAt: row.expiresAt,
+        error: row.error
+      }];
+    }));
+  }
+  function projected(quotes, policy, now) {
+    const values6 = Object.fromEntries(sources.map((source) => [
+      source,
+      quotes[source].fetchedAt <= now && quotes[source].expiresAt > now && !quotes[source].error ? quotes[source].price : null
+    ]));
+    const result = galleryReferenceQuote(values6, policy), selected = quotes[policy.source];
+    return {
+      estimate: result.estimate,
+      maxBuy: result.maxBuy,
+      reason: selected.fetchedAt > now || selected.expiresAt <= now ? "FC27_BUY_REFERENCE_PRICE_EXPIRED" : result.estimate === null ? "FC27_BUY_REFERENCE_PRICE_UNAVAILABLE" : null
+    };
+  }
+  function createPurchasePriceApproval({ scope: scope2, definitionIds, references, policy, season, platform, overrides = {}, now = Date.now() }) {
+    policy = normalizeGalleryPricePolicy(policy);
+    if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3 || season !== "27" || !["pc", "console"].includes(platform) || !integer7(now) || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 256 || definitionIds.some((value) => !validId3(value)) || new Set(definitionIds).size !== definitionIds.length) fail12();
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || Object.keys(overrides).some((key) => !definitionIds.includes(Number(key)) || !validPublicPrice(overrides[key]))) fail12();
+    const rows = definitionIds.map((definitionId) => {
+      const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform);
+      const price2 = projected(quotes, policy, now), overrideCap = overrides[definitionId];
+      return { definitionId, quotes, ...price2, ...overrideCap === void 0 ? {} : {
+        overrideCap,
+        maxBuy: price2.maxBuy === null ? null : overrideCap
+      } };
+    });
+    return { schema: 1, scope: scope2, season, platform, approvedAt: now, policy: { ...policy }, rows };
+  }
+  function validatePurchasePriceApproval(approval, scope2, definitionIds) {
+    if (!approval || approval.schema !== 1 || approval.scope !== scope2 || !Array.isArray(approval.rows) || !Array.isArray(definitionIds) || approval.rows.some((row) => !definitionIds.includes(row?.definitionId))) fail12();
+    const rebuilt = createPurchasePriceApproval({
+      scope: scope2,
+      definitionIds: approval.rows.map((row) => row.definitionId),
+      references: Object.fromEntries(approval.rows.map((row) => [row.definitionId, { ...row, season: approval.season, platform: approval.platform }])),
+      policy: approval.policy,
+      season: approval.season,
+      platform: approval.platform,
+      now: approval.approvedAt,
+      overrides: Object.fromEntries(approval.rows.filter((row) => row.overrideCap !== void 0).map((row) => [row.definitionId, row.overrideCap]))
+    });
+    for (const field of ["futbinEnabled", "futbinRefresh", "readSources", "listingSource"]) {
+      if (!Object.hasOwn(approval.policy, field)) delete rebuilt.policy[field];
+    }
+    if (!same7(rebuilt, approval)) fail12();
+  }
+  function purchaseApprovedPrice(approval, definitionId, { now = approval?.approvedAt, fresh = null } = {}) {
+    const row = approval?.rows?.find((value) => value.definitionId === definitionId);
+    if (!row) throw Error("FC27_BUY_PRICE_APPROVAL_REQUIRED");
+    if (!integer7(now)) fail12();
+    const quotes = fresh ? copyQuotes(fresh, definitionId, approval.season, approval.platform) : row.quotes;
+    const current2 = projected(quotes, approval.policy, now);
+    const maxBuy = row.overrideCap === void 0 ? row.maxBuy === null || current2.maxBuy === null ? null : Math.min(row.maxBuy, current2.maxBuy) : row.overrideCap === null || current2.estimate === null ? null : row.overrideCap;
+    return {
+      ...current2,
+      maxBuy,
+      approvedCap: row.maxBuy,
+      reason: row.reason ?? current2.reason
+    };
+  }
+  var purchasePriceApprovalFor = (record, definitionId) => record.priceOverrides?.[definitionId] ?? record.priceApproval;
+  async function ensurePurchasePriceApproval({ record, scope: scope2, preparePrices, persist, assertCurrent }) {
+    if (!record.priceApproval && typeof preparePrices === "function") {
+      const approval = await preparePrices(structuredClone(record));
+      assertCurrent();
+      validatePurchasePriceApproval(approval, scope2, record.entries.map((entry) => entry.definitionId));
+      for (const entry of record.entries.filter((entry2) => entry2.state === "waiting")) purchaseApprovedPrice(approval, entry.definitionId);
+      record.priceApproval = structuredClone(approval);
+      await persist();
+      assertCurrent();
+    }
+    return record.priceApproval ?? null;
+  }
+
   // src/fc27/puzzle-concept-plan.js
   var positive8 = (value) => Number.isSafeInteger(value) && value > 0;
-  var integer7 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var integer8 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
   var blocked5 = (reason) => ({ status: "blocked", reason, executable: false, liveExecutionEnabled: false });
   function prepareFc27PuzzleConceptPlan({ challenge, plan } = {}) {
-    if (!challenge || !plan || plan.status !== "preview" || !positive8(challenge.setId) || !positive8(challenge.id) || plan.setId !== challenge.setId || plan.challengeId !== challenge.id || !integer7(challenge.slotCount, 1, 11) || !Array.isArray(challenge.brickIndices) || challenge.brickIndices.length >= challenge.slotCount || new Set(challenge.brickIndices).size !== challenge.brickIndices.length || challenge.brickIndices.some((index) => !integer7(index, 0, challenge.slotCount - 1))) {
+    if (!challenge || !plan || plan.status !== "preview" || !positive8(challenge.setId) || !positive8(challenge.id) || plan.setId !== challenge.setId || plan.challengeId !== challenge.id || !integer8(challenge.slotCount, 1, 11) || !Array.isArray(challenge.brickIndices) || challenge.brickIndices.length >= challenge.slotCount || new Set(challenge.brickIndices).size !== challenge.brickIndices.length || challenge.brickIndices.some((index) => !integer8(index, 0, challenge.slotCount - 1))) {
       return blocked5("FC27_PUZZLE_CONCEPT_INPUT_UNVERIFIED");
     }
     const required2 = challenge.slotCount - challenge.brickIndices.length;
@@ -5301,7 +5563,7 @@
       ...owned2.map((item2) => ({ ...item2, kind: "owned" })),
       ...purchases.map((item2) => ({ ...item2, kind: "concept" }))
     ];
-    if (entries2.length !== required2 || new Set(entries2.map((item2) => item2.slot)).size !== required2 || entries2.some((item2) => !integer7(item2.slot, 0, challenge.slotCount - 1) || challenge.brickIndices.includes(item2.slot) || !positive8(item2.definitionId) || !integer7(item2.rating, 1, 99)) || new Set(entries2.map((item2) => item2.definitionId)).size !== required2 || owned2.some((item2) => !positive8(item2.id) || item2.pile !== "club" || item2.catalogRef !== void 0) || new Set(owned2.map((item2) => item2.id)).size !== owned2.length || purchases.some((item2) => item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.quantity !== 1 || !integer7(item2.observedBuyNow ?? item2.estimatedUnitPrice, 150, 15e6)) || (plan.purchaseCount ?? purchases.length) !== purchases.length) {
+    if (entries2.length !== required2 || new Set(entries2.map((item2) => item2.slot)).size !== required2 || entries2.some((item2) => !integer8(item2.slot, 0, challenge.slotCount - 1) || challenge.brickIndices.includes(item2.slot) || !positive8(item2.definitionId) || !integer8(item2.rating, 1, 99)) || new Set(entries2.map((item2) => item2.definitionId)).size !== required2 || owned2.some((item2) => !positive8(item2.id) || item2.pile !== "club" || item2.catalogRef !== void 0) || new Set(owned2.map((item2) => item2.id)).size !== owned2.length || purchases.some((item2) => item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.quantity !== 1 || !integer8(item2.observedBuyNow ?? item2.estimatedUnitPrice, 150, 15e6)) || (plan.purchaseCount ?? purchases.length) !== purchases.length) {
       return blocked5("FC27_PUZZLE_CONCEPT_PLAN_INVALID");
     }
     const slots = Array.from({ length: challenge.slotCount }, (_, slot) => {
@@ -5344,16 +5606,10 @@
     });
   }
 
-  // src/fc27/puzzle-procurement-policy.js
-  var DEFAULT_PUZZLE_QUOTE_CEILING = null;
-  var MAX_PUZZLE_QUOTE_PRICE = 15e6;
-  var PUZZLE_MARKET_READ_LIMIT = 25;
-  var isPuzzleQuoteCeiling = (value) => value === null || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE;
-
   // src/fc27/puzzle-procurement-session.js
   var safeReason3 = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_PURCHASE_READ_FAILED";
   var stop5 = (reason) => ({ status: "blocked", reason, executable: false, liveExecutionEnabled: false, plans: [] });
-  var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same8 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var id2 = (value) => Number.isSafeInteger(value) && value > 0;
   var AUTH_RETRY_DELAY = 3e4;
   var retryableRuntimeFailure = (reason) => /^FC27_MARKET_METHOD_\d+_(?:MISSING|CHANGED)$/.test(reason) || /^FC27_MARKET_ENTITY_UNVERIFIED(?:_[A-Z0-9_]+)?$/.test(reason) || reason === "FC27_MARKET_ENTITY_FACTORY_FAILED";
@@ -5367,7 +5623,7 @@
       failurePhase: typeof phase === "string" && /^[a-z-]{1,40}$/.test(phase) ? phase : null
     };
   };
-  function createFc27PuzzleProcurementSession({ createTransport, get, set, now = Date.now } = {}) {
+  function createFc27PuzzleProcurementSession({ createTransport, get, set, loadPublicPrices = null, now = Date.now } = {}) {
     let busy = false;
     return Object.freeze({ async plan(input, {
       assertCurrent = () => {
@@ -5400,7 +5656,11 @@
         retryAfterSeconds: null,
         failurePhase: null,
         excludedUnavailable: 0,
-        replans: 0
+        replans: 0,
+        searchComplete: null,
+        optimalWithinPool: null,
+        estimatedCost: null,
+        priceSource: null
       };
       let quoteCompleted = 0;
       let quoteTotal = 0;
@@ -5449,7 +5709,7 @@
           const stored = await get(key, null);
           assertCurrent();
           if (stored !== null) {
-            if (stored?.schema !== 1 || stored.kind !== kind || !same7(stored.query, query) || !id2(stored.at) || stored.at > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+            if (stored?.schema !== 1 || stored.kind !== kind || !same8(stored.query, query) || !id2(stored.at) || stored.at > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
             if (stored.state !== "observed") {
               const reason = safeReason3({ message: stored.reason ?? "FC27_PURCHASE_READ_UNCONFIRMED" });
               const authFailure = stored.state === "blocked" && reason === "FC27_MARKET_HTTP_401";
@@ -5476,7 +5736,7 @@
           if (requests >= PUZZLE_MARKET_READ_LIMIT) throw new Error("FC27_PURCHASE_READ_BUDGET");
           const record = { schema: 1, kind, query, at: now(), state: "pending" };
           await set(key, record);
-          if (!same7(await get(key, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+          if (!same8(await get(key, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
           assertCurrent();
           let attempted = false;
           try {
@@ -5506,29 +5766,78 @@
         const usedQueries = [];
         const unavailable = /* @__PURE__ */ new Set();
         let hadPlans = false;
+        const references = /* @__PURE__ */ new Map();
+        let publicPolicy = null;
         let pendingQueries = route.queries.slice();
         while (pendingQueries.length && usedQueries.length < 3) {
           const query = pendingQueries.shift();
           const page = await cachedRead("catalog", query);
           usedQueries.push(query);
-          if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same7(page.query, query) || !id2(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw new Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
+          if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same8(page.query, query) || !id2(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw new Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
           for (const entry of page.entries) {
-            if (entries2.has(entry.definitionId) && !same7(entries2.get(entry.definitionId), entry)) throw new Error("FC27_PURCHASE_CATALOG_CHANGED");
+            if (entries2.has(entry.definitionId) && !same8(entries2.get(entry.definitionId), entry)) throw new Error("FC27_PURCHASE_CATALOG_CHANGED");
             entries2.set(entry.definitionId, entry);
           }
           diagnostics.catalogPages++;
           diagnostics.catalogCandidates = entries2.size;
           reportProgress();
+          if (loadPublicPrices) {
+            const candidates = marketCandidates(input, [...entries2.values()]).filter((item2) => !references.has(item2.definitionId));
+            if (candidates.length) {
+              diagnostics.stage = "quote-read";
+              quoteTotal = candidates.length;
+              quoteCompleted = 0;
+              reportProgress();
+              const snapshot = await loadPublicPrices(candidates.map((item2) => item2.definitionId), {
+                purpose: "puzzle",
+                rows: candidates,
+                ...publicPolicy ? { policy: publicPolicy } : {},
+                isCurrent: () => {
+                  assertCurrent();
+                  return true;
+                },
+                onProgress: (value) => {
+                  quoteCompleted = value.index;
+                  quoteTotal = value.total;
+                  reportProgress();
+                }
+              });
+              assertCurrent();
+              const platform = /^pc(?::|$)/i.test(input.context.platform) ? "pc" : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? "console" : null;
+              const approved = createPurchasePriceApproval({
+                scope: scope2,
+                season: "27",
+                platform,
+                policy: snapshot.policy,
+                definitionIds: candidates.map((item2) => item2.definitionId),
+                references: snapshot.references,
+                now: now()
+              });
+              if (publicPolicy && !same8(publicPolicy, approved.policy)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+              publicPolicy = approved.policy;
+              for (const row of approved.rows) {
+                references.set(row.definitionId, row);
+                const usable = row.estimate !== null && (quoteCeiling === null || row.estimate <= quoteCeiling);
+                quotes.set(row.definitionId, { price: usable ? row.estimate : null, observedAt: row.quotes[publicPolicy.source].fetchedAt });
+                if (!usable) unavailable.add(row.definitionId);
+              }
+              diagnostics.excludedUnavailable = unavailable.size;
+            }
+          }
           for (; ; ) {
             assertCurrent();
             diagnostics.stage = "local-market-search";
             const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
+            const prices = loadPublicPrices ? new Map([...quotes].map(([id10, quote2]) => [id10, quote2.price])) : null;
             reportProgress();
             const suggestion = seed.status === "ready" ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
               assertCurrent,
+              prices,
               onProgress: (value) => reportProgress(value)
             }) : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, {
               assertCurrent,
+              prices,
+              priceSource: publicPolicy?.source ?? null,
               onProgress: (value) => reportProgress({ ...value, phase: "local-market-search" })
             });
             diagnostics.usableCandidates = suggestion.marketCandidates ?? null;
@@ -5536,6 +5845,19 @@
             diagnostics.checks = suggestion.checks ?? null;
             diagnostics.nodes = suggestion.nodes ?? null;
             diagnostics.truncated = suggestion.truncated ?? null;
+            diagnostics.searchComplete = suggestion.searchComplete ?? null;
+            diagnostics.optimalWithinPool = suggestion.optimalWithinPool ?? null;
+            diagnostics.estimatedCost = suggestion.estimatedCost ?? null;
+            diagnostics.priceSource = suggestion.priceSource ?? publicPolicy?.source ?? null;
+            if (suggestion.status === "blocked" && ![
+              "SAFE_MATERIAL_SHORTAGE",
+              "FC27_PUZZLE_CONSTRAINT_SHORTAGE",
+              "FC27_PUZZLE_NO_PLAN_FOUND",
+              "FC27_PUZZLE_SEARCH_LIMIT",
+              "FC27_PURCHASE_REPAIR_NO_PLAN"
+            ].includes(suggestion.reason)) {
+              return finish({ ...suggestion, queries: usedQueries });
+            }
             const plans = suggestion.plans ?? [];
             diagnostics.unpricedPlans = plans.length;
             hadPlans ||= plans.length > 0;
@@ -5546,7 +5868,7 @@
               for (const item2 of plan.purchases) {
                 if (!quotes.has(item2.definitionId)) {
                   const quote2 = await cachedRead("quote", { definitionId: item2.definitionId, start: 0, count: 20, maxBuy: quoteCeiling });
-                  if (quote2?.status !== "observed" || quote2.season !== "27" || quote2.platform !== input.context.platform || quote2.source !== "ea-visible-buy-now" || quote2.definitionId !== item2.definitionId || !id2(quote2.observedAt) || quote2.observedAt > now() || now() - quote2.observedAt > 6e5 || !Number.isInteger(quote2.eligible) || quote2.eligible < 0 || quote2.eligible > 20 || (quote2.eligible === 0 ? quote2.price !== null : !Number.isInteger(quote2.price) || quote2.price < 150 || quote2.price > (quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE))) throw new Error("FC27_PURCHASE_QUOTE_UNVERIFIED");
+                  if (quote2?.status !== "observed" || quote2.season !== "27" || quote2.platform !== input.context.platform || quote2.source !== "ea-visible-buy-now" || quote2.definitionId !== item2.definitionId || !id2(quote2.observedAt) || quote2.observedAt > now() || now() - quote2.observedAt > 6e5 || !Number.isInteger(quote2.eligible) || quote2.eligible < 0 || quote2.eligible > 20 || (quote2.eligible === 0 ? quote2.price !== null : !Number.isInteger(quote2.price) || quote2.price < 150 || quote2.price > (quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE2))) throw new Error("FC27_PURCHASE_QUOTE_UNVERIFIED");
                   quotes.set(item2.definitionId, quote2);
                   quoteCompleted = plan.purchases.filter((card) => quotes.get(card.definitionId)?.price > 0).length;
                   reportProgress();
@@ -5564,42 +5886,49 @@
               ...plan,
               purchases: plan.purchases.map((item2) => ({
                 ...item2,
-                observedBuyNow: quotes.get(item2.definitionId).price,
+                ...loadPublicPrices ? {
+                  estimatedUnitPrice: quotes.get(item2.definitionId).price,
+                  priceReference: references.get(item2.definitionId),
+                  priceSource: publicPolicy.source
+                } : { observedBuyNow: quotes.get(item2.definitionId).price },
                 quotedAt: quotes.get(item2.definitionId).observedAt
               })),
               estimatedCost: plan.purchases.reduce((sum2, item2) => sum2 + quotes.get(item2.definitionId).price, 0)
-            })).sort((a, b) => a.purchaseCount - b.purchaseCount || a.estimatedCost - b.estimatedCost);
-            if (priced2.length) return finish({
-              status: "suggested",
-              reason: "FC27_PURCHASE_PLAN_PRICED",
-              executable: false,
-              liveExecutionEnabled: false,
-              plans: priced2.slice(0, 3).map((plan) => ({
-                ...plan,
-                conceptPlan: prepareFc27PuzzleConceptPlan({ challenge: input.challenge, plan: {
+            })).sort((a, b) => a.estimatedCost - b.estimatedCost || a.purchaseCount - b.purchaseCount);
+            if (priced2.length) {
+              diagnostics.estimatedCost = priced2[0].estimatedCost;
+              return finish({
+                status: "suggested",
+                reason: "FC27_PURCHASE_PLAN_PRICED",
+                executable: false,
+                liveExecutionEnabled: false,
+                plans: priced2.slice(0, 3).map((plan) => ({
                   ...plan,
-                  status: "preview",
-                  setId: input.challenge.setId,
-                  challengeId: input.challenge.id
-                } })
-              })),
-              requests,
-              cacheHits,
-              queries: usedQueries,
-              seedChemistry: seed.teamFacts?.chemistry ?? null,
-              requiredChemistry: seed.requiredChemistry ?? null,
-              quoteCeiling,
-              affordabilityVerified: false,
-              globalMinimumProven: false,
-              pending: ["EXPLICIT_PURCHASE_AND_MATERIAL_APPROVAL", "LIVE_AUCTION_RECHECK", "EXACT_PURCHASE_RECEIPTS", "FRESH_INVENTORY_REPLAN"]
-            });
+                  conceptPlan: prepareFc27PuzzleConceptPlan({ challenge: input.challenge, plan: {
+                    ...plan,
+                    status: "preview",
+                    setId: input.challenge.setId,
+                    challengeId: input.challenge.id
+                  } })
+                })),
+                requests,
+                cacheHits,
+                queries: usedQueries,
+                seedChemistry: seed.teamFacts?.chemistry ?? null,
+                requiredChemistry: seed.requiredChemistry ?? null,
+                quoteCeiling,
+                affordabilityVerified: false,
+                globalMinimumProven: false,
+                pending: ["EXPLICIT_PURCHASE_AND_MATERIAL_APPROVAL", "LIVE_AUCTION_RECHECK", "EXACT_PURCHASE_RECEIPTS", "FRESH_INVENTORY_REPLAN"]
+              });
+            }
             if (!removed) break;
             diagnostics.replans++;
           }
           if (seed.status !== "ready" && usedQueries.length < 3) {
             const nextRoute = planFc27PuzzleShortageQueries(input, [...entries2.values()]);
             if (nextRoute.status !== "ready") return finish(nextRoute);
-            pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same7(used, candidate)) && all.findIndex((other) => same7(other, candidate)) === index);
+            pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same8(used, candidate)) && all.findIndex((other) => same8(other, candidate)) === index);
           }
         }
         const searchLimited = diagnostics.localReason === "FC27_PUZZLE_SEARCH_LIMIT" || diagnostics.truncated === true && diagnostics.unpricedPlans === 0;
@@ -5864,8 +6193,8 @@
       }
       const identityError = publicCatalogIdentityError(entity, raw, definitionId);
       if (identityError) throw identityError;
-      const projected = publicPlayer(entity, definitionId);
-      return projected;
+      const projected2 = publicPlayer(entity, definitionId);
+      return projected2;
     }
     return Object.freeze({
       getRequestCount: () => requests,
@@ -5910,14 +6239,14 @@
             if (!(valid(tradeId3, 1, Number.MAX_SAFE_INTEGER) || typeof tradeId3 === "string" && /^[1-9]\d{0,19}$/.test(tradeId3)) || ids.has(String(tradeId3))) throw error("AUCTION_IDENTITY_UNVERIFIED");
             ids.add(String(tradeId3));
             const price2 = ownData(row, "buyNowPrice");
-            if (ownData(row, "tradeState") === "active" && valid(ownData(row, "expires"), 1, 604800) && valid(price2, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE) && ownData(row, "tradeOwner") === false && ownData(item2, "untradeable") === false) {
+            if (ownData(row, "tradeState") === "active" && valid(ownData(row, "expires"), 1, 604800) && valid(price2, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE2) && ownData(row, "tradeOwner") === false && ownData(item2, "untradeable") === false) {
               prices.push(price2);
               const bid = ownData(row, "currentBid"), starting = ownData(row, "startingBid");
               listings.push({
                 buyNow: price2,
                 expires: ownData(row, "expires"),
-                currentBid: valid(bid, 0, MAX_PUZZLE_QUOTE_PRICE) ? bid : null,
-                startingBid: valid(starting, 150, MAX_PUZZLE_QUOTE_PRICE) ? starting : null
+                currentBid: valid(bid, 0, MAX_PUZZLE_QUOTE_PRICE2) ? bid : null,
+                startingBid: valid(starting, 150, MAX_PUZZLE_QUOTE_PRICE2) ? starting : null
               });
             }
           }
@@ -5942,7 +6271,7 @@
   }
 
   // src/fc27/puzzle-concept-draft.js
-  var same8 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same9 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var blocked6 = (reason, mismatch2 = null) => ({
     status: "blocked",
     reason,
@@ -5992,7 +6321,7 @@
   };
   function assess2(input, slots, owned2, purchases) {
     const { challenge, context, policy } = input;
-    if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || policy?.onlyUntradeable !== true || !same8(challenge.context, context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
+    if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || policy?.onlyUntradeable !== true || !same9(challenge.context, context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
     const pool = collectSafeTraditionalCandidates({
       context,
       policy,
@@ -6037,7 +6366,7 @@
         plan: { ...suggestion, status: "preview", setId: input.challenge.setId, challengeId: input.challenge.id }
       });
       if (plan.status !== "prepared" || plan.purchaseCount < 1) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED");
-      if (input.inventory?.kind !== "normalized-inventory" || !same8(input.context, input.inventory.context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
+      if (input.inventory?.kind !== "normalized-inventory" || !same9(input.context, input.inventory.context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
       const owned2 = suggestion.selectedOwned.map((ref) => {
         const found = input.inventory.items.filter((item2) => item2.id === ref.id);
         return found.length === 1 ? project2(found[0]) : null;
@@ -6056,7 +6385,7 @@
   }
   function validateFc27PuzzleConceptDraft(plan, current2, freshOwned) {
     try {
-      if (plan?.kind !== "puzzle-concept-draft" || plan.status !== "prepared" || !same8(scope(plan), scope(current2))) return blocked6("FC27_CONCEPT_INPUTS_CHANGED");
+      if (plan?.kind !== "puzzle-concept-draft" || plan.status !== "prepared" || !same9(scope(plan), scope(current2))) return blocked6("FC27_CONCEPT_INPUTS_CHANGED");
       const rebuilt = prepareFc27PuzzleConceptDraft({ ...scope(plan), inventory: {
         schema: 1,
         context: plan.context,
@@ -6068,12 +6397,12 @@
         purchases: plan.purchases,
         purchaseCount: plan.purchaseCount
       });
-      if (rebuilt.status !== "prepared" || !same8(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED", "plan");
+      if (rebuilt.status !== "prepared" || !same9(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED", "plan");
       if (!Array.isArray(freshOwned) || freshOwned.length >= 250 || new Set(freshOwned.map((item2) => item2.id)).size !== freshOwned.length || freshOwned.some((item2) => !plan.owned.some((ref) => ref.definitionId === item2.definitionId))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-shape");
       const owned2 = plan.owned.map((expected) => {
         const fresh = freshOwned.find((item2) => item2.id === expected.id);
         const actual = fresh && project2({ ...fresh, protected: fresh.protected ?? expected.protected });
-        return same8(actual, expected) ? actual : null;
+        return same9(actual, expected) ? actual : null;
       });
       if (owned2.some((item2) => !item2)) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-identity");
       return assess2(current2, plan.slots, owned2, plan.purchases);
@@ -6083,10 +6412,10 @@
   }
 
   // src/fc27/puzzle-concept-session.js
-  var fail12 = (reason) => {
+  var fail13 = (reason) => {
     throw new Error(reason);
   };
-  var same9 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same10 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var reasonOf = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_CONCEPT_UNCONFIRMED";
   var blocked7 = (reason) => ({ status: "blocked", reason, saved: false, submitted: false });
   var mismatch = (value) => typeof value === "string" && /^[a-z-]{1,40}$/.test(value) ? value : null;
@@ -6120,20 +6449,20 @@
     }
   }
   async function readFc27ConceptPending(get, scope2, target = null) {
-    if (target && !validTarget(target)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+    if (target && !validTarget(target)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     if (target) {
       const current2 = await get(fc27ConceptPendingKey(scope2, target), null);
       if (current2 !== null) {
-        if (!sameTarget(current2, target)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+        if (!sameTarget(current2, target)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
         return current2;
       }
     }
     const legacy = await get(fc27ConceptPendingKey(scope2), null);
-    if (legacy !== null && !validTarget(legacy)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+    if (legacy !== null && !validTarget(legacy)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     if (target) return sameTarget(legacy, target) ? legacy : null;
     if (legacy !== null) return legacy;
     const targets = await get(indexKeyOf2(scope2), []);
-    if (!Array.isArray(targets) || targets.some((entry) => !validTarget(entry))) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+    if (!Array.isArray(targets) || targets.some((entry) => !validTarget(entry))) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     for (const entry of targets) {
       const pending2 = await readFc27ConceptPending(get, scope2, entry);
       if (pending2 !== null) return pending2;
@@ -6155,10 +6484,10 @@
   } = {}) {
     const store = async (key, value) => {
       await set(key, structuredClone(value));
-      if (!same9(await get(key, null), value)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+      if (!same10(await get(key, null), value)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     };
     const evidence = (reply, plan) => {
-      if (!reply?.fresh || !Number.isSafeInteger(reply.observedAt) || now() - reply.observedAt < 0 || now() - reply.observedAt > 15e3 || !same9(reply.context, plan.context)) fail12("FC27_CONCEPT_EVIDENCE_UNVERIFIED");
+      if (!reply?.fresh || !Number.isSafeInteger(reply.observedAt) || now() - reply.observedAt < 0 || now() - reply.observedAt > 15e3 || !same10(reply.context, plan.context)) fail13("FC27_CONCEPT_EVIDENCE_UNVERIFIED");
     };
     const validate2 = (plan, current2, owned2) => {
       const result = validateFc27PuzzleConceptDraft(plan, current2, owned2);
@@ -6171,7 +6500,7 @@
       const legacy = await get(fc27ConceptPendingKey(scope2), null);
       if (sameTarget(legacy, target)) await store(fc27ConceptPendingKey(scope2), null);
       const targets = await get(indexKeyOf2(scope2), []);
-      if (!Array.isArray(targets)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+      if (!Array.isArray(targets)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
       await store(indexKeyOf2(scope2), targets.filter((entry) => !sameTarget(entry, target)));
     };
     const abandon = async (target) => {
@@ -6183,9 +6512,9 @@
       const { plan } = record;
       const saved = await provider.readConceptDraft(plan);
       evidence(saved, plan);
-      if (saved.setId !== plan.challenge.setId || saved.challengeId !== plan.challenge.id) fail12("FC27_CONCEPT_READBACK_UNVERIFIED");
+      if (saved.setId !== plan.challenge.setId || saved.challengeId !== plan.challenge.id) fail13("FC27_CONCEPT_READBACK_UNVERIFIED");
       validate2(plan, await readCurrent(plan, { afterSave: true }), saved.owned);
-      if ((await provider.syncConceptDraft(plan))?.status !== "synchronized") fail12("FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED");
+      if ((await provider.syncConceptDraft(plan))?.status !== "synchronized") fail13("FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED");
       await store(keyOf2(scope2, targetOf(plan)), { ...record, phase: "saved", updatedAt: now() });
       await clearPending(targetOf(plan));
       return {
@@ -6207,21 +6536,21 @@
         try {
           return await exclusive(scope2, async () => {
             assertCurrent();
-            if (!same9(plan.context, context)) fail12("FC27_CONCEPT_INPUTS_CHANGED");
+            if (!same10(plan.context, context)) fail13("FC27_CONCEPT_INPUTS_CHANGED");
             const target = targetOf(plan);
-            if (await checkOtherTransactions() !== true || await readFc27ConceptPending(get, scope2, target) !== null) fail12("FC27_CONCEPT_RECOVERY_REQUIRED");
+            if (await checkOtherTransactions() !== true || await readFc27ConceptPending(get, scope2, target) !== null) fail13("FC27_CONCEPT_RECOVERY_REQUIRED");
             const previous = await get(keyOf2(scope2, target), null);
-            if (previous?.phase === "save-pending") fail12("FC27_CONCEPT_RECOVERY_REQUIRED");
+            if (previous?.phase === "save-pending") fail13("FC27_CONCEPT_RECOVERY_REQUIRED");
             provider = await createProvider();
             const current2 = await readCurrent(plan);
-            if (current2.squadEmpty !== true) fail12("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED");
+            if (current2.squadEmpty !== true) fail13("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED");
             const replaceBaseline = typeof provider.readPuzzleBaseline === "function" ? await provider.readPuzzleBaseline(plan) : null;
             const selected = plan.slots.filter((ref) => ref?.kind === "owned");
             const fresh = selected.length ? await provider.validateItems({ selected }) : { context: plan.context, fresh: true, observedAt: now(), items: [] };
             evidence(fresh, plan);
             validate2(plan, await readCurrent(plan), fresh.items);
             const identifier = operationId();
-            if (typeof identifier !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(identifier)) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+            if (typeof identifier !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(identifier)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
             const record = {
               schema: 1,
               scope: scope2,
@@ -6239,19 +6568,19 @@
               assertCurrent();
               evidence(fresh, plan);
               const latest = await readCurrent(plan);
-              if (latest.squadEmpty !== true) fail12("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED");
+              if (latest.squadEmpty !== true) fail13("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED");
               validate2(plan, latest, fresh.items);
               boundary = true;
               const pending2 = pendingOf(target, plan.context, record.operationId);
               const targets = await get(indexKeyOf2(scope2), []);
-              if (!Array.isArray(targets) || targets.some((entry) => !validTarget(entry))) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+              if (!Array.isArray(targets) || targets.some((entry) => !validTarget(entry))) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
               await store(indexKeyOf2(scope2), [...targets.filter((entry) => !sameTarget(entry, target)), target]);
               await store(fc27ConceptPendingKey(scope2, target), pending2);
               await store(keyOf2(scope2, target), record);
               assertCurrent();
               evidence(fresh, plan);
             }, { replaceBaseline });
-            if (receipt?.status !== "confirmed" || !same9({ setId: receipt.setId, challengeId: receipt.challengeId }, targetOf(plan))) fail12("FC27_CONCEPT_SAVE_UNCONFIRMED");
+            if (receipt?.status !== "confirmed" || !same10({ setId: receipt.setId, challengeId: receipt.challengeId }, targetOf(plan))) fail13("FC27_CONCEPT_SAVE_UNCONFIRMED");
             return readback(provider, record);
           }) ?? blocked7("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         } catch (error2) {
@@ -6270,7 +6599,7 @@
         let provider;
         try {
           const result = await exclusive(scope2, async () => {
-            if (await checkOtherTransactions() !== true) fail12("FC27_RECOVERY_REQUIRED");
+            if (await checkOtherTransactions() !== true) fail13("FC27_RECOVERY_REQUIRED");
             assertCurrent();
             const pending2 = await readFc27ConceptPending(get, scope2, target);
             const record = await get(keyOf2(scope2, target), null);
@@ -6278,7 +6607,7 @@
             if (pending2 && (pending2.setId !== target.setId || pending2.challengeId !== target.challengeId)) {
               return { ...blocked7("FC27_CONCEPT_RECOVERY_REQUIRED"), recoverySetId: pending2.setId, recoveryChallengeId: pending2.challengeId };
             }
-            if (!record || record.schema !== 1 || record.scope !== scope2 || record.submitted !== false || !same9(targetOf(record.plan), target) || !["saved", "save-pending"].includes(record.phase) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId) || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0 || record.updatedAt > now() || !same9(record.plan?.context, context) || !accountMatches(record, record.plan?.context) || pending2?.account && !accountMatches(pending2, record.plan?.context) || pending2 && pending2.operationId !== record.operationId) fail12("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+            if (!record || record.schema !== 1 || record.scope !== scope2 || record.submitted !== false || !same10(targetOf(record.plan), target) || !["saved", "save-pending"].includes(record.phase) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId) || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0 || record.updatedAt > now() || !same10(record.plan?.context, context) || !accountMatches(record, record.plan?.context) || pending2?.account && !accountMatches(pending2, record.plan?.context) || pending2 && pending2.operationId !== record.operationId) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
             validate2(record.plan, record.plan, record.plan.owned);
             if (restartIfEmpty && !pending2 && record.phase === "saved" && (await readCurrent(record.plan)).squadEmpty === true) {
               assertCurrent();
@@ -6290,7 +6619,7 @@
               return { ...await readback(provider, record), restored: true };
             } catch (error2) {
               if (error2?.message === "FC27_CONCEPT_SQUAD_CLEARED") {
-                if (pending2 || record.phase === "save-pending") fail12("FC27_CONCEPT_RECOVERY_REQUIRED");
+                if (pending2 || record.phase === "save-pending") fail13("FC27_CONCEPT_RECOVERY_REQUIRED");
                 return abandon(target);
               }
               throw error2;
@@ -6306,12 +6635,156 @@
     });
   }
 
+  // src/fc27/purchase-attempts.js
+  var fail14 = (reason) => {
+    throw Error(reason);
+  };
+  var integer9 = (n) => Number.isSafeInteger(n) && n >= 0;
+  var repeatable = /* @__PURE__ */ new Set(["FC27_BUY_NO_LISTING", "FC27_GALLERY_NO_LISTING", "FC27_BUY_LISTING_CHANGED", "FC27_BUY_LISTING_UNAVAILABLE"]);
+  function validatePurchaseAttempts(record) {
+    for (const value of [record.attempts, record.priceOverrides, record.searchCeilings]) {
+      if (value !== void 0 && (!value || typeof value !== "object" || Array.isArray(value))) fail14("FC27_BUY_ATTEMPTS_INVALID");
+    }
+    for (const [key, value] of Object.entries(record.attempts ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !value || !integer9(value.used) || !integer9(value.total) || !integer9(value.limit) || value.limit < 1 || value.used > value.limit || value.total < value.used || !integer9(value.round) || value.round < 1 || value.round >= Number.MAX_SAFE_INTEGER || typeof value.failed !== "boolean" || value.queries !== void 0 && !integer9(value.queries) || value.reason !== null && !/^FC27_[A-Z0-9_]+$/.test(value.reason)) fail14("FC27_BUY_ATTEMPTS_INVALID");
+    }
+    for (const [key, cap] of Object.entries(record.searchCeilings ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !integer9(cap) || cap < 150 || cap > 15e6) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
+    }
+    for (const [key, approval] of Object.entries(record.priceOverrides ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !record.attempts?.[key]) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
+      validatePurchasePriceApproval(approval, record.scope, [Number(key)]);
+    }
+  }
+  function beginPurchaseAttempt(record, definitionId) {
+    const approval = purchasePriceApprovalFor(record, definitionId);
+    if (!approval) return true;
+    record.attempts ??= {};
+    const value = record.attempts[definitionId] ??= { used: 0, total: 0, round: 1, limit: approval.policy.purchaseAttempts, reason: null, failed: false };
+    if (value.failed || value.used >= value.limit) return false;
+    if (value.total >= Number.MAX_SAFE_INTEGER) fail14("FC27_BUY_ATTEMPTS_INVALID");
+    value.used++;
+    value.total++;
+    value.reason = null;
+    return true;
+  }
+  function finishPurchaseAttempt(record, definitionId, result) {
+    const value = record.attempts?.[definitionId];
+    if (!value) return false;
+    value.reason = result.reason;
+    const again = repeatable.has(result.reason) && ![401, 403, 429].includes(result.httpStatus) && value.used < value.limit;
+    value.failed = !again;
+    return again;
+  }
+  function failPurchaseWithoutAttempt(record, definitionId, reason) {
+    const approval = purchasePriceApprovalFor(record, definitionId);
+    if (!approval) return;
+    record.attempts ??= {};
+    record.attempts[definitionId] ??= { used: 0, total: 0, round: 1, limit: approval.policy.purchaseAttempts };
+    Object.assign(record.attempts[definitionId], { reason, failed: true });
+  }
+  function purchaseRetryKey(record) {
+    return JSON.stringify([record.operationId, record.entries.map((entry) => [
+      entry.definitionId,
+      entry.state,
+      record.attempts?.[entry.definitionId]?.total ?? 0,
+      record.attempts?.[entry.definitionId]?.round ?? 0
+    ])]);
+  }
+  function purchaseAttemptResults(record) {
+    return record.entries.map((entry) => {
+      const approval = purchasePriceApprovalFor(record, entry.definitionId), price2 = approval?.rows.find((row) => row.definitionId === entry.definitionId);
+      return {
+        definitionId: entry.definitionId,
+        slot: entry.slot,
+        state: entry.state,
+        name: (record.plan ?? record.base?.purchases)?.find((row) => row.definitionId === entry.definitionId)?.name ?? "",
+        price: ["waiting", "buy-pending", "collected"].includes(entry.state) ? null : entry.price,
+        attempt: record.attempts?.[entry.definitionId] ? { ...record.attempts[entry.definitionId] } : null,
+        reference: price2 ? {
+          ...structuredClone(price2),
+          maxBuy: price2.maxBuy === null ? null : Math.min(price2.maxBuy, record.searchCeilings?.[entry.definitionId] ?? Infinity),
+          policy: { ...approval.policy },
+          season: approval.season,
+          platform: approval.platform
+        } : null,
+        reason: record.attempts?.[entry.definitionId]?.reason ?? record.lastResult?.failures?.find((row) => row.definitionId === entry.definitionId)?.reason ?? null
+      };
+    });
+  }
+  function purchaseRetryContext(record, constraints = {}) {
+    return record.priceApproval ? {
+      ...constraints,
+      operationId: record.operationId,
+      key: purchaseRetryKey(record),
+      policy: record.priceApproval.policy
+    } : null;
+  }
+  function recordPurchaseSearch(record, definitionId) {
+    const attempt = record.attempts?.[definitionId];
+    if (attempt) attempt.queries = (attempt.queries ?? 0) + 1;
+  }
+  function freezePurchaseSearchCap(record, definitionId, cap) {
+    if (!record.priceApproval) return cap;
+    record.searchCeilings ??= {};
+    const effective = Math.min(cap, record.searchCeilings[definitionId] ?? cap);
+    if (integer9(effective) && effective >= 150) record.searchCeilings[definitionId] = effective;
+    return effective;
+  }
+  function applyPurchaseRetry(record, retry, constraints, now = Date.now()) {
+    if (!retry || retry.key !== purchaseRetryKey(record) || retry.operationId !== record.operationId || !Array.isArray(retry.items) || !retry.items.length || retry.items.length > 256 || new Set(retry.items.map((item2) => item2.definitionId)).size !== retry.items.length || record.entries.some((entry) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(entry.state)) || record.phase === "save-pending") fail14("FC27_BUY_RETRY_CHANGED");
+    if (!Number.isSafeInteger(constraints?.balance) || constraints.balance < 0) fail14("FC27_BUY_BALANCE_UNVERIFIED");
+    const approvals = {};
+    let total = 0;
+    for (const item2 of retry.items) {
+      const entry = record.entries.find((entry2) => entry2.definitionId === item2.definitionId);
+      if (entry?.state !== "waiting" || record.attempts?.[item2.definitionId]?.failed !== true) fail14("FC27_BUY_RETRY_CHANGED");
+      const base = purchasePriceApprovalFor(record, item2.definitionId);
+      const approval = createPurchasePriceApproval({
+        scope: record.scope,
+        season: base.season,
+        platform: base.platform,
+        definitionIds: [item2.definitionId],
+        references: retry.references,
+        policy: retry.policy,
+        overrides: { [item2.definitionId]: item2.maxBuy },
+        now
+      });
+      if (approval.rows[0].maxBuy === null) fail14(approval.rows[0].reason);
+      const legal = purchasePriceCap({
+        maxBuy: item2.maxBuy,
+        priceTiers: constraints.priceTiers,
+        absoluteCap: constraints.absoluteCap,
+        remainingBudget: constraints.remainingBudget,
+        balance: constraints.balance
+      });
+      if (legal !== item2.maxBuy) fail14("FC27_BUY_RETRY_CAP_INVALID");
+      total += legal;
+      approvals[item2.definitionId] = approval;
+    }
+    if (total > (constraints.remainingBudget ?? Infinity) || total > (constraints.balance ?? Infinity)) fail14("FC27_BUY_RETRY_BUDGET_EXCEEDED");
+    record.priceOverrides = { ...record.priceOverrides, ...approvals };
+    for (const item2 of retry.items) {
+      const previous = record.attempts[item2.definitionId];
+      record.attempts[item2.definitionId] = {
+        used: 0,
+        total: previous.total,
+        round: previous.round + 1,
+        ...previous.queries === void 0 ? {} : { queries: previous.queries },
+        limit: approvals[item2.definitionId].policy.purchaseAttempts,
+        failed: false,
+        reason: null
+      };
+      if (record.searchCeilings) delete record.searchCeilings[item2.definitionId];
+    }
+  }
+
   // src/fc27/puzzle-buy-session.js
-  var same10 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var fail13 = (reason) => {
+  var same11 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var fail15 = (reason) => {
     throw new Error(reason);
   };
-  var integer8 = (n, min = 0) => Number.isSafeInteger(n) && n >= min;
+  var integer10 = (n, min = 0) => Number.isSafeInteger(n) && n >= min;
   var safeReason4 = (e) => /^FC27_[A-Z0-9_]+$/.test(e?.message ?? "") ? e.message : "FC27_BUY_UNCONFIRMED";
   var puzzleBuyKey = (scope2, target) => `fcat-fc27-puzzle-buy:${scope2}:${target.setId}:${target.challengeId}`;
   var puzzleBuyPendingKey = (scope2) => `fcat-fc27-puzzle-buy-pending:${scope2}`;
@@ -6325,16 +6798,19 @@
     loadDraft,
     createAdapter,
     assertCurrent,
+    preparePrices = null,
     shouldStop = () => false,
     onProgress = () => {
     }
   } = {}) {
     const store = async (key, value) => {
       await set(key, structuredClone(value));
-      if (!same10(await get(key, null), value)) fail13("FC27_BUY_JOURNAL_UNCONFIRMED");
+      if (!same11(await get(key, null), value)) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
     };
     const check = (record) => {
-      if (!record || record.schema !== 1 || record.scope !== scope2 || !same10(record.context, context) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !integer8(e.slot) || e.slot > 31 || !integer8(e.definitionId, 1) || !["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"].includes(e.state) || e.state !== "waiting" && (!integer8(e.itemId, 1) || (e.source === "owned" ? e.state !== "club" || e.tradeId !== "0" || e.price !== 0 : typeof e.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer8(e.price, 150)))) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !["ready", "save-pending", "saved"].includes(record.phase)) fail13("FC27_BUY_JOURNAL_UNCONFIRMED");
+      if (!record || record.schema !== 1 || record.scope !== scope2 || !same11(record.context, context) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !integer10(e.slot) || e.slot > 31 || !integer10(e.definitionId, 1) || !["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"].includes(e.state) || e.state !== "waiting" && (!integer10(e.itemId, 1) || (e.source === "owned" ? e.state !== "club" || e.tradeId !== "0" || e.price !== 0 : typeof e.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer10(e.price, 150)))) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !["ready", "save-pending", "saved"].includes(record.phase)) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
+      if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope2, record.entries.map((entry) => entry.definitionId));
+      validatePurchaseAttempts(record);
     };
     const summary3 = (record) => {
       const entries2 = Array.isArray(record?.entries) ? record.entries : [];
@@ -6344,31 +6820,31 @@
         reused: acquired.filter((e) => e.source === "owned").length,
         fulfilled: acquired.length,
         total: entries2.length,
-        spent: acquired.reduce((sum2, e) => sum2 + (integer8(e.price) ? e.price : 0), 0)
+        spent: acquired.reduce((sum2, e) => sum2 + (integer10(e.price) ? e.price : 0), 0)
       };
     };
     return Object.freeze({
-      async execute(target, { budget, quoteCeiling = null, expectedOperationId, approved = false, recoverOnly = false } = {}) {
+      async execute(target, { budget, quoteCeiling = null, expectedOperationId, retry = null, approved = false, recoverOnly = false } = {}) {
         let adapter;
         let record;
         try {
           target = { setId: target?.setId, challengeId: target?.challengeId };
-          if (!integer8(target.setId, 1) || !integer8(target.challengeId, 1)) fail13("FC27_BUY_PLAN_CHANGED");
-          if (approved !== true || !integer8(budget) || budget > 165e6 || quoteCeiling !== null && (!integer8(quoteCeiling, 150) || quoteCeiling > 15e6)) fail13("FC27_BUY_APPROVAL_REQUIRED");
+          if (!integer10(target.setId, 1) || !integer10(target.challengeId, 1)) fail15("FC27_BUY_PLAN_CHANGED");
+          if (approved !== true || !integer10(budget) || budget > 165e6 || quoteCeiling !== null && (!integer10(quoteCeiling, 150) || quoteCeiling > 15e6)) fail15("FC27_BUY_APPROVAL_REQUIRED");
           return await exclusive(scope2, async () => {
             assertCurrent();
             const draft = await loadDraft(target);
-            if (!draft || draft.phase !== "saved" || draft.operationId !== expectedOperationId || !same10(draft.plan.context, context)) fail13("FC27_BUY_PLAN_CHANGED");
+            if (!draft || draft.phase !== "saved" || draft.operationId !== expectedOperationId || !same11(draft.plan.context, context)) fail15("FC27_BUY_PLAN_CHANGED");
             const key = puzzleBuyKey(scope2, target);
             const pending2 = await get(puzzleBuyPendingKey(scope2), null);
-            if (pending2 !== null && (pending2.key !== key || pending2.operationId !== draft.operationId)) fail13("FC27_BUY_RECOVERY_REQUIRED");
+            if (pending2 !== null && (pending2.key !== key || pending2.operationId !== draft.operationId)) fail15("FC27_BUY_RECOVERY_REQUIRED");
             record = await get(key, null);
             if (record) {
               check(record);
               if (record.operationId !== draft.operationId) {
-                if (!settled(record) || pending2) fail13("FC27_BUY_RECOVERY_REQUIRED");
+                if (!settled(record) || pending2) fail15("FC27_BUY_RECOVERY_REQUIRED");
                 record = null;
-              } else if (!same10(record.base, draft.plan)) fail13("FC27_BUY_PLAN_CHANGED");
+              } else if (!same11(record.base, draft.plan)) fail15("FC27_BUY_PLAN_CHANGED");
             }
             record ??= {
               schema: 1,
@@ -6382,8 +6858,12 @@
               entries: draft.plan.slots.filter((s) => s?.kind === "concept").map((s) => ({ slot: s.slot, definitionId: s.definitionId, state: "waiting" }))
             };
             check(record);
-            if (!same10(record.target, target) || !same10(record.base.context, context) || record.entries.length !== record.base.slots.filter((s) => s?.kind === "concept").length || record.entries.some((e) => record.base.slots[e.slot]?.kind !== "concept" || record.base.slots[e.slot].definitionId !== e.definitionId) || !Array.isArray(record.applied) || record.applied.some((e) => e.state !== "club" || !record.entries.some((entry) => same10(entry, e)))) fail13("FC27_BUY_JOURNAL_UNCONFIRMED");
-            adapter = await createAdapter();
+            record.budget = budget;
+            if (!same11(record.target, target) || !same11(record.base.context, context) || record.entries.length !== record.base.slots.filter((s) => s?.kind === "concept").length || record.entries.some((e) => record.base.slots[e.slot]?.kind !== "concept" || record.base.slots[e.slot].definitionId !== e.definitionId) || !Array.isArray(record.applied) || record.applied.some((e) => e.state !== "club" || !record.entries.some((entry) => same11(entry, e)))) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
+            adapter = await createAdapter({ onSearch: (definitionId) => {
+              recordPurchaseSearch(record, definitionId);
+              report("search-query", record.entries.find((entry) => entry.definitionId === definitionId));
+            } });
             if (record.phase === "save-pending") {
               await adapter.recoverSave(record);
               record.applied = record.entries.filter((e) => e.state === "club").map((e) => ({ ...e }));
@@ -6395,12 +6875,27 @@
               const location = await adapter.locate(entry);
               if (location === "club") entry.state = "club";
               else if (location === "purchased") entry.state = "bought";
-              else fail13("FC27_BUY_RECEIPT_UNCONFIRMED");
+              else fail15("FC27_BUY_RECEIPT_UNCONFIRMED");
             }
             await store(key, record);
             await adapter.verifySquad(record);
             await store(key, record);
             const persist = () => store(key, record);
+            const constraints = async () => ({
+              ...await adapter.priceContext?.(),
+              absoluteCap: quoteCeiling,
+              remainingBudget: Math.max(0, budget - summary3(record).spent)
+            });
+            const priceResult = async () => ({ results: purchaseAttemptResults(record), retryContext: record.priceApproval ? {
+              ...await constraints(),
+              operationId: record.operationId,
+              key: purchaseRetryKey(record),
+              policy: record.priceApproval.policy
+            } : null });
+            if (retry) {
+              applyPurchaseRetry(record, retry, await constraints());
+              await persist();
+            }
             const mark = async () => {
               await store(puzzleBuyPendingKey(scope2), { key, operationId: record.operationId });
               await persist();
@@ -6412,6 +6907,7 @@
                   ...summary3(record),
                   failures: failures.map((item2) => ({ ...item2 })),
                   phase,
+                  results: purchaseAttemptResults({ ...record, lastResult: { failures } }),
                   index: index >= 0 ? index + 1 : null,
                   total: record.entries.length,
                   ...entry ? { slot: entry.slot, definitionId: entry.definitionId } : {},
@@ -6423,8 +6919,10 @@
             let stopReason = null;
             const failures = [];
             try {
-              for (const entry of record.entries) {
+              for (let cursor = 0; cursor < record.entries.length; cursor++) {
+                const entry = record.entries[cursor];
                 if (entry.state === "club") continue;
+                if (retry && entry.state === "waiting" && !retry.items.some((item2) => item2.definitionId === entry.definitionId)) continue;
                 try {
                   if (["buy-pending", "bought", "move-pending"].includes(entry.state)) {
                     const location = await adapter.locate(entry);
@@ -6434,7 +6932,7 @@
                     } else if (location === "purchased") {
                       entry.state = "bought";
                       await persist();
-                    } else fail13("FC27_BUY_RECEIPT_UNCONFIRMED");
+                    } else fail15("FC27_BUY_RECEIPT_UNCONFIRMED");
                   }
                   if (entry.state === "waiting") {
                     assertCurrent();
@@ -6444,25 +6942,55 @@
                     }
                     const remaining = budget - summary3(record).spent;
                     await adapter.verifyCurrent(record);
-                    report("search", entry);
-                    const quote2 = await adapter.find(entry.definitionId, quoteCeiling ?? Infinity);
-                    if (!quote2) {
-                      failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: "FC27_BUY_NO_LISTING" });
-                      report("failed", entry, { reason: "FC27_BUY_NO_LISTING" });
+                    await ensurePurchasePriceApproval({ record, scope: scope2, preparePrices, persist, assertCurrent });
+                    const approval = purchasePriceApprovalFor(record, entry.definitionId);
+                    const price2 = approval ? purchaseApprovedPrice(approval, entry.definitionId) : null;
+                    if (price2 && price2.maxBuy === null) {
+                      failPurchaseWithoutAttempt(record, entry.definitionId, price2.reason);
+                      await persist();
+                      failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: price2.reason });
+                      report("failed", entry, { reason: price2.reason });
                       continue;
                     }
-                    if (quote2.unavailable) {
-                      failures.push({
+                    const cap = freezePurchaseSearchCap(
+                      record,
+                      entry.definitionId,
+                      Math.min(quoteCeiling ?? Infinity, price2?.maxBuy ?? Infinity, approval ? Math.max(0, remaining) : Infinity)
+                    );
+                    if (cap < 150) {
+                      failPurchaseWithoutAttempt(record, entry.definitionId, "FC27_BUY_BUDGET_EXCEEDED");
+                      await persist();
+                      failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: "FC27_BUY_BUDGET_EXCEEDED" });
+                      report("failed", entry, { reason: "FC27_BUY_BUDGET_EXCEEDED" });
+                      continue;
+                    }
+                    if (!beginPurchaseAttempt(record, entry.definitionId)) {
+                      const reason = record.attempts[entry.definitionId].reason ?? "FC27_BUY_ATTEMPTS_EXHAUSTED";
+                      failPurchaseWithoutAttempt(record, entry.definitionId, reason);
+                      await persist();
+                      failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason });
+                      report("failed", entry, { reason });
+                      continue;
+                    }
+                    await persist();
+                    report("search", entry);
+                    const quote2 = await adapter.find(entry.definitionId, cap);
+                    if (!quote2 || quote2.unavailable) {
+                      const failure = {
                         slot: entry.slot,
                         definitionId: entry.definitionId,
-                        reason: quote2.reason,
-                        httpStatus: quote2.httpStatus,
-                        errorCode: quote2.errorCode
-                      });
-                      report("failed", entry, quote2);
+                        reason: quote2?.reason ?? "FC27_BUY_NO_LISTING",
+                        httpStatus: quote2?.httpStatus,
+                        errorCode: quote2?.errorCode
+                      };
+                      const again = finishPurchaseAttempt(record, entry.definitionId, failure);
+                      await persist();
+                      if (again) cursor--;
+                      else failures.push(failure);
+                      report(again ? "retrying" : "failed", entry, failure);
                       continue;
                     }
-                    if (quote2.definitionId !== entry.definitionId || !integer8(quote2.itemId, 1) || !integer8(quote2.price, 150) || quoteCeiling !== null && quote2.price > quoteCeiling || typeof quote2.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(quote2.tradeId)) fail13("FC27_BUY_QUOTE_UNVERIFIED");
+                    if (quote2.definitionId !== entry.definitionId || !integer10(quote2.itemId, 1) || !integer10(quote2.price, 150) || quote2.price > cap || typeof quote2.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(quote2.tradeId)) fail15("FC27_BUY_QUOTE_UNVERIFIED");
                     report("price-ready", entry, { price: quote2.price });
                     if (quote2.price > remaining) {
                       failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: "FC27_BUY_BUDGET_EXCEEDED" });
@@ -6481,17 +7009,20 @@
                     if (receipt.status === "rejected") {
                       entry.state = "waiting";
                       await persist();
-                      failures.push({
+                      const again = finishPurchaseAttempt(record, entry.definitionId, receipt);
+                      await persist();
+                      if (again) cursor--;
+                      else failures.push({
                         slot: entry.slot,
                         definitionId: entry.definitionId,
                         reason: receipt.reason,
                         httpStatus: receipt.httpStatus,
                         errorCode: receipt.errorCode
                       });
-                      report("failed", entry, receipt);
+                      report(again ? "retrying" : "failed", entry, receipt);
                       continue;
                     }
-                    if (receipt.status !== "bought" || receipt.itemId !== entry.itemId || receipt.definitionId !== entry.definitionId || receipt.tradeId !== entry.tradeId || receipt.price !== entry.price) fail13("FC27_BUY_RECEIPT_UNCONFIRMED");
+                    if (receipt.status !== "bought" || receipt.itemId !== entry.itemId || receipt.definitionId !== entry.definitionId || receipt.tradeId !== entry.tradeId || receipt.price !== entry.price) fail15("FC27_BUY_RECEIPT_UNCONFIRMED");
                     entry.state = "bought";
                     await persist();
                     report("bought", entry, { price: entry.price });
@@ -6514,7 +7045,7 @@
                       report("failed", entry, moved);
                       continue;
                     }
-                    if (await adapter.locate(entry) !== "club") fail13("FC27_BUY_MOVE_UNCONFIRMED");
+                    if (await adapter.locate(entry) !== "club") fail15("FC27_BUY_MOVE_UNCONFIRMED");
                     entry.state = "club";
                     await persist();
                     report("completed", entry, { price: entry.price });
@@ -6529,9 +7060,9 @@
             }
             record.lastResult = { reason: stopReason ?? failures[0]?.reason ?? "FC27_BUY_COMPLETED", failures };
             await persist();
-            if (!settled(record)) return { status: "recovery-required", ...record.lastResult, ...summary3(record) };
+            if (!settled(record)) return { status: "recovery-required", ...record.lastResult, ...await priceResult(), ...summary3(record) };
             const acquired = record.entries.filter((e) => e.state === "club");
-            if (!same10(acquired, record.applied)) {
+            if (!same11(acquired, record.applied)) {
               const result = await adapter.save(record, async () => {
                 record.phase = "save-pending";
                 await mark();
@@ -6544,6 +7075,7 @@
             return {
               status: acquired.length === record.entries.length ? "purchased" : "partial",
               ...record.lastResult,
+              ...await priceResult(),
               ...summary3(record),
               saved: acquired.length > 0 && record.applied.length === acquired.length,
               replacementPending: record.applied.length !== acquired.length,
@@ -6588,12 +7120,12 @@
     if (!Array.isArray(slots) || slots.length !== record.base.slots.length) return false;
     const old = puzzleBuySlotRefs(record.base, record.applied);
     const next = puzzleBuySlotRefs(record.base, record.entries);
-    const same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    return slots.every((slot, i) => same19(slot, old[i]) || same19(slot, next[i]));
+    const same21 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return slots.every((slot, i) => same21(slot, old[i]) || same21(slot, next[i]));
   }
 
   // src/adapters/ea/fc27-purchase-squad.js
-  var same11 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same12 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var refs2 = (squad) => squad?._players?.slice(0, 11).map((slot, index) => [0, -1].includes(slot._item.id) ? null : { slot: index, id: slot._item.id, definitionId: slot._item.definitionId, concept: slot._item.concept });
   var planRefs = (slots) => slots.filter(Boolean).map((slot) => slot.concept ? { slot: slot.slot, kind: "concept", definitionId: slot.definitionId, catalogRef: `fc27:${slot.definitionId}` } : { slot: slot.slot, kind: "owned", definitionId: slot.definitionId, id: slot.id, pile: "club" });
   async function createFc27PurchaseSquad(root, { canWrite, assertTarget }) {
@@ -6606,7 +7138,7 @@
     const assert = () => {
       runtime();
       assertTarget();
-      if (!same11(context, readFc27Context(root)) || dao !== root.services.SBC.sbcDAO || dao.loadChallenge !== root.UTSquadBuildingChallengeDAO.prototype.loadChallenge) throw Error("FC27_BUY_CONTEXT_CHANGED");
+      if (!same12(context, readFc27Context(root)) || dao !== root.services.SBC.sbcDAO || dao.loadChallenge !== root.UTSquadBuildingChallengeDAO.prototype.loadChallenge) throw Error("FC27_BUY_CONTEXT_CHANGED");
     };
     const load = async (record) => {
       assert();
@@ -6638,7 +7170,7 @@
       });
       assert();
       const layout = projectFc27PuzzleLayout(root, squad, record.target);
-      if (!same11(layout.formation, record.base.challenge.formation) || !same11(layout.simpleBrickIndices, record.base.challenge.brickIndices) || layout.customBrickIndices.length) throw Error("FC27_BUY_SQUAD_CHANGED");
+      if (!same12(layout.formation, record.base.challenge.formation) || !same12(layout.simpleBrickIndices, record.base.challenge.brickIndices) || layout.customBrickIndices.length) throw Error("FC27_BUY_SQUAD_CHANGED");
       return squad;
     };
     const sync = async (record, squad) => {
@@ -6663,7 +7195,7 @@
       async save(record, beforeDispatch) {
         let squad = await load(record);
         const expected = puzzleBuySlotRefs(record.base, record.entries);
-        if (!same11(refs2(squad), expected)) {
+        if (!same12(refs2(squad), expected)) {
           if (!puzzleBuyMatchesSlots(record, refs2(squad))) throw Error("FC27_BUY_SQUAD_CHANGED");
           const players = squad._players.map((slot, index) => ({ index, itemData: {
             id: expected[index]?.id ?? slot._item.id,
@@ -6683,12 +7215,12 @@
           if (result?.success !== true || result.status !== 200) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
           squad = await load(record);
         }
-        if (!same11(refs2(squad), expected)) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
+        if (!same12(refs2(squad), expected)) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
         await sync(record, squad);
       },
       async recoverSave(record) {
         const squad = await load(record);
-        if (!same11(refs2(squad), puzzleBuySlotRefs(record.base, record.entries))) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
+        if (!same12(refs2(squad), puzzleBuySlotRefs(record.base, record.entries))) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
         await sync(record, squad);
       },
       cancel: () => transport.cancel()
@@ -6763,16 +7295,16 @@
     "service.bid": "3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a",
     "service.move": "5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef"
   });
-  var same12 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same13 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var id3 = (n) => Number.isSafeInteger(n) && n > 0;
-  var fail14 = (reason) => {
+  var fail16 = (reason) => {
     throw new Error(reason);
   };
   function readFc27PuzzleBuyPlan(root, target) {
     const page = readFc27PurchasePage(root, target);
-    if (!page) fail14("FC27_BUY_TARGET_CHANGED");
+    if (!page) fail16("FC27_BUY_TARGET_CHANGED");
     const { items, slots: refs3 } = page;
-    if (refs3.filter(Boolean).some((ref) => !id3(ref.id) || !id3(ref.definitionId) || typeof ref.concept !== "boolean")) fail14("FC27_BUY_PLAN_CHANGED");
+    if (refs3.filter(Boolean).some((ref) => !id3(ref.id) || !id3(ref.definitionId) || typeof ref.concept !== "boolean")) fail16("FC27_BUY_PLAN_CHANGED");
     const purchases = refs3.filter((ref) => ref?.concept).map((ref) => {
       const item2 = items[ref.slot];
       return {
@@ -6797,6 +7329,10 @@
     canWrite,
     assertTarget,
     referencePrice,
+    refreshReference = null,
+    now = () => Date.now(),
+    onSearch = () => {
+    },
     verifyCurrent: verifyCurrentOverride = null,
     verifySquad: verifySquadOverride = null,
     collectionState = null,
@@ -6819,11 +7355,12 @@
       FC27_BUY_COMPATIBLE_HASHES
     );
     const functions = Object.fromEntries(["bid", "move", "searchTransferMarket", "clearTransferMarketCache", "requestUnassignedItems"].map((name) => [name, service[name]]));
-    if (Object.values(functions).some((fn) => typeof fn !== "function") || root.ItemPile.CLUB !== 7 || root.ItemPile.PURCHASED !== 6 || root.GameCurrency.COINS !== "COINS") fail14("FC27_BUY_RUNTIME_UNVERIFIED");
+    if (Object.values(functions).some((fn) => typeof fn !== "function") || root.ItemPile.CLUB !== 7 || root.ItemPile.PURCHASED !== 6 || root.GameCurrency.COINS !== "COINS") fail16("FC27_BUY_RUNTIME_UNVERIFIED");
     let provider;
     const legacyProvider = async () => provider ??= await createFc27PurchaseSquad(root, { canWrite, assertTarget });
     let club;
     const auctions = /* @__PURE__ */ new Map();
+    const auctionCaps = /* @__PURE__ */ new Map();
     const confirmedMoves = /* @__PURE__ */ new Set();
     let closed = false;
     let currentRecord = null;
@@ -6833,11 +7370,11 @@
     const pin = (pgid) => root.services.PIN.sendData(root.PINEventType.PAGE_VIEW, { type: root.PIN_PAGEVIEW_EVT_TYPE, pgid });
     const assertAccount = () => {
       runtime();
-      if (closed || !same12(context, readFc27Context(root)) || root.services.Item !== service || Object.getPrototypeOf(service) !== proto || Object.keys(functions).some((name) => service[name] !== functions[name])) fail14("FC27_BUY_CONTEXT_CHANGED");
+      if (closed || !same13(context, readFc27Context(root)) || root.services.Item !== service || Object.getPrototypeOf(service) !== proto || Object.keys(functions).some((name) => service[name] !== functions[name])) fail16("FC27_BUY_CONTEXT_CHANGED");
     };
     const writable = () => {
       assertAccount();
-      if (canWrite() !== true) fail14("FC27_BUY_DISABLED");
+      if (canWrite() !== true) fail16("FC27_BUY_DISABLED");
     };
     const observe = async (operation, mutation = false) => {
       assertAccount();
@@ -6874,16 +7411,32 @@
       });
     };
     const coins = () => {
-      const amount = root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount;
-      if (!Number.isSafeInteger(amount) || amount < 0) fail14("FC27_BUY_BALANCE_UNVERIFIED");
-      return amount;
+      const amount2 = root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount;
+      if (!Number.isSafeInteger(amount2) || amount2 < 0) fail16("FC27_BUY_BALANCE_UNVERIFIED");
+      return amount2;
+    };
+    const approvedCap = (definitionId, ceiling, item2, fresh = null) => {
+      const approval = currentRecord && purchasePriceApprovalFor(currentRecord, definitionId);
+      if (!approval) return { maxBuy: ceiling };
+      validatePurchasePriceApproval(approval, currentRecord.scope, currentRecord.entries.map((entry) => entry.definitionId));
+      const price2 = purchaseApprovedPrice(approval, definitionId, { now: now(), fresh });
+      if (price2.maxBuy === null) return price2;
+      const limits = item2?._itemPriceLimits ?? item2?.itemPriceLimits ?? null;
+      const maxBuy = purchasePriceCap({
+        maxBuy: price2.maxBuy,
+        approvedCap: Number.isFinite(ceiling) ? ceiling : null,
+        balance: coins(),
+        eaLimits: limits,
+        priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS
+      });
+      return { ...price2, maxBuy, reason: maxBuy === null ? "FC27_BUY_PRICE_LIMIT_UNAVAILABLE" : null };
     };
     const verifyCurrent = (record) => {
       assertAccount();
       assertTarget?.();
       if (typeof verifyCurrentOverride === "function") return verifyCurrentOverride(record);
       const page = readFc27PurchasePageSlots(root, record.target, record);
-      if (!puzzleBuyMatchesSlots(record, page)) fail14("FC27_BUY_SQUAD_CHANGED");
+      if (!puzzleBuyMatchesSlots(record, page)) fail16("FC27_BUY_SQUAD_CHANGED");
     };
     return Object.freeze({
       async verifySquad(record) {
@@ -6891,9 +7444,14 @@
         if (typeof verifySquadOverride === "function") return verifySquadOverride(record);
         verifyCurrent(record);
         const used = root.repositories.Item.numItemsInCache(root.ItemPile.PURCHASED);
-        if (used >= root.MAX_NEW_ITEMS) fail14("FC27_BUY_UNASSIGNED_FULL");
+        if (used >= root.MAX_NEW_ITEMS) fail16("FC27_BUY_UNASSIGNED_FULL");
       },
       verifyCurrent,
+      priceContext: () => ({
+        balance: coins(),
+        priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map((row) => ({ min: row.min, inc: row.inc })),
+        absoluteCap: currentRecord?.quoteCeiling ?? null
+      }),
       async find(definitionId, maxBuy) {
         await verifyCurrent(currentRecord);
         const criteria = new root.UTSearchCriteriaDTO();
@@ -6904,8 +7462,14 @@
         model.defaultSearchCriteria.category = criteria.category;
         model.updateSearchCriteria(criteria);
         const item2 = playerDetails?.get?.(definitionId) ?? (playerDetails === null ? readFc27PurchasePage(root, currentRecord.target)?.items.find((card) => card?.definitionId === definitionId) : null);
-        if (!item2 || typeof referencePrice !== "function") fail14("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE");
-        const initial = Number(await referencePrice({
+        if (!item2) fail16("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE");
+        const approval = currentRecord && purchasePriceApprovalFor(currentRecord, definitionId);
+        const fresh = approval && typeof refreshReference === "function" ? await refreshReference(definitionId, approval.policy) : null;
+        const authority = approvedCap(definitionId, maxBuy, item2, fresh);
+        if (authority.maxBuy === null) return { unavailable: true, reason: authority.reason };
+        maxBuy = authority.maxBuy;
+        if (!approval && typeof referencePrice !== "function") fail16("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE");
+        let initial = approval ? authority.estimate : Number(await referencePrice({
           definitionId,
           rating: item2._rating,
           nationId: item2.nationId,
@@ -6913,10 +7477,16 @@
           leagueId: item2.leagueId,
           preferredPosition: item2.preferredPosition
         }));
-        if (!Number.isFinite(initial) || initial < 0) fail14("FC27_BUY_REFERENCE_PRICE_INVALID");
+        if (!Number.isFinite(initial) || initial < 0) fail16("FC27_BUY_REFERENCE_PRICE_INVALID");
+        if (approval) initial = purchasePriceCap({
+          maxBuy: Math.max(initial, (item2._itemPriceLimits ?? item2.itemPriceLimits)?.minimum ?? 150),
+          approvedCap: maxBuy,
+          priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS
+        });
+        if (initial === null) return { unavailable: true, reason: "FC27_BUY_PRICE_LIMIT_UNAVAILABLE" };
         diagnostic("reference", { definitionId, price: initial });
         let searchFailure = null;
-        const items = await readFsuStyleAuctionPrices({
+        const found = await readFsuStyleAuctionPrices({
           ceiling: maxBuy,
           initial,
           attempts,
@@ -6932,19 +7502,24 @@
             criteria.maxBuy = price2;
             model.updateSearchCriteria(criteria);
             service.clearTransferMarketCache();
-            const reply = await observe(() => service.searchTransferMarket(model.searchCriteria, 1));
+            const reply = await observe(() => {
+              onSearch(definitionId);
+              return service.searchTransferMarket(model.searchCriteria, 1);
+            });
             diagnostic("search", { definitionId, maxBuy: model.searchCriteria.maxBuy, ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
-            if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some((card) => card.definitionId !== definitionId))) fail14("FC27_BUY_QUOTE_UNVERIFIED");
+            if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some((card) => card.definitionId !== definitionId))) fail16("FC27_BUY_QUOTE_UNVERIFIED");
             return reply;
           }
         });
+        const items = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
         items.sort((a, b) => b.getAuctionData().buyNowPrice - a.getAuctionData().buyNowPrice);
         if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
         const selected = items[items.length - 1];
         const auction = selected.getAuctionData();
         const tradeId3 = String(auction.tradeId);
-        if (!/^[1-9]\d{0,19}$/.test(tradeId3)) fail14("FC27_BUY_QUOTE_UNVERIFIED");
+        if (!/^[1-9]\d{0,19}$/.test(tradeId3)) fail16("FC27_BUY_QUOTE_UNVERIFIED");
         auctions.set(tradeId3, selected);
+        auctionCaps.set(tradeId3, { definitionId, itemId: selected.id, maxBuy, fresh });
         return { definitionId, itemId: selected.id, tradeId: tradeId3, price: auction.buyNowPrice };
       },
       async buy(entry) {
@@ -6955,6 +7530,10 @@
         if (!item2 || item2.id !== entry.itemId || item2.definitionId !== entry.definitionId || String(auction.tradeId) !== entry.tradeId || auction.buyNowPrice !== entry.price) {
           return { status: "rejected", reason: "FC27_BUY_LISTING_CHANGED" };
         }
+        const cap = auctionCaps.get(entry.tradeId);
+        if (!cap || cap.definitionId !== entry.definitionId || cap.itemId !== entry.itemId) return { status: "rejected", reason: "FC27_BUY_PRICE_APPROVAL_REQUIRED" };
+        const authority = approvedCap(entry.definitionId, cap.maxBuy, item2, cap.fresh);
+        if (authority.maxBuy === null || entry.price > authority.maxBuy) return { status: "rejected", reason: authority.reason ?? "FC27_BUY_PRICE_CAP_EXCEEDED" };
         if (!auction.canBuy(coins())) return { status: "rejected", reason: "FC27_BUY_INSUFFICIENT_COINS" };
         if (!(auction.getSecondsRemaining() > 0)) return { status: "rejected", reason: "FC27_BUY_LISTING_CHANGED" };
         pin("Item - Detail View");
@@ -6982,7 +7561,7 @@
         if (found) return "club";
         root.repositories.Item.setDirty(root.ItemPile.PURCHASED);
         const reply = await observe(() => service.requestUnassignedItems());
-        if (reply?.success !== true || reply.status !== 200 || !Array.isArray(reply.response?.items)) fail14("FC27_BUY_RECEIPT_UNCONFIRMED");
+        if (reply?.success !== true || reply.status !== 200 || !Array.isArray(reply.response?.items)) fail16("FC27_BUY_RECEIPT_UNCONFIRMED");
         const items = reply.response.items.filter((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId);
         if (items.length !== 1) return "unknown";
         auctions.set(entry.tradeId, items[0]);
@@ -6997,11 +7576,11 @@
       async move(entry) {
         writable();
         const item2 = auctions.get(entry.tradeId);
-        if (!item2 || item2.id !== entry.itemId || item2.definitionId !== entry.definitionId) fail14("FC27_BUY_MOVE_UNCONFIRMED");
+        if (!item2 || item2.id !== entry.itemId || item2.definitionId !== entry.definitionId) fail16("FC27_BUY_MOVE_UNCONFIRMED");
         const reply = await observe(() => service.move(item2, root.ItemPile.CLUB), true);
         diagnostic("move", { definitionId: entry.definitionId, ...responseCodes(reply) });
         if (reply?.success === false) return { status: "rejected", reason: "FC27_BUY_MOVE_REJECTED", ...responseCodes(reply) };
-        if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.includes(entry.itemId) || item2.pile !== root.ItemPile.CLUB) fail14("FC27_BUY_MOVE_UNCONFIRMED");
+        if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.includes(entry.itemId) || item2.pile !== root.ItemPile.CLUB) fail16("FC27_BUY_MOVE_UNCONFIRMED");
         confirmedMoves.add(entry.itemId);
       },
       async save(record, beforeDispatch) {
@@ -7075,12 +7654,15 @@
         method: "GET",
         url,
         anonymous: true,
+        timeout: 15e3,
         headers: { "Content-Type": "application/json" },
         onload: (response) => {
-          if (![200, 201].includes(response.status)) reject(Error(`FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`));
+          if (response.finalUrl && response.finalUrl !== url) reject(Error("FC27_BUY_REFERENCE_REDIRECT"));
+          else if (![200, 201].includes(response.status)) reject(Error(`FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`));
           else resolve(response.responseText);
         },
-        onerror: () => reject(Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE"))
+        onerror: () => reject(Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE")),
+        ontimeout: () => reject(Error("FC27_BUY_REFERENCE_TIMEOUT"))
       });
     });
   }
@@ -7089,9 +7671,9 @@
   var GALLERY_NET_COST_SCHEMA = 1;
   var GALLERY_MARKET_TAX_BPS = 500;
   var STATES = /* @__PURE__ */ new Set(["held", "listed", "sold", "unsold", "unknown"]);
-  var integer9 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
-  var id4 = (value) => integer9(value, 1);
-  var price = (value) => integer9(value, 150, 15e6);
+  var integer11 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var id4 = (value) => integer11(value, 1);
+  var price = (value) => integer11(value, 150, 15e6);
   function normalizePurchase(value) {
     if (!value || !id4(value.itemId) || !id4(value.definitionId) || !price(value.purchasePrice)) return null;
     const state = STATES.has(value.state) ? value.state : "held";
@@ -7103,11 +7685,11 @@
       definitionId: value.definitionId,
       purchasePrice: value.purchasePrice,
       tradeId: typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) ? value.tradeId : null,
-      purchasedAt: integer9(value.purchasedAt) ? value.purchasedAt : null,
+      purchasedAt: integer11(value.purchasedAt) ? value.purchasedAt : null,
       state,
       listedPrice: price(value.listedPrice) ? value.listedPrice : null,
       soldPrice: price(value.soldPrice) ? value.soldPrice : null,
-      soldAt: integer9(value.soldAt) ? value.soldAt : null,
+      soldAt: integer11(value.soldAt) ? value.soldAt : null,
       reason: typeof value.reason === "string" ? value.reason.slice(0, 160) : null
     };
   }
@@ -7116,7 +7698,7 @@
     const entries2 = Array.isArray(input.entries) ? input.entries.map(normalizePurchase) : [];
     if (entries2.some((entry) => !entry) || new Set(entries2.map((entry) => entry.itemId)).size !== entries2.length) return null;
     const taxBps = input.taxBps ?? GALLERY_MARKET_TAX_BPS;
-    if (!integer9(taxBps, 0, 1e4)) return null;
+    if (!integer11(taxBps, 0, 1e4)) return null;
     return {
       schema: GALLERY_NET_COST_SCHEMA,
       scope: typeof input.scope === "string" ? input.scope.slice(0, 160) : null,
@@ -7125,7 +7707,7 @@
     };
   }
   function galleryNetSale(priceValue, taxBps = GALLERY_MARKET_TAX_BPS) {
-    if (!price(priceValue) || !integer9(taxBps, 0, 1e4)) return null;
+    if (!price(priceValue) || !integer11(taxBps, 0, 1e4)) return null;
     return Math.floor(priceValue * (1e4 - taxBps) / 1e4);
   }
   function summarizeGalleryNetCost(ledger) {
@@ -7153,7 +7735,7 @@
   }
 
   // src/gallery/purchase-session.js
-  var same13 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same14 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var id5 = (value) => Number.isSafeInteger(value) && value > 0;
   var safeReason5 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_PURCHASE_UNCONFIRMED";
   var states = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club", "collected"]);
@@ -7187,7 +7769,9 @@
     reason: record.lastResult?.failures?.find((row) => row.definitionId === entry.definitionId)?.reason ?? null
   }));
   function validateGalleryPurchaseRecord(record, scope2, context) {
-    if (!record || record.schema !== 1 || record.scope !== scope2 || !same13(record.context, context) || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || record.plan.some((item2) => !id5(item2?.definitionId)) || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id5(entry?.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+    if (!record || record.schema !== 1 || record.scope !== scope2 || !same14(record.context, context) || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || record.plan.some((item2) => !id5(item2?.definitionId)) || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id5(entry?.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+    if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope2, record.entries.map((entry) => entry.definitionId));
+    validatePurchaseAttempts(record);
   }
   var validate = validateGalleryPurchaseRecord;
   function createGalleryPurchaseSession({
@@ -7197,6 +7781,7 @@
     set,
     exclusive,
     createAdapter,
+    preparePrices = null,
     assertCurrent = () => {
     },
     checkOtherTransactions = async () => {
@@ -7217,7 +7802,7 @@
     const write = async (storageKey, value) => {
       try {
         await set(storageKey, structuredClone(value));
-        if (!same13(await get(storageKey, null), value)) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+        if (!same14(await get(storageKey, null), value)) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
       } catch (error2) {
         if (error2?.message === "FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED") throw error2;
         throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED");
@@ -7238,14 +7823,15 @@
             operationId: record.operationId,
             binding: record.binding,
             collection: record.collection,
-            results: itemResults(record),
+            results: purchaseAttemptResults(record),
+            retryContext: purchaseRetryContext(record, { remainingBudget: record.budget == null ? null : Math.max(0, record.budget - summary(record).spent) }),
             ...summary(record)
           };
         } catch (error2) {
           return { status: "blocked", reason: safeReason5(error2) };
         }
       },
-      async execute({ items, binding, resume = false, expectedOperationId = null, budget = null, quoteCeiling = null, approved = false } = {}) {
+      async execute({ items, binding, resume = false, expectedOperationId = null, budget = null, quoteCeiling = null, retry = null, approved = false } = {}) {
         if (approved !== true || !resume && (!Array.isArray(items) || !items.length || items.length > 256 || typeof binding !== "string" || !binding || binding.length > 12e3) || budget !== null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 165e6) || quoteCeiling !== null && (!Number.isSafeInteger(quoteCeiling) || quoteCeiling < 150 || quoteCeiling > 15e6)) return { status: "blocked", reason: "FC27_GALLERY_PURCHASE_APPROVAL_REQUIRED" };
         let record, adapter;
         try {
@@ -7260,14 +7846,15 @@
             if (resume && (!record || expectedOperationId !== record.operationId)) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
             const plan = resume ? record.plan : items.map((item2) => ({
               definitionId: item2.definitionId ?? item2.eaId,
-              name: typeof item2.name === "string" ? item2.name.slice(0, 120) : ""
+              name: typeof item2.name === "string" ? item2.name.slice(0, 120) : "",
+              ...item2.priceReference ? { priceReference: structuredClone(item2.priceReference), pricePolicy: structuredClone(item2.pricePolicy) } : {}
             }));
             if (resume) {
               binding = record.binding;
               budget = record.budget ?? null;
             }
             if (plan.some((item2) => !id5(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
-            const changed = record && (!same13(record.binding, binding) || !same13(record.plan, plan));
+            const changed = record && (!same14(record.binding, binding) || !same14(record.plan, plan));
             if (changed && (oldPending || pending(record))) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
             if (changed) await write(`${key}:${record.operationId}`, record);
             if (!record || changed) record = {
@@ -7294,7 +7881,7 @@
                   phase,
                   index: entry ? record.entries.indexOf(entry) + 1 : 0,
                   definitionId: entry?.definitionId ?? null,
-                  results: itemResults({ ...record, lastResult: { failures } }),
+                  results: purchaseAttemptResults({ ...record, lastResult: { failures } }),
                   failures: [...failures],
                   ...extra
                 });
@@ -7302,11 +7889,26 @@
               }
             };
             report("preparing", null);
-            adapter = await createAdapter(record);
+            adapter = await createAdapter(record, { onSearch: (definitionId) => {
+              recordPurchaseSearch(record, definitionId);
+              report("search-query", record.entries.find((entry) => entry.definitionId === definitionId));
+            } });
             await adapter.verifySquad(record);
+            const constraints = async () => ({
+              ...await adapter.priceContext?.(),
+              remainingBudget: budget === null ? null : Math.max(0, budget - summary(record).spent)
+            });
+            const priceResult = async () => ({ results: purchaseAttemptResults(record), retryContext: purchaseRetryContext(record, await constraints()) });
+            if (retry) {
+              applyPurchaseRetry(record, retry, await constraints());
+              await save();
+            }
             let stopReason = null;
-            for (const entry of record.entries) {
+            for (let cursor = 0; cursor < record.entries.length; cursor++) {
+              if (stopReason) break;
+              const entry = record.entries[cursor];
               if (entry.state === "club" || entry.state === "collected") continue;
+              if (retry && entry.state === "waiting" && !retry.items.some((item2) => item2.definitionId === entry.definitionId)) continue;
               try {
                 assertCurrent();
                 await adapter.verifyCurrent(record);
@@ -7330,14 +7932,49 @@
                     report("already-collected", entry);
                     continue;
                   }
-                  report("search", entry);
-                  const found = await adapter.find(entry.definitionId, quoteCeiling ?? Infinity);
-                  if (!found || found.unavailable) {
-                    failures.push({ definitionId: entry.definitionId, reason: found?.reason ?? "FC27_GALLERY_NO_LISTING" });
+                  await ensurePurchasePriceApproval({ record, scope: scope2, preparePrices, persist: save, assertCurrent });
+                  const approval = purchasePriceApprovalFor(record, entry.definitionId);
+                  const price2 = approval ? purchaseApprovedPrice(approval, entry.definitionId) : null;
+                  if (price2 && price2.maxBuy === null) {
+                    failPurchaseWithoutAttempt(record, entry.definitionId, price2.reason);
+                    await save();
+                    failures.push({ definitionId: entry.definitionId, reason: price2.reason });
                     report("failed", entry);
                     continue;
                   }
-                  if (!quote(found, entry.definitionId) || quoteCeiling !== null && found.price > quoteCeiling) throw new Error("FC27_BUY_QUOTE_UNVERIFIED");
+                  const cap = freezePurchaseSearchCap(record, entry.definitionId, Math.min(
+                    quoteCeiling ?? record.quoteCeiling ?? Infinity,
+                    price2?.maxBuy ?? Infinity,
+                    approval && budget !== null ? Math.max(0, budget - summary(record).spent) : Infinity
+                  ));
+                  if (cap < 150) {
+                    failPurchaseWithoutAttempt(record, entry.definitionId, "FC27_GALLERY_BUDGET_EXCEEDED");
+                    await save();
+                    failures.push({ definitionId: entry.definitionId, reason: "FC27_GALLERY_BUDGET_EXCEEDED" });
+                    report("failed", entry);
+                    continue;
+                  }
+                  if (!beginPurchaseAttempt(record, entry.definitionId)) {
+                    const reason = record.attempts[entry.definitionId].reason ?? "FC27_BUY_ATTEMPTS_EXHAUSTED";
+                    failPurchaseWithoutAttempt(record, entry.definitionId, reason);
+                    await save();
+                    failures.push({ definitionId: entry.definitionId, reason });
+                    report("failed", entry);
+                    continue;
+                  }
+                  await save();
+                  report("search", entry);
+                  const found = await adapter.find(entry.definitionId, cap);
+                  if (!found || found.unavailable) {
+                    const failure = { definitionId: entry.definitionId, reason: found?.reason ?? "FC27_GALLERY_NO_LISTING", httpStatus: found?.httpStatus };
+                    const again = finishPurchaseAttempt(record, entry.definitionId, failure);
+                    await save();
+                    if (again) cursor--;
+                    else failures.push(failure);
+                    report(again ? "retrying" : "failed", entry);
+                    continue;
+                  }
+                  if (!quote(found, entry.definitionId) || found.price > cap) throw new Error("FC27_BUY_QUOTE_UNVERIFIED");
                   if (budget !== null && summary(record).spent + found.price > budget) {
                     failures.push({ definitionId: entry.definitionId, reason: "FC27_GALLERY_BUDGET_EXCEEDED", observedPrice: found.price });
                     report("failed", entry);
@@ -7368,8 +8005,11 @@
                     for (const field of Object.keys(entry)) delete entry[field];
                     Object.assign(entry, { definitionId, state: "waiting" });
                     await save();
-                    failures.push({ definitionId, reason: receipt.reason });
-                    report("failed", entry);
+                    const again = finishPurchaseAttempt(record, definitionId, receipt);
+                    await save();
+                    if (again) cursor--;
+                    else failures.push({ definitionId, reason: receipt.reason });
+                    report(again ? "retrying" : "failed", entry);
                     continue;
                   }
                   if (receipt?.status !== "bought" || !quote(receipt, entry.definitionId) || receipt.itemId !== entry.itemId || receipt.tradeId !== entry.tradeId || receipt.price !== entry.price) throw new Error("FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED");
@@ -7408,7 +8048,7 @@
             }
             record.lastResult = { reason: stopReason ?? failures[0]?.reason ?? "FC27_GALLERY_PURCHASE_COMPLETED", failures };
             await save();
-            if (pending(record)) return { status: "recovery-required", ...record.lastResult, results: itemResults(record), ...summary(record) };
+            if (pending(record)) return { status: "recovery-required", ...record.lastResult, ...await priceResult(), ...summary(record) };
             try {
               record.collection = await adapter.confirmCollection(record.entries.filter((entry) => ["club", "collected"].includes(entry.state)).map((entry) => entry.definitionId));
             } catch (error2) {
@@ -7418,7 +8058,7 @@
             await save();
             if (record.collection?.status === "confirmed" || summary(record).spent === 0) await write(pendingKey, null);
             else await write(pendingKey, { schema: 1, operationId: record.operationId });
-            return { status: record.entries.every((entry) => ["club", "collected"].includes(entry.state)) ? "purchased" : "partial", ...record.lastResult, results: itemResults(record), ...summary(record), collection: record.collection, submitted: false };
+            return { status: record.entries.every((entry) => ["club", "collected"].includes(entry.state)) ? "purchased" : "partial", ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
           });
           return result ?? { status: "blocked", reason: "FC27_GALLERY_PURCHASE_BUSY" };
         } catch (error2) {
@@ -7435,11 +8075,11 @@
   var MUTATING = /* @__PURE__ */ new Set(["list-pending", "unknown"]);
   var DURATIONS = /* @__PURE__ */ new Set([3600, 10800, 21600, 43200, 86400, 259200]);
   var clone2 = (value) => structuredClone(value);
-  var same14 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sameItem = (a, b) => a?.id === b?.id && a?.definitionId === b?.definitionId && a?.pile === b?.pile;
   var id6 = (value) => Number.isSafeInteger(value) && value > 0;
   var tradeId = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
-  var fail15 = (reason) => {
+  var fail17 = (reason) => {
     throw new Error(reason);
   };
   var safeReason6 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message || "") ? error2.message : "FC27_GALLERY_BULK_LIST_UNCONFIRMED";
@@ -7460,7 +8100,7 @@
       return;
     }
     if (recovery.status !== "observed" || recovery.pending > 0) {
-      fail15("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+      fail17("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
     }
   }
   var confirmActiveListing = (entry, seen) => {
@@ -7475,7 +8115,7 @@
     assertCurrent();
     const key = galleryBulkListKey(scope2), raw = await get(key, null);
     const record = normalizeGalleryBulkListJournal(raw);
-    if (!record || record.scope !== scope2 || !same14(record.context, context)) fail15("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
+    if (!record || record.scope !== scope2 || !same15(record.context, context)) fail17("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
     assertCurrent();
     let adapter = null, fresh = null, changed = false;
     for (const entry of record.entries.filter((e) => MUTATING.has(e.status))) {
@@ -7499,13 +8139,13 @@
       record.status = record.entries.some((e) => MUTATING.has(e.status)) ? "recovery-required" : record.entries.every((e) => TERMINAL.has(e.status)) ? "completed" : "active";
       if (record.status !== "recovery-required") record.lastReason = null;
       record.updatedAt = Date.now();
-      if (!same14(await get(key, null), raw)) fail15("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same15(await get(key, null), raw)) fail17("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
       assertCurrent();
       await set(key, clone2(record));
       assertCurrent();
-      if (!same14(await get(key, null), record)) fail15("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same15(await get(key, null), record)) fail17("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
     }
-    if (record.entries.some((e) => MUTATING.has(e.status))) fail15("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+    if (record.entries.some((e) => MUTATING.has(e.status))) fail17("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
   }
   async function readGalleryBulkListRecovery(get, scope2) {
     const raw = await get(galleryBulkListKey(scope2), null);
@@ -7570,26 +8210,26 @@
       try {
         raw = await get(key, null);
       } catch {
-        fail15("FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED");
+        fail17("FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED");
       }
       if (raw === null) return null;
       const value = normalizeGalleryBulkListJournal(raw);
-      if (!value) fail15("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
-      if (value.scope !== scope2 || !same14(value.context, context)) fail15("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
+      if (!value) fail17("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
+      if (value.scope !== scope2 || !same15(value.context, context)) fail17("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
       return value;
     };
     const storeConfirmed = async (storageKey, record) => {
       try {
         await set(storageKey, clone2(record));
-        if (!same14(await get(storageKey, null), record)) fail15("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+        if (!same15(await get(storageKey, null), record)) fail17("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
       } catch (error2) {
         if (error2?.message === "FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED") throw error2;
-        fail15("FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED");
+        fail17("FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED");
       }
     };
     const write = async (record) => {
       record.updatedAt = now();
-      if (!normalizeGalleryBulkListJournal(record)) fail15("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
+      if (!normalizeGalleryBulkListJournal(record)) fail17("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
       await storeConfirmed(key, record);
     };
     const report = (record, phase, index) => {
@@ -7634,16 +8274,16 @@
             const previous = await read();
             assertCurrent();
             if (resume) {
-              if (!previous || previous.runId !== expectedRunId) fail15("FC27_GALLERY_BULK_LIST_PLAN_CHANGED");
+              if (!previous || previous.runId !== expectedRunId) fail17("FC27_GALLERY_BULK_LIST_PLAN_CHANGED");
               record = previous;
             } else {
               if (previous?.binding === binding) {
-                if (previous.entries.some((e) => MUTATING.has(e.status))) fail15("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
-                if (previous.status === "active") fail15("FC27_GALLERY_BULK_LIST_RESUME_REQUIRED");
+                if (previous.entries.some((e) => MUTATING.has(e.status))) fail17("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+                if (previous.status === "active") fail17("FC27_GALLERY_BULK_LIST_RESUME_REQUIRED");
               }
               if (previous && previous.binding !== binding) {
                 if (previous.entries.some((e) => MUTATING.has(e.status) && entries2.some((next) => next.item.id === e.item.id))) {
-                  fail15("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+                  fail17("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
                 }
                 const archiveKey = `${key}:archive:${previous.runId}`;
                 await storeConfirmed(archiveKey, previous);
@@ -7688,7 +8328,7 @@
                   report(record, "rejected", index + 1);
                   continue;
                 }
-                if (!await reconcile(entry)) fail15("FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED");
+                if (!await reconcile(entry)) fail17("FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED");
                 await write(record);
                 report(record, "accepted", index + 1);
                 continue;
@@ -7733,7 +8373,7 @@
               await beforeMutation(entry);
               assertCurrent();
               const final = inspect();
-              if (!exact(final) || !galleryListingCandidateAllowed(final.candidate)) fail15("FC27_GALLERY_LISTING_ITEM_CHANGED");
+              if (!exact(final) || !galleryListingCandidateAllowed(final.candidate)) fail17("FC27_GALLERY_LISTING_ITEM_CHANGED");
               entry.status = "list-pending";
               await write(record);
               assertCurrent();
@@ -7766,7 +8406,8 @@
               report(record, entry.status, index + 1);
               if (MUTATING.has(entry.status) || mustStop(result)) break;
               const [min, max] = record.delaySeconds;
-              await sleep((min + random() * (max - min)) * 1e3);
+              const delay = Math.round(random() * (max - min) + min);
+              await sleep(delay * 1e3);
             }
             record.status = record.entries.some((e) => MUTATING.has(e.status)) ? "recovery-required" : record.entries.every((e) => TERMINAL.has(e.status)) ? "completed" : "active";
             await write(record);
@@ -7872,7 +8513,7 @@
       return { status: "blocked", reason: "FC27_CATALOG_CACHE_UNVERIFIED", liveExecutionEnabled: false, setId };
     }
   };
-  function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRequest, lockManager, diagnosticLog: diagnosticLog2, liveEnabled = false }) {
+  function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRequest, lockManager, diagnosticLog: diagnosticLog2, publicPrices: publicPrices2 = null, liveEnabled = false }) {
     const context = readFc27Context(root);
     const scope2 = traditionalJournalScope(context);
     const referencePrice = createFsuReferencePrice({
@@ -7899,6 +8540,7 @@
     const puzzlePolicyKey = `fcat-fc27-puzzle-policy:${scope2}`;
     const procurement = createFc27PuzzleProcurementSession({
       createTransport: (options) => createFc27MarketReadTransport(root, options),
+      loadPublicPrices: publicPrices2 ? (ids, options) => publicPrices2.load(ids, options) : null,
       get: gmGetValue,
       set: gmSetValue
     });
@@ -8258,6 +8900,25 @@
             if (name) item2.displayName = name;
           }
           if (purchaseSuggestion.status === "suggested" && purchaseSuggestion.plans?.length) {
+            try {
+              const plan = purchaseSuggestion.plans[0];
+              privateData.procurementSummary = {
+                status: purchaseSuggestion.status,
+                reason: purchaseSuggestion.reason,
+                requests: purchaseSuggestion.requests,
+                cacheHits: purchaseSuggestion.cacheHits,
+                diagnostics: { ...purchaseSuggestion.diagnostics },
+                purchaseCount: plan.purchaseCount,
+                ownedCount: plan.selectedOwned.length,
+                estimatedCost: plan.estimatedCost,
+                cards: plan.purchases.slice(0, 11).map((item2) => ({
+                  definitionId: item2.definitionId,
+                  referencePrice: item2.estimatedUnitPrice ?? item2.observedBuyNow,
+                  source: item2.priceSource ?? "ea-visible-buy-now"
+                }))
+              };
+            } catch {
+            }
             assertTarget();
             progress("validating");
             armed = true;
@@ -8289,7 +8950,12 @@
           privateData = data;
         }
       );
-      if (privateData?.conceptResult) return { ...privateData.conceptResult, policy: report.policy, catalogSource: catalogRead.source };
+      if (privateData?.conceptResult) return {
+        ...privateData.conceptResult,
+        ...privateData.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {},
+        policy: report.policy,
+        catalogSource: catalogRead.source
+      };
       if (report.status === "preview" && privateData && (nativeOnly || privateData.fillPlan?.status === "prepared")) {
         const baseInput = structuredClone(puzzleInput(privateData.inputs));
         const basePreview = structuredClone(privateData.preview);
@@ -8469,6 +9135,10 @@
       if (!draft) return { status: "absent" };
       const raw = await gmGetValue(puzzleBuyKey(scope2, target), null);
       const record = raw?.operationId === draft.operationId ? raw : null;
+      if (record) {
+        validatePurchaseAttempts(record);
+        if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope2, record.entries.map((entry) => entry.definitionId));
+      }
       const entries2 = record?.entries ?? [];
       const acquired = entries2.filter((e) => ["club", "bought", "move-pending", "move-rejected"].includes(e.state));
       const spent = acquired.reduce((sum2, e) => sum2 + e.price, 0);
@@ -8483,6 +9153,12 @@
         remaining: remaining.length,
         spent,
         budget: spent + remaining.reduce((sum2, item2) => sum2 + (item2.observedBuyNow ?? 0), 0),
+        ...record ? { results: purchaseAttemptResults(record), retryContext: purchaseRetryContext(record, {
+          remainingBudget: record.budget == null ? null : Math.max(0, record.budget - spent),
+          absoluteCap: (await readPuzzleSettings()).quoteCeiling,
+          balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
+          priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map((row) => ({ min: row.min, inc: row.inc }))
+        }) } : {},
         recovery: pending2,
         completed: remaining.length === 0 && !pending2
       };
@@ -8513,6 +9189,16 @@
             assertCurrent: assertTarget,
             shouldStop: () => buyStopped,
             onProgress,
+            preparePrices: publicPrices2 ? (record) => {
+              publicPrices2.remember(record.base.purchases);
+              return publicPrices2.preparePurchase(record, {
+                isCurrent: () => {
+                  assertTarget();
+                  return !buyStopped;
+                },
+                onProgress: (value) => onProgress?.({ ...value, phase: "reference-prices", purchased: 0, spent: 0 })
+              });
+            } : null,
             loadDraft: async (currentTarget) => {
               if (await gmGetValue(galleryPurchasePendingKey(scope2), null) !== null) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
               const other = await persistence.journal.read(scope2);
@@ -8520,11 +9206,16 @@
               if ((await puzzlePersistence.journal.read(scope2, currentTarget))?.phase === "save-pending" || await readFc27ConceptPending(gmGetValue, scope2, currentTarget) !== null) throw new Error("FC27_CONCEPT_RECOVERY_REQUIRED");
               return readBuyDraft(currentTarget);
             },
-            createAdapter: async () => {
+            createAdapter: async (callbacks = {}) => {
               try {
                 return await createFc27PuzzleBuyAdapter(root, {
                   assertTarget,
                   referencePrice,
+                  onSearch: callbacks.onSearch,
+                  refreshReference: publicPrices2 ? async (definitionId, policy) => (await publicPrices2.load([definitionId], { purpose: "puzzle", policy, isCurrent: () => {
+                    assertTarget();
+                    return !buyStopped;
+                  } })).references[definitionId] : null,
                   attempts: settings.queriesNumber,
                   onEvent: (event) => {
                     if (events.length < 300) events.push(event);
@@ -8720,7 +9411,7 @@
             evaluations: result?.plan?.nodes,
             durationMs: log.finishedAt - log.startedAt
           });
-          const purchase = result?.purchaseSuggestion, d = purchase?.diagnostics;
+          const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
           if (purchase) await diagnosticLog2?.record?.({
             area: "puzzle",
             event: "procurement-result",
@@ -8738,7 +9429,25 @@
             quoteAttempts: d?.quoteAttempts,
             count: d?.catalogCandidates,
             evaluations: d?.nodes,
+            localReason: d?.localReason,
+            usableCandidates: d?.usableCandidates,
+            excludedUnavailable: d?.excludedUnavailable,
+            estimatedCost: purchase.estimatedCost ?? d?.estimatedCost,
+            purchaseCount: purchase.purchaseCount,
+            ownedCount: purchase.ownedCount,
+            priceSource: d?.priceSource,
+            searchComplete: d?.searchComplete,
+            optimalWithinPool: d?.optimalWithinPool,
             cached: purchase.cacheHits > 0
+          });
+          for (const card of purchase?.cards ?? []) await diagnosticLog2?.record?.({
+            area: "puzzle",
+            event: "procurement-card",
+            setId: target.setId,
+            challengeId: target.challengeId,
+            definitionId: card.definitionId,
+            referencePrice: card.referencePrice,
+            source: card.source
           });
         } catch {
         }
@@ -8916,6 +9625,166 @@
     return `${rule.count} players: ${rule.kind === "player-min-overall" ? "minimum" : "maximum"} OVR ${rule.value}`;
   }
 
+  // src/adapters/browser/fc27-listing-currency.js
+  var tiers = [[1e5, 1e3], [5e4, 500], [1e4, 250], [1e3, 100], [150, 50], [0, 150]];
+  function committedListingCurrency(value, minimum = 200, maximum = 15e6) {
+    if (value === "" || value == null || !Number.isFinite(Number(value))) return null;
+    const bounded2 = Math.max(minimum, Math.min(maximum, Number(value)));
+    const increment = tiers.find(([min]) => bounded2 >= min)?.[1] ?? 1;
+    return Math.round(bounded2 / increment) * increment;
+  }
+  function moveListingCurrencyPrice(value, direction, minimum = 200, maximum = 15e6) {
+    if (![1, -1].includes(direction) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
+    const legalMinimum = Math.max(150, minimum), legalMaximum = Math.min(15e6, maximum);
+    if (legalMaximum < legalMinimum) return null;
+    const empty = value === "" || value == null, current2 = Number(value);
+    if (!empty && !Number.isFinite(current2)) return null;
+    let low = Infinity, high = -Infinity, next = direction > 0 ? Infinity : -Infinity;
+    tiers.forEach(([min, increment], index) => {
+      const first = Math.ceil(Math.max(min, legalMinimum) / increment) * increment;
+      const last = Math.floor(Math.min(legalMaximum, index ? tiers[index - 1][0] - 1 : 15e6) / increment) * increment;
+      if (first > last) return;
+      low = Math.min(low, first);
+      high = Math.max(high, last);
+      const candidate = direction > 0 ? Math.max(first, (Math.floor(current2 / increment) + 1) * increment) : Math.min(last, (Math.ceil(current2 / increment) - 1) * increment);
+      if (candidate >= first && candidate <= last) next = direction > 0 ? Math.min(next, candidate) : Math.max(next, candidate);
+    });
+    if (!Number.isFinite(low)) return null;
+    return empty ? low : Number.isFinite(next) ? next : direction > 0 ? high : low;
+  }
+  function bindCurrencyArrows({ document, input, label, limits = () => ({}), enabled = () => !input.disabled, onStep }) {
+    const wrap = document.createElement("div");
+    wrap.className = "listing-currency";
+    input.before(wrap);
+    wrap.append(input);
+    input.step = "any";
+    const buttons = document.createElement("div");
+    wrap.append(buttons);
+    const step = (sign) => {
+      if (!enabled() || input.disabled) return;
+      const { minimum = 150, maximum = 15e6 } = limits();
+      const next = moveListingCurrencyPrice(input.value, sign, minimum, maximum);
+      if (next !== null && (input.value === "" || Number(input.value) !== next)) onStep(next);
+    };
+    input.addEventListener("keydown", (event) => {
+      if (!event.isTrusted || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      if (!event.repeat) step(event.key === "ArrowUp" ? 1 : -1);
+    });
+    input.addEventListener("wheel", (event) => {
+      if (event.isTrusted) event.preventDefault();
+    }, { passive: false });
+    for (const sign of [1, -1]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("width", "15");
+      svg.setAttribute("height", "15");
+      svg.setAttribute("aria-hidden", "true");
+      svg.style.pointerEvents = "none";
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", sign > 0 ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.append(path);
+      button.append(svg);
+      button.setAttribute("aria-label", `${label} ${sign > 0 ? "\u589E\u52A0" : "\u51CF\u5C11"}`);
+      buttons.append(button);
+      button.addEventListener("pointerdown", (event) => {
+        if (event.isTrusted) event.preventDefault();
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.repeat) event.preventDefault();
+      });
+      button.addEventListener("click", (event) => {
+        if (event.isTrusted) step(sign);
+      });
+    }
+    return wrap;
+  }
+  var currencyInputStyles = `
+  .listing-currency{display:flex;min-width:0;max-width:100%;width:134px;height:40px;align-items:center;border:1px solid #888;border-radius:4px;overflow:hidden;background:#45494c}
+  .listing-currency>input{flex:1;width:70px!important;min-width:0!important;height:40px!important;min-height:0!important;appearance:textfield;border:0!important;border-radius:0!important;background:transparent!important;padding:6px!important;box-sizing:border-box}
+  .listing-currency>input::-webkit-inner-spin-button,.listing-currency>input::-webkit-outer-spin-button{-webkit-appearance:none;appearance:none;margin:0}
+  .listing-currency>div{display:flex;height:40px;flex-direction:column;border-left:1px solid #888}
+  .listing-currency button{height:20px!important;min-height:0!important;width:24px!important;padding:0!important;margin:0!important;line-height:0;border:0!important;border-radius:0!important;display:flex;align-items:center;justify-content:center;background:transparent;color:inherit}
+  .listing-currency button svg{width:15px;height:15px;flex-shrink:0}
+`;
+  function mountListingCurrency({ document, parent, label, value = null, limits = () => ({}), enabled, onCommit }) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.setAttribute("aria-label", label);
+    parent.append(input);
+    let committed = value;
+    const bounds = () => ({ minimum: Math.max(200, limits()?.minimum ?? 200), maximum: limits()?.maximum ?? 15e6 });
+    const render = (next) => {
+      committed = next;
+      input.value = next == null ? "" : String(next);
+      const { minimum, maximum } = bounds();
+      input.min = String(minimum);
+      input.max = String(maximum);
+    };
+    const commit = (raw) => {
+      if (!enabled()) return;
+      const { minimum, maximum } = bounds(), next = committedListingCurrency(raw, minimum, maximum);
+      const changed = next !== committed;
+      render(next);
+      if (changed) onCommit(next);
+    };
+    input.addEventListener("blur", (event) => {
+      if (event.isTrusted) commit(input.value);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.isTrusted && event.key === "Enter") {
+        event.preventDefault();
+        commit(input.value);
+      }
+    });
+    bindCurrencyArrows({ document, input, label, limits: bounds, enabled, onStep: commit });
+    render(value);
+    return { input, setValue: render, getValue: () => committed };
+  }
+
+  // src/adapters/browser/fc27-purchase-dialog.js
+  var purchaseDialogStyles = `
+dialog.fcat-purchase-dialog{position:fixed;inset:0;margin:auto;width:680px;min-width:0;max-width:calc(100vw - 24px);height:fit-content;max-height:85vh;box-sizing:border-box;padding:16px;border:1px solid #617781;border-radius:10px;background:#22323d;color:#edf1f4;font:14px/1.5 Arial,sans-serif;text-align:left;overflow:hidden}
+dialog.fcat-purchase-dialog[open]{display:flex;flex-direction:column;gap:10px}
+dialog.fcat-purchase-dialog::backdrop{background:#0009}
+.fcat-purchase-dialog [hidden]{display:none!important}
+.fcat-purchase-dialog .purchase-dialog-header{display:flex;align-items:center;gap:12px;flex:0 0 auto;margin:0;padding:0}
+.fcat-purchase-dialog .purchase-dialog-header>strong{flex:1;min-width:0;font:600 16px/1.5 Arial,sans-serif}
+.fcat-purchase-dialog .purchase-dialog-header>button{position:static;float:none;display:block;width:auto;height:36px;min-height:36px;flex:0 0 auto;margin:0;padding:6px 12px;box-sizing:border-box;border:1px solid #617781;border-radius:5px;background:#202d36;color:#edf1f4;font:14px/1.5 Arial,sans-serif;cursor:pointer}
+.fcat-purchase-dialog .purchase-dialog-header>button:disabled{opacity:.5;cursor:default}
+.fcat-purchase-dialog .purchase-dialog-progress{display:block;flex:0 0 auto;width:100%;height:8px;margin:0;appearance:none;border:0;border-radius:4px;overflow:hidden;background:#46545d;accent-color:#9df3d5}
+.fcat-purchase-dialog .purchase-dialog-progress::-webkit-progress-bar{background:#46545d}
+.fcat-purchase-dialog .purchase-dialog-progress::-webkit-progress-value{background:#9df3d5}
+.fcat-purchase-dialog .purchase-dialog-progress::-moz-progress-bar{background:#9df3d5}
+.fcat-purchase-dialog .purchase-dialog-message{display:block;flex:0 0 auto;margin:0;font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}
+.fcat-purchase-dialog .purchase-dialog-results{display:block;min-height:0;margin:0;padding:0;overflow:auto;overscroll-behavior:contain;list-style:none}
+`;
+  function purchaseDialogMarkup(kind) {
+    const prefix = kind === "gallery" ? "gallery-purchase" : "fcat-puzzle-purchase";
+    const title = kind === "gallery" ? "Gallery \u8D2D\u4E70" : "SBC \u8D2D\u4E70";
+    return `<dialog id="${prefix}-dialog" class="fcat-purchase-dialog" aria-label="${title}">
+    <div class="purchase-dialog-header"><strong>${title}</strong><button id="${prefix}-stop" type="button">\u505C\u6B62\u8D2D\u4E70</button><button id="${prefix}-close" type="button" hidden>\u5173\u95ED</button></div>
+    <progress id="${prefix}-progress" class="purchase-dialog-progress" aria-label="\u8D2D\u4E70\u5904\u7406\u8FDB\u5EA6" max="1" value="0"></progress>
+    <output id="${prefix}-message" class="purchase-dialog-message" role="status"></output>
+    <div id="${prefix}-results" class="purchase-dialog-results" aria-label="\u8D2D\u4E70\u5361\u5217\u8868"></div>
+  </dialog>`;
+  }
+  function updatePurchaseDialogProgress(dialog, value) {
+    const progress = dialog.querySelector(".purchase-dialog-progress");
+    const rows = value?.results ?? [];
+    const total = value?.total ?? rows.length;
+    const completed = Number.isFinite(value?.completed) ? value.completed : rows.filter((row) => ["club", "collected"].includes(row.state) || row.state === "waiting" && row.attempt?.failed).length;
+    progress.max = Number.isFinite(total) && total > 0 ? total : 1;
+    progress.value = Number.isFinite(completed) ? Math.max(0, Math.min(progress.max, completed)) : 0;
+  }
+
   // src/adapters/browser/fc27-workbench-view.js
   var FC27_WORKBENCH_TABS = Object.freeze([
     ["sbc", "SBC \u89E3\u9898"],
@@ -8936,6 +9805,8 @@
   </section>`;
   function fc27WorkbenchMarkup() {
     return `<style>
+    ${currencyInputStyles}
+    #gallery-relist-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}#gallery-relist-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}#gallery-relist-controls button{margin:0}#gallery-relist-status{font-size:12px}
     :host{all:initial;position:fixed;inset:0;z-index:100002;display:none;padding:24px 12px;background:#0008;font:14px/1.5 Arial,sans-serif;color:#edf1f4;letter-spacing:0}
     *{box-sizing:border-box;letter-spacing:0}[hidden]{display:none!important}
     .workbench{width:min(1100px,100%);height:100%;margin:auto;background:#17212c;border:1px solid #3c4852;border-radius:8px;overflow:auto}
@@ -8964,9 +9835,7 @@
     #detail,#requirements,#squad{overflow-wrap:anywhere}#detail{margin-top:12px}#requirements:empty,#squad:empty{display:none}#requirements,#squad{margin-top:18px;padding:16px;background:#22323d;border-radius:8px}.requirement{margin-top:10px;border-top:1px solid #45535c;padding-top:10px}ul{padding-left:20px}#squad ol{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:0;gap:6px}#squad li{padding:8px;background:#304451;border-radius:4px}
     dialog{max-width:min(440px,calc(100vw - 24px));color:#edf1f4;background:#22323d;border:1px solid #617781;border-radius:10px}dialog::backdrop{background:#0009}
     dialog .dialog-header{display:flex;align-items:center;gap:12px;margin:0 0 12px;flex-wrap:nowrap}dialog .dialog-header>strong{flex:1;min-width:0}dialog .dialog-header>button{flex:0 0 auto;margin:0;align-self:center}
-    #gallery-purchase-dialog{width:560px;max-width:calc(100vw - 24px);max-height:85vh;overflow:auto;padding:16px}
-    #gallery-purchase-message{display:block;overflow-wrap:anywhere;margin:8px 0}
-    #gallery-purchase-results{list-style:none;padding:0;margin:12px 0 0;max-height:45vh;overflow:auto;overscroll-behavior:contain}
+    ${purchaseDialogStyles}
     .gallery-purchase-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:9px 6px;border-bottom:1px solid #46545d;font-size:13px}
     .gallery-purchase-item strong{overflow-wrap:anywhere}.gallery-purchase-item .purchase-item-price{font-variant-numeric:tabular-nums;white-space:nowrap}.gallery-purchase-item .purchase-item-state{grid-column:1/-1;color:#c1ced5;overflow-wrap:anywhere}
     .gallery-purchase-item[data-active=true]{background:#304451;border-left:3px solid #9df3d5}.gallery-purchase-item[data-state=club] .purchase-item-state,.gallery-purchase-item[data-state=collected] .purchase-item-state{color:#b3ffe3}
@@ -9006,12 +9875,13 @@
       </section>
       <section id="page-gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
         <nav id="gallery-browse-nav" class="gallery-browse-nav" aria-label="Gallery \u5BFC\u822A" hidden><button id="gallery-back" type="button" aria-label="\u8FD4\u56DE\u96C6\u5408" title="\u8FD4\u56DE\u96C6\u5408">\u2190</button><strong id="gallery-browse-title"></strong></nav>
-        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
+        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
+        <output id="gallery-relist-status" hidden role="status"></output>
         <progress id="gallery-background-progress" class="gallery-background-progress" hidden max="1" value="0" aria-label="Gallery \u6536\u96C6\u540C\u6B65\u8FDB\u5EA6"></progress>
         <small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small>
         <details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details>
         <dialog id="gallery-sync-dialog"><div class="dialog-header"><strong>\u540C\u6B65\u6536\u96C6</strong><button id="gallery-sync-stop" aria-label="\u505C\u6B62\u540C\u6B65" title="\u505C\u6B62\u540C\u6B65">\u505C\u6B62</button></div><progress id="gallery-sync-progress" max="1" value="0" style="width:100%"></progress><output id="gallery-sync-message" role="status"></output></dialog>
-        <dialog id="gallery-purchase-dialog" aria-label="Gallery \u8D2D\u4E70"><div class="dialog-header"><strong>Gallery \u8D2D\u4E70</strong><button id="gallery-purchase-stop">\u505C\u6B62</button><button id="gallery-purchase-close" hidden>\u5173\u95ED</button></div><progress id="gallery-purchase-progress" aria-label="\u8D2D\u4E70\u5904\u7406\u8FDB\u5EA6" max="1" value="0" style="width:100%"></progress><output id="gallery-purchase-message" role="status"></output><ul id="gallery-purchase-results" aria-label="\u8D2D\u4E70\u5361\u5217\u8868"></ul></dialog>
+        ${purchaseDialogMarkup("gallery")}
         <div class="gallery-modes" role="group" aria-label="Gallery \u89C6\u56FE"><button id="gallery-mode-browse" aria-pressed="true">\u6536\u96C6\u8FDB\u5EA6</button><button id="gallery-mode-joint" aria-pressed="false">\u8054\u5408\u89C4\u5212 <span id="gallery-joint-count">0</span></button></div>
         <output id="gallery-target-status" aria-live="polite"></output>
         <div id="gallery-browse">
@@ -9035,7 +9905,6 @@
       <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>\u8BBE\u7F6E\u4E0E\u8BCA\u65AD</h2></div></div>
         <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u300CSBC \u89E3\u9898\u300D\u9875\u8BBE\u7F6E\u3002</p></div>
-        <div id="gallery-proxy-card" class="card"><h3>Gallery \u7F51\u7EDC</h3><label>FUT.GG HTTPS \u8F6C\u53D1\u4EE3\u7406<input id="gallery-proxy" type="url" placeholder="https://proxy.example/" autocomplete="off"><small>\u7528\u4E8E FUT.GG \u76F4\u8FDE\u53D7\u9650\u65F6\u7684 Gallery \u76EE\u5F55\u548C\u5361\u6C60\u8BFB\u53D6\u3002\u8FD9\u91CC\u9700\u8981 HTTPS \u8F6C\u53D1\u7AEF\u70B9\uFF1B127.0.0.1:1080 \u8FD9\u7C7B SOCKS/\u6D4F\u89C8\u5668\u4EE3\u7406\u8BF7\u5728\u4E13\u7528\u6D4F\u89C8\u5668\u6216\u7CFB\u7EDF\u5C42\u914D\u7F6E\uFF0C\u4E0D\u80FD\u76F4\u63A5\u586B\u5165\u3002</small></label><div class="row"><button id="gallery-proxy-save" class="primary">\u4FDD\u5B58\u4EE3\u7406</button><button id="gallery-proxy-clear">\u6E05\u9664\u4EE3\u7406</button></div></div>
         <div id="diagnostic-export-card" class="card"><h3>\u79BB\u7EBF\u8BCA\u65AD</h3><p>\u5BFC\u51FA\u6700\u8FD1\u7684\u8131\u654F\u8FD0\u884C\u4E8B\u4EF6\uFF0C\u7528\u4E8E\u79BB\u7EBF\u8C03\u67E5 Gallery \u56DE\u9000\u3001\u9650\u6D41\u548C\u7F51\u7EDC\u9519\u8BEF\u3002</p><small>\u4E0D\u5305\u542B URL\u3001\u54CD\u5E94\u6B63\u6587\u3001\u51ED\u8BC1\u3001\u8D26\u53F7\u6807\u8BC6\u6216\u5B8C\u6574\u7403\u5458\u6570\u636E\u3002</small><div class="row"><button id="export-diagnostics" class="primary">\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
         <div class="card"><h3>\u5B89\u88C5\u4E0E\u591A\u6807\u7B7E\u68C0\u67E5</h3><p>\u4EC5\u5728\u9700\u8981\u6392\u67E5\u5B58\u50A8\u6216\u591A\u6807\u7B7E\u5360\u7528\u95EE\u9898\u65F6\u8FD0\u884C\u3002</p><div class="row"><button id="gm">\u68C0\u67E5\u811A\u672C\u5B58\u50A8</button><button id="hold">\u68C0\u67E5\u6807\u7B7E\u9501</button></div></div></div>
       </section>
@@ -9084,7 +9953,7 @@
   var invalid = () => {
     throw new Error("FC27_GALLERY_CATALOG_INVALID");
   };
-  var integer10 = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
+  var integer12 = (value, min = 0) => Number.isSafeInteger(value) && value >= min;
   var text2 = (value, max = 500) => typeof value === "string" && value.length > 0 && value.length <= max;
   var slug = (value) => text2(value, 160) && /^[a-z0-9][a-z0-9-]*$/.test(value);
   var list = (value, max, nonempty = false) => {
@@ -9116,7 +9985,7 @@
     return JSON.stringify(value);
   }
   function galleryCatalogRevision(catalog) {
-    const value = galleryCanonical(pick2(catalog, ["schema", "season", "source", "categories", "tags"]));
+    const value = galleryCanonical(pick2(catalog, ["schema", "season", "source", "categories", "tags", "engine"]));
     let hash = 2166136261;
     for (let index = 0; index < value.length; index++) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619) >>> 0;
     return `g1-${hash.toString(16).padStart(8, "0")}-${value.length}`;
@@ -9126,14 +9995,14 @@
       if (!row) invalid();
       const name = source === "futgg" ? row.name : row.grade;
       const threshold = source === "futgg" ? row.threshold : row.score;
-      if (!GALLERY_GRADES.includes(name) || !integer10(threshold)) invalid();
+      if (!GALLERY_GRADES.includes(name) || !integer12(threshold)) invalid();
       let rewards2;
       if (source === "futgg") rewards2 = list(row.rewards, 32).map((reward) => {
-        if (!text2(reward?.type, 100) || !text2(reward.label) || !integer10(reward.value) || !integer10(reward.count, 1)) invalid();
+        if (!text2(reward?.type, 100) || !text2(reward.label) || !integer12(reward.value) || !integer12(reward.count, 1)) invalid();
         return definition(pick2(reward, ["id", "type", "count", "label", "value", "assetId", "itemType", "teamEaId", "resourceId", "untradeable", "itemCategory"]));
       });
       else {
-        if (!integer10(row.tokens)) invalid();
+        if (!integer12(row.tokens)) invalid();
         rewards2 = row.tokens ? [{ type: "event_token_1", count: 1, value: row.tokens, label: `${row.tokens} Gallery Tokens` }] : [];
       }
       return { name, threshold, rewards: rewards2, rewardsComplete: source === "futgg" };
@@ -9149,20 +10018,20 @@
     if (data.isTruncated === true || data.complete === false) invalid();
     const categoryIds = [], setIds = [];
     const categories = list(data.categories, 256, true).map((category) => {
-      if (!text2(category?.name) || !slug(category.slug) || category.isTruncated === true || source === "futgg" && !integer10(category.id, 1)) invalid();
+      if (!text2(category?.name) || !slug(category.slug) || category.isTruncated === true || source === "futgg" && !integer12(category.id, 1)) invalid();
       const id10 = `${source}:${source === "futgg" ? category.id : category.slug}`;
       categoryIds.push(id10);
       const sets2 = list(category.sets, 4096).map((set) => {
-        if (!text2(set?.name) || !slug(set.slug) || source === "futgg" && (!integer10(set.id, 1) || set.categoryId !== category.id)) invalid();
+        if (!text2(set?.name) || !slug(set.slug) || source === "futgg" && (!integer12(set.id, 1) || set.categoryId !== category.id)) invalid();
         const requiredCards = source === "futgg" ? set.requiredCards : set.required;
-        if (!integer10(requiredCards, 1)) invalid();
+        if (!integer12(requiredCards, 1)) invalid();
         const setId = `${source}:${source === "futgg" ? set.id : `${category.slug}/${set.slug}`}`;
         setIds.push(setId);
         let conditions = null;
         if (source === "fodder") {
           for (const key of ["clubs", "leagues", "rareflags"]) {
             const values6 = list(set[key], 256);
-            if (!values6.every((value) => integer10(value))) invalid();
+            if (!values6.every((value) => integer12(value))) invalid();
             unique(values6);
           }
           if (typeof set.holo !== "boolean") invalid();
@@ -9189,7 +10058,7 @@
     unique(categories.map((category) => category.slug));
     if (!setIds.length || setIds.length > 1e4) invalid();
     const tags = list(data.tags, 256).map((tag) => {
-      if (!integer10(tag?.id, 1) || !text2(tag.name)) invalid();
+      if (!integer12(tag?.id, 1) || !text2(tag.name)) invalid();
       return definition(pick2(tag, source === "futgg" ? ["id", "name", "rules", "tiers", "bonusType", "thresholdType", "description"] : ["id", "name", "steps", "match"]));
     }).sort((a, b) => a.id - b.id);
     unique(tags.map((tag) => tag.id));
@@ -9202,7 +10071,8 @@
       seasonEvidence: source === "futgg" ? "response-game" : "fc27-reviewed-endpoint",
       capturedAt,
       categories,
-      tags
+      tags,
+      ...source === "fodder" ? { engine: definition(data.engine) } : {}
     };
     return freeze5({ ...catalog, revision: galleryCatalogRevision(catalog) });
   }
@@ -9224,7 +10094,7 @@
         grades: set.grades.map((grade) => futgg ? { name: grade.name, threshold: grade.threshold, rewards: grade.rewards } : { grade: grade.name, score: grade.threshold, tokens: grade.rewards.reduce((sum2, r) => sum2 + r.count * r.value, 0) })
       }))
     }));
-    return futgg ? { data: { game: `fc${catalog.season}`, schemaVersion: 1, capturedAt: catalog.capturedAt, categories, tags: catalog.tags } } : { engine: { version: 1 }, categories, tags: catalog.tags };
+    return futgg ? { data: { game: `fc${catalog.season}`, schemaVersion: 1, capturedAt: catalog.capturedAt, categories, tags: catalog.tags } } : { engine: catalog.engine ?? { version: 1 }, categories, tags: catalog.tags };
   }
   function diffGalleryCatalog(previous, current2) {
     const result = {
@@ -9259,32 +10129,32 @@
   }
 
   // src/gallery/pool.js
-  var fail16 = () => {
+  var fail18 = () => {
     throw new Error("FC27_GALLERY_POOL_INVALID");
   };
   var GALLERY_TOP_CANDIDATE_LIMIT = 100;
-  var integer11 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var integer13 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
   var text3 = (value, max = 500) => typeof value === "string" && value.length > 0 && value.length <= max;
-  var optionalText = (value, max = 1e3) => value == null ? null : text3(value, max) ? value : fail16();
+  var optionalText = (value, max = 1e3) => value == null ? null : text3(value, max) ? value : fail18();
   var bool = (value) => typeof value === "boolean" ? value : null;
   function item(row, index) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) fail16();
+    if (!row || typeof row !== "object" || Array.isArray(row)) fail18();
     const eaId = row.eaId;
     const playerEaId = row.playerEaId;
-    if (!integer11(eaId, 1) || !integer11(playerEaId, 1) || !integer11(row.score, 0, 1e8) || !integer11(row.overall, 1, 99) || !integer11(row.clubEaId, 0, 1e8) || !integer11(row.leagueEaId, 0, 1e8) || !integer11(row.nationEaId, 0, 1e8) || !integer11(row.rarityEaId, 0, 1e8) || !text3(row.cardName, 200) || !text3(row.rarityName, 200) || !Array.isArray(row.positions) || row.positions.length > 32 || row.positions.some((position) => !text3(position, 30))) fail16();
+    if (!integer13(eaId, 1) || !integer13(playerEaId, 1) || !integer13(row.score, 0, 1e8) || !integer13(row.overall, 1, 99) || !integer13(row.clubEaId, 0, 1e8) || !integer13(row.leagueEaId, 0, 1e8) || !integer13(row.nationEaId, 0, 1e8) || !integer13(row.rarityEaId, 0, 1e8) || !text3(row.cardName, 200) || !text3(row.rarityName, 200) || !Array.isArray(row.positions) || row.positions.length > 32 || row.positions.some((position) => !text3(position, 30))) fail18();
     return Object.freeze({
       eaId,
       playerEaId,
       score: row.score,
       overall: row.overall,
-      gender: integer11(row.gender, 0, 10) ? row.gender : null,
+      gender: integer13(row.gender, 0, 10) ? row.gender : null,
       clubEaId: row.clubEaId,
       leagueEaId: row.leagueEaId,
       nationEaId: row.nationEaId,
       rarityEaId: row.rarityEaId,
       positions: Object.freeze([...row.positions]),
-      weakFoot: integer11(row.weakFoot, 0, 10) ? row.weakFoot : null,
-      skillMoves: integer11(row.skillMoves, 0, 10) ? row.skillMoves : null,
+      weakFoot: integer13(row.weakFoot, 0, 10) ? row.weakFoot : null,
+      skillMoves: integer13(row.skillMoves, 0, 10) ? row.skillMoves : null,
       holographic: bool(row.holographic),
       cardName: row.cardName,
       commonName: optionalText(row.commonName, 200),
@@ -9296,18 +10166,43 @@
     });
   }
   function normalizeGalleryPool(source, input, setId, season = "27") {
-    if (source !== "futgg" || season !== "27" || !integer11(setId, 1)) fail16();
+    if (!["futgg", "fodder"].includes(source) || season !== "27" || typeof setId !== "string" && !integer13(setId, 1)) fail18();
     const data = input?.data ?? input;
-    if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId || !integer11(data.requiredCards, 1) || !integer11(data.poolSize, 0, 1e5) || typeof data.isTruncated !== "boolean" || !Array.isArray(data.items) || data.items.length > 1e5 || data.items.length > data.poolSize || data.isTruncated === false && data.poolSize !== data.items.length || data.isTruncated === true && data.poolSize <= data.items.length) fail16();
+    if (source === "fodder") {
+      if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId || !integer13(data.requiredCards, 1) || !integer13(data.poolSize, 0, 1e5) || typeof data.isTruncated !== "boolean" || !Array.isArray(data.items) || data.items.length > 1e5 || data.items.length > data.poolSize) fail18();
+      const rawItems2 = data.items.map(item);
+      if (new Set(rawItems2.map((row) => row.eaId)).size !== rawItems2.length) fail18();
+      const candidateOnly2 = data.isTruncated === true;
+      const items2 = candidateOnly2 ? rawItems2.slice(0, GALLERY_TOP_CANDIDATE_LIMIT) : rawItems2;
+      if (candidateOnly2 && items2.length < data.requiredCards) fail18();
+      const pool2 = {
+        schema: 1,
+        source,
+        season,
+        setId,
+        requiredCards: data.requiredCards,
+        poolSize: data.poolSize,
+        generatedAt: data.generatedAt ?? null,
+        complete: !candidateOnly2,
+        candidateOnly: candidateOnly2,
+        candidateLimit: candidateOnly2 ? items2.length : null,
+        items: Object.freeze(items2)
+      };
+      const content2 = galleryCanonical({ ...pool2, generatedAt: null });
+      let hash2 = 2166136261;
+      for (let i = 0; i < content2.length; i++) hash2 = Math.imul(hash2 ^ content2.charCodeAt(i), 16777619) >>> 0;
+      return Object.freeze({ ...pool2, revision: `p1-${hash2.toString(16)}-${content2.length}` });
+    }
+    if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId || !integer13(data.requiredCards, 1) || !integer13(data.poolSize, 0, 1e5) || typeof data.isTruncated !== "boolean" || !Array.isArray(data.items) || data.items.length > 1e5 || data.items.length > data.poolSize || data.isTruncated === false && data.poolSize !== data.items.length || data.isTruncated === true && data.poolSize <= data.items.length) fail18();
     const rawItems = data.items.map(item);
-    if (data.isTruncated && rawItems.some((row, index) => index > 0 && row.score > rawItems[index - 1].score)) fail16();
+    if (data.isTruncated && rawItems.some((row, index) => index > 0 && row.score > rawItems[index - 1].score)) fail18();
     const sourceIds = rawItems.map((row) => row.eaId);
-    if (new Set(sourceIds).size !== sourceIds.length) fail16();
+    if (new Set(sourceIds).size !== sourceIds.length) fail18();
     const candidateOnly = data.isTruncated === true;
     const items = candidateOnly ? rawItems.slice(0, GALLERY_TOP_CANDIDATE_LIMIT) : rawItems;
-    if (candidateOnly && items.length < data.requiredCards) fail16();
+    if (candidateOnly && items.length < data.requiredCards) fail18();
     const generatedAt = data.generatedAt == null ? null : data.generatedAt;
-    if (generatedAt !== null && (typeof generatedAt !== "string" || !Number.isFinite(Date.parse(generatedAt)))) fail16();
+    if (generatedAt !== null && (typeof generatedAt !== "string" || !Number.isFinite(Date.parse(generatedAt)))) fail18();
     const pool = {
       schema: 1,
       source,
@@ -9340,7 +10235,7 @@
   }
 
   // src/gallery/prices.js
-  var validId3 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId4 = (value) => Number.isSafeInteger(value) && value > 0;
   function parseGalleryPriceResponse(input) {
     let response = input;
     if (typeof input === "string") {
@@ -9353,7 +10248,7 @@
     const result = /* @__PURE__ */ Object.create(null);
     for (const entry of Array.isArray(response?.data) ? response.data : []) {
       const id10 = Number(entry?.eaId ?? entry?.definitionId), price2 = Number(entry?.price);
-      if (validId3(id10) && Number.isSafeInteger(price2) && price2 > 0) result[String(id10)] = price2;
+      if (validId4(id10) && Number.isSafeInteger(price2) && price2 > 0) result[String(id10)] = price2;
     }
     return Object.freeze(result);
   }
@@ -9363,7 +10258,7 @@
     if (!data || typeof data !== "object") return result;
     for (const rawId of ids) {
       const id10 = Number(rawId);
-      if (!validId3(id10)) continue;
+      if (!validId4(id10)) continue;
       const entry = data[String(id10)] ?? data[id10];
       const value = Number(entry?.n);
       if (Number.isSafeInteger(value) && value > 0) result[String(id10)] = value;
@@ -9386,44 +10281,11 @@
   var GALLERY_TTL_MS = 5 * 60 * 1e3;
   var validScope = (value) => typeof value === "string" && /^[A-Za-z0-9:_-]{1,120}$/.test(value);
   var validator = (value) => typeof value === "string" && value.length <= 300 && !/[\r\n]/.test(value) ? value : null;
-  function normalizeFc27GalleryProxy(value) {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "";
-    let parsed;
-    try {
-      parsed = new URL(raw);
-    } catch {
-      throw new Error("FC27_GALLERY_PROXY_INVALID");
-    }
-    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
-      throw new Error("FC27_GALLERY_PROXY_INVALID");
-    }
-    parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
-    return parsed.toString().replace(/\/$/, "");
-  }
-  function buildFutGgProxyUrl(proxy, targetUrl) {
-    const normalized = normalizeFc27GalleryProxy(proxy);
-    if (!normalized) return targetUrl;
-    const target = new URL(targetUrl);
-    const basePath = "/api/fut/";
-    if (!target.pathname.startsWith(basePath)) throw new Error("FC27_GALLERY_PROXY_TARGET_INVALID");
-    const relativePath = target.pathname.slice(basePath.length) + target.search;
-    const separator = normalized.includes("?") ? /[?&]$/.test(normalized) ? "" : "&" : "?";
-    return `${normalized}${separator}futggapi=${relativePath}`;
-  }
-  function createFc27GalleryTransport(gmRequest, { getProxy = null, proxy = "", diagnosticLog: diagnosticLog2 = null } = {}) {
+  function createFc27GalleryTransport(gmRequest, { diagnosticLog: diagnosticLog2 = null } = {}) {
     const record = (fields4) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "gallery", event: "transport-request", ...fields4 })).catch(() => void 0);
       } catch {
-      }
-    };
-    const readProxy = () => typeof getProxy === "function" ? getProxy() : proxy;
-    const resolveUrl = (url) => {
-      try {
-        return url.includes("www.fut.gg") ? buildFutGgProxyUrl(readProxy(), url) : url;
-      } catch (error2) {
-        throw error2;
       }
     };
     const parseResponseHeaders = (response) => {
@@ -9436,23 +10298,16 @@
       return parsed;
     };
     const request = (url, headers = {}, phase = "catalog", source = "futgg") => new Promise((resolve, reject) => {
-      let route = "direct";
-      const fail22 = (reason) => {
+      const route = "direct";
+      const fail25 = (reason) => {
         record({ source, phase, route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail22("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail25("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
-      let requestUrl;
-      try {
-        requestUrl = resolveUrl(url);
-      } catch (error2) {
-        fail22(error2.message);
-        return;
-      }
-      route = requestUrl === url ? "direct" : "forwarding";
+      const requestUrl = url;
       record({ source, phase, route, status: "started" });
       const conditional = Object.fromEntries(["If-None-Match", "If-Modified-Since"].filter((key) => validator(headers[key])).map((key) => [key, headers[key]]));
       gmRequest({
@@ -9464,34 +10319,27 @@
         onload: (response) => {
           const parsed = parseResponseHeaders(response);
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail22("FC27_GALLERY_REDIRECT");
+            fail25("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source, phase, route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parsed });
         },
-        onerror: () => fail22("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail22("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail25("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail25("FC27_GALLERY_TIMEOUT")
       });
     });
     const postJson = (url, payload) => new Promise((resolve, reject) => {
-      let route = "direct";
-      const fail22 = (reason) => {
+      const route = "direct";
+      const fail25 = (reason) => {
         record({ source: "futgg", phase: "price-sign", route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail22("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail25("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
-      let requestUrl;
-      try {
-        requestUrl = resolveUrl(url);
-      } catch (error2) {
-        fail22(error2.message);
-        return;
-      }
-      route = requestUrl === url ? "direct" : "forwarding";
+      const requestUrl = url;
       record({ source: "futgg", phase: "price-sign", route, status: "started" });
       gmRequest({
         method: "POST",
@@ -9502,14 +10350,14 @@
         data: JSON.stringify(payload),
         onload: (response) => {
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail22("FC27_GALLERY_REDIRECT");
+            fail25("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source: "futgg", phase: "price-sign", route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parseResponseHeaders(response) });
         },
-        onerror: () => fail22("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail22("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail25("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail25("FC27_GALLERY_TIMEOUT")
       });
     });
     return Object.freeze({
@@ -10026,25 +10874,65 @@
     SKILL_MOVES: "skillMoves"
   });
   var grouped = /* @__PURE__ */ new Set(["NATION", "CLUB", "LEAGUEID", "BASE_DEF_ID"]);
-  var fail17 = (reason) => ({ status: "unavailable", reason, grade: null });
+  var fail19 = (reason) => ({ status: "unavailable", reason, grade: null });
   var validScore = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var sum = (rows) => rows.reduce((total, row) => total + row.gradingScore, 0);
   var order = (a, b) => b.gradingScore - a.gradingScore || a.eaId - b.eaId;
   var bonusFor = (score2, percent) => Math.floor(score2 * percent / 100);
-  var tierFor = (tiers, count2) => tiers.filter((tier) => count2 >= tier.at).at(-1);
-  function compileGalleryScoringRules({ source, tags } = {}) {
-    if (source !== "futgg" || !Array.isArray(tags) || !tags.length || tags.length > 256) return fail17("rules-unavailable");
+  var tierFor = (tiers2, count2) => tiers2.filter((tier) => count2 >= tier.at).at(-1);
+  function compileGalleryScoringRules({ source, tags, engine } = {}) {
+    if (source === "fodder") {
+      if (!Array.isArray(tags) || !tags.length || tags.length > 256 || engine?.version !== 1) return fail19("rules-unavailable");
+      const by = {
+        nation: "nationEaId",
+        club: "clubEaId",
+        league: "leagueEaId",
+        level: "overall",
+        rarity: "rarityEaId",
+        firstOwner: "firstOwned",
+        holographic: "holographic",
+        position: "positions",
+        footballer: "playerEaId",
+        weakFoot: "weakFoot",
+        skillMoves: "skillMoves"
+      };
+      const result2 = [], seen = /* @__PURE__ */ new Set();
+      for (const tag of tags) {
+        const match = tag?.match, field = by[match?.by];
+        if (!field || !Number.isSafeInteger(tag.id) || seen.has(tag.id) || !["is", "any", "atLeast", "same", "different"].includes(match.how) || !Array.isArray(match.values ?? []) || !Array.isArray(tag.steps) || !tag.steps.length) return fail19("unknown-rule");
+        const tiers2 = tag.steps.map((step) => ({ at: step.at, pct: step.pct })).sort((a, b) => a.at - b.at);
+        if (tiers2.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0 || tier.pct > 1e5 || i > 0 && tier.at === tiers2[i - 1].at)) return fail19("tiers-invalid");
+        const values6 = (match.values ?? []).map(String);
+        if (["is", "any", "atLeast"].includes(match.how) && !values6.length) return fail19("unknown-values");
+        if (match.how === "atLeast" && (values6.length !== 1 || !Number.isFinite(Number(values6[0])))) return fail19("unknown-values");
+        seen.add(tag.id);
+        result2.push({
+          id: tag.id,
+          name: tag.name,
+          field,
+          mode: ["same", "different"].includes(match.how) ? match.how : match.how === "atLeast" ? "minimum" : "match",
+          values: values6,
+          threshold: match.how === "atLeast" ? Number(values6[0]) : null,
+          tiers: tiers2,
+          fodder: true,
+          goldFrom: engine.goldFrom ?? 75,
+          silverFrom: engine.silverFrom ?? 65
+        });
+      }
+      return { status: "ready", tags: result2, source, bonusMinusOne: engine.bonusMinusOne !== false };
+    }
+    if (source !== "futgg" || !Array.isArray(tags) || !tags.length || tags.length > 256) return fail19("rules-unavailable");
     const result = [], ids = /* @__PURE__ */ new Set();
     for (const tag of tags) {
       const rule = tag?.rules?.length === 1 ? tag.rules[0] : null;
-      if (!Number.isSafeInteger(tag?.id) || ids.has(tag.id) || !rule || !fields3[rule.attribute] || tag.bonusType !== "ITEM_SCORE_PERCENTAGE" || tag.thresholdType !== "ITEM_COUNT" || rule.target !== (rule.attribute === "BASE_DEF_ID" ? "BASE_DEF_ID" : "ATTRIBUTE") || !Array.isArray(rule.values) || !rule.values.length) return fail17("unknown-rule");
+      if (!Number.isSafeInteger(tag?.id) || ids.has(tag.id) || !rule || !fields3[rule.attribute] || tag.bonusType !== "ITEM_SCORE_PERCENTAGE" || tag.thresholdType !== "ITEM_COUNT" || rule.target !== (rule.attribute === "BASE_DEF_ID" ? "BASE_DEF_ID" : "ATTRIBUTE") || !Array.isArray(rule.values) || !rule.values.length) return fail19("unknown-rule");
       const isGroup = grouped.has(rule.attribute), isMinimum = ["WEAK_FOOT", "SKILL_MOVES"].includes(rule.attribute);
-      if (isGroup ? !["MAX_COUNT_ALL_SAME", "COUNT_DIFF"].includes(rule.type) : isMinimum ? rule.type !== "MIN_COUNT" : !["COUNT", "COUNT_ANY"].includes(rule.type)) return fail17("unknown-rule");
+      if (isGroup ? !["MAX_COUNT_ALL_SAME", "COUNT_DIFF"].includes(rule.type) : isMinimum ? rule.type !== "MIN_COUNT" : !["COUNT", "COUNT_ANY"].includes(rule.type)) return fail19("unknown-rule");
       const values6 = rule.values.map(String);
-      if (isMinimum && (values6.length !== 1 || !/^\d+$/.test(values6[0])) || isGroup && (values6.length !== 1 || values6[0] !== "0") || rule.attribute === "FIRST_OWNED" && (values6.length !== 1 || values6[0] !== "1") || rule.attribute === "HYPER_COSMETIC_TYPE" && (values6.length !== 2 || !values6.includes("0") || !values6.includes("1")) || rule.attribute === "LEVEL" && values6.some((value) => !["gold", "silver", "bronze"].includes(value))) return fail17("unknown-values");
-      if (!Array.isArray(tag.tiers) || !tag.tiers.length) return fail17("tiers-unavailable");
-      const tiers = tag.tiers.map((tier) => ({ at: tier.minItems, pct: tier.bonus })).sort((a, b) => a.at - b.at);
-      if (tiers.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0 || tier.pct > 1e5 || i > 0 && (tier.at === tiers[i - 1].at || tier.pct < tiers[i - 1].pct))) return fail17("tiers-invalid");
+      if (isMinimum && (values6.length !== 1 || !/^\d+$/.test(values6[0])) || isGroup && (values6.length !== 1 || values6[0] !== "0") || rule.attribute === "FIRST_OWNED" && (values6.length !== 1 || values6[0] !== "1") || rule.attribute === "HYPER_COSMETIC_TYPE" && (values6.length !== 2 || !values6.includes("0") || !values6.includes("1")) || rule.attribute === "LEVEL" && values6.some((value) => !["gold", "silver", "bronze"].includes(value))) return fail19("unknown-values");
+      if (!Array.isArray(tag.tiers) || !tag.tiers.length) return fail19("tiers-unavailable");
+      const tiers2 = tag.tiers.map((tier) => ({ at: tier.minItems, pct: tier.bonus })).sort((a, b) => a.at - b.at);
+      if (tiers2.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0 || tier.pct > 1e5 || i > 0 && (tier.at === tiers2[i - 1].at || tier.pct < tiers2[i - 1].pct))) return fail19("tiers-invalid");
       ids.add(tag.id);
       result.push({
         id: tag.id,
@@ -10053,7 +10941,7 @@
         mode: isGroup ? rule.type === "COUNT_DIFF" ? "different" : "same" : isMinimum ? "minimum" : "match",
         values: values6,
         threshold: isMinimum ? Number(values6[0]) + (rule.attribute === "SKILL_MOVES" ? 1 : 0) : null,
-        tiers
+        tiers: tiers2
       });
     }
     return { status: "ready", tags: result };
@@ -10065,9 +10953,9 @@
     return value;
   }
   function matches(row, tag) {
-    const value = attribute(row, tag.field);
+    const value = tag.fodder && tag.field === "overall" && row.overall != null ? row.overall >= tag.goldFrom ? "gold" : row.overall >= tag.silverFrom ? "silver" : "bronze" : attribute(row, tag.field);
     if (value == null) return null;
-    if (["firstOwned", "holographic"].includes(tag.field)) return value === true;
+    if (["firstOwned", "holographic"].includes(tag.field)) return tag.fodder ? tag.values.includes(value ? "yes" : "no") : value === true;
     if (tag.mode === "minimum") return Number(value) >= tag.threshold;
     return (Array.isArray(value) ? value : [value]).some((item2) => tag.values.includes(String(item2)));
   }
@@ -10103,7 +10991,7 @@
       cards: groups.map((group) => group.slice().sort(order)[0]),
       unknown: unknownRows.length
     };
-    if (tag.field === "playerEaId" && groupMode === "fodder") {
+    if (tag.field === "playerEaId" && groupMode === "fodder" && !tag.fodder) {
       const qualifying = groups.filter((group) => group.length >= tag.tiers[0].at);
       if (qualifying.length) return { count: Math.max(...qualifying.map((group) => group.length)), cards: qualifying.flat(), unknown: unknownRows.length };
     }
@@ -10113,7 +11001,7 @@
   }
   function evaluateGalleryLineup(rows, compiled, options = {}) {
     if (!Array.isArray(rows) || rows.some((row) => !Number.isSafeInteger(row.eaId) || row.eaId < 1 || !validScore(row.gradingScore)) || new Set(rows.map((row) => row.eaId)).size !== rows.length) throw Error("FC27_GALLERY_SCORING_INPUT_INVALID");
-    if (compiled?.status !== "ready") return fail17(compiled?.reason ?? "rules-unavailable");
+    if (compiled?.status !== "ready") return fail19(compiled?.reason ?? "rules-unavailable");
     const tags = compiled.tags.map((tag) => {
       const match = matchTag(rows, tag, options), tier = tierFor(tag.tiers, match.count);
       const next = tag.tiers.find((step) => match.count < step.at);
@@ -10123,31 +11011,31 @@
         count: match.count,
         matched: sum(match.cards),
         pct: tier?.pct ?? 0,
-        bonus: bonusFor(sum(match.cards), tier?.pct ?? 0),
+        bonus: compiled.bonusMinusOne && sum(match.cards) > 0 && tier?.pct > 0 ? Math.floor((sum(match.cards) * tier.pct - 1) / 100) : bonusFor(sum(match.cards), tier?.pct ?? 0),
         unknown: match.unknown,
         counted: false,
         matchedEaIds: match.cards.map((row) => row.eaId),
         next: next ? { ...next, needed: next.at - match.count } : null
       };
     });
-    const paid = tags.filter((tag) => tag.bonus > 0).sort((a, b) => b.bonus - a.bonus).slice(0, 10);
+    const paid = tags.filter((tag) => tag.bonus > 0).sort((a, b) => b.bonus - a.bonus).slice(0, compiled.source === "fodder" ? tags.length : 10);
     for (const tag of paid) tag.counted = true;
     const base = sum(rows), bonus = paid.reduce((total, tag) => total + tag.bonus, 0);
     return { base, bonus, total: base + bonus, tags, lineupIds: rows.map((row) => row.eaId) };
   }
-  function* chooseLineupSteps(rows, required2, compiled) {
+  function* chooseLineupSteps(rows, required2, compiled, memo = null) {
     const base = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore || b.overall - a.overall || a.eaId - b.eaId).slice(0, required2);
     if (rows.length <= required2 || !compiled.tags.length) return base;
     const ranked = rows.slice().sort(order), groups = [];
     for (const tag of compiled.tags) {
-      const tiers = tag.tiers.filter((tier) => tier.at <= required2);
-      if (!tiers.length) continue;
+      const tiers2 = tag.tiers.filter((tier) => tier.at <= required2);
+      if (!tiers2.length) continue;
       if (tag.mode === "same") {
         const candidates2 = groupsOf(ranked, tag.field).sort((a, b) => sum(b.slice(0, required2)) - sum(a.slice(0, required2))).slice(0, 3);
-        for (const cards of candidates2) groups.push({ cards, tiers });
+        for (const cards of candidates2) groups.push({ cards, tiers: tiers2 });
       } else if (tag.mode !== "different") {
         const cards = matchTag(ranked, tag).cards.slice().sort(order);
-        if (cards.length) groups.push({ cards, tiers });
+        if (cards.length) groups.push({ cards, tiers: tiers2 });
       }
     }
     const candidateSet = new Set(ranked.slice(0, 60));
@@ -10173,7 +11061,21 @@
         seeds2.push(cards);
       }
     }
-    const score2 = (cards) => evaluateGalleryLineup(cards, compiled).total;
+    const totals = memo?.totals ?? /* @__PURE__ */ new Map();
+    const rowKeys = /* @__PURE__ */ new Map();
+    if (memo) for (const row of rows) {
+      const signature2 = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map((field) => row[field] ?? null)]);
+      if (!memo.signatures.has(signature2)) memo.signatures.set(signature2, memo.signatures.size);
+      rowKeys.set(row, memo.signatures.get(signature2));
+    }
+    const score2 = (cards) => {
+      const identity5 = cards.map((row) => memo ? rowKeys.get(row) : row.eaId).join(",");
+      if (totals.has(identity5)) return totals.get(identity5);
+      const total = evaluateGalleryLineup(cards, compiled).total;
+      if (totals.size >= 8192) totals.clear();
+      totals.set(identity5, total);
+      return total;
+    };
     const scoredSeeds = [];
     for (const cards of seeds2) {
       scoredSeeds.push({ cards, total: score2(cards) });
@@ -10208,34 +11110,34 @@
     }
     return best.cards.slice().sort(order);
   }
-  function* summarizeGalleryScoreSteps({ set, catalog, progress }) {
-    if (!set || !progress || !Array.isArray(progress.rows) || catalog?.source !== "futgg" || set.id !== `futgg:${progress.setId}` || progress.season !== "27" || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1) return fail17("input-invalid");
-    const compiled = compileGalleryScoringRules(catalog);
+  function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = null) {
+    if (!set || !progress || !Array.isArray(progress.rows) || !["futgg", "fodder"].includes(catalog?.source) || set.id !== (catalog.source === "fodder" ? progress.setId : `futgg:${progress.setId}`) || progress.season !== "27" || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1) return fail19("input-invalid");
+    const compiled = memo?.compiled ?? compileGalleryScoringRules(catalog);
     if (compiled.status !== "ready") return compiled;
     const collected = progress.rows.filter((row) => row.collected === true);
     const collectionUnknown = !progress.complete || progress.rows.some((row) => row.collected == null);
     const scoreUnknown = collected.some((row) => !validScore(row.gradingScore));
     if (scoreUnknown) return { status: "partial", reason: "base-score-unknown", full: false, grade: null };
-    if (new Set(progress.rows.map((row) => row.eaId)).size !== progress.rows.length) return fail17("duplicate-version");
+    if (new Set(progress.rows.map((row) => row.eaId)).size !== progress.rows.length) return fail19("duplicate-version");
     const rows = collected.filter((row) => row.gradingScore > 0);
-    const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled), full = lineup.length >= set.requiredCards;
+    const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled, memo), full = lineup.length >= set.requiredCards;
     const low = evaluateGalleryLineup(lineup, compiled), high = evaluateGalleryLineup(lineup, compiled, { unknown: "high" });
     const comparison = evaluateGalleryLineup(lineup, compiled, { groupMode: "futgg" });
     const comparisonHigh = evaluateGalleryLineup(lineup, compiled, { groupMode: "futgg", unknown: "high" });
-    const ruleDifference = comparison.total !== low.total || comparisonHigh.total !== high.total;
+    const ruleDifference = catalog.source !== "fodder" && (comparison.total !== low.total || comparisonHigh.total !== high.total);
     const unknownFields = [...new Set(compiled.tags.filter((tag) => lineup.some((row) => attribute(row, tag.field) == null)).map((tag) => tag.field))];
     const grades3 = [...set.grades].sort((a, b) => a.threshold - b.threshold);
     const gradeFor = (total) => full ? grades3.filter((g) => total >= g.threshold).at(-1)?.name ?? null : null;
     const next = grades3.find((g) => low.total < g.threshold) ?? null;
-    const uncertain = collectionUnknown || low.total !== high.total || ruleDifference;
+    const uncertain2 = collectionUnknown || low.total !== high.total || ruleDifference;
     return {
-      status: collectionUnknown ? "partial" : uncertain ? "uncertain" : "calculated",
+      status: collectionUnknown ? "partial" : uncertain2 ? "uncertain" : "calculated",
       full,
       lineup,
       selection: rows.length > set.requiredCards ? "bounded-search" : "all-collected",
       low,
       high,
-      grade: uncertain ? null : gradeFor(low.total),
+      grade: uncertain2 ? null : gradeFor(low.total),
       lowGrade: gradeFor(low.total),
       highGrade: gradeFor(high.total),
       nextGrade: next?.name ?? null,
@@ -10248,13 +11150,26 @@
       comparison: ruleDifference ? { low: comparison, high: comparisonHigh } : null
     };
   }
-  function summarizeGalleryScore(input) {
-    const steps = summarizeGalleryScoreSteps(input);
-    let next;
-    do {
-      next = steps.next();
-    } while (!next.done);
-    return next.value;
+  function createGalleryScoreSummarizer(catalog) {
+    const compiled = compileGalleryScoringRules(catalog);
+    const memo = {
+      compiled,
+      totals: /* @__PURE__ */ new Map(),
+      signatures: /* @__PURE__ */ new Map(),
+      fields: [...new Set((compiled.tags ?? []).map((tag) => tag.field))]
+    };
+    return (input) => {
+      if (memo.signatures.size > 8192) {
+        memo.signatures.clear();
+        memo.totals.clear();
+      }
+      const steps = summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+      let next;
+      do {
+        next = steps.next();
+      } while (!next.done);
+      return next.value;
+    };
   }
 
   // src/gallery/cooperative-plan.js
@@ -10274,9 +11189,9 @@
         if (!current2()) return null;
         const next = steps.next(finish);
         if (next.done) return current2() ? next.value : null;
-        const time = now();
-        finish = time - started >= maxMs;
-        if (time - slice >= sliceMs || finish) {
+        const time2 = now();
+        finish = time2 - started >= maxMs;
+        if (time2 - slice >= sliceMs || finish) {
           progress(next.value);
           await schedule();
           slice = now();
@@ -10288,6 +11203,24 @@
   }
 
   // src/gallery/score-queue.js
+  var scoreFields = [
+    "eaId",
+    "gradingScore",
+    "collected",
+    "overall",
+    "nationEaId",
+    "clubEaId",
+    "leagueEaId",
+    "playerEaId",
+    "rarityEaId",
+    "firstOwned",
+    "holographic",
+    "positions",
+    "weakFoot",
+    "skillMoves"
+  ];
+  var pick3 = (value, fields4) => Object.fromEntries(fields4.map((field) => [field, value?.[field] ?? null]));
+  var stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
   function createGalleryScoreQueue({
     onUpdate = () => {
     },
@@ -10302,7 +11235,7 @@
       task = (async () => {
         await schedule();
         while (!disposed && generation === epoch2) {
-          const entry = [...entries2.values()].find((value) => value.pending);
+          const entry = [...entries2.values()].filter((value) => value.pending).sort((a, b) => b.priority - a.priority)[0];
           if (!entry) break;
           const current2 = () => !disposed && generation === epoch2 && entries2.get(entry.id) === entry;
           let summary3;
@@ -10331,21 +11264,40 @@
         if ([...entries2.values()].some((value) => value.pending)) start();
       });
     };
+    const scoringKey = (input) => {
+      const rows = (input.progress?.rows ?? []).map((row) => pick3(row, scoreFields));
+      return {
+        season: input.progress?.season,
+        setId: input.progress?.setId,
+        complete: input.progress?.complete,
+        rows
+      };
+    };
     const cancel = () => {
       epoch2++;
       for (const [key, entry] of entries2) if (entry.pending) entries2.delete(key);
     };
     return Object.freeze({
-      read(scope2, input) {
+      read(scope2, input, { priority = 1 } = {}) {
         if (disposed) return null;
         const id10 = `${scope2}:${input.set.id}`;
-        const key = JSON.stringify([input.set, input.catalog.source, input.catalog.tags, input.progress]);
+        const catalog = input.catalog;
+        const tags = (catalog.tags ?? []).map((tag) => pick3(tag, catalog.source === "fodder" ? ["id", "match", "steps"] : ["id", "rules", "tiers", "bonusType", "thresholdType"]));
+        const key = JSON.stringify(stable([
+          pick3(input.set, ["id", "requiredCards"]),
+          input.set?.grades?.map((grade) => pick3(grade, ["name", "threshold"])),
+          catalog.source,
+          tags,
+          catalog.source === "fodder" ? pick3(catalog.engine, ["version", "goldFrom", "silverFrom", "bonusMinusOne"]) : null,
+          scoringKey(input)
+        ]));
         let entry = entries2.get(id10);
         if (entry?.key !== key) {
-          entry = { id: id10, key, input, pending: true, summary: { status: "calculating" } };
+          entry = { id: id10, key, input, priority, pending: true, summary: { status: "calculating" } };
           entries2.set(id10, entry);
           while (entries2.size > 256) entries2.delete(entries2.keys().next().value);
         }
+        entry.priority = Math.max(entry.priority, priority);
         start();
         return entry.summary;
       },
@@ -10508,6 +11460,14 @@
   }) {
     let evaluations = 0, stopped = false, truncated = maxDepth < initial.ids.length;
     const plans = [], reached = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set([bundleKey(initial.ids)]);
+    const better = (a, b) => {
+      if (!b) return true;
+      const av = measure(a), bv = measure(b);
+      if (av.reached !== bv.reached) return av.reached;
+      if (av.reached && a.cost !== b.cost) return a.cost < b.cost;
+      return av.progress !== bv.progress ? av.progress > bv.progress : a.cost < b.cost;
+    };
+    let bestState = initial;
     if (!Number.isFinite(initial.cost) || initial.missingPrices) return { plans, evaluations, stopped };
     if (measure(initial).reached) reached.set(bundleKey(initial.ids), initial);
     let beam = [initial];
@@ -10527,6 +11487,7 @@
             evaluations++;
             if (state && Number.isFinite(state.cost) && !state.missingPrices) {
               seedStates.push(state);
+              if (better(state, bestState)) bestState = state;
               if (measure(state).reached) reached.set(bundleKey(ids), state);
             }
           }
@@ -10560,6 +11521,7 @@
         evaluations++;
         if (state && Number.isFinite(state.cost) && !state.missingPrices) {
           seedStates.push(state);
+          if (better(state, bestState)) bestState = state;
           if (measure(state).reached) reached.set(key, state);
         }
         if (yield { evaluations }) {
@@ -10592,6 +11554,7 @@
           evaluations++;
           if (state && Number.isFinite(state.cost) && !state.missingPrices) {
             const value = measure(state);
+            if (better(state, bestState)) bestState = state;
             if (value.reached) {
               const previous = reached.get(key);
               if (!previous || state.cost < previous.cost) reached.set(key, state);
@@ -10611,7 +11574,7 @@
     if (beam.length && evaluations < maxEvaluations && maxDepth > 0) truncated = true;
     stopped ||= evaluations >= maxEvaluations;
     plans.push(...[...reached.values()].sort((a, b) => b.cost - a.cost || measure(a).progress - measure(b).progress));
-    return { plans, evaluations, stopped, ...truncated ? { truncated: true } : {} };
+    return { plans, evaluations, stopped, bestState, ...truncated ? { truncated: true } : {} };
   }
 
   // src/gallery/candidate-pool.js
@@ -10696,7 +11659,7 @@
   }
 
   // src/gallery/planner.js
-  var validId4 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice2 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
   var asPrice = (prices, id10) => {
@@ -10716,10 +11679,10 @@
   function comparableRows(rows) {
     return rows.map((row) => ({ ...row, collected: true }));
   }
-  function summarize(set, catalog, existing, selected) {
+  function summarize(set, catalog, existing, selected, score2) {
     const rows = comparableRows([...existing, ...selected]);
     try {
-      return summarizeGalleryScore({ set, catalog, progress: {
+      return score2({ set, catalog, progress: {
         season: "27",
         setId: Number(String(set.id).split(":").at(-1)),
         complete: true,
@@ -10787,7 +11750,16 @@
     if (threshold == null) return { status: "unavailable", reason: "target-grade-unknown" };
     const compiled = compileGalleryScoringRules(catalog);
     if (compiled.status !== "ready") return { status: "unavailable", reason: compiled.reason };
-    const rows = progress.rows.filter((row) => validId4(row?.eaId));
+    const score2 = createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
+    const summaryFor = (selected) => {
+      const key = selected.map((row) => row.eaId).join(",");
+      if (!summaries.has(key)) {
+        if (summaries.size >= 4096) summaries.clear();
+        summaries.set(key, summarize(set, catalog, existing, selected, score2));
+      }
+      return summaries.get(key);
+    };
+    const rows = progress.rows.filter((row) => validId5(row?.eaId));
     if (rows.length !== progress.rows.length) return { status: "unavailable", reason: "input-invalid" };
     if (new Set(rows.map((row) => row.eaId)).size !== rows.length) return { status: "unavailable", reason: "duplicate-version" };
     if (progress.complete === false || rows.some((row) => typeof row.collected !== "boolean")) {
@@ -10797,10 +11769,10 @@
     const incompleteExisting = rows.filter((row) => isGalleryOwned(row) && !validScore2(row.gradingScore));
     const requiredSlots = Math.max(1, set.requiredCards - existing.length);
     const eligibleCandidates = rows.filter((row) => !isGalleryOwned(row)).map((row) => {
-      const score2 = candidateScore(row);
-      return score2 ? {
+      const score3 = candidateScore(row);
+      return score3 ? {
         row,
-        score: score2,
+        score: score3,
         id: row.eaId,
         price: asPrice(prices, row.eaId),
         diversityKeys: galleryCostSearchKeys(row, compiled.tags)
@@ -10837,7 +11809,7 @@
       price: 0,
       unknownPrice: false,
       nextIndex: 0,
-      summary: summarize(set, catalog, existing, [])
+      summary: summaryFor([])
     };
     if (!base.summary?.low) return { status: "unavailable", reason: base.summary?.reason ?? "input-invalid", plans: [] };
     if (scoreOf2(base) >= threshold) {
@@ -10875,9 +11847,10 @@
         nextIndex: candidates.length,
         price: greedyCandidates.reduce((sum2, candidate) => sum2 + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
         unknownPrice: greedyCandidates.some((candidate) => asPrice(prices, candidate.row.eaId) == null),
-        summary: summarize(set, catalog, existing, greedySelected)
+        summary: summaryFor(greedySelected)
       };
       if (greedy.summary?.full === true && scoreOf2(greedy) >= threshold) plans.push(greedy);
+      if (rank(greedy, bestSeen, threshold) < 0) bestSeen = greedy;
     }
     if (canEvaluateComplete && candidates.length >= requiredSlots && requiredSlots > 0) {
       const cheapestCandidates = candidates.slice().sort((a, b) => {
@@ -10901,9 +11874,10 @@
         nextIndex: candidates.length,
         price: cheapestCandidates.reduce((sum2, candidate) => sum2 + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
         unknownPrice: cheapestCandidates.some((candidate) => asPrice(prices, candidate.row.eaId) == null),
-        summary: summarize(set, catalog, existing, selected)
+        summary: summaryFor(selected)
       };
       cheapestSeed = cheapest;
+      if (rank(cheapest, bestSeen, threshold) < 0) bestSeen = cheapest;
       if (cheapest.summary?.full === true && scoreOf2(cheapest) >= threshold) plans.push(cheapest);
     }
     let budgetExhausted = false, beamTruncated = false, timeExhausted = false;
@@ -10946,7 +11920,7 @@
             cost: price2,
             unknownPrice: items.some((item2) => item2.price == null),
             missingPrices: items.some((item2) => item2.price == null),
-            summary: summarize(set, catalog, existing, selected)
+            summary: summaryFor(selected)
           };
         }
       });
@@ -10958,6 +11932,7 @@
       }
       evaluations += step.value.evaluations;
       plans.push(...step.value.plans);
+      if (step.value.bestState && rank(step.value.bestState, bestSeen, threshold) < 0) bestSeen = step.value.bestState;
       beamTruncated ||= step.value.truncated === true;
     }
     let scoringBounded = base.summary.selection === "bounded-search";
@@ -10981,7 +11956,7 @@
           nextIndex: index + 1,
           price: state.price + (price2 ?? 0),
           unknownPrice: state.unknownPrice || price2 == null,
-          summary: summarize(set, catalog, existing, selected)
+          summary: summaryFor(selected)
         };
         next.push(nextState);
         evaluations++;
@@ -11024,6 +11999,20 @@
         threshold,
         currentScore: scoreOf2(base),
         bestScore: best ? scoreOf2(best) : null,
+        distanceToTarget: best ? Math.max(0, threshold - scoreOf2(best)) : null,
+        bestCandidate: best ? {
+          ids: [...best.ids],
+          score: scoreOf2(best),
+          totalPrice: best.unknownPrice ? null : best.price,
+          missingCards: best.ids.length,
+          items: best.items.map((item2) => ({
+            eaId: item2.eaId,
+            name: item2.name ?? null,
+            score: item2.score ?? item2.gradingScore ?? null,
+            price: item2.price ?? null
+          }))
+        } : null,
+        missingPriceCount: requestedCandidates - quotedCandidateCount,
         candidateCount: candidates.length,
         omittedCandidates,
         requestedCandidates,
@@ -11075,17 +12064,17 @@
   }
 
   // src/gallery/joint-planner.js
-  var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId6 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore3 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice3 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
   var score = (row) => validScore3(row.gradingScore) ? row.gradingScore : validScore3(row.galleryScore) ? row.galleryScore : null;
-  var fail18 = (status, reason, extra = {}) => ({ status, reason, plans: [], ...extra });
+  var fail20 = (status, reason, extra = {}) => ({ status, reason, plans: [], ...extra });
   function evaluate(targets, selected) {
     return targets.map((target) => {
       const key = target.progress.rows.filter((row) => selected.has(row.eaId) && !isGalleryOwned(row)).map((row) => row.eaId).sort((a, b) => a - b).join(",");
       let summary3 = target.summaries.get(key);
       if (!summary3) {
-        summary3 = summarizeGalleryScore({ set: target.set, catalog: target.catalog, progress: {
+        summary3 = target.summarize({ set: target.set, catalog: target.catalog, progress: {
           ...target.progress,
           season: "27",
           setId: Number(target.set.id.slice(6)),
@@ -11146,25 +12135,25 @@
     maxEvaluations = 3e3,
     beamWidth = 64
   } = {}) {
-    if (!Array.isArray(targets) || !targets.length) return fail18("unavailable", "targets-invalid");
-    if (budget != null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 1e9)) return fail18("unavailable", "budget-invalid");
-    if (![maxPlans, maxCandidates, maxEvaluations, beamWidth].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || maxCandidates > 512 || maxEvaluations > 2e4 || beamWidth > 256) return fail18("unavailable", "search-options-invalid");
+    if (!Array.isArray(targets) || !targets.length) return fail20("unavailable", "targets-invalid");
+    if (budget != null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 1e9)) return fail20("unavailable", "budget-invalid");
+    if (![maxPlans, maxCandidates, maxEvaluations, beamWidth].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || maxCandidates > 512 || maxEvaluations > 2e4 || beamWidth > 256) return fail20("unavailable", "search-options-invalid");
     const targetIds = /* @__PURE__ */ new Set(), identities = /* @__PURE__ */ new Map(), allCandidates = /* @__PURE__ */ new Map(), prepared = [], ownedIds = /* @__PURE__ */ new Set();
     const scopes = new Set(targets.map((target) => target.scope).filter((value) => value != null));
     const platforms = new Set(targets.map((target) => target.platform).filter((value) => value != null));
-    if (scopes.size > 1 || platforms.size > 1) return fail18("unavailable", "target-context-mismatch");
+    if (scopes.size > 1 || platforms.size > 1) return fail20("unavailable", "target-context-mismatch");
     for (const target of targets) {
       const { set, catalog, progress } = target;
-      if (!/^futgg:[1-9]\d*$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId5(set.requiredCards) || set.requiredCards > 256 || catalog?.source !== "futgg" || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== Number(set.id.slice(6))) return fail18("unavailable", "target-input-invalid");
+      if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId6(set.requiredCards) || set.requiredCards > 256 || catalog?.source !== "futgg" || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== Number(set.id.slice(6))) return fail20("unavailable", "target-input-invalid");
       targetIds.add(set.id);
       const grade = set.grades.find((row) => row.name === target.targetGrade);
-      if (!grade || !Number.isSafeInteger(grade.threshold) || grade.threshold < 0) return fail18("unavailable", "target-grade-unknown");
+      if (!grade || !Number.isSafeInteger(grade.threshold) || grade.threshold < 0) return fail20("unavailable", "target-grade-unknown");
       const compiled = compileGalleryScoringRules(catalog);
-      if (compiled.status !== "ready") return fail18("unavailable", compiled.reason);
-      if (progress.complete === false || progress.rows.some((row) => typeof row.collected !== "boolean" || isGalleryOwned(row) && !validScore3(row.gradingScore))) return fail18("partial", "target-state-unknown");
+      if (compiled.status !== "ready") return fail20("unavailable", compiled.reason);
+      if (progress.complete === false || progress.rows.some((row) => typeof row.collected !== "boolean" || isGalleryOwned(row) && !validScore3(row.gradingScore))) return fail20("partial", "target-state-unknown");
       const seen = /* @__PURE__ */ new Set();
       for (const row of progress.rows) {
-        if (!validId5(row.eaId) || seen.has(row.eaId)) return fail18("unavailable", "duplicate-version");
+        if (!validId6(row.eaId) || seen.has(row.eaId)) return fail20("unavailable", "duplicate-version");
         seen.add(row.eaId);
         const previous = identities.get(row.eaId);
         if (previous && [
@@ -11182,7 +12171,7 @@
           "weakFoot",
           "skillMoves",
           "positions"
-        ].some((key) => JSON.stringify(previous[key] ?? null) !== JSON.stringify(row[key] ?? null))) return fail18("partial", "version-facts-conflict");
+        ].some((key) => JSON.stringify(previous[key] ?? null) !== JSON.stringify(row[key] ?? null))) return fail20("partial", "version-facts-conflict");
         identities.set(row.eaId, row);
         if (isGalleryOwned(row)) {
           ownedIds.add(row.eaId);
@@ -11202,7 +12191,7 @@
           diversityKeys: galleryCostSearchKeys(row, compiled.tags).map((key) => `${set.id}:${key}`)
         });
       }
-      prepared.push({ ...target, grade, threshold: grade.threshold, summaries: /* @__PURE__ */ new Map() });
+      prepared.push({ ...target, grade, threshold: grade.threshold, summaries: /* @__PURE__ */ new Map(), summarize: createGalleryScoreSummarizer(catalog) });
     }
     for (const id10 of ownedIds) allCandidates.delete(id10);
     for (const target of prepared) target.progress = { ...target.progress, rows: target.progress.rows.map((row) => ownedIds.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row) };
@@ -11211,12 +12200,12 @@
     const omittedCandidates = allCandidates.size - selectedCandidates.length;
     const candidateMap = new Map(selectedCandidates.map((candidate) => [candidate.row.eaId, candidate]));
     const base = { ids: [], nextIndex: 0, cost: 0, missingPrices: false, results: evaluate(prepared, /* @__PURE__ */ new Set()) };
-    if (base.results.some((result) => !result.summary.low)) return fail18("unavailable", "scoring-unavailable");
+    if (base.results.some((result) => !result.summary.low)) return fail20("unavailable", "scoring-unavailable");
     if (base.results.every((result) => result.reached)) return { status: "achieved", plans: [], targets: materialize2(base, candidateMap, budget).targets };
     let states2 = [base], evaluations = 1, budgetExhausted = false, beamTruncated = false, timeExhausted = false;
     let bestSeen = base;
     let scoringBounded = base.results.some((result) => result.summary.selection === "bounded-search");
-    let uncertain = base.results.some((result) => result.summary.status === "uncertain"), missingPrice = false, overBudget = false;
+    let uncertain2 = base.results.some((result) => result.summary.status === "uncertain"), missingPrice = false, overBudget = false;
     const plans = [], depthLimit = prepared.reduce((sum2, target) => sum2 + target.set.requiredCards, 0);
     let cheapestComplete = null;
     for (const mode of ["price", "score"]) {
@@ -11286,6 +12275,9 @@
         }
         evaluations += step.value.evaluations;
         plans.push(...step.value.plans);
+        if (step.value.bestState && rank2(step.value.bestState, bestSeen, prepared.length) < 0) {
+          bestSeen = step.value.bestState;
+        }
         beamTruncated ||= step.value.truncated === true;
         if (timeExhausted) break;
       }
@@ -11313,7 +12305,7 @@
         const value = { ids, nextIndex: index + 1, cost, missingPrices: state.missingPrices || candidate.price == null, results };
         if (rank2(value, bestSeen, prepared.length) < 0) bestSeen = value;
         scoringBounded ||= results.some((result) => result.summary.selection === "bounded-search");
-        uncertain ||= results.some((result) => result.summary.status === "uncertain");
+        uncertain2 ||= results.some((result) => result.summary.status === "uncertain");
         if (results.every((result) => result.reached)) plans.push(value);
         next.push(value);
         if (yield { evaluations }) {
@@ -11328,7 +12320,7 @@
     }
     const scopeTruncated = prepared.some((target) => target.progress.candidateOnly === true || target.progress.poolComplete === false);
     const proofInputsKnown = candidateRows.every((candidate) => validScore3(candidate.row.gradingScore) && candidate.price != null) && plans.every((state) => state.results.every((result) => result.summary.selection !== "bounded-search" && !result.summary.ruleDifference && result.summary.low?.total === result.summary.high?.total));
-    const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain && !missingPrice && proofInputsKnown;
+    const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain2 && !missingPrice && proofInputsKnown;
     const common = {
       budget,
       evaluations,
@@ -11350,8 +12342,8 @@
       reached: false
     } : null;
     if (output.length) return { status: "ready", ...common, costAudit, plans: output };
-    const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : missingPrice ? "price-unknown" : uncertain ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : overBudget ? "budget-unreachable" : "target-unreachable";
-    return fail18(
+    const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : missingPrice ? "price-unknown" : uncertain2 ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : overBudget ? "budget-unreachable" : "target-unreachable";
+    return fail20(
       searchComplete ? "no-plan" : "partial",
       scopeTruncated ? "candidate-search-truncated" : reason,
       { ...common, targets: materialize2(bestSeen, candidateMap, budget).targets }
@@ -11359,13 +12351,13 @@
   }
 
   // src/gallery/targets.js
-  var sources = /* @__PURE__ */ new Set(["futgg", "fodder"]);
+  var sources2 = /* @__PURE__ */ new Set(["futgg", "fodder"]);
   var grades2 = /* @__PURE__ */ new Set(["D", "C", "B", "A", "S"]);
   var validScope2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f]/.test(value);
-  var validId6 = (id10, source) => typeof id10 === "string" && id10.length <= 330 && id10.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id10) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id10));
+  var validId7 = (id10, source) => typeof id10 === "string" && id10.length <= 330 && id10.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id10) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id10));
   var emptyGalleryTargets = () => ({ targets: [], budget: null });
   function normalizeGalleryTargets(value, source) {
-    if (!sources.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId6(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
+    if (!sources2.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId7(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
       throw new Error("FC27_GALLERY_TARGETS_INVALID");
     }
     return { targets: value.targets.map(({ setId, grade }) => ({ setId, grade })), budget: value.budget };
@@ -11378,7 +12370,7 @@
   function createGalleryTargetStore({ get, set } = {}) {
     let tail = Promise.resolve();
     const key = (scope2, source) => {
-      if (!validScope2(scope2) || !sources.has(source)) throw new Error("FC27_GALLERY_TARGETS_SCOPE_INVALID");
+      if (!validScope2(scope2) || !sources2.has(source)) throw new Error("FC27_GALLERY_TARGETS_SCOPE_INVALID");
       return `fcat-fc27-gallery-targets:${JSON.stringify([scope2, source])}`;
     };
     return Object.freeze({
@@ -11444,8 +12436,8 @@
   }
 
   // src/gallery/selection.js
-  var validId7 = (value) => Number.isSafeInteger(value) && value > 0;
-  var keyOf3 = (row) => validId7(row?.eaId) ? String(row.eaId) : null;
+  var validId8 = (value) => Number.isSafeInteger(value) && value > 0;
+  var keyOf3 = (row) => validId8(row?.eaId) ? String(row.eaId) : null;
   var textOf = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase().trim();
   var priceOf3 = (prices, id10) => {
     const value = prices?.[id10] ?? prices?.[Number(id10)];
@@ -11580,7 +12572,7 @@
   }
 
   // src/gallery/replan.js
-  var validId8 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
   var validPrice4 = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6;
   var safeFailures = /* @__PURE__ */ new Set([
     "FC27_GALLERY_NO_LISTING",
@@ -11597,7 +12589,7 @@
     if (outcome?.status !== "partial" || outcome?.collection?.status !== "confirmed" || !Array.isArray(outcome.results) || !outcome.failures?.length || !safeFailures.has(outcome.reason)) return false;
     const resultIds = /* @__PURE__ */ new Set();
     for (const result of outcome.results) {
-      if (!validId8(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "collected"].includes(result.state)) return false;
+      if (!validId9(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "collected"].includes(result.state)) return false;
       resultIds.add(result.definitionId);
     }
     return outcome.failures.every((failure) => resultIds.has(failure.definitionId) && safeFailures.has(failure.reason) && outcome.results.some((result) => result.definitionId === failure.definitionId && result.state === "waiting")) && Number.isSafeInteger(outcome.spent) && outcome.spent >= 0;
@@ -11620,9 +12612,9 @@
     }
     if (budget !== null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 165e6)) return blocked9("budget-invalid");
     const rows = new Map(targets.flatMap((target) => target.progress.rows).map((row) => [row.eaId, row]));
-    const receipts = /* @__PURE__ */ new Map(), exclusions = new Set(ledger.excludedIds ?? []), quotes = { ...ledger.quotes };
+    const receipts = /* @__PURE__ */ new Map(), exclusions = new Set(ledger.excludedIds ?? []);
     for (const entry of ledger.receipts ?? []) {
-      if (!validId8(entry.definitionId) || !rows.has(entry.definitionId) || receipts.has(entry.definitionId) || entry.price !== 0 && !validPrice4(entry.price)) return blocked9("purchase-ledger-invalid");
+      if (!validId9(entry.definitionId) || !rows.has(entry.definitionId) || receipts.has(entry.definitionId) || entry.price !== 0 && !validPrice4(entry.price)) return blocked9("purchase-ledger-invalid");
       receipts.set(entry.definitionId, { ...entry });
     }
     let attemptSpent = 0;
@@ -11644,16 +12636,15 @@
       if (noListing.has(failure.reason)) exclusions.add(failure.definitionId);
       if (failure.observedPrice != null) {
         if (!validPrice4(failure.observedPrice)) return blocked9("purchase-result-mismatch");
-        quotes[failure.definitionId] = failure.observedPrice;
       }
     }
-    if ([...exclusions].some((id10) => !validId8(id10))) return blocked9("purchase-ledger-invalid");
+    if ([...exclusions].some((id10) => !validId9(id10))) return blocked9("purchase-ledger-invalid");
     const spent = [...receipts.values()].reduce((sum2, row) => sum2 + row.price, 0);
     if (budget !== null && spent > budget) return blocked9("purchase-ledger-invalid");
     const remainingBudget = budget === null ? null : budget - spent;
     const nextTargets = targets.map((target) => ({
       ...target,
-      prices: { ...target.prices, ...quotes },
+      prices: { ...target.prices },
       progress: { ...target.progress, rows: target.progress.rows.map((row) => {
         const receipt = receipts.get(row.eaId);
         if (!receipt || row.collected === true) return { ...row };
@@ -11661,7 +12652,7 @@
         return { ...row, collected: true, gradingScore: score2, firstOwned: false, purchaseProjected: true };
       }) }
     }));
-    const nextLedger = { receipts: [...receipts.values()], excludedIds: [...exclusions], quotes };
+    const nextLedger = { receipts: [...receipts.values()], excludedIds: [...exclusions] };
     const searchTargets = nextTargets.map((target) => ({ ...target, progress: {
       ...target.progress,
       rows: target.progress.rows.filter((row) => !exclusions.has(row.eaId) || row.collected)
@@ -11679,7 +12670,7 @@
   }
 
   // src/gallery/first-owner-history.js
-  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
   function galleryFirstOwnerHistoryAction(row) {
     if (row?.firstOwnedSource === "local-history") return "clear";
     return row?.collected === true && row.firstOwned !== true ? "mark" : null;
@@ -11689,7 +12680,7 @@
     const result = /* @__PURE__ */ new Map();
     for (const row of rows) {
       const definitionId = Number(row?.definitionId);
-      if (!validId9(definitionId) || typeof row?.firstOwned !== "boolean") continue;
+      if (!validId10(definitionId) || typeof row?.firstOwned !== "boolean") continue;
       const updatedAt = Number.isSafeInteger(row.updatedAt) && row.updatedAt >= 0 ? row.updatedAt : 0;
       result.set(definitionId, { definitionId, firstOwned: row.firstOwned, updatedAt });
     }
@@ -11698,7 +12689,7 @@
   function toggleGalleryFirstOwnerHistory(history, definitionId, firstOwned, updatedAt = Date.now()) {
     const current2 = normalizeGalleryFirstOwnerHistory(history);
     const id10 = Number(definitionId);
-    if (!validId9(id10) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
+    if (!validId10(id10) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
     const next = current2.filter((row) => row.definitionId !== id10);
     next.push({ definitionId: id10, firstOwned, updatedAt });
     return normalizeGalleryFirstOwnerHistory(next);
@@ -11710,7 +12701,7 @@
 
   // src/gallery/listing-candidates.js
   var id7 = (value) => Number.isSafeInteger(value) && value > 0;
-  var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same16 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var blocked10 = (reason) => ({ status: "blocked", reason, entries: [] });
   var pendingStates = /* @__PURE__ */ new Set(["buy-pending", "bought", "move-pending", "move-rejected"]);
   function projectGalleryListingReceipts({
@@ -11796,7 +12787,7 @@
         if (source.status !== "observed") return source;
         const current2 = await get(key, null), pending2 = await get(pendingKey, null);
         assertCurrent();
-        if (!same15(purchase, current2) || !same15(marker, pending2)) return blocked10("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+        if (!same16(purchase, current2) || !same16(marker, pending2)) return blocked10("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
         return source;
       });
       return result ?? blocked10("FC27_GALLERY_PURCHASE_BUSY");
@@ -11810,23 +12801,23 @@
     if (!Array.isArray(input) || !input.length || input.length > 32 || input.some((tier, index) => !Number.isSafeInteger(tier?.min) || tier.min < 0 || !id7(tier.inc) || index > 0 && tier.min >= input[index - 1].min)) return null;
     return input.map(({ min, inc }) => ({ min, inc }));
   }
-  function tierFor2(value, tiers, direction) {
-    return tiers.find((tier) => direction > 0 ? value >= tier.min : value > tier.min) ?? null;
+  function tierFor2(value, tiers2, direction) {
+    return tiers2.find((tier) => direction > 0 ? value >= tier.min : value > tier.min) ?? null;
   }
-  function tierUpper(tier, tiers) {
-    const index = tiers.indexOf(tier);
-    return index === 0 ? GALLERY_LISTING_MAX_PRICE : Math.max(0, tiers[index - 1]?.min - 1);
+  function tierUpper(tier, tiers2) {
+    const index = tiers2.indexOf(tier);
+    return index === 0 ? GALLERY_LISTING_MAX_PRICE : Math.max(0, tiers2[index - 1]?.min - 1);
   }
   function moveGalleryListingPrice(value, steps, priceTiers) {
-    const tiers = normalizeTiers(priceTiers);
+    const tiers2 = normalizeTiers(priceTiers);
     let current2 = value, remaining = steps;
-    if (!Number.isFinite(current2) || current2 < 0 || current2 > 15e6 || !Number.isSafeInteger(steps) || Math.abs(steps) > 20 || !tiers) return null;
+    if (!Number.isFinite(current2) || current2 < 0 || current2 > 15e6 || !Number.isSafeInteger(steps) || Math.abs(steps) > 20 || !tiers2) return null;
     while (remaining !== 0) {
       const direction = remaining > 0 ? 1 : -1;
       if (direction > 0 && current2 >= GALLERY_LISTING_MAX_PRICE) return GALLERY_LISTING_MAX_PRICE;
-      const tier = tierFor2(current2, tiers, direction);
+      const tier = tierFor2(current2, tiers2, direction);
       if (!tier) return current2;
-      const capacity = direction > 0 ? Math.floor((tierUpper(tier, tiers) - current2) / tier.inc) + 1 : Math.floor((current2 - tier.min) / tier.inc) + (current2 % tier.inc !== 0 ? 1 : 0);
+      const capacity = direction > 0 ? Math.floor((tierUpper(tier, tiers2) - current2) / tier.inc) + 1 : Math.floor((current2 - tier.min) / tier.inc) + (current2 % tier.inc !== 0 ? 1 : 0);
       if (capacity <= 0) return null;
       if (Math.abs(remaining) <= capacity) {
         return Math.max(tier.min, Math.min(
@@ -11840,9 +12831,9 @@
     return current2;
   }
   function roundGalleryListingPrice(value, priceTiers, minimum = 0) {
-    const tiers = normalizeTiers(priceTiers), numeric2 = value;
-    if (!tiers || !Number.isFinite(numeric2) || !Number.isFinite(minimum)) return null;
-    const tier = tierFor2(numeric2, tiers, 1);
+    const tiers2 = normalizeTiers(priceTiers), numeric2 = value;
+    if (!tiers2 || !Number.isFinite(numeric2) || !Number.isFinite(minimum)) return null;
+    const tier = tierFor2(numeric2, tiers2, 1);
     return tier ? Math.max(minimum, Math.min(GALLERY_LISTING_MAX_PRICE, Math.round(numeric2 / tier.inc) * tier.inc)) : Math.max(numeric2, minimum);
   }
   function readValue(map, key) {
@@ -11859,6 +12850,30 @@
     const { minimum, maximum } = value;
     return Number.isSafeInteger(minimum) && Number.isSafeInteger(maximum) && minimum >= GALLERY_LISTING_MIN_PRICE && maximum >= minimum && maximum <= 15e6 ? { minimum, maximum } : null;
   }
+  function previewGalleryListingPrices({
+    candidates = [],
+    marketPrices = {},
+    settings = {},
+    priceTiers,
+    overridesByItem = {},
+    random = Math.random
+  } = {}) {
+    const result = {};
+    for (const candidate of candidates) {
+      const quote2 = readValue(marketPrices, candidate.item.definitionId), market = quote2?.price ?? quote2;
+      let value = null;
+      if (settings.priceMode === "fixed") value = settings.fixedPrice ?? null;
+      else if (Number.isFinite(market)) {
+        if (settings.priceMode === "steps") value = moveGalleryListingPrice(market, settings.steps ?? 0, priceTiers);
+        else {
+          const pct = percentage(settings.percentageRange ?? [100, 100], random);
+          if (pct !== null) value = roundGalleryListingPrice(market * pct / 100, priceTiers);
+        }
+      }
+      result[candidate.item.id] = readValue(overridesByItem, candidate.item.id) ?? value;
+    }
+    return result;
+  }
   function planGalleryListingPrices({
     candidates = [],
     marketPrices = /* @__PURE__ */ new Map(),
@@ -11866,6 +12881,8 @@
     limitsByItem = /* @__PURE__ */ new Map(),
     priceTiers = null,
     overridesByItem = /* @__PURE__ */ new Map(),
+    previewPrices = null,
+    quoteExpired = false,
     random = Math.random
   } = {}) {
     const mode = settings.priceMode ?? "percentage", duration = settings.durationSeconds ?? 3600;
@@ -11877,8 +12894,14 @@
       const override = readValue(overridesByItem, itemId);
       const overrideBuyNow = override && typeof override === "object" ? override.buyNow : override;
       const overrideStartPrice = override && typeof override === "object" ? override.startPrice : null;
+      const automatic = overrideBuyNow == null && mode !== "fixed";
+      if (automatic && (quoteExpired || !Number.isFinite(market) || market < GALLERY_LISTING_MIN_PRICE)) {
+        skipped.push({ itemId, definitionId, reason: quoteExpired ? "market-price-expired" : "market-price-unavailable" });
+        continue;
+      }
       let buyNow;
       if (overrideBuyNow != null) buyNow = overrideBuyNow;
+      else if (previewPrices !== null) buyNow = readValue(previewPrices, itemId);
       else if (mode === "fixed") buyNow = settings.fixedPrice;
       else if (!Number.isFinite(market) || market < GALLERY_LISTING_MIN_PRICE) {
         skipped.push({ itemId, definitionId, reason: "market-price-unavailable" });
@@ -11921,6 +12944,7 @@
         buyNow,
         durationSeconds: duration,
         priceMode: mode,
+        priceOrigin: automatic ? "market" : "manual",
         marketPrice: Number.isFinite(market) ? market : null,
         priceLimits: limits,
         adjusted: false
@@ -12069,54 +13093,126 @@
     const dialog = add(parent, "dialog");
     dialog.id = "gallery-bulk-list-dialog";
     dialog.setAttribute("aria-label", "Bulk List");
-    dialog.style.cssText = "width:min(672px,94vw);max-width:min(672px,94vw);max-height:85vh;overflow:hidden;box-sizing:border-box";
+    dialog.style.cssText = "width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden;box-sizing:border-box";
     const style = add(dialog, "style");
     style.textContent = `
-    #gallery-bulk-list-dialog{background:#171c22;color:#f2f4f6;border:1px solid #53616b;border-radius:12px;padding:20px;width:min(672px,94vw);max-width:min(672px,94vw);max-height:85vh;overflow:hidden;box-sizing:border-box}
-    #gallery-bulk-list-dialog::backdrop{background:#0009}
+    #gallery-bulk-list-dialog{background:#151a20;color:#f2f4f6;border:1px solid #46525d;border-radius:10px;padding:16px;width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden!important;box-sizing:border-box;box-shadow:0 18px 55px #000b;scrollbar-gutter:stable}
+    #gallery-bulk-list-dialog[open]{display:block}
+    #gallery-bulk-list-dialog::backdrop{background:#000b}
     #gallery-bulk-list-dialog [hidden]{display:none!important}
-    #gallery-bulk-list-dialog .dialog-header{display:flex;align-items:center;gap:12px;margin:0 0 12px;flex-wrap:nowrap}
-    #gallery-bulk-list-dialog .dialog-header>strong{flex:1;min-width:0}#gallery-bulk-list-dialog .dialog-header>button{flex:0 0 auto;margin:0;align-self:center}
-    #gallery-bulk-list-dialog .list-group{padding:10px;margin:10px 0;border:1px solid #46515b;border-radius:7px;display:grid;gap:10px}
-    #gallery-bulk-list-dialog .list-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    #gallery-bulk-list-dialog label{display:grid;gap:6px;min-width:0}
-    #gallery-bulk-list-dialog input,#gallery-bulk-list-dialog select{box-sizing:border-box;width:100%;min-width:0;color:inherit;background:#242d36;border:1px solid #63717e;border-radius:5px;padding:6px}
+    #gallery-bulk-list-dialog .dialog-header{display:flex;align-items:center;gap:10px;margin:0 0 8px;min-height:30px}
+    #gallery-bulk-list-dialog .dialog-header>strong{font-size:16px;font-weight:700;letter-spacing:.01em;flex:1;min-width:0}
+    #gallery-bulk-list-dialog .dialog-header>button{flex:0 0 auto;margin:0;align-self:center}
+    #gallery-bulk-list-dialog>.list-source{display:block;color:#8f9ba6;font-size:11px;margin:-2px 0 10px}
+    #gallery-bulk-list-dialog .list-controls{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 8px}
+    #gallery-bulk-list-dialog .list-group{padding:9px 10px;margin:0;border:1px solid #37424c;border-radius:6px;background:#20272f;display:grid;gap:8px;align-content:start;min-width:0}
+    #gallery-bulk-list-dialog .list-group>strong{font-size:11px;color:#d6dee5;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+    #gallery-bulk-list-dialog .list-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    #gallery-bulk-list-dialog label{display:grid;gap:4px;min-width:0;font-size:11px;color:#aeb9c2}
+    #gallery-bulk-list-dialog input,#gallery-bulk-list-dialog select{box-sizing:border-box;width:100%;min-width:0;color:inherit;background:#171d23;border:1px solid #52606b;border-radius:4px;padding:6px 7px;font-size:12px;min-height:29px}
     #gallery-bulk-list-dialog input[type=checkbox]{width:18px;height:18px}
     #gallery-bulk-list-dialog input[type=range]{padding:0;accent-color:#b0ed55}
+    #gallery-bulk-list-dialog .listing-currency{display:flex;min-width:96px;height:40px;align-items:center;border:1px solid #52606b;border-radius:4px;overflow:hidden;background:#171d23}
+    #gallery-bulk-list-dialog .listing-currency>input{flex:1;width:70px;height:40px!important;min-height:0!important;appearance:textfield;border:0!important;border-radius:0!important;background:transparent}
+    #gallery-bulk-list-dialog .listing-currency>input::-webkit-inner-spin-button{appearance:none}
+    #gallery-bulk-list-dialog .listing-currency>div{display:flex;height:40px;flex-direction:column;border-left:1px solid #52606b}
+    #gallery-bulk-list-dialog .listing-currency button{height:20px!important;min-height:0!important;width:24px;padding:0!important;line-height:0;border:0!important;border-radius:0;background:#29333d}
+    #gallery-bulk-list-dialog .list-footer{align-items:center;flex-wrap:wrap}
+    #gallery-bulk-list-dialog .list-footer>button{margin:0}
     ${listingRangeStyles}
-    #gallery-bulk-list-dialog button{border:1px solid #65717c;border-radius:6px;padding:7px 12px;background:#28333e;color:inherit;cursor:pointer}
-    #gallery-bulk-list-dialog button[aria-pressed=true]{background:#b0ed55;color:#141c09}
+    #gallery-bulk-list-dialog .listing-range{gap:6px}
+    #gallery-bulk-list-dialog .listing-range-box{gap:7px;border-color:#46535e;border-radius:5px;padding:7px;background:#171d23}
+    #gallery-bulk-list-dialog .listing-range-track{height:6px;background:#414d57}
+    #gallery-bulk-list-dialog .listing-range-indicator{background:#b0ed55}
+    #gallery-bulk-list-dialog .listing-range-thumb::-webkit-slider-thumb{width:16px;height:16px;border-color:#b0ed55;background:#202a30}
+    #gallery-bulk-list-dialog .listing-range-values{gap:7px}
+    #gallery-bulk-list-dialog .listing-range-values>input{height:27px!important;background:#171d23!important;border-color:#52606b}
+    #gallery-bulk-list-dialog .listing-range-ends{font-size:10px;color:#87949e}
+    #gallery-bulk-list-dialog button{border:1px solid #52606b;border-radius:4px;padding:6px 10px;background:#29333d;color:#e9eef2;cursor:pointer;font-size:12px;line-height:1.2}
+    #gallery-bulk-list-dialog button:hover:not(:disabled){border-color:#9fda52;background:#34414b}
+    #gallery-bulk-list-dialog button[aria-pressed=true]{background:#b0ed55;border-color:#b0ed55;color:#141c09;font-weight:700}
     #gallery-bulk-list-dialog button:disabled{opacity:.45;cursor:default}
-    #gallery-bulk-list-dialog .list-segments{display:flex;gap:4px}#gallery-bulk-list-dialog .list-segments button{flex:1}
-    #gallery-bulk-list-dialog .list-toolbar{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin:10px 0}
-    #gallery-bulk-list-dialog .list-table-wrap{max-height:36vh;overflow-x:auto;overflow-y:auto}#gallery-bulk-list-dialog table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}
-    #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{padding:8px 5px;border-bottom:1px solid #3d4650;text-align:left}
-    #gallery-bulk-list-dialog .list-card{height:50px;width:80px;position:relative}
+    #gallery-bulk-list-dialog .list-segments{display:flex;gap:3px}#gallery-bulk-list-dialog .list-segments button{flex:1;padding-inline:5px}
+    #gallery-bulk-list-dialog .list-toolbar{display:flex;gap:5px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:7px 0}
+    #gallery-bulk-list-dialog .list-toolbar .toolbar-group{display:flex;gap:5px;align-items:center}
+    #gallery-bulk-list-dialog .list-table-wrap{width:100%;height:auto;max-height:none;min-height:120px;overflow-x:hidden;overflow-y:visible;border:1px solid #39444e;border-radius:6px;background:#171d23}
+    #gallery-bulk-list-dialog table{width:100%;min-width:0;border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
+    #gallery-bulk-list-dialog th{position:sticky;top:0;z-index:1;background:#252e37;color:#9eabb5;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+    #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{padding:7px 8px;border-bottom:1px solid #303b45;text-align:left;vertical-align:middle;white-space:nowrap}
+    #gallery-bulk-list-dialog tbody tr:hover{background:#222c34}
+    #gallery-bulk-list-dialog tbody tr:last-child td{border-bottom:0}
+    #gallery-bulk-list-dialog th:nth-child(1),#gallery-bulk-list-dialog td:nth-child(1){width:32px;text-align:center}
+    #gallery-bulk-list-dialog th:nth-child(2),#gallery-bulk-list-dialog td:nth-child(2){width:26%}
+    #gallery-bulk-list-dialog th:nth-child(3),#gallery-bulk-list-dialog td:nth-child(3){width:22%}
+    #gallery-bulk-list-dialog th:nth-child(4),#gallery-bulk-list-dialog td:nth-child(4){width:22%}
+    #gallery-bulk-list-dialog th:nth-child(5),#gallery-bulk-list-dialog td:nth-child(5){width:14%}
+    #gallery-bulk-list-dialog th:nth-child(6),#gallery-bulk-list-dialog td:nth-child(6){width:16%}
+    #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{overflow:hidden;text-overflow:ellipsis}
+    #gallery-bulk-list-dialog .list-card{height:50px;width:82px;position:relative;display:inline-block;vertical-align:middle;margin-right:7px}
     #gallery-bulk-list-dialog .list-card slot{display:block;transform:scale(.5);transform-origin:top left;width:144px;height:200px}
-    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
-    #gallery-bulk-list-dialog output{display:block;overflow-wrap:anywhere;margin:10px 0}
-    #gallery-bulk-list-dialog .list-profit[data-sign=positive]{color:#8ddd9d}#gallery-bulk-list-dialog .list-profit[data-sign=negative]{color:#ff9696}
+    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid #35414a;background:#151a20}
+    #gallery-bulk-list-dialog .list-footer button.primary{background:#b0ed55;border-color:#b0ed55;color:#141c09;font-weight:700;min-width:122px}
+    #gallery-bulk-list-dialog output{display:block;overflow-wrap:anywhere;margin:7px 0;color:#aab6bf;font-size:11px;min-height:16px}
+    #gallery-bulk-list-dialog progress{display:block;height:5px;border:0;border-radius:5px;overflow:hidden;background:#303b45}
+    #gallery-bulk-list-dialog progress::-webkit-progress-value{background:#b0ed55}
+    #gallery-bulk-list-dialog .list-pagebar{justify-content:center;color:#9eabb5;font-size:11px}
+    #gallery-bulk-list-dialog tfoot{background:#1d252c;position:sticky;bottom:0}
+    #gallery-bulk-list-dialog tfoot td{border-top:1px solid #3a4650;border-bottom:0;color:#c6d0d7;font-weight:600}
+    #gallery-bulk-list-dialog details{margin-top:8px;padding:8px 10px;border:1px solid #37424c;border-radius:6px;background:#20272f;font-size:11px}
+    @media (max-width:640px){#gallery-bulk-list-dialog{padding:12px;width:96vw;max-width:96vw;max-height:calc(100vh - 24px)}#gallery-bulk-list-dialog .list-table-wrap{min-height:120px!important}#gallery-bulk-list-dialog .list-footer{justify-content:stretch}#gallery-bulk-list-dialog .list-footer button{flex:1}#gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{padding:6px 4px;font-size:10px}#gallery-bulk-list-dialog .listing-currency{min-width:0}#gallery-bulk-list-dialog .listing-currency>input{width:52px;padding-inline:3px}}
+    #gallery-bulk-list-dialog{background:#191d23}
+    #gallery-bulk-list-dialog .list-controls{gap:14px}
+    #gallery-bulk-list-dialog .list-group{padding:16px 12px;border:0;border-radius:14px;background:#2e3336;gap:12px}
+    #gallery-bulk-list-dialog .list-group>strong,#gallery-bulk-list-dialog .list-group>label{font-size:13px;color:#f2f4f6;text-transform:none;letter-spacing:normal;font-weight:600}
+    #gallery-bulk-list-dialog .list-segments{justify-content:flex-start;gap:8px}
+    #gallery-bulk-list-dialog .list-segments button{flex:none;padding:6px 10px}
+    #gallery-bulk-list-dialog button[aria-pressed=true],#gallery-bulk-list-dialog .list-footer button.primary{background:#2ca65e;border-color:#2ca65e;color:#fff}
+    #gallery-bulk-list-dialog .listing-range-box{background:transparent;border-color:#777;padding:10px}
+    #gallery-bulk-list-dialog .listing-range-indicator{background:#2ca65e}
+    #gallery-bulk-list-dialog .listing-range-thumb::-webkit-slider-thumb{border-color:#2ca65e;background:#191d23}
+    /* Keep the Enhancer control geometry after the Workbench global
+       button/input min-height rule has been applied. */
+    #gallery-bulk-list-dialog .listing-range-values>input{height:27px!important;min-height:0!important;background:#45494c!important;border-color:#888}
+    #gallery-bulk-list-dialog .listing-currency{min-width:96px;background:#45494c;border-color:#888}
+    #gallery-bulk-list-dialog .listing-currency>input{width:70px;min-width:0;height:40px!important;min-height:0!important;font-size:14px}
+    #gallery-bulk-list-dialog .listing-currency button{height:20px!important;width:24px;background:#45494c}
+    #gallery-bulk-list-dialog .list-card{height:50px;width:82px;margin-right:7px}
+    #gallery-bulk-list-dialog .list-card slot{transform:scale(.5)}
+    #gallery-bulk-list-dialog .list-table-wrap{box-sizing:border-box;overflow-x:hidden;overflow-y:visible}
+    #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{white-space:normal;overflow-wrap:anywhere;box-sizing:border-box}
+    #gallery-bulk-list-dialog th{position:static;text-transform:none;font-size:12px;background:#191d23;color:#fff;letter-spacing:normal}
+    #gallery-bulk-list-dialog td small{display:block;font-size:10px;line-height:1.4;color:#c3c7c9}
+    #gallery-bulk-list-dialog tbody{background:#424242}
+    #gallery-bulk-list-dialog tfoot{position:static;background:#191d23}
+    #gallery-bulk-list-dialog .list-footer{background:#191d23;border:0;padding:24px 0 8px}
+    #gallery-bulk-list-dialog .dialog-header>button{border:0;background:transparent;font-size:22px;padding:0 4px}
+    #gallery-bulk-list-dialog .list-selection{margin-right:auto}
+    #gallery-bulk-list-dialog .list-pagebar{justify-content:flex-end;margin:26px 0 12px}
+    #gallery-bulk-list-dialog .list-profit[data-sign=positive]{color:#00da55}#gallery-bulk-list-dialog .list-profit[data-sign=negative]{color:#ff9696}
   `;
     const header = add(dialog, "div");
     header.className = "dialog-header";
     add(header, "strong", "Bulk List");
-    const close = add(header, "button", "\u5173\u95ED");
+    const close = add(header, "button", "\xD7");
     close.type = "button";
-    add(dialog, "small", "\u6765\u6E90\uFF1AFUT.GG \xB7 \u6302\u724C\u4E0D\u7B49\u4E8E\u552E\u51FA\uFF0C\u6210\u4EA4\u540E\u624D\u8BA1\u6536\u5165");
+    close.setAttribute("aria-label", "\u5173\u95ED");
+    const source = add(dialog, "small", "\u62A5\u4EF7\u6765\u6E90\u8BFB\u53D6\u8BBE\u7F6E\u4E2D\u7684\u6765\u6E90 \xB7 \u6302\u724C\u4E0D\u662F\u6210\u4EA4\uFF0C\u9700 EA \u786E\u8BA4");
+    source.className = "list-source";
     const controls = add(dialog, "div");
+    controls.className = "list-controls";
     const group = () => {
       const e = add(controls, "section");
       e.className = "list-group";
       return e;
     };
     const durationGroup = group(), priceGroup = group(), delayGroup = group();
-    const durationLabel = add(durationGroup, "label", "\u65F6\u957F"), duration = add(durationLabel, "select");
+    const durationLabel = add(durationGroup, "label", "Duration"), duration = add(durationLabel, "select");
     duration.setAttribute("aria-label", "\u65F6\u957F");
     for (const hours of [1, 3, 6, 12, 24, 72]) {
-      const o = add(duration, "option", `${hours}h`);
+      const o = add(duration, "option", `${hours} Hour${hours === 1 ? "" : "s"}`);
       o.value = String(hours * 3600);
     }
-    add(priceGroup, "strong", "\u4EF7\u683C");
+    add(priceGroup, "strong", "Price");
     const segments = add(priceGroup, "div");
     segments.className = "list-segments";
     const mode = { value: "percentage" }, modes = /* @__PURE__ */ new Map();
@@ -12125,14 +13221,14 @@
       button.type = "button";
       modes.set(value, button);
       button.addEventListener("click", (event) => {
-        if (event.isTrusted && !busy) {
+        if (event.isTrusted && !busy && mode.value !== value) {
           mode.value = value;
           changeSettings(true);
         }
       });
     }
     const percentFields = add(priceGroup, "div"), fixedFields = add(priceGroup, "div");
-    percentFields.className = fixedFields.className = "list-fields";
+    fixedFields.className = "list-fields";
     const field = (parent2, label2, value, type = "number") => {
       const wrap = add(parent2, "label"), caption = add(wrap, "span", label2), input = add(wrap, "input");
       input.type = type;
@@ -12151,7 +13247,7 @@
     const percentageRange = mountListingRange({
       document,
       parent: percentFields,
-      label: "\u4EF7\u683C\u8303\u56F4 %",
+      label: "Price Range %",
       labels: ["\u6700\u4F4E\u767E\u5206\u6BD4", "\u6700\u9AD8\u767E\u5206\u6BD4"],
       min: 0,
       max: 200,
@@ -12175,38 +13271,85 @@
       pctMaxValue = Number(v);
     }, updateCaption() {
     } };
-    const start = field(fixedFields, "Start Bid", ""), fixed = field(fixedFields, "Buy Now", ""), steps = field(priceGroup, "\u4EF7\u683C\u6863\u4F4D", 0);
+    const startControl = mountListingCurrency({
+      document,
+      parent: add(fixedFields, "label", "Start Bid"),
+      label: "Start Bid",
+      enabled: () => !busy,
+      onCommit: (value) => {
+        let changed = false;
+        if (value != null && fixedControl.getValue() != null && value > fixedControl.getValue()) {
+          fixedControl.setValue(moveGalleryListingPrice(value, 1, prepared?.priceTiers));
+          changed = true;
+        }
+        changeSettings(changed);
+      }
+    });
+    const fixedControl = mountListingCurrency({
+      document,
+      parent: add(fixedFields, "label", "Buy Now"),
+      label: "Buy Now",
+      enabled: () => !busy,
+      onCommit: (value) => {
+        if (value != null && startControl.getValue() != null && startControl.getValue() > value) {
+          startControl.setValue(moveGalleryListingPrice(value, -1, prepared?.priceTiers));
+        }
+        changeSettings(true);
+      }
+    });
+    const steps = field(priceGroup, "\u4EF7\u683C\u6863\u4F4D", 0);
     steps.min = "-20";
     steps.max = "20";
-    add(delayGroup, "strong", "\u6302\u724C\u95F4\u9694");
-    const delayFields = add(delayGroup, "div");
-    delayFields.className = "list-fields";
-    const delayMin = field(delayFields, "\u7B49\u5F85\u6700\u5C11\uFF08\u79D2\uFF09", 3, "range"), delayMax = field(delayFields, "\u7B49\u5F85\u6700\u591A\uFF08\u79D2\uFF09", 5, "range");
-    for (const input of [delayMin, delayMax]) {
-      input.min = "1";
-      input.max = "15";
-    }
-    delayMin.value = "3";
-    delayMax.value = "5";
+    let delayRangeValues = [3, 5];
+    const delayRange = mountListingRange({
+      document,
+      parent: delayGroup,
+      label: "Wait Time Between Listings",
+      labels: ["\u6700\u5C11\u79D2\u6570", "\u6700\u591A\u79D2\u6570"],
+      min: 1,
+      max: 15,
+      value: delayRangeValues,
+      enabled: () => !busy,
+      onValueChange: (next2) => {
+        delayRangeValues = next2;
+        changeSettings(false);
+      }
+    });
     const toolbar = add(dialog, "div");
     toolbar.className = "list-toolbar";
-    const all = add(toolbar, "button", "\u5168\u9009"), none = add(toolbar, "button", "\u53D6\u6D88\u9009\u62E9");
-    const cards = add(toolbar, "button", "\u5361\u7247\u89C6\u56FE"), tableView = add(toolbar, "button", "\u8868\u683C\u89C6\u56FE");
+    const selectionTools = add(toolbar, "div");
+    selectionTools.className = "toolbar-group";
+    const all = add(selectionTools, "button", "Select all");
+    all.setAttribute("aria-label", "\u5168\u9009");
+    const none = add(selectionTools, "button", "Clear");
+    none.setAttribute("aria-label", "\u53D6\u6D88\u9009\u62E9");
+    const viewTools = add(toolbar, "div");
+    viewTools.className = "toolbar-group";
+    const cards = add(viewTools, "button", "Cards");
+    cards.setAttribute("aria-label", "\u5361\u7247\u89C6\u56FE");
+    const tableView = add(viewTools, "button", "Table");
+    tableView.setAttribute("aria-label", "\u8868\u683C\u89C6\u56FE");
     const tableWrap = add(dialog, "div");
     tableWrap.className = "list-table-wrap";
     const table = add(tableWrap, "table");
     const heading = add(table, "thead"), hr = add(heading, "tr");
-    for (const text5 of ["\u9009\u62E9", "\u7403\u5458", "FUT.GG", "\u5356\u4EF7", "\u4E70\u5165\u4EF7", "\u76C8\u4E8F", "\u7ED3\u679C"]) add(hr, "th", text5);
+    for (const text5 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add(hr, "th", text5);
     const body = add(table, "tbody");
     const footer = add(add(table, "tfoot"), "tr");
     const totalLabel = add(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
     totalLabel.colSpan = 5;
     const totalProfit = add(footer, "td");
     totalProfit.className = "list-profit";
-    add(footer, "td");
     const pages = add(dialog, "div");
     pages.className = "list-toolbar";
-    const previous = add(pages, "button", "\u4E0A\u4E00\u9875"), pageStatus = add(pages, "span"), next = add(pages, "button", "\u4E0B\u4E00\u9875");
+    const selectionCount = add(pages, "span");
+    selectionCount.className = "list-selection";
+    const previous = add(pages, "button", "Previous");
+    previous.setAttribute("aria-label", "\u4E0A\u4E00\u9875");
+    const pageStatus = add(pages, "span");
+    pages.classList.add("list-pagebar");
+    const next = add(pages, "button", "Next");
+    next.setAttribute("aria-label", "\u4E0B\u4E00\u9875");
     const progress = add(dialog, "progress");
     progress.style.width = "100%";
     progress.max = 1;
@@ -12218,10 +13361,14 @@
     output.setAttribute("role", "status");
     const actions = add(dialog, "div");
     actions.className = "list-footer";
-    const cancel = add(actions, "button", "\u53D6\u6D88");
+    const cancel = add(actions, "button", "Cancel");
     cancel.type = "button";
-    const submit = add(actions, "button", "\u6302\u724C\u9009\u4E2D\u5361"), stop6 = add(actions, "button", "\u505C\u6B62");
+    cancel.setAttribute("aria-label", "\u53D6\u6D88");
+    const submit = add(actions, "button", "Bulk List");
+    submit.className = "primary";
+    const stop6 = add(actions, "button", "Stop");
     stop6.hidden = true;
+    stop6.setAttribute("aria-label", "\u505C\u6B62");
     const scheduleBox = add(dialog, "details");
     scheduleBox.id = "gallery-listing-schedule";
     const scheduleCapability = service.scheduleCapability?.() ?? { enabled: false };
@@ -12243,17 +13390,18 @@
     scheduleCancel.disabled = true;
     const scheduleStatus = add(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
     scheduleStatus.setAttribute("role", "status");
-    const selected = /* @__PURE__ */ new Set(), overrides = {}, generatedPrices = {}, rows = /* @__PURE__ */ new Map();
+    const selected = /* @__PURE__ */ new Set(), overrides = {}, rows = /* @__PURE__ */ new Map();
+    let generatedPrices = null;
     let viewMode = "cards", pageIndex = 0;
     let busy = false, identity5 = null, prepared = null, plan = null, resumeRunId = null, disposed = false, scheduleState = "absent";
     const settings = () => ({
       priceMode: mode.value,
       percentageRange: [Number(pctMin.value), Number(pctMax.value)],
-      fixedPrice: fixed.value ? Number(fixed.value) : null,
-      fixedStartPrice: start.value ? Number(start.value) : null,
+      fixedPrice: fixedControl.getValue(),
+      fixedStartPrice: startControl.getValue(),
       steps: Number(steps.value),
       durationSeconds: Number(duration.value),
-      delaySeconds: [Number(delayMin.value), Number(delayMax.value)],
+      delaySeconds: [...delayRangeValues],
       playerView: viewMode
     });
     const schedule = () => ({ type: "once", runAt: new Date(scheduleValue.value).getTime() });
@@ -12277,7 +13425,14 @@
       FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED: "\u4E0A\u4E00\u6279\u6302\u724C\u8BB0\u5F55\u5C5E\u4E8E\u5176\u4ED6\u8D26\u53F7\u6216\u4F1A\u8BDD\uFF0C\u672A\u7EE7\u7EED\u6302\u724C\uFF1B\u8BF7\u5207\u6362\u56DE\u539F\u8D26\u53F7\u6062\u590D\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED: "\u6302\u724C\u8BB0\u5F55\u65E0\u6CD5\u53EF\u9760\u4FDD\u5B58\uFF0C\u672A\u7EE7\u7EED\u53D1\u9001\u6302\u724C\u8BF7\u6C42\uFF1B\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED: "\u5199\u5165\u6216\u5F52\u6863\u6302\u724C\u8BB0\u5F55\u5931\u8D25\uFF0C\u672A\u53D1\u9001\u540E\u7EED\u6302\u724C\u8BF7\u6C42\uFF1B\u8BF7\u68C0\u67E5\u5B58\u50A8\u5E76\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
-      FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: "\u6302\u724C\u56DE\u6267\u65E0\u6CD5\u786E\u8BA4\uFF0C\u672A\u81EA\u52A8\u91CD\u8BD5\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D\u3002"
+      FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: "\u6302\u724C\u56DE\u6267\u65E0\u6CD5\u786E\u8BA4\uFF0C\u672A\u81EA\u52A8\u91CD\u8BD5\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D\u3002",
+      FC27_GALLERY_LISTING_QUOTE_EXPIRED: "\u57FA\u51C6\u6E90\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u672A\u5F00\u59CB\u6302\u724C\uFF1B\u8BF7\u91CD\u65B0\u6253\u5F00\u8BFB\u53D6\u62A5\u4EF7\u3002",
+      "market-price-unavailable": "\u57FA\u51C6\u6E90\u65E0\u62A5\u4EF7",
+      "market-price-expired": "\u57FA\u51C6\u6E90\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00",
+      "price-limits-unavailable": "EA \u4EF7\u683C\u8303\u56F4\u8BFB\u53D6\u5931\u8D25",
+      "price-out-of-range": "\u6302\u724C\u4EF7\u683C\u8D85\u51FA EA \u8303\u56F4",
+      "listing-price-invalid": "\u672A\u8BBE\u7F6E\u6709\u6548\u4E00\u53E3\u4EF7",
+      "start-price-invalid": "\u8D77\u62CD\u4EF7\u65E0\u6548"
     })[reason] ?? reason ?? "\u6CA1\u6709\u53EF\u6302\u724C\u7684\u5DF2\u8D2D\u5361";
     const failure = (result) => [
       reasonText(result?.reason),
@@ -12315,8 +13470,10 @@
       table.hidden = false;
       cards.setAttribute("aria-pressed", String(viewMode === "cards"));
       tableView.setAttribute("aria-pressed", String(viewMode === "table"));
-      hr.children[2].textContent = viewMode === "cards" ? "\u4E0A\u6B21\u6302\u724C" : "FUT.GG";
-      pages.hidden = viewMode !== "cards" || rows.size <= 10;
+      hr.children[2].textContent = viewMode === "table" ? prepared?.source ?? "Market Price" : "Previously Listed";
+      pages.hidden = false;
+      previous.hidden = next.hidden = pageStatus.hidden = viewMode !== "cards" || rows.size <= 10;
+      selectionCount.textContent = `${selected.size} of ${rows.size} row(s) selected.`;
       pageIndex = Math.max(0, Math.min(pageIndex, Math.ceil(rows.size / 10) - 1));
       previous.disabled = busy || pageIndex === 0;
       next.disabled = busy || (pageIndex + 1) * 10 >= rows.size;
@@ -12328,7 +13485,13 @@
         const show = viewMode === "cards" && !row.tr.hidden;
         row.card.hidden = !show || row.cardAttempted && !row.native;
         row.name.hidden = show && !!row.native;
-        row.reference.textContent = viewMode === "cards" ? row.previousPrice ?? "N/A" : row.quote ?? "\u672A\u77E5";
+        row.reference.replaceChildren();
+        row.quoteLine.textContent = "";
+        add(row.reference, "span", (viewMode === "table" ? row.quote : row.previousPrice) ?? "N/A");
+        if (row.quotes) for (const source2 of ["futgg", "futbin"]) {
+          const value = row.quotes[source2];
+          if (value != null) add(row.quoteLine, "span", `${source2 === "futgg" ? "GG" : "BIN"} ${value}`);
+        }
         if (!show) {
           row.native?.__fcatDealloc?.();
           row.native = null;
@@ -12358,7 +13521,7 @@
       }
     };
     const changeSettings = (pricesChanged = false) => {
-      if (pricesChanged) for (const key of Object.keys(generatedPrices)) delete generatedPrices[key];
+      if (pricesChanged) generatedPrices = null;
       void Promise.resolve(service.writeSettings?.(settings())).catch(() => {
       });
       refresh();
@@ -12368,26 +13531,35 @@
       fixedFields.hidden = mode.value !== "fixed";
       steps.parentElement.hidden = mode.value !== "steps";
       for (const [value, button] of modes) button.setAttribute("aria-pressed", String(mode.value === value));
-      for (const input of [pctMin, pctMax, delayMin, delayMax]) input.updateCaption();
+      for (const input of [pctMin, pctMax]) input.updateCaption();
       renderView();
       if (!prepared || resumeRunId || busy) return;
-      if (Object.keys(generatedPrices).length === 0) {
-        const preview = service.plan({ selectedIds: prepared.candidates.map((row) => row.item.id), settings: settings(), overridesByItem: overrides });
-        for (const entry of preview.entries ?? []) generatedPrices[entry.item.id] = entry.buyNow;
-      }
-      const effectiveOverrides = { ...generatedPrices, ...overrides };
-      plan = service.plan({ selectedIds: [...selected], settings: settings(), overridesByItem: effectiveOverrides });
+      if (generatedPrices === null) generatedPrices = previewGalleryListingPrices({
+        candidates: prepared.candidates,
+        marketPrices: prepared.prices,
+        priceTiers: prepared.priceTiers,
+        settings: settings(),
+        overridesByItem: overrides
+      });
+      const effectiveOverrides = { ...overrides };
+      plan = service.plan({
+        selectedIds: [...selected],
+        settings: settings(),
+        overridesByItem: effectiveOverrides,
+        previewPrices: generatedPrices
+      });
       let total = 0;
       for (const [id10, row] of rows) {
         const entry = plan.entries?.find((e) => e.item.id === id10), skip = plan.skipped?.find((e) => e.itemId === id10);
         if (!row.price) continue;
-        const bin = effectiveOverrides[id10] ?? entry?.buyNow;
-        row.price.value = bin == null ? "" : String(bin);
-        row.state.textContent = !selected.has(id10) ? "\u672A\u9009\u62E9" : entry ? `${entry.startPrice} \u2192 ${entry.buyNow}` : skip?.reason ?? "\u4E0D\u53EF\u7528";
+        const bin = overrides[id10] ?? generatedPrices[id10] ?? entry?.buyNow;
+        row.currency.setValue(bin ?? null);
+        row.state.textContent = !selected.has(id10) ? "" : entry ? "" : reasonText(skip?.reason ?? "\u4E0D\u53EF\u7528");
+        row.price.title = entry ? `${entry.startPrice} \u2192 ${entry.buyNow}` : row.state.textContent;
         row.check.checked = selected.has(id10);
-        const amount = Number.isFinite(bin) && row.purchasePrice > 0 ? Math.round(bin * 0.95) - row.purchasePrice : null;
-        profit(row.profit, amount);
-        if (selected.has(id10) && amount != null) total += amount;
+        const amount2 = Number.isFinite(bin) && row.purchasePrice > 0 ? Math.round(bin * 0.95) - row.purchasePrice : null;
+        profit(row.profit, amount2);
+        if (selected.has(id10) && amount2 != null) total += amount2;
       }
       profit(totalProfit, total);
       submit.disabled = plan.status !== "observed" || !plan.entries?.length || prepared.liveEnabled !== true;
@@ -12414,7 +13586,7 @@
           add(tr, "td", String(entry.buyNow));
           add(tr, "td", "\u2014");
           add(tr, "td", "\u2014");
-          row = { tr, state: add(tr, "td") };
+          row = { tr, state: add(tr.children[3], "small") };
           rows.set(entry.item.id, row);
         }
         row.state.textContent = `${label(entry.status)}${entry.reason ? ` \xB7 ${entry.reason}` : ""}`;
@@ -12522,30 +13694,21 @@
     };
     close.addEventListener("click", closeDialog);
     cancel.addEventListener("click", closeDialog);
-    dialog.addEventListener("close", disposeCards);
+    dialog.addEventListener("close", () => {
+      if (!dialog.open) disposeCards();
+    });
     dialog.addEventListener("cancel", (event) => {
       if (busy) event.preventDefault();
+      else disposeCards();
     });
-    controls.addEventListener("change", (event) => {
-      if (event.isTrusted && !busy) {
-        const input = event.target;
-        let coupled = false;
-        if (input === start && start.value && fixed.value && Number(start.value) > Number(fixed.value)) {
-          const nextPrice = moveGalleryListingPrice(Number(start.value), 1, prepared?.priceTiers);
-          if (nextPrice != null) {
-            fixed.value = String(nextPrice);
-            coupled = true;
-          }
-        }
-        if (input === fixed && fixed.value && start.value && Number(start.value) > Number(fixed.value)) {
-          const previousPrice = moveGalleryListingPrice(Number(fixed.value), -1, prepared?.priceTiers);
-          if (previousPrice != null) start.value = String(previousPrice);
-        }
-        for (const [lo, hi] of [[pctMin, pctMax], [delayMin, delayMax]]) if (Number(lo.value) > Number(hi.value)) {
-          if (input === lo) hi.value = lo.value;
-          else lo.value = hi.value;
-        }
-        changeSettings(coupled || priceGroup.contains(input) && input !== start);
+    duration.addEventListener("change", (event) => {
+      if (event.isTrusted && !busy) changeSettings();
+    });
+    steps.addEventListener("input", (event) => {
+      if (event.isTrusted && !busy && steps.value !== "") {
+        const value = Math.max(-20, Math.min(20, Math.round(Number(steps.value))));
+        steps.value = String(value);
+        changeSettings(true);
       }
     });
     cards.addEventListener("click", (event) => {
@@ -12605,7 +13768,7 @@
         execution.replaceChildren();
         progress.value = 0;
         for (const key of Object.keys(overrides)) delete overrides[key];
-        for (const key of Object.keys(generatedPrices)) delete generatedPrices[key];
+        generatedPrices = null;
         scheduleStatus.textContent = "\u5C1A\u65E0\u8BA1\u5212";
         scheduleValue.value = "";
         dialog.showModal();
@@ -12620,13 +13783,13 @@
             pctMax.value = String(saved.percentageRange[1]);
             percentageRange.setValue(saved.percentageRange);
           }
-          fixed.value = saved?.fixedPrice == null ? "" : String(saved.fixedPrice);
-          start.value = saved?.fixedStartPrice == null ? "" : String(saved.fixedStartPrice);
+          fixedControl.setValue(saved?.fixedPrice ?? null);
+          startControl.setValue(saved?.fixedStartPrice ?? null);
           if (Number.isSafeInteger(saved?.steps)) steps.value = String(saved.steps);
           if (Number.isSafeInteger(saved?.durationSeconds)) duration.value = String(saved.durationSeconds);
           if (Array.isArray(saved?.delaySeconds)) {
-            delayMin.value = String(saved.delaySeconds[0]);
-            delayMax.value = String(saved.delaySeconds[1]);
+            delayRangeValues = [...saved.delaySeconds];
+            delayRange.setValue(delayRangeValues);
           }
           if (scheduleCapability.enabled) {
             const savedSchedule = await service.readSchedule?.();
@@ -12652,6 +13815,8 @@
             output.textContent = `\u4E0A\u4E00\u6279\u6302\u724C\u8BB0\u5F55\u5F85\u6838\u5BF9 \xB7 ${pending2} \u5F20\u672A\u5B8C\u6210\uFF1B\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D${result.lastReason ? ` \xB7 ${reasonText(result.lastReason)}` : ""}`;
           } else if (result.status === "ready") {
             prepared = result;
+            const names = (result.requestedSources ?? ["futgg"]).map((value) => value === "futgg" ? "FUT.GG" : "FUTBIN");
+            source.textContent = `${names.join(" + ")} \xB7 \u57FA\u51C6 ${result.source ?? "FUT.GG"}`;
             for (const e of result.candidates) {
               const tr = add(body, "tr"), check = add(add(tr, "td"), "input");
               check.type = "checkbox";
@@ -12661,17 +13826,27 @@
               slot.name = `gallery-bulk-card-${String(e.item.id).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
               card.append(slot);
               const reference = add(tr, "td");
-              const price2 = add(add(tr, "td"), "input");
-              price2.type = "number";
-              price2.min = "150";
-              price2.max = "15000000";
-              price2.style.width = "100px";
-              price2.setAttribute("aria-label", `${e.name} Buy Now`);
+              const priceCell = add(tr, "td");
+              const currency = mountListingCurrency({
+                document,
+                parent: priceCell,
+                label: `${e.name} Buy Now`,
+                enabled: () => !busy,
+                limits: () => result.limitsByItem?.[e.item.id] ?? {},
+                onCommit: (value) => {
+                  if (value == null) delete overrides[e.item.id];
+                  else overrides[e.item.id] = value;
+                  generatedPrices = null;
+                  refresh();
+                }
+              });
+              const price2 = currency.input;
+              const quoteLine = add(priceCell, "small");
               const purchasePrice = e.boughtFor ?? e.purchase?.purchasePrice;
               add(tr, "td", purchasePrice > 0 ? String(purchasePrice) : "N/A");
               const profitCell = add(tr, "td");
               profitCell.className = "list-profit";
-              const state = add(tr, "td");
+              const state = add(priceCell, "small");
               const quoteKnown = Number.isFinite(Number(result.prices?.[e.item.definitionId])) && Number(result.prices[e.item.definitionId]) > 0;
               check.checked = quoteKnown;
               if (quoteKnown) selected.add(e.item.id);
@@ -12679,14 +13854,17 @@
                 tr,
                 check,
                 price: price2,
+                currency,
                 state,
                 card,
                 name,
                 reference,
+                quoteLine,
                 entry: e,
                 purchasePrice,
                 profit: profitCell,
                 quote: result.prices[e.item.definitionId],
+                quotes: result.pricesBySource?.[e.item.definitionId],
                 previousPrice: e.previousListingPrice,
                 slot
               });
@@ -12694,13 +13872,6 @@
                 if (event.isTrusted && !busy) {
                   if (check.checked) selected.add(e.item.id);
                   else selected.delete(e.item.id);
-                  refresh();
-                }
-              });
-              price2.addEventListener("change", (event) => {
-                if (event.isTrusted && !busy) {
-                  if (price2.value) overrides[e.item.id] = Number(price2.value);
-                  else delete overrides[e.item.id];
                   refresh();
                 }
               });
@@ -12723,6 +13894,312 @@
         service.stop();
         disposeCards();
         dialog.remove();
+      }
+    });
+  }
+
+  // src/gallery/planning-prices.js
+  async function priceGalleryPlanningTargets(targets, { load, current: current2 = () => true, onProgress = () => {
+  } }) {
+    const rows = /* @__PURE__ */ new Map();
+    const owned2 = new Set(targets.flatMap((target) => target.progress.rows.filter(isGalleryOwned).map((row) => row.eaId)));
+    for (const target of targets) for (const row of target.progress.rows) {
+      if (!owned2.has(row.eaId)) rows.set(row.eaId, row);
+    }
+    const ids = [...rows.keys()], snapshot = { source: "public-references", prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
+    for (let start = 0; start < ids.length; start += 250) {
+      if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+      const batch = ids.slice(start, start + 250);
+      const part = await load(batch, {
+        rows: batch.map((id10) => rows.get(id10)),
+        ...snapshot.policy ? { policy: snapshot.policy } : {},
+        isCurrent: current2,
+        onProgress: (value) => onProgress({ ...value, index: start + value.index, total: ids.length })
+      });
+      if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+      if (part?.source !== "public-references" || !part.policy || snapshot.policy && JSON.stringify(part.policy) !== JSON.stringify(snapshot.policy))
+        throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      snapshot.policy = part.policy;
+      Object.assign(snapshot.prices, part.prices);
+      Object.assign(snapshot.freshPrices, part.freshPrices);
+      Object.assign(snapshot.references, part.references);
+      if (part.expiresAt != null) snapshot.expiresAt = Math.min(snapshot.expiresAt ?? Infinity, part.expiresAt);
+    }
+    return targets.map((target) => ({ ...target, prices: { ...snapshot.freshPrices }, priceSnapshot: snapshot }));
+  }
+
+  // src/adapters/browser/fc27-purchase-results.js
+  var messages = {
+    FC27_BUY_NO_LISTING: "\u4E0A\u9650\u5185\u65E0\u6302\u724C",
+    FC27_GALLERY_NO_LISTING: "\u4E0A\u9650\u5185\u65E0\u6302\u724C",
+    FC27_BUY_LISTING_UNAVAILABLE: "\u6302\u724C\u5DF2\u552E\u51FA",
+    FC27_BUY_LISTING_CHANGED: "\u6302\u724C\u5DF2\u5931\u6548",
+    FC27_BUY_REFERENCE_PRICE_UNAVAILABLE: "\u6240\u9009\u6765\u6E90\u65E0\u62A5\u4EF7",
+    FC27_BUY_REFERENCE_PRICE_EXPIRED: "\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5237\u65B0",
+    FC27_BUY_ATTEMPTS_EXHAUSTED: "\u5C1D\u8BD5\u6B21\u6570\u5DF2\u7528\u5B8C",
+    FC27_BUY_INSUFFICIENT_COINS: "\u91D1\u5E01\u4E0D\u8DB3",
+    FC27_PUBLIC_PRICE_FUTBIN_DISABLED: "FUTBIN \u8BFB\u53D6\u5DF2\u5173\u95ED\uFF1B\u539F\u6279\u6B21\u4ECD\u91C7\u7528 FUTBIN\uFF0C\u8BF7\u91CD\u65B0\u5F00\u542F\u8BFB\u53D6\u6216\u91CD\u65B0\u751F\u6210 FUT.GG \u65B9\u6848\u3002",
+    FC27_PUBLIC_PRICE_FUTGG_DISABLED: "FUT.GG \u8BFB\u53D6\u5DF2\u5173\u95ED\uFF1B\u5F53\u524D\u6279\u6B21\u7684\u4EF7\u683C\u6388\u6743\u4E0D\u53D8\uFF0C\u8BF7\u91CD\u65B0\u542F\u7528\u8BE5\u6765\u6E90\u6216\u751F\u6210\u65B0\u65B9\u6848\u3002"
+  };
+  var recovered = (row) => ["club", "collected"].includes(row.state);
+  var uncertain = (row) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(row.state);
+  var failed = (row) => row.state === "waiting" && row.attempt?.failed === true;
+  var amount = (n) => Number.isFinite(n) ? n.toLocaleString() : "\u672A\u77E5";
+  var time = (n) => Number.isSafeInteger(n) ? new Date(n).toLocaleString() : "\u672A\u63D0\u4F9B";
+  function mountFc27PurchaseResults({ document, parent, refreshPrices, retry, resume, readPlayerName = null, isCurrent = () => true }) {
+    let outcome = null, context = null, busy = false, disposed = false, revision = 0;
+    let running = false;
+    const expanded = /* @__PURE__ */ new Set();
+    let edits = /* @__PURE__ */ new Map(), references = {}, selected = /* @__PURE__ */ new Set(), actionError = "";
+    const add = (container, tag, text5 = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      container.append(node);
+      return node;
+    };
+    const root = add(parent, "div");
+    root.className = "fcat-purchase-results";
+    const style = add(root, "style");
+    style.textContent = ".fcat-purchase-results{font:14px/1.5 Arial,sans-serif;text-align:left;color:inherit}.fcat-purchase-results *{box-sizing:border-box}.fcat-purchase-results .purchase-row{padding:10px 0;border-bottom:1px solid #68766a;overflow-wrap:anywhere}.fcat-purchase-results label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fcat-purchase-results input[type=checkbox]{width:18px;height:18px;min-width:18px;margin:0}.fcat-purchase-results input[type=number]{width:120px;min-width:0;height:32px}.fcat-purchase-results .purchase-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0}.fcat-purchase-results button{height:auto;min-height:36px;margin:0;padding:6px 12px}.fcat-purchase-results small{display:block}.fcat-purchase-results [hidden]{display:none!important}.fcat-purchase-results .purchase-error{color:#ffb9aa;overflow-wrap:anywhere}";
+    style.textContent += currencyInputStyles;
+    style.textContent += `.fcat-purchase-results button,.fcat-purchase-results input,.fcat-purchase-results select{font:inherit;color:#edf1f4;background:#202d36;border:1px solid #46545d;border-radius:5px;max-width:100%}
+    .fcat-purchase-results select{width:auto;min-height:36px;padding:6px 10px}.fcat-purchase-results button{width:auto;cursor:pointer}.fcat-purchase-results button:disabled{opacity:.45;cursor:default}
+    .fcat-purchase-results p{margin:6px 0;font:inherit}.fcat-purchase-results label{margin:0;font:inherit}
+    .fcat-purchase-results .purchase-row{padding:10px 6px}.fcat-purchase-results .purchase-row[data-active=true]{background:#304451;border-left:3px solid #9df3d5}
+    .fcat-purchase-results .purchase-row-title{display:flex;justify-content:space-between;gap:8px}.fcat-purchase-results strong{font:600 14px/1.5 Arial,sans-serif}
+    .fcat-purchase-results .purchase-state{font-size:13px;color:#c1ced5}.fcat-purchase-results .purchase-price{font-size:13px;font-variant-numeric:tabular-nums}
+    .fcat-purchase-results summary{margin:0;padding:4px 0;color:#b3c5cd;font:12px/1.5 Arial,sans-serif;cursor:pointer}
+    .fcat-purchase-results small{margin:2px 0;font:12px/1.5 Arial,sans-serif;color:#b3c5cd}
+    .fcat-purchase-results .purchase-error:empty,.fcat-purchase-results .purchase-actions:empty{display:none}
+    .fcat-purchase-results .purchase-row>label:not(:first-child){margin-top:6px}`;
+    const content = add(root, "div");
+    let totals, error2, retryButton;
+    const valid2 = () => {
+      let total = 0, reason = "";
+      if (!Number.isSafeInteger(context?.balance) || context.balance < 0) reason = "\u5F53\u524D\u4F59\u989D\u65E0\u6CD5\u786E\u8BA4\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u8D2D\u4E70\u7ED3\u679C\u3002";
+      const items = [...selected].map((definitionId) => ({ definitionId, maxBuy: edits.get(definitionId) }));
+      for (const item2 of items) {
+        const quote2 = references[item2.definitionId]?.quotes?.[context?.policy.source];
+        if (!quote2 || quote2.error || quote2.price === null || quote2.expiresAt <= Date.now() || quote2.fetchedAt > Date.now()) reason = "\u6240\u9009\u6765\u6E90\u7F3A\u4EF7\u6216\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5237\u65B0\u53C2\u8003\u4EF7\uFF1B\u4E5F\u53EF\u5728\u8BBE\u7F6E\u4E2D\u8C03\u6574\u6765\u6E90\u3002";
+        const cap = purchasePriceCap({ ...context, maxBuy: item2.maxBuy });
+        if (cap === null || cap !== item2.maxBuy) reason = "\u4E0A\u9650\u987B\u4E3A EA \u5408\u6CD5\u4EF7\u6863\uFF0C\u4E14\u4E0D\u80FD\u8D85\u8FC7\u5355\u5361\u9650\u5236\u3001\u4F59\u989D\u6216\u5269\u4F59\u9884\u7B97\u3002";
+        total += Number.isFinite(item2.maxBuy) ? item2.maxBuy : 0;
+      }
+      if (total > (context?.remainingBudget ?? Infinity) || total > (context?.balance ?? Infinity)) reason = "\u6240\u9009\u4E0A\u9650\u5408\u8BA1\u8D85\u8FC7\u4F59\u989D\u6216\u5269\u4F59\u9884\u7B97\uFF0C\u8BF7\u51CF\u5C11\u9009\u62E9\u6216\u964D\u4F4E\u4E0A\u9650\u3002";
+      return { items, total, reason };
+    };
+    const updateTotals = () => {
+      if (!totals) return;
+      const value = valid2();
+      totals.textContent = `\u5DF2\u9009 ${value.items.length} \u5F20 \xB7 \u672C\u6B21\u6700\u591A ${amount(value.total)} \u91D1\u5E01 \xB7 \u6BCF\u5361\u6700\u591A ${context?.policy.purchaseAttempts ?? "\u2014"} \u6B21`;
+      error2.textContent = actionError || value.reason;
+      retryButton.textContent = `\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361\uFF08${value.items.length}\uFF09`;
+      retryButton.disabled = busy || !context || !!value.reason || !value.items.length || !isCurrent();
+    };
+    const button = (container, label, action) => {
+      const node = add(container, "button", label);
+      node.type = "button";
+      node.className = "btn-standard";
+      node.disabled = busy;
+      node.addEventListener("click", async (event) => {
+        if (!event.isTrusted || busy || disposed || !isCurrent()) return;
+        busy = true;
+        actionError = "";
+        const turn = revision;
+        render();
+        try {
+          await action();
+        } catch (e) {
+          if (!disposed && turn === revision && isCurrent()) {
+            actionError = messages[e?.message] ?? (/^FC27_[A-Z0-9_]+$/.test(e?.message ?? "") ? e.message : "\u64CD\u4F5C\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002");
+            error2.textContent = actionError;
+          }
+        } finally {
+          if (!disposed && turn === revision) {
+            busy = false;
+            for (const node2 of content.querySelectorAll("button,input,select")) node2.disabled = false;
+            updateTotals();
+          }
+        }
+      });
+      return node;
+    };
+    const rowView = (container, row, editable) => {
+      const line = add(container, "div");
+      line.className = "purchase-row";
+      line.dataset.definitionId = row.definitionId;
+      line.dataset.active = String(running && outcome?.definitionId === row.definitionId);
+      const label = add(line, "label");
+      label.className = "purchase-row-title";
+      if (editable) {
+        const box = add(label, "input");
+        box.type = "checkbox";
+        box.checked = selected.has(row.definitionId);
+        box.disabled = busy;
+        box.addEventListener("change", () => {
+          if (box.checked) selected.add(row.definitionId);
+          else selected.delete(row.definitionId);
+          updateTotals();
+        });
+      }
+      const active = running && outcome?.definitionId === row.definitionId;
+      const inFlight = { "buy-pending": "\u4E70\u5165\u4E2D", bought: "\u5DF2\u4E70\u5165\uFF0C\u5F85\u5165\u5E93", "move-pending": "\u5165\u5E93\u4E2D", "move-rejected": "\u5165\u5E93\u5931\u8D25\uFF0C\u4FDD\u7559\u56DE\u6267" };
+      const state = recovered(row) ? "\u5DF2\u5B8C\u6210" : uncertain(row) ? running ? inFlight[row.state] : "\u56DE\u6267\u5F85\u6838\u5BF9\uFF0C\u4E0D\u80FD\u91CD\u4E70" : failed(row) ? "\u672A\u4E70\u5230" : active ? "\u6B63\u5728\u67E5\u4EF7" : "\u5F85\u5904\u7406";
+      let name = row.name;
+      if (!name && readPlayerName) {
+        try {
+          name = readPlayerName(row.definitionId);
+        } catch {
+        }
+      }
+      add(label, "strong", name || `\u7403\u5458 #${row.definitionId}`);
+      add(label, "span", state).className = "purchase-state";
+      const reference = references[row.definitionId] ?? row.reference;
+      add(line, "div", `${row.price == null ? "" : `\u6210\u4EA4 ${amount(row.price)} \xB7 `}\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`).className = "purchase-price";
+      if (row.reason) add(line, "small", messages[row.reason] ?? row.reason);
+      const detail = add(line, "details");
+      detail.className = "purchase-quote-details";
+      detail.open = expanded.has(row.definitionId);
+      add(detail, "summary", "\u62A5\u4EF7\u4E0E\u5C1D\u8BD5\u8BE6\u60C5");
+      detail.addEventListener("toggle", () => {
+        if (detail.isConnected) {
+          if (detail.open) expanded.add(row.definitionId);
+          else expanded.delete(row.definitionId);
+        }
+      });
+      add(detail, "small", `\u7248\u672C ${row.definitionId}`);
+      if (row.attempt) add(detail, "small", `\u672C\u8F6E ${row.attempt.used}/${row.attempt.limit} \u6B21 \xB7 \u7D2F\u8BA1 ${row.attempt.total} \u6B21 \xB7 \u7B2C ${row.attempt.round} \u8F6E \xB7 \u5E02\u573A\u67E5\u8BE2 ${row.attempt.queries ?? 0} \u6B21`);
+      if (reference) {
+        for (const source of ["futgg", "futbin"]) {
+          const quote2 = reference.quotes?.[source];
+          if (["FC27_PUBLIC_PRICE_SOURCE_NOT_REQUESTED", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED"].includes(quote2?.error)) {
+            add(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} \xB7 \u672A\u8BFB\u53D6`);
+            continue;
+          }
+          add(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} ${amount(quote2?.price)} \xB7 \u6293\u53D6 ${time(quote2?.fetchedAt)} \xB7 \u6E90\u7AD9\u66F4\u65B0 ${time(quote2?.sourceUpdatedAt)}`);
+        }
+        add(detail, "small", `\u91C7\u7528 ${context?.policy.source ?? reference.policy?.source ?? "\u2014"} \xB7 \u4E0A\u6B21\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`);
+      }
+      if (editable) {
+        const edit = add(line, "label", "\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650");
+        const input = add(edit, "input");
+        input.type = "number";
+        input.min = "150";
+        input.value = edits.get(row.definitionId) ?? "";
+        input.disabled = busy;
+        const changed = () => {
+          edits.set(row.definitionId, input.value === "" ? null : Number(input.value));
+          updateTotals();
+        };
+        input.addEventListener("input", changed);
+        bindCurrencyArrows({
+          document,
+          input,
+          label: `\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650 ${row.name || row.definitionId}`,
+          enabled: () => !busy,
+          limits: () => ({ minimum: 150, maximum: Math.min(
+            15e6,
+            context?.absoluteCap ?? 15e6,
+            context?.balance ?? 15e6,
+            context?.remainingBudget ?? 15e6
+          ) }),
+          onStep: (value) => {
+            input.value = String(value);
+            changed();
+          }
+        });
+      }
+    };
+    const render = () => {
+      content.replaceChildren();
+      totals = error2 = retryButton = null;
+      const rows = outcome?.results ?? [];
+      if (!outcome) return;
+      add(content, "p", `\u7D2F\u8BA1\u5DF2\u652F\u51FA ${amount(outcome.spent ?? 0)} \u91D1\u5E01 \xB7 \u5269\u4F59\u9884\u7B97 ${context?.remainingBudget == null ? "\u6309\u53EF\u7528\u4F59\u989D" : amount(context.remainingBudget)}`);
+      const recovery = outcome.status === "recovery-required" || outcome.recovery || outcome.replacementPending || rows.some(uncertain);
+      const canRetry = !busy && !recovery && !!context;
+      if (!busy && rows.some(recovered)) {
+        const done = add(content, "details");
+        done.className = "purchase-completed";
+        add(done, "summary", `\u5DF2\u5B8C\u6210 ${rows.filter(recovered).length} \u5F20`);
+        rows.filter(recovered).forEach((row) => rowView(done, row, false));
+      }
+      rows.filter((row) => busy || !recovered(row)).forEach((row) => rowView(content, row, canRetry && failed(row)));
+      const actions = add(content, "div");
+      actions.className = "purchase-actions";
+      if (!recovery && rows.some(failed) && context) {
+        const mode = add(actions, "select");
+        mode.disabled = busy;
+        for (const [value, text5] of [["fixed", "\u52A0\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u52A0\u767E\u5206\u6BD4"]]) {
+          const option = add(mode, "option", text5);
+          option.value = value;
+        }
+        const premium = add(actions, "input");
+        premium.type = "number";
+        premium.min = "0";
+        premium.value = "0";
+        premium.disabled = busy;
+        premium.setAttribute("aria-label", "\u6279\u91CF\u6EA2\u4EF7");
+        button(actions, "\u5E94\u7528\u5230\u6240\u9009\u5361", () => {
+          const value = Number(premium.value);
+          if (!Number.isSafeInteger(value) || value < 0) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+          for (const id10 of selected) {
+            const quotes = references[id10]?.quotes;
+            const price2 = galleryReferenceQuote({ futgg: quotes?.futgg?.price, futbin: quotes?.futbin?.price }, { ...context.policy, premiumMode: mode.value, premium: value });
+            edits.set(id10, price2.maxBuy === null ? null : purchasePriceCap({ maxBuy: price2.maxBuy, priceTiers: context.priceTiers }));
+          }
+          busy = false;
+          render();
+        });
+        if (refreshPrices) button(actions, "\u5237\u65B0\u53C2\u8003\u4EF7", async () => {
+          const turn = revision;
+          const snapshot = await refreshPrices(rows.filter(failed).map((row) => row.definitionId), { force: true, isCurrent: () => !disposed && turn === revision && isCurrent() });
+          if (disposed || turn !== revision || !isCurrent()) return;
+          references = { ...references, ...snapshot.references };
+          context = { ...context, policy: snapshot.policy ?? context.policy };
+          busy = false;
+          render();
+        });
+        totals = add(content, "p");
+        retryButton = button(content, "\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361", () => {
+          const value = valid2();
+          if (value.reason || !value.items.length) throw Error("FC27_BUY_RETRY_CAP_INVALID");
+          return retry({
+            operationId: context.operationId,
+            key: context.key,
+            items: value.items,
+            references: structuredClone(references),
+            policy: { ...context.policy }
+          });
+        });
+      }
+      if (!busy && (recovery || rows.some((row) => row.state === "waiting" && !row.attempt?.failed))) {
+        button(content, recovery ? "\u6838\u5BF9\u5E76\u7EE7\u7EED" : "\u7EE7\u7EED\u672A\u5904\u7406", () => resume());
+      }
+      error2 = add(content, "p");
+      error2.className = "purchase-error";
+      error2.setAttribute("role", "status");
+      updateTotals();
+    };
+    return Object.freeze({
+      show(value, { running: active = false } = {}) {
+        const first = outcome === null;
+        revision++;
+        outcome = value;
+        context = value?.retryContext ?? null;
+        running = active;
+        busy = active;
+        actionError = "";
+        references = Object.fromEntries((value?.results ?? []).filter((row) => row.reference).map((row) => [row.definitionId, row.reference]));
+        edits = new Map((value?.results ?? []).filter(failed).map((row) => [row.definitionId, row.reference?.maxBuy ?? null]));
+        selected = new Set(edits.keys());
+        render();
+        if (first) parent.scrollTop = 0;
+      },
+      dispose() {
+        disposed = true;
+        revision++;
+        root.remove();
       }
     });
   }
@@ -12794,6 +14271,7 @@
     provider,
     loadSet = null,
     loadPrices = null,
+    loadPlanningPrices = null,
     accountScope = () => null,
     assets = null,
     prices = null,
@@ -12807,6 +14285,7 @@
     setFirstOwner = null,
     planStore = null,
     listing = null,
+    relist = null,
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
@@ -12819,6 +14298,91 @@
         if (event.isTrusted && bulkList) void bulkList.open();
       });
     }
+    const relistStartButton = node("gallery-relist-start");
+    const relistRange = node("gallery-relist-range");
+    const relistStopButton = node("gallery-relist-stop");
+    const relistStatus = node("gallery-relist-status");
+    const relistRecoverButton = node("gallery-relist-recover");
+    if (node("gallery-relist-controls")) node("gallery-relist-controls").hidden = !relist;
+    let relistBusy = false;
+    const relistIdentity = () => {
+      try {
+        return accountScope();
+      } catch {
+        return null;
+      }
+    };
+    const relistText = (value) => {
+      if (!value) return "";
+      if (value.status === "armed") return `\u81EA\u52A8\u91CD\u6302\u5DF2\u542F\u7528\uFF1A${value.range === "all" ? "\u5168\u90E8\u672A\u552E" : "\u672C\u6279"}\uFF0C\u6BCF ${value.minutes} \u5206\u949F\u68C0\u67E5 \xB7 \u5DF2\u6267\u884C ${value.runs ?? 0}/2 \u8F6E`;
+      if (value.status === "waiting-time") return `\u81EA\u52A8\u91CD\u6302\u5DF2\u542F\u7528\uFF1A${value.range === "all" ? "\u5168\u90E8\u672A\u552E" : "\u672C\u6279"}\uFF0C\u7B49\u5F85\u4E0B\u4E00\u6B21\u68C0\u67E5`;
+      if (value.status === "running") return "\u81EA\u52A8\u91CD\u6302\u5904\u7406\u4E2D";
+      if (value.status === "completed") return "\u81EA\u52A8\u91CD\u6302\u6388\u6743\u5DF2\u5B8C\u6210";
+      if (value.status === "disarmed") return "\u81EA\u52A8\u91CD\u6302\u5DF2\u505C\u6B62";
+      if (value.status === "blocked") return `\u81EA\u52A8\u91CD\u6302\u5DF2\u505C\u6B62\uFF1A${value.reason ?? "\u72B6\u6001\u672A\u786E\u8BA4"}`;
+      return "";
+    };
+    const showRelist = (value) => {
+      if (relistStatus) {
+        relistStatus.hidden = !value || value.status === "absent";
+        relistStatus.textContent = relistText(value) || (value?.status === "waiting-operation" ? "\u5176\u4ED6\u64CD\u4F5C\u6B63\u5728\u6267\u884C\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" : "");
+      }
+      const enabled = ["armed", "waiting-time", "running"].includes(value?.status);
+      for (const control of [relistStartButton, relistRange, node("gallery-relist-minutes")]) if (control) control.disabled = relistBusy || enabled || value?.pending != null;
+      if (enabled) {
+        if (relistRange && ["batch", "all"].includes(value.range)) relistRange.value = value.range;
+        if ([1, 5, 10].includes(value.minutes)) node("gallery-relist-minutes").value = String(value.minutes);
+      }
+      if (relistStopButton) {
+        relistStopButton.hidden = !enabled;
+        relistStopButton.disabled = relistBusy;
+      }
+      if (relistRecoverButton) {
+        relistRecoverButton.hidden = !["running", "blocked"].includes(value?.status);
+        relistRecoverButton.disabled = relistBusy;
+      }
+    };
+    const refreshRelist = async () => {
+      if (typeof relist?.read !== "function" || relistBusy) return;
+      const identity5 = relistIdentity();
+      try {
+        const value = await relist.read();
+        if (identity5 === relistIdentity()) showRelist(value);
+      } catch {
+        if (relistStatus) {
+          relistStatus.hidden = false;
+          relistStatus.textContent = "\u81EA\u52A8\u91CD\u6302\u72B6\u6001\u8BFB\u53D6\u5931\u8D25";
+        }
+      }
+    };
+    const runRelist = async (action) => {
+      if (!relist || relistBusy) return;
+      const identity5 = relistIdentity();
+      relistBusy = true;
+      try {
+        const value = await action();
+        relistBusy = false;
+        if (identity5 === relistIdentity()) showRelist(value);
+      } catch {
+        relistBusy = false;
+        if (identity5 === relistIdentity()) showRelist({ status: "blocked", reason: "\u72B6\u6001\u65E0\u6CD5\u786E\u8BA4\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7" });
+      }
+    };
+    const armRelist = (range) => void runRelist(() => relist.arm({ approved: true, range, minutes: Number(node("gallery-relist-minutes")?.value ?? 10) }));
+    relistStartButton?.addEventListener("click", (event) => {
+      if (event.isTrusted) armRelist(relistRange?.value ?? "batch");
+    });
+    if (relistStopButton) {
+      relistStopButton.hidden = !relist;
+      relistStopButton.addEventListener("click", (event) => {
+        if (!event.isTrusted || typeof relist?.disarm !== "function") return;
+        relist.stop();
+        void runRelist(() => relist.disarm());
+      });
+    }
+    relistRecoverButton?.addEventListener("click", (event) => {
+      if (event.isTrusted) void runRelist(() => relist.poll({ recover: true }));
+    });
     const add = (parent, tag, value = "", className = "") => {
       const child = document.createElement(tag);
       child.textContent = value;
@@ -12834,6 +14398,7 @@
       }
     };
     let buying = false, purchaseSummary = null;
+    let purchaseResults = null;
     let purchaseReplan = null;
     const refreshPurchases = async () => {
       if (typeof purchase?.inspect !== "function" || buying) return;
@@ -12876,8 +14441,18 @@
       node("gallery-purchase-stop").disabled = false;
       node("gallery-purchase-progress").value = 0;
       output.textContent = "\u6B63\u5728\u6838\u5BF9\u8D2D\u4E70\u6E05\u5355\u2026";
+      purchaseResults?.dispose();
+      purchaseResults = null;
       node("gallery-purchase-results")?.replaceChildren();
-      dialog.showModal();
+      if (!dialog.open) dialog.showModal();
+      if (purchase.refreshPrices) purchaseResults = mountFc27PurchaseResults({
+        document,
+        parent: node("gallery-purchase-results"),
+        refreshPrices: purchase.refreshPrices,
+        isCurrent: () => !disposed && active && identity5 === scope2(),
+        retry: (retry) => runPurchase({ resume: true, expectedOperationId: retry.operationId, retry }),
+        resume: () => runPurchase({ resume: true, expectedOperationId: purchaseSummary?.operationId })
+      });
       const phases = {
         search: "\u67E5\u4EF7",
         buying: "\u4E70\u5165",
@@ -12894,8 +14469,9 @@
           approved: true,
           isCurrent: () => !disposed && active && identity5 === scope2(),
           onProgress: (progress) => {
-            node("gallery-purchase-progress").max = progress.total || 1;
-            node("gallery-purchase-progress").value = progress.completed;
+            if (disposed || !active || identity5 !== scope2()) return;
+            purchaseResults?.show(progress, { running: true });
+            updatePurchaseDialogProgress(dialog, progress);
             output.textContent = `${phases[progress.phase] ?? "\u5904\u7406\u4E2D"} ${progress.index}/${progress.total} \xB7 \u5DF2\u8D2D\u4E70 ${progress.purchased} \u5F20 \xB7 ${count2(progress.spent)} \u91D1\u5E01`;
           }
         });
@@ -12923,7 +14499,9 @@
         if (outcome.collection?.status === "pending") output.textContent += " \xB7 \u6536\u96C6\u5F85\u786E\u8BA4\uFF1B\u518D\u6B21\u6838\u5BF9\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165";
         if (outcome.failures?.length) output.textContent += ` \xB7 ${outcome.failures.length} \u5F20\u672A\u5B8C\u6210\uFF0C\u53EF\u7EED\u8D2D`;
         const resultList = node("gallery-purchase-results");
-        if (resultList) {
+        updatePurchaseDialogProgress(dialog, outcome);
+        if (purchaseResults) purchaseResults.show(outcome);
+        else if (resultList) {
           resultList.replaceChildren();
           for (const item2 of outcome.results ?? []) {
             const state2 = {
@@ -12973,28 +14551,38 @@
       const identity5 = scope2(), token = ++planningEpoch;
       const catalogAtStart = result?.catalog, setAtStart = selectedSetId, jointAtStart = jointMode;
       const current2 = () => !disposed && active && identity5 === scope2() && token === planningEpoch && message.isConnected && result?.catalog === catalogAtStart && selectedSetId === setAtStart && jointMode === jointAtStart;
-      const steps = planGalleryRemainderSteps({
-        targets: input.targets,
-        outcome: input.outcome,
-        ledger: input.ledger,
-        budget: input.budget,
-        mode: input.mode ?? (input.targets.length === 1 ? "single" : "joint")
-      });
-      void runGalleryPlan(steps, {
-        current: current2,
-        progress: (state2) => {
-          message.textContent = `\u6B63\u5728\u91CD\u7B97\u2026 ${state2.evaluations} \u4E2A\u5019\u9009`;
-        }
-      }).then((plan) => {
+      void (async () => {
+        const targets = loadPlanningPrices ? await priceGalleryPlanningTargets(input.targets, {
+          load: loadPlanningPrices,
+          current: current2,
+          onProgress: (state2) => {
+            message.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
+          }
+        }) : input.targets;
+        const steps = planGalleryRemainderSteps({
+          targets,
+          outcome: input.outcome,
+          ledger: input.ledger,
+          budget: input.budget,
+          mode: input.mode ?? (targets.length === 1 ? "single" : "joint")
+        });
+        return runGalleryPlan(steps, {
+          current: current2,
+          progress: (state2) => {
+            message.textContent = `\u6B63\u5728\u91CD\u7B97\u2026 ${state2.evaluations} \u4E2A\u5019\u9009`;
+          }
+        });
+      })().then((plan) => {
         if (!plan || !current2()) return;
         message.replaceChildren();
         if (plan.status === "ready") {
+          attachPlanPrices(plan, plan.targets.map((target2) => target2.priceSnapshot));
           add(message, "small", "\u539F\u8D2D\u4E70\u7ED3\u679C\u5DF2\u4FDD\u7559\uFF1B\u4EE5\u4E0B\u4EC5\u662F\u65B0\u7684\u672C\u5730\u66FF\u4EE3\u65B9\u6848\uFF0C\u9700\u8981\u518D\u6B21\u70B9\u51FB\u8D2D\u4E70\u3002", "gallery-unknown");
           for (const candidate of plan.plans) {
             const detail = add(message, "details");
             add(detail, "summary", `${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`}${candidate.score == null ? "" : ` \xB7 \u6700\u7EC8 ${count2(candidate.score)} \u5206`}`);
             const list2 = add(detail, "ul");
-            for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
+            for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}`);
             const executionBudget = plan.remainingBudget ?? input.budget;
             purchaseButton(detail, candidate.items, `${input.binding ?? "gallery"}:replan:${candidate.items.map((item2) => item2.eaId).join(",")}`, {
               budget: executionBudget,
@@ -13049,8 +14637,13 @@
         }
         parent.querySelector(".gallery-purchase-error")?.remove();
         void diag({ event: "purchase-click", phase: "preflight", status: "accepted", count: items.length });
+        const pricedItems = items.map((item2) => {
+          if (item2.priceReference) return item2;
+          const snapshot = replanContext?.targets?.find((target) => target.priceSnapshot?.references?.[item2.eaId])?.priceSnapshot ?? [...details.values()].find((value) => value.priceSnapshot?.references?.[item2.eaId])?.priceSnapshot;
+          return snapshot ? { ...item2, priceReference: snapshot.references[item2.eaId], pricePolicy: snapshot.policy } : item2;
+        });
         void runPurchase({
-          items,
+          items: pricedItems,
           binding,
           budget,
           progress,
@@ -13074,7 +14667,29 @@
       if (buying) event.preventDefault();
     });
     node("gallery-purchase-resume").addEventListener("click", (event) => {
-      if (event.isTrusted && purchaseSummary?.status === "observed") void runPurchase({ resume: true, expectedOperationId: purchaseSummary.operationId });
+      if (!event.isTrusted || buying || purchaseSummary?.status !== "observed") return;
+      if (!purchase.refreshPrices || !purchaseSummary.retryContext) {
+        void runPurchase({ resume: true, expectedOperationId: purchaseSummary.operationId });
+        return;
+      }
+      const identity5 = scope2(), operationId = purchaseSummary.operationId;
+      purchaseResults?.dispose();
+      node("gallery-purchase-results").replaceChildren();
+      purchaseResults = mountFc27PurchaseResults({
+        document,
+        parent: node("gallery-purchase-results"),
+        refreshPrices: purchase.refreshPrices,
+        isCurrent: () => !disposed && active && identity5 === scope2(),
+        retry: (retry) => runPurchase({ resume: true, expectedOperationId: operationId, retry }),
+        resume: () => runPurchase({ resume: true, expectedOperationId: operationId })
+      });
+      purchaseResults.show(purchaseSummary);
+      updatePurchaseDialogProgress(node("gallery-purchase-dialog"), purchaseSummary);
+      node("gallery-purchase-message").textContent = "\u4E0A\u6B21\u8D2D\u4E70\u7ED3\u679C\uFF1B\u4FEE\u6539\u4EC5\u4F5C\u7528\u4E8E\u672C\u6B21\u91CD\u8BD5\u3002";
+      node("gallery-purchase-stop").hidden = true;
+      node("gallery-purchase-close").hidden = false;
+      const dialog = node("gallery-purchase-dialog");
+      if (!dialog.open) dialog.showModal();
     });
     const asset = (kind, id10) => {
       try {
@@ -13164,6 +14779,29 @@
     const priceExpired = (detail) => detail?.priceSnapshot?.expiresAt != null && Date.now() >= detail.priceSnapshot.expiresAt;
     const planningPrices = (detail) => detail?.priceSnapshot ? priceExpired(detail) ? {} : detail.priceSnapshot.freshPrices : detail?.prices;
     const needsPriceRefresh = (detail) => !detail?.priceSnapshot || priceExpired(detail) || detail.priceSnapshot.expiresAt == null && !Object.keys(detail.priceSnapshot.freshPrices ?? {}).length;
+    const priceForPlan = async (value, set, current2, output) => {
+      if (!loadPlanningPrices) return;
+      const [priced2] = await priceGalleryPlanningTargets([{ set, progress: value.progress }], {
+        load: loadPlanningPrices,
+        current: current2,
+        onProgress: (state2) => {
+          output.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
+        }
+      });
+      if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+      Object.assign(value, { priceSnapshot: priced2.priceSnapshot, prices: priced2.prices });
+    };
+    const attachPlanPrices = (plan, snapshots) => {
+      for (const candidate of plan?.plans ?? []) for (const item2 of candidate.items ?? []) {
+        const snapshot = snapshots.find((snapshot2) => snapshot2?.references?.[item2.eaId]);
+        if (snapshot) {
+          item2.priceReference = structuredClone(snapshot.references[item2.eaId]);
+          item2.pricePolicy = { ...snapshot.policy };
+        }
+      }
+      return plan;
+    };
+    const purchasePriceText = (item2) => item2.priceReference ? `FUT.GG ${count2(item2.priceReference.futgg)} / FUTBIN ${count2(item2.priceReference.futbin)} \xB7 \u4F30\u4EF7 ${count2(item2.price)} \xB7 \u4E0A\u9650 ${count2(item2.priceReference.maxBuy)}` : item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`;
     const statusIcon = (parent, value, label) => {
       const icon = add(parent, "span", value === true ? "\u2713" : value === false ? "\u25CB" : "?", `gallery-status-icon ${value === true ? "is-yes" : value === false ? "is-no" : "is-unknown"}`);
       icon.title = label;
@@ -13230,7 +14868,7 @@
         for (const card of node("gallery-set-list").querySelectorAll(".gallery-set")) {
           if (!changed.has(card.dataset.setId)) continue;
           const set = sets2.find((row) => row.id === card.dataset.setId), detail = details.get(set?.id);
-          const summary3 = set && scoreSummary(detail, set);
+          const summary3 = set && scoreSummary(detail, set, 3);
           const label = card.querySelector(".gallery-summary"), grades3 = card.querySelector(".gallery-grades");
           if (!summary3 || !label || !grades3) continue;
           label.textContent = compactScore(summary3);
@@ -13242,7 +14880,7 @@
         if ([...changed].some((id10) => jointTargets.has(id10))) renderJoint();
         if (changed.has(selectedSetId) && !activePlans && !foregroundSync && !jointMode && selectedSetId && details.has(selectedSetId)) {
           const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
-          const value = details.get(selectedSetId), summary3 = set && scoreSummary(value, set);
+          const value = details.get(selectedSetId), summary3 = set && scoreSummary(value, set, 3);
           const target = node("gallery-set-detail"), section = target.querySelector(".gallery-score");
           if (section && summary3) {
             const fragment = document.createDocumentFragment();
@@ -13265,9 +14903,9 @@
         }
       }, 100);
     } });
-    const scoreSummary = (value, set) => {
+    const scoreSummary = (value, set, priority = 1) => {
       if (!active || !value?.progress || !result?.catalog) return null;
-      return scoreQueue.read(scope2(), { set, catalog: result.catalog, progress: value.progress });
+      return scoreQueue.read(scope2(), { set, catalog: result.catalog, progress: value.progress }, { priority });
     };
     const scoreText = (summary3) => {
       if (summary3?.status === "calculating") return "\u8BA1\u5206\u4E2D\u2026";
@@ -13403,6 +15041,18 @@
         };
         if (plan.status !== "ready") {
           add(output, "small", reasons2[plan.reason] ?? "\u6682\u672A\u627E\u5230\u53EF\u884C\u65B9\u6848", "gallery-unknown");
+          if (plan.bestScore != null) {
+            const distance = plan.distanceToTarget == null ? "" : ` \xB7 \u8FD8\u5DEE ${count2(plan.distanceToTarget)} \u5206`;
+            add(output, "small", `\u5DF2\u68C0\u67E5\u5230\u7684\u6700\u4F73\u7EC4\u5408\uFF1A${count2(plan.bestScore)} \u5206${distance} \xB7 ${plan.bestCandidate?.totalPrice == null ? "\u62A5\u4EF7\u672A\u5B8C\u6574" : `${count2(plan.bestCandidate.totalPrice)} \u91D1\u5E01`}`);
+            if (plan.bestCandidate?.ids?.length) {
+              const details2 = add(output, "details");
+              add(details2, "summary", "\u6700\u4F73\u5DF2\u77E5\u8865\u5361\u7EC4\u5408\uFF08\u641C\u7D22\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\uFF09");
+              const list2 = add(details2, "ul");
+              for (const item2 of plan.bestCandidate.items ?? plan.bestCandidate.ids.map((eaId) => ({ eaId }))) {
+                add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.score == null ? "\u5206\u6570\u672A\u77E5" : `${count2(item2.score)} \u5206`} \xB7 ${item2.price == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
+              }
+            }
+          }
           return;
         }
         add(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
@@ -13413,7 +15063,7 @@
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count2(candidate.currentScore)} + \u65B0\u589E ${count2(candidate.addedScore ?? 0)} = ${count2(candidate.score)} \u5206` : `${count2(candidate.score)} \u5206`;
           add(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
           const list2 = add(details2, "ul");
-          for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
+          for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
           if (candidate.missingPriceIds.length) add(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
           if (candidate.unknownFields?.length) add(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
           purchaseButton(
@@ -13429,6 +15079,7 @@
                   catalog: result.catalog,
                   progress: value.progress,
                   prices: planningPrices(value),
+                  priceSnapshot: value.priceSnapshot,
                   targetGrade: candidate.targetGrade,
                   scope: currentScope
                 }],
@@ -13456,7 +15107,7 @@
         button.disabled = true;
         output.replaceChildren();
         add(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
-        const token = ++planningEpoch, identity5 = scope2(), revision = result, binding = planBinding(value, set);
+        const token = ++planningEpoch, identity5 = scope2(), revision = result;
         activePlans++;
         const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
         const cancel = add(row, "button", "\u53D6\u6D88");
@@ -13467,6 +15118,8 @@
           add(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
         });
         try {
+          await priceForPlan(value, set, current2, output);
+          const binding = planBinding(value, set);
           const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
             current: current2,
@@ -13496,10 +15149,13 @@
             expandedCount: plan.omittedCandidates,
             cheapestPrice: plan.costAudit?.totalPrice,
             cheapestScore: plan.costAudit?.score,
-            bestPrice: plan.plans?.[0]?.totalPrice,
-            bestScore: plan.plans?.[0]?.score
+            bestPrice: plan.bestCandidate?.totalPrice ?? plan.plans?.[0]?.totalPrice,
+            bestScore: plan.bestScore ?? plan.plans?.[0]?.score,
+            bestDistance: plan.distanceToTarget,
+            missingPriceCount: plan.missingPriceCount
           });
           if (plan && current2()) {
+            attachPlanPrices(plan, [value.priceSnapshot]);
             savePlanCache(set, value, { binding, plan });
             show(plan);
             if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
@@ -13515,16 +15171,19 @@
       });
       overviewButton.addEventListener("click", async (event) => {
         if (!event.isTrusted || overviewButton.disabled) return;
-        const cached = overviewCache.get(overviewKey);
+        const cached = loadPlanningPrices ? null : overviewCache.get(overviewKey);
         if (cached) {
           showOverview(cached);
           return;
         }
         overviewButton.disabled = true;
         overview.textContent = "\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026";
-        const token = ++planningEpoch, identity5 = scope2(), revision = result, binding = planBinding(value, set);
+        const token = ++planningEpoch, identity5 = scope2(), revision = result;
+        const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected;
         activePlans++;
         try {
+          await priceForPlan(value, set, current2, overview);
+          const binding = planBinding(value, set);
           const plan = await runGalleryPlan(planGalleryGradeOverviewSteps({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }), {
             current: () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected,
             maxMs: 8e3,
@@ -13792,7 +15451,7 @@
         const value = details.get(id10);
         if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
         else add(row, "small", scoreText(scoreSummary(value, set)));
-        if (typeof loadSet === "function" && result.source === "futgg") {
+        if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
           const open = add(row, "button", "\u67E5\u770B\u5361\u7247", "gallery-target-open");
           open.addEventListener("click", (event) => {
             if (!event.isTrusted) return;
@@ -13826,7 +15485,7 @@
         return;
       }
       if (plan.status !== "ready") {
-        const messages = {
+        const messages2 = {
           "search-time-exhausted": "\u8BA1\u7B97\u65F6\u95F4\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3\uFF1B\u53EF\u7F29\u5C0F\u76EE\u6807\u8303\u56F4\u518D\u8BD5",
           "target-state-unknown": "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0",
           "price-unknown": "\u7F3A\u5C11\u6709\u6548\u62A5\u4EF7\uFF0C\u9884\u7B97\u65B9\u6848\u5C1A\u672A\u786E\u5B9A",
@@ -13841,7 +15500,7 @@
           "budget-invalid": "\u8BF7\u8F93\u5165\u975E\u8D1F\u6574\u6570\u9884\u7B97",
           "target-context-mismatch": "\u96C6\u5408\u8D26\u53F7\u6216\u5E73\u53F0\u4E0D\u4E00\u81F4"
         };
-        add(output, "p", messages[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
+        add(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
         for (const target of plan.targets ?? []) add(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
         return;
       }
@@ -13887,7 +15546,7 @@
         }
         add(detail, "small", "\u5956\u52B1\u4E3A\u76EE\u5F55\u5185\u5BB9\uFF0C\u672A\u786E\u8BA4\u53EF\u9886\u6216\u65B0\u589E\u6536\u76CA\u3002");
         const list2 = add(detail, "ul");
-        for (const item2 of planRow.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
+        for (const item2 of planRow.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
         const targetsBinding = JSON.stringify([...jointTargets]);
         const jointBinding = () => JSON.stringify([targetValue().budget, [...jointTargets].map(([id10, grade]) => [
           id10,
@@ -13949,7 +15608,18 @@
         output.textContent = "\u8BA1\u7B97\u5DF2\u53D6\u6D88";
       });
       try {
-        const refreshIds = [...new Set(targets.filter((target) => {
+        if (loadPlanningPrices) {
+          const priced2 = await priceGalleryPlanningTargets(targets, {
+            load: loadPlanningPrices,
+            current: current2,
+            onProgress: (state2) => {
+              output.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
+            }
+          });
+          targets.splice(0, targets.length, ...priced2);
+          for (const target of targets) Object.assign(details.get(target.set.id), { prices: target.prices, priceSnapshot: target.priceSnapshot });
+        }
+        const refreshIds = loadPlanningPrices ? [] : [...new Set(targets.filter((target) => {
           const value = details.get(target.set.id);
           return needsPriceRefresh(value);
         }).flatMap((target) => target.progress.rows.filter((row) => !isGalleryOwned(row)).map((row) => row.eaId)))].sort((a, b) => a - b);
@@ -14001,7 +15671,7 @@
           searchComplete: plan.searchComplete === true,
           scopeTruncated: plan.scopeTruncated === true
         });
-        if (plan && current2()) showJointPlan(plan, targets);
+        if (plan && current2()) showJointPlan(attachPlanPrices(plan, targets.map((target) => target.priceSnapshot)), targets);
       } catch {
         void diag({ event: "joint-plan", phase: "planner", status: "failed", reason: "FC27_GALLERY_JOINT_PLANNER_FAILED", count: targets.length });
         if (current2()) showJointPlan({ status: "unavailable", reason: "planner-failed" });
@@ -14088,7 +15758,7 @@
         return;
       }
       const progress = value.progress;
-      const summary3 = scoreSummary(value, set);
+      const summary3 = scoreSummary(value, set, 3);
       if (value.status !== "observed") add(target, "small", `\u8D26\u53F7\u72B6\u6001\u672A\u540C\u6B65 \xB7 ${value.reason ?? "\u8BFB\u53D6\u5931\u8D25"}`, "gallery-unknown");
       if (value.priceError) add(target, "small", `\u4EF7\u683C\u8BFB\u53D6\u5931\u8D25 \xB7 ${value.priceError}`, "gallery-unknown");
       if (value.priceSnapshot?.stale || priceExpired(value)) add(target, "small", "\u62A5\u4EF7\u5FEB\u7167\u5F85\u66F4\u65B0", "gallery-unknown");
@@ -14546,7 +16216,7 @@
           persistTargets();
         });
         if (result.changes?.added.includes(set.id)) add(card, "span", "\u65B0\u96C6\u5408", "badge");
-        const detail = details.get(set.id), totals = detail?.progress?.totals, summary3 = scoreSummary(detail, set);
+        const detail = details.get(set.id), totals = detail?.progress?.totals, summary3 = scoreSummary(detail, set, 2);
         const grades3 = add(card, "div", "", "gallery-grades");
         gradeTrack(grades3, set.grades, summary3);
         const metrics = add(card, "div", "", "gallery-set-metrics");
@@ -14569,7 +16239,7 @@
           snapshot.title = "\u5F53\u524D\u663E\u793A\u6700\u8FD1\u4E00\u6B21\u5FEB\u7167";
           snapshot.setAttribute("aria-label", snapshot.title);
         }
-        if (typeof loadSet === "function" && result.source === "futgg") {
+        if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
           const button = add(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
           button.type = "button";
           button.addEventListener("click", (event) => {
@@ -14578,8 +16248,6 @@
           card.addEventListener("click", (event) => {
             if (event.isTrusted && !event.target.closest?.("button")) void loadSetDetails(set);
           });
-        } else if (typeof loadSet === "function" && result.source === "fodder") {
-          add(card, "small", "\u5F53\u524D\u4F7F\u7528 Fodder \u56DE\u9000\u76EE\u5F55\uFF1B\u8BE5\u6765\u6E90\u6CA1\u6709\u5DF2\u6838\u5B9E\u5361\u6C60\u63A5\u53E3\uFF0C\u6682\u4E0D\u80FD\u8BFB\u53D6\u5361\u7247\u548C EA \u6536\u96C6\u72B6\u6001\u3002", "gallery-unknown");
         }
       }
       showBrowseLevel();
@@ -14613,12 +16281,12 @@
       if (!sync) return;
       const state2 = sync.state();
       node("gallery-sync").hidden = false;
-      node("gallery-sync").disabled = syncing || state2.busy || !result?.catalog || result.source !== "futgg";
+      node("gallery-sync").disabled = syncing || state2.busy || !result?.catalog || !["futgg", "fodder"].includes(result.source);
       node("gallery-sync").title = "\u5B8C\u6574\u590D\u6838\u5168\u90E8\u6536\u96C6\uFF1B\u5E73\u65F6\u81EA\u52A8\u589E\u91CF\u5408\u5E76";
       node("gallery-sync-time").textContent = state2.syncedAt ? `\u4E0A\u6B21\u540C\u6B65 ${date(state2.syncedAt)}` : "\u5C1A\u672A\u540C\u6B65";
       const progress = foregroundSync?.progress ?? state2.progress;
       const bar = node("gallery-background-progress");
-      if (progress && (foregroundSync || state2.busy && !state2.synced) && result?.source === "futgg") {
+      if (progress && (foregroundSync || state2.busy && !state2.synced) && ["futgg", "fodder"].includes(result?.source)) {
         const phase = progress.phase === "pools" ? "\u540C\u6B65\u96C6\u5408\u5361\u6C60" : progress.phase === "catalog" ? "\u8BFB\u53D6\u96C6\u5408\u76EE\u5F55" : "\u540C\u6B65 EA \u6536\u96C6";
         const index = Number.isSafeInteger(progress.index) ? progress.index : 0;
         const total = Number.isSafeInteger(progress.total) ? progress.total : 0;
@@ -14755,7 +16423,7 @@
       restoreTargets();
       reconcileTargets();
       renderJoint();
-      node("gallery-source").textContent = value.source === "futgg" ? "FUT.GG" : "Fodder \xB7 \u56DE\u9000\u76EE\u5F55";
+      node("gallery-source").textContent = value.source === "futgg" ? "FUT.GG" : "Fodder \xB7 EA \u5361\u6C60";
       const sets2 = catalog.categories.reduce((sum2, row) => sum2 + row.sets.length, 0);
       const notice = value.reason === "FC27_GALLERY_CATALOG_REFRESH_FAILED" ? "\u66F4\u65B0\u672A\u6210\u529F\uFF0C\u4FDD\u7559\u65E7\u76EE\u5F55\uFF1B" : value.stale ? "\u7F13\u5B58\u5F85\u66F4\u65B0\uFF1B" : "";
       node("gallery-status").textContent = `${catalog.categories.length} \u7C7B \xB7 ${sets2} \u4E2A\u96C6\u5408 \xB7 ${notice}\u6838\u9A8C ${date(value.fetchedAt)}`;
@@ -14849,6 +16517,7 @@
       scopeTimer = null;
       if (active && provider) {
         void refreshPurchases();
+        void refreshRelist();
         if (!wasActive) {
           jointMode = false;
           node("gallery-browse").hidden = false;
@@ -14862,7 +16531,10 @@
         }
         check();
         timer = timers?.setInterval(check, GALLERY_TTL_MS) ?? null;
-        if (loadSet) scopeTimer = timers?.setInterval(checkScope, 1e3) ?? null;
+        if (loadSet || relist) scopeTimer = timers?.setInterval(() => {
+          checkScope();
+          void refreshRelist();
+        }, 1e3) ?? null;
       }
     };
     node("gallery-refresh").disabled = !provider;
@@ -14912,6 +16584,137 @@
     } });
   }
 
+  // src/adapters/browser/fc27-price-settings.js
+  function mountFc27PriceSettings({ document, parent, service }) {
+    if (!service) return { refresh() {
+    } };
+    const add = (parent2, tag, text5 = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      parent2.append(node);
+      return node;
+    };
+    const card = add(parent, "section");
+    card.className = "card";
+    card.id = "public-price-settings";
+    add(card, "h3", "\u62A5\u4EF7\u4E0E\u4EA4\u6613\u4EF7\u683C \xB7 Gallery / Puzzle");
+    const fields4 = add(card, "div");
+    fields4.className = "settings-grid";
+    const select = (label, values6) => {
+      const control = add(add(fields4, "label", label), "select");
+      control.setAttribute("aria-label", label);
+      for (const [value, text5] of values6) {
+        const option = add(control, "option", text5);
+        option.value = value;
+      }
+      return control;
+    };
+    const readSources = select("\u8BFB\u53D6\u516C\u5171\u62A5\u4EF7\u6765\u6E90", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"], ["both", "Both \xB7 \u53CC\u6E90"]]);
+    const source = select("\u8D2D\u4E70 / \u6302\u724C\u4EF7\u683C\u53C2\u8003", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"]]);
+    const mode = select("\u5141\u8BB8\u8D85\u8FC7\u53C2\u8003\u4EF7", [["fixed", "\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u767E\u5206\u6BD4"]]);
+    const number2 = (label, min) => {
+      const control = add(add(fields4, "label", label), "input");
+      control.type = "number";
+      control.min = String(min);
+      control.step = "1";
+      control.setAttribute("aria-label", label);
+      return control;
+    };
+    const premium = number2("\u6EA2\u4EF7\u6570\u503C", 0), attempts = number2("\u6BCF\u5361\u8D2D\u4E70\u5C1D\u8BD5\u6B21\u6570", 1);
+    add(card, "small", "\u8D2D\u4E70\u4E0E\u6302\u724C\u5171\u7528\u53C2\u8003\u6765\u6E90\uFF0C\u6EA2\u4EF7\u4EC5\u7528\u4E8E\u8D2D\u4E70\u3002\u62A5\u4EF7\u4F18\u5148\u590D\u7528\u6709\u6548\u7F13\u5B58\uFF0C\u7F3A\u5931\u6216\u8FC7\u671F\u65F6\u66F4\u65B0\u3002\u4FDD\u5B58\u540E\u65B0\u65B9\u6848\u751F\u6548\uFF0C\u5DF2\u6279\u51C6\u7684\u4EF7\u683C\u4E0D\u53D8\u3002");
+    const preview = add(card, "output");
+    preview.setAttribute("aria-live", "polite");
+    const row = add(card, "div");
+    row.className = "row";
+    const save = add(row, "button", "\u4FDD\u5B58\u4EF7\u683C\u8BBE\u7F6E");
+    save.type = "button";
+    save.className = "primary";
+    const status = add(card, "output");
+    status.setAttribute("aria-live", "polite");
+    let scope2 = null, busy = false, epoch2 = 0;
+    const enabled = (value) => {
+      for (const control of [source, mode, premium, attempts, readSources, save]) control.disabled = !value;
+    };
+    const syncFutbin = () => {
+      for (const control of [source]) {
+        for (const option of control.options) option.disabled = readSources.value !== "both" && option.value !== readSources.value;
+        if (readSources.value !== "both") control.value = readSources.value;
+      }
+    };
+    const summary3 = () => {
+      const value = premium.valueAsNumber;
+      preview.textContent = Number.isSafeInteger(value) && value >= 0 ? `\u5355\u5361\u4E0A\u9650\uFF1A${source.value === "futgg" ? "FUT.GG" : "FUTBIN"} \u53C2\u8003\u4EF7 + ${value}${mode.value === "percent" ? "%" : " \u91D1\u5E01"}` : "\u8BF7\u8F93\u5165\u975E\u8D1F\u6574\u6570\u6EA2\u4EF7";
+    };
+    const reason = (error2) => ({
+      FC27_PUBLIC_PRICE_POLICY_INVALID: "\u8BBE\u7F6E\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u6765\u6E90\u3001\u975E\u8D1F\u6574\u6570\u6EA2\u4EF7\u53CA\u6B63\u6574\u6570\u5C1D\u8BD5\u6B21\u6570\u3002",
+      FC27_PUBLIC_PRICE_POLICY_SAVE_FAILED: "\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BBE\u7F6E\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+      FC27_PUBLIC_PRICE_CONTEXT_CHANGED: "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u8BBE\u7F6E\u3002"
+    })[error2?.message] ?? "\u65E0\u6CD5\u8BFB\u53D6\u5F53\u524D\u8D26\u53F7\u8BBE\u7F6E\uFF0C\u8BF7\u767B\u5F55\u540E\u91CD\u8BD5\u3002";
+    for (const control of [source, mode, premium]) control.addEventListener("input", summary3);
+    const refresh = async () => {
+      if (busy) return;
+      const token = ++epoch2;
+      enabled(false);
+      scope2 = null;
+      try {
+        const expected = service.scope(), value = await service.readSettings();
+        if (token !== epoch2) return;
+        if (service.scope() !== expected) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        scope2 = expected;
+        source.value = value.source;
+        mode.value = value.premiumMode;
+        premium.value = String(value.premium);
+        attempts.value = String(value.purchaseAttempts);
+        readSources.value = value.readSources ?? (value.futbinEnabled === false ? "futgg" : "both");
+        syncFutbin();
+        summary3();
+        status.textContent = "";
+        enabled(true);
+      } catch (error2) {
+        if (token === epoch2) {
+          status.textContent = reason(error2);
+          enabled(false);
+        }
+      }
+    };
+    save.addEventListener("click", async (event) => {
+      if (!event.isTrusted || busy) return;
+      busy = true;
+      enabled(false);
+      try {
+        if (!scope2 || scope2 !== service.scope()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        await service.saveSettings({
+          source: source.value,
+          premiumMode: mode.value,
+          premium: premium.valueAsNumber,
+          purchaseAttempts: attempts.valueAsNumber,
+          readSources: readSources.value,
+          listingSource: source.value,
+          futbinEnabled: readSources.value !== "futgg",
+          futbinRefresh: "cache"
+        });
+        if (scope2 !== service.scope()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        status.textContent = "\u5F53\u524D\u8D26\u53F7\u4EF7\u683C\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1B\u65B0\u6279\u6B21\u751F\u6548\uFF0C\u8FDB\u884C\u4E2D\u7684\u8D2D\u4E70\u4E0A\u9650\u4E0D\u53D8\u3002";
+      } catch (error2) {
+        status.textContent = reason(error2);
+      } finally {
+        busy = false;
+        let same21 = false;
+        try {
+          same21 = scope2 === service.scope();
+        } catch {
+        }
+        enabled(same21);
+      }
+    });
+    readSources.addEventListener("change", () => {
+      syncFutbin();
+      summary3();
+    });
+    enabled(false);
+    return { refresh };
+  }
+
   // src/adapters/browser/fc27-acceptance-panel.js
   function mountFc27AcceptancePanel({
     document,
@@ -14931,8 +16734,6 @@
     gallerySetLoader = null,
     galleryPriceLoader = null,
     galleryAccountScope = void 0,
-    galleryProxy: galleryProxy2 = "",
-    setGalleryProxy: setGalleryProxy2 = null,
     galleryAssets: galleryAssets2 = null,
     galleryPrices: galleryPrices2 = null,
     galleryMarketCompare = null,
@@ -14943,7 +16744,10 @@
     gallerySync: gallerySync2 = null,
     purchaseGallery = null,
     galleryListing: galleryListing2 = null,
+    galleryRelist: galleryRelist2 = null,
     galleryFirstOwnerHistory = null,
+    publicPrices: publicPrices2 = null,
+    galleryPlanningPrices = null,
     exportDiagnostics = null,
     hostId = "fcat-fc27-acceptance",
     title = "FC Automation Tool - FC27 Acceptance",
@@ -14956,14 +16760,16 @@
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = fc27WorkbenchMarkup();
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, setFirstOwner: galleryFirstOwnerHistory });
-    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id10) => gallery.setActive(id10 === "gallery"));
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, setFirstOwner: galleryFirstOwnerHistory });
+    const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: publicPrices2 });
+    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id10) => {
+      gallery.setActive(id10 === "gallery");
+      if (id10 === "settings") void priceSettings.refresh();
+    });
     const node = (id10) => shadow.getElementById(id10);
     node("workbench-version").textContent = version ?? title;
     node("workbench-mode").textContent = liveEnabled === true ? "\u5DF2\u5F00\u653E\u73B0\u6709\u5355\u6B21\u64CD\u4F5C\uFF1B\u63D0\u4EA4\u9700\u5355\u72EC\u786E\u8BA4\u3002" : "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002";
-    node("gallery-proxy-card").hidden = typeof setGalleryProxy2 !== "function";
     node("diagnostic-export-card").hidden = typeof exportDiagnostics !== "function";
-    node("gallery-proxy").value = typeof galleryProxy2 === "function" ? String(galleryProxy2() || "") : String(galleryProxy2 || "");
     node("puzzle-settings").hidden = typeof setPuzzleMaxRating !== "function" && typeof setPuzzlePolicy !== "function";
     node("puzzle-quote-setting").hidden = typeof setPuzzlePolicy !== "function";
     node("puzzle-queries-setting").hidden = typeof setPuzzlePolicy !== "function";
@@ -14974,6 +16780,16 @@
     let puzzlePlan = null;
     let recovery = null;
     let action = null;
+    const ceiling = node("puzzle-quote-ceiling");
+    bindCurrencyArrows({
+      document,
+      input: ceiling,
+      label: "\u8865\u5361\u5355\u5361\u62A5\u4EF7\u4E0A\u9650",
+      enabled: () => !busy,
+      onStep: (value) => {
+        ceiling.value = String(value);
+      }
+    });
     const renderTargets = () => {
       const previous = node("target").value;
       node("target").replaceChildren();
@@ -14987,7 +16803,7 @@
     };
     const update = () => {
       for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-        if (!button.closest("#page-gallery")) button.disabled = busy;
+        if (!button.closest("#page-gallery") && !button.closest("#public-price-settings")) button.disabled = busy;
       }
       node("execute").disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
       node("fill").disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== "function";
@@ -15115,22 +16931,6 @@
       renderTargets();
       clear();
       update();
-    });
-    on("gallery-proxy-save", () => {
-      if (typeof setGalleryProxy2 !== "function") return;
-      void run(async () => {
-        const result = await setGalleryProxy2(node("gallery-proxy").value);
-        node("gallery-proxy").value = result.proxy || "";
-        return { ...result, reason: result.proxy ? "Gallery FUT.GG \u8F6C\u53D1\u4EE3\u7406\u5DF2\u4FDD\u5B58\uFF1B\u4E0B\u6B21\u66F4\u65B0\u76EE\u5F55\u65F6\u751F\u6548" : "Gallery FUT.GG \u8F6C\u53D1\u4EE3\u7406\u5DF2\u6E05\u9664\uFF1B\u5C06\u5C1D\u8BD5\u76F4\u8FDE" };
-      });
-    });
-    on("gallery-proxy-clear", () => {
-      if (typeof setGalleryProxy2 !== "function") return;
-      void run(async () => {
-        const result = await setGalleryProxy2("");
-        node("gallery-proxy").value = "";
-        return { ...result, reason: "Gallery FUT.GG \u8F6C\u53D1\u4EE3\u7406\u5DF2\u6E05\u9664\uFF1B\u5C06\u5C1D\u8BD5\u76F4\u8FDE" };
-      });
     });
     on("export-diagnostics", () => {
       if (typeof exportDiagnostics !== "function") return;
@@ -15392,6 +17192,9 @@
   var code = (value) => typeof value === "string" && /^FC27_[A-Z0-9_]{1,100}$/.test(value) ? value : null;
   var countText = (value) => Number.isSafeInteger(value) && value >= 0 ? String(value) : "\u672A\u77E5";
   var purchaseReasons = {
+    FC27_MARKET_POLICY_INVALID: "\u6C42\u89E3\u5668\u89C4\u5212\u53C2\u6570\u4E0D\u4E00\u81F4\uFF0C\u641C\u7D22\u672A\u542F\u52A8\uFF1B\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7",
+    FC27_MARKET_QUOTE_INVALID: "\u5019\u9009\u62A5\u4EF7\u6570\u503C\u65E0\u6548\uFF0C\u672A\u91C7\u7528\u8BE5\u62A5\u4EF7\u7EE7\u7EED\u641C\u7D22",
+    FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE: "\u9635\u5BB9\u8BC4\u5206\u6216\u5316\u5B66\u8BC4\u4F30\u4E0D\u53EF\u7528\uFF0C\u4E0D\u80FD\u786E\u8BA4\u65B9\u6848",
     FC27_PUZZLE_SEARCH_LIMIT: "\u8865\u5361\u7EC4\u5408\u641C\u7D22\u8FBE\u5230\u4E0A\u9650\uFF0C\u4E0D\u80FD\u5224\u5B9A\u65E0\u89E3",
     FC27_PURCHASE_REPAIR_NO_PLAN: "\u672C\u6B21\u5019\u9009\u4E2D\u672A\u627E\u5230\u8865\u5361\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6574\u4E2A\u5E02\u573A\u65E0\u89E3",
     FC27_PURCHASE_QUOTES_UNAVAILABLE: "\u5DF2\u5C1D\u8BD5\u66FF\u6362\u65E0\u53EF\u7528\u6302\u724C\u7684\u5019\u9009\uFF0C\u4ECD\u672A\u53D6\u5F97\u6574\u9635\u6240\u9700\u62A5\u4EF7",
@@ -15559,6 +17362,8 @@
     buy,
     stop: stop6,
     foregroundProgress = null,
+    refreshPrices = null,
+    readPlayerName = null,
     schedule = setInterval,
     unschedule = clearInterval,
     wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -15582,26 +17387,76 @@
     output.setAttribute("role", "status");
     output.style.cssText = "font-size:13px;margin:.4rem 0";
     box.append(button, cancel, output);
+    let resultDialog = null, resultView = null, dialogOutput = null, dialogStop = null, dialogClose = null;
+    let resultTarget = null;
+    const sameTarget3 = (selected) => {
+      const now = readTarget();
+      return !disposed && !!now && now.setId === selected.setId && now.challengeId === selected.challengeId;
+    };
+    const openResults = (selected) => {
+      if (!refreshPrices) return;
+      if (!resultDialog) {
+        const template = document.createElement("template");
+        template.innerHTML = purchaseDialogMarkup("puzzle");
+        resultDialog = template.content.firstElementChild;
+        const windowStyle = document.createElement("style");
+        windowStyle.textContent = purchaseDialogStyles;
+        resultDialog.prepend(windowStyle);
+        dialogStop = resultDialog.querySelector("#fcat-puzzle-purchase-stop");
+        dialogClose = resultDialog.querySelector("#fcat-puzzle-purchase-close");
+        dialogStop.addEventListener("click", (event) => {
+          if (event.isTrusted && busy) {
+            stop6();
+            dialogStop.disabled = true;
+          }
+        });
+        dialogClose.addEventListener("click", () => {
+          if (!busy) resultDialog.close();
+        });
+        resultDialog.addEventListener("cancel", (event) => {
+          if (busy) event.preventDefault();
+        });
+        dialogOutput = resultDialog.querySelector("#fcat-puzzle-purchase-message");
+        document.body.append(resultDialog);
+      }
+      resultTarget = selected;
+      resultView?.dispose();
+      resultView = mountFc27PurchaseResults({
+        document,
+        parent: resultDialog.querySelector(".purchase-dialog-results"),
+        refreshPrices,
+        readPlayerName,
+        isCurrent: () => sameTarget3(selected),
+        retry: (retry) => runPurchase(selected, retry),
+        resume: () => runPurchase(selected)
+      });
+      dialogStop.hidden = !busy;
+      dialogStop.disabled = false;
+      dialogClose.hidden = busy;
+      updatePurchaseDialogProgress(resultDialog, busy ? null : summary3);
+      if (!resultDialog.open) resultDialog.showModal();
+    };
     let foregroundActive = false;
     const loading = (active) => {
       if (active) {
         if (foregroundActive) return;
         foregroundActive = true;
         try {
-          foregroundProgress?.start?.({ stop: stop6 });
+          if (!refreshPrices) foregroundProgress?.start?.({ stop: stop6 });
         } catch {
         }
       } else {
         if (!foregroundActive) return;
         foregroundActive = false;
         try {
-          foregroundProgress?.end?.();
+          if (!refreshPrices) foregroundProgress?.end?.();
         } catch {
         }
       }
     };
     const message = (text5) => {
       output.textContent = text5;
+      if (dialogOutput) dialogOutput.textContent = text5;
     };
     const markFailures = (selected, failures = []) => {
       const now = readTarget();
@@ -15643,6 +17498,7 @@
         box.remove();
         target = null;
         signature2 = null;
+        if (!busy) resultDialog?.close();
         return;
       }
       const changed = key(next) !== signature2;
@@ -15671,7 +17527,7 @@
           return;
         }
         if (switched || result.remaining > 0 || result.recovery) button.hidden = false;
-        button.textContent = result.recovery ? "FCAT \u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70" : `FCAT \u6279\u91CF\u8D2D\u4E70\u6982\u5FF5\u7403\u5458\uFF08${result.remaining} \u5F20\uFF09`;
+        button.textContent = result.recovery ? "FCAT \u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70" : result.retryContext && result.results?.some((row) => row.attempt?.failed) ? "FCAT \u67E5\u770B\u8D2D\u4E70\u7ED3\u679C\uFF0F\u91CD\u8BD5" : `FCAT \u6279\u91CF\u8D2D\u4E70\u6982\u5FF5\u7403\u5458\uFF08${result.remaining} \u5F20\uFF09`;
         button.disabled = false;
         if (switched) output.textContent = "\u70B9\u51FB\u540E\u9010\u5F20\u67E5\u8BE2\u3001\u4E70\u5165\u5E76\u66FF\u6362\u5F53\u524D\u6982\u5FF5\u5361\uFF1B\u4E0D\u4F1A\u63D0\u4EA4 SBC\u3002";
         attach(next);
@@ -15682,45 +17538,62 @@
         reading = false;
       }
     };
-    button.addEventListener("click", async (event) => {
-      if (!event.isTrusted || busy || !target || summary3?.status !== "ready") return;
-      const selected = target;
+    const runPurchase = async (selected, retry = null) => {
+      if (busy || !sameTarget3(selected) || summary3?.status !== "ready") return;
       busy = true;
       button.disabled = true;
       cancel.hidden = false;
       cancel.disabled = false;
+      openResults(selected);
       try {
         await wait(500);
         loading(true);
         message("\u6B63\u5728\u67E5\u8BE2\u5E76\u8D2D\u4E70\u5F53\u524D\u6982\u5FF5\u7403\u5458\u2026");
-        const result = await buy(selected, { approved: true, budget: null, expectedOperationId: summary3.operationId }, {
+        const result = await buy(selected, { approved: true, budget: null, expectedOperationId: summary3.operationId, ...retry ? { retry } : {} }, {
           isCurrent: () => {
             const now = readTarget();
             return !!now && now.setId === selected.setId && now.challengeId === selected.challengeId;
           },
           onProgress: (progress) => {
             try {
-              foregroundProgress?.update?.(progress);
+              if (!refreshPrices) foregroundProgress?.update?.(progress);
             } catch {
             }
+            resultView?.show(progress, { running: true });
+            if (resultDialog) updatePurchaseDialogProgress(resultDialog, progress);
             message(`\u5DF2\u8D2D\u4E70 ${progress.purchased}/${progress.total}\uFF0C\u5DF2\u82B1\u8D39 ${progress.spent} \u91D1\u5E01\u3002`);
             markFailures(selected, progress.failures);
           }
         });
         output.textContent = result?.status === "purchased" ? `\u8D2D\u4E70\u5B8C\u6210\uFF1A${result.purchased} \u5F20\uFF0C\u82B1\u8D39 ${result.spent} \u91D1\u5E01\uFF1B${result.replacementPending ? "\u539F\u751F\u9635\u5BB9\u66FF\u6362\u5C1A\u672A\u5B8C\u6210\uFF0C\u56DE\u6267\u5DF2\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165" : "\u5DF2\u5165\u5E93\u5E76\u66FF\u6362\u5F53\u524D\u6982\u5FF5\u5361"}\uFF0C\u672A\u63D0\u4EA4 SBC\u3002` : `${reasons[result?.reason] ?? `\u8D2D\u4E70\u6682\u505C\uFF1A${/^FC27_[A-Z0-9_]+$/.test(result?.reason ?? "") ? result.reason : "\u7ED3\u679C\u5F85\u6838\u5BF9"}`} \u5DF2\u8D2D\u4E70 ${result?.purchased ?? 0} \u5F20\uFF0C\u82B1\u8D39 ${result?.spent ?? 0} \u91D1\u5E01\u3002`;
-        if (result?.failures?.length) output.textContent += ` \u672C\u6B21 ${result.failures.length} \u5F20\u672A\u4E70\u5230\uFF0C\u53EF\u518D\u6B21\u70B9\u51FB\u7EED\u8D2D\u3002`;
+        if (result?.failures?.length) output.textContent += ` \u672C\u6B21 ${result.failures.length} \u5F20\u672A\u5B8C\u6210${refreshPrices ? "\uFF0C\u8BF7\u5728\u7ED3\u679C\u6E05\u5355\u91CD\u8BD5\u6216\u6838\u5BF9" : "\uFF0C\u53EF\u518D\u6B21\u70B9\u51FB\u7EED\u8D2D"}\u3002`;
         markFailures(selected, result?.failures);
         if (result?.reused) output.textContent += ` \u53E6\u6709 ${result.reused} \u5F20\u5DF2\u5728 Club\uFF0C\u76F4\u63A5\u66FF\u6362\uFF0C\u672A\u91CD\u590D\u8D2D\u4E70\u3002`;
         if (result?.status === "purchased" && !result.replacementPending) button.hidden = true;
+        resultView?.show(result);
+        if (resultDialog) updatePurchaseDialogProgress(resultDialog, result);
+        if (dialogOutput) dialogOutput.textContent = output.textContent;
       } catch {
-        output.textContent = "\u8D2D\u4E70\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u52FF\u91CD\u590D\u4E0B\u5355\u3002";
+        message("\u8D2D\u4E70\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u52FF\u91CD\u590D\u4E0B\u5355\u3002");
       } finally {
         loading(false);
         busy = false;
         button.disabled = false;
         cancel.hidden = true;
+        if (dialogStop) {
+          dialogStop.hidden = true;
+          dialogClose.hidden = false;
+        }
       }
       if (!button.hidden) await refresh(true);
+    };
+    button.addEventListener("click", (event) => {
+      if (!event.isTrusted || busy || !target || summary3?.status !== "ready") return;
+      if (refreshPrices && summary3.retryContext && summary3.results?.length) {
+        openResults(target);
+        resultView.show(summary3);
+        dialogOutput.textContent = "\u4E0A\u6B21\u8D2D\u4E70\u7ED3\u679C\uFF1B\u4FEE\u6539\u4EC5\u4F5C\u7528\u4E8E\u672C\u6B21\u91CD\u8BD5\u3002";
+      } else void runPurchase(target);
     });
     cancel.addEventListener("click", (event) => {
       if (event.isTrusted && busy) {
@@ -15730,6 +17603,7 @@
       }
     });
     const timer = schedule(() => {
+      if (resultTarget && !sameTarget3(resultTarget) && !busy) resultDialog?.close();
       void refresh();
     }, 700);
     void refresh();
@@ -15737,6 +17611,8 @@
       disposed = true;
       unschedule(timer);
       loading(false);
+      resultView?.dispose();
+      resultDialog?.remove();
       box.remove();
     };
   }
@@ -15879,7 +17755,7 @@
   }
 
   // src/gallery/progress.js
-  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId11 = (value) => Number.isSafeInteger(value) && value > 0;
   var booleanOrUnknown = (value) => typeof value === "boolean" ? value : null;
   var scoreOrUnknown = (value) => Number.isFinite(value) && value >= 0 && value <= 1e8 ? Number(value) : null;
   function accountRow(item2, concept, club, clubKnown, history, held) {
@@ -15922,20 +17798,20 @@
     const allowed = new Set(pool.items.map((item2) => item2.eaId));
     for (const raw of conceptItems) {
       const id10 = raw?.definitionId ?? raw?.resourceId;
-      if (!validId10(id10) || !allowed.has(id10)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!validId11(id10) || !allowed.has(id10)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       if (concepts.has(id10)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
       concepts.set(id10, raw);
     }
     const club = /* @__PURE__ */ new Map();
     for (const raw of clubItems) {
-      if (!validId10(raw?.definitionId)) continue;
+      if (!validId11(raw?.definitionId)) continue;
       if (!allowed.has(raw.definitionId)) continue;
       if (!club.has(raw.definitionId)) club.set(raw.definitionId, []);
       club.get(raw.definitionId).push(raw);
     }
     const history = /* @__PURE__ */ new Map();
     for (const row of collectionHistory) history.set(row.definitionId, { ...history.get(row.definitionId), ...row });
-    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId10));
+    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId11));
     const rows = pool.items.map((item2) => accountRow(item2, concepts.get(item2.eaId), club.get(item2.eaId), clubKnown, history.get(item2.eaId), held.has(item2.eaId)));
     const count2 = (key) => rows.filter((row) => row[key] === true).length;
     return Object.freeze({
@@ -15964,14 +17840,57 @@
     });
   }
 
+  // src/gallery/fodder-pool.js
+  function fodderPoolQueries(set) {
+    const value = set?.conditions;
+    if (!value || Object.keys(value).some((key) => !["clubs", "leagues", "rareflags", "holo"].includes(key)) || typeof value.holo !== "boolean" || ["clubs", "leagues", "rareflags"].some((key) => !Array.isArray(value[key]) || value[key].length > 256 || value[key].some((id10) => !Number.isSafeInteger(id10) || id10 < 0))) {
+      throw Error("FC27_GALLERY_FODDER_CONDITIONS_UNSUPPORTED");
+    }
+    const rarities = value.rareflags.length ? { rarities: [...value.rareflags] } : {};
+    if (value.clubs.length) return value.clubs.map((club) => ({ club, ...rarities }));
+    if (value.leagues.length) return value.leagues.map((league) => ({ league, ...rarities }));
+    if (value.rareflags.length) return [rarities];
+    throw Error("FC27_GALLERY_FODDER_CONDITIONS_UNSUPPORTED");
+  }
+  function matchesFodderPool(set, item2) {
+    const c = set.conditions;
+    return (!c.clubs.length || c.clubs.includes(Number(item2.teamId))) && (!c.leagues.length || c.leagues.includes(Number(item2.leagueId))) && (!c.rareflags.length || c.rareflags.includes(readPlayerRareFlag(item2))) && (!c.holo || Object.keys(item2._hyperCosmeticDTOs || item2.hyperCosmeticDTOs || {}).length > 0);
+  }
+  function fodderPoolItem(item2, root) {
+    const call = (name, fallback = null) => {
+      try {
+        return item2[name]?.() ?? fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const positions3 = (item2.possiblePositions ?? []).map((value) => typeof value === "string" ? value : root.PlayerPosition?.[value]).filter((value) => typeof value === "string");
+    return {
+      eaId: item2.definitionId,
+      playerEaId: item2.definitionId % 16777216,
+      score: Number.isFinite(item2.gradingScore) ? item2.gradingScore : 0,
+      overall: Number(item2.rating),
+      clubEaId: Number(item2.teamId) || 0,
+      leagueEaId: Number(item2.leagueId) || 0,
+      nationEaId: Number(item2.nationId ?? item2.nation) || 0,
+      rarityEaId: readPlayerRareFlag(item2),
+      cardName: String(item2.knownAs || [item2.firstName, item2.lastName].filter(Boolean).join(" ") || item2.definitionId),
+      rarityName: String(readPlayerRareFlag(item2)),
+      positions: positions3,
+      weakFoot: call("getWeakFoot"),
+      skillMoves: call("getSkillMoves"),
+      holographic: Object.keys(item2._hyperCosmeticDTOs || item2.hyperCosmeticDTOs || {}).length > 0
+    };
+  }
+
   // src/adapters/ea/fc27-gallery-progress.js
   var at6 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
   var id8 = (value) => Number.isSafeInteger(value) && value > 0;
   var databaseId = (value) => id8(value) ? value % 16777216 : null;
   var sameDatabaseId = (left, right) => databaseId(left) === databaseId(right);
-  var same16 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same17 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var safeReason8 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PROGRESS_UNAVAILABLE";
-  var fail19 = (reason) => {
+  var fail21 = (reason) => {
     throw new Error(reason);
   };
   var CARD_KEYS = Object.freeze([
@@ -16045,10 +17964,10 @@
     return Object.freeze(result);
   };
   function sanitizeRows(rows, allowed, accepts = (value) => allowed.has(value), maxRows = allowed.size) {
-    if (!Array.isArray(rows) || rows.length > maxRows) fail19("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+    if (!Array.isArray(rows) || rows.length > maxRows) fail21("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
     const result = rows.map((raw) => {
       const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
-      if (!id8(definitionId) || !accepts(definitionId)) fail19("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!id8(definitionId) || !accepts(definitionId)) fail21("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       const flag = ownData(raw, "isCollected"), score2 = ownData(raw, "gradingScore");
       const cardData = nativeCardData(ownData(raw, "cardData") ?? raw);
       return {
@@ -16058,7 +17977,7 @@
         ...cardData?.resourceId === definitionId ? { cardData } : {}
       };
     });
-    if (new Set(result.map((row) => row.definitionId)).size !== result.length) fail19("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+    if (new Set(result.map((row) => row.definitionId)).size !== result.length) fail21("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
     return result;
   }
   function readClubSnapshot(root) {
@@ -16075,7 +17994,7 @@
     return result;
   }
   function readHeldSnapshot(root) {
-    const result = [], sources2 = [
+    const result = [], sources3 = [
       at6(root, "repositories.Item.storage"),
       at6(root, "repositories.Item.transfer"),
       at6(root, "repositories.Item.unassigned"),
@@ -16083,7 +18002,7 @@
       at6(root, "services.Item.itemDao.itemRepo.transfer"),
       at6(root, "services.Item.itemDao.itemRepo.unassigned")
     ];
-    for (let source of sources2) {
+    for (let source of sources3) {
       source = ownData(source, "items") ?? source;
       for (let depth = 0; depth < 3 && ownData(source, "_collection"); depth++) source = ownData(source, "_collection");
       if (!source || typeof source !== "object") continue;
@@ -16136,7 +18055,7 @@
       return states2.get(key);
     };
     const assert = (context) => {
-      if (disposed || !same16(context, readFc27Context(root))) fail19("FC27_GALLERY_CONTEXT_CHANGED");
+      if (disposed || !same17(context, readFc27Context(root))) fail21("FC27_GALLERY_CONTEXT_CHANGED");
     };
     const merge = (state, rows) => {
       let changed = false;
@@ -16150,7 +18069,7 @@
           ...owners.length ? { collectedOwners: Math.min(...owners) } : {},
           cardData: row.cardData ?? previous?.cardData
         };
-        if (!same16(previous, next)) {
+        if (!same17(previous, next)) {
           state.rows.set(row.definitionId, next);
           changed = true;
         }
@@ -16164,7 +18083,7 @@
       } catch {
       }
       assert(state.context);
-      if (saved?.schema !== 3 || !same16(saved.context, state.context) || !Array.isArray(saved.concepts) || saved.concepts.length > 1e5 || !Number.isSafeInteger(saved.fetchedAt) || saved.fetchedAt > now()) return;
+      if (saved?.schema !== 3 || !same17(saved.context, state.context) || !Array.isArray(saved.concepts) || saved.concepts.length > 1e5 || !Number.isSafeInteger(saved.fetchedAt) || saved.fetchedAt > now()) return;
       try {
         const rows = sanitizeRows(saved.concepts, new Set(saved.concepts.map((row) => row.definitionId)));
         for (let i = 0; i < rows.length; i++) {
@@ -16223,7 +18142,7 @@
       rawByItem.set(item2, raw);
       if (!item2.isPlayer() || !item2.isCollected || !context) return;
       assert(context);
-      if ([...nativePending].some((pending2) => !same16(context, pending2.context))) return;
+      if ([...nativePending].some((pending2) => !same17(context, pending2.context))) return;
       const definitionId = item2.definitionId;
       if (!id8(definitionId)) return;
       const state = stateFor(context), owners = ownerCount(item2);
@@ -16263,7 +18182,7 @@
       return true;
     };
     const validatePool = (pool, context) => {
-      if (pool?.source !== "futgg" || pool.season !== context.season || typeof pool.complete !== "boolean" || !id8(pool.setId) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id8(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id8(pool.requiredCards) || !id8(pool.poolSize) || pool.poolSize <= pool.items.length || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail19("FC27_GALLERY_POOL_UNAVAILABLE");
+      if (!["futgg", "fodder"].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== "boolean" || !(pool.source === "fodder" ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id8(pool.setId)) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id8(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id8(pool.requiredCards) || !id8(pool.poolSize) || (pool.source === "futgg" ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length) || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail21("FC27_GALLERY_POOL_UNAVAILABLE");
     };
     const projectState = (pool, state, extra = {}) => {
       assert(state.context);
@@ -16317,7 +18236,7 @@
       const timer = setTimeout(() => finish(new Error("FC27_GALLERY_CONCEPT_TIMEOUT")), 16e3);
       try {
         assert(context);
-        record({ event: "concept-request", phase: "native-service", status: "started", batchSize: criteria.defId.length });
+        record({ event: "concept-request", phase: "native-service", status: "started", batchSize: criteria.defId?.length ?? criteria.count });
         observable = root.services.Item.searchConceptItems(criteria);
         observable.observe(observer, (_sender, reply) => {
           nativePending.delete(pending2);
@@ -16363,7 +18282,7 @@
       try {
         context = readFc27Context(root);
         if (pool) validatePool(pool, context);
-        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id8(value)) || new Set(definitionIds).size !== definitionIds.length)) fail19("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id8(value)) || new Set(definitionIds).size !== definitionIds.length)) fail21("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
       }
@@ -16382,7 +18301,7 @@
           await restore(state);
           assert(context);
           const allIds = definitionIds ?? (pool ? pool.items.map((row) => row.eaId) : root.repositories.Item.getStaticData().map((row) => row.id));
-          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id8(value))) fail19("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id8(value))) fail21("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
           const fullSync = !pool && definitionIds === null;
           let ids = fullSync && !force ? allIds.filter((value) => !state.coveredDefinitionIds.has(value)) : pool && incremental && !force ? allIds.filter((value) => needsRead(state, value, missingOnly)) : allIds;
           let rechecking = false;
@@ -16396,8 +18315,8 @@
             record({ event: "sync-plan", phase: "incremental", status: "success", count: 0, cached: true });
             return { status: "observed", cached: true, scope: scope2(), covered: state.coveredDefinitionIds.size };
           }
-          if (definitionIds === null && now() < state.retryAt) fail19("FC27_GALLERY_PROGRESS_BACKOFF");
-          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function" || root.GAME_NAME !== "fc27") fail19("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
+          if (definitionIds === null && now() < state.retryAt) fail21("FC27_GALLERY_PROGRESS_BACKOFF");
+          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function" || root.GAME_NAME !== "fc27") fail21("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
           record({ event: "sync-plan", phase: force ? "full" : rechecking ? "recheck" : "incremental", status: "started", count: ids.length, cached: state.rows.size > 0 });
           const incoming = [], seen = /* @__PURE__ */ new Set(), groups = Math.ceil(ids.length / 1e3);
           let familyEvidence = false;
@@ -16425,9 +18344,9 @@
               });
               const reply = await nativePage(criteria, context);
               record({ event: "concept-response", status: "received", httpStatus: reply?.status });
-              if (reply?.success !== true || reply.status !== 200) fail19(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
+              if (reply?.success !== true || reply.status !== 200) fail21(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
               const data = reply.response ?? reply.data;
-              if (!Array.isArray(data?.items) || data.items.length > 250) fail19("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+              if (!Array.isArray(data?.items) || data.items.length > 250) fail21("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
               const exactProjection = pool || definitionIds !== null || rechecking;
               const pageAllowed = exactProjection ? allowed : new Set(data.items.map((item2) => item2.definitionId));
               const accepts = pool || rechecking ? (value) => [...allowed].some((requested) => sameDatabaseId(requested, value)) : (value) => pageAllowed.has(value);
@@ -16469,7 +18388,7 @@
                 recheck: rechecking
               });
               for (const row of retainedRows) {
-                if (seen.has(row.definitionId)) fail19("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+                if (seen.has(row.definitionId)) fail21("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
                 row.readAt = now();
                 seen.add(row.definitionId);
                 incoming.push(row);
@@ -16518,8 +18437,8 @@
               unknownCount: incoming.filter((row) => row.familyOnly === true).length
             });
           }
-          if ((definitionIds !== null || rechecking) && incoming.length !== ids.length) fail19("FC27_GALLERY_CONCEPT_INCOMPLETE");
-          if (pool && incoming.length < ids.length && ids.every((id10) => state.rows.has(id10))) fail19("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if ((definitionIds !== null || rechecking) && incoming.length !== ids.length) fail21("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if (pool && incoming.length < ids.length && ids.every((id10) => state.rows.has(id10))) fail21("FC27_GALLERY_CONCEPT_INCOMPLETE");
           merge(state, incoming);
           state.fetchedAt = now();
           if (fullSync && !rechecking) for (const value of ids) state.coveredDefinitionIds.add(value);
@@ -16577,7 +18496,7 @@
           try {
             const saved = await gmGetValue(contextKey(context, `gallery-progress:${pool.source}:${pool.setId}`), null);
             assert(context);
-            if ([1, 2].includes(saved?.schema) && same16(saved.context, context) && saved.revision === pool.revision && Number.isSafeInteger(saved.fetchedAt) && saved.fetchedAt >= 0 && saved.fetchedAt <= now()) {
+            if ([1, 2].includes(saved?.schema) && same17(saved.context, context) && saved.revision === pool.revision && Number.isSafeInteger(saved.fetchedAt) && saved.fetchedAt >= 0 && saved.fetchedAt <= now()) {
               merge(state, sanitizeRows(saved.concepts, new Set(pool.items.map((row) => row.eaId))).map((row) => ({ ...row, readAt: saved.fetchedAt })));
               state.fetchedAt = Math.max(state.fetchedAt, saved.fetchedAt);
               await persist(state);
@@ -16592,14 +18511,104 @@
         return { status: "blocked", reason: safeReason8(error2) };
       }
     };
+    const discoverPool = (set, { onProgress = null } = {}) => {
+      let context, queries;
+      try {
+        context = readFc27Context(root);
+        queries = fodderPoolQueries(set);
+      } catch (error2) {
+        return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
+      }
+      const state = stateFor(context), key = `${state.key}:discover:${set.id}`;
+      if (inFlight.has(key)) return inFlight.get(key);
+      const run = async () => {
+        const operation = { context, stopped: false };
+        running = operation;
+        try {
+          await restore(state);
+          assert(context);
+          if (now() < state.retryAt) fail21("FC27_GALLERY_PROGRESS_BACKOFF");
+          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || root.GAME_NAME !== "fc27") fail21("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
+          const items = /* @__PURE__ */ new Map();
+          let requests = 0, bounded2 = false;
+          for (const [index, query] of queries.entries()) {
+            let offset = 0;
+            for (let page = 0; page < 6; page++) {
+              if (requests++) await new Promise((resolve) => setTimeout(resolve, 1500));
+              assert(context);
+              if (operation.stopped) return { status: "stopped" };
+              try {
+                onProgress?.({ phase: "ea", index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size });
+              } catch {
+              }
+              const criteria = Object.assign(new root.UTSearchCriteriaDTO(), { type: root.SearchType?.PLAYER ?? "player", count: 200, offset }, query);
+              const reply = await nativePage(criteria, context);
+              assert(context);
+              if (reply?.success !== true || reply.status !== 200) fail21(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
+              const data = reply.response ?? reply.data;
+              if (!Array.isArray(data?.items) || data.items.length > 200) fail21("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+              let added = 0;
+              for (const item2 of data.items) if (id8(item2?.definitionId) && !items.has(item2.definitionId) && matchesFodderPool(set, item2)) {
+                items.set(item2.definitionId, item2);
+                added++;
+              }
+              if (data.endOfList || !data.items.length || !added) break;
+              if (page === 5) bounded2 = true;
+              offset += Math.max(1, data.items.length - 8);
+            }
+          }
+          assert(context);
+          if (operation.stopped) return { status: "stopped" };
+          const normalized = [...items.values()].map((item2) => fodderPoolItem(item2, root));
+          if (bounded2) normalized.sort((a, b) => b.score - a.score || a.eaId - b.eaId);
+          const pool = normalizeGalleryPool("fodder", {
+            schemaVersion: 1,
+            game: "fc27",
+            setId: set.id,
+            requiredCards: set.requiredCards,
+            poolSize: normalized.length,
+            isTruncated: bounded2,
+            generatedAt: new Date(now()).toISOString(),
+            items: normalized
+          }, set.id);
+          const rows = sanitizeRows([...items.values()].map((item2) => ({
+            definitionId: item2.definitionId,
+            isCollected: item2.isCollected,
+            gradingScore: item2.gradingScore,
+            cardData: nativeCardData(rawByItem.get(item2) ?? item2)
+          })), new Set(items.keys()));
+          merge(state, rows.map((row) => ({ ...row, readAt: now() })));
+          for (const [id10, item2] of items) if (typeof root.UTItemEntity === "function" && item2 instanceof root.UTItemEntity) state.displayEntities.set(id10, item2);
+          state.setSyncedAt[set.id] = now();
+          state.fetchedAt = now();
+          await persist(state);
+          assert(context);
+          notify();
+          record({ event: "progress-read", phase: "fodder-pool", status: "success", count: pool.items.length, pages: requests });
+          return { status: "observed", source: "fodder", pool, fetchedAt: now(), scope: scope2() };
+        } catch (error2) {
+          const reason = safeReason8(error2);
+          state.retryAt = now() + ttlMs;
+          record({ event: "progress-read", phase: "fodder-pool", status: "failed", reason });
+          return { status: "blocked", reason };
+        } finally {
+          if (running === operation) running = null;
+        }
+      };
+      const task = tail.then(run).finally(() => inFlight.delete(key));
+      tail = task.catch(() => {
+      });
+      inFlight.set(key, task);
+      return task;
+    };
     install();
     const updateFirstOwner = async (definitionId, firstOwned) => {
       const context = readFc27Context(root), state = stateFor(context);
       await restore(state);
       assert(context);
-      if (!id8(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail19("FC27_GALLERY_FO_INPUT_INVALID");
+      if (!id8(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail21("FC27_GALLERY_FO_INPUT_INVALID");
       const saved = await persist(state, (history) => firstOwned === null ? removeGalleryFirstOwnerHistory(history, Number(definitionId)) : toggleGalleryFirstOwnerHistory(history, Number(definitionId), firstOwned, now()));
-      if (!saved) fail19("FC27_GALLERY_FO_SAVE_FAILED");
+      if (!saved) fail21("FC27_GALLERY_FO_SAVE_FAILED");
       assert(context);
       notify();
       return { status: "observed", definitionId: Number(definitionId), firstOwned };
@@ -16612,6 +18621,7 @@
       scope: scope2,
       install,
       updateFirstOwner,
+      discoverPool,
       readFirstOwnerHistory: async () => {
         const state = stateFor(readFc27Context(root));
         await restore(state);
@@ -16697,25 +18707,25 @@
         report({ phase: "catalog", index: 0, total: 1, completed: 0 });
         const catalog = await provider.load();
         if (!current2()) return { status: "stopped", scope: scope2 };
-        if (source !== "futgg" || catalog.source !== source || !catalog.catalog) return { status: "blocked", reason: "FC27_GALLERY_POOL_UNAVAILABLE", scope: scope2 };
+        if (!["futgg", "fodder"].includes(source) || catalog.source !== source || !catalog.catalog) return { status: "blocked", reason: "FC27_GALLERY_POOL_UNAVAILABLE", scope: scope2 };
         const sets2 = catalog.catalog.categories.flatMap((category) => category.sets).filter((set) => setId === null || set.id === setId);
         if (!sets2.length) return { status: "blocked", reason: "FC27_GALLERY_POOL_UNAVAILABLE", scope: scope2 };
         let currentPool = null;
         if (setId !== null) {
-          const result = await provider.loadPool({ source, setId });
+          const result = await provider.loadPool({ source, setId, force, onProgress: report });
           if (!current2()) return { status: "stopped", scope: scope2 };
           if (result.status !== "observed" || result.stale || !result.pool) return { ...result, scope: scope2 };
           currentPool = result.pool;
           remember(currentPool);
         }
-        const native = await reader.sync(currentPool, { onProgress: report, force });
+        const native = source === "fodder" ? { status: "observed" } : await reader.sync(currentPool, { onProgress: report, force });
         if (!current2()) return { status: "stopped", scope: scope2 };
         if (native.status !== "observed" || native.stale) return native;
         const failures = [], updates = [];
         for (const [index, set] of sets2.entries()) {
           if (!current2()) return { status: "stopped", scope: scope2 };
           report({ phase: "pools", index: index + 1, total: sets2.length, completed: index });
-          const result = currentPool ? { status: "observed", cached: true, pool: currentPool } : await provider.loadPool({ source, setId: set.id });
+          const result = currentPool ? { status: "observed", cached: true, pool: currentPool } : await provider.loadPool({ source, setId: set.id, force, onProgress: report });
           if (!current2()) return { status: "stopped", scope: scope2 };
           if (result.pool) {
             remember(result.pool);
@@ -16799,6 +18809,7 @@
     reader,
     liveEnabled,
     readSettings = async () => ({ status: "observed", queriesNumber: 5, quoteCeiling: null }),
+    publicPrices: publicPrices2 = null,
     diagnosticLog: diagnosticLog2 = null
   }) {
     let busy = false, stopped = false;
@@ -16824,13 +18835,20 @@
         assertCurrent: account,
         onProgress,
         shouldStop: () => stopped,
+        preparePrices: publicPrices2 ? (record) => publicPrices2.preparePurchase(record, {
+          isCurrent: () => {
+            account();
+            return !stopped;
+          },
+          onProgress: (value) => onProgress?.({ ...value, phase: "reference-prices", total: value.total, purchased: 0, completed: 0, spent: 0 })
+        }) : null,
         checkOtherTransactions: async () => {
           const other = await persistence.journal.read(scope2);
           if (other && !isTerminalTraditionalJournal(other)) throw new Error("FC27_RECOVERY_REQUIRED");
           if (await gmGetValue(puzzleBuyPendingKey(scope2), null) !== null) throw new Error("FC27_BUY_RECOVERY_REQUIRED");
         },
         operationId: () => root.crypto.randomUUID(),
-        createAdapter: async (record) => {
+        createAdapter: async (record, callbacks = {}) => {
           const settings = await readSettings();
           account();
           if (settings?.status !== "observed" || !Number.isSafeInteger(settings.queriesNumber) || settings.queriesNumber < 1 || !isPuzzleQuoteCeiling(settings.quoteCeiling)) throw new Error("FC27_PUZZLE_POLICY_INVALID");
@@ -16846,12 +18864,18 @@
             leagueId: row.cardData.leagueId,
             preferredPosition: row.cardData.preferredPosition
           }]));
+          publicPrices2?.remember([...players].map(([definitionId, fields4]) => ({ definitionId, ...fields4 })));
           if (record.entries.some((entry) => entry.state === "waiting" && rows.get(entry.definitionId)?.isCollected !== true && !players.has(entry.definitionId))) {
             throw new Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE");
           }
           const adapter = await createFc27PuzzleBuyAdapter(root, {
             assertTarget: account,
             referencePrice,
+            onSearch: callbacks.onSearch,
+            refreshReference: publicPrices2 ? async (definitionId, policy) => (await publicPrices2.load([definitionId], { purpose: "purchase", policy, isCurrent: () => {
+              account();
+              return !stopped;
+            } })).references[definitionId] : null,
             attempts: settings.queriesNumber,
             canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope2),
             verifyCurrent: account,
@@ -16870,7 +18894,7 @@
               };
             }
           });
-          return Object.freeze({ ...adapter, find: (definitionId) => adapter.find(definitionId, settings.quoteCeiling ?? Infinity) });
+          return Object.freeze({ ...adapter, find: (definitionId, cap = Infinity) => adapter.find(definitionId, Math.min(cap, settings.quoteCeiling ?? Infinity)) });
         }
       });
       return buyer;
@@ -16904,10 +18928,26 @@
     };
     purchase.inspect = async () => {
       try {
-        return await create().inspect();
+        const context = readFc27Context(root), result = await create().inspect();
+        if (result.retryContext) {
+          const settings = await readSettings();
+          if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw Error();
+          result.retryContext = {
+            ...result.retryContext,
+            absoluteCap: settings.quoteCeiling,
+            balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
+            priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map((row) => ({ min: row.min, inc: row.inc }))
+          };
+        }
+        return result;
       } catch {
         return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
       }
+    };
+    if (publicPrices2) purchase.refreshPrices = async (ids, options) => {
+      const policy = await publicPrices2.readSettings(), references = {};
+      for (let i = 0; i < ids.length; i += 250) Object.assign(references, (await publicPrices2.load(ids.slice(i, i + 250), { ...options, purpose: "purchase", policy })).references);
+      return { policy, references };
     };
     purchase.stop = () => {
       stopped = true;
@@ -16954,6 +18994,31 @@
     const number2 = Number(value);
     return Number.isFinite(number2) ? number2 : null;
   }
+  function positiveInteger(value, fallback) {
+    const number2 = Math.floor(Number(value));
+    return Number.isFinite(number2) && number2 > 0 ? number2 : fallback;
+  }
+  function createTradeRunReceipt(input = {}) {
+    return {
+      runId: String(input.runId || ""),
+      jobId: String(input.jobId || ""),
+      jobType: String(input.jobType || ""),
+      scheduledFor: Math.max(0, finiteNumber2(input.scheduledFor)),
+      startedAt: Math.max(0, finiteNumber2(input.startedAt)),
+      finishedAt: Math.max(0, finiteNumber2(input.finishedAt)),
+      resumeAt: nullableFiniteNumber(input.resumeAt),
+      status: String(input.status || "blocked"),
+      reason: input.reason === void 0 || input.reason === null ? null : String(input.reason),
+      requested: Math.max(0, positiveInteger(input.requested, 0)),
+      succeeded: Math.max(0, positiveInteger(input.succeeded, 0)),
+      failed: Math.max(0, positiveInteger(input.failed, 0)),
+      skipped: Math.max(0, positiveInteger(input.skipped, 0)),
+      coinsBefore: nullableFiniteNumber(input.coinsBefore),
+      coinsAfter: nullableFiniteNumber(input.coinsAfter),
+      continuation: input.continuation && typeof input.continuation === "object" ? cloneSerializable2(input.continuation) : null,
+      receipts: cloneSerializable2(input.receipts || [])
+    };
+  }
   function createTradeCapabilitySnapshot(input = {}) {
     const capacity = input.transferCapacity || {};
     const max = nullableFiniteNumber(capacity.max);
@@ -16985,10 +19050,30 @@
   }
 
   // src/trade/bulk-relist-snapshot.js
+  var TRADE_BULK_RELIST_ITEM_LIMIT = 100;
   function safeNumber(value) {
     if (value === null || value === void 0 || value === "") return null;
     const number2 = Number(value);
     return Number.isFinite(number2) ? number2 : null;
+  }
+  function safeItem(input = {}) {
+    return {
+      item: {
+        id: safeNumber(input.item?.id),
+        definitionId: safeNumber(input.item?.definitionId),
+        pile: "transfer"
+      },
+      name: String(input.name || "unknown").slice(0, 80),
+      rating: safeNumber(input.rating),
+      auction: {
+        state: String(input.auction?.state || "unknown"),
+        tradeId: safeNumber(input.auction?.tradeId),
+        startingBid: safeNumber(input.auction?.startingBid),
+        currentBid: safeNumber(input.auction?.currentBid),
+        buyNowPrice: safeNumber(input.auction?.buyNowPrice),
+        expires: safeNumber(input.auction?.expires)
+      }
+    };
   }
   function isBulkRelistEligible(input = {}) {
     const auction = input.auction || input;
@@ -16996,6 +19081,68 @@
     const startingBid = safeNumber(auction.startingBid);
     const buyNowPrice = safeNumber(auction.buyNowPrice);
     return String(auction.state || "unknown") === "inactive" && tradeId3 !== null && tradeId3 > 0 && startingBid !== null && startingBid > 0 && buyNowPrice !== null && buyNowPrice >= startingBid;
+  }
+  function normalizeBulkRelistSnapshot(input = {}) {
+    const items = (Array.isArray(input.items) ? input.items : []).slice(0, TRADE_BULK_RELIST_ITEM_LIMIT).map(safeItem).filter(isBulkRelistEligible);
+    const auctions = (Array.isArray(input.auctions) ? input.auctions : input.items || []).slice(0, TRADE_BULK_RELIST_ITEM_LIMIT).map(safeItem);
+    return {
+      schemaVersion: 1,
+      capturedAt: Math.max(0, safeNumber(input.capturedAt) ?? Date.now()),
+      status: String(input.status || "loaded"),
+      total: Math.max(0, Math.floor(safeNumber(input.total) ?? auctions.length)),
+      unsoldCount: input.truncated === true ? Math.max(items.length, Math.floor(safeNumber(input.unsoldCount) ?? items.length)) : items.length,
+      byState: Object.fromEntries(Object.entries(input.byState || {}).map(([state, count2]) => [
+        String(state),
+        Math.max(0, Math.floor(safeNumber(count2) ?? 0))
+      ])),
+      truncated: input.truncated === true,
+      items,
+      auctions,
+      error: input.error ? { message: String(input.error.message || input.error).slice(0, 200) } : null
+    };
+  }
+  function fingerprintEntry(entry = {}) {
+    return [
+      safeNumber(entry.item?.id),
+      safeNumber(entry.item?.definitionId),
+      safeNumber(entry.auction?.tradeId),
+      safeNumber(entry.auction?.startingBid),
+      safeNumber(entry.auction?.buyNowPrice)
+    ].join(":");
+  }
+  function bulkRelistSnapshotFingerprint(snapshotInput = {}) {
+    const snapshot = normalizeBulkRelistSnapshot(snapshotInput);
+    return snapshot.items.map(fingerprintEntry).sort().join("|");
+  }
+  function sameBulkRelistSnapshot(left, right) {
+    const first = normalizeBulkRelistSnapshot(left);
+    const second = normalizeBulkRelistSnapshot(right);
+    return first.unsoldCount === second.unsoldCount && first.truncated === second.truncated && bulkRelistSnapshotFingerprint(first) === bulkRelistSnapshotFingerprint(second);
+  }
+  function reconcileBulkRelistSnapshots(beforeInput = {}, afterInput = {}) {
+    const before = normalizeBulkRelistSnapshot(beforeInput);
+    const after = normalizeBulkRelistSnapshot(afterInput);
+    const live = new Map(after.auctions.map((entry) => [Number(entry.item.id), entry]));
+    const items = before.items.map((entry) => {
+      const current2 = live.get(Number(entry.item.id)) || null;
+      const identityMatches = Boolean(current2 && Number(current2.item.definitionId) === Number(entry.item.definitionId));
+      const active = identityMatches && current2.auction.state === "active";
+      return {
+        item: { ...entry.item },
+        auctionBefore: { ...entry.auction },
+        auctionAfter: current2 ? { ...current2.auction } : null,
+        status: active ? "relisted" : "unknown"
+      };
+    });
+    const relisted = items.filter((entry) => entry.status === "relisted").length;
+    const unknown = items.length - relisted;
+    return {
+      status: unknown === 0 ? "completed" : relisted > 0 ? "partial" : "unknown",
+      requested: before.unsoldCount,
+      relisted,
+      unknown,
+      items
+    };
   }
 
   // src/trade/error-policy.js
@@ -17293,8 +19440,8 @@
       };
     }
     function unassignedState() {
-      const sources2 = readUnassignedSources();
-      const merged = mergeInventoryEntities(...Object.values(sources2));
+      const sources3 = readUnassignedSources();
+      const merged = mergeInventoryEntities(...Object.values(sources3));
       const summarize2 = (items) => ({
         count: items.length,
         itemIds: items.map((item2) => Number(item2?.id || 0)).filter(Boolean)
@@ -17302,7 +19449,7 @@
       return {
         mergedCount: merged.length,
         mergedItemIds: merged.map((item2) => Number(item2?.id || 0)).filter(Boolean),
-        sources: Object.fromEntries(Object.entries(sources2).map(([name, items]) => [name, summarize2(items)]))
+        sources: Object.fromEntries(Object.entries(sources3).map(([name, items]) => [name, summarize2(items)]))
       };
     }
     function readPile(pile) {
@@ -17683,8 +19830,8 @@
     if (value === null || value === void 0 || value === "") return null;
     const candidate = typeof value === "object" ? value.amount : value;
     if (candidate === null || candidate === void 0 || candidate === "") return null;
-    const amount = Number(candidate);
-    return Number.isFinite(amount) ? amount : null;
+    const amount2 = Number(candidate);
+    return Number.isFinite(amount2) ? amount2 : null;
   }
   function readCoins(runtime, user) {
     const direct = currencyAmount(user?.coins);
@@ -17995,7 +20142,7 @@
     }
     function inspectListingCandidates(options = {}) {
       const requestedSources = Array.isArray(options.sources) ? options.sources : ["transfer", "club"];
-      const sources2 = [...new Set(requestedSources.map(String).filter((pile) => ["club", "transfer"].includes(pile)))];
+      const sources3 = [...new Set(requestedSources.map(String).filter((pile) => ["club", "transfer"].includes(pile)))];
       const requestedLimit = Number(options.limit);
       const limit = options.limit === 0 ? Number.POSITIVE_INFINITY : Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(5e3, Math.floor(requestedLimit)) : 50;
       try {
@@ -18006,7 +20153,7 @@
         const seen = /* @__PURE__ */ new Set();
         const candidates = [];
         const counts = {};
-        for (const pile of sources2) {
+        for (const pile of sources3) {
           const rawItems = inventory.readPile(pile);
           let sourceCount = 0;
           for (const item2 of rawItems) {
@@ -18025,7 +20172,7 @@
         return {
           schemaVersion: 1,
           capturedAt: Date.now(),
-          sources: sources2,
+          sources: sources3,
           counts,
           total,
           returned: candidates.length,
@@ -18037,7 +20184,7 @@
         return {
           schemaVersion: 1,
           capturedAt: Date.now(),
-          sources: sources2,
+          sources: sources3,
           counts: {},
           total: 0,
           returned: 0,
@@ -18496,7 +20643,7 @@
     const number2 = Number(value);
     return Number.isFinite(number2) ? number2 : fallback;
   }
-  function positiveInteger(value, fallback = 0) {
+  function positiveInteger2(value, fallback = 0) {
     const number2 = Math.floor(Number(value));
     return Number.isFinite(number2) && number2 > 0 ? number2 : fallback;
   }
@@ -18549,10 +20696,10 @@
     const timezone = String(schedule.timezone || "UTC");
     formatter(timezone).format(new Date(referenceAt));
     const local = zonedParts(referenceAt, timezone);
-    const time = dailyTime(schedule);
-    const today = zonedDateToEpoch({ ...shiftedDate(local, 0), ...time, second: 0 }, timezone);
+    const time2 = dailyTime(schedule);
+    const today = zonedDateToEpoch({ ...shiftedDate(local, 0), ...time2, second: 0 }, timezone);
     if (today > referenceAt || inclusive && today === referenceAt) return today;
-    return zonedDateToEpoch({ ...shiftedDate(local, 1), ...time, second: 0 }, timezone);
+    return zonedDateToEpoch({ ...shiftedDate(local, 1), ...time2, second: 0 }, timezone);
   }
   function nextTradeRunAt(job = {}, referenceAtInput = Date.now(), options = {}) {
     const referenceAt = Math.max(0, finiteNumber4(referenceAtInput, Date.now()));
@@ -18565,7 +20712,7 @@
     }
     if (schedule.type === "daily") return nextDailyRunAt(schedule, referenceAt, inclusive);
     if (schedule.type === "interval") {
-      const period = positiveInteger(schedule.intervalSeconds, 3600) * 1e3;
+      const period = positiveInteger2(schedule.intervalSeconds, 3600) * 1e3;
       const anchorAt = Math.max(0, finiteNumber4(schedule.anchorAt, job.createdAt));
       if (referenceAt < anchorAt || inclusive && referenceAt === anchorAt) return anchorAt;
       const elapsed = referenceAt - anchorAt;
@@ -18589,8 +20736,8 @@
   var id9 = (value) => Number.isSafeInteger(value) && value > 0;
   var tradeId2 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var clone3 = (value) => structuredClone(value);
-  var same17 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var fail20 = (reason) => {
+  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var fail22 = (reason) => {
     throw new Error(reason);
   };
   var epoch = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -18660,14 +20807,14 @@
       const raw = await get(key, null);
       if (raw === null) return null;
       const value = normalizeGalleryListingSchedule(raw);
-      if (!value || value.scope !== scope2 || !same17(value.context, context)) fail20("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!value || value.scope !== scope2 || !same18(value.context, context)) fail22("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       return value;
     };
     const write = async (value) => {
       const normalized = normalizeGalleryListingSchedule(value);
-      if (!normalized) fail20("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!normalized) fail22("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       await set(key, clone3(normalized));
-      if (!same17(await get(key, null), normalized)) fail20("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
+      if (!same18(await get(key, null), normalized)) fail22("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
       return normalized;
     };
     const inspect = async ({ purchase = null, at: at8 = now(), sessionReady = true } = {}) => {
@@ -18758,8 +20905,18 @@
     });
   }
 
+  // src/gallery/relist-recovery.js
+  async function assertGalleryRelistSettled(get, scope2) {
+    const record = await get(`fcat-fc27-gallery-auto-relist-v1:${scope2}`, null);
+    if (record === null) return;
+    if (record.schema !== 1 || record.scope !== scope2 || !["armed", "disarmed", "running", "blocked", "completed"].includes(record.status)) {
+      throw Error("FC27_GALLERY_RELIST_RECORD_INVALID");
+    }
+    if (record.status === "running" || record.pending != null) throw Error("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+  }
+
   // src/adapters/browser/fc27-gallery-listing.js
-  var fail21 = (reason) => {
+  var fail23 = (reason) => {
     throw new Error(reason);
   };
   var safe = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_LISTING_UNAVAILABLE";
@@ -18770,7 +20927,7 @@
     if (Number.isSafeInteger(code2) && code2 > 0) value.httpStatus = code2;
     return value;
   };
-  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var circuitKey = (scope2) => `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
   var settingsKey = (scope2) => `fcat-fc27-gallery-list-settings-v1:${scope2}`;
   var normalizeSettings = (value) => {
@@ -18796,12 +20953,12 @@
   var readCircuit = async (get, scope2) => {
     const value = await get(circuitKey(scope2), null);
     if (!value) return { schema: 1, scope: scope2, persistent: false, retryAt: 0 };
-    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail21("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail23("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
     return value;
   };
   var saveCircuit = async (get, set, scope2, value) => {
     await set(circuitKey(scope2), value);
-    if (same18(await get(circuitKey(scope2), null), value) === false) fail21("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+    if (same19(await get(circuitKey(scope2), null), value) === false) fail23("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
   };
   function createFc27GalleryListing({
     root,
@@ -18829,14 +20986,15 @@
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assertCurrent = () => {
-        if (!same18(context, readFc27Context(root)) || !isCurrent()) fail21("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same19(context, readFc27Context(root)) || !isCurrent()) fail23("FC27_GALLERY_CONTEXT_CHANGED");
       };
       const adapter = adapterFactory(root);
       const checkOtherTransactions = async () => {
+        await assertGalleryRelistSettled(get, scope2);
         const other = await persistence.journal.read(scope2);
-        if (other && !isTerminalTraditionalJournal(other)) fail21("FC27_RECOVERY_REQUIRED");
-        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail21("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
-        if (await get(puzzleBuyPendingKey(scope2), null) !== null) fail21("FC27_BUY_RECOVERY_REQUIRED");
+        if (other && !isTerminalTraditionalJournal(other)) fail23("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail23("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
+        if (await get(puzzleBuyPendingKey(scope2), null) !== null) fail23("FC27_BUY_RECOVERY_REQUIRED");
       };
       const session2 = createGalleryBulkListSession({
         scope: scope2,
@@ -18853,12 +21011,12 @@
           assertCurrent();
           const currentPurchase = await purchase.inspect();
           if (!currentPurchase || currentPurchase.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) {
-            fail21("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+            fail23("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
           }
           const circuit = await readCircuit(get, scope2);
-          if (circuit.persistent) fail21("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail21("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail21("FC27_GALLERY_LISTING_DISABLED");
+          if (circuit.persistent) fail23("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail23("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail23("FC27_GALLERY_LISTING_DISABLED");
           await checkOtherTransactions();
         },
         afterMutation: async (_entry, result) => {
@@ -18904,7 +21062,7 @@
       // Display-only lookup in existing repositories. It grants no ownership or
       // listing authority and does not refresh inventory or call an EA service.
       readDisplayItem(ref) {
-        if (!prepared || !same18(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same18(row.item, ref))) return null;
+        if (!prepared || !same19(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same19(row.item, ref))) return null;
         return createEaInventoryAdapter(root).readPile(ref.pile).find((item2) => Number(item2?.id) === ref.id && Number(item2?.definitionId) === ref.definitionId) ?? null;
       },
       scheduleCapability() {
@@ -18923,7 +21081,7 @@
         const { fixedPrice, fixedStartPrice, ...persistent } = normalized;
         sessionPrices.set(scope2, { fixedPrice, fixedStartPrice });
         await set(settingsKey(scope2), persistent);
-        return same18(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
+        return same19(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
       },
       async readSchedule({ purchaseSnapshot = null, sessionReady = true, at: at8 = Date.now() } = {}) {
         try {
@@ -18948,14 +21106,14 @@
         if (schedule?.type !== "once" || !Number.isSafeInteger(schedule.runAt) || schedule.runAt <= Date.now()) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
         }
-        if (!planned2 || plan?.status !== "observed" || !same18(plan, planned2)) {
+        if (!planned2 || plan?.status !== "observed" || !same19(plan, planned2)) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_PLAN_CHANGED" };
         }
         return withScheduleLock(async () => {
           try {
             const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
             const purchaseSnapshot = await purchase.inspect();
-            if (!same18(prepared?.context, context) || !same18(context, readFc27Context(root))) fail21("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same19(prepared?.context, context) || !same19(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
             if (prepared?.binding !== `${purchaseSnapshot.operationId}:${purchaseSnapshot.binding}`) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_PURCHASE_CHANGED" };
             }
@@ -18974,7 +21132,7 @@
             const store = createGalleryListingScheduleStore({ get, set, scope: scope2, context });
             const purchaseSnapshot = await purchase.inspect();
             const state = await store.inspect({ purchase: purchaseSnapshot, sessionReady: true, at: Date.now() });
-            if (!same18(context, readFc27Context(root))) fail21("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same19(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
             if (state.status === "blocked") return state;
             if (state.status !== "disarmed") return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_STATE_LOCKED" };
             if (!liveEnabled || state.schedule?.schedule?.type !== "once" || state.schedule.runCount !== 0 || !(state.schedule.nextRunAt > Date.now())) {
@@ -19014,8 +21172,8 @@
             if (!liveEnabled || saved.schedule.type !== "once" || saved.runCount !== 0) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
             }
-            const scheduleCurrent = () => isCurrent() && same18(context, readFc27Context(root));
-            if (!scheduleCurrent()) fail21("FC27_GALLERY_CONTEXT_CHANGED");
+            const scheduleCurrent = () => isCurrent() && same19(context, readFc27Context(root));
+            if (!scheduleCurrent()) fail23("FC27_GALLERY_CONTEXT_CHANGED");
             await store.checkpoint({ status: "running", reason: null, at: Date.now(), runCount: saved.runCount });
             const preparedResult = await publicApi.prepare({ isCurrent: scheduleCurrent });
             if (preparedResult.status !== "ready") {
@@ -19032,7 +21190,7 @@
             const plannedResult = publicApi.plan({ selectedIds, settings: { ...saved.listingSettings || {}, priceMode: "fixed", durationSeconds: saved.entries[0].durationSeconds }, overridesByItem });
             const exact = plannedResult.status === "observed" && plannedResult.entries.length === saved.entries.length && plannedResult.entries.every((entry, index) => {
               const prior = saved.entries[index];
-              return same18(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
+              return same19(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
             });
             if (!exact) {
               await store.checkpoint({ status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_ITEMS_CHANGED" });
@@ -19068,7 +21226,7 @@
         try {
           const env = create({ isCurrent }), info = await purchase.inspect();
           env.assertCurrent();
-          if (info?.status !== "observed") fail21(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+          if (info?.status !== "observed") fail23(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
           const result = await env.persistence.exclusive(env.scope, async () => {
             await env.checkOtherTransactions();
             env.assertCurrent();
@@ -19108,11 +21266,11 @@
                 eligibleForListing: galleryListingCandidateAllowed(seen.candidate)
               }] : [];
             });
-            const projected = projectGalleryListingCandidates({ source, items });
-            if (projected.status !== "observed") return projected;
+            const projected2 = projectGalleryListingCandidates({ source, items });
+            if (projected2.status !== "observed") return projected2;
             const limitsByItem = {}, candidates = [];
             const displayItems = new Map(createEaInventoryAdapter(root).readPile("club").map((item2) => [Number(item2?.id), item2]));
-            for (const candidate of projected.entries) {
+            for (const candidate of projected2.entries) {
               const result2 = await env.adapter.inspectPriceLimits(candidate.item, { refresh: true });
               env.assertCurrent();
               const code2 = Number(result2?.error?.code ?? result2?.response?.status);
@@ -19134,7 +21292,6 @@
               const display = displayItems.get(candidate.item.id);
               let previousListingPrice = null, boughtFor = candidate.purchase.purchasePrice;
               if (Number(display?.definitionId) === candidate.item.definitionId) {
-                if (Number.isFinite(display.lastSalePrice)) boughtFor = display.lastSalePrice;
                 try {
                   const auction = display.getAuctionData?.();
                   const previous = auction?.currentBid > 0 ? null : auction?.isExpired?.() ? auction.startingBid : auction?.buyNowPrice;
@@ -19146,7 +21303,13 @@
             }
             let quotes = null;
             try {
-              quotes = candidates.length ? await loadPrices(candidates.map((e) => e.item.definitionId)) : null;
+              quotes = candidates.length ? await loadPrices(candidates.map((e) => e.item.definitionId), {
+                rows: candidates.map((e) => displayItems.get(e.item.id)).filter(Boolean),
+                isCurrent: () => {
+                  env.assertCurrent();
+                  return true;
+                }
+              }) : null;
             } catch (error2) {
               quotes = null;
               void stage({ phase: "quotes", status: "failed", reason: "FC27_GALLERY_QUOTES_UNAVAILABLE" });
@@ -19158,7 +21321,13 @@
             });
             env.assertCurrent();
             const prices = quotes?.expiresAt > Date.now() ? quotes.freshPrices ?? {} : {};
-            const tiers = root.UTCurrencyInputControl?.PRICE_TIERS;
+            const listingPriceSource = quotes?.listingPriceSource ?? "futgg";
+            const pricesBySource = Object.fromEntries(Object.entries(quotes?.references ?? {}).map(([id10, ref]) => [
+              id10,
+              Object.fromEntries(["futgg", "futbin"].map((source2) => [source2, ref.quotes?.[source2]?.expiresAt > Date.now() && !ref.quotes[source2].error ? ref.quotes[source2].price : null]))
+            ]));
+            const sourceLabel = listingPriceSource === "futbin" ? "FUTBIN" : "FUT.GG";
+            const tiers2 = root.UTCurrencyInputControl?.PRICE_TIERS;
             prepared = {
               context: env.context,
               scope: env.scope,
@@ -19166,16 +21335,22 @@
               candidates,
               limitsByItem,
               marketPrices: prices,
-              priceTiers: tiers ? Array.from(tiers, (t) => ({ min: t.min, inc: t.inc })) : null,
-              expiresAt: quotes?.expiresAt ?? 0
+              priceTiers: tiers2 ? Array.from(tiers2, (t) => ({ min: t.min, inc: t.inc })) : null,
+              expiresAt: quotes?.expiresAt ?? 0,
+              listingPriceSource
             };
             return {
               status: "ready",
-              source: "FUT.GG",
+              source: sourceLabel,
+              listingPriceSource,
+              pricesBySource,
+              requestedSources: quotes?.requestedSources ?? ["futgg"],
               candidates: structuredClone(candidates),
-              skipped: projected.skipped,
+              skipped: projected2.skipped,
               prices: structuredClone(prices),
               priceTiers: prepared.priceTiers,
+              limitsByItem: structuredClone(limitsByItem),
+              expiresAt: quotes?.expiresAt ?? 0,
               liveEnabled
             };
           });
@@ -19187,15 +21362,17 @@
           busy = false;
         }
       },
-      plan({ selectedIds, settings, overridesByItem = {} }) {
-        if (!prepared || !same18(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+      plan({ selectedIds, settings, overridesByItem = {}, previewPrices = null }) {
+        if (!prepared || !same19(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
         const selected = new Set(selectedIds);
         const result = planGalleryListingPrices({
           ...prepared,
           candidates: prepared.candidates.filter((e) => selected.has(e.item.id)),
           marketPrices: prepared.expiresAt > Date.now() ? prepared.marketPrices : {},
+          quoteExpired: prepared.expiresAt > 0 && prepared.expiresAt <= Date.now(),
           settings,
-          overridesByItem
+          overridesByItem,
+          previewPrices
         });
         planned2 = result?.status === "observed" ? structuredClone(result) : null;
         return result;
@@ -19211,12 +21388,15 @@
           env.assertCurrent();
           const currentPurchase = await purchase.inspect();
           if (currentPurchase?.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) {
-            fail21("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+            fail23("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
           }
           const circuit = await readCircuit(get, env.scope);
-          if (circuit.persistent) fail21("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail21("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!resume && (!prepared || !same18(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same18(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same18(c.item, e.item) && same18(c.purchase, e.purchase))))) fail21("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (circuit.persistent) fail23("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail23("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!resume && (!prepared || !same19(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same19(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same19(c.item, e.item) && same19(c.purchase, e.purchase))))) fail23("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (!resume && prepared.expiresAt <= Date.now() && plan.entries.some((e) => e.priceOrigin === "market")) {
+            fail23("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
+          }
           return await env.session.execute({
             approved,
             entries: plan?.entries,
@@ -19247,19 +21427,710 @@
     return publicApi;
   }
 
+  // src/adapters/browser/fc27-fodder-gallery.js
+  function withFodderGalleryPools(provider, reader, { now = () => Date.now(), ttlMs = 3e5 } = {}) {
+    const pools = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
+    const key = (scope2, set, revision) => `${scope2}:${revision}:${galleryCanonical(set)}`;
+    const resolve = async (setId, cachedOnly) => {
+      const value = cachedOnly ? await provider.peek() : await provider.load();
+      const set = value?.source === "fodder" ? value.catalog.categories.flatMap((category) => category.sets).find((set2) => set2.id === setId) : null;
+      return set ? { set, key: key(reader.scope(), set, value.revision) } : null;
+    };
+    const loadPool = async (input = {}) => {
+      if (input.source !== "fodder") return provider.loadPool(input);
+      try {
+        const target = await resolve(input.setId, false);
+        if (!target) return { status: "blocked", reason: "FC27_GALLERY_POOL_UNAVAILABLE" };
+        const old = pools.get(target.key);
+        if (!input.force && old && now() - old.fetchedAt < ttlMs) return { ...old, cached: true };
+        if (pending2.has(target.key)) return pending2.get(target.key);
+        const scope2 = reader.scope();
+        const task = reader.discoverPool(target.set, { onProgress: input.onProgress }).then((result) => {
+          if (scope2 !== reader.scope()) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+          if (result.status === "observed") {
+            pools.set(target.key, result);
+            while (pools.size > 256) pools.delete(pools.keys().next().value);
+          }
+          return result;
+        }).finally(() => pending2.delete(target.key));
+        pending2.set(target.key, task);
+        return task;
+      } catch {
+        return { status: "blocked", reason: "FC27_GALLERY_POOL_UNAVAILABLE" };
+      }
+    };
+    const peekPool = async (input = {}) => {
+      if (input.source !== "fodder") return provider.peekPool(input);
+      const target = await resolve(input.setId, true), result = target && pools.get(target.key);
+      return result ? { ...result, cached: true, stale: now() - result.fetchedAt >= ttlMs } : null;
+    };
+    return Object.freeze({ ...provider, loadPool, peekPool });
+  }
+
+  // src/trade/bulk-relist-transaction.js
+  function confirmationIsValid(confirmation, token, snapshot, now) {
+    return confirmation?.action === "bulk-relist" && String(confirmation.token || "") === String(token || "") && String(confirmation.fingerprint || "") === bulkRelistSnapshotFingerprint(snapshot) && Number(confirmation.expiresAt || 0) > Number(now);
+  }
+  function createBulkRelistTransaction(options = {}) {
+    if (typeof options.getTradeAdapter !== "function") throw new TypeError("getTradeAdapter is required");
+    const now = typeof options.now === "function" ? options.now : () => Date.now();
+    async function run(input = {}) {
+      const startedAt = Number(input.startedAt ?? now());
+      const adapter = input.tradeAdapter || options.getTradeAdapter({ pacingContext: input.pacingContext });
+      const before = normalizeBulkRelistSnapshot(input.before || input.preview?.snapshot);
+      const requested = before.unsoldCount;
+      if (!confirmationIsValid(input.confirmation, input.confirmationToken, before, now())) {
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "bulk-relist-approval-mismatch",
+          requested
+        });
+      }
+      if (before.truncated) {
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "bulk-relist-snapshot-truncated",
+          requested
+        });
+      }
+      const itemIds = before.items.map((entry) => Number(entry.item.id)).filter((id10) => id10 > 0);
+      const transferPreflight = await adapter.refreshTransferItems({ wait: input.deferWhenWaiting !== true });
+      if (transferPreflight.status !== "completed") {
+        if (input.deferWhenWaiting === true && ["pacing-deferred", "rate-limit"].includes(transferPreflight.error?.kind) && Number(transferPreflight.error?.retryAt) > Number(now())) {
+          return createTradeRunReceipt({
+            runId: input.runId,
+            jobId: input.jobId,
+            jobType: "bulk-relist",
+            scheduledFor: input.scheduledFor,
+            startedAt,
+            finishedAt: Number(now()),
+            status: "deferred",
+            reason: transferPreflight.error.kind === "rate-limit" ? "trade-rate-limit-cooldown" : "trade-action-pacing",
+            resumeAt: transferPreflight.error.retryAt,
+            requested
+          });
+        }
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: `bulk-relist-transfer-preflight-${transferPreflight.status || "unavailable"}`,
+          requested
+        });
+      }
+      const refreshedBefore = normalizeBulkRelistSnapshot(adapter.inspectBulkRelistSnapshot({ itemIds }));
+      if (!sameBulkRelistSnapshot(before, refreshedBefore)) {
+        options.onCheckpoint?.({ phase: "bulk-relist-identity-changed", status: "blocked", reason: "bulk-relist-snapshot-changed" });
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "bulk-relist-snapshot-changed",
+          requested
+        });
+      }
+      if (requested === 0) {
+        options.onCheckpoint?.({ phase: "bulk-relist-empty", status: "skipped-empty", mutationBoundaryCrossed: false });
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "completed",
+          reason: "skipped-empty",
+          requested: 0,
+          skipped: 0,
+          receipts: []
+        });
+      }
+      const circuit = options.circuitBreaker?.availability?.();
+      if (circuit && circuit.allowed !== true) {
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "trade-circuit-open",
+          requested
+        });
+      }
+      if (input.beforeMutation && await input.beforeMutation() !== true) {
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "bulk-relist-execution-lease-lost",
+          requested
+        });
+      }
+      const requestPermit = await adapter.acquireRequestPermit("bulk-relist", {
+        wait: input.deferWhenWaiting !== true,
+        onWait: input.onPermitWait
+      });
+      if (requestPermit.status !== "acquired") {
+        if (input.deferWhenWaiting === true && ["pacing-deferred", "rate-limit"].includes(requestPermit.error?.kind) && Number(requestPermit.error?.retryAt) > Number(now())) {
+          return createTradeRunReceipt({
+            runId: input.runId,
+            jobId: input.jobId,
+            jobType: "bulk-relist",
+            scheduledFor: input.scheduledFor,
+            startedAt,
+            finishedAt: Number(now()),
+            status: "deferred",
+            reason: requestPermit.error.kind === "rate-limit" ? "trade-rate-limit-cooldown" : "trade-action-pacing",
+            resumeAt: requestPermit.error.retryAt,
+            requested
+          });
+        }
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: requestPermit.error?.kind === "rate-limit" ? "trade-rate-limit" : "bulk-relist-request-permit-blocked",
+          requested
+        });
+      }
+      if (input.beforeMutation && await input.beforeMutation() !== true) {
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: "blocked",
+          reason: "bulk-relist-execution-lease-lost",
+          requested
+        });
+      }
+      options.onCheckpoint?.({
+        phase: "bulk-relist-request-started",
+        status: "mutation-pending",
+        mutationBoundaryCrossed: true,
+        items: before.items
+      });
+      const result = await adapter.relistExpiredAuctions({ requestPermit: requestPermit.permit });
+      options.onCheckpoint?.({
+        phase: "bulk-relist-response-received",
+        status: result.status,
+        reason: result.error?.kind,
+        response: result.response,
+        mutationBoundaryCrossed: true
+      });
+      if (result.status !== "accepted") {
+        const classification = classifyTradeError(result.error || result.response || { status: result.status });
+        const status = result.status === "ambiguous" || classification.ambiguous ? "ambiguous" : "failed";
+        if (classification.kind !== "rate-limit") {
+          options.circuitBreaker?.recordFailure?.(result.error || result.response || {}, {
+            action: "bulk-relist",
+            endpoint: "/auctionhouse",
+            jobId: input.jobId,
+            runId: input.runId,
+            response: result.response,
+            capabilities: adapter.inspectCapabilities()
+          });
+        }
+        const terminalStatus = classification.opensCircuit || classification.kind === "rate-limit" ? "blocked" : status;
+        const itemStatus = terminalStatus === "ambiguous" ? "unknown" : "failed";
+        options.onCheckpoint?.({
+          phase: "bulk-relist-request-finished",
+          status: terminalStatus,
+          reason: classification.opensCircuit ? `trade-${classification.kind}` : `bulk-relist-${result.status}`,
+          mutationBoundaryCrossed: true,
+          items: before.items.map((entry) => ({ ...entry, status: itemStatus }))
+        });
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status: terminalStatus,
+          reason: classification.kind === "rate-limit" ? "trade-rate-limit" : classification.opensCircuit ? `trade-${classification.kind}` : `bulk-relist-${result.status}`,
+          requested,
+          failed: requested,
+          receipts: before.items.map((entry) => ({
+            item: entry.item,
+            status: itemStatus,
+            reason: `bulk-relist-${result.status}`,
+            mutationBoundaryCrossed: true
+          }))
+        });
+      }
+      const refresh = await adapter.refreshTransferItems({ wait: true });
+      const after = normalizeBulkRelistSnapshot(adapter.inspectBulkRelistSnapshot({ itemIds }));
+      const reconciliation = reconcileBulkRelistSnapshots(before, after);
+      const reconciliationItems = refresh.status === "completed" ? reconciliation.items : reconciliation.items.map((entry) => ({ ...entry, status: "unknown" }));
+      const effectiveReconciliationStatus = refresh.status === "completed" ? reconciliation.status : "ambiguous";
+      options.onCheckpoint?.({
+        phase: "bulk-relist-reconciliation-finished",
+        status: effectiveReconciliationStatus,
+        reason: refresh.status === "completed" ? null : "bulk-relist-accepted-refresh-failed",
+        response: refresh.response,
+        mutationBoundaryCrossed: true,
+        after,
+        items: reconciliationItems
+      });
+      if (refresh.status !== "completed" || reconciliation.status !== "completed") {
+        options.circuitBreaker?.recordFailure?.(refresh.error || {}, {
+          action: "bulk-relist",
+          endpoint: "/auctionhouse",
+          jobId: input.jobId,
+          runId: input.runId,
+          response: refresh.response,
+          capabilities: adapter.inspectCapabilities()
+        });
+        const status = "ambiguous";
+        const reason = refresh.status !== "completed" ? "bulk-relist-accepted-refresh-failed" : `bulk-relist-${reconciliation.status}`;
+        return createTradeRunReceipt({
+          runId: input.runId,
+          jobId: input.jobId,
+          jobType: "bulk-relist",
+          scheduledFor: input.scheduledFor,
+          startedAt,
+          finishedAt: Number(now()),
+          status,
+          reason,
+          requested,
+          succeeded: refresh.status === "completed" ? reconciliation.relisted : 0,
+          failed: refresh.status === "completed" ? reconciliation.unknown : requested,
+          receipts: reconciliationItems.map((entry) => ({ ...entry }))
+        });
+      }
+      options.circuitBreaker?.recordSuccess?.({ action: "bulk-relist", jobId: input.jobId, runId: input.runId });
+      return createTradeRunReceipt({
+        runId: input.runId,
+        jobId: input.jobId,
+        jobType: "bulk-relist",
+        scheduledFor: input.scheduledFor,
+        startedAt,
+        finishedAt: Number(now()),
+        status: "completed",
+        reason: null,
+        requested,
+        succeeded: reconciliation.relisted,
+        failed: 0,
+        receipts: reconciliation.items.map((entry) => ({ ...entry }))
+      });
+    }
+    return Object.freeze({ run });
+  }
+
+  // src/adapters/browser/fc27-gallery-relist.js
+  var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var copy = (value) => structuredClone(value);
+  var fail24 = (reason) => {
+    throw Error(reason);
+  };
+  var galleryRelistKey = (scope2) => `fcat-fc27-gallery-auto-relist-v1:${scope2}`;
+  var safe2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_RELIST_UNCONFIRMED";
+  var positive9 = (value) => Number.isSafeInteger(value) && value > 0;
+  function createFc27GalleryRelist({
+    root,
+    get,
+    set,
+    purchase,
+    liveEnabled = false,
+    adapterFactory = createEaTradeAdapter,
+    now = Date.now,
+    sleep,
+    diagnosticLog: diagnosticLog2
+  } = {}) {
+    let busy = false, stopped = false;
+    const contextNow = () => readFc27Context(root);
+    const read = async (context, scope2) => {
+      const raw = await get(galleryRelistKey(scope2), null);
+      if (raw === null) return null;
+      if (raw.schema !== 1 || !same20(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive9(raw.nextAt) || !positive9(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive9(ref.id) || !positive9(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive9(row?.item?.id) || !positive9(row?.item?.definitionId) || !positive9(row.auction?.startingBid) || !positive9(row.auction?.buyNowPrice)))) fail24("FC27_GALLERY_RELIST_RECORD_INVALID");
+      return copy(raw);
+    };
+    const write = async (scope2, value) => {
+      await set(galleryRelistKey(scope2), copy(value));
+      if (!same20(await get(galleryRelistKey(scope2), null), value)) fail24("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
+    };
+    const environment = () => {
+      const context = contextNow(), scope2 = traditionalJournalScope(context);
+      const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
+      const assert = () => {
+        if (!same20(context, contextNow())) fail24("FC27_GALLERY_CONTEXT_CHANGED");
+      };
+      const adapter = adapterFactory(root);
+      const guard = async () => {
+        assert();
+        if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail24("FC27_GALLERY_LISTING_DISABLED");
+        const journal = await persistence.journal.read(scope2);
+        if (journal && !isTerminalTraditionalJournal(journal)) fail24("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null) || await get(puzzleBuyPendingKey(scope2), null)) fail24("FC27_BUY_RECOVERY_REQUIRED");
+        const circuit = await get(`fcat-fc27-gallery-listing-circuit-v1:${scope2}`, null);
+        if (circuit && (circuit.schema !== 1 || circuit.scope !== scope2 || typeof circuit.persistent !== "boolean" || !Number.isSafeInteger(circuit.retryAt))) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+        if (circuit?.persistent || circuit?.retryAt > now()) fail24("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+        assert();
+      };
+      const response = async (result) => {
+        const code2 = Number(result?.error?.code ?? result?.response?.status);
+        if ([427, 429].includes(code2)) {
+          const value = { schema: 1, scope: scope2, persistent: code2 === 427, retryAt: code2 === 429 ? now() + 6e4 : 0 };
+          const key = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
+          await set(key, value);
+          if (!same20(await get(key, null), value)) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+        }
+      };
+      return { context, scope: scope2, persistence, assert, adapter, guard, response };
+    };
+    const recordEvent = (state) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({
+          area: "gallery",
+          event: "listing-stage",
+          phase: "auto-relist",
+          status: state.status,
+          reason: state.reason,
+          count: state.runs
+        })).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const api = {
+      async read() {
+        try {
+          const context = contextNow(), scope2 = traditionalJournalScope(context);
+          return await read(context, scope2) ?? { status: "absent", range: "batch", minutes: 10 };
+        } catch (error2) {
+          return { status: "blocked", reason: safe2(error2) };
+        }
+      },
+      async arm({ approved = false, range = "batch", minutes = 10 } = {}) {
+        if (!approved || !liveEnabled || !["batch", "all"].includes(range) || ![1, 5, 10].includes(minutes)) return { status: "blocked", reason: "FC27_GALLERY_RELIST_APPROVAL_REQUIRED" };
+        try {
+          const env = environment();
+          return await env.persistence.exclusive(env.scope, async () => {
+            await env.guard();
+            const old = await read(env.context, env.scope);
+            if (old && ["running", "blocked", "armed"].includes(old.status)) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            let snapshot = null, items = [];
+            if (range === "batch") {
+              snapshot = await purchase.inspect();
+              env.assert();
+              if (snapshot?.status !== "observed") fail24(snapshot?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+              const receipts = projectGalleryListingReceipts({
+                scope: env.scope,
+                context: env.context,
+                purchase: await get(galleryPurchaseKey(env.scope), null),
+                pendingMarker: await get(galleryPurchasePendingKey(env.scope), null),
+                expectedOperationId: snapshot.operationId,
+                expectedBinding: snapshot.binding
+              });
+              if (receipts.status !== "observed") fail24(receipts.reason);
+              items = receipts.entries.filter((row) => positive9(row.itemId) && positive9(row.definitionId)).map((row) => ({ id: row.itemId, definitionId: row.definitionId }));
+              if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail24("FC27_GALLERY_LISTING_NO_PURCHASE");
+            }
+            const value = {
+              schema: 1,
+              scope: env.scope,
+              context: env.context,
+              id: root.crypto.randomUUID(),
+              range,
+              minutes,
+              status: "armed",
+              runs: 0,
+              nextAt: now() + minutes * 6e4,
+              expiresAt: now() + 864e5,
+              purchaseBinding: snapshot ? `${snapshot.operationId}:${snapshot.binding}` : null,
+              items,
+              reason: null,
+              pending: null
+            };
+            env.assert();
+            await write(env.scope, value);
+            return value;
+          }) ?? { status: "waiting-operation" };
+        } catch (error2) {
+          return { status: "blocked", reason: safe2(error2) };
+        }
+      },
+      async disarm() {
+        stopped = true;
+        try {
+          const env = environment();
+          return await env.persistence.exclusive(env.scope, async () => {
+            env.assert();
+            const value = await read(env.context, env.scope);
+            if (!value) return { status: "absent" };
+            if (value.status === "running" || value.pending) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            value.status = "disarmed";
+            value.reason = "user-stopped";
+            await write(env.scope, value);
+            return value;
+          }) ?? { status: "waiting-operation" };
+        } catch (error2) {
+          return { status: "blocked", reason: safe2(error2) };
+        }
+      },
+      async poll({ recover = false } = {}) {
+        if (busy) return { status: "waiting-operation" };
+        busy = true;
+        stopped = false;
+        try {
+          const env = environment();
+          return await env.persistence.exclusive(env.scope, async () => {
+            let value = await read(env.context, env.scope);
+            env.assert();
+            if (!value) return { status: "absent" };
+            if (!recover && value.status !== "armed") return value;
+            if (recover) {
+              if (!value.pending) {
+                if (!["running", "blocked"].includes(value.status)) return value;
+                value.status = "disarmed";
+                value.reason = "reconciled-no-request";
+                await write(env.scope, value);
+                return value;
+              }
+              if ((await env.adapter.refreshTransferItems()).status !== "completed") fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              env.assert();
+              const exact = value.pending.every((row) => {
+                const current3 = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
+                return current3?.item.id === row.item.id && current3.item.definitionId === row.item.definitionId && current3.auction?.state === "active" && current3.auction.startingBid === row.auction.startingBid && current3.auction.buyNowPrice === row.auction.buyNowPrice;
+              });
+              if (!exact) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              if (value.range === "batch") await assertNoGalleryListingPending(get, env.scope, {
+                set,
+                context: env.context,
+                assertCurrent: env.assert,
+                createAdapter: () => env.adapter
+              });
+              value.status = "disarmed";
+              value.pending = null;
+              value.reason = "reconciled";
+              await write(env.scope, value);
+              return value;
+            }
+            if (value.expiresAt <= now() || value.runs >= 2) {
+              value.status = "completed";
+              value.reason = "authorization-expired";
+              await write(env.scope, value);
+              return value;
+            }
+            if (value.nextAt > now()) return { ...value, status: "waiting-time" };
+            await env.guard();
+            const previous = await readGalleryBulkListRecovery(get, env.scope);
+            if (!["absent", "clear"].includes(previous.status)) fail24("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+            if (value.range === "batch") {
+              const snapshot = await purchase.inspect();
+              env.assert();
+              if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) {
+                value.status = "blocked";
+                value.reason = "FC27_GALLERY_LISTING_PURCHASE_CHANGED";
+                await write(env.scope, value);
+                return value;
+              }
+            }
+            if ((await env.adapter.refreshTransferItems()).status !== "completed") fail24("FC27_GALLERY_TRANSFER_UNCONFIRMED");
+            env.assert();
+            const before = normalizeBulkRelistSnapshot(env.adapter.inspectBulkRelistSnapshot());
+            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive9(row.item.id) || !positive9(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail24("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
+            const entries2 = value.range === "all" ? before.items : before.items.filter((row) => value.items.some((ref) => ref.id === row.item.id && ref.definitionId === row.item.definitionId));
+            if (!entries2.length) {
+              value.nextAt = now() + value.minutes * 6e4;
+              value.reason = "skipped-empty";
+              await write(env.scope, value);
+              return value;
+            }
+            value.status = "running";
+            await write(env.scope, value);
+            const current2 = async () => {
+              await env.guard();
+              if (stopped || !same20(await read(env.context, env.scope), value)) fail24("FC27_GALLERY_RELIST_PLAN_CHANGED");
+              if (value.range === "batch") {
+                const snapshot = await purchase.inspect();
+                env.assert();
+                if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) fail24("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+              }
+            };
+            let result;
+            if (value.range === "all") {
+              const wrapped = { ...env.adapter, relistExpiredAuctions: async (options) => {
+                await current2();
+                value.pending = copy(before.items);
+                await write(env.scope, value);
+                env.assert();
+                const response = await env.adapter.relistExpiredAuctions(options);
+                await env.response(response);
+                if (response.status === "rejected") {
+                  value.pending = null;
+                  await write(env.scope, value);
+                }
+                return response;
+              } };
+              const token = root.crypto.randomUUID();
+              result = await createBulkRelistTransaction({ getTradeAdapter: () => wrapped, now }).run({
+                before,
+                confirmationToken: token,
+                confirmation: {
+                  action: "bulk-relist",
+                  token,
+                  fingerprint: bulkRelistSnapshotFingerprint(before),
+                  expiresAt: now() + 6e4
+                },
+                runId: `${value.id}:${value.runs}`,
+                beforeMutation: async () => {
+                  await current2();
+                  return true;
+                }
+              });
+            } else {
+              const session2 = createGalleryBulkListSession({
+                scope: env.scope,
+                context: env.context,
+                get,
+                set,
+                exclusive: async (_scope, task) => task(),
+                tradeAdapter: env.adapter,
+                assertCurrent: env.assert,
+                checkOtherTransactions: env.guard,
+                beforeMutation: async (entry) => {
+                  await current2();
+                  const original = entries2.find((row) => row.item.id === entry.item.id);
+                  const live = env.adapter.inspectListingItem(entry.item)?.candidate?.auction;
+                  if (String(live?.tradeId) !== String(original.auction.tradeId) || live.startingBid !== original.auction.startingBid || live.buyNowPrice !== original.auction.buyNowPrice) fail24("FC27_GALLERY_RELIST_PLAN_CHANGED");
+                  value.pending ??= [];
+                  value.pending.push(copy(original));
+                  await write(env.scope, value);
+                },
+                afterMutation: async (entry, result2) => {
+                  await env.response(result2);
+                  if (["rejected", "not-found", "moved"].includes(result2?.status)) {
+                    value.pending = value.pending?.filter((row) => row.item.id !== entry.item.id) ?? null;
+                    if (!value.pending?.length) value.pending = null;
+                    await write(env.scope, value);
+                  }
+                },
+                shouldStop: () => stopped,
+                sleep
+              });
+              result = await session2.execute({ approved: true, binding: `relist:${value.id}:${value.runs}`, entries: entries2.map((row) => ({
+                item: row.item,
+                name: row.name,
+                purchase: { tradeId: String(row.auction.tradeId) },
+                startPrice: row.auction.startingBid,
+                buyNow: row.auction.buyNowPrice,
+                durationSeconds: 3600
+              })) });
+            }
+            env.assert();
+            value.runs++;
+            value.reason = result.reason ?? null;
+            if (value.range === "batch" && value.pending) {
+              const settled2 = new Set((result.entries ?? []).filter((row) => ["accepted", "rejected"].includes(row.status)).map((row) => row.item.id));
+              value.pending = value.pending.filter((row) => !settled2.has(row.item.id));
+              if (!value.pending.length) value.pending = null;
+            }
+            if (result.status === "completed") {
+              if (value.range === "all" && value.pending?.some((row) => {
+                const live = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
+                return live?.item.definitionId !== row.item.definitionId || live.auction?.state !== "active" || live.auction.startingBid !== row.auction.startingBid || live.auction.buyNowPrice !== row.auction.buyNowPrice;
+              })) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              value.pending = null;
+              value.status = value.runs < 2 ? "armed" : "completed";
+              value.nextAt = now() + value.minutes * 6e4;
+            } else value.status = stopped && !value.pending ? "disarmed" : "blocked";
+            await write(env.scope, value);
+            recordEvent(value);
+            return value;
+          }) ?? { status: "waiting-operation" };
+        } catch (error2) {
+          const result = { status: "blocked", reason: safe2(error2) };
+          recordEvent(result);
+          return result;
+        } finally {
+          busy = false;
+        }
+      },
+      stop() {
+        stopped = true;
+      }
+    };
+    return Object.freeze(api);
+  }
+
+  // src/adapters/browser/fc27-gallery-trading-poll.js
+  function startGalleryTradingPoll({ timers, listing, relist, onUpdate = () => {
+  }, intervalMs = 15e3 }) {
+    let stopped = false, running = false;
+    const tick = async () => {
+      if (stopped || running) return;
+      running = true;
+      try {
+        for (const service of [() => listing.pollSchedule(), () => relist.poll()]) {
+          if (stopped) break;
+          try {
+            const state = await service();
+            if (!stopped) onUpdate(state);
+          } catch {
+          }
+        }
+      } finally {
+        running = false;
+      }
+    };
+    const timer = timers.setInterval(() => {
+      void tick();
+    }, intervalMs);
+    return Object.freeze({ tick, dispose() {
+      stopped = true;
+      timers.clearInterval(timer);
+      relist.stop();
+      listing.stop();
+    } });
+  }
+
   // src/adapters/ea/fc27-gallery-card.js
   var at7 = (root, path) => path.split(".").reduce((value, key) => value?.[key], root);
   var own = (value, key) => value != null && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : void 0;
-  var validId11 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId12 = (value) => Number.isSafeInteger(value) && value > 0;
   function cloneCardData(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const clone5 = (value, depth = 0) => {
       if (depth > 5) return null;
       if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone5(item2, depth + 1) : item2);
       if (value && typeof value === "object") {
-        const copy = {};
-        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy[key] = item2 && typeof item2 === "object" ? clone5(item2, depth + 1) : item2;
-        return copy;
+        const copy2 = {};
+        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy2[key] = item2 && typeof item2 === "object" ? clone5(item2, depth + 1) : item2;
+        return copy2;
       }
       return value;
     };
@@ -19275,7 +22146,7 @@
   function validEntity(entity, source, native, ownedDisplay) {
     const definitionId = sourceDefinitionId(source);
     const player = typeof entity?.isPlayer === "function" && entity.isPlayer();
-    return entity && validId11(entity.definitionId) && validId11(definitionId) && entity.definitionId === definitionId && player && (ownedDisplay ? native && entity.concept === false : entity.concept === true && (native || source?.dream === true)) && (own(source, "resourceId") == null || own(source, "resourceId") === definitionId) && (own(source, "definitionId") == null || own(source, "definitionId") === definitionId);
+    return entity && validId12(entity.definitionId) && validId12(definitionId) && entity.definitionId === definitionId && player && (ownedDisplay ? native && entity.concept === false : entity.concept === true && (native || source?.dream === true)) && (own(source, "resourceId") == null || own(source, "resourceId") === definitionId) && (own(source, "definitionId") == null || own(source, "definitionId") === definitionId);
   }
   function createFc27GalleryNativeRenderer(root, { document = root?.document, diagnosticLog: diagnosticLog2 } = {}) {
     const reported = /* @__PURE__ */ new Set();
@@ -19597,7 +22468,7 @@
     "skillMoves"
   ];
   var flags = ["collected", "held", "inClub", "firstOwned", "holographic"];
-  var integer12 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
+  var integer14 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
   var gradeName = (value) => typeof value === "string" && /^[A-S][+-]?$/.test(value);
   function createGalleryPlanReplay(input) {
     try {
@@ -19605,7 +22476,7 @@
       if (!targets.length || targets.length > 4 || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
       const clean = targets.map((target) => {
         const { set, catalog, progress, prices = {}, targetGrade } = target;
-        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer12(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer12(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
+        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer14(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer14(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
         const tags = catalog.tags.map((tag) => {
           const rule = tag.rules[0];
           if (rule.values.length > 256 || rule.values.some((value) => !/^[A-Za-z0-9_-]{1,24}$/.test(String(value))) || tag.tiers.length > 256) throw Error("invalid");
@@ -19620,7 +22491,7 @@
         });
         const rows = progress.rows.map((row) => {
           const clean2 = {};
-          for (const key of numeric) if (row[key] == null || integer12(row[key])) clean2[key] = row[key] ?? null;
+          for (const key of numeric) if (row[key] == null || integer14(row[key])) clean2[key] = row[key] ?? null;
           else throw Error("invalid");
           for (const key of flags) if (row[key] == null || typeof row[key] === "boolean") clean2[key] = row[key] ?? null;
           else throw Error("invalid");
@@ -19631,9 +22502,9 @@
           return clean2;
         });
         const quotes = {};
-        for (const row of rows) if (integer12(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
+        for (const row of rows) if (integer14(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
         return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
-          if (!gradeName(grade.name) || !integer12(grade.threshold)) throw Error("invalid");
+          if (!gradeName(grade.name) || !integer14(grade.threshold)) throw Error("invalid");
           return { name: grade.name, threshold: grade.threshold };
         }) }, catalog: { source: "futgg", tags }, progress: {
           season: "27",
@@ -19644,7 +22515,7 @@
           rows
         }, prices: quotes, targetGrade };
       });
-      if (joint && input.budget != null && !integer12(input.budget)) return null;
+      if (joint && input.budget != null && !integer14(input.budget)) return null;
       return {
         schema: 1,
         mode: joint ? "joint" : "grade",
@@ -19659,7 +22530,7 @@
   var DEFAULT_MAX_ENTRIES = 300;
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "route", "mismatch"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "batchSize",
@@ -19670,9 +22541,25 @@
     "setId",
     "challengeId",
     "requests",
+    "definitionId",
+    "referencePrice",
+    "futggPrice",
+    "futbinPrice",
+    "maxBuy",
+    "actualPrice",
+    "attempt",
+    "attemptLimit",
+    "fetchedAt",
+    "sourceUpdatedAt",
+    "expiresAt",
     "catalogAttempts",
     "quoteAttempts",
     "safeCandidates",
+    "usableCandidates",
+    "excludedUnavailable",
+    "estimatedCost",
+    "purchaseCount",
+    "ownedCount",
     "requestedCount",
     "responseCount",
     "retainedCount",
@@ -19695,7 +22582,7 @@
     "beamWidth",
     "maxEvaluations"
   ]);
-  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted"]);
+  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted"]);
   var boundedString = (value, max = MAX_STRING_LENGTH) => {
     if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
     return value.slice(0, max);
@@ -19708,7 +22595,7 @@
     if (["service.bid", "service.move"].includes(input.method)) entry.method = input.method;
     if (typeof input.observedHash === "string" && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
     for (const key of STRING_FIELDS) {
-      const value = key === "reason" ? typeof input.reason === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input.reason) ? input.reason : null : boundedString(input[key]);
+      const value = key === "reason" || key === "localReason" ? typeof input[key] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null : boundedString(input[key]);
       if (value !== null) entry[key] = value;
     }
     for (const key of NUMBER_FIELDS) {
@@ -19788,7 +22675,7 @@
       writing = writing.then(async () => {
         await load();
         entries2 = [...entries2, entry].slice(-maxEntries);
-        if (entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
+        if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
         }
         if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
@@ -19871,6 +22758,389 @@
     return Object.freeze({ copyText, downloadText, confirm });
   }
 
+  // src/gallery/reference-prices.js
+  var positive10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
+  var reasonOf2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE";
+  var keyOf4 = (source, options, id10) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id10}`;
+  function createGalleryReferencePrices({
+    readFutgg,
+    readFutbin,
+    get = async (_key, fallback) => fallback,
+    set = async () => {
+    },
+    now = () => Date.now(),
+    ttlMs = 3e5,
+    failureTtlMs = 3e4,
+    diagnosticLog: diagnosticLog2 = null
+  }) {
+    const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map(), cooldowns = /* @__PURE__ */ new Map();
+    let queue = Promise.resolve();
+    const valid2 = (row, source, options, id10) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id10 && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
+    const record = (fields4) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "public-quote", ...fields4 })).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const ensure = (source, ids, options, byId, current2, force, progress) => {
+      const freshIds = ids.filter((id10) => !pending2.has(keyOf4(source, options, id10)));
+      if (freshIds.length) {
+        const task = queue.catch(() => {
+        }).then(async () => {
+          current2();
+          const missing = [];
+          for (const id10 of freshIds) {
+            const key = keyOf4(source, options, id10);
+            let saved = cache.get(key);
+            if (!saved) {
+              try {
+                saved = await get(key, null);
+              } catch {
+              }
+            }
+            if (valid2(saved, source, options, id10) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
+              cache.set(key, saved);
+              if (saved.error) cooldowns.set(`${source}:${options.season}:${options.platform}`, { retryAt: saved.expiresAt, reason: saved.error });
+            } else missing.push(id10);
+          }
+          let completed = ids.length - missing.length;
+          progress({ source, index: completed, total: ids.length });
+          current2();
+          const batchSize = source === "futgg" ? 50 : 1;
+          for (let start = 0; start < missing.length; start += batchSize) {
+            current2();
+            const batch = missing.slice(start, start + batchSize), cooldownKey = `${source}:${options.season}:${options.platform}`;
+            let rows = [], error2 = null, retryAt = null;
+            const cooldown = cooldowns.get(cooldownKey);
+            try {
+              if (cooldown?.retryAt > now()) {
+                retryAt = cooldown.retryAt;
+                throw Error(cooldown.reason);
+              }
+              rows = source === "futgg" ? await readFutgg(batch, options) : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
+              if (!Array.isArray(rows) || rows.some((row) => !batch.includes(row?.definitionId) || row.price !== null && !validPublicPrice(row.price) || row.sourceUpdatedAt != null && (!timestamp(row.sourceUpdatedAt) || row.sourceUpdatedAt > now())) || new Set(rows.map((row) => row.definitionId)).size !== rows.length) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+            } catch (failure) {
+              error2 = reasonOf2(failure);
+              rows = [];
+              retryAt ??= Math.max(now() + failureTtlMs, timestamp(failure?.retryAt) ? failure.retryAt : 0);
+              if (!["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(error2)) cooldowns.set(cooldownKey, { retryAt, reason: error2 });
+            }
+            const fetchedAt = now(), expiresAt = error2 ? retryAt : fetchedAt + ttlMs;
+            for (const id10 of batch) {
+              const value = rows.find((row) => row.definitionId === id10);
+              const entry = {
+                schema: 2,
+                source,
+                ...options,
+                definitionId: id10,
+                price: value?.price ?? null,
+                fetchedAt,
+                sourceUpdatedAt: value?.sourceUpdatedAt ?? null,
+                expiresAt,
+                error: error2
+              };
+              const key = keyOf4(source, options, id10);
+              cache.set(key, entry);
+              try {
+                await set(key, structuredClone(entry));
+              } catch {
+              }
+              record({
+                source,
+                status: error2 ? "failed" : entry.price === null ? "missing" : "success",
+                reason: error2,
+                definitionId: id10,
+                referencePrice: entry.price,
+                fetchedAt,
+                sourceUpdatedAt: entry.sourceUpdatedAt,
+                expiresAt
+              });
+            }
+            completed += batch.length;
+            progress({ source, index: completed, total: ids.length });
+          }
+        });
+        queue = task.catch(() => {
+        });
+        for (const id10 of freshIds) {
+          const key = keyOf4(source, options, id10);
+          const result = task.then(() => cache.get(key)).finally(() => pending2.delete(key));
+          pending2.set(key, result);
+        }
+      }
+      return Promise.all(ids.map((id10) => pending2.get(keyOf4(source, options, id10))));
+    };
+    return Object.freeze({
+      async load(ids, {
+        season = "27",
+        platform,
+        rows = [],
+        policy = {},
+        force = false,
+        sources: sources3 = ["futgg", "futbin"],
+        forceSources = [],
+        purpose = "gallery",
+        isCurrent = () => true,
+        onProgress = () => {
+        }
+      } = {}) {
+        policy = normalizeGalleryPricePolicy(policy);
+        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids) || ids.length > 250 || ids.some((id10) => !positive10(id10)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        const current2 = () => {
+          if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        };
+        const progress = (value) => {
+          try {
+            onProgress(value);
+          } catch {
+          }
+        };
+        current2();
+        const unique2 = [...new Set(ids)], byId = new Map(rows.map((row) => [row.eaId ?? row.definitionId, row]));
+        const requested = [...new Set(sources3)].filter((source) => publicPriceSourceEnabled(policy, source));
+        const forced = new Set(forceSources);
+        if (force === true) for (const source of requested) forced.add(source);
+        const quotes = {}, options = { season, platform };
+        for (const source of requested) {
+          progress({ source, index: 0, total: unique2.length });
+          quotes[source] = await ensure(source, unique2, options, byId, current2, forced.has(source), progress);
+          current2();
+          progress({ source, index: unique2.length, total: unique2.length });
+        }
+        const prices = {}, references = {};
+        let expiresAt = null;
+        for (const [index, id10] of unique2.entries()) {
+          const pair = Object.fromEntries(["futgg", "futbin"].map((source) => [
+            source,
+            requested.includes(source) ? structuredClone(quotes[source][index]) : {
+              schema: 2,
+              source,
+              ...options,
+              definitionId: id10,
+              price: null,
+              fetchedAt: now(),
+              sourceUpdatedAt: null,
+              expiresAt: now() + 1,
+              error: "FC27_PUBLIC_PRICE_SOURCE_NOT_REQUESTED"
+            }
+          ]));
+          const ref = galleryReferenceQuote(Object.fromEntries(Object.entries(pair).map(([source, row]) => [source, row && !row.error && row.expiresAt > now() ? row.price : null])), policy);
+          references[id10] = { ...ref, definitionId: id10, season, platform, quotes: pair };
+          if (ref.estimate !== null) {
+            prices[id10] = ref.estimate;
+            expiresAt = Math.min(expiresAt ?? Infinity, pair[policy.source].expiresAt);
+          }
+        }
+        return {
+          prices,
+          freshPrices: prices,
+          references,
+          policy,
+          requestedSources: requested,
+          source: "public-references",
+          expiresAt,
+          missingIds: unique2.filter((id10) => !Object.hasOwn(prices, id10)),
+          staleIds: [],
+          stale: false
+        };
+      }
+    });
+  }
+
+  // src/fc27/public-price-responses.js
+  function parsePublicFutggPrices(payload, ids, platform) {
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      }
+    }
+    if (!Array.isArray(payload?.data) || !["pc", "console"].includes(platform)) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+    const seen = /* @__PURE__ */ new Set(), expectedPlatform = platform === "console" ? "ps5" : "pc";
+    return payload.data.map((row) => {
+      if (!ids.includes(row?.eaId) || seen.has(row.eaId) || row.platform !== expectedPlatform) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      seen.add(row.eaId);
+      const sourceUpdatedAt = row.priceUpdatedAt == null ? null : Date.parse(row.priceUpdatedAt);
+      if (sourceUpdatedAt !== null && !Number.isSafeInteger(sourceUpdatedAt)) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      return { definitionId: row.eaId, price: validPublicPrice(row.price) ? row.price : null, sourceUpdatedAt };
+    });
+  }
+  function parsePublicFutbinPrice(payload, definitionId, platform, minimal) {
+    if (!["pc", "console"].includes(platform)) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      }
+    }
+    if (!payload?.data || typeof payload.data !== "object" || payload.errorcode != null && String(payload.errorcode) !== "200") throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+    const matches2 = Object.values(payload.data).filter((row2) => Number(row2?.[minimal ? "Player_Resource" : "resource_id"]) === definitionId);
+    if (matches2.length > 1) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+    if (!matches2.length) return { definitionId, price: null, sourceUpdatedAt: null };
+    const row = matches2[0];
+    const value = minimal ? row.LCPrice ?? row[platform === "pc" ? "pc_LCPrice" : "ps_LCPrice"] ?? row.price : row[platform === "pc" ? "pc_LCPrice" : "ps_LCPrice"] ?? row.LCPrice ?? row.price;
+    return { definitionId, price: validPublicPrice(value) ? value : null, sourceUpdatedAt: null };
+  }
+
+  // src/adapters/browser/fc27-public-prices.js
+  var positions2 = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
+  function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog: diagnosticLog2 = null, now = () => Date.now() }) {
+    const rows = /* @__PURE__ */ new Map();
+    const policyStore = createPublicPricePolicyStore({ get, set });
+    const capture = () => {
+      const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
+      const platform = /^pc:/i.test(context.platform) ? "pc" : /^(psn|xbox):/i.test(context.platform) ? "console" : null;
+      if (!platform) throw Error("FC27_PUBLIC_PRICE_PLATFORM_UNVERIFIED");
+      const assert = () => {
+        if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+      };
+      return { context, scope: scope2, platform, assert };
+    };
+    const readSettings = async () => {
+      const captured = capture();
+      const policy = await policyStore.read(captured.scope);
+      captured.assert();
+      return policy;
+    };
+    const request = createFc27FutbinHttp(gmRequest);
+    const service = createGalleryReferencePrices({
+      get,
+      set,
+      now,
+      diagnosticLog: diagnosticLog2,
+      readFutgg: async (ids, { platform }) => {
+        if (!publicPriceSourceEnabled(await readSettings(), "futgg")) throw Error("FC27_PUBLIC_PRICE_FUTGG_DISABLED");
+        const reply = await transport.getPrices(ids, { platform });
+        if (reply.status !== 200) {
+          const retry = reply.headers?.["retry-after"];
+          const duration = /^\d+$/.test(retry) ? Number(retry) * 1e3 : Date.parse(retry) - now();
+          throw Object.assign(Error(`FC27_PUBLIC_PRICE_HTTP_${Number(reply.status) || 0}`), { retryAt: Number.isFinite(duration) ? now() + Math.max(0, duration) : null });
+        }
+        return parsePublicFutggPrices(reply.text, ids, platform);
+      },
+      readFutbin: async (definitionId, row, { season, platform }) => {
+        const captured = capture();
+        const position = row?.preferredPosition ?? row?.positions?.[0];
+        const player = {
+          definitionId,
+          rating: row?.rating ?? row?.overall ?? row?._rating,
+          nationId: row?.nationId ?? row?.nationEaId,
+          leagueId: row?.leagueId ?? row?.leagueEaId,
+          teamId: row?.teamId ?? row?.clubEaId,
+          preferredPosition: typeof position === "string" ? positions2.indexOf(position) : position
+        };
+        let result;
+        const reader = createFsuReferencePrice({
+          season,
+          platform: platform === "pc" ? "pc" : "ps",
+          get,
+          set,
+          request: async (url) => {
+            const currentPolicy = await policyStore.read(captured.scope);
+            captured.assert();
+            if (!publicPriceSourceEnabled(currentPolicy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+            const minimal = new URL(url).pathname.endsWith("fetchPlayerInformationMinimal");
+            if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(player.preferredPosition) || !positions2[player.preferredPosition])) throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
+            const response = await request(url);
+            result = parsePublicFutbinPrice(response, definitionId, platform, minimal);
+            return response;
+          }
+        });
+        await reader(player);
+        return result;
+      }
+    });
+    const load = async (ids, options = {}) => {
+      const captured = capture(), settings = await policyStore.read(captured.scope);
+      captured.assert();
+      const purpose = options.purpose ?? "gallery";
+      const policy = options.policy ?? (purpose === "listing" ? { ...settings, source: settings.listingSource } : settings);
+      if (!publicPriceSourceEnabled(settings, policy.source)) throw Error(`FC27_PUBLIC_PRICE_${policy.source.toUpperCase()}_DISABLED`);
+      const sources3 = (options.sources ?? (purpose === "puzzle" || purpose === "purchase" ? [policy.source] : ["futgg", "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
+      if (!sources3.length) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+      const snapshot = await service.load(ids, {
+        ...options,
+        sources: sources3,
+        purpose,
+        season: captured.context.season,
+        platform: captured.platform,
+        policy,
+        rows: options.rows ?? ids.map((id10) => rows.get(id10)).filter(Boolean),
+        isCurrent: () => {
+          captured.assert();
+          return options.isCurrent?.() ?? true;
+        }
+      });
+      return purpose === "listing" ? { ...snapshot, listingPriceSource: policy.source } : snapshot;
+    };
+    return Object.freeze({
+      scope: () => capture().scope,
+      readSettings,
+      async saveSettings(value) {
+        const captured = capture();
+        const policy = await policyStore.save(captured.scope, value);
+        captured.assert();
+        return policy;
+      },
+      remember(items) {
+        for (const row of items ?? []) {
+          const definitionId = row.eaId ?? row.definitionId;
+          rows.set(definitionId, {
+            definitionId,
+            rating: row.rating ?? row.overall ?? row._rating,
+            nationId: row.nationId ?? row.nationEaId,
+            leagueId: row.leagueId ?? row.leagueEaId,
+            teamId: row.teamId ?? row.clubEaId,
+            preferredPosition: row.preferredPosition ?? row.positions?.[0]
+          });
+        }
+      },
+      load,
+      async preparePurchase(record, options = {}) {
+        const captured = capture();
+        if (record.scope !== captured.scope) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        const ids = record.entries.filter((entry) => entry.state === "waiting").map((entry) => entry.definitionId);
+        const planned2 = record.plan?.filter((item2) => ids.includes(item2.definitionId)) ?? [];
+        if (planned2.some((item2) => item2.priceReference)) {
+          if (planned2.length !== ids.length || planned2.some((item2) => !item2.priceReference || !item2.pricePolicy || JSON.stringify(item2.pricePolicy) !== JSON.stringify(planned2[0].pricePolicy))) throw Error("FC27_BUY_PRICE_APPROVAL_INVALID");
+          return createPurchasePriceApproval({
+            scope: captured.scope,
+            season: captured.context.season,
+            platform: captured.platform,
+            definitionIds: ids,
+            references: Object.fromEntries(planned2.map((item2) => [item2.definitionId, item2.priceReference])),
+            policy: planned2[0].pricePolicy,
+            now: now()
+          });
+        }
+        const policy = await policyStore.read(captured.scope), references = {};
+        const players = options.rows ?? record.base?.purchases ?? ids.map((id10) => rows.get(id10)).filter(Boolean);
+        for (let start = 0; start < ids.length; start += 250) {
+          const snapshot = await load(ids.slice(start, start + 250), { ...options, purpose: "purchase", rows: players, policy });
+          Object.assign(references, snapshot.references);
+        }
+        captured.assert();
+        return createPurchasePriceApproval({
+          scope: captured.scope,
+          season: captured.context.season,
+          platform: captured.platform,
+          definitionIds: ids,
+          references,
+          policy,
+          now: now()
+        });
+      },
+      async quote(player, options) {
+        const snapshot = await load([player.definitionId], { ...options, rows: [player] });
+        return snapshot.references[player.definitionId];
+      }
+    });
+  }
+
   // src/fc27/production-entry.js
   var dependencies = {
     root: unsafeWindow,
@@ -19880,15 +23150,7 @@
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var FC27_GALLERY_PROXY_KEY = "fcat-fc27-gallery-futgg-proxy-v1";
-  var galleryProxy = "";
-  try {
-    galleryProxy = normalizeFc27GalleryProxy(GM_getValue(FC27_GALLERY_PROXY_KEY, "") || "");
-  } catch {
-    galleryProxy = "";
-  }
-  var readGalleryProxy = () => galleryProxy;
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.10" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.11" });
   var userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
   var galleryAssets = Object.freeze({
     reward: (type) => {
@@ -20011,19 +23273,23 @@
     }
   });
   var galleryPrices = (id10) => readCachedGalleryPrice(unsafeWindow, id10);
-  var setGalleryProxy = async (value) => {
-    const normalized = normalizeFc27GalleryProxy(value);
-    await GM_setValue(FC27_GALLERY_PROXY_KEY, normalized);
-    galleryProxy = normalized;
-    return { status: "observed", proxy: normalized };
-  };
-  var galleryCatalog = createFc27GalleryCatalogProvider({
-    http: createFc27GalleryTransport(GM_xmlhttpRequest, { getProxy: readGalleryProxy, diagnosticLog }),
+  var galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
+  var publicPrices = createFc27PublicPrices({
+    root: unsafeWindow,
+    get: GM_getValue,
+    set: GM_setValue,
+    gmRequest: GM_xmlhttpRequest,
+    transport: galleryTransport,
+    diagnosticLog
+  });
+  var publicGalleryCatalog = createFc27GalleryCatalogProvider({
+    http: galleryTransport,
     gmGetValue: GM_getValue,
     gmSetValue: GM_setValue,
     diagnosticLog
   });
   var galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
+  var galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgress);
   var gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
   var galleryComparison = createGalleryMarketComparison({
     scope: galleryProgress.scope,
@@ -20038,6 +23304,7 @@
     reader: galleryProgress,
     liveEnabled: dependencies.liveEnabled,
     readSettings: () => current().inspectPuzzlePolicy(),
+    publicPrices,
     diagnosticLog
   });
   var galleryListing = createFc27GalleryListing({
@@ -20046,13 +23313,21 @@
     gmSetValue: GM_setValue,
     purchase: galleryPurchase,
     liveEnabled: dependencies.liveEnabled,
-    loadPrices: (ids) => {
-      const context = readFc27Context(unsafeWindow);
-      const platform = /^pc:/i.test(context.platform) ? "pc" : "console";
-      return galleryCatalog.loadPriceSnapshot(ids, { platform });
-    },
+    schedulingEnabled: dependencies.liveEnabled === true,
+    loadPrices: (ids, options) => publicPrices.load(ids, { ...options, purpose: "listing" }),
     diagnosticLog
   });
+  var galleryRelist = createFc27GalleryRelist({
+    root: unsafeWindow,
+    get: GM_getValue,
+    set: GM_setValue,
+    purchase: galleryPurchase,
+    liveEnabled: dependencies.liveEnabled,
+    diagnosticLog,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  });
+  var galleryTradingPoll = startGalleryTradingPoll({ timers: unsafeWindow, listing: galleryListing, relist: galleryRelist });
+  unsafeWindow.addEventListener?.("beforeunload", () => galleryTradingPoll.dispose(), { once: true });
   if (!galleryProgress.install()) {
     const factoryReady = unsafeWindow.setInterval(() => {
       if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
@@ -20060,7 +23335,7 @@
   }
   var galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
   var session;
-  var current = () => session ??= createFc27AcceptanceSession({ ...dependencies, diagnosticLog });
+  var current = () => session ??= createFc27AcceptanceSession({ ...dependencies, publicPrices, diagnosticLog });
   var fallbackPurchaseProgress = null;
   var foregroundPurchaseProgress = {
     start: () => {
@@ -20109,12 +23384,10 @@
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.10"}`,
-    version: "27.0.10",
+    title: `FC Automation Tool ${"27.0.11"}`,
+    version: "27.0.11",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
-    galleryProxy: readGalleryProxy,
-    setGalleryProxy,
     galleryAccountScope: galleryProgress.scope,
     gallerySync,
     galleryAssets,
@@ -20123,14 +23396,13 @@
     galleryFirstOwnerHistory: (definitionId, firstOwned) => galleryProgress.updateFirstOwner(definitionId, firstOwned),
     purchaseGallery: galleryPurchase,
     galleryListing,
+    galleryRelist,
     gradePlanner: planGalleryGrade,
     galleryPrices,
     galleryMarketCompare: galleryComparison.compare,
-    galleryPriceLoader: (ids) => {
-      const context = readFc27Context(unsafeWindow);
-      const platform = /^pc:/i.test(context.platform) ? "pc" : "console";
-      return galleryCatalog.loadPriceSnapshot(ids, { platform });
-    },
+    galleryPriceLoader: (ids) => publicPrices.load(ids, { purpose: "display" }),
+    publicPrices,
+    galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
     galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
     galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
     exportDiagnostics: async () => {
@@ -20141,10 +23413,11 @@
       return { count: payload.entries.length, filename };
     },
     gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
-      const pool = await galleryCatalog.loadPool({ source, setId, force });
+      const pool = await galleryCatalog.loadPool({ source, setId, force, onProgress });
       if (pool.status !== "observed" || !pool.pool) return pool;
       gallerySync.remember(pool.pool);
-      const progress = await galleryProgress.load(pool.pool, { force, onProgress });
+      const progress = await galleryProgress.load(pool.pool, { force: source === "fodder" ? false : force, onProgress });
+      publicPrices.remember(pool.pool.items);
       let prices = Object.freeze({});
       let priceError = null;
       let priceSnapshot = null;
@@ -20152,12 +23425,12 @@
       try {
         const context = readFc27Context(unsafeWindow);
         platform = /^pc:/i.test(context.platform) ? "pc" : "console";
-        priceSnapshot = await galleryCatalog.loadPriceSnapshot(pool.pool.items.map((item2) => item2.eaId), { platform });
+        priceSnapshot = await publicPrices.load(pool.pool.items.map((item2) => item2.eaId), { purpose: "display", rows: pool.pool.items });
         prices = priceSnapshot.prices;
       } catch (error2) {
         priceError = /^FC27_[A-Z_]+$/.test(error2?.message) || /^HTTP \d{3}$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PRICE_UNAVAILABLE";
       }
-      if (platform) priceError ??= galleryCatalog.priceError?.(pool.pool.items.map((item2) => item2.eaId), { platform }) ?? null;
+      if (platform) priceError ??= Object.values(priceSnapshot?.references ?? {}).find((ref) => ref.quotes?.[priceSnapshot.policy.source]?.error)?.quotes[priceSnapshot.policy.source].error ?? null;
       return {
         ...progress,
         progress: progress.progress ?? mergeGalleryAccountProgress(pool.pool),
@@ -20188,6 +23461,7 @@
   });
   mountFc27PuzzleBuyButton({
     document: unsafeWindow.document,
+    readPlayerName: (definitionId) => readFc27MarketPlayerName(unsafeWindow, definitionId),
     readTarget: () => {
       const target = readFc27PuzzlePage(unsafeWindow);
       const slots = target ? readFc27PurchasePageSlots(unsafeWindow, target) : null;
@@ -20196,6 +23470,7 @@
     inspect: (target) => current().inspectPuzzlePurchases(target),
     buy: (target, approval, callbacks) => current().buyPuzzlePlayers(target, approval, callbacks),
     stop: () => current().stopPuzzlePurchases(),
+    refreshPrices: (ids, options) => publicPrices.load(ids, options),
     foregroundProgress: foregroundPurchaseProgress
   });
 })();

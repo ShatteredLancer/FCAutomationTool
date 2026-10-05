@@ -2,17 +2,20 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { exerciseGalleryBulkList } from './gallery-bulk-list-smoke.mjs';
+import { exercisePublicPriceSettings } from './public-price-settings-smoke.mjs';
+import { exerciseGalleryRelistControls } from './gallery-relist-controls-smoke.mjs';
 import { readProductionGallery } from './agent-session.mjs';
-import { inspectGalleryFallback } from './gallery-proxy-inspection.mjs';
-import { clickPanelControl, panelCall } from './production-panel-inspection.mjs';
+import { clickPanelControl, panelCall, selectPanelTab } from './production-panel-inspection.mjs';
 import { diffGalleryCatalog, normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
 import { mergeGalleryAccountProgress } from '../../src/gallery/progress.js';
-import { futggGallery, fodderGallery, futggGalleryPool } from '../../tests/fixtures/fc27-gallery.js';
+import { futggGallery, futggGalleryPool } from '../../tests/fixtures/fc27-gallery.js';
 
 // Use the real closed shadow root and native scrolling host. The earlier
 // Gallery smoke only exercised open-shadow Playwright locators in a modal.
 export async function exerciseGalleryInspection(context) {
+  await exercisePublicPriceSettings(context);
+  await exerciseGalleryRelistControls(context, path.resolve(import.meta.dirname, '../..'));
   await exerciseGalleryBulkList(context);
   const page = await context.newPage();
   const root = path.resolve(import.meta.dirname, '../..');
@@ -68,8 +71,20 @@ export async function exerciseGalleryInspection(context) {
       return button ? { hidden: button.hidden, disabled: button.disabled, visible: button.checkVisibility?.() ?? false } : null;
     });
     assert.deepEqual(listingControl, { hidden: false, disabled: false, visible: true });
+    const assertListingHidden = async () => assert.deepEqual(await panelCall(context, page, function () {
+      const dialog = this.getElementById('gallery-bulk-list-dialog');
+      return { open: dialog.open, display: globalThis.getComputedStyle(dialog).display, boxes: dialog.getClientRects().length };
+    }), { open: false, display: 'none', boxes: 0 });
+    await assertListingHidden();
+    await selectPanelTab(context, page, 'settings');
+    await assertListingHidden();
+    await selectPanelTab(context, page, 'gallery');
     await clickPanelControl(context, page, '#gallery-list-purchased');
     assert.equal(await page.evaluate(() => globalThis.galleryListingOpens), 1);
+    await clickPanelControl(context, page, '#gallery-bulk-list-dialog button[aria-label="关闭"]');
+    await assertListingHidden();
+    await selectPanelTab(context, page, 'settings');
+    await assertListingHidden();
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
     console.log('Offline Gallery inspection smoke passed: closed shadow, 127 sets, native scroll, filter/back, one set read.');
 
@@ -187,50 +202,7 @@ export async function exerciseGalleryInspection(context) {
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
     console.log('Offline Gallery invalidation regressions passed: unrelated changes/removals, selected removal, source switch, rename, refresh replay, serialized forced read.');
 
-    const transportBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-gallery-catalog.js'],
-      bundle: true, write: false, format: 'iife', globalName: 'GalleryTransportSmoke', target: 'chrome120' });
-    await page.addScriptTag({ content: transportBundle.outputFiles[0].text });
-    for (const failRestore of [false, true]) {
-      await page.evaluate(({ futgg, fodder, failRestore }) => {
-        globalThis.galleryPanel.close(); globalThis.galleryPanel.element.remove();
-        const memory = new Map();
-        globalThis.galleryProbeRequests = []; globalThis.galleryProxyWrites = [];
-        let proxy = '';
-        const transport = globalThis.GalleryTransportSmoke.createFc27GalleryTransport(options => {
-          globalThis.galleryProbeRequests.push({ url: options.url, anonymous: options.anonymous, method: options.method });
-          const failure = options.url.includes('fcat-gallery-probe-unavailable');
-          options.onload({ status: failure ? 404 : 200, responseText: JSON.stringify(options.url.includes('fodder.gg') ? fodder : futgg) });
-        }, { getProxy: () => proxy });
-        const provider = globalThis.GalleryTransportSmoke.createFc27GalleryCatalogProvider({ http: transport,
-          gmGetValue: (key, value) => memory.get(key) ?? value, gmSetValue: (key, value) => memory.set(key, value) });
-        globalThis.galleryPanel = globalThis.GallerySmoke.mountFc27AcceptancePanel({ document: globalThis.document,
-          hostId: 'fcat-fc27-production', targets: () => [], galleryCatalog: provider, galleryProxy: () => proxy,
-          setGalleryProxy: async value => {
-            globalThis.galleryProxyWrites.push(value);
-            if (failRestore && value === '') throw new Error('FC27_GALLERY_TEST_RESTORE_FAILED');
-            proxy = globalThis.GalleryTransportSmoke.normalizeFc27GalleryProxy(value);
-            return { status: 'observed', proxy };
-          } });
-        globalThis.galleryPanel.open(globalThis.document.getElementById('native'));
-        // Reproduce stale unrelated policy failure: this is not a proxy receipt.
-        globalThis.galleryPanel.element.dataset.result = JSON.stringify({ status: 'blocked', reason: 'FC27_CONTEXT_UNAVAILABLE' });
-        const shield = globalThis.document.createElement('div'); shield.id = 'inspection-shield';
-        shield.style.cssText = 'position:fixed;inset:0;z-index:999999;background:transparent';
-        globalThis.document.body.append(shield); setTimeout(() => shield.remove(), 250);
-      }, { futgg: futggGallery(), fodder: fodderGallery(), failRestore });
-      const probe = await inspectGalleryFallback(context, page);
-      assert.equal(probe.fallbackObserved, true, JSON.stringify(probe));
-      assert.equal(probe.stages.catalog.source, 'Fodder · 回退目录');
-      assert.equal(probe.status, failRestore ? 'blocked' : 'observed');
-      assert.equal(probe.restoration.confirmed, !failRestore);
-      assert.equal(probe.restoration.persistedAcrossReload, false);
-      assert.deepEqual(await page.evaluate(() => globalThis.galleryProxyWrites), ['https://www.fut.gg/fcat-gallery-probe-unavailable', '']);
-      const reads = await page.evaluate(() => globalThis.galleryProbeRequests);
-      assert.equal(reads.length, 2, JSON.stringify(reads));
-      assert.ok(reads[0].url.includes('futggapi=gallery/fc27/'));
-      assert.equal(reads[1].url, 'https://fodder.gg/api/gallery');
-      assert.ok(reads.every(read => read.anonymous && read.method === 'GET'));
-    }
+    assert.equal(await panelCall(context, page, function () { return this.querySelectorAll('[id^="gallery-proxy"]').length; }), 0);
     await page.evaluate(() => {
       globalThis.inspectionUnintendedClicks = 0;
       const shield = globalThis.document.createElement('button'); shield.id = 'inspection-shield';
@@ -244,6 +216,6 @@ export async function exerciseGalleryInspection(context) {
     await panelCall(context, page, function () { this.host.style.display = 'none'; });
     await assert.rejects(clickPanelControl(context, page, '#tab-settings', 200), /FC27_INSPECTION_PANEL_TIMEOUT/);
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
-    console.log('Offline Gallery fallback probe passed: trusted closed-shadow clicks, shield/hidden protection, exact save receipt, one fallback read, restoration failure preserves evidence.');
+    console.log('Offline Gallery settings passed: no proxy controls, trusted closed-shadow clicks and shield/hidden protection.');
   } finally { await page.close(); }
 }

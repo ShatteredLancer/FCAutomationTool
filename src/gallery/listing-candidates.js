@@ -147,8 +147,30 @@ function limitsOf(value) {
     && maximum >= minimum && maximum <= 15000000 ? { minimum, maximum } : null;
 }
 
+// Enhancer gMt/yMt: price ALL rows before applying the override map. This
+// calculation deliberately precedes eligibility/limits checks. A rejected
+// preview (including zero) must remain frozen when selection changes.
+export function previewGalleryListingPrices({ candidates = [], marketPrices = {}, settings = {},
+  priceTiers, overridesByItem = {}, random = Math.random } = {}) {
+  const result = {};
+  for (const candidate of candidates) {
+    const quote = readValue(marketPrices, candidate.item.definitionId), market = quote?.price ?? quote;
+    let value = null;
+    if (settings.priceMode === 'fixed') value = settings.fixedPrice ?? null;
+    else if (Number.isFinite(market)) {
+      if (settings.priceMode === 'steps') value = moveGalleryListingPrice(market, settings.steps ?? 0, priceTiers);
+      else {
+        const pct = percentage(settings.percentageRange ?? [100, 100], random);
+        if (pct !== null) value = roundGalleryListingPrice(market * pct / 100, priceTiers);
+      }
+    }
+    result[candidate.item.id] = readValue(overridesByItem, candidate.item.id) ?? value;
+  }
+  return result;
+}
+
 export function planGalleryListingPrices({ candidates = [], marketPrices = new Map(), settings = {}, limitsByItem = new Map(),
-  priceTiers = null, overridesByItem = new Map(), random = Math.random } = {}) {
+  priceTiers = null, overridesByItem = new Map(), previewPrices = null, quoteExpired = false, random = Math.random } = {}) {
   const mode = settings.priceMode ?? 'percentage', duration = settings.durationSeconds ?? 3600;
   if (!['fixed', 'percentage', 'steps'].includes(mode)
       || ![3600, 10800, 21600, 43200, 86400, 259200].includes(duration)
@@ -161,8 +183,13 @@ export function planGalleryListingPrices({ candidates = [], marketPrices = new M
     const override = readValue(overridesByItem, itemId);
     const overrideBuyNow = override && typeof override === 'object' ? override.buyNow : override;
     const overrideStartPrice = override && typeof override === 'object' ? override.startPrice : null;
+    const automatic = overrideBuyNow == null && mode !== 'fixed';
+    if (automatic && (quoteExpired || !Number.isFinite(market) || market < GALLERY_LISTING_MIN_PRICE)) {
+      skipped.push({ itemId, definitionId, reason: quoteExpired ? 'market-price-expired' : 'market-price-unavailable' }); continue;
+    }
     let buyNow;
     if (overrideBuyNow != null) buyNow = overrideBuyNow;
+    else if (previewPrices !== null) buyNow = readValue(previewPrices, itemId);
     else if (mode === 'fixed') buyNow = settings.fixedPrice;
     else if (!Number.isFinite(market) || market < GALLERY_LISTING_MIN_PRICE) {
       skipped.push({ itemId, definitionId, reason: 'market-price-unavailable' }); continue;
@@ -189,7 +216,8 @@ export function planGalleryListingPrices({ candidates = [], marketPrices = new M
     }
     output.push({ ...candidate, startPrice, buyNow,
       durationSeconds: duration,
-      priceMode: mode, marketPrice: Number.isFinite(market) ? market : null, priceLimits: limits, adjusted: false });
+      priceMode: mode, priceOrigin: automatic ? 'market' : 'manual',
+      marketPrice: Number.isFinite(market) ? market : null, priceLimits: limits, adjusted: false });
   }
   return { status: 'observed', entries: output, skipped, count: output.length, executionEnabled: false };
 }

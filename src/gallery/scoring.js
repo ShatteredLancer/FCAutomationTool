@@ -12,7 +12,29 @@ const order = (a, b) => b.gradingScore - a.gradingScore || a.eaId - b.eaId;
 const bonusFor = (score, percent) => Math.floor(score * percent / 100);
 const tierFor = (tiers, count) => tiers.filter(tier => count >= tier.at).at(-1);
 
-export function compileGalleryScoringRules({ source, tags } = {}) {
+export function compileGalleryScoringRules({ source, tags, engine } = {}) {
+  if (source === 'fodder') {
+    if (!Array.isArray(tags) || !tags.length || tags.length > 256 || engine?.version !== 1) return fail('rules-unavailable');
+    const by = { nation: 'nationEaId', club: 'clubEaId', league: 'leagueEaId', level: 'overall', rarity: 'rarityEaId',
+      firstOwner: 'firstOwned', holographic: 'holographic', position: 'positions', footballer: 'playerEaId', weakFoot: 'weakFoot', skillMoves: 'skillMoves' };
+    const result = [], seen = new Set();
+    for (const tag of tags) {
+      const match = tag?.match, field = by[match?.by];
+      if (!field || !Number.isSafeInteger(tag.id) || seen.has(tag.id) || !['is', 'any', 'atLeast', 'same', 'different'].includes(match.how)
+        || !Array.isArray(match.values ?? []) || !Array.isArray(tag.steps) || !tag.steps.length) return fail('unknown-rule');
+      const tiers = tag.steps.map(step => ({ at: step.at, pct: step.pct })).sort((a, b) => a.at - b.at);
+      if (tiers.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0
+        || tier.pct > 100000 || i > 0 && tier.at === tiers[i - 1].at)) return fail('tiers-invalid');
+      const values = (match.values ?? []).map(String);
+      if (['is', 'any', 'atLeast'].includes(match.how) && !values.length) return fail('unknown-values');
+      if (match.how === 'atLeast' && (values.length !== 1 || !Number.isFinite(Number(values[0])))) return fail('unknown-values');
+      seen.add(tag.id); result.push({ id: tag.id, name: tag.name, field,
+        mode: ['same', 'different'].includes(match.how) ? match.how : match.how === 'atLeast' ? 'minimum' : 'match',
+        values, threshold: match.how === 'atLeast' ? Number(values[0]) : null, tiers,
+        fodder: true, goldFrom: engine.goldFrom ?? 75, silverFrom: engine.silverFrom ?? 65 });
+    }
+    return { status: 'ready', tags: result, source, bonusMinusOne: engine.bonusMinusOne !== false };
+  }
   if (source !== 'futgg' || !Array.isArray(tags) || !tags.length || tags.length > 256) return fail('rules-unavailable');
   const result = [], ids = new Set();
   for (const tag of tags) {
@@ -49,9 +71,10 @@ function attribute(row, field) {
   return value;
 }
 function matches(row, tag) {
-  const value = attribute(row, tag.field);
+  const value = tag.fodder && tag.field === 'overall' && row.overall != null
+    ? row.overall >= tag.goldFrom ? 'gold' : row.overall >= tag.silverFrom ? 'silver' : 'bronze' : attribute(row, tag.field);
   if (value == null) return null;
-  if (['firstOwned', 'holographic'].includes(tag.field)) return value === true;
+  if (['firstOwned', 'holographic'].includes(tag.field)) return tag.fodder ? tag.values.includes(value ? 'yes' : 'no') : value === true;
   if (tag.mode === 'minimum') return Number(value) >= tag.threshold;
   return (Array.isArray(value) ? value : [value]).some(item => tag.values.includes(String(item)));
 }
@@ -87,7 +110,7 @@ function matchTag(rows, tag, { unknown = 'low', groupMode = 'fodder' } = {}) {
   if (unknown === 'high' && unknownRows.length) return { count: rows.length, cards: rows, unknown: unknownRows.length };
   if (tag.mode === 'different') return { count: groups.length,
     cards: groups.map(group => group.slice().sort(order)[0]), unknown: unknownRows.length };
-  if (tag.field === 'playerEaId' && groupMode === 'fodder') {
+  if (tag.field === 'playerEaId' && groupMode === 'fodder' && !tag.fodder) {
     const qualifying = groups.filter(group => group.length >= tag.tiers[0].at);
     if (qualifying.length) return { count: Math.max(...qualifying.map(group => group.length)), cards: qualifying.flat(), unknown: unknownRows.length };
   }
@@ -104,11 +127,12 @@ export function evaluateGalleryLineup(rows, compiled, options = {}) {
     const match = matchTag(rows, tag, options), tier = tierFor(tag.tiers, match.count);
     const next = tag.tiers.find(step => match.count < step.at);
     return { id: tag.id, name: tag.name, count: match.count, matched: sum(match.cards),
-      pct: tier?.pct ?? 0, bonus: bonusFor(sum(match.cards), tier?.pct ?? 0),
+      pct: tier?.pct ?? 0, bonus: compiled.bonusMinusOne && sum(match.cards) > 0 && tier?.pct > 0
+        ? Math.floor((sum(match.cards) * tier.pct - 1) / 100) : bonusFor(sum(match.cards), tier?.pct ?? 0),
       unknown: match.unknown, counted: false, matchedEaIds: match.cards.map(row => row.eaId),
       next: next ? { ...next, needed: next.at - match.count } : null };
   });
-  const paid = tags.filter(tag => tag.bonus > 0).sort((a, b) => b.bonus - a.bonus).slice(0, 10);
+  const paid = tags.filter(tag => tag.bonus > 0).sort((a, b) => b.bonus - a.bonus).slice(0, compiled.source === 'fodder' ? tags.length : 10);
   for (const tag of paid) tag.counted = true;
   const base = sum(rows), bonus = paid.reduce((total, tag) => total + tag.bonus, 0);
   return { base, bonus, total: base + bonus, tags, lineupIds: rows.map(row => row.eaId) };
@@ -117,7 +141,7 @@ export function evaluateGalleryLineup(rows, compiled, options = {}) {
 // Reference behavior: top-base/tag-tier seeds; top60 plus high-bonus candidates;
 // top six seeds and single-card improvement. The 8000 evaluation budget is
 // checked between complete passes, as in the observed reference implementation.
-function* chooseLineupSteps(rows, required, compiled) {
+function* chooseLineupSteps(rows, required, compiled, memo = null) {
   const base = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore || b.overall - a.overall || a.eaId - b.eaId).slice(0, required);
   if (rows.length <= required || !compiled.tags.length) return base;
   const ranked = rows.slice().sort(order), groups = [];
@@ -145,7 +169,25 @@ function* chooseLineupSteps(rows, required, compiled) {
     for (const row of ranked) { if (cards.length >= required) break; if (!ids.has(row.eaId)) { cards.push(row); ids.add(row.eaId); } }
     const identity = key(cards); if (!seen.has(identity)) { seen.add(identity); seeds.push(cards); }
   }
-  const score = cards => evaluateGalleryLineup(cards, compiled).total;
+  // Several tag seeds converge on the same lineup. Reuse its exact total
+  // within this immutable selection only; row attributes/rules never leak
+  // into another score request. Keep the original row order in the key so
+  // even reference tie-breaking is unchanged.
+  const totals = memo?.totals ?? new Map();
+  const rowKeys = new Map();
+  if (memo) for (const row of rows) {
+    const signature = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map(field => row[field] ?? null)]);
+    if (!memo.signatures.has(signature)) memo.signatures.set(signature, memo.signatures.size);
+    rowKeys.set(row, memo.signatures.get(signature));
+  }
+  const score = cards => {
+    const identity = cards.map(row => memo ? rowKeys.get(row) : row.eaId).join(',');
+    if (totals.has(identity)) return totals.get(identity);
+    const total = evaluateGalleryLineup(cards, compiled).total;
+    if (totals.size >= 8192) totals.clear();
+    totals.set(identity, total);
+    return total;
+  };
   const scoredSeeds = [];
   for (const cards of seeds) { scoredSeeds.push({ cards, total: score(cards) }); yield; }
   const starts = scoredSeeds.sort((a, b) => b.total - a.total).slice(0, 6);
@@ -166,11 +208,11 @@ function* chooseLineupSteps(rows, required, compiled) {
   return best.cards.slice().sort(order);
 }
 
-export function* summarizeGalleryScoreSteps({ set, catalog, progress }) {
-  if (!set || !progress || !Array.isArray(progress.rows) || catalog?.source !== 'futgg'
-      || set.id !== `futgg:${progress.setId}` || progress.season !== '27'
+export function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = null) {
+  if (!set || !progress || !Array.isArray(progress.rows) || !['futgg', 'fodder'].includes(catalog?.source)
+      || set.id !== (catalog.source === 'fodder' ? progress.setId : `futgg:${progress.setId}`) || progress.season !== '27'
       || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1) return fail('input-invalid');
-  const compiled = compileGalleryScoringRules(catalog);
+  const compiled = memo?.compiled ?? compileGalleryScoringRules(catalog);
   if (compiled.status !== 'ready') return compiled;
   const collected = progress.rows.filter(row => row.collected === true);
   const collectionUnknown = !progress.complete || progress.rows.some(row => row.collected == null);
@@ -180,11 +222,11 @@ export function* summarizeGalleryScoreSteps({ set, catalog, progress }) {
   // The reference excludes collected versions with zero gradingScore from
   // scoring lineups. Keep them in collection progress, not in grade fullness.
   const rows = collected.filter(row => row.gradingScore > 0);
-  const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled), full = lineup.length >= set.requiredCards;
+  const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled, memo), full = lineup.length >= set.requiredCards;
   const low = evaluateGalleryLineup(lineup, compiled), high = evaluateGalleryLineup(lineup, compiled, { unknown: 'high' });
   const comparison = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg' });
   const comparisonHigh = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg', unknown: 'high' });
-  const ruleDifference = comparison.total !== low.total || comparisonHigh.total !== high.total;
+  const ruleDifference = catalog.source !== 'fodder' && (comparison.total !== low.total || comparisonHigh.total !== high.total);
   const unknownFields = [...new Set(compiled.tags.filter(tag => lineup.some(row => attribute(row, tag.field) == null)).map(tag => tag.field))];
   const grades = [...set.grades].sort((a, b) => a.threshold - b.threshold);
   const gradeFor = total => full ? grades.filter(g => total >= g.threshold).at(-1)?.name ?? null : null;
@@ -204,4 +246,21 @@ export function summarizeGalleryScore(input) {
   let next;
   do { next = steps.next(); } while (!next.done);
   return next.value;
+}
+
+// One planning call owns this cache. Reuse exact lineup totals across its
+// candidate pools, not just across seeds of a single selection. Keys include
+// every rule attribute and the base score; FO/attribute changes cannot reuse
+// an older value. Only totals are cached, never row objects or display text.
+export function createGalleryScoreSummarizer(catalog) {
+  const compiled = compileGalleryScoringRules(catalog);
+  const memo = { compiled, totals: new Map(), signatures: new Map(),
+    fields: [...new Set((compiled.tags ?? []).map(tag => tag.field))] };
+  return input => {
+    if (memo.signatures.size > 8192) { memo.signatures.clear(); memo.totals.clear(); }
+    const steps = summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+    let next;
+    do { next = steps.next(); } while (!next.done);
+    return next.value;
+  };
 }

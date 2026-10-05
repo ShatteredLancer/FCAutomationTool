@@ -103,6 +103,9 @@ describe('Gallery grade planner', () => {
     expect(result.status).toBe('partial');
     expect(result.reason).toBe('search-budget-exhausted');
     expect(result.evaluations).toBeLessThanOrEqual(2);
+    expect(result.bestScore).toBeGreaterThan(0);
+    expect(result.distanceToTarget).toBeGreaterThan(0);
+    expect(result.bestCandidate.ids.length).toBeGreaterThan(0);
   });
 
   it('stops all beam expansions at the shared budget, not just one inner loop', () => {

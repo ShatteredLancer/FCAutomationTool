@@ -9,6 +9,7 @@ import { projectGalleryListingReceipts, projectGalleryListingCandidates, planGal
 import { createGalleryBulkListSession, galleryListingCandidateAllowed } from '../../gallery/bulk-list-session.js';
 import { createGalleryListingScheduleStore } from '../../gallery/listing-scheduler.js';
 import { FC27_TRADITIONAL_WEB_LOCK } from '../../fc27/traditional-lock.js';
+import { assertGalleryRelistSettled } from '../../gallery/relist-recovery.js';
 
 const fail = reason => { throw new Error(reason); };
 const safe = error => /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_GALLERY_LISTING_UNAVAILABLE';
@@ -67,6 +68,7 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
     };
     const adapter = adapterFactory(root);
     const checkOtherTransactions = async () => {
+      await assertGalleryRelistSettled(get, scope);
       const other = await persistence.journal.read(scope);
       if (other && !isTerminalTraditionalJournal(other)) fail('FC27_RECOVERY_REQUIRED');
       if (await get(galleryPurchasePendingKey(scope), null) !== null) fail('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
@@ -300,9 +302,11 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
               reason: result?.refreshStatus === 'completed' ? undefined : 'FC27_GALLERY_PRICE_LIMITS_UNKNOWN' });
             const observed = env.adapter.inspectListingItem(candidate.item);
             const display = displayItems.get(candidate.item.id);
+            // The purchase Journal is the only authoritative cost for this
+            // batch. EA's display `lastSalePrice` describes a prior auction
+            // and must never replace the exact purchase receipt.
             let previousListingPrice = null, boughtFor = candidate.purchase.purchasePrice;
             if (Number(display?.definitionId) === candidate.item.definitionId) {
-              if (Number.isFinite(display.lastSalePrice)) boughtFor = display.lastSalePrice;
               try {
                 const auction = display.getAuctionData?.();
                 const previous = auction?.currentBid > 0 ? null : auction?.isExpired?.() ? auction.startingBid : auction?.buyNowPrice;
@@ -312,18 +316,27 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
             candidates.push({ ...candidate, name: observed?.candidate?.name ?? String(candidate.item.definitionId), boughtFor, previousListingPrice });
           }
           let quotes = null;
-          try { quotes = candidates.length ? await loadPrices(candidates.map(e => e.item.definitionId)) : null; }
+          try { quotes = candidates.length ? await loadPrices(candidates.map(e => e.item.definitionId), {
+            rows: candidates.map(e => displayItems.get(e.item.id)).filter(Boolean), isCurrent: () => { env.assertCurrent(); return true; },
+          }) : null; }
           catch (error) { quotes = null; void stage({ phase: 'quotes', status: 'failed', reason: 'FC27_GALLERY_QUOTES_UNAVAILABLE' }); }
           void stage({ phase: 'quotes', status: quotes?.expiresAt > Date.now() ? 'success' : 'unknown',
             quotedCount: Object.keys(quotes?.freshPrices ?? {}).length });
           env.assertCurrent();
           const prices = quotes?.expiresAt > Date.now() ? quotes.freshPrices ?? {} : {};
+          const listingPriceSource = quotes?.listingPriceSource ?? 'futgg';
+          const pricesBySource = Object.fromEntries(Object.entries(quotes?.references ?? {}).map(([id, ref]) => [id,
+            Object.fromEntries(['futgg', 'futbin'].map(source => [source, ref.quotes?.[source]?.expiresAt > Date.now()
+              && !ref.quotes[source].error ? ref.quotes[source].price : null]))]));
+          const sourceLabel = listingPriceSource === 'futbin' ? 'FUTBIN' : 'FUT.GG';
           const tiers = root.UTCurrencyInputControl?.PRICE_TIERS;
           prepared = { context: env.context, scope: env.scope, binding: `${source.operationId}:${source.binding}`,
             candidates, limitsByItem, marketPrices: prices, priceTiers: tiers ? Array.from(tiers, t => ({ min: t.min, inc: t.inc })) : null,
-            expiresAt: quotes?.expiresAt ?? 0 };
-          return { status: 'ready', source: 'FUT.GG', candidates: structuredClone(candidates), skipped: projected.skipped,
-            prices: structuredClone(prices), priceTiers: prepared.priceTiers, liveEnabled };
+            expiresAt: quotes?.expiresAt ?? 0, listingPriceSource };
+          return { status: 'ready', source: sourceLabel, listingPriceSource, pricesBySource,
+            requestedSources: quotes?.requestedSources ?? ['futgg'], candidates: structuredClone(candidates), skipped: projected.skipped,
+            prices: structuredClone(prices), priceTiers: prepared.priceTiers,
+            limitsByItem: structuredClone(limitsByItem), expiresAt: quotes?.expiresAt ?? 0, liveEnabled };
         });
         return result ?? { status: 'blocked', reason: 'FC27_EXCLUSIVE_ACCESS_UNAVAILABLE' };
       } catch (error) {
@@ -332,11 +345,12 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
       }
       finally { busy = false; }
     },
-    plan({ selectedIds, settings, overridesByItem = {} }) {
+    plan({ selectedIds, settings, overridesByItem = {}, previewPrices = null }) {
       if (!prepared || !same(prepared.context, readFc27Context(root))) return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' };
       const selected = new Set(selectedIds);
       const result = planGalleryListingPrices({ ...prepared, candidates: prepared.candidates.filter(e => selected.has(e.item.id)),
-        marketPrices: prepared.expiresAt > Date.now() ? prepared.marketPrices : {}, settings, overridesByItem });
+        marketPrices: prepared.expiresAt > Date.now() ? prepared.marketPrices : {},
+        quoteExpired: prepared.expiresAt > 0 && prepared.expiresAt <= Date.now(), settings, overridesByItem, previewPrices });
       planned = result?.status === 'observed' ? structuredClone(result) : null;
       return result;
     },
@@ -358,6 +372,9 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
         if (!resume && (!prepared || !same(prepared.context, env.context) || plan?.status !== 'observed'
           || !planned || !same(plan, planned)
           || !plan.entries?.length || plan.entries.some(e => !prepared.candidates.some(c => same(c.item, e.item) && same(c.purchase, e.purchase))))) fail('FC27_GALLERY_LISTING_PLAN_CHANGED');
+        if (!resume && prepared.expiresAt <= Date.now() && plan.entries.some(e => e.priceOrigin === 'market')) {
+          fail('FC27_GALLERY_LISTING_QUOTE_EXPIRED');
+        }
         return await env.session.execute({ approved, entries: plan?.entries, binding: prepared?.binding,
           settings, resume, expectedRunId });
       } catch (error) {

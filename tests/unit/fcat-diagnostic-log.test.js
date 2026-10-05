@@ -10,6 +10,29 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('exports bounded public-version price provenance but never account or transaction identities', async () => {
+  const t = harness();
+  await t.log.record({ area: 'pricing', event: 'public-quote', source: 'futgg', definitionId: 71494,
+    referencePrice: 650, fetchedAt: 1000, sourceUpdatedAt: 900, expiresAt: 2000,
+    itemId: 1234, tradeId: '12345', accountScope: 'private-account', url: 'https://private.example/' });
+  const payload = await t.log.exportPayload();
+  expect(payload.criticalEntries[0]).toMatchObject({ definitionId: 71494, referencePrice: 650, sourceUpdatedAt: 900 });
+  expect(JSON.stringify(payload)).not.toMatch(/private|itemId|tradeId|accountScope/);
+});
+
+it('retains the real Puzzle solver reason and candidate counts across Gallery sync floods', async () => {
+  const t = harness({ maxEntries: 1 });
+  await t.log.record({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN',
+    localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, excludedUnavailable: 0, evaluations: 0,
+    inventory: [{ id: 123 }], token: 'secret' });
+  await t.log.record({ area: 'gallery', event: 'pool-request' });
+  const payload = await t.log.exportPayload();
+  expect(payload.criticalEntries[0]).toMatchObject({ localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, evaluations: 0 });
+  expect(JSON.stringify(payload)).not.toMatch(/inventory|secret/);
+  await t.log.record({ area: 'puzzle', event: 'procurement-result', localReason: 'https://secret.example' });
+  expect((await t.log.exportPayload()).criticalEntries[1]).not.toHaveProperty('localReason');
+});
+
 it('retains bounded redacted trade stages independently of sync floods and reloads', async () => {
   const t = harness({ maxEntries: 2, maxCriticalEntries: 2 });
   for (const phase of ['prepare', 'mutation', 'readback']) await t.log.record({ area: 'gallery', event: 'listing-stage',

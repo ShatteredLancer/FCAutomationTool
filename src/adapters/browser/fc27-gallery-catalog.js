@@ -14,45 +14,11 @@ export const GALLERY_TTL_MS = 5 * 60 * 1000;
 const validScope = value => typeof value === 'string' && /^[A-Za-z0-9:_-]{1,120}$/.test(value);
 const validator = value => typeof value === 'string' && value.length <= 300 && !/[\r\n]/.test(value) ? value : null;
 
-// Tampermonkey can issue an anonymous HTTPS request, but it cannot change the
-// browser's SOCKS/HTTP proxy for one request.  Gallery therefore accepts the
-// same HTTPS forwarding contract as the reviewed price provider: the proxy
-// receives `?futggapi=<path relative to /api/fut>` and returns JSON.  A
-// loopback SOCKS address (for example 127.0.0.1:1080) is intentionally
-// rejected here; it belongs to the inspection browser's --proxy option.
-export function normalizeFc27GalleryProxy(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  let parsed;
-  try { parsed = new URL(raw); } catch { throw new Error('FC27_GALLERY_PROXY_INVALID'); }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
-    throw new Error('FC27_GALLERY_PROXY_INVALID');
-  }
-  parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
-  return parsed.toString().replace(/\/$/, '');
-}
-
-function buildFutGgProxyUrl(proxy, targetUrl) {
-  const normalized = normalizeFc27GalleryProxy(proxy);
-  if (!normalized) return targetUrl;
-  const target = new URL(targetUrl);
-  const basePath = '/api/fut/';
-  if (!target.pathname.startsWith(basePath)) throw new Error('FC27_GALLERY_PROXY_TARGET_INVALID');
-  const relativePath = target.pathname.slice(basePath.length) + target.search;
-  const separator = normalized.includes('?') ? (/[?&]$/.test(normalized) ? '' : '&') : '?';
-  return `${normalized}${separator}futggapi=${relativePath}`;
-}
-
 // Dedicated anonymous public transport: no EA headers, credentials, cache busting or arbitrary URLs.
-export function createFc27GalleryTransport(gmRequest, { getProxy = null, proxy = '', diagnosticLog = null } = {}) {
+export function createFc27GalleryTransport(gmRequest, { diagnosticLog = null } = {}) {
   const record = fields => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'gallery', event: 'transport-request', ...fields })).catch(() => undefined); }
     catch { /* Logging cannot alter public requests or callbacks. */ }
-  };
-  const readProxy = () => typeof getProxy === 'function' ? getProxy() : proxy;
-  const resolveUrl = url => {
-    try { return url.includes('www.fut.gg') ? buildFutGgProxyUrl(readProxy(), url) : url; }
-    catch (error) { throw error; }
   };
   const parseResponseHeaders = response => {
     const parsed = {};
@@ -64,15 +30,12 @@ export function createFc27GalleryTransport(gmRequest, { getProxy = null, proxy =
     return parsed;
   };
   const request = (url, headers = {}, phase = 'catalog', source = 'futgg') => new Promise((resolve, reject) => {
-    let route = 'direct';
+    const route = 'direct';
     const fail = reason => { record({ source, phase, route, status: 'failed', reason }); reject(new Error(reason)); };
     if (typeof gmRequest !== 'function') {
       fail('FC27_GALLERY_TRANSPORT_UNAVAILABLE'); return;
     }
-    let requestUrl;
-    try { requestUrl = resolveUrl(url); }
-    catch (error) { fail(error.message); return; }
-    route = requestUrl === url ? 'direct' : 'forwarding';
+    const requestUrl = url;
     record({ source, phase, route, status: 'started' });
     const conditional = Object.fromEntries(['If-None-Match', 'If-Modified-Since']
       .filter(key => validator(headers[key])).map(key => [key, headers[key]]));
@@ -88,13 +51,10 @@ export function createFc27GalleryTransport(gmRequest, { getProxy = null, proxy =
     });
   });
   const postJson = (url, payload) => new Promise((resolve, reject) => {
-    let route = 'direct';
+    const route = 'direct';
     const fail = reason => { record({ source: 'futgg', phase: 'price-sign', route, status: 'failed', reason }); reject(new Error(reason)); };
     if (typeof gmRequest !== 'function') { fail('FC27_GALLERY_TRANSPORT_UNAVAILABLE'); return; }
-    let requestUrl;
-    try { requestUrl = resolveUrl(url); }
-    catch (error) { fail(error.message); return; }
-    route = requestUrl === url ? 'direct' : 'forwarding';
+    const requestUrl = url;
     record({ source: 'futgg', phase: 'price-sign', route, status: 'started' });
     gmRequest({ method: 'POST', url: requestUrl, anonymous: true, timeout: 15000,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

@@ -43,6 +43,11 @@ it('composes the original FSU buyer without any SBC target and uses explicit acc
   expect(stub.calls).toEqual([['find',10,450],['buy',10],['move',10],['find',11,450],['buy',11],['move',11]]);
   expect((await f.purchase.inspect()).remaining).toBe(0);
 });
+it('passes a stricter per-batch ceiling through the Gallery adapter instead of overwriting it', async () => {
+  const f = fixture();
+  expect(await f.purchase({ ...f.input, quoteCeiling: 200 })).toMatchObject({ status: 'purchased', spent: 400 });
+  expect(stub.calls.filter(([name]) => name === 'find')).toEqual([['find',10,200],['find',11,200]]);
+});
 it('requires approval and current view before any native reads or purchase calls', async () => {
   for (const input of [{ approved: false }, { isCurrent: () => false }]) {
     const f = fixture(); expect((await f.purchase({ ...f.input, ...input })).status).toBe('blocked');

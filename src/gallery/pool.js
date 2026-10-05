@@ -30,8 +30,26 @@ function item(row, index) {
 }
 
 export function normalizeGalleryPool(source, input, setId, season = '27') {
-  if (source !== 'futgg' || season !== '27' || !integer(setId, 1)) fail();
+  if (!['futgg', 'fodder'].includes(source) || season !== '27' || typeof setId !== 'string' && !integer(setId, 1)) fail();
   const data = input?.data ?? input;
+  if (source === 'fodder') {
+    if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId
+      || !integer(data.requiredCards, 1) || !integer(data.poolSize, 0, 100000)
+      || typeof data.isTruncated !== 'boolean' || !Array.isArray(data.items) || data.items.length > 100000
+      || data.items.length > data.poolSize) fail();
+    const rawItems = data.items.map(item);
+    if (new Set(rawItems.map(row => row.eaId)).size !== rawItems.length) fail();
+    const candidateOnly = data.isTruncated === true;
+    const items = candidateOnly ? rawItems.slice(0, GALLERY_TOP_CANDIDATE_LIMIT) : rawItems;
+    if (candidateOnly && items.length < data.requiredCards) fail();
+    const pool = { schema: 1, source, season, setId, requiredCards: data.requiredCards,
+      poolSize: data.poolSize, generatedAt: data.generatedAt ?? null, complete: !candidateOnly,
+      candidateOnly, candidateLimit: candidateOnly ? items.length : null, items: Object.freeze(items) };
+    const content = galleryCanonical({ ...pool, generatedAt: null });
+    let hash = 2166136261;
+    for (let i = 0; i < content.length; i++) hash = Math.imul(hash ^ content.charCodeAt(i), 16777619) >>> 0;
+    return Object.freeze({ ...pool, revision: `p1-${hash.toString(16)}-${content.length}` });
+  }
   if (!data || data.schemaVersion !== 1 || data.game !== `fc${season}` || data.setId !== setId
       || !integer(data.requiredCards, 1) || !integer(data.poolSize, 0, 100000)
       || typeof data.isTruncated !== 'boolean' || !Array.isArray(data.items) || data.items.length > 100000

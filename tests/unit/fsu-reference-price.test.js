@@ -61,8 +61,15 @@ it('uses an anonymous FUTBIN GET with no EA headers and accepts the original 200
     const url = 'https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=11&platform=PC';
     expect(await createFc27FutbinHttp(gm)(url)).toBe('public price');
     expect(gm.mock.calls[0][0]).toMatchObject({ url, method: 'GET', anonymous: true, headers: { 'Content-Type': 'application/json' } });
-    expect(Object.keys(gm.mock.calls[0][0]).sort()).toEqual(['anonymous', 'headers', 'method', 'onerror', 'onload', 'url']);
+    expect(Object.keys(gm.mock.calls[0][0]).sort()).toEqual(['anonymous', 'headers', 'method', 'onerror', 'onload', 'ontimeout', 'timeout', 'url']);
   }
+});
+it('ends timed-out public requests and refuses redirects without printing the URL', async () => {
+  const url = 'https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=11&platform=PC';
+  await expect(createFc27FutbinHttp(options => { expect(options.timeout).toBe(15000); options.ontimeout(); })(url))
+    .rejects.toThrow('FC27_BUY_REFERENCE_TIMEOUT');
+  await expect(createFc27FutbinHttp(options => options.onload({ status: 200, finalUrl: 'https://example.com/private', responseText: '{}' }))(url))
+    .rejects.toThrow('FC27_BUY_REFERENCE_REDIRECT');
 });
 it.each(['https://example.com/futbin/api/27/getFilteredPlayers', 'https://www.futbin.org/futbin/api/26/getFilteredPlayers',
   'https://www.futbin.org/account', 'https://secret@www.futbin.org/futbin/api/27/getFilteredPlayers'])

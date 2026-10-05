@@ -1,5 +1,8 @@
 // One batch is bound to one account, saved concept draft and current squad.
 // No EA objects cross this boundary. A dispatch marker precedes each mutation.
+import { ensurePurchasePriceApproval, purchaseApprovedPrice, validatePurchasePriceApproval, purchasePriceApprovalFor } from './purchase-price-approval.js';
+import { validatePurchaseAttempts, beginPurchaseAttempt, finishPurchaseAttempt, failPurchaseWithoutAttempt,
+  purchaseAttemptResults, purchaseRetryKey, applyPurchaseRetry, recordPurchaseSearch, freezePurchaseSearchCap } from './purchase-attempts.js';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw new Error(reason); };
 const integer = (n, min = 0) => Number.isSafeInteger(n) && n >= min;
@@ -10,7 +13,7 @@ export const conceptDraftKey = (scope, target) => `fcat-fc27-concept-draft:${sco
 const settled = record => Array.isArray(record?.entries) && record.entries.every(e => !['buy-pending', 'bought', 'move-pending'].includes(e.state)) && record.phase !== 'save-pending';
 
 export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive, loadDraft,
-  createAdapter, assertCurrent, shouldStop = () => false, onProgress = () => {} } = {}) {
+  createAdapter, assertCurrent, preparePrices = null, shouldStop = () => false, onProgress = () => {} } = {}) {
   const store = async (key, value) => {
     await set(key, structuredClone(value));
     if (!same(await get(key, null), value)) fail('FC27_BUY_JOURNAL_UNCONFIRMED');
@@ -25,6 +28,8 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
             : typeof e.tradeId !== 'string' || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer(e.price, 150))))
         || new Set(record.entries.map(e => e.slot)).size !== record.entries.length
         || !['ready', 'save-pending', 'saved'].includes(record.phase)) fail('FC27_BUY_JOURNAL_UNCONFIRMED');
+    if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope, record.entries.map(entry => entry.definitionId));
+    validatePurchaseAttempts(record);
   };
   const summary = record => {
     const entries = Array.isArray(record?.entries) ? record.entries : [];
@@ -33,7 +38,7 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
       fulfilled: acquired.length, total: entries.length, spent: acquired.reduce((sum, e) => sum + (integer(e.price) ? e.price : 0), 0) };
   };
   return Object.freeze({
-    async execute(target, { budget, quoteCeiling = null, expectedOperationId, approved = false, recoverOnly = false } = {}) {
+    async execute(target, { budget, quoteCeiling = null, expectedOperationId, retry = null, approved = false, recoverOnly = false } = {}) {
       let adapter; let record;
       try {
         target = { setId: target?.setId, challengeId: target?.challengeId };
@@ -60,13 +65,16 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
             base: draft.plan, phase: 'ready', applied: [], entries: draft.plan.slots.filter(s => s?.kind === 'concept')
               .map(s => ({ slot: s.slot, definitionId: s.definitionId, state: 'waiting' })) };
           check(record);
+          record.budget = budget;
           if (!same(record.target, target) || !same(record.base.context, context)
               || record.entries.length !== record.base.slots.filter(s => s?.kind === 'concept').length
               || record.entries.some(e => record.base.slots[e.slot]?.kind !== 'concept'
                 || record.base.slots[e.slot].definitionId !== e.definitionId)
               || !Array.isArray(record.applied) || record.applied.some(e => e.state !== 'club'
                 || !record.entries.some(entry => same(entry, e)))) fail('FC27_BUY_JOURNAL_UNCONFIRMED');
-          adapter = await createAdapter();
+          adapter = await createAdapter({ onSearch: definitionId => {
+            recordPurchaseSearch(record, definitionId); report('search-query', record.entries.find(entry => entry.definitionId === definitionId));
+          } });
           // Server and local page must agree before any new spending. A save
           // whose response was lost is read back without sending another PUT.
           if (record.phase === 'save-pending') {
@@ -85,6 +93,11 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           await adapter.verifySquad(record);
           await store(key, record);
           const persist = () => store(key, record);
+          const constraints = async () => ({ ...await adapter.priceContext?.(), absoluteCap: quoteCeiling,
+            remainingBudget: Math.max(0, budget - summary(record).spent) });
+          const priceResult = async () => ({ results: purchaseAttemptResults(record), retryContext: record.priceApproval ? {
+            ...await constraints(), operationId: record.operationId, key: purchaseRetryKey(record), policy: record.priceApproval.policy } : null });
+          if (retry) { applyPurchaseRetry(record, retry, await constraints()); await persist(); }
           const mark = async () => {
             await store(puzzleBuyPendingKey(scope), { key, operationId: record.operationId });
             await persist();
@@ -93,6 +106,7 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
             try {
               const index = entry ? record.entries.indexOf(entry) : -1;
               onProgress({ ...summary(record), failures: failures.map(item => ({ ...item })), phase,
+                results: purchaseAttemptResults({ ...record, lastResult: { failures } }),
                 index: index >= 0 ? index + 1 : null, total: record.entries.length,
                 ...(entry ? { slot: entry.slot, definitionId: entry.definitionId } : {}), ...extra });
             } catch { /* UI only. */ }
@@ -100,8 +114,10 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           let stopReason = null;
           const failures = [];
           try {
-            for (const entry of record.entries) {
+            for (let cursor = 0; cursor < record.entries.length; cursor++) {
+              const entry = record.entries[cursor];
               if (entry.state === 'club') continue;
+              if (retry && entry.state === 'waiting' && !retry.items.some(item => item.definitionId === entry.definitionId)) continue;
               try {
               // An uncertain purchase is reconciled by exact item identity;
               // absence alone never authorizes a second bid.
@@ -116,14 +132,39 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
                 if (recoverOnly || shouldStop()) { stopReason = 'FC27_BUY_STOPPED'; break; }
                 const remaining = budget - summary(record).spent;
                 await adapter.verifyCurrent(record);
+                await ensurePurchasePriceApproval({ record, scope, preparePrices, persist, assertCurrent });
+                const approval = purchasePriceApprovalFor(record, entry.definitionId);
+                const price = approval ? purchaseApprovedPrice(approval, entry.definitionId) : null;
+                if (price && price.maxBuy === null) {
+                  failPurchaseWithoutAttempt(record, entry.definitionId, price.reason); await persist();
+                  failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: price.reason });
+                  report('failed', entry, { reason: price.reason }); continue;
+                }
+                const cap = freezePurchaseSearchCap(record, entry.definitionId,
+                  Math.min(quoteCeiling ?? Infinity, price?.maxBuy ?? Infinity, approval ? Math.max(0, remaining) : Infinity));
+                if (cap < 150) {
+                  failPurchaseWithoutAttempt(record, entry.definitionId, 'FC27_BUY_BUDGET_EXCEEDED'); await persist();
+                  failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: 'FC27_BUY_BUDGET_EXCEEDED' });
+                  report('failed', entry, { reason: 'FC27_BUY_BUDGET_EXCEEDED' }); continue;
+                }
+                if (!beginPurchaseAttempt(record, entry.definitionId)) {
+                  const reason = record.attempts[entry.definitionId].reason ?? 'FC27_BUY_ATTEMPTS_EXHAUSTED';
+                  failPurchaseWithoutAttempt(record, entry.definitionId, reason); await persist();
+                  failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason }); report('failed', entry, { reason }); continue;
+                }
+                await persist();
                 report('search', entry);
-                const quote = await adapter.find(entry.definitionId, quoteCeiling ?? Infinity);
-                if (!quote) { failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: 'FC27_BUY_NO_LISTING' }); report('failed', entry, { reason: 'FC27_BUY_NO_LISTING' }); continue; }
-                if (quote.unavailable) { failures.push({ slot: entry.slot, definitionId: entry.definitionId,
-                  reason: quote.reason, httpStatus: quote.httpStatus, errorCode: quote.errorCode }); report('failed', entry, quote); continue; }
+                const quote = await adapter.find(entry.definitionId, cap);
+                if (!quote || quote.unavailable) {
+                  const failure = { slot: entry.slot, definitionId: entry.definitionId, reason: quote?.reason ?? 'FC27_BUY_NO_LISTING',
+                    httpStatus: quote?.httpStatus, errorCode: quote?.errorCode };
+                  const again = finishPurchaseAttempt(record, entry.definitionId, failure); await persist();
+                  if (again) cursor--; else failures.push(failure);
+                  report(again ? 'retrying' : 'failed', entry, failure); continue;
+                }
                 if (quote.definitionId !== entry.definitionId || !integer(quote.itemId, 1)
                     || !integer(quote.price, 150)
-                    || quoteCeiling !== null && quote.price > quoteCeiling
+                    || quote.price > cap
                     || typeof quote.tradeId !== 'string' || !/^[1-9]\d{0,19}$/.test(quote.tradeId)) fail('FC27_BUY_QUOTE_UNVERIFIED');
                 report('price-ready', entry, { price: quote.price });
                 if (quote.price > remaining) {
@@ -138,8 +179,9 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
                 const receipt = await adapter.buy(entry);
                 if (receipt.status === 'rejected') {
                   entry.state = 'waiting'; await persist();
-                  failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: receipt.reason,
-                    httpStatus: receipt.httpStatus, errorCode: receipt.errorCode }); report('failed', entry, receipt); continue;
+                  const again = finishPurchaseAttempt(record, entry.definitionId, receipt); await persist();
+                  if (again) cursor--; else failures.push({ slot: entry.slot, definitionId: entry.definitionId, reason: receipt.reason,
+                    httpStatus: receipt.httpStatus, errorCode: receipt.errorCode }); report(again ? 'retrying' : 'failed', entry, receipt); continue;
                 }
                 if (receipt.status !== 'bought' || receipt.itemId !== entry.itemId
                     || receipt.definitionId !== entry.definitionId || receipt.tradeId !== entry.tradeId
@@ -165,7 +207,7 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           // an unknown purchase into a reusable authorization or duplicate buy.
           record.lastResult = { reason: stopReason ?? failures[0]?.reason ?? 'FC27_BUY_COMPLETED', failures };
           await persist();
-          if (!settled(record)) return { status: 'recovery-required', ...record.lastResult, ...summary(record) };
+          if (!settled(record)) return { status: 'recovery-required', ...record.lastResult, ...await priceResult(), ...summary(record) };
           const acquired = record.entries.filter(e => e.state === 'club');
           if (!same(acquired, record.applied)) {
             const result = await adapter.save(record, async () => { record.phase = 'save-pending'; await mark(); });
@@ -173,7 +215,7 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           }
           await store(puzzleBuyPendingKey(scope), null);
           return { status: acquired.length === record.entries.length ? 'purchased' : 'partial',
-            ...record.lastResult, ...summary(record), saved: acquired.length > 0 && record.applied.length === acquired.length,
+            ...record.lastResult, ...await priceResult(), ...summary(record), saved: acquired.length > 0 && record.applied.length === acquired.length,
             replacementPending: record.applied.length !== acquired.length, submitted: false };
         });
       } catch (e) {

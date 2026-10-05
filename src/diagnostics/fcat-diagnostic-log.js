@@ -4,13 +4,14 @@ const DEFAULT_MAX_ENTRIES = 300;
 const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_STRING_LENGTH = 160;
 
-const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'route', 'mismatch']);
+const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
-  'catalogAttempts', 'quoteAttempts', 'safeCandidates',
+  'definitionId', 'referencePrice', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
+  'catalogAttempts', 'quoteAttempts', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
   'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
@@ -25,8 +26,8 @@ function sanitizeEntry(input, now) {
   if (['service.bid', 'service.move'].includes(input.method)) entry.method = input.method;
   if (typeof input.observedHash === 'string' && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
   for (const key of STRING_FIELDS) {
-    const value = key === 'reason'
-      ? typeof input.reason === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input.reason) ? input.reason : null
+    const value = key === 'reason' || key === 'localReason'
+      ? typeof input[key] === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null
       : boundedString(input[key]);
     if (value !== null) entry[key] = value;
   }
@@ -98,7 +99,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       // useful listing/market failure from the export. Keep a separate small
       // bounded stream for trade and purchase lifecycle events. It carries the
       // same allowlisted, redacted fields and never affects business control.
-      if (entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
+      if (entry.area === 'pricing' || entry.area === 'puzzle' || entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
           ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
         criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
       }

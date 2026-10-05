@@ -2,7 +2,30 @@ import { expect, it } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchases,
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchases } from '../../src/fc27/puzzle-procurement.js';
-import { marketRow } from '../helpers/fc27-market-fixture.js';
+import { marketFixture, marketRow } from '../helpers/fc27-market-fixture.js';
+import { puzzleCostFixture } from '../helpers/fc27-puzzle-cost-fixture.js';
+
+it('keeps the cheap connected route under the same 50000-node budget with public quotes', () => {
+  const { input, entries, prices } = puzzleCostFixture();
+  const result = suggestFc27PuzzleJointPurchases(input, entries, { prices });
+  expect(result.status).toBe('suggested');
+  expect(result.estimatedCost).toBeLessThanOrEqual(1900);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(result.plans[0].purchases.reduce((n, card) => n + prices.get(card.definitionId), 0)).toBe(result.estimatedCost);
+});
+
+it.each([5000, 300, 400])('compares total spend for one expensive card versus two 200-coin cards (single=%i)', single => {
+  const { input, card } = fixture();
+  input.challenge.rawRequirements[1].pairs[0].values = [31];
+  const entries = [card, ...[902, 903].map(definitionId => ({ ...card, definitionId, nationId: 2, leagueId: 2, teamId: 22 }))];
+  const prices = new Map([[901, single], [902, 200], [903, 200]]);
+  const result = suggestFc27PuzzlePurchases(input, findFc27PuzzleRepairSeed(input), entries, { prices });
+  const plan = result.plans[0];
+  expect(plan.purchases.reduce((n, item) => n + prices.get(item.definitionId), 0)).toBe(Math.min(single, 400));
+  expect(plan.purchaseCount).toBe(single > 400 ? 2 : 1);
+  expect(plan.teamFacts.chemistry).toBeGreaterThanOrEqual(31);
+  expect(result.checks).toBeLessThanOrEqual(20000);
+});
 
 function fixture() {
   const input = puzzleFillFixture();
@@ -72,12 +95,46 @@ it('does not exhaust a joint search without market candidates or claim market-wi
   });
 });
 
+it.each([200, 15000000])('searches priced joint candidates at a valid public price %s without treating planning bounds as approval', price => {
+  const { input, card } = fixture(); input.inventory.items.pop();
+  const result = suggestFc27PuzzleJointPurchases(input, [card], { prices: new Map([[901, price]]) });
+  expect(result).toMatchObject({ status: 'suggested', executable: false,
+    plans: [{ purchaseCount: 1, purchases: [{ definitionId: 901 }], requiresPurchasedMaterialApproval: true }] });
+  expect(result.nodes).toBeGreaterThan(0);
+});
+
+it.each([15000001, -1, NaN])('continues rejecting malformed public cost %s before searching', price => {
+  const { input, card } = fixture(); input.inventory.items.pop();
+  expect(suggestFc27PuzzleJointPurchases(input, [card], { prices: new Map([[901, price]]) }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_QUOTE_INVALID', nodes: 0, plans: [] });
+});
+
 it('retains real joint search exhaustion when eligible market versions exist', () => {
   const { input, card } = fixture();
   expect(suggestFc27PuzzleJointPurchases(input, [card], { maxNodes: 1 })).toMatchObject({
     status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', marketCandidates: 1,
     truncated: true, plans: [],
   });
+});
+
+it('reaches the cheapest legal market combination before the bounded search stops', () => {
+  const input = marketFixture();
+  input.inventory.items = [];
+  input.challenge.rawRequirements = [marketRow(3, 1)];
+  const entries = [901, 902, 903, 904, 905].map((definitionId, index) => ({
+    definitionId, rating: 60, rarity: 0, nationId: 2, leagueId: 2,
+    teamId: index + 11, positions: [5], groups: [], special: false,
+    evolution: false, cosmetic: false,
+  }));
+  const prices = new Map([[901, 5000], [902, 5000], [903, 5000], [904, 200], [905, 200]]);
+  const result = suggestFc27PuzzleJointPurchases(input, entries, { prices, maxNodes: 6 });
+  expect(result.status).toBe('suggested');
+  expect(result.plans[0].purchases.map(item => item.definitionId).sort((a, b) => a - b))
+    .toEqual([901, 904, 905]);
+  expect(result.estimatedCost).toBe(5400);
+  expect(result.nodes).toBeLessThanOrEqual(6);
+  expect(result.truncated).toBe(true);
+  expect(result.optimalWithinPool).toBe(false);
 });
 
 it('joint procurement also works without a chemistry requirement and retains owned protections', () => {

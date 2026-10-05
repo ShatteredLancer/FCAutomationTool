@@ -272,6 +272,24 @@ async function buyingFixture(count = 1, options = {}) {
   return { ...x, buy, purchased, purchases };
 }
 
+it('exports procurement cost and selected public versions after a successful concept save', async () => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.10' });
+  const x = await missingFixture(1, { diagnosticLog });
+  const result = await x.fill();
+  expect(result).toMatchObject({ status: 'concept-filled', saved: true, purchaseCount: 1, estimatedCost: 500 });
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toEqual(expect.arrayContaining([
+    expect.objectContaining({ area: 'puzzle', event: 'procurement-result', setId: 4, challengeId: 16,
+      estimatedCost: 500, purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true }),
+    expect.objectContaining({ area: 'puzzle', event: 'procurement-card', definitionId: 901, referencePrice: 500 }),
+  ]));
+  expect(JSON.stringify(payload)).not.toMatch(/accountScope|selectedOwned|catalogRef|operationId/);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.some(call => call.kind === 'buy')).toBe(false);
+});
+
 it('buys with the independently reviewed October 3 bid/move fingerprints', async () => {
   const x = await buyingFixture(3);
   x.state.buyMethodHashes = {

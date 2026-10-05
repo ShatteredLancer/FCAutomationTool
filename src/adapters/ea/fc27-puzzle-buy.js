@@ -5,6 +5,8 @@ import { verifyFc27Methods } from './fc27-transaction-transport.js';
 import { readFc27PurchasePage, readFc27PurchasePageSlots } from './fc27-puzzle-page.js';
 import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
 import { readFsuStyleAuctionPrices } from '../../fc27/fsu-auction-search.js';
+import { purchaseApprovedPrice, validatePurchasePriceApproval, purchasePriceApprovalFor } from '../../fc27/purchase-price-approval.js';
+import { purchasePriceCap } from '../../gallery/public-price-policy.js';
 
 // FSU 26.09 buyConceptPlayer: exact-version search -> Item.bid at Buy Now
 // -> Item.move(CLUB). Use EA services directly, never invoke FSU's buyer.
@@ -40,6 +42,7 @@ export function readFc27PuzzleBuyPlan(root, target) {
 }
 
 export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget, referencePrice,
+  refreshReference = null, now = () => Date.now(), onSearch = () => {},
   verifyCurrent: verifyCurrentOverride = null, verifySquad: verifySquadOverride = null,
   collectionState = null, confirmCollection = null, playerDetails = null,
   attempts = 5, onEvent = () => {}, wait = (min, max) => new Promise(resolve => setTimeout(resolve,
@@ -55,7 +58,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   let provider;
   const legacyProvider = async () => provider ??= await createFc27PurchaseSquad(root, { canWrite, assertTarget });
   let club;
-  const auctions = new Map(); const confirmedMoves = new Set();
+  const auctions = new Map(); const auctionCaps = new Map(); const confirmedMoves = new Set();
   let closed = false; let currentRecord = null;
   const diagnostic = (stage, values = {}) => { onEvent({ stage, ...values }); };
   const pin = pgid => root.services.PIN.sendData(root.PINEventType.PAGE_VIEW, { type: root.PIN_PAGEVIEW_EVT_TYPE, pgid });
@@ -88,6 +91,17 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
     if (!Number.isSafeInteger(amount) || amount < 0) fail('FC27_BUY_BALANCE_UNVERIFIED');
     return amount;
   };
+  const approvedCap = (definitionId, ceiling, item, fresh = null) => {
+    const approval = currentRecord && purchasePriceApprovalFor(currentRecord, definitionId);
+    if (!approval) return { maxBuy: ceiling };
+    validatePurchasePriceApproval(approval, currentRecord.scope, currentRecord.entries.map(entry => entry.definitionId));
+    const price = purchaseApprovedPrice(approval, definitionId, { now: now(), fresh });
+    if (price.maxBuy === null) return price;
+    const limits = item?._itemPriceLimits ?? item?.itemPriceLimits ?? null;
+    const maxBuy = purchasePriceCap({ maxBuy: price.maxBuy, approvedCap: Number.isFinite(ceiling) ? ceiling : null,
+      balance: coins(), eaLimits: limits, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS });
+    return { ...price, maxBuy, reason: maxBuy === null ? 'FC27_BUY_PRICE_LIMIT_UNAVAILABLE' : null };
+  };
   const verifyCurrent = record => {
     assertAccount(); assertTarget?.();
     if (typeof verifyCurrentOverride === 'function') return verifyCurrentOverride(record);
@@ -103,6 +117,8 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       if (used >= root.MAX_NEW_ITEMS) fail('FC27_BUY_UNASSIGNED_FULL');
     },
     verifyCurrent,
+    priceContext: () => ({ balance: coins(), priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
+      absoluteCap: currentRecord?.quoteCeiling ?? null }),
     async find(definitionId, maxBuy) {
       await verifyCurrent(currentRecord);
       const criteria = new root.UTSearchCriteriaDTO();
@@ -115,29 +131,44 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       // returned entities of the exact requested version may enter this batch.
       const item = playerDetails?.get?.(definitionId)
         ?? (playerDetails === null ? readFc27PurchasePage(root, currentRecord.target)?.items.find(card => card?.definitionId === definitionId) : null);
-      if (!item || typeof referencePrice !== 'function') fail('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
-      const initial = Number(await referencePrice({ definitionId, rating: item._rating, nationId: item.nationId,
+      if (!item) fail('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
+      const approval = currentRecord && purchasePriceApprovalFor(currentRecord, definitionId);
+      const fresh = approval && typeof refreshReference === 'function'
+        ? await refreshReference(definitionId, approval.policy) : null;
+      const authority = approvedCap(definitionId, maxBuy, item, fresh);
+      if (authority.maxBuy === null) return { unavailable: true, reason: authority.reason };
+      maxBuy = authority.maxBuy;
+      if (!approval && typeof referencePrice !== 'function') fail('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
+      let initial = approval ? authority.estimate : Number(await referencePrice({ definitionId, rating: item._rating, nationId: item.nationId,
         teamId: item.teamId, leagueId: item.leagueId, preferredPosition: item.preferredPosition }));
       if (!Number.isFinite(initial) || initial < 0) fail('FC27_BUY_REFERENCE_PRICE_INVALID');
+      if (approval) initial = purchasePriceCap({ maxBuy: Math.max(initial, (item._itemPriceLimits ?? item.itemPriceLimits)?.minimum ?? 150),
+        approvedCap: maxBuy, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS });
+      if (initial === null) return { unavailable: true, reason: 'FC27_BUY_PRICE_LIMIT_UNAVAILABLE' };
       diagnostic('reference', { definitionId, price: initial });
       let searchFailure = null;
-      const items = await readFsuStyleAuctionPrices({ ceiling: maxBuy, initial, attempts, wait,
+      const found = await readFsuStyleAuctionPrices({ ceiling: maxBuy, initial, attempts, wait,
         onResults: () => pin('Transfer Market Results - List View'),
         onSearchFailure: reply => { searchFailure = { reason: 'FC27_BUY_SEARCH_FAILED', ...responseCodes(reply) }; },
         above: price => root.UTCurrencyInputControl.getIncrementAboveVal(price),
         below: price => root.UTCurrencyInputControl.getIncrementBelowVal(price),
         search: async price => {
           verifyCurrent(currentRecord); criteria.maxBuy = price; model.updateSearchCriteria(criteria); service.clearTransferMarketCache();
-          const reply = await observe(() => service.searchTransferMarket(model.searchCriteria, 1));
+          const reply = await observe(() => { onSearch(definitionId); return service.searchTransferMarket(model.searchCriteria, 1); });
           diagnostic('search', { definitionId, maxBuy: model.searchCriteria.maxBuy, ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
           if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some(card => card.definitionId !== definitionId))) fail('FC27_BUY_QUOTE_UNVERIFIED');
           return reply;
         } });
+      // EA may return a stale/out-of-filter entity. Never interpret it as
+      // permission to pay above the approved cap, even if it is the cheapest.
+      const items = found.filter(card => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice)
+        && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
       items.sort((a, b) => b.getAuctionData().buyNowPrice - a.getAuctionData().buyNowPrice);
       if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
       const selected = items[items.length - 1]; const auction = selected.getAuctionData(); const tradeId = String(auction.tradeId);
       if (!/^[1-9]\d{0,19}$/.test(tradeId)) fail('FC27_BUY_QUOTE_UNVERIFIED');
       auctions.set(tradeId, selected);
+      auctionCaps.set(tradeId, { definitionId, itemId: selected.id, maxBuy, fresh });
       return { definitionId, itemId: selected.id, tradeId, price: auction.buyNowPrice };
     },
     async buy(entry) {
@@ -147,6 +178,10 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
           || auction.buyNowPrice !== entry.price) {
         return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' };
       }
+      const cap = auctionCaps.get(entry.tradeId);
+      if (!cap || cap.definitionId !== entry.definitionId || cap.itemId !== entry.itemId) return { status: 'rejected', reason: 'FC27_BUY_PRICE_APPROVAL_REQUIRED' };
+      const authority = approvedCap(entry.definitionId, cap.maxBuy, item, cap.fresh);
+      if (authority.maxBuy === null || entry.price > authority.maxBuy) return { status: 'rejected', reason: authority.reason ?? 'FC27_BUY_PRICE_CAP_EXCEEDED' };
       if (!auction.canBuy(coins())) return { status: 'rejected', reason: 'FC27_BUY_INSUFFICIENT_COINS' };
       if (!(auction.getSecondsRemaining() > 0)) return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' };
       pin('Item - Detail View');

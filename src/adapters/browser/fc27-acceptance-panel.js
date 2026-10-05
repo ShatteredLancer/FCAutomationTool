@@ -1,30 +1,34 @@
 import { describeCatalogRule, describeCatalogRewards, describePreparedRequirement } from '../../fc27/sbc-presentation.js';
 import { fc27WorkbenchMarkup, bindFc27WorkbenchTabs } from './fc27-workbench-view.js';
 import { mountFc27GalleryView } from './fc27-gallery-view.js';
+import { mountFc27PriceSettings } from './fc27-price-settings.js';
+import { bindCurrencyArrows } from './fc27-listing-currency.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
-  galleryProxy = '', setGalleryProxy = null, galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryFirstOwnerHistory = null,
-  exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
+  galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryRelist = null, galleryFirstOwnerHistory = null,
+  publicPrices = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = fc27WorkbenchMarkup();
-  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, setFirstOwner: galleryFirstOwnerHistory });
-  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => gallery.setActive(id === 'gallery'));
+  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, relist: galleryRelist, setFirstOwner: galleryFirstOwnerHistory });
+  const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: publicPrices });
+  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery'); if (id === 'settings') void priceSettings.refresh(); });
   const node = id => shadow.getElementById(id);
   node('workbench-version').textContent = version ?? title;
   node('workbench-mode').textContent = liveEnabled === true ? '已开放现有单次操作；提交需单独确认。' : '当前为只读模式。';
-  node('gallery-proxy-card').hidden = typeof setGalleryProxy !== 'function';
   node('diagnostic-export-card').hidden = typeof exportDiagnostics !== 'function';
-  node('gallery-proxy').value = typeof galleryProxy === 'function' ? String(galleryProxy() || '') : String(galleryProxy || '');
   node('puzzle-settings').hidden = typeof setPuzzleMaxRating !== 'function' && typeof setPuzzlePolicy !== 'function';
   node('puzzle-quote-setting').hidden = typeof setPuzzlePolicy !== 'function';
   node('puzzle-queries-setting').hidden = typeof setPuzzlePolicy !== 'function';
   shadow.querySelector('summary').textContent = `${title}　×`;
   node('status').textContent = liveEnabled === true ? 'Live: single SBC' : 'Live execution disabled';
   let busy = false; let plan = null; let puzzlePlan = null; let recovery = null; let action = null;
+  const ceiling = node('puzzle-quote-ceiling');
+  bindCurrencyArrows({ document, input: ceiling, label: '补卡单卡报价上限', enabled: () => !busy,
+    onStep: value => { ceiling.value = String(value); } });
   const renderTargets = () => {
     const previous = node('target').value;
     node('target').replaceChildren();
@@ -36,7 +40,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   };
   const update = () => {
     for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-      if (!button.closest('#page-gallery')) button.disabled = busy;
+      if (!button.closest('#page-gallery') && !button.closest('#public-price-settings')) button.disabled = busy;
     }
     node('execute').disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
     node('fill').disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== 'function';
@@ -139,22 +143,6 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   };
   const on = (id, callback) => node(id).addEventListener('click', event => { if (event.isTrusted && !busy) callback(); });
   on('refresh', () => { renderTargets(); clear(); update(); });
-  on('gallery-proxy-save', () => {
-    if (typeof setGalleryProxy !== 'function') return;
-    void run(async () => {
-      const result = await setGalleryProxy(node('gallery-proxy').value);
-      node('gallery-proxy').value = result.proxy || '';
-      return { ...result, reason: result.proxy ? 'Gallery FUT.GG 转发代理已保存；下次更新目录时生效' : 'Gallery FUT.GG 转发代理已清除；将尝试直连' };
-    });
-  });
-  on('gallery-proxy-clear', () => {
-    if (typeof setGalleryProxy !== 'function') return;
-    void run(async () => {
-      const result = await setGalleryProxy('');
-      node('gallery-proxy').value = '';
-      return { ...result, reason: 'Gallery FUT.GG 转发代理已清除；将尝试直连' };
-    });
-  });
   on('export-diagnostics', () => {
     if (typeof exportDiagnostics !== 'function') return;
     void run(async () => {

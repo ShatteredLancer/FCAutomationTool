@@ -1,4 +1,4 @@
-import { compileGalleryScoringRules, summarizeGalleryScore, galleryRuleKeys } from './scoring.js';
+import { compileGalleryScoringRules, createGalleryScoreSummarizer, galleryRuleKeys } from './scoring.js';
 import { refineGalleryCostSteps } from './cost-search.js';
 import { selectGalleryCandidatePool } from './candidate-pool.js';
 import { galleryPriceBandSeedSteps } from './price-band-seeds.js';
@@ -34,10 +34,10 @@ function comparableRows(rows) {
   return rows.map(row => ({ ...row, collected: true }));
 }
 
-function summarize(set, catalog, existing, selected) {
+function summarize(set, catalog, existing, selected, score) {
   const rows = comparableRows([...existing, ...selected]);
   try {
-    return summarizeGalleryScore({ set, catalog, progress: {
+    return score({ set, catalog, progress: {
       season: '27', setId: Number(String(set.id).split(':').at(-1)), complete: true, rows,
     } });
   } catch {
@@ -97,6 +97,17 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   if (threshold == null) return { status: 'unavailable', reason: 'target-grade-unknown' };
   const compiled = compileGalleryScoringRules(catalog);
   if (compiled.status !== 'ready') return { status: 'unavailable', reason: compiled.reason };
+  const score = createGalleryScoreSummarizer(catalog), summaries = new Map();
+  const summaryFor = selected => {
+    // Inputs are fixed for this generator. Preserve selected order so the
+    // reference selection's tie-breaking stays identical.
+    const key = selected.map(row => row.eaId).join(',');
+    if (!summaries.has(key)) {
+      if (summaries.size >= 4096) summaries.clear();
+      summaries.set(key, summarize(set, catalog, existing, selected, score));
+    }
+    return summaries.get(key);
+  };
   const rows = progress.rows.filter(row => validId(row?.eaId));
   if (rows.length !== progress.rows.length) return { status: 'unavailable', reason: 'input-invalid' };
   if (new Set(rows.map(row => row.eaId)).size !== rows.length) return { status: 'unavailable', reason: 'duplicate-version' };
@@ -125,7 +136,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   if (incompleteExisting.length) return { status: 'partial', reason: 'existing-score-unknown', targetGrade, threshold,
     candidateCount: candidates.length, omittedCandidates, requestedCandidates, quotedCandidateCount, scoreSourceCounts, plans: [] };
   const base = { ids: [], items: [], selected: [], price: 0, unknownPrice: false,
-    nextIndex: 0, summary: summarize(set, catalog, existing, []) };
+    nextIndex: 0, summary: summaryFor([]) };
   if (!base.summary?.low) return { status: 'unavailable', reason: base.summary?.reason ?? 'input-invalid', plans: [] };
   if (scoreOf(base) >= threshold) {
     return { status: 'achieved', targetGrade, threshold, currentScore: scoreOf(base), candidateCount: candidates.length,
@@ -148,8 +159,9 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       selected: greedySelected, nextIndex: candidates.length,
       price: greedyCandidates.reduce((sum, candidate) => sum + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
       unknownPrice: greedyCandidates.some(candidate => asPrice(prices, candidate.row.eaId) == null),
-      summary: summarize(set, catalog, existing, greedySelected) };
+      summary: summaryFor(greedySelected) };
     if (greedy.summary?.full === true && scoreOf(greedy) >= threshold) plans.push(greedy);
+    if (rank(greedy, bestSeen, threshold) < 0) bestSeen = greedy;
   }
   // Always test a cheapest complete lineup independently of score order. The
   // normal beam is score-first while it is below the target, so a high-priced
@@ -171,8 +183,9 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       selected, nextIndex: candidates.length,
       price: cheapestCandidates.reduce((sum, candidate) => sum + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
       unknownPrice: cheapestCandidates.some(candidate => asPrice(prices, candidate.row.eaId) == null),
-      summary: summarize(set, catalog, existing, selected) };
+      summary: summaryFor(selected) };
     cheapestSeed = cheapest;
+    if (rank(cheapest, bestSeen, threshold) < 0) bestSeen = cheapest;
     if (cheapest.summary?.full === true && scoreOf(cheapest) >= threshold) plans.push(cheapest);
   }
   let budgetExhausted = false, beamTruncated = false, timeExhausted = false;
@@ -196,7 +209,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
         const price = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
         return { ids, items, selected, nextIndex: candidates.length, price, cost: price,
           unknownPrice: items.some(item => item.price == null), missingPrices: items.some(item => item.price == null),
-          summary: summarize(set, catalog, existing, selected) };
+          summary: summaryFor(selected) };
       } });
     let step = refinement.next();
     while (!step.done) {
@@ -205,6 +218,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       step = refinement.next(stop);
     }
     evaluations += step.value.evaluations; plans.push(...step.value.plans);
+    if (step.value.bestState && rank(step.value.bestState, bestSeen, threshold) < 0) bestSeen = step.value.bestState;
     beamTruncated ||= step.value.truncated === true;
   }
   let scoringBounded = base.summary.selection === 'bounded-search';
@@ -226,7 +240,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       const nextState = { ids: [...state.ids, candidate.row.eaId], items: [...state.items, item], selected,
         nextIndex: index + 1,
         price: state.price + (price ?? 0), unknownPrice: state.unknownPrice || price == null,
-        summary: summarize(set, catalog, existing, selected) };
+        summary: summaryFor(selected) };
       next.push(nextState); evaluations++;
       scoringBounded ||= nextState.summary.selection === 'bounded-search';
       scoreUncertain ||= nextState.summary.low?.total !== nextState.summary.high?.total || nextState.summary.ruleDifference;
@@ -267,6 +281,12 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
         : scoringBounded ? 'score-selection-bounded' : 'target-unreachable';
     return { status: searchComplete ? 'no-plan' : 'partial', reason: scopeTruncated ? 'candidate-search-truncated' : reason,
       targetGrade, threshold, currentScore: scoreOf(base), bestScore: best ? scoreOf(best) : null,
+      distanceToTarget: best ? Math.max(0, threshold - scoreOf(best)) : null,
+      bestCandidate: best ? { ids: [...best.ids], score: scoreOf(best),
+        totalPrice: best.unknownPrice ? null : best.price, missingCards: best.ids.length,
+        items: best.items.map(item => ({ eaId: item.eaId, name: item.name ?? null,
+          score: item.score ?? item.gradingScore ?? null, price: item.price ?? null })) } : null,
+      missingPriceCount: requestedCandidates - quotedCandidateCount,
       candidateCount: candidates.length, omittedCandidates, requestedCandidates, quotedCandidateCount,
       scoreSourceCounts, evaluations, searchComplete, scopeTruncated, timeExhausted, beamTruncated, budgetExhausted, plans: [] };
   }

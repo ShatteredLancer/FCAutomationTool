@@ -55,6 +55,20 @@ it('runs a due saved batch through prepare, frozen prices and the real listing j
   expect(await createFc27GalleryListing(f.deps).tickSchedule({ approved: true })).toMatchObject({ status: 'completed' });
   expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
 });
+it('carries two-source quotes and the independent listing base into the frozen preview', async () => {
+  const f = fixture();
+  f.deps.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 1000, inc: 100 }, { min: 0, inc: 50 }] };
+  f.deps.loadPrices = vi.fn(async () => ({ freshPrices: { 111: 700 }, expiresAt: 100000,
+    listingPriceSource: 'futbin', requestedSources: ['futgg', 'futbin'], references: {
+      111: { quotes: { futgg: { price: 400, expiresAt: 100000, error: null }, futbin: { price: 700, expiresAt: 100000, error: null } } },
+    } }));
+  const service = createFc27GalleryListing(f.deps), prepared = await service.prepare();
+  expect(prepared).toMatchObject({ source: 'FUTBIN', listingPriceSource: 'futbin', prices: { 111: 700 },
+    pricesBySource: { 111: { futgg: 400, futbin: 700 } } });
+  const plan = service.plan({ selectedIds: [11], settings: { priceMode: 'percentage', percentageRange: [100, 100] } });
+  expect(plan.entries[0]).toMatchObject({ buyNow: 700, startPrice: 650, marketPrice: 700 });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
 
 it('cannot save an arbitrary or altered plan outside the current prepared batch', async () => {
   const f = fixture(); const plan = await f.prepare(); plan.entries[0].buyNow = 600;
@@ -172,6 +186,27 @@ it('matches Enhancer persistence: retains preferences but not session-only fixed
     priceMode: 'fixed', fixedPrice: null, fixedStartPrice: null, durationSeconds: 3600, delaySeconds: [3, 5],
   });
 });
+
+it('does not replace receipt cost with EA lastSalePrice', async () => {
+  const f = fixture();
+  f.deps.root.repositories.Item.club.items._collection[11] = { id: 11, definitionId: 111, lastSalePrice: 9999 };
+  expect(await f.service.prepare()).toMatchObject({ candidates: [{ boughtFor: 200 }] });
+});
+
+it('keeps a market preview distinct from manual overrides and rejects it after quote expiry', async () => {
+  const f = fixture();
+  f.deps.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 1000, inc: 100 }, { min: 150, inc: 50 }, { min: 0, inc: 150 }] };
+  expect((await f.service.prepare()).status).toBe('ready');
+  const plan = f.service.plan({ selectedIds: [11], settings: { priceMode: 'percentage', percentageRange: [100, 100] }, previewPrices: { 11: 200 } });
+  expect(plan.entries[0]).toMatchObject({ buyNow: 200, priceOrigin: 'market' });
+  f.advance(100001);
+  expect(await f.service.execute({ approved: true, plan, settings: { priceMode: 'percentage' }, isCurrent: () => true }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_LISTING_QUOTE_EXPIRED' });
+  expect(f.service.plan({ selectedIds: [11], settings: { priceMode: 'percentage', percentageRange: [100, 100] }, previewPrices: { 11: 200 } }))
+    .toMatchObject({ entries: [], skipped: [{ reason: 'market-price-expired' }] });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
 
 it('handles missing price-limit responses without losing the entire preparation stage', async () => {
   const f = fixture(), events = [];

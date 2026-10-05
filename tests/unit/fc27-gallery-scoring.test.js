@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileGalleryScoringRules, evaluateGalleryLineup, summarizeGalleryScore } from '../../src/gallery/scoring.js';
+import { compileGalleryScoringRules, evaluateGalleryLineup, summarizeGalleryScore, createGalleryScoreSummarizer } from '../../src/gallery/scoring.js';
 
 const tag = (id, attribute, type = 'COUNT', values = ['1'], tiers = [{ minItems: 2, bonus: 10 }]) => ({
   id, name: `Tag ${id}`, bonusType: 'ITEM_SCORE_PERCENTAGE', thresholdType: 'ITEM_COUNT',
@@ -17,6 +17,22 @@ const summary = (rows, tags = [tag(99,'RARE','COUNT',['999'])], target = set) =>
   catalog: {source:'futgg',tags}, progress: {season:'27',setId:30,complete:true,rows} });
 
 describe('Gallery scoring from public rules and exact EA base scores', () => {
+  it('reuses scoring work across candidate pools without changing lineups, bonuses or FO semantics', () => {
+    const catalog = { source: 'futgg', tags: [tag(1, 'FIRST_OWNED'),
+      tag(2, 'NATION', 'COUNT_DIFF', ['0']), tag(3, 'BASE_DEF_ID', 'MAX_COUNT_ALL_SAME', ['0'])] };
+    const cached = createGalleryScoreSummarizer(catalog);
+    const rows = [card(1), card(2, { firstOwned: true }), card(3, { playerEaId: 2 }), card(4, { nationEaId: 2 })];
+    for (const selection of [rows, rows.slice(0, 3), [...rows].reverse(), structuredClone(rows)]) {
+      const input = { set, catalog, progress: { season: '27', setId: 30, complete: true, rows: selection } };
+      expect(cached(input)).toEqual(summarizeGalleryScore(input));
+    }
+    rows[0].firstOwned = true; rows[0].gradingScore = 210;
+    const changed = { set, catalog, progress: { season: '27', setId: 30, complete: true, rows } };
+    expect(cached(changed)).toEqual(summarizeGalleryScore(changed));
+    const otherRules = { source: 'futgg', tags: [tag(1, 'FIRST_OWNED', 'COUNT', ['1'], [{ minItems: 2, bonus: 80 }])] };
+    expect(createGalleryScoreSummarizer(otherRules)({ ...changed, catalog: otherRules }))
+      .toEqual(summarizeGalleryScore({ ...changed, catalog: otherRules }));
+  });
   it('rounds each bonus down and only counts the ten largest', () => {
     const tags = Array.from({length:12}, (_, i) => tag(i+1,'RARE','COUNT',['1'],[{minItems:2,bonus:i+1}]));
     const result = evaluateGalleryLineup([card(1,{gradingScore:101}),card(2)], rules(tags));

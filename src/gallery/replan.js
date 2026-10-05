@@ -74,7 +74,9 @@ export function* planGalleryRemainderSteps({ targets, outcome, ledger = {}, budg
   }
   if (budget !== null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 165000000)) return blocked('budget-invalid');
   const rows = new Map(targets.flatMap(target => target.progress.rows).map(row => [row.eaId, row]));
-  const receipts = new Map(), exclusions = new Set(ledger.excludedIds ?? []), quotes = { ...ledger.quotes };
+  // Historical ledger.quotes contained EA offers, not public estimates. Never
+  // restore those overrides into planner costs; actual receipts remain valid.
+  const receipts = new Map(), exclusions = new Set(ledger.excludedIds ?? []);
   for (const entry of ledger.receipts ?? []) {
     if (!validId(entry.definitionId) || !rows.has(entry.definitionId) || receipts.has(entry.definitionId)
         || entry.price !== 0 && !validPrice(entry.price)) return blocked('purchase-ledger-invalid');
@@ -99,21 +101,20 @@ export function* planGalleryRemainderSteps({ targets, outcome, ledger = {}, budg
     if (noListing.has(failure.reason)) exclusions.add(failure.definitionId);
     if (failure.observedPrice != null) {
       if (!validPrice(failure.observedPrice)) return blocked('purchase-result-mismatch');
-      quotes[failure.definitionId] = failure.observedPrice;
     }
   }
   if ([...exclusions].some(id => !validId(id))) return blocked('purchase-ledger-invalid');
   const spent = [...receipts.values()].reduce((sum, row) => sum + row.price, 0);
   if (budget !== null && spent > budget) return blocked('purchase-ledger-invalid');
   const remainingBudget = budget === null ? null : budget - spent;
-  const nextTargets = targets.map(target => ({ ...target, prices: { ...target.prices, ...quotes },
+  const nextTargets = targets.map(target => ({ ...target, prices: { ...target.prices },
     progress: { ...target.progress, rows: target.progress.rows.map(row => {
         const receipt = receipts.get(row.eaId);
         if (!receipt || row.collected === true) return { ...row };
         const score = row.gradingScore ?? row.galleryScore;
         return { ...row, collected: true, gradingScore: score, firstOwned: false, purchaseProjected: true };
       }) } }));
-  const nextLedger = { receipts: [...receipts.values()], excludedIds: [...exclusions], quotes };
+  const nextLedger = { receipts: [...receipts.values()], excludedIds: [...exclusions] };
   const searchTargets = nextTargets.map(target => ({ ...target, progress: { ...target.progress,
     rows: target.progress.rows.filter(row => !exclusions.has(row.eaId) || row.collected) } }));
   const result = mode === 'single'

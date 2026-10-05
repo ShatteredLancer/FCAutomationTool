@@ -93,6 +93,8 @@ if (help) {
       await exerciseProductionLivePanel(context, out);
       const { exercisePuzzleBuyButton } = await import('./puzzle-buy-smoke.mjs');
       await exercisePuzzleBuyButton(context, root);
+      const { exercisePurchaseResults } = await import('./purchase-results-smoke.mjs');
+      await exercisePurchaseResults(context, root);
       const { exerciseGalleryCatalog } = await import('./gallery-catalog-smoke.mjs');
       await exerciseGalleryCatalog(context, out);
       const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');

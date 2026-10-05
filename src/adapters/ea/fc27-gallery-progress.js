@@ -2,7 +2,8 @@ import { ownData, contextKey } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../../gallery/progress.js';
 import { normalizeGalleryFirstOwnerHistory, toggleGalleryFirstOwnerHistory, removeGalleryFirstOwnerHistory } from '../../gallery/first-owner-history.js';
-import { GALLERY_TOP_CANDIDATE_LIMIT } from '../../gallery/pool.js';
+import { GALLERY_TOP_CANDIDATE_LIMIT, normalizeGalleryPool } from '../../gallery/pool.js';
+import { fodderPoolQueries, matchesFodderPool, fodderPoolItem } from '../../gallery/fodder-pool.js';
 import { observeFc27ItemFactory } from './fc27-item-factory-observer.js';
 
 // Behavioral reference: Enhancer 27.0.0.4, b_/GAe/iFe/fy. Requests and
@@ -217,11 +218,12 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     prototype.createItem = wrapped; factoryHook = { prototype, original, wrapped }; return true;
   };
   const validatePool = (pool, context) => {
-    if (pool?.source !== 'futgg' || pool.season !== context.season || typeof pool.complete !== 'boolean' || !id(pool.setId)
+    if (!['futgg', 'fodder'].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== 'boolean'
+        || !(pool.source === 'fodder' ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id(pool.setId))
         || !Array.isArray(pool.items) || pool.items.length > 100000 || pool.items.some(row => !id(row.eaId))
         || new Set(pool.items.map(row => row.eaId)).size !== pool.items.length
         || pool.complete === false && (pool.candidateOnly !== true || !id(pool.requiredCards)
-          || !id(pool.poolSize) || pool.poolSize <= pool.items.length
+          || !id(pool.poolSize) || (pool.source === 'futgg' ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length)
           || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT
           || pool.candidateLimit !== pool.items.length)
         || pool.complete && pool.candidateOnly === true) fail('FC27_GALLERY_POOL_UNAVAILABLE');
@@ -260,7 +262,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     };
     const timer = setTimeout(() => finish(new Error('FC27_GALLERY_CONCEPT_TIMEOUT')), 16000);
     try {
-      assert(context); record({ event: 'concept-request', phase: 'native-service', status: 'started', batchSize: criteria.defId.length });
+      assert(context); record({ event: 'concept-request', phase: 'native-service', status: 'started', batchSize: criteria.defId?.length ?? criteria.count });
       observable = root.services.Item.searchConceptItems(criteria);
       observable.observe(observer, (_sender, reply) => {
         nativePending.delete(pending);
@@ -469,6 +471,67 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
       return sync(pool, { onProgress, force, incremental: !force, missingOnly });
     } catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
   };
+  // Condition discovery uses the same authenticated native service, serial
+  // queue, cancellation and account-bound observation cache as exact reads.
+  const discoverPool = (set, { onProgress = null } = {}) => {
+    let context, queries;
+    try { context = readFc27Context(root); queries = fodderPoolQueries(set); }
+    catch (error) { return Promise.resolve({ status: 'blocked', reason: safeReason(error) }); }
+    const state = stateFor(context), key = `${state.key}:discover:${set.id}`;
+    if (inFlight.has(key)) return inFlight.get(key);
+    const run = async () => {
+      const operation = { context, stopped: false }; running = operation;
+      try {
+        await restore(state); assert(context);
+        if (now() < state.retryAt) fail('FC27_GALLERY_PROGRESS_BACKOFF');
+        if (!install() || typeof root.UTSearchCriteriaDTO !== 'function' || root.GAME_NAME !== 'fc27') fail('FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED');
+        const items = new Map(); let requests = 0, bounded = false;
+        for (const [index, query] of queries.entries()) {
+          let offset = 0;
+          for (let page = 0; page < 6; page++) {
+            if (requests++) await new Promise(resolve => setTimeout(resolve, 1500));
+            assert(context); if (operation.stopped) return { status: 'stopped' };
+            try { onProgress?.({ phase: 'ea', index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size }); } catch { /* UI only. */ }
+            const criteria = Object.assign(new root.UTSearchCriteriaDTO(), { type: root.SearchType?.PLAYER ?? 'player', count: 200, offset }, query);
+            const reply = await nativePage(criteria, context); assert(context);
+            if (reply?.success !== true || reply.status !== 200) fail(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599
+              ? `FC27_GALLERY_HTTP_${reply.status}` : 'FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED');
+            const data = reply.response ?? reply.data;
+            if (!Array.isArray(data?.items) || data.items.length > 200) fail('FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED');
+            let added = 0;
+            for (const item of data.items) if (id(item?.definitionId) && !items.has(item.definitionId) && matchesFodderPool(set, item)) {
+              items.set(item.definitionId, item); added++;
+            }
+            if (data.endOfList || !data.items.length || !added) break;
+            if (page === 5) bounded = true;
+            offset += Math.max(1, data.items.length - 8);
+          }
+        }
+        assert(context); if (operation.stopped) return { status: 'stopped' };
+        const normalized = [...items.values()].map(item => fodderPoolItem(item, root));
+        // A bounded query is only a candidate pool, never a claim that unseen
+        // versions cannot score higher. Keep the best 100 observed candidates.
+        if (bounded) normalized.sort((a, b) => b.score - a.score || a.eaId - b.eaId);
+        const pool = normalizeGalleryPool('fodder', { schemaVersion: 1, game: 'fc27', setId: set.id,
+          requiredCards: set.requiredCards, poolSize: normalized.length, isTruncated: bounded,
+          generatedAt: new Date(now()).toISOString(), items: normalized }, set.id);
+        const rows = sanitizeRows([...items.values()].map(item => ({ definitionId: item.definitionId,
+          isCollected: item.isCollected, gradingScore: item.gradingScore, cardData: nativeCardData(rawByItem.get(item) ?? item) })), new Set(items.keys()));
+        merge(state, rows.map(row => ({ ...row, readAt: now() })));
+        for (const [id, item] of items) if (typeof root.UTItemEntity === 'function' && item instanceof root.UTItemEntity) state.displayEntities.set(id, item);
+        state.setSyncedAt[set.id] = now(); state.fetchedAt = now();
+        await persist(state); assert(context); notify();
+        record({ event: 'progress-read', phase: 'fodder-pool', status: 'success', count: pool.items.length, pages: requests });
+        return { status: 'observed', source: 'fodder', pool, fetchedAt: now(), scope: scope() };
+      } catch (error) {
+        const reason = safeReason(error);
+        state.retryAt = now() + ttlMs;
+        record({ event: 'progress-read', phase: 'fodder-pool', status: 'failed', reason });
+        return { status: 'blocked', reason };
+      } finally { if (running === operation) running = null; }
+    };
+    const task = tail.then(run).finally(() => inFlight.delete(key)); tail = task.catch(() => {}); inFlight.set(key, task); return task;
+  };
   install();
   const updateFirstOwner = async (definitionId, firstOwned) => {
     const context = readFc27Context(root), state = stateFor(context);
@@ -481,7 +544,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     assert(context); notify();
     return { status: 'observed', definitionId: Number(definitionId), firstOwned };
   };
-  return Object.freeze({ load, project, sync, syncState, scope, install, updateFirstOwner,
+  return Object.freeze({ load, project, sync, syncState, scope, install, updateFirstOwner, discoverPool,
     readFirstOwnerHistory: async () => { const state = stateFor(readFc27Context(root)); await restore(state); return normalizeGalleryFirstOwnerHistory(state.firstOwnerHistory); },
     readVersions: definitionIds => sync(null, { definitionIds }), stop: () => { if (running) running.stopped = true; },
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },

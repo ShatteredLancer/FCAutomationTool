@@ -16,18 +16,19 @@ export async function exerciseGalleryReplan(context, directory) {
   input.data.tags = [{ id: 1, name: 'No bonus', bonusType: 'ITEM_SCORE_PERCENTAGE', thresholdType: 'ITEM_COUNT',
     rules: [{ type: 'COUNT', target: 'ATTRIBUTE', attribute: 'RARE', values: ['999'] }], tiers: [{ minItems: 1, bonus: 0 }] }];
   const catalog = normalizeGalleryCatalog('futgg', input);
-  for (const mode of ['single', 'restored', 'stale', 'tab', 'joint', 'joint-tab', 'untrusted', 'account', 'purchase-read', 'purchase-invalid', 'purchase-receipt', 'purchase-write']) {
+  for (const mode of ['single', 'public', 'restored', 'stale', 'tab', 'joint', 'joint-tab', 'untrusted', 'account', 'purchase-read', 'purchase-invalid', 'purchase-receipt', 'purchase-write']) {
     const joint = mode.startsWith('joint');
     const page = await context.newPage(), requests = [];
     page.on('request', request => requests.push(request.url()));
     try {
       await page.setContent('<!doctype html><title>Gallery replanning offline fixture</title>');
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
-      await page.evaluate(catalog => {
+      await page.evaluate(({ catalog, mode }) => {
         const attach = globalThis.Element.prototype.attachShadow;
         globalThis.Element.prototype.attachShadow = function (options) { return attach.call(this, { ...options, mode: 'open' }); };
         globalThis.replanScope = 'fixture-a'; globalThis.replanPurchases = []; globalThis.replanReads = 0;
         globalThis.replanDiagnostics = [];
+        globalThis.publicPlanningCalls = [];
         const records = new Map(); globalThis.quoteDelta = 0;
         const row = (eaId, collected = false) => ({ eaId, playerEaId: eaId, name: `Player ${eaId}`, version: 'Gold',
           gradingScore: 100, galleryScore: 100, collected, firstOwned: false, holographic: false, overall: 80,
@@ -39,6 +40,7 @@ export async function exerciseGalleryReplan(context, directory) {
             'purchase-receipt': 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' }[globalThis.replanFailureMode];
           if (purchaseFailure) return { status: 'blocked', reason: purchaseFailure, purchased: 0, spent: 0 };
           const ids = args.items.map(item => item.eaId);
+          if (mode === 'public' && args.items.some(item => item.priceReference?.policy?.source !== 'futgg')) throw Error('Missing planned reference');
           globalThis.replanPurchases.push({ ids, budget: args.budget });
           const attempt = globalThis.replanPurchases.length;
           const acquired = attempt === 1 ? [{ definitionId: 2, state: 'club', price: 200 }] : [];
@@ -54,6 +56,14 @@ export async function exerciseGalleryReplan(context, directory) {
         globalThis.mountReplanPanel = () => { globalThis.replanPanel = globalThis.GalleryReplanSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
           hostId: 'gallery-replan-test', targets: () => [], galleryAccountScope: () => globalThis.replanScope,
           purchaseGallery: purchase,
+          galleryPlanningPrices: mode !== 'public' ? null : async (ids, options) => {
+            globalThis.publicPlanningCalls.push(ids);
+            options.onProgress({ source: 'futgg', index: ids.length, total: ids.length });
+            const prices = Object.fromEntries(ids.map(id => [id, ({ 2: 200, 3: 200, 4: 250, 5: 300 })[id]]));
+            const policy = { source: 'futgg', premiumMode: 'fixed', premium: 0, purchaseAttempts: 3 };
+            return { source: 'public-references', prices, freshPrices: prices, policy, expiresAt: Date.now() + 300000,
+              references: Object.fromEntries(ids.map(id => [id, { definitionId: id, policy, futgg: prices[id], futbin: prices[id] + 50 }])) };
+          },
           galleryDiagnosticLog: { record: value => { globalThis.replanDiagnostics.push(value); } },
           galleryPlanStore: { save: async (scope, source, id, record) => { records.set(`${scope}:${source}:${id}`, structuredClone(record)); },
             load: async (scope, source, id) => { await new Promise(resolve => setTimeout(resolve, 20));
@@ -69,7 +79,7 @@ export async function exerciseGalleryReplan(context, directory) {
                 totals: { total: 5, collected: 1, missing: 4, unknown: 0 } } };
           },
         }); globalThis.replanPanel.open(); }; globalThis.mountReplanPanel();
-      }, catalog);
+      }, { catalog, mode });
       await page.evaluate(mode => { globalThis.replanFailureMode = mode; }, mode);
       const host = page.locator('#gallery-replan-test');
       await host.locator('#tab-gallery').click();
@@ -81,6 +91,7 @@ export async function exerciseGalleryReplan(context, directory) {
       await host.locator('#gallery-categories button').first().click();
       await host.locator('[data-set-id="futgg:30"]').getByRole('button', { name: '查看卡片', exact: true }).click();
       let output = host.locator('#gallery-set-detail .gallery-plan-output');
+      if (mode === 'public') assert.deepEqual(await page.evaluate(() => globalThis.publicPlanningCalls), [], 'navigation must not trigger dual-source reads');
       if (joint) {
         await host.getByRole('button', { name: '加入联合目标', exact: true }).click();
         await host.getByRole('button', { name: '返回集合', exact: true }).click();
@@ -93,6 +104,7 @@ export async function exerciseGalleryReplan(context, directory) {
       } else await host.getByRole('button', { name: '生成方案', exact: true }).click();
       const initial = output.locator('details').first();
       await initial.waitFor();
+      if (mode === 'public') assert.deepEqual(await page.evaluate(() => globalThis.publicPlanningCalls), [[2,3,4,5]], 'all unowned candidates are quoted once before planning');
       if (mode === 'tab' || mode === 'joint-tab') {
         await host.locator('#tab-settings').click();
         await host.locator('#tab-gallery').click();
@@ -177,7 +189,7 @@ export async function exerciseGalleryReplan(context, directory) {
         { ids: [4], budget: joint ? 600 : null },
         { ids: [5], budget: joint ? 600 : null },
       ]);
-      assert.equal(await page.evaluate(() => globalThis.replanReads), mode === 'stale' ? 3 : mode === 'untrusted' ? 1 : 2);
+      assert.equal(await page.evaluate(() => globalThis.replanReads), mode === 'stale' ? 3 : ['untrusted', 'public'].includes(mode) ? 1 : 2);
       assert.match(await host.locator('#gallery-purchase-message').innerText(), /购买完成/);
       await page.screenshot({ path: path.join(directory, `gallery-replan-${mode}.png`) });
       assert.deepEqual(requests, []);

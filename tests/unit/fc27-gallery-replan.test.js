@@ -35,14 +35,23 @@ it.each(['buy-pending', 'bought', 'move-pending', 'move-rejected'])('blocks unre
 it.each(['pending', undefined])('blocks unconfirmed collection (%s)', status => {
   expect(run({ targets: [target()], outcome: { ...outcome(), collection: { status } } }).status).toBe('blocked');
 });
-it('keeps a budget failure version but uses the actual higher quote and deducts all prior spend', () => {
+it('keeps public estimates after an expensive EA offer and deducts only confirmed spend', () => {
   const value = outcome(); value.reason = 'FC27_GALLERY_BUDGET_EXCEEDED';
   value.failures = [{ definitionId: 3, reason: value.reason, observedPrice: 1500 }];
   const result = run({ targets: [target()], outcome: value, budget: 600 });
-  expect(result.plans[0].items[0].eaId).toBe(4);
-  expect(result.targets[0].prices[3]).toBe(1500);
+  expect(result.plans[0].items[0].eaId).toBe(3);
+  expect(result.targets[0].prices[3]).toBe(200);
+  expect(result.ledger.quotes).toBeUndefined();
   expect(result.ledger.excludedIds).toEqual([]);
-  expect(run({ targets: [target()], outcome: value, budget: 400 })).toMatchObject({ status: 'partial', reason: 'budget-unreachable', plans: [] });
+  expect(run({ targets: [target()], outcome: value, budget: 400 })).toMatchObject({ status: 'ready', remainingBudget: 200 });
+  expect(run({ targets: [target()], outcome: value, budget: 399 })).toMatchObject({ status: 'partial', reason: 'budget-unreachable', plans: [] });
+});
+it('ignores old EA-price overrides in a restored remainder ledger without losing receipts', () => {
+  const result = run({ targets: [target()], outcome: outcome(), budget: 600,
+    ledger: { receipts: [{ definitionId: 2, price: 200 }], quotes: { 4: 90000 } } });
+  expect(result.plans[0].items[0].eaId).toBe(4);
+  expect(result.plans[0].totalPrice).toBe(250);
+  expect(result.spent).toBe(200);
 });
 it('retains cumulative receipts across rounds, deduplicates a repeated result and stops at the target', () => {
   const first = run({ targets: [target()], outcome: outcome(), budget: 800 });

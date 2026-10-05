@@ -65,6 +65,17 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
   beamWidth = 24, candidateLimit = 96, maxDepth = 12, seedSteps = null }) {
   let evaluations = 0, stopped = false, truncated = maxDepth < initial.ids.length;
   const plans = [], reached = new Map(), seen = new Set([bundleKey(initial.ids)]);
+  const better = (a, b) => {
+    if (!b) return true;
+    const av = measure(a), bv = measure(b);
+    if (av.reached !== bv.reached) return av.reached;
+    if (av.reached && a.cost !== b.cost) return a.cost < b.cost;
+    return av.progress !== bv.progress ? av.progress > bv.progress : a.cost < b.cost;
+  };
+  let bestState = initial;
+  // Preserve the historical invalid-input contract.  `bestState` is only
+  // meaningful after a valid search has started; callers and fixtures use the
+  // exact empty result to distinguish a rejected search from a partial one.
   if (!Number.isFinite(initial.cost) || initial.missingPrices) return { plans, evaluations, stopped };
   if (measure(initial).reached) reached.set(bundleKey(initial.ids), initial);
   let beam = [initial];
@@ -82,6 +93,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
           const state = evaluate(ids); evaluations++;
           if (state && Number.isFinite(state.cost) && !state.missingPrices) {
             seedStates.push(state);
+            if (better(state, bestState)) bestState = state;
             if (measure(state).reached) reached.set(bundleKey(ids), state);
           }
         }
@@ -106,6 +118,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
       const state = evaluate(ids); evaluations++;
       if (state && Number.isFinite(state.cost) && !state.missingPrices) {
         seedStates.push(state);
+        if (better(state, bestState)) bestState = state;
         if (measure(state).reached) reached.set(key, state);
       }
       if (yield { evaluations }) { stopped = true; break; }
@@ -130,6 +143,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
         const state = evaluate(ids); evaluations++;
         if (state && Number.isFinite(state.cost) && !state.missingPrices) {
           const value = measure(state);
+          if (better(state, bestState)) bestState = state;
           if (value.reached) {
             const previous = reached.get(key);
             if (!previous || state.cost < previous.cost) reached.set(key, state);
@@ -151,5 +165,5 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
   // Preserve the historical iterator contract: the best/cheapest reached
   // lineup is the final entry. Planner callers independently rank candidates.
   plans.push(...[...reached.values()].sort((a, b) => b.cost - a.cost || measure(a).progress - measure(b).progress));
-  return { plans, evaluations, stopped, ...(truncated ? { truncated: true } : {}) };
+  return { plans, evaluations, stopped, bestState, ...(truncated ? { truncated: true } : {}) };
 }

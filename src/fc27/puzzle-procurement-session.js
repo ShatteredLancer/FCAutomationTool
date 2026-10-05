@@ -1,5 +1,6 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
-  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively } from './puzzle-procurement.js';
+  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates } from './puzzle-procurement.js';
+import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
@@ -36,7 +37,7 @@ const failureDetails = (reason, value) => {
 // cooldown, or revalidate a method fingerprint locally. No same-action retry;
 // pending and other failures stay blocked.
 // The caller holds the account lock across this operation.
-export function createFc27PuzzleProcurementSession({ createTransport, get, set, now = Date.now } = {}) {
+export function createFc27PuzzleProcurementSession({ createTransport, get, set, loadPublicPrices = null, now = Date.now } = {}) {
   let busy = false;
   return Object.freeze({ async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
     onProgress = null } = {}) {
@@ -47,7 +48,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       usableCandidates: null, unpricedPlans: 0, localReason: null, checks: null, nodes: null,
       truncated: null, catalogAttempts: 0, quoteAttempts: 0,
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
-      failurePhase: null, excludedUnavailable: 0, replans: 0 };
+      failurePhase: null, excludedUnavailable: 0, replans: 0, searchComplete: null,
+      optimalWithinPool: null, estimatedCost: null, priceSource: null };
     let quoteCompleted = 0; let quoteTotal = 0;
     const reportProgress = value => {
       if (typeof onProgress !== 'function') return;
@@ -127,6 +129,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       };
       const entries = new Map(); const quotes = new Map(); const usedQueries = [];
       const unavailable = new Set(); let hadPlans = false;
+      const references = new Map(); let publicPolicy = null;
       let pendingQueries = route.queries.slice();
       while (pendingQueries.length && usedQueries.length < 3) {
         const query = pendingQueries.shift();
@@ -142,21 +145,57 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.catalogPages++;
         diagnostics.catalogCandidates = entries.size;
         reportProgress();
+        if (loadPublicPrices) {
+          const candidates = marketCandidates(input, [...entries.values()]).filter(item => !references.has(item.definitionId));
+          if (candidates.length) {
+            diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
+            const snapshot = await loadPublicPrices(candidates.map(item => item.definitionId), { purpose: 'puzzle', rows: candidates,
+              ...(publicPolicy ? { policy: publicPolicy } : {}), isCurrent: () => { assertCurrent(); return true; },
+              onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } });
+            assertCurrent();
+            const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? 'console' : null;
+            const approved = createPurchasePriceApproval({ scope, season: '27', platform, policy: snapshot.policy,
+              definitionIds: candidates.map(item => item.definitionId), references: snapshot.references, now: now() });
+            if (publicPolicy && !same(publicPolicy, approved.policy)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
+            publicPolicy = approved.policy;
+            for (const row of approved.rows) {
+              references.set(row.definitionId, row);
+              const usable = row.estimate !== null && (quoteCeiling === null || row.estimate <= quoteCeiling);
+              quotes.set(row.definitionId, { price: usable ? row.estimate : null, observedAt: row.quotes[publicPolicy.source].fetchedAt });
+              if (!usable) unavailable.add(row.definitionId);
+            }
+            diagnostics.excludedUnavailable = unavailable.size;
+          }
+        }
         // Each unsuccessful pass removes at least one public version from the
         // bounded catalog. Re-solve locally before requesting another page.
         for (;;) {
           assertCurrent(); diagnostics.stage = 'local-market-search';
           const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId));
+          const prices = loadPublicPrices ? new Map([...quotes].map(([id, quote]) => [id, quote.price])) : null;
           reportProgress();
           const suggestion = seed.status === 'ready' ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
-            assertCurrent, onProgress: value => reportProgress(value) })
-            : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, { assertCurrent,
+            assertCurrent, prices, onProgress: value => reportProgress(value) })
+            : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, { assertCurrent, prices,
+              priceSource: publicPolicy?.source ?? null,
               onProgress: value => reportProgress({ ...value, phase: 'local-market-search' }) });
           diagnostics.usableCandidates = suggestion.marketCandidates ?? null;
           diagnostics.localReason = suggestion.reason ?? null;
           diagnostics.checks = suggestion.checks ?? null;
           diagnostics.nodes = suggestion.nodes ?? null;
           diagnostics.truncated = suggestion.truncated ?? null;
+          diagnostics.searchComplete = suggestion.searchComplete ?? null;
+          diagnostics.optimalWithinPool = suggestion.optimalWithinPool ?? null;
+          diagnostics.estimatedCost = suggestion.estimatedCost ?? null;
+          diagnostics.priceSource = suggestion.priceSource ?? publicPolicy?.source ?? null;
+          // More catalog pages can repair a bounded candidate shortage, not
+          // malformed prices/policies or unavailable evaluators. Keep the
+          // actual cause rather than converting every failure to NO_PLAN.
+          if (suggestion.status === 'blocked' && !['SAFE_MATERIAL_SHORTAGE',
+            'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND',
+            'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PURCHASE_REPAIR_NO_PLAN'].includes(suggestion.reason)) {
+            return finish({ ...suggestion, queries: usedQueries });
+          }
           const plans = suggestion.plans ?? [];
           diagnostics.unpricedPlans = plans.length; hadPlans ||= plans.length > 0;
           let removed = false;
@@ -186,16 +225,21 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.excludedUnavailable = unavailable.size;
           const priced = plans.filter(plan => plan.purchases.every(item => quotes.get(item.definitionId)?.price > 0))
             .map(plan => ({ ...plan, purchases: plan.purchases.map(item => ({ ...item,
-              observedBuyNow: quotes.get(item.definitionId).price, quotedAt: quotes.get(item.definitionId).observedAt })),
+              ...(loadPublicPrices ? { estimatedUnitPrice: quotes.get(item.definitionId).price,
+                priceReference: references.get(item.definitionId), priceSource: publicPolicy.source }
+                : { observedBuyNow: quotes.get(item.definitionId).price }), quotedAt: quotes.get(item.definitionId).observedAt })),
             estimatedCost: plan.purchases.reduce((sum, item) => sum + quotes.get(item.definitionId).price, 0) }))
-            .sort((a, b) => a.purchaseCount - b.purchaseCount || a.estimatedCost - b.estimatedCost);
-          if (priced.length) return finish({ status: 'suggested', reason: 'FC27_PURCHASE_PLAN_PRICED', executable: false,
+            .sort((a, b) => a.estimatedCost - b.estimatedCost || a.purchaseCount - b.purchaseCount);
+          if (priced.length) {
+            diagnostics.estimatedCost = priced[0].estimatedCost;
+            return finish({ status: 'suggested', reason: 'FC27_PURCHASE_PLAN_PRICED', executable: false,
             liveExecutionEnabled: false, plans: priced.slice(0, 3).map(plan => ({ ...plan,
               conceptPlan: prepareFc27PuzzleConceptPlan({ challenge: input.challenge, plan: { ...plan, status: 'preview',
                 setId: input.challenge.setId, challengeId: input.challenge.id } }) })), requests, cacheHits, queries: usedQueries,
             seedChemistry: seed.teamFacts?.chemistry ?? null, requiredChemistry: seed.requiredChemistry ?? null,
             quoteCeiling, affordabilityVerified: false, globalMinimumProven: false,
             pending: ['EXPLICIT_PURCHASE_AND_MATERIAL_APPROVAL', 'LIVE_AUCTION_RECHECK', 'EXACT_PURCHASE_RECEIPTS', 'FRESH_INVENTORY_REPLAN'] });
+          }
           if (!removed) break;
           diagnostics.replans++;
         }

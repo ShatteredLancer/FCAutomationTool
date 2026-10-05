@@ -50,17 +50,17 @@ export function createFc27GallerySync({ provider, reader, diagnosticLog, now = (
       report({ phase: 'catalog', index: 0, total: 1, completed: 0 });
       const catalog = await provider.load();
       if (!current()) return { status: 'stopped', scope };
-      if (source !== 'futgg' || catalog.source !== source || !catalog.catalog) return { status: 'blocked', reason: 'FC27_GALLERY_POOL_UNAVAILABLE', scope };
+      if (!['futgg', 'fodder'].includes(source) || catalog.source !== source || !catalog.catalog) return { status: 'blocked', reason: 'FC27_GALLERY_POOL_UNAVAILABLE', scope };
       const sets = catalog.catalog.categories.flatMap(category => category.sets).filter(set => setId === null || set.id === setId);
       if (!sets.length) return { status: 'blocked', reason: 'FC27_GALLERY_POOL_UNAVAILABLE', scope };
       let currentPool = null;
       if (setId !== null) {
-        const result = await provider.loadPool({ source, setId });
+        const result = await provider.loadPool({ source, setId, force, onProgress: report });
         if (!current()) return { status: 'stopped', scope };
         if (result.status !== 'observed' || result.stale || !result.pool) return { ...result, scope };
         currentPool = result.pool; remember(currentPool);
       }
-      const native = await reader.sync(currentPool, { onProgress: report, force });
+      const native = source === 'fodder' ? { status: 'observed' } : await reader.sync(currentPool, { onProgress: report, force });
       if (!current()) return { status: 'stopped', scope };
       if (native.status !== 'observed' || native.stale) return native;
       const failures = [], updates = [];
@@ -68,7 +68,7 @@ export function createFc27GallerySync({ provider, reader, diagnosticLog, now = (
         if (!current()) return { status: 'stopped', scope };
         report({ phase: 'pools', index: index + 1, total: sets.length, completed: index });
         const result = currentPool ? { status: 'observed', cached: true, pool: currentPool }
-          : await provider.loadPool({ source, setId: set.id });
+          : await provider.loadPool({ source, setId: set.id, force, onProgress: report });
         if (!current()) return { status: 'stopped', scope };
         if (result.pool) {
           remember(result.pool);

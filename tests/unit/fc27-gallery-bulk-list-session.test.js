@@ -6,7 +6,7 @@ const entry = (id, definitionId = id + 1000, startPrice = 150, buyNow = 200) => 
   startPrice, buyNow, durationSeconds: 3600,
 });
 
-function harness({ listResults = [], transferMatches = true, limits = true, context = { account: 'a' } } = {}) {
+function harness({ listResults = [], transferMatches = true, limits = true, context = { account: 'a' }, random = () => 0, sleep = async () => {} } = {}) {
   const values = new Map(); const calls = { list: 0, refresh: 0, inspect: 0, permits: 0 };
   let cursor = 0;
   const adapter = {
@@ -28,13 +28,21 @@ function harness({ listResults = [], transferMatches = true, limits = true, cont
     get: async (key, fallback) => values.has(key) ? structuredClone(values.get(key)) : fallback,
     set: async (key, value) => { values.set(key, structuredClone(value)); },
     exclusive: async (_scope, task) => task(), tradeAdapter: adapter,
-    assertCurrent: () => {}, sleep: async () => {}, random: () => 0,
+    assertCurrent: () => {}, sleep, random,
     operationId: () => 'run-1',
   });
   return { session, calls, values };
 }
 
 describe('FC27 Gallery bulk list session', () => {
+  it('uses Enhancer integer waits after accepted and explicitly rejected items, including the final item', async () => {
+    const delays = [], samples = [0.24, 0.25, 0.76];
+    const h = harness({ random: () => samples.shift(), sleep: async value => delays.push(value),
+      listResults: [{ status: 'rejected', response: { success: false, status: 500 } }] });
+    const result = await h.session.execute({ approved: true, binding: 'b', entries: [1, 2, 3].map(id => entry(id)) });
+    expect(result).toMatchObject({ status: 'completed', accepted: 2, rejected: 1 });
+    expect(delays).toEqual([3000, 4000, 5000]);
+  });
   it('reports storage write failure without listing or discarding the previous journal', async () => {
     const h = harness({ listResults: [{ status: 'unknown' }] });
     await h.session.execute({ approved: true, binding: 'old', entries: [entry(1)] });

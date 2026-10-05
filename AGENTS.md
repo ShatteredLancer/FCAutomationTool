@@ -1,5 +1,16 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-05 设置与重挂界面精简：用户要求购买和挂牌共用一个价格参考；账号旧配置以购买 `source` 为准同步 `listingSource`，FUTBIN 更新选项移除，旧 `force` 不再导致新方案强制读取，有效缓存默认复用，显式刷新按钮保留。冻结方案/购买授权不改写，溢价仍仅用于购买。Gallery 自动重挂采用范围下拉（默认本批）、紧凑间隔和单个启动按钮；选择不触发任务，保留停止/恢复、两轮有限授权及原价重挂合同。本条覆盖下文独立挂牌基准和每次方案强制更新的历史约束。
+
+2026-10-05 价格箭头统一授权：用户明确要求将挂牌与购买重试箭头统一为 EA 相邻合法价档，覆盖 Bulk List 起拍/BIN/单卡价格、Gallery/Puzzle 重试上限和 Settings 补卡单卡报价上限。此为对 Enhancer `stepper=250` 的明确变更；每次点击只移动一档，不长按自动连发，跨档向下使用前一档。不得将出售四舍五入套用于购买上限，不因调整输入自动交易或放宽已批准上限。百分比随机定价、手动覆盖和其它参考行为不变；总预算、固定溢价、百分比及次数不视作单卡价格。
+
+2026-10-05 报价来源三态设置（覆盖旧 FUTBIN 开关）：账号级 `readSources` 支持 FUT.GG、FUTBIN、Both，默认 Both；旧 `futbinEnabled:false` 迁移到 FUT.GG。单源时购买/挂牌基准只能为该源；Both 时独立配置 `source`（购买）与 `listingSource`（挂牌，默认 FUT.GG），不得缺价自动换源或把采购溢价用于挂牌。Gallery 卡片、方案和 Bulk List 共用公共报价缓存与来源许可；Puzzle/购买仍只请求单一购买基准。禁用源不得因旧方案、缓存或强制刷新重新联网，旧授权不改写。FUT.GG 集合目录/卡池请求不属于报价开关。Bulk List 按用户截图恢复纵向 Duration/Price/Wait 分组、弹窗整体滚动、六列表格与右上角 ×，不得恢复三列设置和列表嵌套滚动。
+
+2026-10-04 公共报价读取约束：Settings 的 FUTBIN 价格更新默认复用有效缓存，也可只对新方案强制刷新；Puzzle/购买只请求当前选定来源，Gallery 默认保留双源展示。按用户要求移除 FC27 Settings 的 FUT.GG HTTPS forwarding 配置及运行时转发，旧配置不再读取。Tampermonkey 不能把 `127.0.0.1:1080` SOCKS 绑定到单个请求；按域名分流须由浏览器或代理客户端配置。诊断 `route:direct` 仅表示请求原始服务地址，不能证明底层没有走代理。
+2026-10-04 公共报价读取开关：Settings 新增账号级“读取 FUTBIN 报价”。默认开启以兼容旧配置；关闭并保存后，新的 Gallery/Puzzle/购买报价请求只允许 FUT.GG，FUTBIN 在结果中标为“未读取”，不得因强制刷新、旧缓存或旧方案再次发起 FUTBIN 请求。若旧方案原本选择 FUTBIN，必须明确提示重新生成 FUT.GG 方案；已冻结的旧购买授权不被静默改写。
+
+2026-10-04 购买/挂牌价格计划授权：用户已采纳 [价格修复计划](docs/FC27_BUY_LIST_PRICE_REPAIR_PLAN_ZH.md) 的账号级 FUT.GG/FUTBIN 选源、默认 FUT.GG＋固定溢价 0、默认每卡 3 次购买尝试（含首次），及 §4.3 原结果窗口编辑本次失败卡重试上限。此为对原 FSU 价格行为的明确需求变更：EA 挂牌只能作为执行报价，不能作为估价/缺失回退；同批授权上限不能自动增加。挂牌仍单独按 FUT.GG 基准和 Enhancer 行为，不继承采购溢价。P1/P2/P3/P4 已接入生产源码并通过离线验证；真实 EA 买入和挂牌仍待用户主动小批验收，不能把离线测试称为实机完成；最新阶段/恢复点见该计划 §12。
+
 2026-10-04 Gallery Journal 解耦最新约束：方案“批量购买”只读取当前购买 Journal，不读取、不核对也不被上一批 Gallery Bulk List Journal 阻断；旧挂牌记录只保留审计用途。挂牌入口“挂牌已购卡”只处理当前购买 Journal 中已确认入 Club 的实体，只有恢复同一批挂牌时才读取挂牌 Journal。购买 Journal 的读取/格式/写回/成交/入库/收集失败必须显示明确购买恢复提示；底层读取失败、写入失败和回读不一致不得降级为可重试成功。挂牌 Journal 的读取、上下文、回执或写回/归档失败必须在 Bulk List 原位置显示明确挂牌恢复提示。历史段落中“购买前挂牌核对”描述已被本条覆盖。
 
 2026-10-03 FC27 Gallery Bulk List 授权：新 FCAT Gallery/Transfer Bulk List 按用户选中的全部卡处理，不继承旧 Scheduler 的四张、单卡 2000 或总预算 8000 限制；仍逐卡遵守 EA price limits、可交易与精确身份、容量、一次明确批准、Journal、互斥锁、未知回执停机和恢复规则。该授权只适用于新 Bulk List，不扩大旧 Scheduler 或自动任务。新 Bulk List 使用当前已接通的 FUT.GG 公开报价，并在 UI 标明来源；不得声称与 Enhancer 私有后端同源。报价缺失必须显式未知并跳过，不能当作零价。
@@ -91,7 +102,7 @@ FC Automation Tool 是 EA FC Web App 的 Tampermonkey 自动化脚本，运行�
 - Tampermonkey API：`unsafeWindow`、`GM_xmlhttpRequest`、`GM_notification`、`GM_getValue/GM_setValue/GM_deleteValue`。Reward Alert 凭证使用 GM 隔离存储；本地 Hot Reload 通过受控 userscript bridge 转交这些 API，不能改回页面 localStorage。
 - 外部价格服务：FUT.GG，失败时回退 FUTNext。
 
-FC27 metadata 位于 `src/fc27/production-entry.js`；旧季 metadata 保留在 `src/userscript-entry.js`。FC27 授予 `unsafeWindow`、`GM_getValue`、`GM_setValue`、`GM_xmlhttpRequest`；默认 `@connect` 限于 `www.futbin.org`（购买参考价）、`www.fut.gg` 与 `fodder.gg`（Gallery 公开目录）。FUTBIN 传输只允许两个公开价格路径，Gallery 直连只允许两个精确的匿名只读目录 URL；设置页额外支持用户自有的不带凭证 HTTPS forwarding endpoint，并只转发相对 `/api/fut` 的 Gallery 路径，不转发 EA 凭证。Tampermonkey 不提供 per-request 浏览器/SOCKS 代理；`127.0.0.1:1080` 仍应配置在检查器或系统层，不能直接作为 FCAT forwarding URL。不能直接继承旧季网络权限。
+FC27 metadata 位于 `src/fc27/production-entry.js`；旧季 metadata 保留在 `src/userscript-entry.js`。FC27 授予 `unsafeWindow`、`GM_getValue`、`GM_setValue`、`GM_xmlhttpRequest`；默认 `@connect` 限于 `www.futbin.org`（购买参考价）、`www.fut.gg` 与 `fodder.gg`（Gallery 公开目录）。FUTBIN 传输只允许两个公开价格路径，Gallery 使用固定的匿名目录、精确集合卡池及公共报价接口，不发送 EA 凭证。FC27 已移除 HTTPS forwarding 设置和运行时转发，旧配置不再读取。Tampermonkey 不提供 per-request 浏览器/SOCKS 代理；`127.0.0.1:1080` 应配置在浏览器或代理客户端，检查器 `--proxy` 为浏览器级代理而非自动按域名分流。不能直接继承旧季网络权限。
 
 ### 2.2 开发工具
 

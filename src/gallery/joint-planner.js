@@ -1,4 +1,4 @@
-import { compileGalleryScoringRules, summarizeGalleryScore } from './scoring.js';
+import { compileGalleryScoringRules, createGalleryScoreSummarizer } from './scoring.js';
 import { isGalleryOwned, galleryCostSearchKeys } from './planner.js';
 import { refineGalleryCostSteps } from './cost-search.js';
 import { selectGalleryCandidatePool } from './candidate-pool.js';
@@ -15,7 +15,7 @@ function evaluate(targets, selected) {
     const key = target.progress.rows.filter(row => selected.has(row.eaId) && !isGalleryOwned(row)).map(row => row.eaId).sort((a, b) => a - b).join(',');
     let summary = target.summaries.get(key);
     if (!summary) {
-      summary = summarizeGalleryScore({ set: target.set, catalog: target.catalog, progress: {
+      summary = target.summarize({ set: target.set, catalog: target.catalog, progress: {
       ...target.progress, season: '27', setId: Number(target.set.id.slice(6)), complete: true,
       rows: target.progress.rows.map(row => isGalleryOwned(row) ? { ...row, collected: true }
         : selected.has(row.eaId) ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row),
@@ -75,7 +75,7 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
   if (scopes.size > 1 || platforms.size > 1) return fail('unavailable', 'target-context-mismatch');
   for (const target of targets) {
     const { set, catalog, progress } = target;
-    if (!/^futgg:[1-9]\d*$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades)
+    if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades)
         || !validId(set.requiredCards) || set.requiredCards > 256 || catalog?.source !== 'futgg'
         || !Array.isArray(progress?.rows) || progress.rows.length > 2000
         || progress.season != null && progress.season !== '27'
@@ -108,7 +108,7 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
       } else allCandidates.set(row.eaId, { row, price, memberships: 1,
         diversityKeys: galleryCostSearchKeys(row, compiled.tags).map(key => `${set.id}:${key}`) });
     }
-    prepared.push({ ...target, grade, threshold: grade.threshold, summaries: new Map() });
+    prepared.push({ ...target, grade, threshold: grade.threshold, summaries: new Map(), summarize: createGalleryScoreSummarizer(catalog) });
   }
   // Ownership is account-wide, while per-set observations can arrive at
   // different times. Project positive exact-version evidence across targets
@@ -183,6 +183,13 @@ export function* planGalleryJointSteps({ targets, budget = null, maxPlans = 3, m
         step = refinement.next(stop);
       }
       evaluations += step.value.evaluations; plans.push(...step.value.plans);
+      // Refinement can discover a better partial lineup before its bounded
+      // search reaches a complete target. Preserve that witness for the
+      // partial result; otherwise a timeout reports the older seed and makes
+      // a reachable target look as if no progress was made.
+      if (step.value.bestState && rank(step.value.bestState, bestSeen, prepared.length) < 0) {
+        bestSeen = step.value.bestState;
+      }
       beamTruncated ||= step.value.truncated === true;
       if (timeExhausted) break;
     }

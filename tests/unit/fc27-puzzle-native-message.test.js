@@ -14,6 +14,14 @@ it('keeps old string stage progress compatible', () => {
   expect(formatFc27PuzzleProgress('planning')).toContain('正在解题');
 });
 
+it('distinguishes an internal planning contract error from insufficient materials', () => {
+  const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE',
+    purchaseSuggestion: { status: 'blocked', reason: 'FC27_MARKET_POLICY_INVALID' } });
+  expect(text).toContain('求解器规划参数不一致');
+  expect(text).toContain('搜索未启动');
+  expect(text).not.toContain('未找到补卡组合');
+});
+
 it('explains exhausted inventory and joint search without claiming no solution', () => {
   const text = formatFc27PuzzleNativeResult({ reason: 'FC27_PUZZLE_SEARCH_LIMIT',
     purchaseSuggestion: { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT' } });

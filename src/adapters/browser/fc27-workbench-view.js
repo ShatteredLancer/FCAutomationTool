@@ -1,3 +1,5 @@
+import { currencyInputStyles } from './fc27-listing-currency.js';
+import { purchaseDialogMarkup, purchaseDialogStyles } from './fc27-purchase-dialog.js';
 // FCAT module layout. Gallery loads its public catalogue lazily when selected.
 export const FC27_WORKBENCH_TABS = Object.freeze([
   ['sbc', 'SBC 解题'], ['gallery', 'Gallery'], ['market', '市场'],
@@ -14,6 +16,8 @@ const planned = (id, title, description, features, status = '规划中 · 尚未
 
 export function fc27WorkbenchMarkup() {
   return `<style>
+    ${currencyInputStyles}
+    #gallery-relist-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}#gallery-relist-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}#gallery-relist-controls button{margin:0}#gallery-relist-status{font-size:12px}
     :host{all:initial;position:fixed;inset:0;z-index:100002;display:none;padding:24px 12px;background:#0008;font:14px/1.5 Arial,sans-serif;color:#edf1f4;letter-spacing:0}
     *{box-sizing:border-box;letter-spacing:0}[hidden]{display:none!important}
     .workbench{width:min(1100px,100%);height:100%;margin:auto;background:#17212c;border:1px solid #3c4852;border-radius:8px;overflow:auto}
@@ -42,9 +46,7 @@ export function fc27WorkbenchMarkup() {
     #detail,#requirements,#squad{overflow-wrap:anywhere}#detail{margin-top:12px}#requirements:empty,#squad:empty{display:none}#requirements,#squad{margin-top:18px;padding:16px;background:#22323d;border-radius:8px}.requirement{margin-top:10px;border-top:1px solid #45535c;padding-top:10px}ul{padding-left:20px}#squad ol{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:0;gap:6px}#squad li{padding:8px;background:#304451;border-radius:4px}
     dialog{max-width:min(440px,calc(100vw - 24px));color:#edf1f4;background:#22323d;border:1px solid #617781;border-radius:10px}dialog::backdrop{background:#0009}
     dialog .dialog-header{display:flex;align-items:center;gap:12px;margin:0 0 12px;flex-wrap:nowrap}dialog .dialog-header>strong{flex:1;min-width:0}dialog .dialog-header>button{flex:0 0 auto;margin:0;align-self:center}
-    #gallery-purchase-dialog{width:560px;max-width:calc(100vw - 24px);max-height:85vh;overflow:auto;padding:16px}
-    #gallery-purchase-message{display:block;overflow-wrap:anywhere;margin:8px 0}
-    #gallery-purchase-results{list-style:none;padding:0;margin:12px 0 0;max-height:45vh;overflow:auto;overscroll-behavior:contain}
+    ${purchaseDialogStyles}
     .gallery-purchase-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:9px 6px;border-bottom:1px solid #46545d;font-size:13px}
     .gallery-purchase-item strong{overflow-wrap:anywhere}.gallery-purchase-item .purchase-item-price{font-variant-numeric:tabular-nums;white-space:nowrap}.gallery-purchase-item .purchase-item-state{grid-column:1/-1;color:#c1ced5;overflow-wrap:anywhere}
     .gallery-purchase-item[data-active=true]{background:#304451;border-left:3px solid #9df3d5}.gallery-purchase-item[data-state=club] .purchase-item-state,.gallery-purchase-item[data-state=collected] .purchase-item-state{color:#b3ffe3}
@@ -84,12 +86,13 @@ export function fc27WorkbenchMarkup() {
       </section>
       <section id="page-gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
         <nav id="gallery-browse-nav" class="gallery-browse-nav" aria-label="Gallery 导航" hidden><button id="gallery-back" type="button" aria-label="返回集合" title="返回集合">←</button><strong id="gallery-browse-title"></strong></nav>
-        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="更新集合目录" title="更新集合目录">↻</button><button id="gallery-sync" hidden>同步收集</button><button id="gallery-purchase-resume" hidden>核对并继续购买</button><button id="gallery-list-purchased" hidden>挂牌已购卡</button><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
+        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="更新集合目录" title="更新集合目录">↻</button><button id="gallery-sync" hidden>同步收集</button><button id="gallery-purchase-resume" hidden>核对并继续购买</button><button id="gallery-list-purchased" hidden>挂牌已购卡</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="自动重挂范围"><option value="batch">本批</option><option value="all">全部未售</option></select><select id="gallery-relist-minutes" aria-label="重挂检查间隔"><option value="1">每 1 分钟</option><option value="5">每 5 分钟</option><option value="10" selected>每 10 分钟</option></select><button id="gallery-relist-start" title="保留原起拍/一口价；最多 2 轮，24 小时有效，需保持页面在线">自动重挂</button><button id="gallery-relist-stop" hidden>停止</button><button id="gallery-relist-recover" hidden>核对结果</button></div><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
+        <output id="gallery-relist-status" hidden role="status"></output>
         <progress id="gallery-background-progress" class="gallery-background-progress" hidden max="1" value="0" aria-label="Gallery 收集同步进度"></progress>
         <small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small>
         <details class="gallery-source-details"><summary><span id="gallery-source">尚未同步目录</span></summary><span id="gallery-status" role="status">首次打开 Gallery 时读取公开集合目录。</span></details>
         <dialog id="gallery-sync-dialog"><div class="dialog-header"><strong>同步收集</strong><button id="gallery-sync-stop" aria-label="停止同步" title="停止同步">停止</button></div><progress id="gallery-sync-progress" max="1" value="0" style="width:100%"></progress><output id="gallery-sync-message" role="status"></output></dialog>
-        <dialog id="gallery-purchase-dialog" aria-label="Gallery 购买"><div class="dialog-header"><strong>Gallery 购买</strong><button id="gallery-purchase-stop">停止</button><button id="gallery-purchase-close" hidden>关闭</button></div><progress id="gallery-purchase-progress" aria-label="购买处理进度" max="1" value="0" style="width:100%"></progress><output id="gallery-purchase-message" role="status"></output><ul id="gallery-purchase-results" aria-label="购买卡列表"></ul></dialog>
+        ${purchaseDialogMarkup('gallery')}
         <div class="gallery-modes" role="group" aria-label="Gallery 视图"><button id="gallery-mode-browse" aria-pressed="true">收集进度</button><button id="gallery-mode-joint" aria-pressed="false">联合规划 <span id="gallery-joint-count">0</span></button></div>
         <output id="gallery-target-status" aria-live="polite"></output>
         <div id="gallery-browse">
@@ -113,7 +116,6 @@ export function fc27WorkbenchMarkup() {
       <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>设置与诊断</h2></div></div>
         <div class="feature-grid"><div class="card"><h3>当前版本</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">解题与采购参数在「SBC 解题」页设置。</p></div>
-        <div id="gallery-proxy-card" class="card"><h3>Gallery 网络</h3><label>FUT.GG HTTPS 转发代理<input id="gallery-proxy" type="url" placeholder="https://proxy.example/" autocomplete="off"><small>用于 FUT.GG 直连受限时的 Gallery 目录和卡池读取。这里需要 HTTPS 转发端点；127.0.0.1:1080 这类 SOCKS/浏览器代理请在专用浏览器或系统层配置，不能直接填入。</small></label><div class="row"><button id="gallery-proxy-save" class="primary">保存代理</button><button id="gallery-proxy-clear">清除代理</button></div></div>
         <div id="diagnostic-export-card" class="card"><h3>离线诊断</h3><p>导出最近的脱敏运行事件，用于离线调查 Gallery 回退、限流和网络错误。</p><small>不包含 URL、响应正文、凭证、账号标识或完整球员数据。</small><div class="row"><button id="export-diagnostics" class="primary">导出诊断日志</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
         <div class="card"><h3>安装与多标签检查</h3><p>仅在需要排查存储或多标签占用问题时运行。</p><div class="row"><button id="gm">检查脚本存储</button><button id="hold">检查标签锁</button></div></div></div>
       </section>

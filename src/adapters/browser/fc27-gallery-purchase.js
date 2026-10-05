@@ -10,7 +10,7 @@ import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
 
 export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequest, reader, liveEnabled,
-  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), diagnosticLog = null }) {
+  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), publicPrices = null, diagnosticLog = null }) {
   let busy = false, stopped = false;
   const create = ({ onProgress, isCurrent = () => true } = {}) => {
     const context = readFc27Context(root), scope = traditionalJournalScope(context);
@@ -23,13 +23,15 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
     const buyer = createGalleryPurchaseSession({ scope, context, get: gmGetValue, set: gmSetValue,
       exclusive: persistence.exclusive, assertCurrent: account, onProgress,
       shouldStop: () => stopped,
+      preparePrices: publicPrices ? record => publicPrices.preparePurchase(record, { isCurrent: () => { account(); return !stopped; },
+        onProgress: value => onProgress?.({ ...value, phase: 'reference-prices', total: value.total, purchased: 0, completed: 0, spent: 0 }) }) : null,
       checkOtherTransactions: async () => {
         const other = await persistence.journal.read(scope);
         if (other && !isTerminalTraditionalJournal(other)) throw new Error('FC27_RECOVERY_REQUIRED');
         if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) throw new Error('FC27_BUY_RECOVERY_REQUIRED');
       },
       operationId: () => root.crypto.randomUUID(),
-      createAdapter: async record => {
+      createAdapter: async (record, callbacks = {}) => {
         const settings = await readSettings(); account();
         if (settings?.status !== 'observed' || !Number.isSafeInteger(settings.queriesNumber) || settings.queriesNumber < 1
             || !isPuzzleQuoteCeiling(settings.quoteCeiling)) throw new Error('FC27_PUZZLE_POLICY_INVALID');
@@ -41,10 +43,13 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
           _rating: row.cardData.rating, nationId: row.cardData.nation, teamId: row.cardData.teamId,
           leagueId: row.cardData.leagueId, preferredPosition: row.cardData.preferredPosition,
         }]));
+        publicPrices?.remember([...players].map(([definitionId, fields]) => ({ definitionId, ...fields })));
         if (record.entries.some(entry => entry.state === 'waiting' && rows.get(entry.definitionId)?.isCollected !== true && !players.has(entry.definitionId))) {
           throw new Error('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
         }
-        const adapter = await createFc27PuzzleBuyAdapter(root, { assertTarget: account, referencePrice,
+        const adapter = await createFc27PuzzleBuyAdapter(root, { assertTarget: account, referencePrice, onSearch: callbacks.onSearch,
+          refreshReference: publicPrices ? async (definitionId, policy) =>
+            (await publicPrices.load([definitionId], { purpose: 'purchase', policy, isCurrent: () => { account(); return !stopped; } })).references[definitionId] : null,
           attempts: settings.queriesNumber,
           canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope),
           verifyCurrent: account, playerDetails: players,
@@ -57,7 +62,7 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
               confirmed: confirmed.length, total: ids.length, reason: result.reason ?? null };
           },
         });
-        return Object.freeze({ ...adapter, find: definitionId => adapter.find(definitionId, settings.quoteCeiling ?? Infinity) });
+        return Object.freeze({ ...adapter, find: (definitionId, cap = Infinity) => adapter.find(definitionId, Math.min(cap, settings.quoteCeiling ?? Infinity)) });
       },
     });
     return buyer;
@@ -77,7 +82,22 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
     finally { busy = false; }
   };
   purchase.inspect = async () => {
-    try { return await create().inspect(); } catch { return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' }; }
+    try {
+      const context = readFc27Context(root), result = await create().inspect();
+      if (result.retryContext) {
+        const settings = await readSettings();
+        if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw Error();
+        result.retryContext = { ...result.retryContext, absoluteCap: settings.quoteCeiling,
+          balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
+          priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })) };
+      }
+      return result;
+    } catch { return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' }; }
+  };
+  if (publicPrices) purchase.refreshPrices = async (ids, options) => {
+    const policy = await publicPrices.readSettings(), references = {};
+    for (let i = 0; i < ids.length; i += 250) Object.assign(references, (await publicPrices.load(ids.slice(i, i + 250), { ...options, purpose: 'purchase', policy })).references);
+    return { policy, references };
   };
   purchase.stop = () => { stopped = true; };
   // Explicit read only: does not construct the buyer or query collection,

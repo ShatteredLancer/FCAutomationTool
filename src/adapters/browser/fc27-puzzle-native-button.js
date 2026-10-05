@@ -70,6 +70,9 @@ const resultText = result => {
 const code = value => typeof value === 'string' && /^FC27_[A-Z0-9_]{1,100}$/.test(value) ? value : null;
 const countText = value => Number.isSafeInteger(value) && value >= 0 ? String(value) : '未知';
 const purchaseReasons = {
+  FC27_MARKET_POLICY_INVALID: '求解器规划参数不一致，搜索未启动；请导出诊断日志',
+  FC27_MARKET_QUOTE_INVALID: '候选报价数值无效，未采用该报价继续搜索',
+  FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE: '阵容评分或化学评估不可用，不能确认方案',
   FC27_PUZZLE_SEARCH_LIMIT: '补卡组合搜索达到上限，不能判定无解',
   FC27_PURCHASE_REPAIR_NO_PLAN: '本次候选中未找到补卡组合，不代表整个市场无解',
   FC27_PURCHASE_QUOTES_UNAVAILABLE: '已尝试替换无可用挂牌的候选，仍未取得整阵所需报价',

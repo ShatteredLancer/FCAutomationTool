@@ -32,7 +32,7 @@ export function galleryCanonical(value) {
 
 export function galleryCatalogRevision(catalog) {
   // Content identity, not an authentication hash. Ignore delivery/capture time.
-  const value = galleryCanonical(pick(catalog, ['schema', 'season', 'source', 'categories', 'tags']));
+  const value = galleryCanonical(pick(catalog, ['schema', 'season', 'source', 'categories', 'tags', 'engine']));
   let hash = 2166136261;
   for (let index = 0; index < value.length; index++) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619) >>> 0;
   return `g1-${hash.toString(16).padStart(8, '0')}-${value.length}`;
@@ -108,7 +108,7 @@ export function normalizeGalleryCatalog(source, input, season = '27') {
   const capturedAt = source === 'futgg' ? data.capturedAt ?? null : null;
   if (capturedAt !== null && (typeof capturedAt !== 'string' || !Number.isFinite(Date.parse(capturedAt)))) invalid();
   const catalog = { schema: 1, source, season, seasonEvidence: source === 'futgg' ? 'response-game' : 'fc27-reviewed-endpoint',
-    capturedAt, categories, tags };
+    capturedAt, categories, tags, ...(source === 'fodder' ? { engine: definition(data.engine) } : {}) };
   return freeze({ ...catalog, revision: galleryCatalogRevision(catalog) });
 }
 
@@ -125,7 +125,7 @@ export function galleryCachePayload(catalog) {
     })),
   }));
   return futgg ? { data: { game: `fc${catalog.season}`, schemaVersion: 1, capturedAt: catalog.capturedAt, categories, tags: catalog.tags } }
-    : { engine: { version: 1 }, categories, tags: catalog.tags };
+    : { engine: catalog.engine ?? { version: 1 }, categories, tags: catalog.tags };
 }
 
 export function diffGalleryCatalog(previous, current) {

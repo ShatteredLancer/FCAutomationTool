@@ -27,12 +27,16 @@ import { mountFc27PuzzleNativeButton } from '../adapters/browser/fc27-puzzle-nat
 import { readFc27PuzzlePage } from '../adapters/ea/fc27-puzzle-page.js';
 import { readFc27PurchasePageSlots } from '../adapters/ea/fc27-puzzle-page.js';
 import { mountFc27PuzzleBuyButton } from '../adapters/browser/fc27-puzzle-buy-button.js';
+import { readFc27MarketPlayerName } from '../adapters/ea/fc27-market-read.js';
 import { mountFc27WorkbenchNavigation } from '../adapters/browser/fc27-workbench-navigation.js';
-import { createFc27GalleryCatalogProvider, createFc27GalleryTransport, normalizeFc27GalleryProxy } from '../adapters/browser/fc27-gallery-catalog.js';
+import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '../adapters/browser/fc27-gallery-catalog.js';
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
 import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
 import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
 import { createFc27GalleryListing } from '../adapters/browser/fc27-gallery-listing.js';
+import { withFodderGalleryPools } from '../adapters/browser/fc27-fodder-gallery.js';
+import { createFc27GalleryRelist } from '../adapters/browser/fc27-gallery-relist.js';
+import { startGalleryTradingPoll } from '../adapters/browser/fc27-gallery-trading-poll.js';
 import { createFc27GalleryNativeRenderer } from '../adapters/ea/fc27-gallery-card.js';
 import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../gallery/progress.js';
@@ -44,15 +48,12 @@ import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
 import { createUserEffectsAdapter } from '../adapters/browser/user-effects.js';
+import { createFc27PublicPrices } from '../adapters/browser/fc27-public-prices.js';
 
 // A new Tampermonkey identity: no legacy or Acceptance storage migration.
 const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest,
   lockManager: unsafeWindow.navigator.locks, liveEnabled: __FCAT_LIVE_ENABLED__ };
-const FC27_GALLERY_PROXY_KEY = 'fcat-fc27-gallery-futgg-proxy-v1';
-let galleryProxy = '';
-try { galleryProxy = normalizeFc27GalleryProxy(GM_getValue(FC27_GALLERY_PROXY_KEY, '') || ''); } catch { galleryProxy = ''; }
-const readGalleryProxy = () => galleryProxy;
 const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: __FCAT_VERSION__ });
 const userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
 // Gallery presentation may reuse EA's already loaded static image routes. It
@@ -159,31 +160,33 @@ const galleryAssets = Object.freeze({
 // Presentation only: use a price already loaded by FSU. Gallery never
 // triggers one price request per card and missing cache entries stay unknown.
 const galleryPrices = id => readCachedGalleryPrice(unsafeWindow, id);
-const setGalleryProxy = async value => {
-  const normalized = normalizeFc27GalleryProxy(value);
-  await GM_setValue(FC27_GALLERY_PROXY_KEY, normalized);
-  galleryProxy = normalized;
-  return { status: 'observed', proxy: normalized };
-};
-const galleryCatalog = createFc27GalleryCatalogProvider({ http: createFc27GalleryTransport(GM_xmlhttpRequest, { getProxy: readGalleryProxy, diagnosticLog }),
+const galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
+const publicPrices = createFc27PublicPrices({ root: unsafeWindow, get: GM_getValue, set: GM_setValue, gmRequest: GM_xmlhttpRequest,
+  transport: galleryTransport, diagnosticLog });
+const publicGalleryCatalog = createFc27GalleryCatalogProvider({ http: galleryTransport,
   gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
 const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
+const galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgress);
 const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
-  readSettings: () => current().inspectPuzzlePolicy(), diagnosticLog });
+  readSettings: () => current().inspectPuzzlePolicy(), publicPrices, diagnosticLog });
 const galleryListing = createFc27GalleryListing({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled,
-  loadPrices: ids => {
-    const context = readFc27Context(unsafeWindow);
-    const platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
-    return galleryCatalog.loadPriceSnapshot(ids, { platform });
-  }, diagnosticLog });
-// T4 schedule drafts are persisted separately. Production activation awaits
-// the shared Scheduler's finite authorization/lease/continuation integration.
-// Manual Bulk List approval must not implicitly authorize a background job.
+  schedulingEnabled: dependencies.liveEnabled === true,
+  loadPrices: (ids, options) => publicPrices.load(ids, { ...options, purpose: 'listing' }), diagnosticLog });
+const galleryRelist = createFc27GalleryRelist({ root: unsafeWindow, get: GM_getValue, set: GM_setValue,
+  purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled, diagnosticLog,
+  sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) });
+// Poll only the durable relist record. An absent/disarmed record returns
+// without EA requests; an armed record is executed only after its explicit
+// user approval and due time. The page must remain open and authenticated.
+const galleryTradingPoll = startGalleryTradingPoll({ timers: unsafeWindow, listing: galleryListing, relist: galleryRelist });
+unsafeWindow.addEventListener?.('beforeunload', () => galleryTradingPoll.dispose(), { once: true });
+// Schedule creation and execution still require a separate explicit save and
+// enable click in the Bulk List dialog; loading the page never arms a job.
 if (!galleryProgress.install()) {
   const factoryReady = unsafeWindow.setInterval(() => {
     if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
@@ -191,7 +194,7 @@ if (!galleryProgress.install()) {
 }
 const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
 let session;
-const current = () => session ??= createFc27AcceptanceSession({ ...dependencies, diagnosticLog });
+const current = () => session ??= createFc27AcceptanceSession({ ...dependencies, publicPrices, diagnosticLog });
 // FSU's buyConceptPlayer presents one foreground loader while the batch runs.
 // FCAT keeps its own transaction and journal, but mirrors the same page-level
 // progress callbacks when the reviewed FSU event bridge is available.
@@ -235,8 +238,6 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   hostId: 'fcat-fc27-production', title: `FC Automation Tool ${__FCAT_VERSION__}`, version: __FCAT_VERSION__,
   liveEnabled: dependencies.liveEnabled,
   galleryCatalog,
-  galleryProxy: readGalleryProxy,
-  setGalleryProxy,
   galleryAccountScope: galleryProgress.scope,
   gallerySync,
   galleryAssets,
@@ -245,14 +246,13 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryFirstOwnerHistory: (definitionId, firstOwned) => galleryProgress.updateFirstOwner(definitionId, firstOwned),
   purchaseGallery: galleryPurchase,
   galleryListing,
+  galleryRelist,
   gradePlanner: planGalleryGrade,
   galleryPrices,
   galleryMarketCompare: galleryComparison.compare,
-  galleryPriceLoader: ids => {
-    const context = readFc27Context(unsafeWindow);
-    const platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
-    return galleryCatalog.loadPriceSnapshot(ids, { platform });
-  },
+  galleryPriceLoader: ids => publicPrices.load(ids, { purpose: 'display' }),
+  publicPrices,
+  galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
   exportDiagnostics: async () => {
@@ -263,13 +263,12 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     return { count: payload.entries.length, filename };
   },
   gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
-    const pool = await galleryCatalog.loadPool({ source, setId, force });
+    const pool = await galleryCatalog.loadPool({ source, setId, force, onProgress });
     if (pool.status !== 'observed' || !pool.pool) return pool;
     gallerySync.remember(pool.pool);
-    const progress = await galleryProgress.load(pool.pool, { force, onProgress });
-    // Prices are a single, de-duplicated public FUT.GG read for the cards in
-    // the selected pool.  Keep it beside the pool result so the view never
-    // falls back to one request per card.
+    const progress = await galleryProgress.load(pool.pool, { force: source === 'fodder' ? false : force, onProgress });
+    // Share the account source policy and exact-version quote cache with plans.
+    publicPrices.remember(pool.pool.items);
     let prices = Object.freeze({});
     let priceError = null;
     let priceSnapshot = null;
@@ -277,13 +276,13 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     try {
       const context = readFc27Context(unsafeWindow);
       platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
-      priceSnapshot = await galleryCatalog.loadPriceSnapshot(pool.pool.items.map(item => item.eaId), { platform });
+      priceSnapshot = await publicPrices.load(pool.pool.items.map(item => item.eaId), { purpose: 'display', rows: pool.pool.items });
       prices = priceSnapshot.prices;
     } catch (error) {
       priceError = /^FC27_[A-Z_]+$/.test(error?.message) || /^HTTP \d{3}$/.test(error?.message)
         ? error.message : 'FC27_GALLERY_PRICE_UNAVAILABLE';
     }
-    if (platform) priceError ??= galleryCatalog.priceError?.(pool.pool.items.map(item => item.eaId), { platform }) ?? null;
+    if (platform) priceError ??= Object.values(priceSnapshot?.references ?? {}).find(ref => ref.quotes?.[priceSnapshot.policy.source]?.error)?.quotes[priceSnapshot.policy.source].error ?? null;
     return {
       ...progress,
       progress: progress.progress ?? mergeGalleryAccountProgress(pool.pool),
@@ -310,6 +309,7 @@ mountFc27PuzzleNativeButton({ document: unsafeWindow.document,
   readTarget: () => readFc27PuzzlePage(unsafeWindow),
 });
 mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
+  readPlayerName: definitionId => readFc27MarketPlayerName(unsafeWindow, definitionId),
   readTarget: () => {
     const target = readFc27PuzzlePage(unsafeWindow);
     const slots = target ? readFc27PurchasePageSlots(unsafeWindow, target) : null;
@@ -318,5 +318,6 @@ mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
   inspect: target => current().inspectPuzzlePurchases(target),
   buy: (target, approval, callbacks) => current().buyPuzzlePlayers(target, approval, callbacks),
   stop: () => current().stopPuzzlePurchases(),
+  refreshPrices: (ids, options) => publicPrices.load(ids, options),
   foregroundProgress: foregroundPurchaseProgress,
 });

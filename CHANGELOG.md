@@ -5,6 +5,37 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.11] - 2026-10-05
+
+### Prices, Purchases And Listing
+
+- Share account-level FUT.GG / FUTBIN / Both quote selection and cached references
+  across Gallery and Puzzle. Use one reference source for buying and listing;
+  apply configurable purchase premiums only to buying, never EA estimates as a fallback.
+- Freeze per-card buying limits, persist bounded purchase attempts, and allow
+  explicit retries of selected failed cards with editable one-time limits.
+  Keep uncertain receipts separate from retryable failures.
+- Unify Gallery and Puzzle purchase dialogs, progress, compact rows, quote details,
+  stop controls and retry results. Resolve Puzzle names from existing EA metadata.
+- Correct Bulk List pricing controls and receipt costs; unify player-price arrows
+  on adjacent EA tiers. Connect explicitly enabled scheduled listing and finite
+  automatic relisting, defaulting to the current batch at original auction prices.
+
+### Puzzle And Gallery
+
+- Fix priced joint-search amount validation and minimize total missing-card cost,
+  preserving route hints and comparing cheaper two-card repairs against one-card
+  solutions without increasing search or request budgets.
+- Preserve procurement costs, counts, public version quotes and search completeness
+  in diagnostics after successful concept saves.
+- Improve Gallery score-cache reuse and bounded-plan progress; support Fodder
+  complex conditions and dynamic candidate pools. Remove the obsolete HTTPS
+  forwarding setting; domain proxy routing belongs to the browser/proxy client.
+- Keep FSU Local at 26.09.9. This is a local versioned commit, not a public release
+  or a claim of completed live EA transaction acceptance.
+
+## Historical local notes
+
 ### FSU Local 26.09.9
 
 - Restore FC27 confirmation/cancel buttons in the FSU SBC squad import popup.

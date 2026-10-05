@@ -3,6 +3,9 @@ import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
 
 const DEFAULT_MAX_NODES = 50000;
+// EA amount domain only; keep the detached solver independent of procurement
+// policy/transport dependencies. Priced-joint boundary tests lock agreement.
+const MAX_PUZZLE_QUOTE_PRICE = 15000000;
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const blocked = (reason, extra = {}) => ({ status: 'blocked', reason, liveExecutionEnabled: false, selected: [], ...extra });
 export function finishPuzzleSearch(iterator) {
@@ -201,6 +204,7 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
 
 export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
   const { challenge, pool, groupMatcher, clubLinks } = options;
+  const procurementMode = !!options.procurement;
   const required = pool.required;
   const rules = parseFc27SbcRequirements(challenge.rawRequirements, required);
   if (searchHint !== null || maxNodes < 1000 || pool.candidates.length <= required || rules.status !== 'observed'
@@ -225,7 +229,7 @@ export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES
       .sort((a, b) => b[1].size - a[1].size || a[0] - b[0]).slice(0, 2)
       .map(([groupId]) => ({ strategy, groupId })));
   }
-  let nodes = 0; let result;
+  let nodes = 0; let result; let bestResult = null; let hadTruncatedRoute = false;
   const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
   const reportProgress = progress => {
     if (typeof onProgress !== 'function') return;
@@ -237,14 +241,41 @@ export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES
   for (const [index, hint] of hints.entries()) {
     const budget = Math.floor((maxNodes - nodes) / (hints.length - index));
     result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint,
+      ...(bestResult && bestResult.estimatedCost > 0 ? { procurement: { ...options.procurement,
+        budget: Math.min(options.procurement.budget, bestResult.estimatedCost - 1) } } : {}),
       onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
     nodes += result.nodes ?? 0;
     for (const key of Object.keys(search)) search[key] += result.search?.[key] ?? 0;
+    // Procurement must compare every bounded route that can still improve the
+    // known price. A route may return a valid plan together with
+    // searchComplete:false; returning it immediately used to hide cheaper
+    // combinations found by the next hint. Non-procurement previews retain
+    // their original first-feasible behavior.
+    if (procurementMode && result.status === 'preview') {
+      if (!bestResult || result.estimatedCost < bestResult.estimatedCost) bestResult = result;
+      if (result.searchComplete === false) hadTruncatedRoute = true;
+      if (result.searchComplete !== false) {
+        const selected = bestResult ?? result;
+        return { ...selected, nodes, maxNodes, search, strategyAttempts: index + 1,
+          searchComplete: selected.searchComplete === true && !hadTruncatedRoute,
+          optimalWithinPool: selected.optimalWithinPool === true && !hadTruncatedRoute };
+      }
+      continue;
+    }
+    if (procurementMode && bestResult && result.reason !== 'FC27_PUZZLE_SEARCH_LIMIT') {
+      return { ...bestResult, nodes, maxNodes, search, strategyAttempts: index + 1,
+        searchComplete: false, optimalWithinPool: false };
+    }
     // Only a budget-limited traversal needs another start. Proven shortage,
-    // unsupported facts and complete no-plan results must retain their cause.
+    // unsupported facts and complete no-plan results retain their cause.
     if (result.reason !== 'FC27_PUZZLE_SEARCH_LIMIT') {
       return { ...result, ...(result.nodes !== undefined ? { nodes, maxNodes, search, strategyAttempts: index + 1 } : {}) };
     }
+    hadTruncatedRoute = true;
+  }
+  if (procurementMode && bestResult) {
+    return { ...bestResult, nodes, maxNodes, search, strategyAttempts: hints.length,
+      searchComplete: false, optimalWithinPool: false };
   }
   return { ...result, nodes, maxNodes, search, strategyAttempts: hints.length };
 }
@@ -258,7 +289,9 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
-  if (procurement && (!integer(procurement.budget, 0, 10000000) || !integer(procurement.maxPurchases, 0, 11)
+  // Planning amounts use the same public-price domain as procurement: at
+  // most eleven slots, each up to EA's 15m ceiling. This is not spend approval.
+  if (procurement && (!integer(procurement.budget, 0, 11 * MAX_PUZZLE_QUOTE_PRICE) || !integer(procurement.maxPurchases, 0, 11)
       || typeof procurement.costOf !== 'function')) return blocked('FC27_MARKET_POLICY_INVALID');
   const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required);
   if (parsed.status === 'unsupported') return blocked('FC27_REQUIREMENT_UNSUPPORTED', { unsupported: parsed.unsupported });
@@ -275,6 +308,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     return blocked('FC27_PUZZLE_STRATEGY_INVALID');
   }
   let candidates = filterUnaryCandidates(pool.candidates, itemRules, required, groupMatcher, resolveClub);
+  let traversalScores = null;
   if (searchHint?.strategy !== 'low-rating' && parsed.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)) {
     // A traversal heuristic only: prefer connected groups, never filter by
     // this score or infer feasibility from it. Keep the configured pile order.
@@ -292,6 +326,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     });
     const scores = new Map(candidates.map(item => [item, fields.reduce((sum, read, index) =>
       sum + Math.min(required, frequencies[index].get(read(item))?.size ?? 0), 0)]));
+    traversalScores = scores;
     candidates = candidates.slice().sort((a, b) =>
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
       || scores.get(b) - scores.get(a) || a.rating - b.rating
@@ -338,8 +373,26 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)));
   }
   const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
-  const costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
-  if (costs.some(cost => !integer(cost, 0, 10000000))) return blocked('FC27_MARKET_QUOTE_INVALID');
+  let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
+  if (costs.some(cost => !integer(cost, 0, MAX_PUZZLE_QUOTE_PRICE))) return blocked('FC27_MARKET_QUOTE_INVALID');
+  if (procurement?.priceAware) {
+    // One transitive ordering: preserve compulsory groups, Storage and the
+    // selected route before using cost within a connectivity band. Sorting
+    // by connectivity again without the hint erased the different starts;
+    // comparing price only for market/market pairs was non-transitive when
+    // owned cards sat between them. Owned materials have zero added spend.
+    const originalOrder = new Map(candidates.map((item, index) => [item, index]));
+    const quoted = new Map(candidates.map((item, index) => [item, costs[index]]));
+    const preferredGroup = item => ['nation', 'league', 'club'].includes(searchHint?.strategy)
+      && hintGroup(searchHint, item, resolveClub) === searchHint.groupId;
+    candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
+      || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || Number(preferredGroup(b)) - Number(preferredGroup(a))
+      || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
+      || quoted.get(a) - quoted.get(b)
+      || originalOrder.get(a) - originalOrder.get(b));
+    costs = candidates.map(item => quoted.get(item));
+  }
   const uniqueDefinitions = new Set(candidates.map(item => item.definitionId)).size;
   if (uniqueDefinitions < required) return blocked('SAFE_MATERIAL_SHORTAGE', { ...metrics, uniqueDefinitions, required });
   const counted = itemRules.map(rule => ({ rule,

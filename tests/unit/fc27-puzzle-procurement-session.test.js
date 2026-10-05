@@ -19,6 +19,73 @@ function fixture() {
   return { input, now, cache, transport, options, session: createFc27PuzzleProcurementSession(options) };
 }
 
+it.each([false, true])('prices all eligible Puzzle candidates before solving with zero EA quotes (joint=%s)', async joint => {
+  const x = fixture();
+  if (joint) x.input.inventory.items.pop();
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query);
+    return { ...page, entries: [page.entries[0], { ...page.entries[0], definitionId: 902 }] };
+  });
+  const loadPublicPrices = vi.fn(async ids => ({ policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+    { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source,
+      { schema: 2, source, definitionId, season: '27', platform: 'pc', price: definitionId === 901 ? 5000 : 200,
+        fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null }])) }])) }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', requests: 1 });
+  expect(result.diagnostics.route).toBe(joint ? 'joint' : 'repair');
+  expect(result.plans[0]).toMatchObject({ estimatedCost: 200,
+    purchases: [{ definitionId: 902, estimatedUnitPrice: 200, priceSource: 'futgg' }] });
+  expect(result.plans[0].purchases[0].observedBuyNow).toBeUndefined();
+  expect(result.plans[0].conceptPlan).toMatchObject({ status: 'prepared', estimatedCost: 200 });
+  expect(loadPublicPrices.mock.calls[0][0]).toEqual([901,902]);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('never falls back to EA or another source when the selected public quote is missing', async () => {
+  const x = fixture();
+  const loadPublicPrices = async ids => ({ policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+    { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source,
+      { schema: 2, source, definitionId, season: '27', platform: 'pc', price: source === 'futgg' ? null : 200,
+        fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null }])) }])) });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).plan(x.input);
+  expect(result.status).toBe('blocked'); expect(result.plans).toEqual([]);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  expect(result.diagnostics.excludedUnavailable).toBe(1);
+});
+
+it('keeps the cheaper two-card repair first through pricing and concept-plan preparation without extra requests', async () => {
+  const x = fixture(); x.input.challenge.rawRequirements[1].pairs[0].values = [31];
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query), card = page.entries[0];
+    return { ...page, entries: [card, ...[902, 903].map(definitionId => ({ ...card,
+      definitionId, nationId: 2, leagueId: 2, teamId: 22 }))] };
+  });
+  const loadPublicPrices = vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId,
+      season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source, definitionId,
+        season: '27', platform: 'pc', price: definitionId === 901 ? 5000 : 200,
+        fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null }])) }])) }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', requests: 1,
+    plans: [{ purchaseCount: 2, estimatedCost: 400, conceptPlan: { estimatedCost: 400 } },
+      { purchaseCount: 1, estimatedCost: 5000 }],
+    diagnostics: { estimatedCost: 400, priceSource: 'futgg' } });
+  expect(loadPublicPrices).toHaveBeenCalledOnce();
+  expect(x.transport.readCatalogPage).toHaveBeenCalledOnce();
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('retains a joint evaluator failure instead of fetching extra pages and reporting no plan', async () => {
+  const x = fixture(); x.input.inventory.items.pop(); x.input.evaluateSquad = null;
+  const result = await x.session.plan(x.input);
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE', requests: 1,
+    diagnostics: { route: 'joint', localReason: 'FC27_PUZZLE_TEAM_FACTS_UNAVAILABLE', nodes: 0 } });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(1);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
 it('skips joint search with empty market pages and reuses the bounded no-plan result', async () => {
   const x = fixture();
   x.input.challenge.rawRequirements[1].scope = 2;

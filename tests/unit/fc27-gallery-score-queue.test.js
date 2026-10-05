@@ -38,3 +38,13 @@ it('invalidates equal-sized projections when scoring inputs change', async () =>
   expect(queue.read('account-a',changed).status).toBe('calculating'); await queue.idle();
   expect(update).toHaveBeenCalledTimes(3); queue.dispose();
 });
+it('ignores transport metadata but invalidates semantic scoring fields', async () => {
+  const queue = createGalleryScoreQueue({ schedule: async () => {} });
+  const original = input(); queue.read('account-a', original); await queue.idle();
+  const metadata = structuredClone(original);
+  metadata.progress.capturedAt = 'new-capture'; metadata.progress.rows[0].displayName = 'renamed';
+  expect(queue.read('account-a', metadata).status).not.toBe('calculating');
+  metadata.progress.rows[0].overall += 1;
+  expect(queue.read('account-a', metadata).status).toBe('calculating');
+  await queue.idle(); queue.dispose();
+});

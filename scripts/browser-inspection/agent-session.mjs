@@ -238,11 +238,10 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
     console.log('Login/2FA manually if requested. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-sync, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
-    console.log('gallery-fallback temporarily changes the local Gallery proxy, tests the public catalog fallback, then restores the original setting; no EA write.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|diagnostics-export|sbc|ai-test|gallery-fallback|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'tabs') {
         const tabs = [];
         for (const [index, candidate] of context.pages().entries()) tabs.push({ index, url: candidate.url(),
@@ -334,11 +333,6 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
         if (command === 'gallery-sync') {
           observation.gallery = await syncProductionGallery(context, target);
           observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_SYNC' : observation.gallery.reason;
-        }
-        if (command === 'gallery-fallback') {
-          const { inspectGalleryFallback } = await import(`./gallery-proxy-inspection.mjs?revision=${revision}`);
-          observation.gallery = await inspectGalleryFallback(context, target);
-          observation.action = observation.gallery.reason;
         }
         if (command.startsWith('puzzle ') || command.startsWith('puzzle-ai ')) {
           const ui = observation.ui;

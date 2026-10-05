@@ -46,6 +46,34 @@ function fixture() {
 }
 async function finish(task) { await vi.runAllTimersAsync(); return task; }
 
+it('discovers Fodder compound pools using club queries, overlap and native collection evidence', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  const raw = (resourceId, teamId, leagueId = 8) => ({ resourceId, teamId, leagueId, nation: 1,
+    rating: 80, rareflag: 4, isCollected: true, gradingScore: 100, hyperCosmetics: { 1: 1 } });
+  f.control.pages = [
+    { raw: [raw(11, 1), raw(12, 1, 9)], endOfList: false },
+    { raw: [raw(11, 1), raw(13, 1)], endOfList: true },
+    { raw: [raw(14, 2)], endOfList: true },
+  ];
+  const result = await finish(r.discoverPool({ id: 'fodder:test/new-set', requiredCards: 2,
+    conditions: { clubs: [1, 2], leagues: [8], rareflags: [4], holo: true } }));
+  expect(result).toMatchObject({ status: 'observed', pool: { source: 'fodder', complete: true } });
+  expect(result.pool.items.map(row => row.eaId)).toEqual([11, 13, 14]);
+  expect(f.calls.map(({ club, count, offset, rarities }) => ({ club, count, offset, rarities })))
+    .toEqual([{ club: 1, count: 200, offset: 0, rarities: [4] }, { club: 1, count: 200, offset: 1, rarities: [4] }, { club: 2, count: 200, offset: 0, rarities: [4] }]);
+  expect((await r.load(result.pool)).progress.totals.collected).toBe(3);
+  expect(f.calls).toHaveLength(3); r.dispose();
+});
+
+it('stops Fodder discovery on an account switch or EA failure without publishing a partial pool', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  f.control.raw = []; f.control.status = 429;
+  const set = { id: 'fodder:test/rare', requiredCards: 1, conditions: { clubs: [], leagues: [], rareflags: [4], holo: false } };
+  expect(await finish(r.discoverPool(set))).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_HTTP_429' });
+  expect(await finish(r.discoverPool(set))).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PROGRESS_BACKOFF' });
+  expect(f.calls).toHaveLength(1); r.dispose();
+});
+
 it('queries a top-100 pool once, selects five, and never claims full-pool or library synchronization', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader();
   const pool = normalizeGalleryPool('futgg', futggTruncatedGalleryPool(), 116);
