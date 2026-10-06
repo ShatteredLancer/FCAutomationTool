@@ -16,6 +16,34 @@ it.each([
   [{ login: false, modal: false, loading: true }, 27, false],
   [{ login: false, modal: false }, 27, false],
   [{ login: false, modal: false, loading: false }, 26, false],
+])('gates consolidated Gallery verification on %j season %s', async (ui, season, allowed) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'fcat-gallery-command-'));
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const page = new EventEmitter(); page.url = () => WEB_APP_URL;
+  page.evaluate = async (fn, args) => vm.runInNewContext(`(${fn.toString()})(argument)`, { argument: args, APP_YEAR_SHORT: season });
+  const context = new EventEmitter(); context.pages = () => [page]; context.browser = () => ({ version: () => 'synthetic' });
+  const verifyProductionGallery = vi.fn(async () => ({ status: 'observed', executable: false, purchaseAcceptance: 'USER_PURCHASE_REQUIRED' }));
+  const commands = ['gallery-verify Arsenal', 'q'];
+  try {
+    await runAgentSession({ context, root, withExtensions: true, terminal: { question: async () => commands.shift() },
+      loadHelpers: async () => ({ observeRuntime, observePageUi: async () => ui, verifyProductionGallery }) });
+    expect(verifyProductionGallery).toHaveBeenCalledTimes(allowed ? 1 : 0);
+    const directory = path.join(root, 'artifacts/fc27-browser'), [name] = await readdir(directory);
+    const report = JSON.parse(await readFile(path.join(directory, name), 'utf8'));
+    expect(report.action).toBe(allowed ? 'PRODUCTION_GALLERY_VERIFICATION_READ' : 'GALLERY_SESSION_NOT_CONFIRMED');
+    expect(report.liveExecutionEnabled).toBe(false);
+    if (allowed) expect(report.galleryVerification).toMatchObject({ purchaseAcceptance: 'USER_PURCHASE_REQUIRED', executable: false });
+    expect(page.listenerCount('response')).toBe(0);
+  } finally { log.mockRestore(); await rm(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  [{ login: false, modal: false, loading: false }, 27, true],
+  [{ login: true, modal: false, loading: false }, 27, false],
+  [{ login: false, modal: true, loading: false }, 27, false],
+  [{ login: false, modal: false, loading: true }, 27, false],
+  [{ login: false, modal: false }, 27, false],
+  [{ login: false, modal: false, loading: false }, 26, false],
 ])('gates market-probe on UI %j and season %s', async (ui, season, allowed) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'fcat-market-command-'));
   const log = vi.spyOn(console, 'log').mockImplementation(() => {});

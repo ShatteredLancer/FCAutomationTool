@@ -26,6 +26,19 @@ it('buys exact versions, moves then confirms collection independently, and repea
   expect(f.calls).toEqual([['find',10],['buy',10],['move',10],['find',11],['buy',11],['move',11]]);
   await f.create().execute(f.input); expect(f.calls).toHaveLength(6);
 });
+
+it('runs accounting only after durable purchase writes and never repeats a buy because accounting failed', async () => {
+  const f = fixture();
+  f.args.onPurchaseRecord = vi.fn(async record => {
+    expect(f.store.get(galleryPurchaseKey(f.args.scope))).toEqual(record);
+    throw Error('offline ledger');
+  });
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 400,
+    accountingWarning: 'FC27_GALLERY_ACCOUNTING_UNAVAILABLE' });
+  expect(f.args.onPurchaseRecord).toHaveBeenCalled();
+  await f.create().execute(f.input);
+  expect(f.calls.filter(([name]) => name === 'buy')).toHaveLength(2);
+});
 it('skips already collected versions without rebuying and keeps unknown state blocked', async () => {
   const f = fixture(); f.collected.set(10, true); expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 200, completed: 2 });
   expect((await f.create().inspect()).status).toBe('observed'); expect(f.calls.filter(([name]) => name === 'buy')).toEqual([['buy',11]]);

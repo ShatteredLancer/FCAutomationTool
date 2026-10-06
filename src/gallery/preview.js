@@ -1,6 +1,7 @@
 import { summarizeGalleryScoreSteps } from './scoring.js';
 import { planGalleryGradeSteps } from './planner.js';
 import { isGalleryOwned } from './planner.js';
+import { galleryTierRewardSummary } from './catalog-rewards.js';
 
 // A market purchase is not first-owner evidence. Preview only changes the
 // explicitly selected versions, preserving unknown history of all others.
@@ -23,8 +24,18 @@ export function* planGalleryGradeOverviewSteps(input) {
   if (!Array.isArray(input?.set?.grades)) return { status: 'unavailable', reason: 'input-invalid', grades: [] };
   const grades = [];
   for (const grade of input.set.grades) {
-    const result = yield* planGalleryGradeSteps({ ...input, targetGrade: grade.name, maxPlans: 1 });
+    const steps = planGalleryGradeSteps({ ...input, targetGrade: grade.name, maxPlans: 1 });
+    let next;
+    try {
+      next = steps.next();
+      while (!next.done) {
+        const stop = yield { ...next.value, completed: grades.length, total: input.set.grades.length };
+        next = steps.next(stop);
+      }
+    } finally { steps.return(); }
+    const result = next.value;
     grades.push({ grade: grade.name, threshold: grade.threshold, status: result.status, reason: result.reason ?? null,
+      rewards: galleryTierRewardSummary(input.set, grade),
       searchComplete: result.searchComplete === true, candidate: result.plans?.[0] ?? null });
     if (yield { phase: 'grade', completed: grades.length, total: input.set.grades.length }) break;
   }

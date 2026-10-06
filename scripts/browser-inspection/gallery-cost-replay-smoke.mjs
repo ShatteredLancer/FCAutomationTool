@@ -55,12 +55,16 @@ export async function exerciseGalleryCostReplay(context, directory) {
     assert.ok(event.bestScore >= 7800);
     const items = await host.locator('.gallery-plan-output details').first().locator('li').allTextContents();
     assert.equal(items.length, 12);
+    assert.ok((await host.locator('.gallery-plan-output .gallery-reward-estimate').count()) >= 1,
+      'single-set plan exposes the cumulative catalogue reward estimate');
     for (const id of [67297431, ...input.progress.rows.filter(row => row.collected).map(row => row.eaId)]) {
       assert.ok(items.every(text => !text.startsWith(`${id} `)), `excluded ${id}`);
     }
     await host.getByRole('button', { name: '各档费用', exact: true }).click();
     await host.locator('.gallery-grade-overview-row').nth(4).waitFor({ timeout: 15000 });
     const overview = await host.locator('.gallery-grade-overview-row').allTextContents();
+    assert.ok(overview.every(text => text.includes('本档：') && text.includes('累计：')),
+      'each grade cost exposes tier and cumulative reward estimates');
     assert.ok(overview.slice(0, 4).every(text => text.includes('已达到')));
     const sPrice = Number((await host.locator('.gallery-grade-overview-row').nth(4).locator('span').textContent()).replace(/[^0-9]/g, ''));
     assert.ok(sPrice > 0 && sPrice <= 13850, `overview replay cost ${sPrice}`);

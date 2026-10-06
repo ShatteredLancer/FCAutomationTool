@@ -6,7 +6,7 @@ export async function priceGalleryPlanningTargets(targets, { load, current = () 
   const rows = new Map();
   const owned = new Set(targets.flatMap(target => target.progress.rows.filter(isGalleryOwned).map(row => row.eaId)));
   for (const target of targets) for (const row of target.progress.rows) {
-    if (!owned.has(row.eaId)) rows.set(row.eaId, row);
+    if (row.collected === false && !owned.has(row.eaId)) rows.set(row.eaId, row);
   }
   const ids = [...rows.keys()], snapshot = { source: 'public-references', prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
   for (let start = 0; start < ids.length; start += 250) {

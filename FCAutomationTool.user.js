@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.11
+// @version      27.0.12
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -37,8 +37,8 @@
     return value;
   }
   function createSeasonContext(input = {}) {
-    const schema = ownData(input, "schema");
-    if (schema !== void 0 && schema !== 1) throw new TypeError("Unsupported context schema");
+    const schema2 = ownData(input, "schema");
+    if (schema2 !== void 0 && schema2 !== 1) throw new TypeError("Unsupported context schema");
     const season = identity(ownData(input, "season"), "season");
     if (!/^\d{2}$/.test(season)) throw new TypeError("season must be a two-digit season");
     return Object.freeze({
@@ -48,10 +48,10 @@
       platform: identity(ownData(input, "platform"), "platform")
     });
   }
-  function contextKey(input, name, schema = 1) {
+  function contextKey(input, name, schema2 = 1) {
     const context = createSeasonContext(input);
-    if (!Number.isSafeInteger(schema) || schema < 1) throw new TypeError("invalid schema");
-    return `fcat:${JSON.stringify([schema, context.season, context.accountScope, context.platform, identity(name, "name")])}`;
+    if (!Number.isSafeInteger(schema2) || schema2 < 1) throw new TypeError("invalid schema");
+    return `fcat:${JSON.stringify([schema2, context.season, context.accountScope, context.platform, identity(name, "name")])}`;
   }
   var OBSERVED_ROOTS = Object.freeze([
     "APP_YEAR_SHORT",
@@ -1351,27 +1351,27 @@
 
   // src/adapters/ea/fc27-puzzle-layout.js
   function projectFc27PuzzleLayout(root, squad, { setId, challengeId }) {
-    const fail25 = () => {
+    const fail26 = () => {
       throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
     };
     const slots = ownData(squad, "_players");
     const simple = ownData(squad, "simpleBrickIndices");
     const custom = ownData(squad, "customBrickIndices");
-    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail25();
+    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail26();
     const bricks = [...simple, ...custom];
-    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail25();
+    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail26();
     const ids = Array.from({ length: slots.length }, (_, index) => {
       const slot = ownData(slots, String(index));
       const id11 = ownData(ownData(slot, "_item"), "id");
-      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id11) || id11 < -1 || (index >= 11 || simple.includes(index)) && id11 > 0) return fail25();
+      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id11) || id11 < -1 || (index >= 11 || simple.includes(index)) && id11 > 0) return fail26();
       return id11;
     });
     const formation = ownData(squad, "_formation");
     const id10 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
-    if (!Number.isSafeInteger(id10) || id10 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail25();
+    if (!Number.isSafeInteger(id10) || id10 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail26();
     const positions3 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
-    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail25();
+    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail26();
     return {
       status: "observed",
       setId,
@@ -1529,17 +1529,17 @@
     return synchronize(root, target, savedSquad, refs3, assertContext, refs3.some((ref) => ref.kind === "concept"), previousRefs);
   }
   async function synchronize(root, target, savedSquad, refs3, assertContext, concepts, previousRefs = null) {
-    const fail25 = () => {
+    const fail26 = () => {
       throw new Error("FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED");
     };
     const runtime = await verifyFc27Methods(root, FC27_PUZZLE_SYNC_METHODS);
     assertContext();
     const challenge = currentChallengeEntity(root, target);
-    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail25();
+    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail26();
     const local = ownData(challenge, "squad");
     const layout = projectFc27PuzzleLayout(root, local, target);
     const savedLayout = projectFc27PuzzleLayout(root, savedSquad, target);
-    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail25();
+    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail26();
     const matches2 = (squad) => refs3.every((ref) => {
       const item2 = ownData(ownData(squad, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (concepts && ref.kind === "concept");
@@ -1548,10 +1548,10 @@
       const item2 = ownData(ownData(local, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (ref.kind === "concept");
     });
-    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail25();
-    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail25();
+    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail26();
+    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail26();
     runtime();
-    if (currentChallengeEntity(root, target) !== challenge) return fail25();
+    if (currentChallengeEntity(root, target) !== challenge) return fail26();
     local.update(savedSquad);
     if (!matches2(local) && (layout.squadEmpty || previousMatches())) {
       const retained = ownData(ownData(ownData(root, "call"), "squad"), "setPlayers");
@@ -1560,16 +1560,16 @@
       assertContext();
       runtime();
       checkPlayers();
-      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail25();
+      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail26();
       const players = ownData(savedSquad, "_players").map((slot, index) => refs3.some((ref) => ref.slot === index) ? ownData(slot, "_item") : null);
       const setPlayers = retained ?? ownData(ownData(ownData(root, "UTSquadEntity"), "prototype"), "setPlayers");
       setPlayers.call(local, players);
     }
-    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail25();
+    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail26();
     challenge.onDataChange.notify({ squad: local });
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContext();
-    if (!matches2(local)) return fail25();
+    if (!matches2(local)) return fail26();
     return { status: "synchronized", selectedCount: refs3.length };
   }
 
@@ -2112,8 +2112,8 @@
     }));
   }
   function normalizeTraditionalJournal(scope2, input) {
-    const schema = Object.getOwnPropertyDescriptor(input ?? {}, "schema")?.value;
-    const value = fields(input, schema === 2 ? [...keys, "setTimesCompleted"] : keys);
+    const schema2 = Object.getOwnPropertyDescriptor(input ?? {}, "schema")?.value;
+    const value = fields(input, schema2 === 2 ? [...keys, "setTimesCompleted"] : keys);
     if (![1, 2].includes(value.schema) || value.schema === 2 && !nonnegative(value.setTimesCompleted) || typeof scope2 !== "string" || value.scope !== scope2 || typeof value.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(value.operationId) || !positive(value.setId) || !positive(value.challengeId) || !nonnegative(value.updatedAt) || typeof value.phase !== "string" || !Object.hasOwn(outcomes, value.phase) || outcomes[value.phase] !== value.submitted || !nonnegative(value.rewardBaselineCount) || !Array.isArray(value.itemRefs) || value.itemRefs.length < 1 || value.itemRefs.length > 11 || Reflect.ownKeys(value.itemRefs).length !== value.itemRefs.length + 1) return fail5("FC27_JOURNAL_RECORD_UNVERIFIED");
     value.itemRefs = Array.from({ length: value.itemRefs.length }, (_, index) => {
       const descriptor = Object.getOwnPropertyDescriptor(value.itemRefs, index);
@@ -3193,7 +3193,7 @@
       const value = itemValue(item2, keys2);
       return positive3(value) ? value : null;
     });
-    const countMatches = (values6, predicate) => values6.some((value) => value === null) ? null : compareCount(values6.filter(predicate).length, rule.count, rule.mode ?? "min");
+    const countMatches = (values6, predicate2) => values6.some((value) => value === null) ? null : compareCount(values6.filter(predicate2).length, rule.count, rule.mode ?? "min");
     const clubIds = () => typeof options.clubResolver === "function" ? ids(["teamId", "clubId"]).map(options.clubResolver) : players.map(() => null);
     switch (rule.kind) {
       case "all-quality":
@@ -7120,8 +7120,8 @@
     if (!Array.isArray(slots) || slots.length !== record.base.slots.length) return false;
     const old = puzzleBuySlotRefs(record.base, record.applied);
     const next = puzzleBuySlotRefs(record.base, record.entries);
-    const same21 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    return slots.every((slot, i) => same21(slot, old[i]) || same21(slot, next[i]));
+    const same23 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return slots.every((slot, i) => same23(slot, old[i]) || same23(slot, next[i]));
   }
 
   // src/adapters/ea/fc27-purchase-squad.js
@@ -7685,6 +7685,8 @@
       definitionId: value.definitionId,
       purchasePrice: value.purchasePrice,
       tradeId: typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) ? value.tradeId : null,
+      listingTradeId: typeof value.listingTradeId === "string" && /^[1-9]\d{0,19}$/.test(value.listingTradeId) ? value.listingTradeId : null,
+      operationId: typeof value.operationId === "string" ? value.operationId.slice(0, 100) : null,
       purchasedAt: integer11(value.purchasedAt) ? value.purchasedAt : null,
       state,
       listedPrice: price(value.listedPrice) ? value.listedPrice : null,
@@ -7694,17 +7696,72 @@
     };
   }
   function normalizeGalleryNetCostLedger(input = {}) {
-    if (!input || typeof input !== "object" || input.schema !== GALLERY_NET_COST_SCHEMA) return null;
-    const entries2 = Array.isArray(input.entries) ? input.entries.map(normalizePurchase) : [];
+    if (!input || typeof input !== "object" || input.schema !== GALLERY_NET_COST_SCHEMA || !Array.isArray(input.entries) || input.scope != null && (typeof input.scope !== "string" || !input.scope)) return null;
+    const entries2 = input.entries.map(normalizePurchase);
     if (entries2.some((entry) => !entry) || new Set(entries2.map((entry) => entry.itemId)).size !== entries2.length) return null;
     const taxBps = input.taxBps ?? GALLERY_MARKET_TAX_BPS;
     if (!integer11(taxBps, 0, 1e4)) return null;
     return {
       schema: GALLERY_NET_COST_SCHEMA,
-      scope: typeof input.scope === "string" ? input.scope.slice(0, 160) : null,
+      scope: input.scope ?? null,
       taxBps,
       entries: entries2
     };
+  }
+  function createGalleryNetCostLedger({ scope: scope2 = null, taxBps = GALLERY_MARKET_TAX_BPS, entries: entries2 = [] } = {}) {
+    const ledger = normalizeGalleryNetCostLedger({ schema: GALLERY_NET_COST_SCHEMA, scope: scope2, taxBps, entries: entries2 });
+    if (!ledger) throw new Error("FC27_GALLERY_NET_COST_LEDGER_INVALID");
+    return ledger;
+  }
+  function nextLedger(ledger, entries2) {
+    const normalized = normalizeGalleryNetCostLedger({ ...ledger, entries: entries2 });
+    if (!normalized) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_LEDGER_INVALID" };
+    return { status: "recorded", ledger: normalized };
+  }
+  function recordGalleryPurchase(ledger, receipt = {}) {
+    const current2 = normalizeGalleryNetCostLedger(ledger);
+    const purchase = normalizePurchase({ ...receipt, state: receipt.state ?? "held" });
+    if (!current2 || !purchase) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_RECEIPT_INVALID" };
+    const existing = current2.entries.find((entry) => entry.itemId === purchase.itemId);
+    if (existing) {
+      if (existing.definitionId !== purchase.definitionId || existing.purchasePrice !== purchase.purchasePrice || existing.tradeId && purchase.tradeId && existing.tradeId !== purchase.tradeId) {
+        return { status: "blocked", reason: "FC27_GALLERY_NET_COST_IDENTITY_CONFLICT" };
+      }
+      return { status: "unchanged", ledger: current2 };
+    }
+    return nextLedger(current2, [...current2.entries, purchase]);
+  }
+  function recordGallerySale(ledger, sale = {}) {
+    const current2 = normalizeGalleryNetCostLedger(ledger);
+    if (!current2 || !id4(sale.itemId)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    const index = current2.entries.findIndex((entry) => entry.itemId === sale.itemId);
+    if (index < 0) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_IDENTITY_UNKNOWN" };
+    const existing = current2.entries[index];
+    if (sale.definitionId != null && sale.definitionId !== existing.definitionId)
+      return { status: "blocked", reason: "FC27_GALLERY_NET_COST_IDENTITY_CONFLICT" };
+    const state = String(sale.state || "unknown");
+    if (sale.listingTradeId != null && (typeof sale.listingTradeId !== "string" || !/^[1-9]\d{0,19}$/.test(sale.listingTradeId)))
+      return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (!STATES.has(state) || state === "held") return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (state === "sold" && !price(sale.soldPrice)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (state === "listed" && !price(sale.listedPrice)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (["listed", "unsold"].includes(state) && sale.soldPrice != null) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (existing.state === "sold") {
+      if (state === "sold" && (existing.soldPrice !== sale.soldPrice || existing.listingTradeId && sale.listingTradeId && existing.listingTradeId !== sale.listingTradeId)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_IDENTITY_CONFLICT" };
+      return { status: "unchanged", ledger: current2 };
+    }
+    const updated = {
+      ...current2.entries[index],
+      state,
+      listedPrice: price(sale.listedPrice) ? sale.listedPrice : current2.entries[index].listedPrice,
+      soldPrice: state === "sold" ? sale.soldPrice : null,
+      soldAt: state === "sold" && integer11(sale.soldAt) ? sale.soldAt : null,
+      listingTradeId: typeof sale.listingTradeId === "string" && /^[1-9]\d{0,19}$/.test(sale.listingTradeId) ? sale.listingTradeId : existing.listingTradeId,
+      reason: typeof sale.reason === "string" ? sale.reason.slice(0, 160) : null
+    };
+    const entries2 = [...current2.entries];
+    entries2[index] = updated;
+    return nextLedger(current2, entries2);
   }
   function galleryNetSale(priceValue, taxBps = GALLERY_MARKET_TAX_BPS) {
     if (!price(priceValue) || !integer11(taxBps, 0, 1e4)) return null;
@@ -7782,6 +7839,7 @@
     exclusive,
     createAdapter,
     preparePrices = null,
+    onPurchaseRecord = null,
     assertCurrent = () => {
     },
     checkOtherTransactions = async () => {
@@ -7792,6 +7850,7 @@
     operationId = () => `gallery-${Date.now()}-${Math.random().toString(16).slice(2)}`
   } = {}) {
     const key = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
+    let accountingWarning = null;
     const read = async (storageKey) => {
       try {
         return await get(storageKey, null);
@@ -7806,6 +7865,14 @@
       } catch (error2) {
         if (error2?.message === "FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED") throw error2;
         throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+      if (storageKey === key && typeof onPurchaseRecord === "function") {
+        try {
+          const accounting = await onPurchaseRecord(structuredClone(value));
+          accountingWarning = accounting?.status === "blocked" ? accounting.reason : null;
+        } catch {
+          accountingWarning = "FC27_GALLERY_ACCOUNTING_UNAVAILABLE";
+        }
       }
     };
     return Object.freeze({
@@ -8060,9 +8127,15 @@
             else await write(pendingKey, { schema: 1, operationId: record.operationId });
             return { status: record.entries.every((entry) => ["club", "collected"].includes(entry.state)) ? "purchased" : "partial", ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
           });
-          return result ?? { status: "blocked", reason: "FC27_GALLERY_PURCHASE_BUSY" };
+          return result ? { ...result, ...accountingWarning ? { accountingWarning } : {} } : { status: "blocked", reason: "FC27_GALLERY_PURCHASE_BUSY" };
         } catch (error2) {
-          return { status: record && pending(record) ? "recovery-required" : "blocked", reason: safeReason5(error2), results: itemResults(record), ...summary(record) };
+          return {
+            status: record && pending(record) ? "recovery-required" : "blocked",
+            reason: safeReason5(error2),
+            results: itemResults(record),
+            ...summary(record),
+            ...accountingWarning ? { accountingWarning } : {}
+          };
         } finally {
           adapter?.cancel?.();
         }
@@ -8735,12 +8808,12 @@
       const activePuzzle = readFc27PuzzlePage(root);
       const conceptPending = await readFc27ConceptPending(gmGetValue, scope2, activePuzzle);
       if (conceptPending !== null) {
-        const valid2 = [conceptPending?.setId, conceptPending?.challengeId].every((id10) => Number.isSafeInteger(id10) && id10 > 0);
+        const valid3 = [conceptPending?.setId, conceptPending?.challengeId].every((id10) => Number.isSafeInteger(id10) && id10 > 0);
         return {
           status: "blocked",
           kind: "puzzle-concept",
           reason: "FC27_CONCEPT_RECOVERY_REQUIRED",
-          ...valid2 ? { recoverySetId: conceptPending.setId, recoveryChallengeId: conceptPending.challengeId } : {},
+          ...valid3 ? { recoverySetId: conceptPending.setId, recoveryChallengeId: conceptPending.challengeId } : {},
           submitted: false
         };
       }
@@ -9060,7 +9133,7 @@
           },
           cancel: () => native.cancel()
         };
-        const engine = createFc27PuzzleFillTransaction({
+        const engine2 = createFc27PuzzleFillTransaction({
           enabled: liveEnabled === true,
           adapter,
           journal: puzzlePersistence.journal,
@@ -9071,8 +9144,8 @@
           },
           createOperationId: () => root.crypto.randomUUID()
         });
-        const plan = engine.prepare(baseInput, basePreview);
-        if (plan.status === "prepared") preparedPuzzle = { engine, plan, adapter };
+        const plan = engine2.prepare(baseInput, basePreview);
+        if (plan.status === "prepared") preparedPuzzle = { engine: engine2, plan, adapter };
         else native.cancel();
       }
       return {
@@ -9470,7 +9543,7 @@
             const target = { setId: input.contract.set.id, challengeId: input.contract.challenge.id };
             await assertNoPuzzlePending(target);
             if (input.contract.challenge.brickIndices.length) return blocked8("FC27_ACCEPTANCE_BRICKS_UNSUPPORTED");
-            const engine = createTraditionalTransaction({
+            const engine2 = createTraditionalTransaction({
               enabled: liveEnabled,
               adapter,
               ...persistence,
@@ -9480,7 +9553,7 @@
               }),
               createOperationId: () => root.crypto.randomUUID()
             });
-            const plan = engine.prepare(input);
+            const plan = engine2.prepare(input);
             if (plan.status !== "prepared") {
               adapter.cancel();
               return plan;
@@ -9492,7 +9565,7 @@
             }
             const baseline = await adapter.readRewardBaseline(plan);
             unchanged();
-            prepared = { engine, plan, adapter };
+            prepared = { engine: engine2, plan, adapter };
             return {
               status: "prepared",
               liveEnabled: liveEnabled === true,
@@ -9853,7 +9926,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     @media(max-width:600px){.gallery-player-card{grid-template-columns:minmax(0,1fr)}.gallery-player-art{width:184px;justify-self:center}.gallery-player-meta{justify-items:center;text-align:center}}
     .gallery-card-tools{align-items:center;position:sticky;top:116px;z-index:2;padding:8px 0;background:#22323d;border-bottom:1px solid #455a66}.gallery-card-tools input[type=search]{flex:1;min-width:130px}.gallery-card-tools select{width:auto}.gallery-card-tools .gallery-cheapest-count{width:70px}.gallery-card-page{margin-inline:auto;color:#b9c8d0;font-size:12px}.gallery-card-select{position:static!important;top:auto;left:auto;width:auto;height:auto;z-index:auto;grid-column:1/-1;justify-self:stretch;min-height:36px;padding:6px 10px;border-radius:5px;background:#202d36;border-color:#617781;color:#d9e5ec}.gallery-card-select[aria-pressed=true]{background:#b1f5d7;color:#152c22;border-color:#b1f5d7}.gallery-purchase-selection{position:sticky;bottom:0;z-index:4;align-items:center;padding:10px 0;background:#22323d;border-top:1px solid #72808a;box-shadow:0 -8px 18px #17212ccc}.gallery-selection-summary,.gallery-selection-note{color:#b9c8d0;font-size:12px}.gallery-selection-preview{margin-top:8px;color:#b3ffe3;font-size:12px}.gallery-grade-overview{display:grid;gap:4px;margin-top:8px}.gallery-grade-overview-row{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px;background:#304451;border-radius:4px;font-size:12px}.gallery-grade-overview-row small{margin:0}
     .gallery-browse-controls{align-items:center;margin:10px 0}.gallery-browse-controls>input{flex:1;min-width:120px;width:auto}.gallery-browse-controls>select{width:auto;max-width:100%}.gallery-followed-toggle{display:flex;align-items:center;gap:6px;margin:0}.gallery-followed-toggle input{width:18px;height:18px}.gallery-watch{min-width:36px;width:36px;height:36px;flex:0 0 auto;padding:0!important}.gallery-watch[aria-pressed=true]{color:#b3ffe3;border-color:#9df3d5}.gallery-joint-target .gallery-target-open{width:auto;grid-column:1/-1;justify-self:start;padding:4px 10px}#gallery-target-status{display:block;font-size:12px;color:#e7dbad;overflow-wrap:anywhere}
-    #gallery-selection-footer{position:fixed;bottom:8px;z-index:10;padding:10px 12px;margin:0;border:1px solid #72808a;border-radius:7px}#gallery-set-detail{padding-bottom:160px}.gallery-selection-preview{margin:0}.gallery-card-select{order:3}.gallery-card-pricebar{order:0}.gallery-player-art>slot,.gallery-text-card{order:1}.gallery-grade-overview-row{overflow-wrap:anywhere}@media(max-width:650px){#gallery-set-detail{padding-bottom:210px}.gallery-card-tools{position:static}}
+    #gallery-selection-footer{position:fixed;bottom:8px;z-index:10;padding:10px 12px;margin:0;border:1px solid #72808a;border-radius:7px}#gallery-set-detail{padding-bottom:160px}.gallery-selection-preview{margin:0}.gallery-card-select{order:3}.gallery-card-pricebar{order:0}.gallery-player-art>slot,.gallery-text-card{order:1}.gallery-grade-overview-row{overflow-wrap:anywhere}.gallery-reward-estimate{display:block;overflow-wrap:anywhere;color:#b3ffe3}.gallery-grade-overview-row .gallery-reward-estimate{grid-column:1/-1}@media(max-width:650px){#gallery-set-detail{padding-bottom:210px}.gallery-card-tools{position:static}}
     .gallery-unknown,.gallery-market-comparison{white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:100%}
   </style><div class="workbench"><details open><summary></summary>
     <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id10, label], index) => `<button type="button" role="tab" id="tab-${id10}" aria-controls="page-${id10}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
@@ -9877,6 +9950,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         <nav id="gallery-browse-nav" class="gallery-browse-nav" aria-label="Gallery \u5BFC\u822A" hidden><button id="gallery-back" type="button" aria-label="\u8FD4\u56DE\u96C6\u5408" title="\u8FD4\u56DE\u96C6\u5408">\u2190</button><strong id="gallery-browse-title"></strong></nav>
         <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
         <output id="gallery-relist-status" hidden role="status"></output>
+        <div id="gallery-accounting" class="row" hidden><output id="gallery-accounting-summary" role="status"></output><button id="gallery-accounting-refresh" type="button" aria-label="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4" title="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\uFF0C\u4E0D\u6302\u724C\u3001\u4E0D\u6E05\u9664\u5DF2\u552E\u5361">\u21BB</button></div>
         <progress id="gallery-background-progress" class="gallery-background-progress" hidden max="1" value="0" aria-label="Gallery \u6536\u96C6\u540C\u6B65\u8FDB\u5EA6"></progress>
         <small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small>
         <details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details>
@@ -9890,7 +9964,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         <section id="gallery-set-detail" class="gallery-set-detail" aria-live="polite" hidden></section>
         </div>
         <div id="gallery-selection-footer" class="row gallery-purchase-selection" hidden></div>
-        <section id="gallery-joint" hidden><h3>\u8054\u5408\u76EE\u6807</h3><div id="gallery-joint-targets"></div><div class="gallery-joint-controls"><label>\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09<input id="gallery-joint-budget" type="number" min="0" step="1" placeholder="\u4E0D\u9650"></label><button id="gallery-joint-plan" class="primary" disabled>\u751F\u6210\u8054\u5408\u65B9\u6848</button></div><div id="gallery-joint-output" class="gallery-joint-output" aria-live="polite"></div></section>
+        <section id="gallery-joint" hidden><h3>\u8054\u5408\u76EE\u6807</h3><div id="gallery-joint-targets"></div><div class="gallery-joint-controls"><select id="gallery-joint-objective" aria-label="\u89C4\u5212\u76EE\u6807"><option value="grade">\u56FA\u5B9A\u7B49\u7EA7</option><option value="catalog">\u76EE\u5F55\u9884\u4F30</option></select><select id="gallery-joint-reward" aria-label="\u76EE\u5F55\u5956\u52B1\u7C7B\u578B" hidden></select><label>\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09<input id="gallery-joint-budget" type="number" min="0" step="1" placeholder="\u4E0D\u9650"></label><button id="gallery-joint-plan" class="primary" disabled>\u751F\u6210\u8054\u5408\u65B9\u6848</button></div><div id="gallery-joint-output" class="gallery-joint-output" aria-live="polite"></div></section>
       </section>
       ${planned("market", "MARKET", "\u4EF7\u683C\u6BD4\u8F83\u4E0E\u8BA2\u5355\u6267\u884C", [["\u641C\u7D22\u4E0E\u6BD4\u4EF7", "\u7B5B\u9009\u7CBE\u786E\u7403\u5458\u7248\u672C\uFF0C\u5BF9\u6BD4\u53C2\u8003\u4EF7\u683C\u4E0E\u5B9E\u65F6\u6302\u724C\u3002"], ["\u4E70\u5165\u4E0E\u6302\u724C", "\u7BA1\u7406\u624B\u52A8\u8BA2\u5355\u3001\u6279\u91CF\u4E70\u5165\u4E0E\u6302\u724C\u7ED3\u679C\u3002SBC \u6982\u5FF5\u7403\u5458\u8D2D\u4E70\u76EE\u524D\u5DF2\u5728\u539F\u751F SBC \u4FA7\u680F\u63D0\u4F9B\u3002"]])}
       ${planned("trading", "TRADING", "\u5B9A\u65F6\u4E70\u5165\u4E0E\u552E\u51FA", [["\u5B9A\u65F6\u4EFB\u52A1", "\u6309\u6307\u5B9A\u65F6\u95F4\u6216\u5468\u671F\u6267\u884C\u8D2D\u4E70\u3001\u6302\u724C\u548C\u91CD\u65B0\u6302\u724C\u3002"], ["\u6267\u884C\u6761\u4EF6", "\u4E3A\u4EFB\u52A1\u8BBE\u7F6E\u4EF7\u683C\u8303\u56F4\u3001\u9884\u7B97\u3001\u6709\u6548\u671F\u53CA\u505C\u6B62\u6761\u4EF6\u3002"]])}
@@ -10299,12 +10373,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     const request = (url, headers = {}, phase = "catalog", source = "futgg") => new Promise((resolve, reject) => {
       const route = "direct";
-      const fail25 = (reason) => {
+      const fail26 = (reason) => {
         record({ source, phase, route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail25("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail26("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
       const requestUrl = url;
@@ -10319,24 +10393,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         onload: (response) => {
           const parsed = parseResponseHeaders(response);
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail25("FC27_GALLERY_REDIRECT");
+            fail26("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source, phase, route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parsed });
         },
-        onerror: () => fail25("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail25("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail26("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail26("FC27_GALLERY_TIMEOUT")
       });
     });
     const postJson = (url, payload) => new Promise((resolve, reject) => {
       const route = "direct";
-      const fail25 = (reason) => {
+      const fail26 = (reason) => {
         record({ source: "futgg", phase: "price-sign", route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail25("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail26("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
       const requestUrl = url;
@@ -10350,14 +10424,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         data: JSON.stringify(payload),
         onload: (response) => {
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail25("FC27_GALLERY_REDIRECT");
+            fail26("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source: "futgg", phase: "price-sign", route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parseResponseHeaders(response) });
         },
-        onerror: () => fail25("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail25("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail26("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail26("FC27_GALLERY_TIMEOUT")
       });
     });
     return Object.freeze({
@@ -10880,9 +10954,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var order = (a, b) => b.gradingScore - a.gradingScore || a.eaId - b.eaId;
   var bonusFor = (score2, percent) => Math.floor(score2 * percent / 100);
   var tierFor = (tiers2, count2) => tiers2.filter((tier) => count2 >= tier.at).at(-1);
-  function compileGalleryScoringRules({ source, tags, engine } = {}) {
+  function compileGalleryScoringRules({ source, tags, engine: engine2 } = {}) {
     if (source === "fodder") {
-      if (!Array.isArray(tags) || !tags.length || tags.length > 256 || engine?.version !== 1) return fail19("rules-unavailable");
+      if (!Array.isArray(tags) || !tags.length || tags.length > 256 || engine2?.version !== 1) return fail19("rules-unavailable");
       const by = {
         nation: "nationEaId",
         club: "clubEaId",
@@ -10915,11 +10989,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           threshold: match.how === "atLeast" ? Number(values6[0]) : null,
           tiers: tiers2,
           fodder: true,
-          goldFrom: engine.goldFrom ?? 75,
-          silverFrom: engine.silverFrom ?? 65
+          goldFrom: engine2.goldFrom ?? 75,
+          silverFrom: engine2.silverFrom ?? 65
         });
       }
-      return { status: "ready", tags: result2, source, bonusMinusOne: engine.bonusMinusOne !== false };
+      return { status: "ready", tags: result2, source, bonusMinusOne: engine2.bonusMinusOne !== false };
     }
     if (source !== "futgg" || !Array.isArray(tags) || !tags.length || tags.length > 256) return fail19("rules-unavailable");
     const result = [], ids = /* @__PURE__ */ new Set();
@@ -11158,18 +11232,23 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       signatures: /* @__PURE__ */ new Map(),
       fields: [...new Set((compiled.tags ?? []).map((tag) => tag.field))]
     };
-    return (input) => {
+    const stepsFor = function* (input) {
       if (memo.signatures.size > 8192) {
         memo.signatures.clear();
         memo.totals.clear();
       }
-      const steps = summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+      return yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+    };
+    const summarize2 = (input) => {
+      const steps = stepsFor(input);
       let next;
       do {
         next = steps.next();
       } while (!next.done);
       return next.value;
     };
+    summarize2.steps = stepsFor;
+    return summarize2;
   }
 
   // src/gallery/cooperative-plan.js
@@ -11225,6 +11304,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     onUpdate = () => {
     },
     now = () => performance.now(),
+    cache = null,
     schedule = () => new Promise((resolve) => setTimeout(resolve, 0))
   } = {}) {
     const entries2 = /* @__PURE__ */ new Map();
@@ -11233,6 +11313,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (task || disposed || ![...entries2.values()].some((value) => value.pending)) return;
       const generation = epoch2;
       task = (async () => {
+        const writes = /* @__PURE__ */ new Map();
         await schedule();
         while (!disposed && generation === epoch2) {
           const entry = [...entries2.values()].filter((value) => value.pending).sort((a, b) => b.priority - a.priority)[0];
@@ -11240,7 +11321,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           const current2 = () => !disposed && generation === epoch2 && entries2.get(entry.id) === entry;
           let summary3;
           try {
-            summary3 = await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
+            try {
+              summary3 = await cache?.read(entry.scope, entry.input.set.id, entry.key);
+            } catch {
+              summary3 = null;
+            }
+            if (!current2()) break;
+            if (summary3?.lineup) {
+              const rows = new Map(entry.input.progress.rows.map((row) => [row.eaId, row]));
+              if (summary3.lineup.every((row) => rows.has(row.eaId))) summary3.lineup = summary3.lineup.map((row) => rows.get(row.eaId));
+              else summary3 = null;
+            }
+            summary3 ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
               current: current2,
               now,
               schedule,
@@ -11253,11 +11345,21 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           if (!current2() || !summary3) break;
           entry.summary = summary3;
           entry.pending = false;
+          if (cache) {
+            if (!writes.has(entry.scope)) writes.set(entry.scope, []);
+            writes.get(entry.scope).push({ id: entry.input.set.id, key: entry.key, summary: summary3 });
+          }
           try {
             onUpdate(entry.input.set.id);
           } catch {
           }
           await schedule();
+        }
+        for (const [scope2, rows] of writes) {
+          try {
+            await cache.write(scope2, rows);
+          } catch {
+          }
         }
       })().finally(() => {
         task = null;
@@ -11293,7 +11395,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         ]));
         let entry = entries2.get(id10);
         if (entry?.key !== key) {
-          entry = { id: id10, key, input, priority, pending: true, summary: { status: "calculating" } };
+          entry = { id: id10, key, scope: scope2, input, priority, pending: true, summary: { status: "calculating" } };
           entries2.set(id10, entry);
           while (entries2.size > 256) entries2.delete(entries2.keys().next().value);
         }
@@ -11392,6 +11494,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   // src/gallery/cost-search.js
   var bundleKey = (ids) => ids.slice().sort((a, b) => a - b).join(",");
   var costOf = (state) => Number.isFinite(state.cost) ? state.cost : Infinity;
+  function* evaluateSteps(evaluate2, ids) {
+    const result = evaluate2(ids);
+    return result && typeof result.next === "function" ? yield* result : result;
+  }
   function candidateFrontier(candidates, limit) {
     const cheapest = candidates.slice().sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || (b.score ?? 0) - (a.score ?? 0) || a.id - b.id);
     const picked = /* @__PURE__ */ new Map();
@@ -11483,7 +11589,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               break;
             }
             seen.add(bundleKey(ids));
-            const state = evaluate2(ids);
+            const state = yield* evaluateSteps(evaluate2, ids);
             evaluations++;
             if (state && Number.isFinite(state.cost) && !state.missingPrices) {
               seedStates.push(state);
@@ -11517,7 +11623,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           break;
         }
         seen.add(key);
-        const state = evaluate2(ids);
+        const state = yield* evaluateSteps(evaluate2, ids);
         evaluations++;
         if (state && Number.isFinite(state.cost) && !state.missingPrices) {
           seedStates.push(state);
@@ -11550,7 +11656,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           const key = bundleKey(ids);
           if (seen.has(key)) continue;
           seen.add(key);
-          const state = evaluate2(ids);
+          const state = yield* evaluateSteps(evaluate2, ids);
           evaluations++;
           if (state && Number.isFinite(state.cost) && !state.missingPrices) {
             const value = measure(state);
@@ -11628,7 +11734,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const steps = summarizeGalleryScoreSteps({ ...target, progress: {
           ...target.progress,
           season: "27",
-          setId: Number(target.set.id.split(":").at(-1)),
+          setId: target.catalog.source === "fodder" ? target.set.id : Number(target.set.id.split(":").at(-1)),
           complete: true,
           rows
         } });
@@ -11658,6 +11764,107 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
   }
 
+  // src/gallery/trim-plan.js
+  function* trimGalleryPlanSteps({ initial, price: price2, evaluate: evaluate2, reached, maxEvaluations = 0 }) {
+    let best = initial, evaluations = 0, stopped = false;
+    if (!reached(initial)) return { state: best, evaluations, stopped };
+    const ids = initial.ids.slice().sort((a, b) => price2(b) - price2(a) || a - b);
+    for (const id10 of ids) {
+      if (evaluations >= maxEvaluations) break;
+      const remaining = best.ids.filter((value) => value !== id10);
+      const candidate = yield* evaluate2(remaining);
+      evaluations++;
+      if (candidate && reached(candidate)) best = candidate;
+      if (yield { evaluations }) {
+        stopped = true;
+        break;
+      }
+    }
+    return { state: best, evaluations, stopped };
+  }
+
+  // src/gallery/catalog-rewards.js
+  function galleryRewardIdentity(reward) {
+    if (!reward || typeof reward.type !== "string" || !Number.isSafeInteger(reward.count) || reward.count < 1 || !Number.isSafeInteger(reward.value) || reward.value < 0) return null;
+    const token = /^event_token_\d+$/.test(reward.type);
+    const key = token ? reward.type : JSON.stringify([
+      reward.type,
+      reward.itemType ?? null,
+      reward.resourceId ?? null,
+      reward.assetId ?? null,
+      reward.teamEaId ?? null,
+      reward.itemCategory ?? null,
+      reward.value,
+      reward.untradeable ?? null
+    ]);
+    const quantity = token ? reward.count * reward.value : reward.count;
+    if (!Number.isSafeInteger(quantity)) return null;
+    return { key, quantity, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
+  }
+  function galleryRewardOptions(targets) {
+    const options = /* @__PURE__ */ new Map();
+    for (const target of targets ?? []) for (const grade of target.set?.grades ?? []) for (const reward of grade.rewards ?? []) {
+      const entry = galleryRewardIdentity(reward);
+      if (entry) options.set(entry.key, { key: entry.key, label: entry.label });
+    }
+    return [...options.values()].sort((a, b) => a.key === "event_token_1" ? -1 : b.key === "event_token_1" ? 1 : a.key.localeCompare(b.key));
+  }
+  function galleryCatalogGrade(set, summary3) {
+    if (summary3?.full !== true || !Number.isSafeInteger(summary3.low?.total)) return null;
+    return (set.grades ?? []).filter((grade) => grade.threshold <= summary3.low.total).sort((a, b) => b.threshold - a.threshold || set.grades.indexOf(b) - set.grades.indexOf(a))[0] ?? null;
+  }
+  function galleryGradeRewardQuantity(grade, key) {
+    return (grade?.rewards ?? []).reduce((sum2, reward) => {
+      const entry = galleryRewardIdentity(reward);
+      return sum2 + (entry?.key === key ? entry.quantity : 0);
+    }, 0);
+  }
+  function galleryCumulativeRewardQuantity(set, score2, key) {
+    if (!Number.isSafeInteger(score2) || score2 < 0) return 0;
+    return (set.grades ?? []).filter((grade) => grade.threshold <= score2).reduce((sum2, grade) => sum2 + galleryGradeRewardQuantity(grade, key), 0);
+  }
+  function gallerySetRewardSummary(set, summary3) {
+    const grade = galleryCatalogGrade(set, summary3);
+    const unlocked = grade ? set.grades.filter((row) => row.threshold <= summary3.low.total) : [];
+    return {
+      grade: grade?.name ?? null,
+      claimState: "unknown",
+      rewardsComplete: unlocked.every((row) => row.rewardsComplete === true),
+      rewards: galleryRewardOptions([{ set: { grades: unlocked } }]).map((option) => ({
+        ...option,
+        quantity: galleryCumulativeRewardQuantity(set, summary3.low.total, option.key)
+      }))
+    };
+  }
+  function galleryTierRewardSummary(set, grade) {
+    return {
+      tier: {
+        rewardsComplete: grade.rewardsComplete === true,
+        rewards: galleryRewardOptions([{ set: { grades: [grade] } }]).map((option) => ({
+          ...option,
+          quantity: galleryGradeRewardQuantity(grade, option.key)
+        }))
+      },
+      cumulative: gallerySetRewardSummary(set, { full: true, low: { total: grade.threshold } })
+    };
+  }
+  function galleryCatalogRewardSnapshot(results, key) {
+    const targets = results.map(({ target, summary: summary3 }) => {
+      const grade = galleryCatalogGrade(target.set, summary3);
+      const unlocked = grade ? target.set.grades.filter((row) => row.threshold <= summary3.low.total) : [];
+      return {
+        setId: target.set.id,
+        name: target.set.name,
+        grade: grade?.name ?? null,
+        score: summary3.low?.total ?? null,
+        quantity: grade ? galleryCumulativeRewardQuantity(target.set, summary3.low.total, key) : 0,
+        rewardsComplete: summary3.full === true && unlocked.every((row) => row.rewardsComplete === true),
+        rewards: unlocked.flatMap((row) => (row.rewards ?? []).map((reward) => ({ ...reward })))
+      };
+    });
+    return { quantity: targets.reduce((sum2, target) => sum2 + target.quantity, 0), targets };
+  }
+
   // src/gallery/planner.js
   var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
@@ -11679,12 +11886,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function comparableRows(rows) {
     return rows.map((row) => ({ ...row, collected: true }));
   }
-  function summarize(set, catalog, existing, selected, score2) {
+  function* summarize(set, catalog, existing, selected, score2) {
     const rows = comparableRows([...existing, ...selected]);
     try {
-      return score2({ set, catalog, progress: {
+      return yield* score2.steps({ set, catalog, progress: {
         season: "27",
-        setId: Number(String(set.id).split(":").at(-1)),
+        setId: catalog.source === "fodder" ? set.id : Number(String(set.id).split(":").at(-1)),
         complete: true,
         rows
       } });
@@ -11743,7 +11950,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 1e5) {
       return { status: "unavailable", reason: "search-options-invalid" };
     }
-    if (!set || !Array.isArray(set.grades) || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1 || !catalog || catalog.source !== "futgg" || !progress || !Array.isArray(progress.rows)) {
+    if (!set || !Array.isArray(set.grades) || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1 || !["futgg", "fodder"].includes(catalog?.source) || !progress || !Array.isArray(progress.rows)) {
       return { status: "unavailable", reason: "input-invalid" };
     }
     const threshold = targetThreshold(set, targetGrade);
@@ -11751,24 +11958,39 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const compiled = compileGalleryScoringRules(catalog);
     if (compiled.status !== "ready") return { status: "unavailable", reason: compiled.reason };
     const score2 = createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
-    const summaryFor = (selected) => {
+    let scoringWork = 0, scoreDeadline = false;
+    const summaryFor = function* (selected) {
       const key = selected.map((row) => row.eaId).join(",");
       if (!summaries.has(key)) {
         if (summaries.size >= 4096) summaries.clear();
-        summaries.set(key, summarize(set, catalog, existing, selected, score2));
+        const steps = summarize(set, catalog, existing, selected, score2);
+        let next;
+        try {
+          next = steps.next();
+          while (!next.done) {
+            const stop6 = yield { evaluations: 0, scoringWork: ++scoringWork };
+            scoreDeadline ||= stop6 === true;
+            next = steps.next();
+          }
+        } finally {
+          steps.return();
+        }
+        summaries.set(key, next.value);
       }
       return summaries.get(key);
     };
     const rows = progress.rows.filter((row) => validId5(row?.eaId));
     if (rows.length !== progress.rows.length) return { status: "unavailable", reason: "input-invalid" };
+    if (rows.some((row) => row.collected != null && typeof row.collected !== "boolean")) return { status: "unavailable", reason: "input-invalid" };
     if (new Set(rows.map((row) => row.eaId)).size !== rows.length) return { status: "unavailable", reason: "duplicate-version" };
-    if (progress.complete === false || rows.some((row) => typeof row.collected !== "boolean")) {
+    const unknownRows = rows.filter((row) => row.collected == null && !isGalleryOwned(row));
+    if (progress.complete === false) {
       return { status: "partial", reason: "collection-status-unknown", targetGrade, threshold, plans: [] };
     }
     const existing = rows.filter((row) => isGalleryOwned(row) && validScore2(row.gradingScore));
     const incompleteExisting = rows.filter((row) => isGalleryOwned(row) && !validScore2(row.gradingScore));
     const requiredSlots = Math.max(1, set.requiredCards - existing.length);
-    const eligibleCandidates = rows.filter((row) => !isGalleryOwned(row)).map((row) => {
+    const eligibleCandidates = rows.filter((row) => row.collected === false && !isGalleryOwned(row)).map((row) => {
       const score3 = candidateScore(row);
       return score3 ? {
         row,
@@ -11783,8 +12005,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       ...candidate,
       score: candidate.score.value
     })), maxCandidates).map((candidate) => eligibleById.get(candidate.id));
-    const omittedCandidates = rows.filter((row) => !isGalleryOwned(row)).length - candidates.length;
-    const requestedCandidates = rows.filter((row) => !isGalleryOwned(row)).length;
+    const omittedCandidates = rows.filter((row) => row.collected === false && !isGalleryOwned(row)).length - candidates.length;
+    const requestedCandidates = rows.filter((row) => row.collected === false && !isGalleryOwned(row)).length;
     const quotedCandidateCount = eligibleCandidates.filter((candidate) => candidate.price != null).length;
     const scoreSourceCounts = eligibleCandidates.reduce((counts, candidate) => {
       counts[candidate.score.source]++;
@@ -11809,20 +12031,25 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       price: 0,
       unknownPrice: false,
       nextIndex: 0,
-      summary: summaryFor([])
+      summary: yield* summaryFor([])
     };
     if (!base.summary?.low) return { status: "unavailable", reason: base.summary?.reason ?? "input-invalid", plans: [] };
+    const currentRewards = gallerySetRewardSummary(set, base.summary);
     if (scoreOf2(base) >= threshold) {
       return {
         status: "achieved",
         targetGrade,
         threshold,
         currentScore: scoreOf2(base),
+        currentRewards,
         candidateCount: candidates.length,
         omittedCandidates,
         requestedCandidates,
         quotedCandidateCount,
         scoreSourceCounts,
+        collectionUnknownCount: unknownRows.length,
+        collectionUnknownIds: unknownRows.map((row) => row.eaId),
+        searchComplete: unknownRows.length === 0,
         plans: []
       };
     }
@@ -11847,7 +12074,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         nextIndex: candidates.length,
         price: greedyCandidates.reduce((sum2, candidate) => sum2 + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
         unknownPrice: greedyCandidates.some((candidate) => asPrice(prices, candidate.row.eaId) == null),
-        summary: summaryFor(greedySelected)
+        summary: yield* summaryFor(greedySelected)
       };
       if (greedy.summary?.full === true && scoreOf2(greedy) >= threshold) plans.push(greedy);
       if (rank(greedy, bestSeen, threshold) < 0) bestSeen = greedy;
@@ -11874,13 +12101,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         nextIndex: candidates.length,
         price: cheapestCandidates.reduce((sum2, candidate) => sum2 + (asPrice(prices, candidate.row.eaId) ?? 0), 0),
         unknownPrice: cheapestCandidates.some((candidate) => asPrice(prices, candidate.row.eaId) == null),
-        summary: summaryFor(selected)
+        summary: yield* summaryFor(selected)
       };
       cheapestSeed = cheapest;
       if (rank(cheapest, bestSeen, threshold) < 0) bestSeen = cheapest;
       if (cheapest.summary?.full === true && scoreOf2(cheapest) >= threshold) plans.push(cheapest);
     }
-    let budgetExhausted = false, beamTruncated = false, timeExhausted = false;
+    let budgetExhausted = false, beamTruncated = false, timeExhausted = scoreDeadline;
     if (cheapestSeed && !cheapestSeed.unknownPrice && candidates.length > requiredSlots && !timeExhausted && !(cheapestSeed.summary?.full && scoreOf2(cheapestSeed) >= threshold)) {
       const byId = new Map(candidates.map((candidate) => [candidate.row.eaId, candidate]));
       const refinement = refineGalleryCostSteps({
@@ -11901,7 +12128,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           progress: Math.min(1, scoreOf2(state) / Math.max(1, threshold)),
           diversityKey: (state.summary?.low?.tags ?? []).map((tag) => `${tag.id}:${tag.count}:${tag.pct}`).join("|")
         }),
-        evaluate: (ids) => {
+        evaluate: function* (ids) {
           const picked = ids.map((id10) => byId.get(id10));
           const selected = picked.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
           const items = picked.map((candidate) => ({
@@ -11920,15 +12147,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             cost: price2,
             unknownPrice: items.some((item2) => item2.price == null),
             missingPrices: items.some((item2) => item2.price == null),
-            summary: summaryFor(selected)
+            summary: yield* summaryFor(selected)
           };
         }
       });
       let step = refinement.next();
       while (!step.done) {
-        const stop6 = yield { evaluations: evaluations + step.value.evaluations };
-        if (stop6) timeExhausted = true;
-        step = refinement.next(stop6);
+        const stop6 = yield { evaluations: evaluations + step.value.evaluations, scoringWork: step.value.scoringWork };
+        if (stop6 || scoreDeadline) timeExhausted = true;
+        step = refinement.next(stop6 || scoreDeadline);
       }
       evaluations += step.value.evaluations;
       plans.push(...step.value.plans);
@@ -11956,7 +12183,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           nextIndex: index + 1,
           price: state.price + (price2 ?? 0),
           unknownPrice: state.unknownPrice || price2 == null,
-          summary: summaryFor(selected)
+          summary: yield* summaryFor(selected)
         };
         next.push(nextState);
         evaluations++;
@@ -11964,7 +12191,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         scoreUncertain ||= nextState.summary.low?.total !== nextState.summary.high?.total || nextState.summary.ruleDifference;
         if (rank(nextState, bestSeen, threshold) < 0 || scoreOf2(nextState) > scoreOf2(bestSeen)) bestSeen = nextState;
         if (nextState.summary?.full === true && scoreOf2(nextState) >= threshold) plans.push(nextState);
-        if (yield { evaluations }) {
+        if ((yield { evaluations }) || scoreDeadline) {
           timeExhausted = true;
           break expansion;
         }
@@ -11979,19 +12206,59 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (budgetExhausted || timeExhausted) break;
     }
     budgetExhausted ||= evaluations >= maxEvaluations && states2.some((state) => state.ids.length < set.requiredCards && state.nextIndex < candidates.length);
+    let removedPurchases = 0;
+    if (plans.length && !timeExhausted && evaluations < maxEvaluations) {
+      const initial = plans.slice().sort((a, b) => rank(a, b, threshold))[0];
+      const trim = trimGalleryPlanSteps({
+        initial,
+        maxEvaluations: Math.min(64, maxEvaluations - evaluations),
+        price: (id10) => asPrice(prices, id10) ?? 0,
+        reached: (state) => state.summary?.full === true && scoreOf2(state) >= threshold,
+        evaluate: function* (ids) {
+          const selected = initial.selected.filter((row) => ids.includes(row.eaId));
+          const items = initial.items.filter((row) => ids.includes(row.eaId));
+          return {
+            ...initial,
+            ids,
+            selected,
+            items,
+            price: items.reduce((total, row) => total + (row.price ?? 0), 0),
+            unknownPrice: items.some((row) => row.price == null),
+            summary: yield* summaryFor(selected)
+          };
+        }
+      });
+      let step;
+      try {
+        step = trim.next();
+        while (!step.done) {
+          const stop6 = yield { ...step.value, evaluations: evaluations + (step.value.evaluations ?? 0) };
+          timeExhausted ||= stop6 === true || scoreDeadline;
+          step = trim.next(stop6 || scoreDeadline);
+        }
+      } finally {
+        trim.return();
+      }
+      evaluations += step.value.evaluations;
+      removedPurchases = initial.ids.length - step.value.state.ids.length;
+      if (removedPurchases) plans.push(step.value.state);
+    }
     const scopeTruncated = progress.candidateOnly === true || progress.poolComplete === false;
     const proofInputsKnown = candidates.every((candidate) => candidate.score.source === "ea" && candidate.price != null) && plans.every((state) => !state.summary?.ruleDifference && state.summary?.low?.total === state.summary?.high?.total && state.summary?.selection !== "bounded-search");
-    const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && omittedCandidates === 0 && !scoringBounded && !scoreUncertain && proofInputsKnown;
+    const searchComplete = unknownRows.length === 0 && !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && omittedCandidates === 0 && !scoringBounded && !scoreUncertain && proofInputsKnown;
     const unique2 = /* @__PURE__ */ new Map();
     for (const state of plans.sort((a, b) => rank(a, b, threshold))) {
       const key = state.ids.slice().sort((a, b) => a - b).join(",");
-      if (!unique2.has(key)) unique2.set(key, materialize(state, targetGrade, threshold, scoreOf2(base)));
+      if (!unique2.has(key)) unique2.set(key, {
+        ...materialize(state, targetGrade, threshold, scoreOf2(base)),
+        rewards: gallerySetRewardSummary(set, state.summary)
+      });
       if (unique2.size >= Math.max(1, Math.min(10, maxPlans))) break;
     }
     const output = [...unique2.values()];
     if (!output.length) {
       const best = [bestSeen, ...states2].sort((a, b) => rank(a, b, threshold))[0];
-      const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates > 0 ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : scoreUncertain ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : "target-unreachable";
+      const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates > 0 ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : scoreUncertain ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : unknownRows.length ? "collection-status-unknown" : "target-unreachable";
       return {
         status: searchComplete ? "no-plan" : "partial",
         reason: scopeTruncated ? "candidate-search-truncated" : reason,
@@ -12019,11 +12286,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         quotedCandidateCount,
         scoreSourceCounts,
         evaluations,
-        searchComplete,
+        searchComplete: searchComplete && unknownRows.length === 0,
         scopeTruncated,
         timeExhausted,
         beamTruncated,
         budgetExhausted,
+        collectionUnknownCount: unknownRows.length,
+        collectionUnknownIds: unknownRows.map((row) => row.eaId),
         plans: []
       };
     }
@@ -12039,16 +12308,20 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       targetGrade,
       threshold,
       currentScore: scoreOf2(base),
+      currentRewards,
       candidateCount: candidates.length,
       omittedCandidates,
       requestedCandidates,
       quotedCandidateCount,
       scoreSourceCounts,
       evaluations,
-      searchComplete,
+      searchComplete: searchComplete && unknownRows.length === 0,
       scopeTruncated,
       timeExhausted,
       costAudit,
+      removedPurchases,
+      collectionUnknownCount: unknownRows.length,
+      collectionUnknownIds: unknownRows.map((row) => row.eaId),
       beamTruncated,
       budgetExhausted,
       plans: output
@@ -12069,22 +12342,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var validPrice3 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
   var score = (row) => validScore3(row.gradingScore) ? row.gradingScore : validScore3(row.galleryScore) ? row.galleryScore : null;
   var fail20 = (status, reason, extra = {}) => ({ status, reason, plans: [], ...extra });
-  function evaluate(targets, selected) {
-    return targets.map((target) => {
+  function* evaluate(targets, selected) {
+    const results = [];
+    for (const target of targets) {
       const key = target.progress.rows.filter((row) => selected.has(row.eaId) && !isGalleryOwned(row)).map((row) => row.eaId).sort((a, b) => a - b).join(",");
       let summary3 = target.summaries.get(key);
       if (!summary3) {
-        summary3 = target.summarize({ set: target.set, catalog: target.catalog, progress: {
+        summary3 = yield* target.summarize.steps({ set: target.set, catalog: target.catalog, progress: {
           ...target.progress,
           season: "27",
-          setId: Number(target.set.id.slice(6)),
+          setId: target.catalog.source === "fodder" ? target.set.id : Number(target.set.id.slice(6)),
           complete: true,
-          rows: target.progress.rows.map((row) => isGalleryOwned(row) ? { ...row, collected: true } : selected.has(row.eaId) ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row)
+          rows: target.progress.rows.filter((row) => isGalleryOwned(row) || row.collected === false).map((row) => isGalleryOwned(row) ? { ...row, collected: true } : selected.has(row.eaId) ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row)
         } });
         target.summaries.set(key, summary3);
       }
-      return { target, summary: summary3, reached: summary3.full === true && summary3.low?.total >= target.threshold };
-    });
+      results.push({ target, summary: summary3, reached: summary3.full === true && summary3.low?.total >= target.threshold });
+    }
+    return results;
   }
   function rank2(a, b, total) {
     const reached = (state) => state.results.filter((result) => result.reached).length;
@@ -12095,7 +12370,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const progress = (state) => state.results.reduce((sum2, result) => sum2 + Math.min(1, (result.summary.low?.total ?? 0) / Math.max(1, result.target.threshold)) + Math.min(1, (result.summary.lineup?.length ?? 0) / result.target.set.requiredCards), 0);
     return progress(b) - progress(a) || cost(a) - cost(b) || a.ids.length - b.ids.length;
   }
-  function materialize2(state, candidates, budget) {
+  function materialize2(state, candidates, budget, rewardObjective = null) {
     const missingPriceIds = state.ids.filter((id10) => candidates.get(id10).price == null);
     return {
       totalPrice: missingPriceIds.length ? null : state.cost,
@@ -12110,20 +12385,51 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           targetIds: state.results.filter((result) => result.summary.lineup?.some((row) => row.eaId === id10)).map((result) => result.target.set.id)
         };
       }),
-      targets: state.results.map(({ target, summary: summary3, reached }) => ({
-        setId: target.set.id,
-        name: target.set.name,
-        targetGrade: target.targetGrade,
-        threshold: target.threshold,
-        reached,
-        score: summary3.low?.total ?? null,
-        scoreHigh: summary3.high?.total ?? null,
-        pointsMissing: Math.max(0, target.threshold - (summary3.low?.total ?? 0)),
-        unknownFields: summary3.unknownFields ?? [],
-        // Directory rewards are not EA claim receipts and are not summed.
-        rewards: (target.grade.rewards ?? []).map((reward) => ({ ...reward })),
-        rewardStatus: "catalog-only"
-      })),
+      targets: state.results.map(({ target, summary: summary3, reached }) => {
+        if (rewardObjective) {
+          const grade = galleryCatalogGrade(target.set, summary3);
+          return {
+            setId: target.set.id,
+            name: target.set.name,
+            targetGrade: grade?.name ?? null,
+            threshold: grade?.threshold ?? null,
+            reached: !!grade,
+            score: summary3.low?.total ?? null,
+            scoreHigh: summary3.high?.total ?? null,
+            pointsMissing: 0,
+            unknownFields: summary3.unknownFields ?? [],
+            rewards: grade?.rewards ?? [],
+            rewardStatus: "catalog-only"
+          };
+        }
+        return {
+          setId: target.set.id,
+          name: target.set.name,
+          targetGrade: target.targetGrade,
+          threshold: target.threshold,
+          reached,
+          score: summary3.low?.total ?? null,
+          scoreHigh: summary3.high?.total ?? null,
+          pointsMissing: Math.max(0, target.threshold - (summary3.low?.total ?? 0)),
+          unknownFields: summary3.unknownFields ?? [],
+          // Fixed-grade targets display the selected tier. Cumulative catalogue
+          // quantities are exposed separately by rewardEstimate.
+          rewards: (target.grade.rewards ?? []).map((reward) => ({ ...reward })),
+          rewardStatus: "catalog-only"
+        };
+      }),
+      ...rewardObjective ? { rewardEstimate: {
+        key: rewardObjective.key,
+        label: rewardObjective.label,
+        baselineQuantity: rewardObjective.baseline.quantity,
+        projectedQuantity: state.reward.quantity,
+        change: state.reward.quantity - rewardObjective.baseline.quantity,
+        baselineTargets: rewardObjective.baseline.targets,
+        projectedTargets: state.reward.targets,
+        gradeRule: "cumulative-tiers",
+        claimState: "unknown",
+        status: "catalog-only"
+      } } : {},
       estimated: state.results.some(({ target, summary: summary3 }) => summary3.lineup?.some((row) => !validScore3(target.progress.rows.find((original) => original.eaId === row.eaId)?.gradingScore)))
     };
   }
@@ -12133,24 +12439,36 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     maxPlans = 3,
     maxCandidates = 192,
     maxEvaluations = 3e3,
-    beamWidth = 64
+    beamWidth = 64,
+    catalogRewardKey = null
   } = {}) {
     if (!Array.isArray(targets) || !targets.length) return fail20("unavailable", "targets-invalid");
+    if (catalogRewardKey !== null && (budget === null || !galleryRewardOptions(targets).some((row) => row.key === catalogRewardKey))) {
+      return fail20("unavailable", budget === null ? "reward-budget-required" : "reward-type-unknown");
+    }
     if (budget != null && (!Number.isSafeInteger(budget) || budget < 0 || budget > 1e9)) return fail20("unavailable", "budget-invalid");
     if (![maxPlans, maxCandidates, maxEvaluations, beamWidth].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || maxCandidates > 512 || maxEvaluations > 2e4 || beamWidth > 256) return fail20("unavailable", "search-options-invalid");
     const targetIds = /* @__PURE__ */ new Set(), identities = /* @__PURE__ */ new Map(), allCandidates = /* @__PURE__ */ new Map(), prepared = [], ownedIds = /* @__PURE__ */ new Set();
+    const collectionUnknown = /* @__PURE__ */ new Map();
+    const unknownSummary = () => {
+      const ids = [...new Set([...collectionUnknown.values()].flat())].sort((a, b) => Number(a) - Number(b));
+      return { collectionUnknownCount: ids.length, collectionUnknownIds: ids };
+    };
     const scopes = new Set(targets.map((target) => target.scope).filter((value) => value != null));
     const platforms = new Set(targets.map((target) => target.platform).filter((value) => value != null));
     if (scopes.size > 1 || platforms.size > 1) return fail20("unavailable", "target-context-mismatch");
     for (const target of targets) {
       const { set, catalog, progress } = target;
-      if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId6(set.requiredCards) || set.requiredCards > 256 || catalog?.source !== "futgg" || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== Number(set.id.slice(6))) return fail20("unavailable", "target-input-invalid");
+      if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId6(set.requiredCards) || set.requiredCards > 256 || !["futgg", "fodder"].includes(catalog?.source) || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== (catalog.source === "fodder" ? set.id : Number(set.id.slice(6)))) return fail20("unavailable", "target-input-invalid");
       targetIds.add(set.id);
       const grade = set.grades.find((row) => row.name === target.targetGrade);
       if (!grade || !Number.isSafeInteger(grade.threshold) || grade.threshold < 0) return fail20("unavailable", "target-grade-unknown");
       const compiled = compileGalleryScoringRules(catalog);
       if (compiled.status !== "ready") return fail20("unavailable", compiled.reason);
-      if (progress.complete === false || progress.rows.some((row) => typeof row.collected !== "boolean" || isGalleryOwned(row) && !validScore3(row.gradingScore))) return fail20("partial", "target-state-unknown");
+      if (progress.rows.some((row) => !row || row.collected != null && typeof row.collected !== "boolean")) return fail20("unavailable", "target-input-invalid");
+      if (progress.complete === false || progress.rows.some((row) => isGalleryOwned(row) && !validScore3(row.gradingScore))) return fail20("partial", "target-state-unknown");
+      const unknownRows = progress.rows.filter((row) => row.collected == null && !isGalleryOwned(row));
+      if (unknownRows.length) collectionUnknown.set(set.id, unknownRows.map((row) => row.eaId));
       const seen = /* @__PURE__ */ new Set();
       for (const row of progress.rows) {
         if (!validId6(row.eaId) || seen.has(row.eaId)) return fail20("unavailable", "duplicate-version");
@@ -12177,6 +12495,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           ownedIds.add(row.eaId);
           continue;
         }
+        if (row.collected !== false) continue;
         const quote2 = target.prices?.[row.eaId], price2 = validPrice3(quote2) ? quote2 : null;
         const existing = allCandidates.get(row.eaId);
         if (existing) {
@@ -12199,10 +12518,65 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const selectedCandidates = selectGalleryCandidatePool(candidateRows, maxCandidates);
     const omittedCandidates = allCandidates.size - selectedCandidates.length;
     const candidateMap = new Map(selectedCandidates.map((candidate) => [candidate.row.eaId, candidate]));
-    const base = { ids: [], nextIndex: 0, cost: 0, missingPrices: false, results: evaluate(prepared, /* @__PURE__ */ new Set()) };
+    let scoringWork = 0, scoreDeadline = false;
+    const resultsFor = function* (selected) {
+      const steps = evaluate(prepared, selected);
+      let next;
+      try {
+        next = steps.next();
+        while (!next.done) {
+          const stop6 = yield { evaluations: 0, scoringWork: ++scoringWork };
+          scoreDeadline ||= stop6 === true;
+          next = steps.next();
+        }
+      } finally {
+        steps.return();
+      }
+      return next.value;
+    };
+    const base = { ids: [], nextIndex: 0, cost: 0, missingPrices: false, results: yield* resultsFor(/* @__PURE__ */ new Set()) };
     if (base.results.some((result) => !result.summary.low)) return fail20("unavailable", "scoring-unavailable");
-    if (base.results.every((result) => result.reached)) return { status: "achieved", plans: [], targets: materialize2(base, candidateMap, budget).targets };
-    let states2 = [base], evaluations = 1, budgetExhausted = false, beamTruncated = false, timeExhausted = false;
+    const rewardObjective = catalogRewardKey === null ? null : {
+      ...galleryRewardOptions(targets).find((row) => row.key === catalogRewardKey),
+      baseline: galleryCatalogRewardSnapshot(base.results, catalogRewardKey)
+    };
+    const annotate = (state) => {
+      if (rewardObjective && !state.reward) state.reward = galleryCatalogRewardSnapshot(state.results, catalogRewardKey);
+      return state;
+    };
+    annotate(base);
+    const complete = (state) => rewardObjective ? !state.missingPrices && annotate(state).reward.quantity > rewardObjective.baseline.quantity : state.results.every((result) => result.reached);
+    const rewardProgress = (state) => state.results.reduce((sum2, { target, summary: summary3 }, index) => {
+      const baseline = rewardObjective.baseline.targets[index].quantity;
+      const nextGrade = target.set.grades.find((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, catalogRewardKey) > baseline && grade.threshold > (summary3.low?.total ?? 0));
+      if (!nextGrade) return sum2;
+      return sum2 + Math.min(1, (summary3.low?.total ?? 0) / Math.max(1, nextGrade.threshold)) + Math.min(1, (summary3.lineup?.length ?? 0) / target.set.requiredCards);
+    }, 0);
+    const compare = (a, b) => {
+      if (!rewardObjective) return rank2(a, b, prepared.length);
+      const difference = annotate(b).reward.quantity - annotate(a).reward.quantity;
+      if (difference) return difference;
+      if (complete(a)) return a.cost - b.cost || a.ids.length - b.ids.length;
+      return rewardProgress(b) - rewardProgress(a) || a.cost - b.cost || a.ids.length - b.ids.length;
+    };
+    if (!rewardObjective && base.results.every((result) => result.reached)) return {
+      status: "achieved",
+      plans: [],
+      targets: materialize2(base, candidateMap, budget).targets,
+      searchComplete: collectionUnknown.size === 0,
+      ...unknownSummary()
+    };
+    if (rewardObjective && prepared.reduce((sum2, target) => sum2 + Math.max(0, ...target.set.grades.map((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, catalogRewardKey))), 0) <= base.reward.quantity) {
+      return {
+        status: "achieved",
+        plans: [],
+        budget,
+        searchComplete: false,
+        ...unknownSummary(),
+        rewardEstimate: materialize2(base, candidateMap, budget, rewardObjective).rewardEstimate
+      };
+    }
+    let states2 = [base], evaluations = 1, budgetExhausted = false, beamTruncated = false, timeExhausted = scoreDeadline;
     let bestSeen = base;
     let scoringBounded = base.results.some((result) => result.summary.selection === "bounded-search");
     let uncertain2 = base.results.some((result) => result.summary.status === "uncertain"), missingPrice = false, overBudget = false;
@@ -12223,17 +12597,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const ids = [...selected], cost = ids.reduce((sum2, id10) => sum2 + (candidateMap.get(id10).price ?? 0), 0);
       const missingPrices = ids.some((id10) => candidateMap.get(id10).price == null);
       if (budget != null && (missingPrices || cost > budget)) continue;
-      const results = evaluate(prepared, selected);
+      const results = yield* resultsFor(selected);
       evaluations++;
       const value = { ids, nextIndex: selectedCandidates.length, cost, missingPrices, results };
       if (!missingPrices && !results.every((result) => result.reached) && (!cheapestComplete || cost < cheapestComplete.cost)) cheapestComplete = value;
-      if (rank2(value, bestSeen, prepared.length) < 0) bestSeen = value;
-      if (results.every((result) => result.reached)) plans.push(value);
-      if (yield { evaluations }) {
+      if (compare(value, bestSeen) < 0) bestSeen = value;
+      if (complete(value)) plans.push(value);
+      if ((yield { evaluations }) || scoreDeadline) {
         timeExhausted = true;
         break;
       }
-      if (mode === "price" && !missingPrices && !results.every((result) => result.reached)) {
+      if (!rewardObjective && mode === "price" && !missingPrices && !results.every((result) => result.reached)) {
         const refinement = refineGalleryCostSteps({
           initial: value,
           seedSteps: galleryPriceBandSeedSteps({
@@ -12255,7 +12629,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             ), 0),
             diversityKey: state.results.map((result) => (result.summary.low?.tags ?? []).map((tag) => `${result.target.set.id}:${tag.id}:${tag.count}:${tag.pct}`).join("|")).join(";")
           }),
-          evaluate: (ids2) => {
+          evaluate: function* (ids2) {
             const cost2 = ids2.reduce((sum2, id10) => sum2 + (candidateMap.get(id10).price ?? 0), 0);
             if (budget != null && cost2 > budget) return null;
             return {
@@ -12263,19 +12637,19 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               nextIndex: selectedCandidates.length,
               cost: cost2,
               missingPrices: ids2.some((id10) => candidateMap.get(id10).price == null),
-              results: evaluate(prepared, new Set(ids2))
+              results: yield* resultsFor(new Set(ids2))
             };
           }
         });
         let step = refinement.next();
         while (!step.done) {
-          const stop6 = yield { evaluations: evaluations + step.value.evaluations };
-          if (stop6) timeExhausted = true;
-          step = refinement.next(stop6);
+          const stop6 = yield { evaluations: evaluations + step.value.evaluations, scoringWork: step.value.scoringWork };
+          if (stop6 || scoreDeadline) timeExhausted = true;
+          step = refinement.next(stop6 || scoreDeadline);
         }
         evaluations += step.value.evaluations;
         plans.push(...step.value.plans);
-        if (step.value.bestState && rank2(step.value.bestState, bestSeen, prepared.length) < 0) {
+        if (step.value.bestState && compare(step.value.bestState, bestSeen) < 0) {
           bestSeen = step.value.bestState;
         }
         beamTruncated ||= step.value.truncated === true;
@@ -12300,27 +12674,61 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           continue;
         }
         const ids = [...state.ids, candidate.row.eaId];
-        const results = evaluate(prepared, new Set(ids));
+        const results = yield* resultsFor(new Set(ids));
         evaluations++;
         const value = { ids, nextIndex: index + 1, cost, missingPrices: state.missingPrices || candidate.price == null, results };
-        if (rank2(value, bestSeen, prepared.length) < 0) bestSeen = value;
+        if (compare(value, bestSeen) < 0) bestSeen = value;
         scoringBounded ||= results.some((result) => result.summary.selection === "bounded-search");
         uncertain2 ||= results.some((result) => result.summary.status === "uncertain");
-        if (results.every((result) => result.reached)) plans.push(value);
+        if (complete(value)) plans.push(value);
         next.push(value);
-        if (yield { evaluations }) {
+        if ((yield { evaluations }) || scoreDeadline) {
           timeExhausted = true;
           break expansion;
         }
       }
-      next.sort((a, b) => rank2(a, b, prepared.length));
+      next.sort(compare);
       beamTruncated ||= next.length > beamWidth;
       states2 = next.slice(0, beamWidth);
       if (budgetExhausted || timeExhausted) break;
     }
     const scopeTruncated = prepared.some((target) => target.progress.candidateOnly === true || target.progress.poolComplete === false);
+    let removedPurchases = 0;
+    if (plans.length && !timeExhausted && evaluations < maxEvaluations) {
+      const initial = plans.slice().sort(compare)[0];
+      const trim = trimGalleryPlanSteps({
+        initial,
+        maxEvaluations: Math.min(64, maxEvaluations - evaluations),
+        price: (id10) => candidateMap.get(id10).price ?? 0,
+        reached: (state) => rewardObjective ? annotate(state).reward.quantity >= annotate(initial).reward.quantity : state.results.every((result) => result.reached),
+        evaluate: function* (ids) {
+          return {
+            ...initial,
+            reward: void 0,
+            ids,
+            cost: ids.reduce((sum2, id10) => sum2 + (candidateMap.get(id10).price ?? 0), 0),
+            missingPrices: ids.some((id10) => candidateMap.get(id10).price == null),
+            results: yield* resultsFor(new Set(ids))
+          };
+        }
+      });
+      let step;
+      try {
+        step = trim.next();
+        while (!step.done) {
+          const stop6 = yield { ...step.value, evaluations: evaluations + (step.value.evaluations ?? 0) };
+          timeExhausted ||= stop6 === true || scoreDeadline;
+          step = trim.next(stop6 || scoreDeadline);
+        }
+      } finally {
+        trim.return();
+      }
+      evaluations += step.value.evaluations;
+      removedPurchases = initial.ids.length - step.value.state.ids.length;
+      if (removedPurchases) plans.push(step.value.state);
+    }
     const proofInputsKnown = candidateRows.every((candidate) => validScore3(candidate.row.gradingScore) && candidate.price != null) && plans.every((state) => state.results.every((result) => result.summary.selection !== "bounded-search" && !result.summary.ruleDifference && result.summary.low?.total === result.summary.high?.total));
-    const searchComplete = !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain2 && !missingPrice && proofInputsKnown;
+    const searchComplete = !rewardObjective && collectionUnknown.size === 0 && !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && !omittedCandidates && !scoringBounded && !uncertain2 && !missingPrice && proofInputsKnown;
     const common = {
       budget,
       evaluations,
@@ -12332,9 +12740,19 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       candidateCount: selectedCandidates.length,
       omittedCandidates,
       requestedCandidates: allCandidates.size,
-      quotedCandidateCount: candidateRows.filter((candidate) => candidate.price != null).length
+      quotedCandidateCount: candidateRows.filter((candidate) => candidate.price != null).length,
+      removedPurchases,
+      ...unknownSummary(),
+      ...rewardObjective ? { rewardEstimate: materialize2(base, candidateMap, budget, rewardObjective).rewardEstimate } : {}
     };
-    const output = plans.sort((a, b) => rank2(a, b, prepared.length)).slice(0, maxPlans).map((state) => materialize2(state, candidateMap, budget));
+    const unique2 = /* @__PURE__ */ new Set();
+    const output = plans.sort(compare).filter((state) => {
+      if (!rewardObjective) return true;
+      const key = state.ids.slice().sort((a, b) => a - b).join(",");
+      if (unique2.has(key)) return false;
+      unique2.add(key);
+      return true;
+    }).slice(0, maxPlans).map((state) => materialize2(state, candidateMap, budget, rewardObjective));
     const costAudit = cheapestComplete ? {
       totalPrice: cheapestComplete.cost,
       score: Math.min(...cheapestComplete.results.map((result) => result.summary.low?.total ?? 0)),
@@ -12342,7 +12760,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       reached: false
     } : null;
     if (output.length) return { status: "ready", ...common, costAudit, plans: output };
-    const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : missingPrice ? "price-unknown" : uncertain2 ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : overBudget ? "budget-unreachable" : "target-unreachable";
+    const reason = timeExhausted ? "search-time-exhausted" : budgetExhausted ? "search-budget-exhausted" : omittedCandidates ? "candidate-search-truncated" : beamTruncated ? "beam-search-truncated" : missingPrice ? "price-unknown" : uncertain2 ? "score-conditions-unknown" : scoringBounded ? "score-selection-bounded" : collectionUnknown.size ? "collection-status-unknown" : overBudget ? "budget-unreachable" : rewardObjective ? "reward-improvement-not-found" : "target-unreachable";
     return fail20(
       searchComplete ? "no-plan" : "partial",
       scopeTruncated ? "candidate-search-truncated" : reason,
@@ -12515,12 +12933,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!Array.isArray(input?.set?.grades)) return { status: "unavailable", reason: "input-invalid", grades: [] };
     const grades3 = [];
     for (const grade of input.set.grades) {
-      const result = yield* planGalleryGradeSteps({ ...input, targetGrade: grade.name, maxPlans: 1 });
+      const steps = planGalleryGradeSteps({ ...input, targetGrade: grade.name, maxPlans: 1 });
+      let next;
+      try {
+        next = steps.next();
+        while (!next.done) {
+          const stop6 = yield { ...next.value, completed: grades3.length, total: input.set.grades.length };
+          next = steps.next(stop6);
+        }
+      } finally {
+        steps.return();
+      }
+      const result = next.value;
       grades3.push({
         grade: grade.name,
         threshold: grade.threshold,
         status: result.status,
         reason: result.reason ?? null,
+        rewards: galleryTierRewardSummary(input.set, grade),
         searchComplete: result.searchComplete === true,
         candidate: result.plans?.[0] ?? null
       });
@@ -12652,13 +13082,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         return { ...row, collected: true, gradingScore: score2, firstOwned: false, purchaseProjected: true };
       }) }
     }));
-    const nextLedger = { receipts: [...receipts.values()], excludedIds: [...exclusions] };
+    const nextLedger2 = { receipts: [...receipts.values()], excludedIds: [...exclusions] };
     const searchTargets = nextTargets.map((target) => ({ ...target, progress: {
       ...target.progress,
       rows: target.progress.rows.filter((row) => !exclusions.has(row.eaId) || row.collected)
     } }));
     const result = mode === "single" ? yield* planGalleryGradeSteps({ ...searchTargets[0], ...searchOptions }) : yield* planGalleryJointSteps({ targets: searchTargets, ...searchOptions, budget: remainingBudget });
-    const common = { ...result, targets: nextTargets, ledger: nextLedger, spent, remainingBudget };
+    const common = { ...result, targets: nextTargets, ledger: nextLedger2, spent, remainingBudget };
     if (result.status !== "ready" || remainingBudget === null) return common;
     const plans = result.plans.filter((plan) => plan.totalPrice !== null && plan.totalPrice <= remainingBudget);
     return plans.length ? { ...common, plans } : {
@@ -13150,7 +13580,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{overflow:hidden;text-overflow:ellipsis}
     #gallery-bulk-list-dialog .list-card{height:50px;width:82px;position:relative;display:inline-block;vertical-align:middle;margin-right:7px}
     #gallery-bulk-list-dialog .list-card slot{display:block;transform:scale(.5);transform-origin:top left;width:144px;height:200px}
-    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid #35414a;background:#151a20}
+    /* Keep actions reachable when a long list exceeds the viewport. */
+    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:8px;margin:8px -16px -16px;padding:10px 16px 16px;border-top:1px solid #35414a;background:#151a20;position:sticky;bottom:-1px;z-index:4}
     #gallery-bulk-list-dialog .list-footer button.primary{background:#b0ed55;border-color:#b0ed55;color:#141c09;font-weight:700;min-width:122px}
     #gallery-bulk-list-dialog output{display:block;overflow-wrap:anywhere;margin:7px 0;color:#aab6bf;font-size:11px;min-height:16px}
     #gallery-bulk-list-dialog progress{display:block;height:5px;border:0;border-radius:5px;overflow:hidden;background:#303b45}
@@ -13184,7 +13615,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     #gallery-bulk-list-dialog td small{display:block;font-size:10px;line-height:1.4;color:#c3c7c9}
     #gallery-bulk-list-dialog tbody{background:#424242}
     #gallery-bulk-list-dialog tfoot{position:static;background:#191d23}
-    #gallery-bulk-list-dialog .list-footer{background:#191d23;border:0;padding:24px 0 8px}
+    #gallery-bulk-list-dialog .list-footer{background:#191d23;border:0;margin:8px -16px -16px;padding:24px 16px 16px;bottom:-16px;box-shadow:0 -8px 0 #191d23}
+    @media(max-width:640px){#gallery-bulk-list-dialog .list-footer{margin-inline:-12px;margin-bottom:-12px;padding:12px;bottom:-12px;box-shadow:0 -6px 0 #191d23}}
     #gallery-bulk-list-dialog .dialog-header>button{border:0;background:transparent;font-size:22px;padding:0 4px}
     #gallery-bulk-list-dialog .list-selection{margin-right:auto}
     #gallery-bulk-list-dialog .list-pagebar{justify-content:flex-end;margin:26px 0 12px}
@@ -13390,6 +13822,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     scheduleCancel.disabled = true;
     const scheduleStatus = add(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
     scheduleStatus.setAttribute("role", "status");
+    dialog.append(actions);
     const selected = /* @__PURE__ */ new Set(), overrides = {}, rows = /* @__PURE__ */ new Map();
     let generatedPrices = null;
     let viewMode = "cards", pageIndex = 0;
@@ -13904,7 +14337,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const rows = /* @__PURE__ */ new Map();
     const owned2 = new Set(targets.flatMap((target) => target.progress.rows.filter(isGalleryOwned).map((row) => row.eaId)));
     for (const target of targets) for (const row of target.progress.rows) {
-      if (!owned2.has(row.eaId)) rows.set(row.eaId, row);
+      if (row.collected === false && !owned2.has(row.eaId)) rows.set(row.eaId, row);
     }
     const ids = [...rows.keys()], snapshot = { source: "public-references", prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
     for (let start = 0; start < ids.length; start += 250) {
@@ -13974,7 +14407,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     .fcat-purchase-results .purchase-row>label:not(:first-child){margin-top:6px}`;
     const content = add(root, "div");
     let totals, error2, retryButton;
-    const valid2 = () => {
+    const valid3 = () => {
       let total = 0, reason = "";
       if (!Number.isSafeInteger(context?.balance) || context.balance < 0) reason = "\u5F53\u524D\u4F59\u989D\u65E0\u6CD5\u786E\u8BA4\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u8D2D\u4E70\u7ED3\u679C\u3002";
       const items = [...selected].map((definitionId) => ({ definitionId, maxBuy: edits.get(definitionId) }));
@@ -13990,7 +14423,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     const updateTotals = () => {
       if (!totals) return;
-      const value = valid2();
+      const value = valid3();
       totals.textContent = `\u5DF2\u9009 ${value.items.length} \u5F20 \xB7 \u672C\u6B21\u6700\u591A ${amount(value.total)} \u91D1\u5E01 \xB7 \u6BCF\u5361\u6700\u591A ${context?.policy.purchaseAttempts ?? "\u2014"} \u6B21`;
       error2.textContent = actionError || value.reason;
       retryButton.textContent = `\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361\uFF08${value.items.length}\uFF09`;
@@ -14162,7 +14595,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         });
         totals = add(content, "p");
         retryButton = button(content, "\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361", () => {
-          const value = valid2();
+          const value = valid3();
           if (value.reason || !value.items.length) throw Error("FC27_BUY_RETRY_CAP_INVALID");
           return retry({
             operationId: context.operationId,
@@ -14284,6 +14717,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     purchase = null,
     setFirstOwner = null,
     planStore = null,
+    scoreCache = null,
+    accounting = null,
     listing = null,
     relist = null,
     timers = document.defaultView,
@@ -14397,6 +14832,37 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         return Promise.resolve(false);
       }
     };
+    let accountingBusy = false;
+    const refreshAccounting = async (reconcile = false) => {
+      if (!accounting || accountingBusy || disposed || !active) return;
+      const identity5 = scope2(), output = node("gallery-accounting-summary"), button = node("gallery-accounting-refresh");
+      if (!output || !button) return;
+      accountingBusy = true;
+      button.disabled = true;
+      if (reconcile) output.textContent = "\u6B63\u5728\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\u2026";
+      try {
+        const value = await (reconcile ? accounting.reconcile() : accounting.inspect());
+        if (disposed || !active || identity5 !== scope2()) return;
+        node("gallery-accounting").hidden = false;
+        if (value?.status !== "observed") output.textContent = `\u51FA\u552E\u8D26\u672C\u672A\u786E\u8BA4\uFF08${value?.reason ?? "\u8BFB\u53D6\u5931\u8D25"}\uFF09\uFF0C\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u65E5\u5FD7\u3002`;
+        else {
+          output.textContent = `\u51C0\u6210\u672C ${count2(value.netCost)} \xB7 \u5DF2\u4E70 ${count2(value.spent)} \xB7 \u7A0E\u540E\u6536\u5165 ${count2(value.netRevenue)} \xB7 \u5DF2\u552E ${value.sold}/${value.entries}${value.unknown ? ` \xB7 ${value.unknown} \u5F20\u72B6\u6001\u5F85\u786E\u8BA4` : ""}`;
+          output.title = `\u6210\u4EA4\u603B\u989D ${count2(value.grossRevenue)}\uFF0CEA \u7A0E ${count2(value.tax)}\uFF1B\u672A\u786E\u8BA4\u51FA\u552E\u7684\u5361\u4ECD\u8BA1\u5165\u6210\u672C\u3002`;
+        }
+        if (value?.status === "blocked") void diag({ event: "accounting", phase: "reconcile", status: "failed", reason: value.reason });
+      } catch {
+        if (identity5 === scope2()) {
+          node("gallery-accounting").hidden = false;
+          output.textContent = "\u51FA\u552E\u8D26\u672C\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\uFF1B\u6CA1\u6709\u53D1\u9001\u6302\u724C\u8BF7\u6C42\u3002";
+        }
+      } finally {
+        accountingBusy = false;
+        button.disabled = false;
+      }
+    };
+    node("gallery-accounting-refresh")?.addEventListener("click", (event) => {
+      if (event.isTrusted) void refreshAccounting(true);
+    });
     let buying = false, purchaseSummary = null;
     let purchaseResults = null;
     let purchaseReplan = null;
@@ -14476,12 +14942,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           }
         });
         if (disposed || !active || identity5 !== scope2()) return;
+        const diagnosticStatus = { purchased: "success", partial: "partial", "recovery-required": "recovery-required" }[outcome.status] ?? "blocked";
         void diag({
           event: "purchase-result",
           phase: "execute",
-          status: outcome.status === "purchased" ? "success" : "blocked",
+          status: diagnosticStatus,
           reason: outcome.reason,
           count: outcome.purchased ?? 0,
+          requestedCount: outcome.total ?? 0,
           spent: outcome.spent ?? 0
         });
         output.textContent = `${outcome.status === "purchased" ? "\u8D2D\u4E70\u5B8C\u6210" : "\u8D2D\u4E70\u672A\u5B8C\u6210"} \xB7 \u5DF2\u8D2D\u4E70 ${outcome.purchased ?? 0} \u5F20 \xB7 ${count2(outcome.spent ?? 0)} \u91D1\u5E01`;
@@ -14496,6 +14964,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         };
         if (outcome.reason && purchaseMessages[outcome.reason]) output.textContent += ` \xB7 ${purchaseMessages[outcome.reason]}`;
         output.textContent += " \xB7 \u51FA\u552E\u8BA1\u5212\uFF1A\u4E70\u5165\u540E\u9ED8\u8BA4\u8FDB\u5165 Club \u5E76\u4FDD\u7559\uFF0C\u4E0D\u81EA\u52A8\u6302\u724C\uFF1B\u6302\u724C/\u91CD\u6302\u9700\u5355\u72EC\u786E\u8BA4\u3002";
+        if (outcome.accountingWarning) {
+          output.textContent += ` \xB7 \u6210\u4EA4\u5DF2\u4FDD\u7559\uFF0C\u51FA\u552E\u8D26\u672C\u672A\u66F4\u65B0\uFF08${outcome.accountingWarning}\uFF09\uFF0C\u8BF7\u6838\u5BF9\u8D26\u672C\uFF0C\u4E0D\u8981\u91CD\u590D\u8D2D\u4E70\u3002`;
+          void diag({ event: "accounting", phase: "purchase", status: "failed", reason: outcome.accountingWarning });
+        }
         if (outcome.collection?.status === "pending") output.textContent += " \xB7 \u6536\u96C6\u5F85\u786E\u8BA4\uFF1B\u518D\u6B21\u6838\u5BF9\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165";
         if (outcome.failures?.length) output.textContent += ` \xB7 ${outcome.failures.length} \u5F20\u672A\u5B8C\u6210\uFF0C\u53EF\u7EED\u8D2D`;
         const resultList = node("gallery-purchase-results");
@@ -14569,7 +15041,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         return runGalleryPlan(steps, {
           current: current2,
           progress: (state2) => {
-            message.textContent = `\u6B63\u5728\u91CD\u7B97\u2026 ${state2.evaluations} \u4E2A\u5019\u9009`;
+            message.textContent = state2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(state2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u91CD\u7B97\u2026 ${state2.evaluations} \u4E2A\u5019\u9009`;
           }
         });
       })().then((plan) => {
@@ -14600,7 +15072,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const purchaseButton = (parent, items, binding, {
       budget = null,
       label = "\u6279\u91CF\u8D2D\u4E70",
-      valid: valid2 = () => true,
+      valid: valid3 = () => true,
       progress = null,
       targetGrade = null,
       replanContext = null
@@ -14631,7 +15103,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           blocked11("FC27_GALLERY_ACCOUNT_CHANGED", "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D\u96C6\u5408");
           return;
         }
-        if (!valid2()) {
+        if (!valid3()) {
           blocked11("FC27_GALLERY_PURCHASE_PLAN_STALE", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u540E\u518D\u8D2D\u4E70");
           return;
         }
@@ -14856,7 +15328,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     let scoreRenderTimer = null;
     const scoredSets = /* @__PURE__ */ new Set();
-    const scoreQueue = createGalleryScoreQueue({ onUpdate: (setId) => {
+    const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, onUpdate: (setId) => {
       scoredSets.add(setId);
       if (disposed || !active || scoreRenderTimer !== null) return;
       scoreRenderTimer = setTimeout(() => {
@@ -15005,10 +15477,28 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       output.setAttribute("aria-live", "polite");
       const overview = add(section, "div", "", "gallery-grade-overview");
       overview.setAttribute("aria-live", "polite");
+      const rewardText = (snapshot) => {
+        if (!snapshot) return "\u8BF7\u91CD\u65B0\u751F\u6210";
+        const text5 = snapshot.rewards.map((reward) => `${reward.label} \xD7${count2(reward.quantity)}`).join("\u3001");
+        return `${text5 || (snapshot.rewardsComplete ? "\u65E0" : "\u672A\u63D0\u4F9B")}${snapshot.rewardsComplete ? "" : "\uFF08\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1\uFF09"}`;
+      };
+      const showRewardChange = (parent, current2, projected2) => {
+        const line = add(parent, "small", "", "gallery-reward-estimate");
+        if (!current2 || !projected2) {
+          line.textContent = "\u5956\u52B1\u9884\u4F30\uFF1A\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848";
+          return;
+        }
+        const before = new Map(current2.rewards.map((reward) => [reward.key, reward.quantity]));
+        const changes = projected2.rewards.map((reward) => ({ ...reward, quantity: reward.quantity - (before.get(reward.key) ?? 0) })).filter((reward) => reward.quantity !== 0);
+        line.textContent = `\u76EE\u5F55\u9884\u4F30 \xB7 ${current2.grade ?? "\u672A\u8FBE\u6863"} \u2192 ${projected2.grade ?? "\u672A\u8FBE\u6863"} \xB7 \u7D2F\u8BA1\u5956\u52B1\uFF1A${rewardText(current2)} \u2192 ${rewardText(projected2)}`;
+        if (changes.length) line.textContent += ` \xB7 \u5DEE\u989D\uFF1A${changes.map((reward) => `${reward.label} ${reward.quantity > 0 ? "+" : ""}${count2(reward.quantity)}`).join("\u3001")}`;
+        else line.textContent += " \xB7 \u5DEE\u989D 0";
+      };
       const overviewKey = JSON.stringify([scope2(), set, result.catalog.tags, value.progress, planningPrices(value)]);
       const showOverview = (plan) => {
         overview.replaceChildren();
         if (!plan) return;
+        add(overview, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
         for (const item2 of plan.grades ?? []) {
           const saved2 = planCache.get(set.id)?.plan;
           const candidate = saved2?.status === "ready" && saved2.targetGrade === item2.grade ? saved2.plans?.[0] ?? item2.candidate : item2.candidate;
@@ -15016,6 +15506,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           add(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
           add(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
           if (candidate?.score != null) add(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
+          add(line, "small", `\u672C\u6863\uFF1A${rewardText(item2.rewards?.tier)} \xB7 \u7D2F\u8BA1\uFF1A${rewardText(item2.rewards?.cumulative)}`, "gallery-reward-estimate");
         }
       };
       const show = (plan, expectedPlanBinding = planCache.get(set.id)?.binding) => {
@@ -15024,8 +15515,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           add(output, "small", `\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan?.reason ?? "\u8F93\u5165\u4E0D\u5B8C\u6574"}`, "gallery-unknown");
           return;
         }
+        if (plan.collectionUnknownCount) add(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
         if (plan.status === "achieved") {
-          add(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361\u3002`);
+          add(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
+          showRewardChange(output, plan.currentRewards, plan.currentRewards);
+          add(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
           return;
         }
         const reasons2 = {
@@ -15056,12 +15550,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           return;
         }
         add(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
+        add(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
         if (!plan.searchComplete) add(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
         if (plan.costAudit) add(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
         for (const [index, candidate] of plan.plans.entries()) {
           const details2 = add(output, "details");
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count2(candidate.currentScore)} + \u65B0\u589E ${count2(candidate.addedScore ?? 0)} = ${count2(candidate.score)} \u5206` : `${count2(candidate.score)} \u5206`;
-          add(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
+          const heading = add(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
+          showRewardChange(heading, plan.currentRewards, candidate.rewards);
           const list2 = add(details2, "ul");
           for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
           if (candidate.missingPriceIds.length) add(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
@@ -15124,7 +15620,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
             current: current2,
             progress: (value2) => {
-              output.textContent = `\u6B63\u5728\u8BA1\u7B97\u2026 ${value2.evaluations} \u4E2A\u5019\u9009`;
+              output.textContent = value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value2.evaluations} \u4E2A\u5019\u9009`;
             }
           }) : await gradePlanner(input);
           if (plan) void diag({
@@ -15136,6 +15632,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             count: plan.candidateCount,
             requestedCount: plan.requestedCandidates,
             quotedCount: plan.quotedCandidateCount,
+            unknownCount: plan.collectionUnknownCount,
             eaScoreCount: plan.scoreSourceCounts?.ea,
             catalogScoreCount: plan.scoreSourceCounts?.catalog,
             targetScore: plan.threshold,
@@ -15252,6 +15749,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       updateFooterGeometry();
     };
     const details = /* @__PURE__ */ new Map();
+    const comparisonViews = /* @__PURE__ */ new Map();
     const overviewCache = /* @__PURE__ */ new Map();
     const planCache = /* @__PURE__ */ new Map();
     const restoringPlans = /* @__PURE__ */ new Map();
@@ -15306,6 +15804,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       return planBinding(current2, set) === expectedBinding && planCache.get(id10)?.binding === expectedBinding;
     };
     const jointTargets = /* @__PURE__ */ new Map();
+    const catalogObjective = () => node("gallery-joint-objective").value === "catalog";
     let jointMode = false;
     let targetsIdentity = null, targetsEpoch = 0, restoringTargets = false;
     let planningEpoch = 0;
@@ -15392,6 +15891,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       container.replaceChildren();
       node("gallery-joint-count").textContent = String(jointTargets.size);
       node("gallery-joint-plan").disabled = !jointTargets.size || restoringTargets || jointRun === planningEpoch;
+      const rewardSelect = node("gallery-joint-reward"), previousReward = rewardSelect.value;
+      rewardSelect.replaceChildren();
+      rewardSelect.hidden = !catalogObjective();
+      for (const choice of galleryRewardOptions([...jointTargets.keys()].map((id10) => ({ set: currentGallerySet(id10) })))) {
+        const option = document.createElement("option");
+        option.value = choice.key;
+        option.textContent = choice.label;
+        rewardSelect.append(option);
+      }
+      if ([...rewardSelect.options].some((row) => row.value === previousReward)) rewardSelect.value = previousReward;
+      if (catalogObjective() && !rewardSelect.options.length) node("gallery-joint-plan").disabled = true;
       if (!jointTargets.size) {
         add(container, "small", "\u5C1A\u65E0\u8054\u5408\u76EE\u6807");
         return;
@@ -15428,7 +15938,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           select.append(option);
         }
         select.value = grade;
-        select.disabled = restoringTargets;
+        select.disabled = restoringTargets || catalogObjective();
         row.append(select);
         select.addEventListener("change", () => {
           if (restoringTargets || checkScope() === false) return;
@@ -15480,6 +15990,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const showJointPlan = (plan, inputs = []) => {
       const output = node("gallery-joint-output");
       output.replaceChildren();
+      if (plan.collectionUnknownCount) add(output, "small", `${plan.collectionUnknownCount} \u6761\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+      const rewardEstimate = plan.rewardEstimate;
+      if (rewardEstimate) {
+        const note = add(output, "small", `\u76EE\u5F55\u9884\u4F30 \xB7 ${rewardEstimate.label} \xB7 \u5F53\u524D ${count2(rewardEstimate.baselineQuantity)}`, "gallery-unknown");
+        note.title = "\u6BCF\u4E2A\u96C6\u5408\u7D2F\u8BA1\u5DF2\u8FBE\u5230\u7684\u5404\u7EA7\u76EE\u5F55\u5956\u52B1\uFF1B\u4E0D\u540C\u5956\u52B1\u4E0D\u6298\u7B97\u91D1\u5E01\u3002\u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002";
+      }
+      if (plan.status === "achieved" && rewardEstimate) {
+        add(output, "p", "\u6240\u9009\u76EE\u5F55\u5956\u52B1\u5DF2\u8FBE\u5F53\u524D\u76EE\u5F55\u4E0A\u9650\uFF0C\u65E0\u9700\u8865\u5361\u3002\u9886\u53D6\u72B6\u6001\u672A\u786E\u8BA4\u3002");
+        return;
+      }
       if (plan.status === "achieved") {
         add(output, "p", "\u5F53\u524D\u8054\u5408\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u8865\u5361\u3002");
         return;
@@ -15494,17 +16014,21 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           "beam-search-truncated": "\u6709\u754C\u641C\u7D22\u672A\u627E\u5230\u65B9\u6848\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
           "score-selection-bounded": "\u8BA1\u5206\u9009\u961F\u5C1A\u672A\u7A77\u5C3D\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
           "score-conditions-unknown": "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u5F85\u6838\u5B9E",
+          "collection-status-unknown": "\u5DF2\u786E\u8BA4\u6750\u6599\u5C1A\u672A\u627E\u5230\u65B9\u6848\uFF0C\u672A\u77E5\u6536\u96C6\u5361\u6392\u9664\u540E\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
           "budget-unreachable": "\u5F53\u524D\u9884\u7B97\u4E0D\u8DB3",
           "target-unreachable": "\u5F53\u524D\u6750\u6599\u8FBE\u4E0D\u5230\u8054\u5408\u76EE\u6807",
           "version-facts-conflict": "\u96C6\u5408\u95F4\u7684\u7248\u672C\u72B6\u6001\u4E0D\u4E00\u81F4\uFF0C\u9700\u8981\u66F4\u65B0",
           "budget-invalid": "\u8BF7\u8F93\u5165\u975E\u8D1F\u6574\u6570\u9884\u7B97",
-          "target-context-mismatch": "\u96C6\u5408\u8D26\u53F7\u6216\u5E73\u53F0\u4E0D\u4E00\u81F4"
+          "target-context-mismatch": "\u96C6\u5408\u8D26\u53F7\u6216\u5E73\u53F0\u4E0D\u4E00\u81F4",
+          "reward-budget-required": "\u76EE\u5F55\u9884\u4F30\u9700\u8981\u603B\u9884\u7B97",
+          "reward-type-unknown": "\u8BF7\u9009\u62E9\u76EE\u5F55\u5956\u52B1\u7C7B\u578B",
+          "reward-improvement-not-found": "\u672C\u6B21\u6709\u754C\u641C\u7D22\u672A\u627E\u5230\u66F4\u9AD8\u76EE\u5F55\u5956\u52B1\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u65E0\u89E3"
         };
         add(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
         for (const target of plan.targets ?? []) add(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
         return;
       }
-      if (!plan.searchComplete) add(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
+      if (!plan.searchComplete) add(output, "small", rewardEstimate ? "\u6709\u754C\u76EE\u5F55\u9884\u4F30\uFF0C\u4E0D\u4FDD\u8BC1\u5956\u52B1\u6700\u591A\u6216\u603B\u4EF7\u6700\u4F4E\u3002" : "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
       if (plan.costAudit) add(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\uFF0C\u6700\u4F4E\u76EE\u6807\u8BA1\u5206 ${count2(plan.costAudit.score)} \u5206\u3002`, "gallery-unknown");
       for (const [index, planRow] of plan.plans.entries()) {
         const detail = add(output, "details");
@@ -15512,7 +16036,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         add(detail, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${planRow.items.length} \u5F20 \xB7 ${planRow.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(planRow.totalPrice)} \u{1FA99}`}`);
         if (planRow.remainingBudget != null) add(detail, "small", `\u5269\u4F59\u9884\u7B97 ${count2(planRow.remainingBudget)} \u{1FA99}`);
         if (planRow.estimated) add(detail, "small", "\u5305\u542B\u516C\u5F00\u4F30\u5206", "gallery-unknown");
-        if (inputs.length) {
+        if (planRow.rewardEstimate) {
+          const estimate = planRow.rewardEstimate;
+          add(detail, "strong", `${estimate.label} \xB7 ${count2(estimate.baselineQuantity)} \u2192 ${count2(estimate.projectedQuantity)}\uFF08\u76EE\u5F55\u5DEE\u989D +${count2(estimate.change)}\uFF09`);
+          if (estimate.projectedTargets.some((target) => !target.rewardsComplete)) add(detail, "small", "\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1", "gallery-unknown");
+        }
+        if (inputs.length && !rewardEstimate) {
           const benchmark = add(detail, "button", "\u5BF9\u7167\u9010\u96C6\u5408");
           benchmark.type = "button";
           const comparison = add(detail, "output", "", "gallery-joint-benchmark");
@@ -15540,7 +16069,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const targets = add(detail, "table");
         for (const target of planRow.targets) {
           const row = add(targets, "tr");
-          add(row, "th", `${target.name} \xB7 ${target.targetGrade}`);
+          add(row, "th", `${target.name} \xB7 ${target.targetGrade ?? "\u672A\u8FBE\u6863\u4F4D"}`);
           add(row, "td", `${count2(target.score)} \u5206`);
           add(row, "td", target.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u76EE\u5F55\u5956\u52B1");
         }
@@ -15548,19 +16077,28 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const list2 = add(detail, "ul");
         for (const item2 of planRow.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
         const targetsBinding = JSON.stringify([...jointTargets]);
-        const jointBinding = () => JSON.stringify([targetValue().budget, [...jointTargets].map(([id10, grade]) => [
-          id10,
-          grade,
-          planBinding(details.get(id10), currentGallerySet(id10))
-        ]).sort((a, b) => a[0].localeCompare(b[0]))]);
+        const jointBinding = () => JSON.stringify([
+          targetValue().budget,
+          node("gallery-joint-objective").value,
+          node("gallery-joint-reward").value,
+          [...jointTargets].map(([id10, grade]) => [
+            id10,
+            grade,
+            planBinding(details.get(id10), currentGallerySet(id10))
+          ]).sort((a, b) => a[0].localeCompare(b[0]))
+        ]);
         const jointSemanticBinding = jointBinding();
+        const replanTargets = planRow.rewardEstimate ? inputs.flatMap((target) => {
+          const grade = planRow.targets.find((row) => row.setId === target.set.id)?.targetGrade;
+          return grade ? [{ ...target, targetGrade: grade }] : [];
+        }) : inputs;
         purchaseButton(
           detail,
           planRow.items,
           `joint:${targetsBinding}:${planRow.items.map((item2) => item2.eaId).join(",")}`,
           {
             budget: targetValue().budget,
-            replanContext: { targets: inputs, mode: "joint", ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
+            replanContext: { targets: replanTargets, mode: "joint", ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
             valid: () => jointMode && JSON.stringify([...jointTargets]) === targetsBinding && jointBinding() === jointSemanticBinding
           }
         );
@@ -15568,6 +16106,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     node("gallery-mode-browse").addEventListener("click", () => setJointMode(false));
     node("gallery-mode-joint").addEventListener("click", () => setJointMode(true));
+    node("gallery-joint-objective").addEventListener("change", () => {
+      if (checkScope() === false) return;
+      invalidateJoint();
+      renderJoint();
+    });
+    node("gallery-joint-reward").addEventListener("change", () => {
+      if (checkScope() !== false) invalidateJoint();
+    });
     node("gallery-joint-budget").addEventListener("input", (event) => {
       if (!event.isTrusted || checkScope() === false) return;
       invalidateJoint();
@@ -15595,6 +16141,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         });
       }
       const rawBudget = node("gallery-joint-budget").value.trim(), budget = rawBudget ? Number(rawBudget) : null;
+      const catalogRewardKey = catalogObjective() ? node("gallery-joint-reward").value : null;
+      if (catalogObjective() && budget === null) {
+        showJointPlan({ status: "unavailable", reason: "reward-budget-required" });
+        return;
+      }
       const token = ++planningEpoch, identity5 = scope2();
       jointRun = token;
       const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && jointMode;
@@ -15622,7 +16173,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const refreshIds = loadPlanningPrices ? [] : [...new Set(targets.filter((target) => {
           const value = details.get(target.set.id);
           return needsPriceRefresh(value);
-        }).flatMap((target) => target.progress.rows.filter((row) => !isGalleryOwned(row)).map((row) => row.eaId)))].sort((a, b) => a - b);
+        }).flatMap((target) => target.progress.rows.filter((row) => row.collected === false && !isGalleryOwned(row)).map((row) => row.eaId)))].sort((a, b) => a - b);
         if (refreshIds.length && typeof loadPrices === "function") {
           output.textContent = "\u6B63\u5728\u66F4\u65B0\u516C\u5F00\u62A5\u4EF7\u2026";
           const snapshots = [];
@@ -15646,17 +16197,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           }
         }
         void diag({ event: "joint-plan", phase: "planner", status: "started", count: targets.length });
-        const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget }), {
+        const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget, catalogRewardKey }), {
           current: current2,
           progress: (value) => {
-            output.textContent = `\u6B63\u5728\u8BA1\u7B97\u2026 ${value.evaluations} \u4E2A\u5019\u9009`;
+            output.textContent = value.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value.evaluations} \u4E2A\u5019\u9009`;
           }
         });
         if (plan) void diag({
           event: "joint-plan",
           phase: "planner",
           status: plan.status === "ready" || plan.status === "achieved" ? "success" : "blocked",
-          replayInput: { targets, budget },
+          replayInput: { targets, budget, catalogRewardKey },
           reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? "") ? `FC27_GALLERY_JOINT_${plan.reason.replaceAll("-", "_").toUpperCase()}` : void 0,
           evaluations: plan.evaluations,
           count: targets.length,
@@ -15664,6 +16215,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           retainedCount: plan.candidateCount,
           expandedCount: plan.omittedCandidates,
           quotedCount: plan.quotedCandidateCount,
+          unknownCount: plan.collectionUnknownCount,
           bestPrice: plan.plans?.[0]?.totalPrice,
           beamTruncated: plan.beamTruncated === true,
           budgetExhausted: plan.budgetExhausted === true,
@@ -15704,6 +16256,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       selection++;
       selectedSetId = null;
       details.clear();
+      comparisonViews.clear();
+      if (node("gallery-accounting")) {
+        node("gallery-accounting").hidden = true;
+        node("gallery-accounting-summary").textContent = "";
+      }
       selectedCards.clear();
       selectionSource = null;
       selectionBudget = "";
@@ -15713,6 +16270,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (syncing) sync?.stop();
       jointTargets.clear();
       node("gallery-joint-budget").value = "";
+      node("gallery-joint-objective").value = "grade";
       targetsIdentity = null;
       ++targetsEpoch;
       restoringTargets = false;
@@ -16066,33 +16624,58 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           const compare = add(meta, "button", "\u6BD4\u4EF7", "gallery-card-compare");
           compare.type = "button";
           const comparison = add(meta, "small", "", "gallery-market-comparison");
-          compare.addEventListener("click", async (event) => {
-            if (!event.isTrusted || !thisDetailCurrent(value, set.id)) return;
-            compare.disabled = true;
-            comparison.textContent = "\u8BFB\u53D6 EA \u53EF\u89C1\u6700\u4F4E\u4EF7\u2026";
+          const compareScope = scope2(), compareSource = result?.source;
+          const key = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
+          const current2 = () => !disposed && active && !jointMode && selectedSetId === set.id && compareScope === scope2() && compareSource === result?.source && comparison.isConnected;
+          const paint = (state2) => {
+            if (!current2()) return;
+            compare.disabled = state2?.pending === true;
+            comparison.title = "";
             meta.querySelector(".gallery-market-listings")?.remove();
-            const compareScope = scope2();
+            if (!state2) {
+              comparison.textContent = "";
+              return;
+            }
+            if (state2.pending) {
+              comparison.textContent = "\u8BFB\u53D6 EA \u53EF\u89C1\u6700\u4F4E\u4EF7\u2026";
+              return;
+            }
+            const quote2 = state2.quote;
+            if (quote2?.status !== "observed") {
+              comparison.textContent = `\u6BD4\u4EF7\u6682\u4E0D\u53EF\u7528 \xB7 ${quote2?.reason ?? "\u672A\u77E5"}`;
+              comparison.title = quote2?.reason ?? "";
+              return;
+            }
+            const reference = cachedPrice(row, details.get(set.id) ?? value);
+            comparison.textContent = `EA ${quote2.price == null ? "\u65E0\u6709\u6548\u6302\u724C" : `${count2(quote2.price)} \u91D1\u5E01`} \xB7 \u53C2\u8003 ${reference == null ? "\u672A\u77E5" : `${count2(reference)} \u91D1\u5E01`}`;
+            if (quote2.listings?.length) {
+              const detail = add(meta, "details", "", "gallery-market-listings");
+              add(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
+              for (const listing2 of quote2.listings.slice(0, 3)) add(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
+            }
+          };
+          const stored = comparisonViews.get(key);
+          if (stored && (stored.pending || stored.expiresAt > Date.now())) {
+            stored.paint = paint;
+            paint(stored);
+          } else comparisonViews.delete(key);
+          compare.addEventListener("click", async (event) => {
+            if (!event.isTrusted || !current2() || comparisonViews.get(key)?.pending) return;
+            const currentRow = details.get(set.id)?.progress?.rows.find((item2) => item2.eaId === row.eaId);
+            if (!currentRow || isGalleryOwned(currentRow) || currentRow.collected !== false) return;
+            const state2 = { pending: true, quote: null, expiresAt: 0, paint };
+            comparisonViews.set(key, state2);
+            while (comparisonViews.size > 100) comparisonViews.delete(comparisonViews.keys().next().value);
+            paint(state2);
             try {
-              const quote2 = await marketCompare(row.eaId);
-              if (!comparison.isConnected || !thisDetailCurrent(value, set.id) || compareScope !== scope2()) return;
-              if (quote2?.status !== "observed") {
-                comparison.textContent = `\u6BD4\u4EF7\u6682\u4E0D\u53EF\u7528 \xB7 ${quote2?.reason ?? "\u672A\u77E5"}`;
-                comparison.title = quote2?.reason ?? "";
-                return;
-              }
-              comparison.title = "";
-              const reference = cachedPrice(row, value);
-              comparison.textContent = `EA ${quote2.price == null ? "\u65E0\u6709\u6548\u6302\u724C" : `${count2(quote2.price)} \u91D1\u5E01`} \xB7 \u53C2\u8003 ${reference == null ? "\u672A\u77E5" : `${count2(reference)} \u91D1\u5E01`}`;
-              if (quote2.listings?.length) {
-                const detail = add(meta, "details", "", "gallery-market-listings");
-                add(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
-                for (const listing2 of quote2.listings.slice(0, 3)) add(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
-              }
+              state2.quote = await marketCompare(row.eaId);
             } catch {
-              void diag({ event: "market-compare", phase: "view", status: "failed", reason: "FC27_GALLERY_COMPARE_VIEW_FAILED" });
-              if (comparison.isConnected && thisDetailCurrent(value, set.id) && compareScope === scope2()) comparison.textContent = "\u6BD4\u4EF7\u6682\u4E0D\u53EF\u7528";
+              state2.quote = { status: "blocked", reason: "FC27_GALLERY_COMPARE_VIEW_FAILED" };
+              void diag({ event: "market-compare", phase: "view", status: "failed", reason: state2.quote.reason });
             } finally {
-              compare.disabled = false;
+              state2.pending = false;
+              state2.expiresAt = (state2.quote?.observedAt ?? Date.now()) + 3e4;
+              if (comparisonViews.get(key) === state2) state2.paint(state2);
             }
           });
         }
@@ -16280,9 +16863,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const updateSyncButton = () => {
       if (!sync) return;
       const state2 = sync.state();
-      node("gallery-sync").hidden = false;
-      node("gallery-sync").disabled = syncing || state2.busy || !result?.catalog || !["futgg", "fodder"].includes(result.source);
-      node("gallery-sync").title = "\u5B8C\u6574\u590D\u6838\u5168\u90E8\u6536\u96C6\uFF1B\u5E73\u65F6\u81EA\u52A8\u589E\u91CF\u5408\u5E76";
+      const button = node("gallery-sync");
+      button.hidden = false;
+      button.disabled = syncing || state2.busy || !result?.catalog || !["futgg", "fodder"].includes(result.source);
+      button.title = "\u5B8C\u6574\u590D\u6838\u5168\u90E8\u6536\u96C6\uFF1B\u5E73\u65F6\u81EA\u52A8\u589E\u91CF\u5408\u5E76";
+      button.dataset.syncState = JSON.stringify({
+        busy: !!state2.busy,
+        synced: !!state2.synced,
+        task: state2.task ?? { active: false },
+        readerBusy: !!state2.reader?.busy,
+        progress: state2.progress ? {
+          phase: state2.progress.phase ?? null,
+          index: state2.progress.index ?? null,
+          total: state2.progress.total ?? null,
+          completed: state2.progress.completed ?? null,
+          pages: state2.progress.pages ?? null,
+          count: state2.progress.count ?? null
+        } : null
+      });
       node("gallery-sync-time").textContent = state2.syncedAt ? `\u4E0A\u6B21\u540C\u6B65 ${date(state2.syncedAt)}` : "\u5C1A\u672A\u540C\u6B65";
       const progress = foregroundSync?.progress ?? state2.progress;
       const bar = node("gallery-background-progress");
@@ -16400,6 +16998,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           invalidated.clear();
           setIconSelections.clear();
           planCache.clear();
+          comparisonViews.clear();
         }
         if (sourceChanged) {
           jointTargets.clear();
@@ -16517,6 +17116,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       scopeTimer = null;
       if (active && provider) {
         void refreshPurchases();
+        void refreshAccounting();
         void refreshRelist();
         if (!wasActive) {
           jointMode = false;
@@ -16699,12 +17299,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         status.textContent = reason(error2);
       } finally {
         busy = false;
-        let same21 = false;
+        let same23 = false;
         try {
-          same21 = scope2 === service.scope();
+          same23 = scope2 === service.scope();
         } catch {
         }
-        enabled(same21);
+        enabled(same23);
       }
     });
     readSources.addEventListener("change", () => {
@@ -16746,6 +17346,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     galleryListing: galleryListing2 = null,
     galleryRelist: galleryRelist2 = null,
     galleryFirstOwnerHistory = null,
+    galleryScoreCache = null,
+    galleryAccounting: galleryAccounting2 = null,
     publicPrices: publicPrices2 = null,
     galleryPlanningPrices = null,
     exportDiagnostics = null,
@@ -16760,7 +17362,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = fc27WorkbenchMarkup();
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, setFirstOwner: galleryFirstOwnerHistory });
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, setFirstOwner: galleryFirstOwnerHistory });
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: publicPrices2 });
     const selectTab = bindFc27WorkbenchTabs(shadow, host, (id10) => {
       gallery.setActive(id10 === "gallery");
@@ -18267,10 +18869,26 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           syncedAt: state.syncedAt,
           setSyncedAt: { ...state.setSyncedAt },
           busy: !!running,
+          running: running ? {
+            kind: running.kind ?? "sync",
+            startedAt: running.startedAt ?? null,
+            stopped: !!running.stopped,
+            progress: running.progress ? { ...running.progress } : null
+          } : null,
           needsRefresh: now() - (state.fullSyncAt ?? 0) >= ttlMs && now() >= state.retryAt && [...state.rows.values()].some((row) => row.isCollected !== true)
         };
       } catch {
-        return { synced: false, syncedAt: null, busy: !!running };
+        return {
+          synced: false,
+          syncedAt: null,
+          busy: !!running,
+          running: running ? {
+            kind: running.kind ?? "sync",
+            startedAt: running.startedAt ?? null,
+            stopped: !!running.stopped,
+            progress: running.progress ? { ...running.progress } : null
+          } : null
+        };
       }
     };
     const needsRead = (state, definitionId, missingOnly = false) => {
@@ -18289,9 +18907,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const state = stateFor(context), key = `${state.key}:${definitionIds?.join(",") ?? pool?.setId ?? "all"}`;
       if (inFlight.has(key)) return inFlight.get(key);
       const run = async () => {
-        const operation = { context, stopped: false };
+        const operation = { context, stopped: false, kind: "sync", startedAt: now(), progress: null };
         running = operation;
         const progress = (value) => {
+          operation.progress = value && typeof value === "object" ? { ...value } : null;
           try {
             onProgress?.(value);
           } catch {
@@ -18522,7 +19141,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const state = stateFor(context), key = `${state.key}:discover:${set.id}`;
       if (inFlight.has(key)) return inFlight.get(key);
       const run = async () => {
-        const operation = { context, stopped: false };
+        const operation = { context, stopped: false, kind: "discover", startedAt: now(), progress: null };
         running = operation;
         try {
           await restore(state);
@@ -18537,8 +19156,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               if (requests++) await new Promise((resolve) => setTimeout(resolve, 1500));
               assert(context);
               if (operation.stopped) return { status: "stopped" };
+              const update = { phase: "ea", index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size };
+              operation.progress = update;
               try {
-                onProgress?.({ phase: "ea", index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size });
+                onProgress?.(update);
               } catch {
               }
               const criteria = Object.assign(new root.UTSearchCriteriaDTO(), { type: root.SearchType?.PLAYER ?? "player", count: 200, offset }, query);
@@ -18679,7 +19300,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           return task.promise.then(() => sync({ source, setId, force, onProgress }));
         } else return task.promise;
       }
-      const operation = { setId, stopped: false, scope: null, startedAt: now() };
+      const operation = { setId, stopped: false, scope: null, phase: null, startedAt: now() };
+      progressState = null;
       const record = (fields4) => {
         try {
           Promise.resolve(diagnosticLog2?.record?.({ area: "gallery", event: "sync-run", ...fields4 })).catch(() => {
@@ -18767,16 +19389,56 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       return promise;
     };
     const state = () => {
-      const state2 = reader.syncState();
+      let nativeState;
+      try {
+        nativeState = reader.syncState();
+      } catch {
+        nativeState = { synced: false, syncedAt: null, busy: false, running: null };
+      }
+      const compact = (value) => value && typeof value === "object" ? {
+        phase: value.phase ?? null,
+        index: value.index ?? null,
+        total: value.total ?? null,
+        completed: value.completed ?? null,
+        pages: value.pages ?? null,
+        count: value.count ?? null,
+        setId: value.setId ?? null
+      } : null;
+      const taskState = task ? {
+        active: true,
+        setId: task.setId,
+        phase: task.phase ?? null,
+        stopped: !!task.stopped,
+        startedAt: task.startedAt,
+        ageMs: Math.max(0, now() - task.startedAt),
+        progress: compact(progressState)
+      } : {
+        active: false,
+        setId: null,
+        phase: null,
+        stopped: false,
+        startedAt: null,
+        ageMs: 0,
+        progress: null
+      };
       try {
         return {
-          ...state2,
-          busy: !!task || !!state2.busy,
-          synced: state2.synced && mappedScope === reader.scope(),
-          progress: task && task.scope === reader.scope() ? progressState : null
+          ...nativeState,
+          busy: !!task || !!nativeState.busy,
+          synced: nativeState.synced && mappedScope === reader.scope(),
+          progress: task && (!task.scope || task.scope === reader.scope()) ? progressState : null,
+          task: taskState,
+          reader: { busy: !!nativeState.busy, running: nativeState.running ?? null }
         };
       } catch {
-        return { ...state2, busy: !!task, synced: false, progress: progressState };
+        return {
+          ...nativeState,
+          busy: !!task,
+          synced: false,
+          progress: progressState,
+          task: taskState,
+          reader: { busy: true, running: null }
+        };
       }
     };
     return Object.freeze({
@@ -18810,7 +19472,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     liveEnabled,
     readSettings = async () => ({ status: "observed", queriesNumber: 5, quoteCeiling: null }),
     publicPrices: publicPrices2 = null,
-    diagnosticLog: diagnosticLog2 = null
+    diagnosticLog: diagnosticLog2 = null,
+    accounting = null
   }) {
     let busy = false, stopped = false;
     const create = ({ onProgress, isCurrent = () => true } = {}) => {
@@ -18834,6 +19497,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         exclusive: persistence.exclusive,
         assertCurrent: account,
         onProgress,
+        onPurchaseRecord: accounting ? (record) => accounting.recordPurchase(record) : null,
         shouldStop: () => stopped,
         preparePrices: publicPrices2 ? (record) => publicPrices2.preparePurchase(record, {
           isCurrent: () => {
@@ -18973,6 +19637,100 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
     };
     return Object.freeze(purchase);
+  }
+
+  // src/gallery/net-cost-store.js
+  var galleryNetCostKey = (scope2) => `fcat-fc27-gallery-net-cost-v1:${scope2}`;
+  var fail22 = (reason) => {
+    throw Error(reason);
+  };
+  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  function createGalleryNetCostStore({ get, set, exclusive, now = () => Date.now() }) {
+    const load = async (scope2) => {
+      let raw;
+      try {
+        raw = await get(galleryNetCostKey(scope2), null);
+      } catch {
+        fail22("FC27_GALLERY_ACCOUNTING_READ_FAILED");
+      }
+      if (raw == null) return createGalleryNetCostLedger({ scope: scope2 });
+      const value = normalizeGalleryNetCostLedger(raw);
+      if (!value || value.scope !== scope2 || value.entries.length > 5e3) fail22("FC27_GALLERY_ACCOUNTING_INVALID");
+      return value;
+    };
+    const write = async (scope2, ledger) => {
+      if (ledger.entries.length > 5e3) fail22("FC27_GALLERY_ACCOUNTING_FULL");
+      try {
+        await set(galleryNetCostKey(scope2), ledger);
+        if (!same18(await get(galleryNetCostKey(scope2), null), ledger)) fail22("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
+      } catch {
+        fail22("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
+      }
+    };
+    const run = async (scope2, task) => {
+      try {
+        if (typeof scope2 !== "string" || !scope2) fail22("FC27_GALLERY_CONTEXT_CHANGED");
+        return await exclusive(scope2, async () => task(await load(scope2)));
+      } catch (error2) {
+        return { status: "blocked", reason: /^FC27_[A-Z0-9_]+$/.test(error2.message) ? error2.message : "FC27_GALLERY_ACCOUNTING_UNAVAILABLE" };
+      }
+    };
+    return Object.freeze({
+      read: (scope2) => run(scope2, async (ledger) => ({ ...summarizeGalleryNetCost(ledger), ledger })),
+      ingest: (scope2, receipts) => run(scope2, async (ledger) => {
+        let next = ledger;
+        for (const receipt of receipts) {
+          const result = recordGalleryPurchase(next, receipt);
+          if (result.status === "blocked") fail22(result.reason);
+          next = result.ledger;
+        }
+        if (!same18(next, ledger)) await write(scope2, next);
+        return { ...summarizeGalleryNetCost(next), ledger: next };
+      }),
+      markListed: (scope2, receipts) => run(scope2, async (ledger) => {
+        if (!Array.isArray(receipts)) fail22("FC27_GALLERY_ACCOUNTING_LISTING_UNCONFIRMED");
+        let next = ledger;
+        for (const receipt of receipts) {
+          const result = recordGallerySale(next, { ...receipt, state: "listed" });
+          if (result.status === "blocked") fail22(result.reason);
+          next = result.ledger;
+        }
+        if (!same18(next, ledger)) await write(scope2, next);
+        return { ...summarizeGalleryNetCost(next), ledger: next };
+      }),
+      reconcile: (scope2, snapshot) => run(scope2, async (ledger) => {
+        if (snapshot?.status !== "observed" || !Array.isArray(snapshot.receipts) || new Set(snapshot.receipts.map((row) => row.itemId)).size !== snapshot.receipts.length) fail22("FC27_GALLERY_SALES_UNCONFIRMED");
+        let next = ledger, unknown = 0;
+        const rows = new Map(snapshot.receipts.map((row) => [row.itemId, row]));
+        for (const entry of ledger.entries) {
+          if (entry.state === "sold") continue;
+          const row = rows.get(entry.itemId);
+          if (!row) {
+            if (["listed", "unsold", "unknown"].includes(entry.state)) unknown++;
+            continue;
+          }
+          if (row.definitionId !== entry.definitionId) fail22("FC27_GALLERY_NET_COST_IDENTITY_CONFLICT");
+          const sale = {
+            itemId: entry.itemId,
+            definitionId: entry.definitionId,
+            listingTradeId: row.listingTradeId,
+            listedPrice: row.listedPrice
+          };
+          if (row.sold === true && row.listingTradeId) Object.assign(sale, { state: "sold", soldPrice: row.soldPrice, soldAt: now() });
+          else if (row.sold === false && row.expired === true) sale.state = "unsold";
+          else if (row.sold === false && row.state === "active") sale.state = "listed";
+          else {
+            unknown++;
+            continue;
+          }
+          const result = recordGallerySale(next, sale);
+          if (result.status === "blocked") fail22(result.reason);
+          next = result.ledger;
+        }
+        if (!same18(next, ledger)) await write(scope2, next);
+        return { ...summarizeGalleryNetCost(next), ledger: next, unknown };
+      })
+    });
   }
 
   // src/trade/contracts.js
@@ -20638,6 +21396,157 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     });
   }
 
+  // src/adapters/ea/fc27-gallery-sales.js
+  var predicate = (auction, name) => {
+    try {
+      return typeof auction?.[name] === "function" ? auction[name]() === true : null;
+    } catch {
+      return null;
+    }
+  };
+  function createFc27GallerySaleReader(runtime) {
+    const trade = createEaTradeAdapter(runtime);
+    return Object.freeze({ async refreshGallerySaleReceipts(options = {}) {
+      const refreshed = await trade.refreshTransferItems(options);
+      if (refreshed.status !== "completed") return { ...refreshed, receipts: [] };
+      const service = runtime?.services?.Item;
+      try {
+        if (typeof runtime?.repositories?.Item?.getTransferItems !== "function") return { status: "unsupported", receipts: [] };
+        const items = Array.from(runtime.repositories.Item.getTransferItems() ?? []);
+        if (items.length && typeof service?.refreshAuctions !== "function") return { status: "unsupported", receipts: [] };
+        if (items.length) {
+          const reply = service.refreshAuctions(items);
+          const value = await new Promise((resolve, reject) => {
+            const owner = {}, timer = setTimeout(() => {
+              try {
+                reply?.unobserve?.(owner);
+              } catch {
+              }
+              reject(Error("FC27_GALLERY_SALES_TIMEOUT"));
+            }, 2e4);
+            const done = (value2) => {
+              clearTimeout(timer);
+              try {
+                reply?.unobserve?.(owner);
+              } catch {
+              }
+              resolve(value2);
+            };
+            if (typeof reply?.observe === "function") {
+              try {
+                reply.observe(owner, (_sender, value2) => done(value2));
+              } catch (error2) {
+                clearTimeout(timer);
+                reject(error2);
+              }
+            } else if (reply?.then) reply.then(done, (error2) => {
+              clearTimeout(timer);
+              reject(error2);
+            });
+            else done(reply);
+          });
+          if (value?.success !== true) return { status: "rejected", receipts: [] };
+        }
+        const receipts = items.map((item2) => {
+          const auction = item2.getAuctionData?.();
+          const tradeId3 = auction?.tradeId ?? auction?.id;
+          return {
+            itemId: Number(item2.id),
+            definitionId: Number(item2.definitionId),
+            listingTradeId: tradeId3 == null ? null : String(tradeId3),
+            sold: predicate(auction, "isSold"),
+            expired: predicate(auction, "isExpired"),
+            state: predicate(auction, "isActiveTrade") === true ? "active" : "unknown",
+            soldPrice: auction?.currentBid ?? null,
+            listedPrice: auction?.buyNowPrice ?? null
+          };
+        });
+        return { status: "observed", receipts, capturedAt: Date.now() };
+      } catch {
+        return { status: "error", receipts: [] };
+      }
+    } });
+  }
+
+  // src/adapters/browser/fc27-gallery-accounting.js
+  var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  function createFc27GalleryAccounting({ root, get, set, adapterFactory = createFc27GallerySaleReader }) {
+    const store = createGalleryNetCostStore({ get, set, exclusive: async (scope2, task) => {
+      if (typeof root.navigator?.locks?.request !== "function") throw Error("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
+      return root.navigator.locks.request(`${FC27_TRADITIONAL_WEB_LOCK}:gallery-accounting:${scope2}`, { mode: "exclusive" }, task);
+    } });
+    const environment = () => {
+      const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
+      const assert = () => {
+        if (!same19(context, readFc27Context(root))) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+      };
+      return { context, scope: scope2, assert };
+    };
+    const observed = async (task) => {
+      try {
+        return await task();
+      } catch (error2) {
+        return { status: "blocked", reason: /^FC27_[A-Z0-9_]+$/.test(error2.message) ? error2.message : "FC27_GALLERY_ACCOUNTING_UNAVAILABLE" };
+      }
+    };
+    const ingest = async (env, record) => {
+      env.assert();
+      validateGalleryPurchaseRecord(record, env.scope, env.context);
+      const receipts = record.entries.filter((row) => ["bought", "move-pending", "move-rejected", "club"].includes(row.state)).map((row) => ({
+        itemId: row.itemId,
+        definitionId: row.definitionId,
+        tradeId: row.tradeId,
+        purchasePrice: row.price,
+        operationId: record.operationId
+      }));
+      const result = await store.ingest(env.scope, receipts);
+      env.assert();
+      return result;
+    };
+    return Object.freeze({
+      recordPurchase: (record) => observed(() => ingest(environment(), record)),
+      recordListings: (receipts) => observed(async () => {
+        const env = environment();
+        env.assert();
+        const rows = Array.isArray(receipts) ? receipts.map((row) => ({
+          itemId: row.item?.id ?? row.itemId,
+          definitionId: row.item?.definitionId ?? row.definitionId,
+          listingTradeId: row.listingTradeId,
+          listedPrice: row.buyNow
+        })) : receipts;
+        const result = await store.markListed(env.scope, rows);
+        env.assert();
+        return result;
+      }),
+      inspect: () => observed(async () => {
+        const env = environment(), result = await store.read(env.scope);
+        env.assert();
+        return result;
+      }),
+      reconcile: () => observed(async () => {
+        const env = environment();
+        const persistence = createFc27TransactionPersistence({ context: env.context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
+        return persistence.exclusive(env.scope, async () => {
+          env.assert();
+          const record = await get(galleryPurchaseKey(env.scope), null);
+          env.assert();
+          if (record) {
+            const saved = await ingest(env, record);
+            if (saved.status !== "observed") return saved;
+          }
+          const ledger = await store.read(env.scope);
+          env.assert();
+          if (ledger.status !== "observed" || !ledger.entries) return ledger;
+          const snapshot = await adapterFactory(root).refreshGallerySaleReceipts();
+          env.assert();
+          const result = await store.reconcile(env.scope, snapshot);
+          env.assert();
+          return result;
+        });
+      })
+    });
+  }
+
   // src/trade/schedule.js
   function finiteNumber4(value, fallback = 0) {
     const number2 = Number(value);
@@ -20736,8 +21645,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var id9 = (value) => Number.isSafeInteger(value) && value > 0;
   var tradeId2 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var clone3 = (value) => structuredClone(value);
-  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var fail22 = (reason) => {
+  var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var fail23 = (reason) => {
     throw new Error(reason);
   };
   var epoch = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -20807,14 +21716,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const raw = await get(key, null);
       if (raw === null) return null;
       const value = normalizeGalleryListingSchedule(raw);
-      if (!value || value.scope !== scope2 || !same18(value.context, context)) fail22("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!value || value.scope !== scope2 || !same20(value.context, context)) fail23("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       return value;
     };
     const write = async (value) => {
       const normalized = normalizeGalleryListingSchedule(value);
-      if (!normalized) fail22("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!normalized) fail23("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       await set(key, clone3(normalized));
-      if (!same18(await get(key, null), normalized)) fail22("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
+      if (!same20(await get(key, null), normalized)) fail23("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
       return normalized;
     };
     const inspect = async ({ purchase = null, at: at8 = now(), sessionReady = true } = {}) => {
@@ -20916,7 +21825,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/adapters/browser/fc27-gallery-listing.js
-  var fail23 = (reason) => {
+  var fail24 = (reason) => {
     throw new Error(reason);
   };
   var safe = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_LISTING_UNAVAILABLE";
@@ -20927,7 +21836,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (Number.isSafeInteger(code2) && code2 > 0) value.httpStatus = code2;
     return value;
   };
-  var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same21 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var circuitKey = (scope2) => `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
   var settingsKey = (scope2) => `fcat-fc27-gallery-list-settings-v1:${scope2}`;
   var normalizeSettings = (value) => {
@@ -20953,12 +21862,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var readCircuit = async (get, scope2) => {
     const value = await get(circuitKey(scope2), null);
     if (!value) return { schema: 1, scope: scope2, persistent: false, retryAt: 0 };
-    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail23("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
     return value;
   };
   var saveCircuit = async (get, set, scope2, value) => {
     await set(circuitKey(scope2), value);
-    if (same19(await get(circuitKey(scope2), null), value) === false) fail23("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+    if (same21(await get(circuitKey(scope2), null), value) === false) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
   };
   function createFc27GalleryListing({
     root,
@@ -20969,6 +21878,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     liveEnabled = false,
     schedulingEnabled = false,
     diagnosticLog: diagnosticLog2,
+    accounting = null,
     adapterFactory = createEaTradeAdapter,
     sleep
   } = {}) {
@@ -20986,15 +21896,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assertCurrent = () => {
-        if (!same19(context, readFc27Context(root)) || !isCurrent()) fail23("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same21(context, readFc27Context(root)) || !isCurrent()) fail24("FC27_GALLERY_CONTEXT_CHANGED");
       };
       const adapter = adapterFactory(root);
       const checkOtherTransactions = async () => {
         await assertGalleryRelistSettled(get, scope2);
         const other = await persistence.journal.read(scope2);
-        if (other && !isTerminalTraditionalJournal(other)) fail23("FC27_RECOVERY_REQUIRED");
-        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail23("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
-        if (await get(puzzleBuyPendingKey(scope2), null) !== null) fail23("FC27_BUY_RECOVERY_REQUIRED");
+        if (other && !isTerminalTraditionalJournal(other)) fail24("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail24("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
+        if (await get(puzzleBuyPendingKey(scope2), null) !== null) fail24("FC27_BUY_RECOVERY_REQUIRED");
       };
       const session2 = createGalleryBulkListSession({
         scope: scope2,
@@ -21011,12 +21921,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           assertCurrent();
           const currentPurchase = await purchase.inspect();
           if (!currentPurchase || currentPurchase.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) {
-            fail23("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+            fail24("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
           }
           const circuit = await readCircuit(get, scope2);
-          if (circuit.persistent) fail23("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail23("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail23("FC27_GALLERY_LISTING_DISABLED");
+          if (circuit.persistent) fail24("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail24("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail24("FC27_GALLERY_LISTING_DISABLED");
           await checkOtherTransactions();
         },
         afterMutation: async (_entry, result) => {
@@ -21062,7 +21972,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       // Display-only lookup in existing repositories. It grants no ownership or
       // listing authority and does not refresh inventory or call an EA service.
       readDisplayItem(ref) {
-        if (!prepared || !same19(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same19(row.item, ref))) return null;
+        if (!prepared || !same21(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same21(row.item, ref))) return null;
         return createEaInventoryAdapter(root).readPile(ref.pile).find((item2) => Number(item2?.id) === ref.id && Number(item2?.definitionId) === ref.definitionId) ?? null;
       },
       scheduleCapability() {
@@ -21081,7 +21991,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const { fixedPrice, fixedStartPrice, ...persistent } = normalized;
         sessionPrices.set(scope2, { fixedPrice, fixedStartPrice });
         await set(settingsKey(scope2), persistent);
-        return same19(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
+        return same21(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
       },
       async readSchedule({ purchaseSnapshot = null, sessionReady = true, at: at8 = Date.now() } = {}) {
         try {
@@ -21106,14 +22016,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (schedule?.type !== "once" || !Number.isSafeInteger(schedule.runAt) || schedule.runAt <= Date.now()) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
         }
-        if (!planned2 || plan?.status !== "observed" || !same19(plan, planned2)) {
+        if (!planned2 || plan?.status !== "observed" || !same21(plan, planned2)) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_PLAN_CHANGED" };
         }
         return withScheduleLock(async () => {
           try {
             const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
             const purchaseSnapshot = await purchase.inspect();
-            if (!same19(prepared?.context, context) || !same19(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same21(prepared?.context, context) || !same21(context, readFc27Context(root))) fail24("FC27_GALLERY_CONTEXT_CHANGED");
             if (prepared?.binding !== `${purchaseSnapshot.operationId}:${purchaseSnapshot.binding}`) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_PURCHASE_CHANGED" };
             }
@@ -21132,7 +22042,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             const store = createGalleryListingScheduleStore({ get, set, scope: scope2, context });
             const purchaseSnapshot = await purchase.inspect();
             const state = await store.inspect({ purchase: purchaseSnapshot, sessionReady: true, at: Date.now() });
-            if (!same19(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same21(context, readFc27Context(root))) fail24("FC27_GALLERY_CONTEXT_CHANGED");
             if (state.status === "blocked") return state;
             if (state.status !== "disarmed") return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_STATE_LOCKED" };
             if (!liveEnabled || state.schedule?.schedule?.type !== "once" || state.schedule.runCount !== 0 || !(state.schedule.nextRunAt > Date.now())) {
@@ -21172,8 +22082,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             if (!liveEnabled || saved.schedule.type !== "once" || saved.runCount !== 0) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
             }
-            const scheduleCurrent = () => isCurrent() && same19(context, readFc27Context(root));
-            if (!scheduleCurrent()) fail23("FC27_GALLERY_CONTEXT_CHANGED");
+            const scheduleCurrent = () => isCurrent() && same21(context, readFc27Context(root));
+            if (!scheduleCurrent()) fail24("FC27_GALLERY_CONTEXT_CHANGED");
             await store.checkpoint({ status: "running", reason: null, at: Date.now(), runCount: saved.runCount });
             const preparedResult = await publicApi.prepare({ isCurrent: scheduleCurrent });
             if (preparedResult.status !== "ready") {
@@ -21190,7 +22100,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             const plannedResult = publicApi.plan({ selectedIds, settings: { ...saved.listingSettings || {}, priceMode: "fixed", durationSeconds: saved.entries[0].durationSeconds }, overridesByItem });
             const exact = plannedResult.status === "observed" && plannedResult.entries.length === saved.entries.length && plannedResult.entries.every((entry, index) => {
               const prior = saved.entries[index];
-              return same19(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
+              return same21(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
             });
             if (!exact) {
               await store.checkpoint({ status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_ITEMS_CHANGED" });
@@ -21226,7 +22136,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         try {
           const env = create({ isCurrent }), info = await purchase.inspect();
           env.assertCurrent();
-          if (info?.status !== "observed") fail23(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+          if (info?.status !== "observed") fail24(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
           const result = await env.persistence.exclusive(env.scope, async () => {
             await env.checkOtherTransactions();
             env.assertCurrent();
@@ -21363,7 +22273,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         }
       },
       plan({ selectedIds, settings, overridesByItem = {}, previewPrices = null }) {
-        if (!prepared || !same19(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+        if (!prepared || !same21(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
         const selected = new Set(selectedIds);
         const result = planGalleryListingPrices({
           ...prepared,
@@ -21388,16 +22298,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           env.assertCurrent();
           const currentPurchase = await purchase.inspect();
           if (currentPurchase?.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) {
-            fail23("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+            fail24("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
           }
           const circuit = await readCircuit(get, env.scope);
-          if (circuit.persistent) fail23("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail23("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!resume && (!prepared || !same19(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same19(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same19(c.item, e.item) && same19(c.purchase, e.purchase))))) fail23("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (circuit.persistent) fail24("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail24("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!resume && (!prepared || !same21(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same21(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same21(c.item, e.item) && same21(c.purchase, e.purchase))))) fail24("FC27_GALLERY_LISTING_PLAN_CHANGED");
           if (!resume && prepared.expiresAt <= Date.now() && plan.entries.some((e) => e.priceOrigin === "market")) {
-            fail23("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
+            fail24("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
           }
-          return await env.session.execute({
+          const result = await env.session.execute({
             approved,
             entries: plan?.entries,
             binding: prepared?.binding,
@@ -21405,6 +22315,37 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             resume,
             expectedRunId
           });
+          const entries2 = Array.isArray(result?.entries) ? result.entries : [];
+          const acceptedCount = entries2.filter((entry) => entry.status === "accepted").length;
+          const rejectedCount = entries2.filter((entry) => entry.status === "rejected").length;
+          const skippedCount = entries2.filter((entry) => entry.status === "skipped").length;
+          const unknownCount = entries2.filter((entry) => ["list-pending", "unknown"].includes(entry.status)).length;
+          if (accounting && acceptedCount) {
+            const accountingResult = await accounting.recordListings(entries2.filter((entry) => entry.status === "accepted"));
+            if (accountingResult?.status === "blocked") {
+              void stage({
+                event: "listing-accounting",
+                phase: "readback",
+                status: "failed",
+                reason: accountingResult.reason,
+                count: acceptedCount
+              });
+              result.accountingWarning = accountingResult.reason;
+            }
+          }
+          void stage({
+            event: "listing-result",
+            phase: "execute",
+            status: result?.status ?? "blocked",
+            reason: result?.reason ?? null,
+            count: acceptedCount,
+            acceptedCount,
+            rejectedCount,
+            skippedCount,
+            unknownCount,
+            requestedCount: entries2.length
+          });
+          return result;
         } catch (error2) {
           void stage({ phase: "execute", status: "failed", reason: safe(error2), httpStatus: error2?.httpStatus });
           return { status: "blocked", reason: safe(error2), phase: "execute", httpStatus: error2?.httpStatus ?? null };
@@ -21751,9 +22692,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/adapters/browser/fc27-gallery-relist.js
-  var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same22 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var copy = (value) => structuredClone(value);
-  var fail24 = (reason) => {
+  var fail25 = (reason) => {
     throw Error(reason);
   };
   var galleryRelistKey = (scope2) => `fcat-fc27-gallery-auto-relist-v1:${scope2}`;
@@ -21775,29 +22716,29 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const read = async (context, scope2) => {
       const raw = await get(galleryRelistKey(scope2), null);
       if (raw === null) return null;
-      if (raw.schema !== 1 || !same20(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive9(raw.nextAt) || !positive9(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive9(ref.id) || !positive9(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive9(row?.item?.id) || !positive9(row?.item?.definitionId) || !positive9(row.auction?.startingBid) || !positive9(row.auction?.buyNowPrice)))) fail24("FC27_GALLERY_RELIST_RECORD_INVALID");
+      if (raw.schema !== 1 || !same22(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive9(raw.nextAt) || !positive9(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive9(ref.id) || !positive9(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive9(row?.item?.id) || !positive9(row?.item?.definitionId) || !positive9(row.auction?.startingBid) || !positive9(row.auction?.buyNowPrice)))) fail25("FC27_GALLERY_RELIST_RECORD_INVALID");
       return copy(raw);
     };
     const write = async (scope2, value) => {
       await set(galleryRelistKey(scope2), copy(value));
-      if (!same20(await get(galleryRelistKey(scope2), null), value)) fail24("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
+      if (!same22(await get(galleryRelistKey(scope2), null), value)) fail25("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
     };
     const environment = () => {
       const context = contextNow(), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assert = () => {
-        if (!same20(context, contextNow())) fail24("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same22(context, contextNow())) fail25("FC27_GALLERY_CONTEXT_CHANGED");
       };
       const adapter = adapterFactory(root);
       const guard = async () => {
         assert();
-        if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail24("FC27_GALLERY_LISTING_DISABLED");
+        if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail25("FC27_GALLERY_LISTING_DISABLED");
         const journal = await persistence.journal.read(scope2);
-        if (journal && !isTerminalTraditionalJournal(journal)) fail24("FC27_RECOVERY_REQUIRED");
-        if (await get(galleryPurchasePendingKey(scope2), null) || await get(puzzleBuyPendingKey(scope2), null)) fail24("FC27_BUY_RECOVERY_REQUIRED");
+        if (journal && !isTerminalTraditionalJournal(journal)) fail25("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null) || await get(puzzleBuyPendingKey(scope2), null)) fail25("FC27_BUY_RECOVERY_REQUIRED");
         const circuit = await get(`fcat-fc27-gallery-listing-circuit-v1:${scope2}`, null);
-        if (circuit && (circuit.schema !== 1 || circuit.scope !== scope2 || typeof circuit.persistent !== "boolean" || !Number.isSafeInteger(circuit.retryAt))) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
-        if (circuit?.persistent || circuit?.retryAt > now()) fail24("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+        if (circuit && (circuit.schema !== 1 || circuit.scope !== scope2 || typeof circuit.persistent !== "boolean" || !Number.isSafeInteger(circuit.retryAt))) fail25("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+        if (circuit?.persistent || circuit?.retryAt > now()) fail25("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
         assert();
       };
       const response = async (result) => {
@@ -21806,7 +22747,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           const value = { schema: 1, scope: scope2, persistent: code2 === 427, retryAt: code2 === 429 ? now() + 6e4 : 0 };
           const key = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
           await set(key, value);
-          if (!same20(await get(key, null), value)) fail24("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+          if (!same22(await get(key, null), value)) fail25("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
         }
       };
       return { context, scope: scope2, persistence, assert, adapter, guard, response };
@@ -21841,12 +22782,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           return await env.persistence.exclusive(env.scope, async () => {
             await env.guard();
             const old = await read(env.context, env.scope);
-            if (old && ["running", "blocked", "armed"].includes(old.status)) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            if (old && ["running", "blocked", "armed"].includes(old.status)) fail25("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
             let snapshot = null, items = [];
             if (range === "batch") {
               snapshot = await purchase.inspect();
               env.assert();
-              if (snapshot?.status !== "observed") fail24(snapshot?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+              if (snapshot?.status !== "observed") fail25(snapshot?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
               const receipts = projectGalleryListingReceipts({
                 scope: env.scope,
                 context: env.context,
@@ -21855,9 +22796,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                 expectedOperationId: snapshot.operationId,
                 expectedBinding: snapshot.binding
               });
-              if (receipts.status !== "observed") fail24(receipts.reason);
+              if (receipts.status !== "observed") fail25(receipts.reason);
               items = receipts.entries.filter((row) => positive9(row.itemId) && positive9(row.definitionId)).map((row) => ({ id: row.itemId, definitionId: row.definitionId }));
-              if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail24("FC27_GALLERY_LISTING_NO_PURCHASE");
+              if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail25("FC27_GALLERY_LISTING_NO_PURCHASE");
             }
             const value = {
               schema: 1,
@@ -21891,7 +22832,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             env.assert();
             const value = await read(env.context, env.scope);
             if (!value) return { status: "absent" };
-            if (value.status === "running" || value.pending) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            if (value.status === "running" || value.pending) fail25("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
             value.status = "disarmed";
             value.reason = "user-stopped";
             await write(env.scope, value);
@@ -21920,13 +22861,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                 await write(env.scope, value);
                 return value;
               }
-              if ((await env.adapter.refreshTransferItems()).status !== "completed") fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              if ((await env.adapter.refreshTransferItems()).status !== "completed") fail25("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               env.assert();
               const exact = value.pending.every((row) => {
                 const current3 = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
                 return current3?.item.id === row.item.id && current3.item.definitionId === row.item.definitionId && current3.auction?.state === "active" && current3.auction.startingBid === row.auction.startingBid && current3.auction.buyNowPrice === row.auction.buyNowPrice;
               });
-              if (!exact) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              if (!exact) fail25("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               if (value.range === "batch") await assertNoGalleryListingPending(get, env.scope, {
                 set,
                 context: env.context,
@@ -21948,7 +22889,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             if (value.nextAt > now()) return { ...value, status: "waiting-time" };
             await env.guard();
             const previous = await readGalleryBulkListRecovery(get, env.scope);
-            if (!["absent", "clear"].includes(previous.status)) fail24("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+            if (!["absent", "clear"].includes(previous.status)) fail25("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
             if (value.range === "batch") {
               const snapshot = await purchase.inspect();
               env.assert();
@@ -21959,10 +22900,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                 return value;
               }
             }
-            if ((await env.adapter.refreshTransferItems()).status !== "completed") fail24("FC27_GALLERY_TRANSFER_UNCONFIRMED");
+            if ((await env.adapter.refreshTransferItems()).status !== "completed") fail25("FC27_GALLERY_TRANSFER_UNCONFIRMED");
             env.assert();
             const before = normalizeBulkRelistSnapshot(env.adapter.inspectBulkRelistSnapshot());
-            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive9(row.item.id) || !positive9(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail24("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
+            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive9(row.item.id) || !positive9(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail25("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
             const entries2 = value.range === "all" ? before.items : before.items.filter((row) => value.items.some((ref) => ref.id === row.item.id && ref.definitionId === row.item.definitionId));
             if (!entries2.length) {
               value.nextAt = now() + value.minutes * 6e4;
@@ -21974,11 +22915,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             await write(env.scope, value);
             const current2 = async () => {
               await env.guard();
-              if (stopped || !same20(await read(env.context, env.scope), value)) fail24("FC27_GALLERY_RELIST_PLAN_CHANGED");
+              if (stopped || !same22(await read(env.context, env.scope), value)) fail25("FC27_GALLERY_RELIST_PLAN_CHANGED");
               if (value.range === "batch") {
                 const snapshot = await purchase.inspect();
                 env.assert();
-                if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) fail24("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+                if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) fail25("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
               }
             };
             let result;
@@ -22026,7 +22967,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                   await current2();
                   const original = entries2.find((row) => row.item.id === entry.item.id);
                   const live = env.adapter.inspectListingItem(entry.item)?.candidate?.auction;
-                  if (String(live?.tradeId) !== String(original.auction.tradeId) || live.startingBid !== original.auction.startingBid || live.buyNowPrice !== original.auction.buyNowPrice) fail24("FC27_GALLERY_RELIST_PLAN_CHANGED");
+                  if (String(live?.tradeId) !== String(original.auction.tradeId) || live.startingBid !== original.auction.startingBid || live.buyNowPrice !== original.auction.buyNowPrice) fail25("FC27_GALLERY_RELIST_PLAN_CHANGED");
                   value.pending ??= [];
                   value.pending.push(copy(original));
                   await write(env.scope, value);
@@ -22063,7 +23004,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               if (value.range === "all" && value.pending?.some((row) => {
                 const live = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
                 return live?.item.definitionId !== row.item.definitionId || live.auction?.state !== "active" || live.auction.startingBid !== row.auction.startingBid || live.auction.buyNowPrice !== row.auction.buyNowPrice;
-              })) fail24("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              })) fail25("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               value.pending = null;
               value.status = value.runs < 2 ? "armed" : "completed";
               value.nextAt = now() + value.minutes * 6e4;
@@ -22124,17 +23065,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var validId12 = (value) => Number.isSafeInteger(value) && value > 0;
   function cloneCardData(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const clone5 = (value, depth = 0) => {
+    const clone6 = (value, depth = 0) => {
       if (depth > 5) return null;
-      if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone5(item2, depth + 1) : item2);
+      if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone6(item2, depth + 1) : item2);
       if (value && typeof value === "object") {
         const copy2 = {};
-        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy2[key] = item2 && typeof item2 === "object" ? clone5(item2, depth + 1) : item2;
+        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy2[key] = item2 && typeof item2 === "object" ? clone6(item2, depth + 1) : item2;
         return copy2;
       }
       return value;
     };
-    return clone5(raw);
+    return clone6(raw);
   }
   function sourceDefinitionId(source) {
     return own(source, "resourceId") ?? own(source, "definitionId");
@@ -22288,9 +23229,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
   }
   function galleryPlanKey(scope2, source, setId) {
-    const validScope3 = scopeOf2(scope2), validSource = sourceOf(source), validSet = setOf(setId);
-    if (!validScope3 || !validSource || !validSet) throw new Error("FC27_GALLERY_PLAN_SCOPE_INVALID");
-    return `fcat-fc27-gallery-plan:${JSON.stringify([validScope3, validSource, validSet])}`;
+    const validScope4 = scopeOf2(scope2), validSource = sourceOf(source), validSet = setOf(setId);
+    if (!validScope4 || !validSource || !validSet) throw new Error("FC27_GALLERY_PLAN_SCOPE_INVALID");
+    return `fcat-fc27-gallery-plan:${JSON.stringify([validScope4, validSource, validSet])}`;
   }
   function createGalleryPlanStore({ get, set, now = () => Date.now() } = {}) {
     let tail = Promise.resolve();
@@ -22356,6 +23297,67 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       return task;
     };
     return Object.freeze({ load, save, clear });
+  }
+
+  // src/gallery/score-cache.js
+  var schema = 1;
+  var engine = 1;
+  var maxBytes = 2e6;
+  var validScope3 = (scope2) => typeof scope2 === "string" && scope2.length > 0 && scope2.length <= 2048 && !/[\u0000-\u001f]/.test(scope2);
+  var clone5 = (value) => structuredClone(value);
+  var valid2 = (row) => row && typeof row.id === "string" && typeof row.key === "string" && row.key.length <= 5e5 && ["calculated", "uncertain"].includes(row.summary?.status) && Array.isArray(row.summary.lineup) && row.summary.lineup.length <= 256 && [row.summary.low?.total, row.summary.high?.total].every((value) => Number.isSafeInteger(value) && value >= 0);
+  function createGalleryScoreCache({ get, set } = {}) {
+    const buckets = /* @__PURE__ */ new Map();
+    let tail = Promise.resolve();
+    const storageKey = (scope2) => `fcat-fc27-gallery-score:${JSON.stringify(scope2)}`;
+    const load = async (scope2) => {
+      if (!validScope3(scope2)) return null;
+      if (!buckets.has(scope2)) {
+        const task = (async () => {
+          try {
+            const value = await get(storageKey(scope2), null);
+            if (!value || value.schema !== schema || value.engine !== engine || value.scope !== scope2 || !Array.isArray(value.entries) || value.entries.length > 256 || JSON.stringify(value).length > maxBytes || !value.entries.every(valid2)) return /* @__PURE__ */ new Map();
+            return new Map(value.entries.map((row) => [row.id, clone5(row)]));
+          } catch {
+            return /* @__PURE__ */ new Map();
+          }
+        })();
+        buckets.set(scope2, task);
+        while (buckets.size > 4) buckets.delete(buckets.keys().next().value);
+      }
+      return buckets.get(scope2);
+    };
+    return Object.freeze({
+      async read(scope2, id10, key) {
+        const bucket = await load(scope2), row = bucket?.get(id10);
+        return row?.key === key ? clone5(row.summary) : null;
+      },
+      write(scope2, rows) {
+        const task = tail.then(async () => {
+          try {
+            const bucket = await load(scope2);
+            if (!bucket) return false;
+            for (const row of rows) if (valid2(row)) {
+              bucket.delete(row.id);
+              bucket.set(row.id, clone5(row));
+            }
+            const record = { schema, engine, scope: scope2, entries: [...bucket.values()] };
+            while (record.entries.length > 256 || JSON.stringify(record).length > maxBytes) {
+              const first = record.entries.shift();
+              if (!first) break;
+              bucket.delete(first.id);
+            }
+            await set(storageKey(scope2), record);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        tail = task.catch(() => {
+        });
+        return task;
+      }
+    });
   }
 
   // src/gallery/market-comparison.js
@@ -22473,6 +23475,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function createGalleryPlanReplay(input) {
     try {
       const joint = Array.isArray(input?.targets), targets = joint ? input.targets : [input];
+      const rewardMode = joint && input.catalogRewardKey != null;
       if (!targets.length || targets.length > 4 || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
       const clean = targets.map((target) => {
         const { set, catalog, progress, prices = {}, targetGrade } = target;
@@ -22505,7 +23508,30 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         for (const row of rows) if (integer14(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
         return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
           if (!gradeName(grade.name) || !integer14(grade.threshold)) throw Error("invalid");
-          return { name: grade.name, threshold: grade.threshold };
+          if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
+          if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error("invalid");
+          const rewards2 = grade.rewards.map((reward) => {
+            if (!/^[a-z][a-z0-9_]{0,99}$/.test(reward.type) || !galleryRewardIdentity(reward)) throw Error("invalid");
+            const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
+            for (const key of ["assetId", "teamEaId", "resourceId"]) {
+              if (reward[key] != null) {
+                if (!integer14(reward[key])) throw Error("invalid");
+                value[key] = reward[key];
+              }
+            }
+            for (const key of ["itemType", "itemCategory"]) {
+              if (reward[key] != null) {
+                if (!(integer14(reward[key]) || typeof reward[key] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key]))) throw Error("invalid");
+                value[key] = reward[key];
+              }
+            }
+            if (reward.untradeable != null) {
+              if (typeof reward.untradeable !== "boolean") throw Error("invalid");
+              value.untradeable = reward.untradeable;
+            }
+            return value;
+          });
+          return { name: grade.name, threshold: grade.threshold, rewards: rewards2, rewardsComplete: grade.rewardsComplete === true };
         }) }, catalog: { source: "futgg", tags }, progress: {
           season: "27",
           setId: Number(set.id.slice(6)),
@@ -22516,10 +23542,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         }, prices: quotes, targetGrade };
       });
       if (joint && input.budget != null && !integer14(input.budget)) return null;
+      if (rewardMode && !clean.some((target) => target.set.grades.some((grade) => grade.rewards.some((reward) => galleryRewardIdentity(reward)?.key === input.catalogRewardKey)))) return null;
       return {
         schema: 1,
         mode: joint ? "joint" : "grade",
-        input: joint ? { targets: clean, budget: input.budget ?? null } : clean[0]
+        input: joint ? {
+          targets: clean,
+          budget: input.budget ?? null,
+          ...rewardMode ? { catalogRewardKey: input.catalogRewardKey } : {}
+        } : clean[0]
       };
     } catch {
       return null;
@@ -22529,6 +23560,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   // src/diagnostics/fcat-diagnostic-log.js
   var DEFAULT_MAX_ENTRIES = 300;
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
+  var MAX_TRANSACTION_RESULTS = 40;
   var MAX_STRING_LENGTH = 160;
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource"]);
   var NUMBER_FIELDS = Object.freeze([
@@ -22562,6 +23594,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     "ownedCount",
     "requestedCount",
     "responseCount",
+    "acceptedCount",
+    "rejectedCount",
+    "skippedCount",
+    "unknownCount",
     "retainedCount",
     "expandedCount",
     "foreignCount",
@@ -22629,6 +23665,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     let entries2 = [];
     let criticalEntries = [];
+    let transactionResults = [];
     let planning = [];
     let loaded = false;
     let loading = null;
@@ -22640,6 +23677,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (saved?.schema === 1 && Array.isArray(saved.entries)) {
           entries2 = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
           criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : []).slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
+          transactionResults = (Array.isArray(saved.transactionResults) ? saved.transactionResults : []).slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
           planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map((row) => {
             const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
             return event && replay ? { event, replay } : null;
@@ -22659,6 +23697,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         version: version ?? null,
         entries: entries2.map((entry) => ({ ...entry })),
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
+        transactionResults: transactionResults.map((entry) => ({ ...entry })),
         planning: structuredClone(planning)
       };
       return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => void 0);
@@ -22677,6 +23716,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         entries2 = [...entries2, entry].slice(-maxEntries);
         if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
+        }
+        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event)) {
+          transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
         if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
         await persist();
@@ -22699,6 +23741,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         redaction: "Bounded events, critical Gallery trade events and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.",
         entries: exportedEntries,
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
+        transactionResults: transactionResults.map((entry) => ({ ...entry })),
         planning: structuredClone(planning)
       };
     };
@@ -22776,7 +23819,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }) {
     const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map(), cooldowns = /* @__PURE__ */ new Map();
     let queue = Promise.resolve();
-    const valid2 = (row, source, options, id10) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id10 && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
+    const valid3 = (row, source, options, id10) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id10 && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
     const record = (fields4) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "public-quote", ...fields4 })).catch(() => {
@@ -22800,7 +23843,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               } catch {
               }
             }
-            if (valid2(saved, source, options, id10) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
+            if (valid3(saved, source, options, id10) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
               cache.set(key, saved);
               if (saved.error) cooldowns.set(`${source}:${options.season}:${options.platform}`, { retryAt: saved.expiresAt, reason: saved.error });
             } else missing.push(id10);
@@ -23150,7 +24193,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.11" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.12" });
   var userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
   var galleryAssets = Object.freeze({
     reward: (type) => {
@@ -23296,6 +24339,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     createTransport: (options) => createFc27MarketReadTransport(unsafeWindow, options),
     diagnosticLog
   });
+  var galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
   var galleryPurchase = createFc27GalleryPurchase({
     root: unsafeWindow,
     gmGetValue: GM_getValue,
@@ -23305,7 +24349,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     liveEnabled: dependencies.liveEnabled,
     readSettings: () => current().inspectPuzzlePolicy(),
     publicPrices,
-    diagnosticLog
+    diagnosticLog,
+    accounting: galleryAccounting
   });
   var galleryListing = createFc27GalleryListing({
     root: unsafeWindow,
@@ -23315,7 +24360,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     liveEnabled: dependencies.liveEnabled,
     schedulingEnabled: dependencies.liveEnabled === true,
     loadPrices: (ids, options) => publicPrices.load(ids, { ...options, purpose: "listing" }),
-    diagnosticLog
+    diagnosticLog,
+    accounting: galleryAccounting
   });
   var galleryRelist = createFc27GalleryRelist({
     root: unsafeWindow,
@@ -23384,8 +24430,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.11"}`,
-    version: "27.0.11",
+    title: `FC Automation Tool ${"27.0.12"}`,
+    version: "27.0.12",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -23405,6 +24451,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
     galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
     galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
+    galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
+    galleryAccounting,
     exportDiagnostics: async () => {
       const payload = await diagnosticLog.exportPayload();
       const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-");

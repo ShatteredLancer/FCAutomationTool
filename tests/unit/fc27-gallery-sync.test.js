@@ -54,10 +54,11 @@ it('lets a selected collection preempt a background full sync without stale task
   const full = sync.sync({source:'futgg'});
   for (let attempt = 0; attempt < 20 && !release; attempt++) await Promise.resolve();
   expect(typeof release).toBe('function');
+  expect(sync.state()).toMatchObject({ busy: true, task: { active: true, setId: null, stopped: false } });
   const selected = sync.sync({source:'futgg', setId:2});
   release();
   expect((await selected).status).toBe('observed');
   expect((await full).status).toBe('stopped');
   expect(f.trace).toContain('pool:2');
-  expect(sync.state().busy).toBe(false);
+  expect(sync.state()).toMatchObject({ busy: false, task: { active: false }, reader: { busy: false } });
 });

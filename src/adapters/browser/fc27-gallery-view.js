@@ -3,6 +3,7 @@ import { diffGalleryCatalog } from '../../gallery/catalog.js';
 import { createGalleryScoreQueue } from '../../gallery/score-queue.js';
 import { planGalleryGrade, planGalleryGradeSteps } from '../../gallery/planner.js';
 import { planGalleryJointSteps } from '../../gallery/joint-planner.js';
+import { galleryRewardOptions } from '../../gallery/catalog-rewards.js';
 import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
 import { reconcileGalleryTargets } from '../../gallery/targets.js';
 import { browseGallerySets } from '../../gallery/browse.js';
@@ -61,7 +62,7 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, loadPlanningPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null, listing = null, relist = null,
+  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
@@ -140,6 +141,28 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     try { return Promise.resolve(diagnosticLog?.record?.({ area: 'gallery', ...input })).catch(() => false); }
     catch { return Promise.resolve(false); }
   };
+  let accountingBusy = false;
+  const refreshAccounting = async (reconcile = false) => {
+    if (!accounting || accountingBusy || disposed || !active) return;
+    const identity = scope(), output = node('gallery-accounting-summary'), button = node('gallery-accounting-refresh');
+    if (!output || !button) return;
+    accountingBusy = true; button.disabled = true;
+    if (reconcile) output.textContent = '正在核对出售成交…';
+    try {
+      const value = await (reconcile ? accounting.reconcile() : accounting.inspect());
+      if (disposed || !active || identity !== scope()) return;
+      node('gallery-accounting').hidden = false;
+      if (value?.status !== 'observed') output.textContent = `出售账本未确认（${value?.reason ?? '读取失败'}），请重试或导出日志。`;
+      else {
+        output.textContent = `净成本 ${count(value.netCost)} · 已买 ${count(value.spent)} · 税后收入 ${count(value.netRevenue)} · 已售 ${value.sold}/${value.entries}${value.unknown ? ` · ${value.unknown} 张状态待确认` : ''}`;
+        output.title = `成交总额 ${count(value.grossRevenue)}，EA 税 ${count(value.tax)}；未确认出售的卡仍计入成本。`;
+      }
+      if (value?.status === 'blocked') void diag({ event: 'accounting', phase: 'reconcile', status: 'failed', reason: value.reason });
+    } catch {
+      if (identity === scope()) { node('gallery-accounting').hidden = false; output.textContent = '出售账本读取失败，请重试；没有发送挂牌请求。'; }
+    } finally { accountingBusy = false; button.disabled = false; }
+  };
+  node('gallery-accounting-refresh')?.addEventListener('click', event => { if (event.isTrusted) void refreshAccounting(true); });
   let buying = false, purchaseSummary = null;
   let purchaseResults = null;
   let purchaseReplan = null;
@@ -197,8 +220,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           output.textContent = `${phases[progress.phase] ?? '处理中'} ${progress.index}/${progress.total} · 已购买 ${progress.purchased} 张 · ${count(progress.spent)} 金币`;
         } });
       if (disposed || !active || identity !== scope()) return;
-      void diag({ event: 'purchase-result', phase: 'execute', status: outcome.status === 'purchased' ? 'success' : 'blocked',
-        reason: outcome.reason, count: outcome.purchased ?? 0, spent: outcome.spent ?? 0 });
+      const diagnosticStatus = ({ purchased: 'success', partial: 'partial', 'recovery-required': 'recovery-required' })[outcome.status] ?? 'blocked';
+      void diag({ event: 'purchase-result', phase: 'execute', status: diagnosticStatus,
+        reason: outcome.reason, count: outcome.purchased ?? 0, requestedCount: outcome.total ?? 0, spent: outcome.spent ?? 0 });
       output.textContent = `${outcome.status === 'purchased' ? '购买完成' : '购买未完成'} · 已购买 ${outcome.purchased ?? 0} 张 · ${count(outcome.spent ?? 0)} 金币`;
       if (outcome.status !== 'purchased') output.textContent += ` · ${outcome.reason ?? outcome.status}`;
       const purchaseMessages = {
@@ -211,6 +235,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       };
       if (outcome.reason && purchaseMessages[outcome.reason]) output.textContent += ` · ${purchaseMessages[outcome.reason]}`;
       output.textContent += ' · 出售计划：买入后默认进入 Club 并保留，不自动挂牌；挂牌/重挂需单独确认。';
+      if (outcome.accountingWarning) {
+        output.textContent += ` · 成交已保留，出售账本未更新（${outcome.accountingWarning}），请核对账本，不要重复购买。`;
+        void diag({ event: 'accounting', phase: 'purchase', status: 'failed', reason: outcome.accountingWarning });
+      }
       if (outcome.collection?.status === 'pending') output.textContent += ' · 收集待确认；再次核对不会重复买入';
       if (outcome.failures?.length) output.textContent += ` · ${outcome.failures.length} 张未完成，可续购`;
       const resultList = node('gallery-purchase-results');
@@ -259,7 +287,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         ledger: input.ledger, budget: input.budget, mode: input.mode ?? (targets.length === 1 ? 'single' : 'joint') });
       return runGalleryPlan(steps, {
       current,
-      progress: state => { message.textContent = `正在重算… ${state.evaluations} 个候选`; },
+      progress: state => { message.textContent = state.scoringWork ? `正在计分… ${count(state.scoringWork)} 次评估` : `正在重算… ${state.evaluations} 个候选`; },
       });
     })().then(plan => {
       if (!plan || !current()) return;
@@ -470,7 +498,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   let scoreRenderTimer = null;
   const scoredSets = new Set();
-  const scoreQueue = createGalleryScoreQueue({ onUpdate: setId => {
+  const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, onUpdate: setId => {
     scoredSets.add(setId);
     if (disposed || !active || scoreRenderTimer !== null) return;
     scoreRenderTimer = setTimeout(() => {
@@ -579,10 +607,26 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     });
     const output = add(section, 'div', '', 'gallery-plan-output'); output.setAttribute('aria-live', 'polite');
     const overview = add(section, 'div', '', 'gallery-grade-overview'); overview.setAttribute('aria-live', 'polite');
+    const rewardText = snapshot => {
+      if (!snapshot) return '请重新生成';
+      const text = snapshot.rewards.map(reward => `${reward.label} ×${count(reward.quantity)}`).join('、');
+      return `${text || (snapshot.rewardsComplete ? '无' : '未提供')}${snapshot.rewardsComplete ? '' : '（目录未提供全部奖励）'}`;
+    };
+    const showRewardChange = (parent, current, projected) => {
+      const line = add(parent, 'small', '', 'gallery-reward-estimate');
+      if (!current || !projected) { line.textContent = '奖励预估：请重新生成方案'; return; }
+      const before = new Map(current.rewards.map(reward => [reward.key, reward.quantity]));
+      const changes = projected.rewards.map(reward => ({ ...reward, quantity: reward.quantity - (before.get(reward.key) ?? 0) }))
+        .filter(reward => reward.quantity !== 0);
+      line.textContent = `目录预估 · ${current.grade ?? '未达档'} → ${projected.grade ?? '未达档'} · 累计奖励：${rewardText(current)} → ${rewardText(projected)}`;
+      if (changes.length) line.textContent += ` · 差额：${changes.map(reward => `${reward.label} ${reward.quantity > 0 ? '+' : ''}${count(reward.quantity)}`).join('、')}`;
+      else line.textContent += ' · 差额 0';
+    };
     const overviewKey = JSON.stringify([scope(), set, result.catalog.tags, value.progress, planningPrices(value)]);
     const showOverview = plan => {
       overview.replaceChildren();
       if (!plan) return;
+      add(overview, 'small', '目录奖励预估 · 领取状态未知；不抵扣购卡费用。', 'gallery-unknown');
       for (const item of plan.grades ?? []) {
         // If the user already generated this exact grade, reuse that result
         // instead of showing a second bounded search with a different winner.
@@ -594,12 +638,19 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         add(line, 'span', item.status === 'achieved' ? '已达到 · 0 金币'
           : candidate?.totalPrice == null ? item.status === 'ready' ? '报价未知' : (item.reason ?? '暂不可达') : `${count(candidate.totalPrice)} 金币`);
         if (candidate?.score != null) add(line, 'small', `${count(candidate.score)} 分 · ${candidate.items?.length ?? 0} 张补卡`);
+        add(line, 'small', `本档：${rewardText(item.rewards?.tier)} · 累计：${rewardText(item.rewards?.cumulative)}`, 'gallery-reward-estimate');
       }
     };
     const show = (plan, expectedPlanBinding = planCache.get(set.id)?.binding) => {
       output.replaceChildren();
       if (!plan || plan.status === 'unavailable') { add(output, 'small', `暂不可规划：${plan?.reason ?? '输入不完整'}`, 'gallery-unknown'); return; }
-      if (plan.status === 'achieved') { add(output, 'small', `当前已达到 ${plan.targetGrade} 档，无需补卡。`); return; }
+      if (plan.collectionUnknownCount) add(output, 'small', `${plan.collectionUnknownCount} 张卡收集状态待核实，已排除其计分和采购；按其余已确认卡规划。`, 'gallery-unknown');
+      if (plan.status === 'achieved') {
+        add(output, 'small', `当前已达到 ${plan.targetGrade} 档，无需补卡 · 0 金币。`);
+        showRewardChange(output, plan.currentRewards, plan.currentRewards);
+        add(output, 'small', '目录奖励预估 · 领取状态未知。', 'gallery-unknown');
+        return;
+      }
       const reasons = { 'search-time-exhausted': '计算时间预算已用完，尚不能确认无解；可降低目标等级再试', 'search-budget-exhausted': '搜索预算耗尽，尚不能确认无解',
         'candidate-search-truncated': '候选范围未完整搜索，尚不能确认无解',
         'beam-search-truncated': '有界搜索未找到方案，尚不能确认无解',
@@ -622,6 +673,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         return;
       }
       add(output, 'small', `找到 ${plan.plans.length} 个候选方案；只读结果，不代表 EA 已确认等级。`);
+      add(output, 'small', '目录奖励预估 · 领取状态未知；不抵扣购卡费用。', 'gallery-unknown');
       if (!plan.searchComplete) add(output, 'small', '有界候选方案，不保证最低总价。', 'gallery-unknown');
       if (plan.costAudit) add(output, 'small', `按单卡价格选取的完整组合为 ${count(plan.costAudit.totalPrice)} 金币、${count(plan.costAudit.score)} 分（目标 ${count(plan.costAudit.target)}）。`, 'gallery-unknown');
       for (const [index, candidate] of plan.plans.entries()) {
@@ -629,7 +681,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         const scoreNote = candidate.currentScore != null
           ? `当前 ${count(candidate.currentScore)} + 新增 ${count(candidate.addedScore ?? 0)} = ${count(candidate.score)} 分`
           : `${count(candidate.score)} 分`;
-        add(details, 'summary', `方案 ${index + 1} · ${candidate.items.length} 张 · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`} · ${scoreNote}`);
+        const heading = add(details, 'summary', `方案 ${index + 1} · ${candidate.items.length} 张 · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`} · ${scoreNote}`);
+        showRewardChange(heading, plan.currentRewards, candidate.rewards);
         const list = add(details, 'ul');
         for (const item of candidate.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? '版本未知'} · ${purchasePriceText(item)}${item.scoreSource === 'catalog' ? ' · 公开估分' : ''}`);
         if (candidate.missingPriceIds.length) add(details, 'small', `${candidate.missingPriceIds.length} 张卡缺少报价，执行前必须重新查价。`, 'gallery-unknown');
@@ -667,14 +720,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
         const plan = gradePlanner === planGalleryGrade
           ? await runGalleryPlan(planGalleryGradeSteps(input), { current,
-            progress: value => { output.textContent = `正在计算… ${value.evaluations} 个候选`; } })
+            progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } })
           : await gradePlanner(input);
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
           replayInput: input,
           status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
           reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
           count: plan.candidateCount, requestedCount: plan.requestedCandidates,
-          quotedCount: plan.quotedCandidateCount, eaScoreCount: plan.scoreSourceCounts?.ea,
+          quotedCount: plan.quotedCandidateCount, unknownCount: plan.collectionUnknownCount, eaScoreCount: plan.scoreSourceCounts?.ea,
           catalogScoreCount: plan.scoreSourceCounts?.catalog, targetScore: plan.threshold,
           currentScore: plan.currentScore, evaluations: plan.evaluations,
           searchComplete: plan.searchComplete === true, scopeTruncated: plan.scopeTruncated === true,
@@ -768,6 +821,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     updateFooterGeometry();
   };
   const details = new Map();
+  // Display state only; never used to price or authorize a purchase. It must
+  // survive detail DOM replacement without extending the market cache TTL.
+  const comparisonViews = new Map();
   const overviewCache = new Map();
   // Planning output is independent from the DOM. A sync/render cycle may
   // replace the detail subtree, but it must not erase the user's last plan.
@@ -822,6 +878,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       && planCache.get(id)?.binding === expectedBinding;
   };
   const jointTargets = new Map();
+  const catalogObjective = () => node('gallery-joint-objective').value === 'catalog';
   let jointMode = false;
   let targetsIdentity = null, targetsEpoch = 0, restoringTargets = false;
   let planningEpoch = 0;
@@ -892,6 +949,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const container = node('gallery-joint-targets'); container.replaceChildren();
     node('gallery-joint-count').textContent = String(jointTargets.size);
     node('gallery-joint-plan').disabled = !jointTargets.size || restoringTargets || jointRun === planningEpoch;
+    const rewardSelect = node('gallery-joint-reward'), previousReward = rewardSelect.value;
+    rewardSelect.replaceChildren(); rewardSelect.hidden = !catalogObjective();
+    for (const choice of galleryRewardOptions([...jointTargets.keys()].map(id => ({ set: currentGallerySet(id) })))) {
+      const option = document.createElement('option'); option.value = choice.key; option.textContent = choice.label; rewardSelect.append(option);
+    }
+    if ([...rewardSelect.options].some(row => row.value === previousReward)) rewardSelect.value = previousReward;
+    if (catalogObjective() && !rewardSelect.options.length) node('gallery-joint-plan').disabled = true;
     if (!jointTargets.size) { add(container, 'small', '尚无联合目标'); return; }
     const sets = result?.catalog?.categories.flatMap(category => category.sets) ?? [];
     for (const [id, grade] of jointTargets) {
@@ -908,7 +972,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const select = document.createElement('select'); select.setAttribute('aria-label', `${set.name} 目标等级`);
       for (const grade of set.grades) { const option = document.createElement('option'); option.value = grade.name;
         option.textContent = `${grade.name} · ${count(grade.threshold)}`; select.append(option); }
-      select.value = grade; select.disabled = restoringTargets; row.append(select);
+      select.value = grade; select.disabled = restoringTargets || catalogObjective(); row.append(select);
       select.addEventListener('change', () => { if (restoringTargets || checkScope() === false) return; jointTargets.set(id, select.value); invalidateJoint(); persistTargets(); });
       const remove = add(row, 'button', '×'); remove.title = '移除目标'; remove.setAttribute('aria-label', `移除 ${set.name}`);
       remove.disabled = restoringTargets;
@@ -937,26 +1001,40 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const showJointPlan = (plan, inputs = []) => {
     const output = node('gallery-joint-output'); output.replaceChildren();
+    if (plan.collectionUnknownCount) add(output, 'small', `${plan.collectionUnknownCount} 条收集状态待核实，已排除其计分和采购；按其余已确认卡规划。`, 'gallery-unknown');
+    const rewardEstimate = plan.rewardEstimate;
+    if (rewardEstimate) {
+      const note = add(output, 'small', `目录预估 · ${rewardEstimate.label} · 当前 ${count(rewardEstimate.baselineQuantity)}`, 'gallery-unknown');
+      note.title = '每个集合累计已达到的各级目录奖励；不同奖励不折算金币。领取状态未知。';
+    }
+    if (plan.status === 'achieved' && rewardEstimate) { add(output, 'p', '所选目录奖励已达当前目录上限，无需补卡。领取状态未确认。'); return; }
     if (plan.status === 'achieved') { add(output, 'p', '当前联合目标已达到，无需补卡。'); return; }
     if (plan.status !== 'ready') {
       const messages = { 'search-time-exhausted': '计算时间预算已用完，尚不能确认无解；可缩小目标范围再试', 'target-state-unknown': '集合状态待更新', 'price-unknown': '缺少有效报价，预算方案尚未确定',
         'search-budget-exhausted': '搜索预算耗尽，尚不能确认无解', 'candidate-search-truncated': '候选范围不完整，尚不能确认无解',
         'beam-search-truncated': '有界搜索未找到方案，尚不能确认无解', 'score-selection-bounded': '计分选队尚未穷尽，尚不能确认无解',
-        'score-conditions-unknown': '部分计分属性待核实', 'budget-unreachable': '当前预算不足',
+        'score-conditions-unknown': '部分计分属性待核实', 'collection-status-unknown': '已确认材料尚未找到方案，未知收集卡排除后不能确认无解', 'budget-unreachable': '当前预算不足',
         'target-unreachable': '当前材料达不到联合目标', 'version-facts-conflict': '集合间的版本状态不一致，需要更新',
-        'budget-invalid': '请输入非负整数预算', 'target-context-mismatch': '集合账号或平台不一致' };
+        'budget-invalid': '请输入非负整数预算', 'target-context-mismatch': '集合账号或平台不一致',
+        'reward-budget-required': '目录预估需要总预算', 'reward-type-unknown': '请选择目录奖励类型',
+        'reward-improvement-not-found': '本次有界搜索未找到更高目录奖励，不代表全局无解' };
       add(output, 'p', messages[plan.reason] ?? '联合规划暂不可用', 'gallery-unknown');
       for (const target of plan.targets ?? []) add(output, 'small', `${target.name} · ${target.targetGrade} · 已知贡献还差 ${count(target.pointsMissing)} 分`);
       return;
     }
-    if (!plan.searchComplete) add(output, 'small', '有界候选方案，不保证最低总价。', 'gallery-unknown');
+    if (!plan.searchComplete) add(output, 'small', rewardEstimate ? '有界目录预估，不保证奖励最多或总价最低。' : '有界候选方案，不保证最低总价。', 'gallery-unknown');
     if (plan.costAudit) add(output, 'small', `按单卡价格选取的完整组合为 ${count(plan.costAudit.totalPrice)} 金币，最低目标计分 ${count(plan.costAudit.score)} 分。`, 'gallery-unknown');
     for (const [index, planRow] of plan.plans.entries()) {
       const detail = add(output, 'details'); detail.open = index === 0;
       add(detail, 'summary', `方案 ${index + 1} · ${planRow.items.length} 张 · ${planRow.totalPrice == null ? '报价未知' : `${count(planRow.totalPrice)} 🪙`}`);
       if (planRow.remainingBudget != null) add(detail, 'small', `剩余预算 ${count(planRow.remainingBudget)} 🪙`);
       if (planRow.estimated) add(detail, 'small', '包含公开估分', 'gallery-unknown');
-      if (inputs.length) {
+      if (planRow.rewardEstimate) {
+        const estimate = planRow.rewardEstimate;
+        add(detail, 'strong', `${estimate.label} · ${count(estimate.baselineQuantity)} → ${count(estimate.projectedQuantity)}（目录差额 +${count(estimate.change)}）`);
+        if (estimate.projectedTargets.some(target => !target.rewardsComplete)) add(detail, 'small', '目录未提供全部奖励', 'gallery-unknown');
+      }
+      if (inputs.length && !rewardEstimate) {
         const benchmark = add(detail, 'button', '对照逐集合'); benchmark.type = 'button';
         const comparison = add(detail, 'output', '', 'gallery-joint-benchmark');
         const frozen = structuredClone(inputs), identity = scope();
@@ -979,7 +1057,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       }
       const targets = add(detail, 'table');
       for (const target of planRow.targets) {
-        const row = add(targets, 'tr'); add(row, 'th', `${target.name} · ${target.targetGrade}`);
+        const row = add(targets, 'tr'); add(row, 'th', `${target.name} · ${target.targetGrade ?? '未达档位'}`);
         add(row, 'td', `${count(target.score)} 分`);
         add(row, 'td', target.rewards.map(reward => reward.label).join('、') || '无目录奖励');
       }
@@ -987,18 +1065,30 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const list = add(detail, 'ul');
       for (const item of planRow.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? ''} · ${purchasePriceText(item)}${item.targetIds.length > 1 ? ` · 共用 ${item.targetIds.length} 个目标` : ''}`);
       const targetsBinding = JSON.stringify([...jointTargets]);
-      const jointBinding = () => JSON.stringify([targetValue().budget, [...jointTargets].map(([id, grade]) => [id, grade,
+      const jointBinding = () => JSON.stringify([targetValue().budget, node('gallery-joint-objective').value, node('gallery-joint-reward').value,
+        [...jointTargets].map(([id, grade]) => [id, grade,
         planBinding(details.get(id), currentGallerySet(id))]).sort((a, b) => a[0].localeCompare(b[0]))]);
       const jointSemanticBinding = jointBinding();
+      // Replanning after explicit market failures preserves this scenario's
+      // achieved grades rather than silently reverting to the old selectors.
+      const replanTargets = planRow.rewardEstimate ? inputs.flatMap(target => {
+        const grade = planRow.targets.find(row => row.setId === target.set.id)?.targetGrade;
+        return grade ? [{ ...target, targetGrade: grade }] : [];
+      }) : inputs;
       purchaseButton(detail, planRow.items, `joint:${targetsBinding}:${planRow.items.map(item => item.eaId).join(',')}`,
         { budget: targetValue().budget,
-          replanContext: { targets: inputs, mode: 'joint', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
+          replanContext: { targets: replanTargets, mode: 'joint', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: targetValue().budget },
           valid: () => jointMode && JSON.stringify([...jointTargets]) === targetsBinding
             && jointBinding() === jointSemanticBinding });
     }
   };
   node('gallery-mode-browse').addEventListener('click', () => setJointMode(false));
   node('gallery-mode-joint').addEventListener('click', () => setJointMode(true));
+  node('gallery-joint-objective').addEventListener('change', () => {
+    if (checkScope() === false) return;
+    invalidateJoint(); renderJoint();
+  });
+  node('gallery-joint-reward').addEventListener('change', () => { if (checkScope() !== false) invalidateJoint(); });
   node('gallery-joint-budget').addEventListener('input', event => { if (!event.isTrusted || checkScope() === false) return; invalidateJoint(); persistTargets(); });
   node('gallery-joint-plan').addEventListener('click', async event => {
     if (!event.isTrusted || restoringTargets) return;
@@ -1015,6 +1105,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         scope: currentScope, targetGrade });
     }
     const rawBudget = node('gallery-joint-budget').value.trim(), budget = rawBudget ? Number(rawBudget) : null;
+    const catalogRewardKey = catalogObjective() ? node('gallery-joint-reward').value : null;
+    if (catalogObjective() && budget === null) { showJointPlan({ status: 'unavailable', reason: 'reward-budget-required' }); return; }
     const token = ++planningEpoch, identity = scope();
     jointRun = token;
     const current = () => !disposed && active && token === planningEpoch && identity === scope() && jointMode;
@@ -1032,7 +1124,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const refreshIds = loadPlanningPrices ? [] : [...new Set(targets.filter(target => {
         const value = details.get(target.set.id);
         return needsPriceRefresh(value);
-      }).flatMap(target => target.progress.rows.filter(row => !isGalleryOwned(row)).map(row => row.eaId)))].sort((a, b) => a - b);
+      }).flatMap(target => target.progress.rows.filter(row => row.collected === false && !isGalleryOwned(row)).map(row => row.eaId)))].sort((a, b) => a - b);
       if (refreshIds.length && typeof loadPrices === 'function') {
         output.textContent = '正在更新公开报价…';
         const snapshots = [];
@@ -1055,14 +1147,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         }
       }
       void diag({ event: 'joint-plan', phase: 'planner', status: 'started', count: targets.length });
-      const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget }), { current,
-        progress: value => { output.textContent = `正在计算… ${value.evaluations} 个候选`; } });
+      const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget, catalogRewardKey }), { current,
+        progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } });
       if (plan) void diag({ event: 'joint-plan', phase: 'planner', status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
-        replayInput: { targets, budget },
+        replayInput: { targets, budget, catalogRewardKey },
         reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_JOINT_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
         evaluations: plan.evaluations, count: targets.length, requestedCount: plan.candidateCount,
         retainedCount: plan.candidateCount, expandedCount: plan.omittedCandidates,
-        quotedCount: plan.quotedCandidateCount, bestPrice: plan.plans?.[0]?.totalPrice,
+        quotedCount: plan.quotedCandidateCount, unknownCount: plan.collectionUnknownCount, bestPrice: plan.plans?.[0]?.totalPrice,
         beamTruncated: plan.beamTruncated === true, budgetExhausted: plan.budgetExhausted === true,
         timeExhausted: plan.timeExhausted === true,
         searchComplete: plan.searchComplete === true, scopeTruncated: plan.scopeTruncated === true });
@@ -1081,11 +1173,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const next = scope();
     if (next === currentScope) return true;
     scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear(); planCache.clear();
-    currentScope = next; selection++; selectedSetId = null; details.clear();
+    currentScope = next; selection++; selectedSetId = null; details.clear(); comparisonViews.clear();
+    if (node('gallery-accounting')) { node('gallery-accounting').hidden = true; node('gallery-accounting-summary').textContent = ''; }
     selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
     foregroundSync = null; resumeBackground = false;
     if (syncing) sync?.stop();
     jointTargets.clear(); node('gallery-joint-budget').value = '';
+    node('gallery-joint-objective').value = 'grade';
     targetsIdentity = null; ++targetsEpoch; restoringTargets = false;
     node('gallery-joint-budget').disabled = false; targetStatus('');
     invalidateJoint(); restoreTargets(); renderJoint();
@@ -1321,29 +1415,54 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (typeof marketCompare === 'function' && !isGalleryOwned(row) && row.collected === false) {
         const compare = add(meta, 'button', '比价', 'gallery-card-compare'); compare.type = 'button';
         const comparison = add(meta, 'small', '', 'gallery-market-comparison');
-        compare.addEventListener('click', async event => {
-          if (!event.isTrusted || !thisDetailCurrent(value, set.id)) return;
-          compare.disabled = true; comparison.textContent = '读取 EA 可见最低价…';
+        const compareScope = scope(), compareSource = result?.source;
+        const key = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
+        const current = () => !disposed && active && !jointMode && selectedSetId === set.id
+          && compareScope === scope() && compareSource === result?.source && comparison.isConnected;
+        const paint = state => {
+          if (!current()) return;
+          compare.disabled = state?.pending === true;
+          comparison.title = '';
           meta.querySelector('.gallery-market-listings')?.remove();
-          const compareScope = scope();
+          if (!state) { comparison.textContent = ''; return; }
+          if (state.pending) { comparison.textContent = '读取 EA 可见最低价…'; return; }
+          const quote = state.quote;
+          if (quote?.status !== 'observed') {
+            comparison.textContent = `比价暂不可用 · ${quote?.reason ?? '未知'}`;
+            comparison.title = quote?.reason ?? ''; return;
+          }
+          const reference = cachedPrice(row, details.get(set.id) ?? value);
+          comparison.textContent = `EA ${quote.price == null ? '无有效挂牌' : `${count(quote.price)} 金币`} · 参考 ${reference == null ? '未知' : `${count(reference)} 金币`}`;
+          if (quote.listings?.length) {
+            const detail = add(meta, 'details', '', 'gallery-market-listings');
+            add(detail, 'summary', `EA 可见报价 ${quote.listings.length} 条`);
+            for (const listing of quote.listings.slice(0, 3)) add(detail, 'small', `${count(listing.buyNow)} 金币 · 剩余 ${listing.expires ?? '?'} 秒`);
+          }
+        };
+        const stored = comparisonViews.get(key);
+        if (stored && (stored.pending || stored.expiresAt > Date.now())) {
+          stored.paint = paint; paint(stored);
+        } else comparisonViews.delete(key);
+        compare.addEventListener('click', async event => {
+          if (!event.isTrusted || !current() || comparisonViews.get(key)?.pending) return;
+          const currentRow = details.get(set.id)?.progress?.rows.find(item => item.eaId === row.eaId);
+          if (!currentRow || isGalleryOwned(currentRow) || currentRow.collected !== false) return;
+          const state = { pending: true, quote: null, expiresAt: 0, paint };
+          comparisonViews.set(key, state);
+          while (comparisonViews.size > 100) comparisonViews.delete(comparisonViews.keys().next().value);
+          paint(state);
           try {
-            const quote = await marketCompare(row.eaId);
-            if (!comparison.isConnected || !thisDetailCurrent(value, set.id) || compareScope !== scope()) return;
-            if (quote?.status !== 'observed') {
-              comparison.textContent = `比价暂不可用 · ${quote?.reason ?? '未知'}`;
-              comparison.title = quote?.reason ?? '';
-              return;
-            }
-            comparison.title = '';
-            const reference = cachedPrice(row, value);
-            comparison.textContent = `EA ${quote.price == null ? '无有效挂牌' : `${count(quote.price)} 金币`} · 参考 ${reference == null ? '未知' : `${count(reference)} 金币`}`;
-            if (quote.listings?.length) {
-              const detail = add(meta, 'details', '', 'gallery-market-listings');
-              add(detail, 'summary', `EA 可见报价 ${quote.listings.length} 条`);
-              for (const listing of quote.listings.slice(0, 3)) add(detail, 'small', `${count(listing.buyNow)} 金币 · 剩余 ${listing.expires ?? '?'} 秒`);
-            }
-          } catch { void diag({ event: 'market-compare', phase: 'view', status: 'failed', reason: 'FC27_GALLERY_COMPARE_VIEW_FAILED' }); if (comparison.isConnected && thisDetailCurrent(value, set.id) && compareScope === scope()) comparison.textContent = '比价暂不可用'; }
-          finally { compare.disabled = false; }
+            state.quote = await marketCompare(row.eaId);
+          } catch {
+            state.quote = { status: 'blocked', reason: 'FC27_GALLERY_COMPARE_VIEW_FAILED' };
+            void diag({ event: 'market-compare', phase: 'view', status: 'failed', reason: state.quote.reason });
+          } finally {
+            state.pending = false;
+            state.expiresAt = (state.quote?.observedAt ?? Date.now()) + 30000;
+            // A render can rebind paint to the replacement card; an account
+            // change clears the entry and can never receive this old reply.
+            if (comparisonViews.get(key) === state) state.paint(state);
+          }
         });
       }
     }
@@ -1511,9 +1630,17 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const updateSyncButton = () => {
     if (!sync) return;
     const state = sync.state();
-    node('gallery-sync').hidden = false;
-    node('gallery-sync').disabled = syncing || state.busy || !result?.catalog || !['futgg', 'fodder'].includes(result.source);
-    node('gallery-sync').title = '完整复核全部收集；平时自动增量合并';
+    const button = node('gallery-sync');
+    button.hidden = false;
+    button.disabled = syncing || state.busy || !result?.catalog || !['futgg', 'fodder'].includes(result.source);
+    button.title = '完整复核全部收集；平时自动增量合并';
+    // Read-only inspection needs to distinguish an active background task from
+    // a stale disabled button without exposing account scope or card data.
+    button.dataset.syncState = JSON.stringify({ busy: !!state.busy, synced: !!state.synced,
+      task: state.task ?? { active: false }, readerBusy: !!state.reader?.busy,
+      progress: state.progress ? { phase: state.progress.phase ?? null, index: state.progress.index ?? null,
+        total: state.progress.total ?? null, completed: state.progress.completed ?? null,
+        pages: state.progress.pages ?? null, count: state.progress.count ?? null } : null });
     node('gallery-sync-time').textContent = state.syncedAt ? `上次同步 ${date(state.syncedAt)}` : '尚未同步';
     const progress = foregroundSync?.progress ?? state.progress;
     const bar = node('gallery-background-progress');
@@ -1611,7 +1738,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (sourceChanged || selectedRemoved) {
       disposeNativeCards();
       selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
-      if (sourceChanged) { details.clear(); invalidated.clear(); setIconSelections.clear(); planCache.clear(); }
+      if (sourceChanged) { details.clear(); invalidated.clear(); setIconSelections.clear(); planCache.clear(); comparisonViews.clear(); }
       if (sourceChanged) {
         jointTargets.clear(); node('gallery-joint-budget').value = ''; targetsIdentity = null; ++targetsEpoch; restoringTargets = false;
         node('gallery-joint-budget').disabled = false; targetStatus('');
@@ -1703,6 +1830,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     scopeTimer = null;
     if (active && provider) {
       void refreshPurchases();
+      void refreshAccounting();
       void refreshRelist();
       if (!wasActive) { jointMode = false; node('gallery-browse').hidden = false; node('gallery-joint').hidden = true;
         node('gallery-mode-browse').setAttribute('aria-pressed', 'true'); node('gallery-mode-joint').setAttribute('aria-pressed', 'false');

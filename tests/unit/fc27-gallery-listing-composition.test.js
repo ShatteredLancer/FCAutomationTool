@@ -7,6 +7,42 @@ import { galleryPurchaseKey } from '../../src/gallery/purchase-session.js';
 
 afterEach(() => vi.restoreAllMocks());
 
+it('records a terminal summary only after exact active-auction readback and journal confirmation', async () => {
+  const f = fixture(), diagnosticLog = { record: vi.fn(async () => true) };
+  const service = createFc27GalleryListing({ ...f.deps, diagnosticLog });
+  await service.prepare();
+  const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'listing-result', status: 'completed',
+    acceptedCount: 1, rejectedCount: 0, skippedCount: 0, unknownCount: 0, requestedCount: 1 }));
+  const g = fixture(), unknownLog = { record: vi.fn(async () => true) };
+  const unknownService = createFc27GalleryListing({ ...g.deps, diagnosticLog: unknownLog });
+  await unknownService.prepare(); const unknownPlan = unknownService.plan({ selectedIds: [11], settings: g.settings });
+  g.adapter.listItem.mockResolvedValue({ status: 'unknown' });
+  await unknownService.execute({ approved: true, plan: unknownPlan, settings: g.settings, isCurrent: () => true });
+  expect(unknownLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'listing-result',
+    acceptedCount: 0, unknownCount: 1 }));
+});
+
+it('does not change a confirmed listing when terminal diagnostics throw', async () => {
+  const f = fixture();
+  const service = createFc27GalleryListing({ ...f.deps, diagnosticLog: { record: () => { throw Error('offline'); } } });
+  await service.prepare(); const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('writes only read-back-confirmed accepted listings to the accounting adapter', async () => {
+  const f = fixture(), accounting = { recordListings: vi.fn(async entries => ({ status: 'observed', entries })) };
+  const service = createFc27GalleryListing({ ...f.deps, accounting });
+  await service.prepare(); const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+  expect(accounting.recordListings).toHaveBeenCalledWith([expect.objectContaining({ status: 'accepted', listingTradeId: '9999', buyNow: 200 })]);
+});
+
 function fixture() {
   let at = 1000;
   vi.spyOn(Date, 'now').mockImplementation(() => at);

@@ -33,6 +33,7 @@ import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '..
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
 import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
 import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
+import { createFc27GalleryAccounting } from '../adapters/browser/fc27-gallery-accounting.js';
 import { createFc27GalleryListing } from '../adapters/browser/fc27-gallery-listing.js';
 import { withFodderGalleryPools } from '../adapters/browser/fc27-fodder-gallery.js';
 import { createFc27GalleryRelist } from '../adapters/browser/fc27-gallery-relist.js';
@@ -44,6 +45,7 @@ import { readCachedGalleryPrice } from '../gallery/prices.js';
 import { planGalleryGrade } from '../gallery/planner.js';
 import { createGalleryTargetStore } from '../gallery/targets.js';
 import { createGalleryPlanStore } from '../gallery/plans.js';
+import { createGalleryScoreCache } from '../gallery/score-cache.js';
 import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
@@ -170,13 +172,14 @@ const galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgr
 const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
+const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
-  readSettings: () => current().inspectPuzzlePolicy(), publicPrices, diagnosticLog });
+  readSettings: () => current().inspectPuzzlePolicy(), publicPrices, diagnosticLog, accounting: galleryAccounting });
 const galleryListing = createFc27GalleryListing({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled,
   schedulingEnabled: dependencies.liveEnabled === true,
-  loadPrices: (ids, options) => publicPrices.load(ids, { ...options, purpose: 'listing' }), diagnosticLog });
+  loadPrices: (ids, options) => publicPrices.load(ids, { ...options, purpose: 'listing' }), diagnosticLog, accounting: galleryAccounting });
 const galleryRelist = createFc27GalleryRelist({ root: unsafeWindow, get: GM_getValue, set: GM_setValue,
   purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled, diagnosticLog,
   sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) });
@@ -255,6 +258,8 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
+  galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
+  galleryAccounting,
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');

@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { summarizeGalleryScore, summarizeGalleryScoreSteps } from '../../src/gallery/scoring.js';
 import { createGalleryScoreQueue } from '../../src/gallery/score-queue.js';
+import { createGalleryScoreCache } from '../../src/gallery/score-cache.js';
 
 const input = () => ({ set: {id:'futgg:1',requiredCards:11,grades:[{name:'D',threshold:10}]},
   catalog: {source:'futgg',tags:[{id:1,name:'rare',bonusType:'ITEM_SCORE_PERCENTAGE',thresholdType:'ITEM_COUNT',
@@ -47,4 +48,38 @@ it('ignores transport metadata but invalidates semantic scoring fields', async (
   metadata.progress.rows[0].overall += 1;
   expect(queue.read('account-a', metadata).status).toBe('calculating');
   await queue.idle(); queue.dispose();
+});
+
+it('restores exact scores across reload without repeating the selection search', async () => {
+  const records = new Map(), get = async key => records.get(key), set = vi.fn(async (key, value) => records.set(key, structuredClone(value)));
+  const cache = () => createGalleryScoreCache({ get, set });
+  const first = createGalleryScoreQueue({ cache: cache(), schedule: async () => {} });
+  const value = input(); first.read('a', value); await first.idle(); first.dispose();
+  expect(set).toHaveBeenCalledOnce();
+  let ticks = 0;
+  const queue = createGalleryScoreQueue({ cache: cache(), now: () => ++ticks, schedule: async () => {} });
+  const renamed = structuredClone(value); renamed.progress.rows.forEach(row => { row.name = 'current name'; });
+  queue.read('a', renamed); await queue.idle();
+  expect(ticks).toBe(0); expect(queue.read('a', renamed)).toEqual(summarizeGalleryScore(renamed));
+  queue.read('b', renamed); await queue.idle(); expect(ticks).toBeGreaterThan(100); queue.dispose();
+});
+
+it.each(['firstOwned', 'gradingScore', 'collected', 'holographic'])('never restores a score after %s changes', async field => {
+  const records = new Map(), cache = () => createGalleryScoreCache({ get: async key => records.get(key), set: async (key, value) => records.set(key, value) });
+  const first = createGalleryScoreQueue({ cache: cache(), schedule: async () => {} });
+  const value = input(); first.read('a', value); await first.idle(); first.dispose();
+  value.progress.rows[0][field] = field === 'gradingScore' ? 900 : !value.progress.rows[0][field];
+  let ticks = 0;
+  const next = createGalleryScoreQueue({ cache: cache(), schedule: async () => {}, now: () => ++ticks });
+  next.read('a', value); await next.idle(); expect(ticks).toBeGreaterThan(100);
+  expect(next.read('a', value)).toEqual(summarizeGalleryScore(value)); next.dispose();
+});
+
+it('recalculates when durable storage is corrupt or unavailable', async () => {
+  for (const get of [async () => { throw Error(); }, async () => ({ schema: 1, entries: 'bad' })]) {
+    const cache = createGalleryScoreCache({ get, set: async () => { throw Error(); } });
+    const queue = createGalleryScoreQueue({ cache, schedule: async () => {} });
+    const value = input(); queue.read('a', value); await queue.idle();
+    expect(queue.read('a', value)).toEqual(summarizeGalleryScore(value)); queue.dispose();
+  }
 });

@@ -10,6 +10,7 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
 // Rendering never runs a lineup search. Cache by data rather than freshly
 // projected object identity, and run only one cooperative search at a time.
 export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => performance.now(),
+  cache = null,
   schedule = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
   const entries = new Map();
   let task = null, epoch = 0, disposed = false;
@@ -17,6 +18,7 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
     if (task || disposed || ![...entries.values()].some(value => value.pending)) return;
     const generation = epoch;
     task = (async () => {
+      const writes = new Map();
       // Allow the tab and collection counts to paint before any search work.
       await schedule();
       while (!disposed && generation === epoch) {
@@ -24,13 +26,29 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
         if (!entry) break;
         const current = () => !disposed && generation === epoch && entries.get(entry.id) === entry;
         let summary;
-        try { summary = await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
+        try {
+          try { summary = await cache?.read(entry.scope, entry.input.set.id, entry.key); }
+          catch { summary = null; }
+          if (!current()) break;
+          if (summary?.lineup) {
+            const rows = new Map(entry.input.progress.rows.map(row => [row.eaId, row]));
+            if (summary.lineup.every(row => rows.has(row.eaId))) summary.lineup = summary.lineup.map(row => rows.get(row.eaId));
+            else summary = null;
+          }
+          summary ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
           current, now, schedule, sliceMs: 8, maxMs: Infinity }); }
         catch { summary = {status:'unavailable',reason:'input-invalid'}; }
         if (!current() || !summary) break;
         entry.summary = summary; entry.pending = false;
+        if (cache) {
+          if (!writes.has(entry.scope)) writes.set(entry.scope, []);
+          writes.get(entry.scope).push({ id: entry.input.set.id, key: entry.key, summary });
+        }
         try { onUpdate(entry.input.set.id); } catch { /* Presentation cannot stop the queue. */ }
         await schedule();
+      }
+      for (const [scope, rows] of writes) {
+        try { await cache.write(scope, rows); } catch { /* Cache failure never blocks presentation. */ }
       }
     })().finally(() => { task = null; if ([...entries.values()].some(value => value.pending)) start(); });
   };
@@ -59,7 +77,7 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
         scoringKey(input)]));
       let entry = entries.get(id);
       if (entry?.key !== key) {
-        entry = { id, key, input, priority, pending: true, summary: {status:'calculating'} }; entries.set(id, entry);
+        entry = { id, key, scope, input, priority, pending: true, summary: {status:'calculating'} }; entries.set(id, entry);
         while (entries.size > 256) entries.delete(entries.keys().next().value);
       }
       entry.priority = Math.max(entry.priority, priority);

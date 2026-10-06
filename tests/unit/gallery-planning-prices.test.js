@@ -5,6 +5,12 @@ const target = ids => ({ progress: { rows: ids.map(eaId => ({ eaId, collected: f
 const load = async ids => ({ source: 'public-references', policy: { source: 'futbin' },
   prices: Object.fromEntries(ids.map(id => [id, 200])), freshPrices: Object.fromEntries(ids.map(id => [id, 200])),
   references: Object.fromEntries(ids.map(id => [id, { definitionId: id }])), expiresAt: 5000 });
+it('does not quote unknown or held versions and preserves their collection facts', async () => {
+  const t = target([1, 2, 3]); t.progress.rows[0].collected = null; t.progress.rows[1].held = true;
+  const before = structuredClone(t), loader = vi.fn(load);
+  await priceGalleryPlanningTargets([t], { load: loader });
+  expect(loader.mock.calls[0][0]).toEqual([3]); expect(t).toEqual(before);
+});
 it('deduplicates overlapping sets, excludes owned cards and replaces every EA/old cost together', async () => {
   const targets = [target([1,2,3]), target([2,3,4])]; targets[0].progress.rows[0].collected = true;
   const before = structuredClone(targets), loader = vi.fn(load);

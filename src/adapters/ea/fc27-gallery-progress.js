@@ -275,9 +275,13 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     try {
       const state = stateFor(readFc27Context(root));
       return { synced: state.sessionSynced, syncedAt: state.syncedAt, setSyncedAt: { ...state.setSyncedAt }, busy: !!running,
+        running: running ? { kind: running.kind ?? 'sync', startedAt: running.startedAt ?? null,
+          stopped: !!running.stopped, progress: running.progress ? { ...running.progress } : null } : null,
         needsRefresh: now() - (state.fullSyncAt ?? 0) >= ttlMs && now() >= state.retryAt
           && [...state.rows.values()].some(row => row.isCollected !== true) };
-    } catch { return { synced: false, syncedAt: null, busy: !!running }; }
+    } catch { return { synced: false, syncedAt: null, busy: !!running,
+      running: running ? { kind: running.kind ?? 'sync', startedAt: running.startedAt ?? null,
+        stopped: !!running.stopped, progress: running.progress ? { ...running.progress } : null } : null }; }
   };
   const needsRead = (state, definitionId, missingOnly = false) => {
     const row = state.rows.get(definitionId);
@@ -295,8 +299,11 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     const state = stateFor(context), key = `${state.key}:${definitionIds?.join(',') ?? pool?.setId ?? 'all'}`;
     if (inFlight.has(key)) return inFlight.get(key);
     const run = async () => {
-      const operation = { context, stopped: false }; running = operation;
-      const progress = value => { try { onProgress?.(value); } catch { /* UI only. */ } };
+      const operation = { context, stopped: false, kind: 'sync', startedAt: now(), progress: null }; running = operation;
+      const progress = value => {
+        operation.progress = value && typeof value === 'object' ? { ...value } : null;
+        try { onProgress?.(value); } catch { /* UI only. */ }
+      };
       try {
         await restore(state); assert(context);
         const allIds = definitionIds ?? (pool ? pool.items.map(row => row.eaId) : root.repositories.Item.getStaticData().map(row => row.id));
@@ -480,7 +487,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     const state = stateFor(context), key = `${state.key}:discover:${set.id}`;
     if (inFlight.has(key)) return inFlight.get(key);
     const run = async () => {
-      const operation = { context, stopped: false }; running = operation;
+      const operation = { context, stopped: false, kind: 'discover', startedAt: now(), progress: null }; running = operation;
       try {
         await restore(state); assert(context);
         if (now() < state.retryAt) fail('FC27_GALLERY_PROGRESS_BACKOFF');
@@ -491,7 +498,9 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
           for (let page = 0; page < 6; page++) {
             if (requests++) await new Promise(resolve => setTimeout(resolve, 1500));
             assert(context); if (operation.stopped) return { status: 'stopped' };
-            try { onProgress?.({ phase: 'ea', index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size }); } catch { /* UI only. */ }
+            const update = { phase: 'ea', index: index + 1, total: queries.length, completed: index, pages: requests, count: items.size };
+            operation.progress = update;
+            try { onProgress?.(update); } catch { /* UI only. */ }
             const criteria = Object.assign(new root.UTSearchCriteriaDTO(), { type: root.SearchType?.PLAYER ?? 'player', count: 200, offset }, query);
             const reply = await nativePage(criteria, context); assert(context);
             if (reply?.success !== true || reply.status !== 200) fail(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599

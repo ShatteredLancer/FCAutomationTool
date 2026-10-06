@@ -2,13 +2,14 @@ import { createGalleryPlanReplay } from '../gallery/plan-replay.js';
 
 const DEFAULT_MAX_ENTRIES = 300;
 const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
+const MAX_TRANSACTION_RESULTS = 40;
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
-  'requestedCount', 'responseCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
+  'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
   'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
 const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted']);
@@ -59,6 +60,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   }
   let entries = [];
   let criticalEntries = [];
+  let transactionResults = [];
   let planning = [];
   let loaded = false;
   let loading = null;
@@ -71,6 +73,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
         entries = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
         criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : [])
           .slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
+        transactionResults = (Array.isArray(saved.transactionResults) ? saved.transactionResults : [])
+          .slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
         planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map(row => {
           const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
           return event && replay ? { event, replay } : null;
@@ -82,6 +86,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   const persist = () => {
     const payload = { schema: 1, product: 'FC Automation Tool', season: '27', version: version ?? null,
       entries: entries.map(entry => ({ ...entry })), criticalEntries: criticalEntries.map(entry => ({ ...entry })),
+      transactionResults: transactionResults.map(entry => ({ ...entry })),
       planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
@@ -103,6 +108,9 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
           ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
         criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
       }
+      if (entry.area === 'gallery' && ['purchase-result', 'listing-result'].includes(entry.event)) {
+        transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
+      }
       if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
       await persist();
     }).catch(() => undefined);
@@ -121,7 +129,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     version: version ?? null,
     exportedAt: now(),
     redaction: 'Bounded events, critical Gallery trade events and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.',
-    entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })), planning: structuredClone(planning),
+    entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })),
+    transactionResults: transactionResults.map(entry => ({ ...entry })), planning: structuredClone(planning),
   }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

@@ -25,7 +25,7 @@ export function* galleryPriceBandSeedSteps({ targets, candidates, maxWork = 1600
         .map(row => owned(row) ? { ...row, collected: true } : { ...row,
           gradingScore: byId.get(row.eaId).score, collected: true, firstOwned: false });
       const steps = summarizeGalleryScoreSteps({ ...target, progress: { ...target.progress,
-        season: '27', setId: Number(target.set.id.split(':').at(-1)), complete: true, rows } });
+        season: '27', setId: target.catalog.source === 'fodder' ? target.set.id : Number(target.set.id.split(':').at(-1)), complete: true, rows } });
       let next;
       try {
         next = steps.next();

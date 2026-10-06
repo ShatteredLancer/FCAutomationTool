@@ -281,7 +281,8 @@ it('uses an owned FC27 catalog GET without shared cache mutation or owned identi
     entries: [{ definitionId: 101, rating: 70, positions: [12, 23], groups: [] }] });
   expect(f.calls[0]).toMatchObject({ url: 'https://utas.test.ea.com/ut/game/fc27/defid', requestType: 'GET',
     cache: false, doRetry: false, doReauth: false, urlVariables: '?type=player&sort=asc&start=0&count=20&level=silver&nation=14' });
-  expect(JSON.stringify(result)).not.toMatch(/900001|9002|9003|9876543210123/);
+  // Match complete identities, not coincidental digits inside observedAt.
+  expect(JSON.stringify(result)).not.toMatch(/(?<!\d)(?:900001|9002|9003|9876543210123)(?!\d)/);
   expect(f.cleanups).toEqual(['unobserve']); expect(f.forbidden).not.toHaveBeenCalled();
   expect(f.identified).toEqual([]);
 });
@@ -294,7 +295,7 @@ it('reads exact-version Buy Now observations, not averages/price limits, preserv
     source: 'ea-visible-buy-now', platform: 'PSN:synthetic27', complete: false, executable: false, marketAvailabilityVerified: false });
   expect(f.calls[0].urlVariables).toBe('?type=player&definitionId=101&start=0&num=20&maxb=2000');
   expect(f.identified.map(row => row[0])).toEqual(['request', 'response']);
-  expect(JSON.stringify(result)).not.toMatch(/9876543210123|900001/);
+  expect(JSON.stringify(result)).not.toMatch(/(?<!\d)(?:9876543210123|900001)(?!\d)/);
   expect(f.forbidden).not.toHaveBeenCalled();
 });
 

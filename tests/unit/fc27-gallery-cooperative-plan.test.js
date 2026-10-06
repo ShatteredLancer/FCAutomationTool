@@ -17,6 +17,7 @@ it('cooperative grade and joint evaluation preserve synchronous results and yiel
     let time = 0, yields = 0;
     const before = structuredClone(value);
     expect(await runGalleryPlan(steps(value), {now: () => time++, sliceMs: 1,
+      progress: state => { expect(Number.isFinite(state.evaluations)).toBe(true); },
       schedule: async () => { yields++; }})).toEqual(sync(value));
     expect(yields).toBeGreaterThan(0); expect(value).toEqual(before);
   }
@@ -44,4 +45,26 @@ it('yields and cancels a realistic 56-version pool with 20 collected cards witho
   const result = await runGalleryPlan(planGalleryGradeSteps(value), { current: () => active, sliceMs: 0,
     schedule: async () => { yields++; active = false; } });
   expect(yields).toBe(1); expect(result).toBeNull(); expect(value).toEqual(before);
+});
+
+it.each(['single', 'joint'])('yields inside %s scoring before the first plan candidate is evaluated', async mode => {
+  const value = { ...input, targetGrade: 'C', set: { ...set, grades: [{ name: 'C', threshold: 99999999 }] },
+    progress: { ...progress, rows: Array.from({ length: 65 }, (_, i) => ({ eaId: 900000 + i,
+      playerEaId: 200000 + i, overall: 80, gradingScore: 1000 + i, firstOwned: false, collected: true })) } };
+  const steps = mode === 'single' ? planGalleryGradeSteps(value) : planGalleryJointSteps({ targets: [value] });
+  let active = true, observed;
+  expect(await runGalleryPlan(steps, { current: () => active, sliceMs: 0,
+    progress: state => { observed = state; }, schedule: async () => { active = false; } })).toBeNull();
+  expect(observed).toMatchObject({ scoringWork: 1 });
+});
+
+it('continues yielding after a nested score deadline and returns a truthful partial result', async () => {
+  const value = { ...input, targetGrade: 99999999,
+    progress: { ...progress, rows: Array.from({ length: 65 }, (_, i) => ({ eaId: 900000 + i,
+      overall: 80, gradingScore: 1000 + i, collected: true, firstOwned: false })) } };
+  let ticks = 0, yields = 0;
+  const result = await runGalleryPlan(planGalleryGradeSteps(value), { now: () => ticks++, maxMs: 1,
+    schedule: async () => { yields++; } });
+  expect(yields).toBeGreaterThan(100);
+  expect(result).toMatchObject({ status: 'partial', timeExhausted: true, searchComplete: false });
 });

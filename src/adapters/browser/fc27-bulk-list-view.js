@@ -66,7 +66,8 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
     #gallery-bulk-list-dialog th,#gallery-bulk-list-dialog td{overflow:hidden;text-overflow:ellipsis}
     #gallery-bulk-list-dialog .list-card{height:50px;width:82px;position:relative;display:inline-block;vertical-align:middle;margin-right:7px}
     #gallery-bulk-list-dialog .list-card slot{display:block;transform:scale(.5);transform-origin:top left;width:144px;height:200px}
-    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid #35414a;background:#151a20}
+    /* Keep actions reachable when a long list exceeds the viewport. */
+    #gallery-bulk-list-dialog .list-footer{display:flex;justify-content:flex-end;gap:8px;margin:8px -16px -16px;padding:10px 16px 16px;border-top:1px solid #35414a;background:#151a20;position:sticky;bottom:-1px;z-index:4}
     #gallery-bulk-list-dialog .list-footer button.primary{background:#b0ed55;border-color:#b0ed55;color:#141c09;font-weight:700;min-width:122px}
     #gallery-bulk-list-dialog output{display:block;overflow-wrap:anywhere;margin:7px 0;color:#aab6bf;font-size:11px;min-height:16px}
     #gallery-bulk-list-dialog progress{display:block;height:5px;border:0;border-radius:5px;overflow:hidden;background:#303b45}
@@ -100,7 +101,8 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
     #gallery-bulk-list-dialog td small{display:block;font-size:10px;line-height:1.4;color:#c3c7c9}
     #gallery-bulk-list-dialog tbody{background:#424242}
     #gallery-bulk-list-dialog tfoot{position:static;background:#191d23}
-    #gallery-bulk-list-dialog .list-footer{background:#191d23;border:0;padding:24px 0 8px}
+    #gallery-bulk-list-dialog .list-footer{background:#191d23;border:0;margin:8px -16px -16px;padding:24px 16px 16px;bottom:-16px;box-shadow:0 -8px 0 #191d23}
+    @media(max-width:640px){#gallery-bulk-list-dialog .list-footer{margin-inline:-12px;margin-bottom:-12px;padding:12px;bottom:-12px;box-shadow:0 -6px 0 #191d23}}
     #gallery-bulk-list-dialog .dialog-header>button{border:0;background:transparent;font-size:22px;padding:0 4px}
     #gallery-bulk-list-dialog .list-selection{margin-right:auto}
     #gallery-bulk-list-dialog .list-pagebar{justify-content:flex-end;margin:26px 0 12px}
@@ -195,6 +197,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
   const scheduleArm = add(scheduleControls, 'button', '启用定时'); scheduleArm.type = 'button'; scheduleArm.disabled = true;
   const scheduleCancel = add(scheduleControls, 'button', '取消定时'); scheduleCancel.type = 'button'; scheduleCancel.disabled = true;
   const scheduleStatus = add(scheduleBox, 'output', '尚无计划'); scheduleStatus.setAttribute('role', 'status');
+  dialog.append(actions);
   const selected = new Set(), overrides = {}, rows = new Map();
   let generatedPrices = null;
   let viewMode = 'cards', pageIndex = 0;

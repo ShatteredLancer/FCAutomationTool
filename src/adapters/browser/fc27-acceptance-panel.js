@@ -7,13 +7,14 @@ import { bindCurrencyArrows } from './fc27-listing-currency.js';
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
   galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryRelist = null, galleryFirstOwnerHistory = null,
+  galleryScoreCache = null, galleryAccounting = null,
   publicPrices = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = fc27WorkbenchMarkup();
-  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, relist: galleryRelist, setFirstOwner: galleryFirstOwnerHistory });
+  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, relist: galleryRelist, setFirstOwner: galleryFirstOwnerHistory });
   const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: publicPrices });
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery'); if (id === 'settings') void priceSettings.refresh(); });
   const node = id => shadow.getElementById(id);

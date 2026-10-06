@@ -4,7 +4,10 @@ import { build } from 'esbuild';
 import { exerciseGalleryBulkList } from './gallery-bulk-list-smoke.mjs';
 import { exercisePublicPriceSettings } from './public-price-settings-smoke.mjs';
 import { exerciseGalleryRelistControls } from './gallery-relist-controls-smoke.mjs';
+import { exerciseGalleryComparison } from './gallery-comparison-smoke.mjs';
 import { readProductionGallery } from './agent-session.mjs';
+import { verifyProductionGallery } from './gallery-verification.mjs';
+import { verifyGalleryPlanning } from './gallery-planning-verification.mjs';
 import { clickPanelControl, panelCall, selectPanelTab } from './production-panel-inspection.mjs';
 import { diffGalleryCatalog, normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
@@ -14,13 +17,17 @@ import { futggGallery, futggGalleryPool } from '../../tests/fixtures/fc27-galler
 // Use the real closed shadow root and native scrolling host. The earlier
 // Gallery smoke only exercised open-shadow Playwright locators in a modal.
 export async function exerciseGalleryInspection(context) {
+  await exerciseGalleryComparison(context);
   await exercisePublicPriceSettings(context);
   await exerciseGalleryRelistControls(context, path.resolve(import.meta.dirname, '../..'));
   await exerciseGalleryBulkList(context);
+  await exerciseGalleryBulkList(context, null, { scheduleEnabled: true });
   const page = await context.newPage();
   const root = path.resolve(import.meta.dirname, '../..');
   const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
     bundle: true, write: false, format: 'iife', globalName: 'GallerySmoke', target: 'chrome120' });
+  const providerBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-gallery-catalog.js'],
+    bundle: true, write: false, format: 'iife', globalName: 'GalleryProviderSmoke', target: 'chrome120' });
   const normalized = normalizeGalleryCatalog('futgg', futggGallery());
   const template = normalized.categories[0].sets[0];
   const catalog = Object.freeze({ ...normalized, categories: [Object.freeze({ ...normalized.categories[0],
@@ -39,16 +46,34 @@ export async function exerciseGalleryInspection(context) {
       body{margin:0}header{height:100px}#native{position:absolute;top:100px;left:90px;right:0;bottom:0;overflow:auto}
     </style><header>Native header fixture</header><main id="native"></main>`);
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.evaluate(({ catalog, progress }) => {
+    await page.addScriptTag({ content: providerBundle.outputFiles[0].text });
+    await page.evaluate(({ catalog, progress, poolPayload }) => {
       globalThis.gallerySetCalls = 0;
+      globalThis.galleryPoolRequests = 0;
       globalThis.gallerySetArgs = [];
       globalThis.galleryListingOpens = 0;
+      globalThis.galleryCompareCalls = 0;
+      globalThis.galleryPurchaseCalls = 0;
       const state = { status: 'observed', source: 'futgg', catalog, fetchedAt: Date.now() };
+      const poolProvider = globalThis.GalleryProviderSmoke.createFc27GalleryCatalogProvider({
+        scope: 'fixture', http: { get: async () => { throw Error('unexpected catalog request'); },
+          getPool: async () => { globalThis.galleryPoolRequests++; return { status: 200, text: JSON.stringify(poolPayload) }; } },
+      });
       globalThis.galleryPanel = globalThis.GallerySmoke.mountFc27AcceptancePanel({
         document: globalThis.document, hostId: 'fcat-fc27-production', targets: () => [],
         galleryAccountScope: () => 'fixture',
+        purchaseGallery: Object.assign(async () => { globalThis.galleryPurchaseCalls++; throw Error('must not buy'); }, {
+          inspect: async () => ({ status: 'absent' }),
+        }),
+        galleryMarketCompare: async () => { globalThis.galleryCompareCalls++; return { status: 'observed', definitionId: 900002,
+          executable: false, price: 250, listings: [{ buyNow: 250, expires: 60 }] }; },
         galleryCatalog: { peek: async () => state, load: async () => state },
-        gallerySetLoader: async args => { globalThis.gallerySetCalls++; globalThis.gallerySetArgs.push(args); return { status: 'observed', scope: 'fixture', progress }; },
+        gallerySetLoader: async args => {
+          globalThis.gallerySetCalls++; globalThis.gallerySetArgs.push(args);
+          const pool = await poolProvider.loadPool(args);
+          if (pool.status !== 'observed') return pool;
+          return { status: 'observed', scope: 'fixture', progress };
+        },
         galleryListing: {
           prepare: async () => { globalThis.galleryListingOpens++; return { status: 'ready', candidates: [], prices: {}, liveEnabled: false }; },
           plan: () => ({ status: 'observed', entries: [], skipped: [] }),
@@ -57,7 +82,7 @@ export async function exerciseGalleryInspection(context) {
         },
       });
       globalThis.galleryPanel.open(globalThis.document.getElementById('native'));
-    }, { catalog, progress });
+    }, { catalog, progress, poolPayload: futggGalleryPool() });
     const report = await readProductionGallery(context, page, 'Arsenal');
     assert.equal(report.status, 'observed', JSON.stringify(report));
     assert.equal(report.detail.cards, 3);
@@ -66,6 +91,24 @@ export async function exerciseGalleryInspection(context) {
     assert.equal(report.overview.categories, catalog.categories.length);
     assert.equal(report.overview.categoryButtons, catalog.categories.length);
     assert.equal(await page.evaluate(() => globalThis.gallerySetCalls), 1);
+    const verification = await verifyProductionGallery(context, page, 'Arsenal', { readGallery: readProductionGallery, planning: false });
+    assert.equal(verification.status, 'observed', JSON.stringify(verification));
+    assert.equal(verification.comparison.status, 'observed');
+    assert.equal(verification.comparison.sameResult, true);
+    assert.deepEqual(verification.samples.map(row => row.phase), ['first-open', 'compare', 'compare-repeat', 'reopen']);
+    assert.ok(verification.samples.every(row => row.network.total === 0 && row.network.capped === false));
+    assert.equal(await page.evaluate(() => globalThis.gallerySetCalls), 4, 'each detail entry rechecks through the loader');
+    const planning = await verifyGalleryPlanning(context, page, 'Arsenal', { readGallery: readProductionGallery });
+    assert.equal(planning.status, 'observed', JSON.stringify(planning));
+    assert.equal(planning.categoriesOnly, true);
+    assert.equal(planning.planRetained, true);
+    assert.equal(planning.overviewRetained, true);
+    assert.equal(await page.evaluate(() => globalThis.gallerySetCalls), 8,
+      'planning opens and returns through two browse/detail pairs');
+    assert.equal(await page.evaluate(() => globalThis.galleryPoolRequests), 1, 'the production provider reuses the exact pool');
+    assert.ok(await page.evaluate(() => globalThis.gallerySetArgs.every(args => args.force === false)), 'no forced refresh');
+    assert.equal(await page.evaluate(() => globalThis.galleryPurchaseCalls), 0, 'verification never authorizes buying');
+    assert.equal(await page.evaluate(() => globalThis.galleryCompareCalls), 2, 'only two explicit comparisons');
     const listingControl = await panelCall(context, page, function () {
       const button = this.getElementById('gallery-list-purchased');
       return button ? { hidden: button.hidden, disabled: button.disabled, visible: button.checkVisibility?.() ?? false } : null;

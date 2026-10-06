@@ -93,7 +93,7 @@ export async function readProductionGallery(context, page, setName = 'Arsenal') 
         button: !!card.querySelector('.gallery-open-set'),
       }));
       const target = cards.find(card => card.name.toLowerCase() === requestedName.toLowerCase());
-      return { status, source, activeTab: this.host?.dataset?.activeTab ?? null,
+      return { status, source, runtimeVersion: this.host?.dataset?.version ?? null, activeTab: this.host?.dataset?.activeTab ?? null,
         tabSelected: this.getElementById('tab-gallery')?.getAttribute('aria-selected') ?? null,
         pageHidden: this.getElementById('page-gallery')?.hidden ?? null,
         categories: this.querySelectorAll('#gallery-categories button[data-category-id]:not([data-category-id=""])').length,
@@ -223,6 +223,8 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     ...await import(`./puzzle-market-live.mjs?revision=${revision}`),
     ...await import(`./market-probe.mjs?revision=${revision}`),
     ...await import(`./navigation-probe.mjs?revision=${revision}`),
+    ...await import(`./gallery-reward-probe.mjs?revision=${revision}`),
+    ...await import(`./gallery-verification.mjs?revision=${revision}`),
   }) }) {
   const network = createNetworkCollector(context);
   const directory = path.join(root, 'artifacts/fc27-browser');
@@ -237,11 +239,11 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-sync, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Login/2FA manually if requested. The current production version and hash must be installed before acceptance. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-verify [set-name], gallery-sync, gallery-reward-probe, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-read(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'tabs') {
         const tabs = [];
         for (const [index, candidate] of context.pages().entries()) tabs.push({ index, url: candidate.url(),
@@ -330,6 +332,17 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
           observation.gallery = await readProductionGallery(context, target, requested);
           observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_READ' : observation.gallery.reason;
         }
+        if (command.startsWith('gallery-verify')) {
+          if (report.season !== '27' || observation.ui?.login !== false || observation.ui.modal !== false || observation.ui.loading !== false) {
+            observation.action = 'GALLERY_SESSION_NOT_CONFIRMED';
+          } else {
+            const { verifyProductionGallery } = await loadHelpers(revision);
+            observation.galleryVerification = await verifyProductionGallery(context, target, command.split(' ').slice(1).join(' ') || 'Arsenal',
+              { readGallery: readProductionGallery });
+            observation.action = observation.galleryVerification.status === 'observed' ? 'PRODUCTION_GALLERY_VERIFICATION_READ'
+              : observation.galleryVerification.reason;
+          }
+        }
         if (command === 'gallery-sync') {
           observation.gallery = await syncProductionGallery(context, target);
           observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_SYNC' : observation.gallery.reason;
@@ -390,6 +403,11 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
         if (command === 'navigation-probe') {
           observation.navigation = await target.evaluate(inspectFc27Navigation);
           observation.action = 'NAVIGATION_READ_ONLY_INSPECTED';
+        }
+        if (command === 'gallery-reward-probe') {
+          const { inspectGalleryRewardCapabilities } = await loadHelpers(revision);
+          observation.galleryRewards = await target.evaluate(inspectGalleryRewardCapabilities);
+          observation.action = 'GALLERY_REWARD_DESCRIPTORS_INSPECTED';
         }
         // Include the requests made by this command, not only earlier traffic.
         observation.network = network.snapshot();

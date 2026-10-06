@@ -5,7 +5,7 @@ import { priceTiers } from '../../tests/fixtures/enhancer-listing-price-referenc
 import { fc27WorkbenchMarkup } from '../../src/adapters/browser/fc27-workbench-view.js';
 
 // Trusted browser clicks with a synthetic service. No EA or price requests.
-export async function exerciseGalleryBulkList(context, previewPath = null) {
+export async function exerciseGalleryBulkList(context, previewPath = null, { scheduleEnabled = false } = {}) {
   const page = await context.newPage(), requests = [];
   page.on('request', request => requests.push(request.url()));
   const bundle = await build({ absWorkingDir: path.resolve(import.meta.dirname, '../..'),
@@ -14,7 +14,7 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
   try {
     await page.setContent('<!doctype html><style>.fixture-ea-card{width:144px;height:100px;background:rgb(40,80,120)}</style><main></main>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.evaluate(({ priceTiers, workbenchMarkup }) => {
+    await page.evaluate(({ priceTiers, workbenchMarkup, scheduleEnabled }) => {
       const host = globalThis.document.querySelector('main'), shadow = host.attachShadow({ mode: 'open' });
       // Keep the real container's generic button/input rules: isolated styles
       // previously hid the 40px minimum-height regression on both chevrons.
@@ -32,7 +32,7 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
       globalThis.bulkSettings = { priceMode: 'fixed', fixedPrice: 200, fixedStartPrice: 150, durationSeconds: 3600, delaySeconds: [3, 5] };
       let planned;
       const service = {
-        scheduleCapability: () => ({ enabled: false }),
+        scheduleCapability: () => ({ enabled: scheduleEnabled }),
         readSettings: async () => globalThis.bulkSettings,
         writeSettings: async value => { globalThis.bulkSettings = value; },
         prepare: async () => {
@@ -55,9 +55,10 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
             entries: args.plan.entries.map((row, index) => ({ ...row, status: index ? 'pending' : 'unknown' })) };
           const entries = args.plan.entries.map((row, index) => ({ ...row, status: index ? 'rejected' : 'accepted' }));
           args.onProgress({ index: entries.length, total: entries.length, completed: entries.length, accepted: 1, rejected: entries.length - 1, skipped: 0, entries });
+          if (globalThis.bulkMode === 'held') await new Promise(resolve => { globalThis.bulkRelease = resolve; });
           return { status: 'completed', accepted: 1, entries };
         },
-        inspect: async () => ({ status: 'observed', state: globalThis.bulkMode === 'unknown' ? 'active' : 'completed', runId: 'fixture-run' }), stop() {},
+        inspect: async () => ({ status: 'observed', state: globalThis.bulkMode === 'unknown' ? 'active' : 'completed', runId: 'fixture-run' }), stop() { globalThis.bulkStopped = true; },
       };
       const nativeRenderer = { renderOwned({ parent, slot, raw }) {
         globalThis.bulkCardCalls.push({ host: parent === host, slot, id: raw.id });
@@ -69,7 +70,7 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
       } };
       globalThis.bulkView = globalThis.BulkListSmoke.mountFc27BulkListView({ document: globalThis.document,
         parent: shadow, host, nativeRenderer, service, accountScope: () => 'account-fixture' });
-    }, { priceTiers, workbenchMarkup: fc27WorkbenchMarkup() });
+    }, { priceTiers, workbenchMarkup: fc27WorkbenchMarkup(), scheduleEnabled });
     const dialog = page.locator('#gallery-bulk-list-dialog');
     const assertClosed = async () => {
       assert.deepEqual(await dialog.evaluate(node => ({ open: node.open,
@@ -102,11 +103,30 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
       assert.ok(currency.length > 0);
       for (const control of currency) assert.deepEqual(control, { input: 40, arrows: [20, 20], icons: [[15, 15], [15, 15]] });
     };
+    const assertActionsReachable = async () => {
+      for (const fraction of [0, .5, 1]) {
+        const layout = await dialog.evaluate((node, fraction) => {
+          node.scrollTop = fraction * (node.scrollHeight - node.clientHeight);
+          const box = node.getBoundingClientRect(), footer = node.querySelector('.list-footer');
+          const buttons = [...footer.querySelectorAll('button')].filter(button => !button.hidden);
+          return { overflow: node.scrollHeight > node.clientHeight,
+            visible: buttons.every(button => {
+              const rect = button.getBoundingClientRect();
+              const hit = node.getRootNode().elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+              return rect.top >= Math.max(0, box.top) && rect.bottom <= Math.min(globalThis.innerHeight, box.bottom)
+                && (hit === button || button.contains(hit));
+            }) };
+        }, fraction);
+        assert.equal(layout.overflow, true, 'long listing must scroll the dialog, not clip it');
+        assert.equal(layout.visible, true, `action buttons must be visible and hit-testable at scroll ${fraction}`);
+      }
+      await dialog.evaluate(node => { node.scrollTop = 0; });
+    };
     await assertLayout();
     await page.setViewportSize({ width: 640, height: 800 });
     await assertLayout();
     await page.setViewportSize({ width: 1280, height: 800 });
-    assert.equal(await page.locator('#gallery-listing-schedule').isVisible(), false);
+    assert.equal(await page.locator('#gallery-listing-schedule').isVisible(), scheduleEnabled);
     await page.getByRole('button', { name: '卡片视图', exact: true }).click();
     assert.equal(await page.locator('tbody tr').first().isVisible(), true, 'card mode must show the selected player rows');
     const assertCards = async ids => {
@@ -135,6 +155,37 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
     assert.equal(await page.locator('thead th').nth(2).textContent(), 'FUTBIN');
     assert.equal(await page.locator('tbody tr').first().locator('td').nth(2).textContent(), '1000');
     assert.equal(await page.locator('tbody tr:visible').count(), 25);
+    const legacyVisible = await dialog.evaluate(node => {
+      node.scrollTop = 0;
+      const footer = node.querySelector('.list-footer'); footer.style.position = 'static';
+      const visible = footer.getBoundingClientRect().bottom <= node.getBoundingClientRect().bottom;
+      footer.style.removeProperty('position');
+      return visible;
+    });
+    assert.equal(legacyVisible, false, 'ordinary-flow footer reproduces the long-list missing actions');
+    const assertReachable = async locator => {
+      await locator.scrollIntoViewIfNeeded();
+      assert.equal(await locator.evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        const hit = node.getRootNode().elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return hit === node || node.contains(hit);
+      }), true, 'scrolled content must not be covered by the sticky actions');
+    };
+    for (const viewport of [{ width: 1280, height: 720 }, { width: 640, height: 600 }, { width: 390, height: 667 }]) {
+      await page.setViewportSize(viewport);
+      await assertLayout();
+      await assertActionsReachable();
+      if (previewPath) await page.screenshot({ path: previewPath.replace(/\.png$/, `-long-${viewport.width}.png`) });
+      await assertReachable(page.getByLabel('选择 Player 35', { exact: true }));
+      if (scheduleEnabled) {
+        await page.locator('#gallery-listing-schedule').evaluate(node => { node.open = true; });
+        await assertActionsReachable();
+        await assertReachable(page.getByLabel('挂牌时间', { exact: true }));
+        await assertReachable(page.getByRole('button', { name: '保存计划', exact: true }));
+        await page.locator('#gallery-listing-schedule').evaluate(node => { node.open = false; });
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByRole('button', { name: '卡片视图', exact: true }).click();
     assert.equal(await page.locator('thead th').nth(2).textContent(), 'Previously Listed');
     await assertCards(Array.from({ length: 10 }, (_, i) => i + 21));
@@ -224,8 +275,16 @@ export async function exerciseGalleryBulkList(context, previewPath = null) {
     await page.locator('.fixture-ea-card').first().waitFor({ state: 'visible' });
     assert.equal(await page.getByLabel('Buy Now', { exact: true }).inputValue(), '300');
     await assertCards(Array.from({ length: 10 }, (_, i) => i + 11));
+    await page.evaluate(() => { globalThis.bulkMode = 'held'; });
     await page.getByRole('button', { name: '挂牌 25 张', exact: true }).click();
+    await page.getByRole('button', { name: '停止', exact: true }).waitFor({ state: 'visible' });
+    await assertActionsReachable();
+    await page.getByRole('button', { name: '停止', exact: true }).click();
+    assert.equal(await page.evaluate(() => globalThis.bulkStopped), true);
+    assert.equal(await page.evaluate(() => globalThis.bulkCalls.length), 1);
+    await page.evaluate(() => { globalThis.bulkRelease(); });
     await page.waitForFunction(() => globalThis.document.querySelector('main').shadowRoot.querySelector('dialog output').textContent.includes('挂牌部分完成'));
+    await assertActionsReachable();
     await assertCards([]);
     assert.equal(await page.locator('tbody tr').count(), 25);
     assert.match(await page.locator('tbody tr').nth(0).textContent(), /已挂牌/);

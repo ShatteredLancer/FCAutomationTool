@@ -28,7 +28,8 @@ export function createFc27GallerySync({ provider, reader, diagnosticLog, now = (
       }
       else return task.promise;
     }
-    const operation = { setId, stopped: false, scope: null, startedAt: now() };
+    const operation = { setId, stopped: false, scope: null, phase: null, startedAt: now() };
+    progressState = null;
     const record = fields => {
       try { Promise.resolve(diagnosticLog?.record?.({area:'gallery',event:'sync-run',...fields})).catch(()=>{}); }
       catch { /* Diagnostics only. */ }
@@ -109,13 +110,26 @@ export function createFc27GallerySync({ provider, reader, diagnosticLog, now = (
     return promise;
   };
   const state = () => {
-    const state = reader.syncState();
+    let nativeState;
+    try { nativeState = reader.syncState(); }
+    catch { nativeState = { synced: false, syncedAt: null, busy: false, running: null }; }
+    const compact = value => value && typeof value === 'object' ? {
+      phase: value.phase ?? null, index: value.index ?? null, total: value.total ?? null,
+      completed: value.completed ?? null, pages: value.pages ?? null, count: value.count ?? null,
+      setId: value.setId ?? null,
+    } : null;
+    const taskState = task ? { active: true, setId: task.setId, phase: task.phase ?? null,
+      stopped: !!task.stopped, startedAt: task.startedAt, ageMs: Math.max(0, now() - task.startedAt),
+      progress: compact(progressState) } : { active: false, setId: null, phase: null, stopped: false,
+      startedAt: null, ageMs: 0, progress: null };
     try {
-      return { ...state, busy: !!task || !!state.busy,
-        synced: state.synced && mappedScope === reader.scope(),
-        progress: task && task.scope === reader.scope() ? progressState : null };
+      return { ...nativeState, busy: !!task || !!nativeState.busy,
+        synced: nativeState.synced && mappedScope === reader.scope(),
+        progress: task && (!task.scope || task.scope === reader.scope()) ? progressState : null,
+        task: taskState, reader: { busy: !!nativeState.busy, running: nativeState.running ?? null } };
     }
-    catch { return { ...state, busy: !!task, synced: false, progress: progressState }; }
+    catch { return { ...nativeState, busy: !!task, synced: false, progress: progressState,
+      task: taskState, reader: { busy: true, running: null } }; }
   };
   return Object.freeze({ sync, remember, peekDetails, state, subscribe: reader.subscribe,
     prioritize: setId => {

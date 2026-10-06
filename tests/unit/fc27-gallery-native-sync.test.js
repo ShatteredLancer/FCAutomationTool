@@ -163,6 +163,16 @@ it('forwards foreground load progress and advances confirmed pages without chang
   expect(selected).toEqual(expect.arrayContaining([expect.objectContaining({ phase: 'ea', completed: 1, pages: 1, count: 3 })]));
   expect(f.calls.map(row => row.offset)).toEqual([0, 250, 0]);
 });
+it('reports the active native phase and clears it after the request settles', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader(); f.control.timeout = true;
+  const task = r.load(f.pool);
+  for (let attempt = 0; attempt < 12 && !f.control.deliver; attempt++) await Promise.resolve();
+  expect(typeof f.control.deliver).toBe('function');
+  expect(r.syncState()).toMatchObject({ busy: true, running: { kind: 'sync', progress: { phase: 'ea' } } });
+  f.control.deliver();
+  await finish(task);
+  expect(r.syncState()).toMatchObject({ busy: false, running: null });
+});
 it('preserves Gallery flags dropped by the factory and exact display DTOs', async () => {
   vi.useFakeTimers(); const f = fixture();
   f.control.raw = f.pool.items.map(row => ({ resourceId: row.eaId, assetId: 200000, itemType: 'player', dream: true,

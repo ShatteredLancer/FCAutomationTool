@@ -86,11 +86,32 @@ describe('Gallery joint planner', () => {
     expect(result).toMatchObject({ status: 'no-plan', reason: 'budget-unreachable', budget: 199 });
   });
 
-  it('blocks incomplete target state and leaves every input untouched', () => {
+  it('excludes an unanswered version and leaves every input untouched', () => {
     const input = { targets: [target(30, [row(1, 100, true), row(2, 100, null), row(3, 150)])] };
     const copy = structuredClone(input);
-    expect(planGalleryJoint(input)).toMatchObject({ status: 'partial', reason: 'target-state-unknown' });
+    expect(planGalleryJoint(input)).toMatchObject({ status: 'ready', collectionUnknownCount: 1, searchComplete: false });
+    expect(planGalleryJoint(input).plans[0].items.map(item => item.eaId)).toEqual([3]);
     expect(input).toEqual(copy);
+  });
+
+  it('keeps an incomplete request blocked and never proves impossibility from unknown versions', () => {
+    const t = target(30, [row(1, 100, true), row(2, 200, null)], { 2: 1 });
+    expect(planGalleryJoint({ targets: [t] })).toMatchObject({ status: 'partial', reason: 'collection-status-unknown',
+      collectionUnknownCount: 1, searchComplete: false, plans: [] });
+    t.progress.complete = false;
+    expect(planGalleryJoint({ targets: [t] })).toMatchObject({ status: 'partial', reason: 'target-state-unknown', plans: [] });
+  });
+
+  it('reports one unknown exact version shared by multiple targets only once', () => {
+    const unknown = row(99, 1000, null);
+    const result = planGalleryJoint({ targets: [
+      target(30, [row(1, 100, true), unknown, row(3, 150)], { 3: 200, 99: 1 }),
+      target(31, [row(2, 100, true), unknown, row(3, 150)], { 3: 200, 99: 1 }),
+    ] });
+    expect(result).toMatchObject({ status: 'ready', collectionUnknownCount: 1,
+      collectionUnknownIds: [99], searchComplete: false });
+    expect(result.plans[0].items.map(item => item.eaId)).toEqual([3]);
+    expect(result.plans[0].targets.every(item => item.score === 250)).toBe(true);
   });
 
   it.each([{ inClub: true }, { held: true }])('does not add an already-held version to a joint purchase plan: %o', ownership => {

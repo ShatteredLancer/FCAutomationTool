@@ -35,3 +35,11 @@ it('uses configurable tax basis points and rejects malformed ledgers', () => {
   expect(summarizeGalleryNetCost({ schema: 1, taxBps: 500, entries: [] })).toMatchObject({ status: 'observed', netCost: 0 });
   expect(normalizeGalleryNetCostLedger({ schema: 1, entries: [{ ...receipt(), state: 'sold' }] })).toBeNull();
 });
+
+it('preserves confirmed sold receipts against later stale snapshots and rejects conflicting resale facts', () => {
+  const ledger = createGalleryNetCostLedger({ entries: [receipt()] });
+  const sold = recordGallerySale(ledger, { itemId: 11, definitionId: 111, state: 'sold', soldPrice: 500, listingTradeId: '999' }).ledger;
+  expect(recordGallerySale(sold, { itemId: 11, definitionId: 111, state: 'listed', listedPrice: 200 })).toMatchObject({ status: 'unchanged' });
+  expect(recordGallerySale(sold, { itemId: 11, definitionId: 111, state: 'sold', soldPrice: 600 })).toMatchObject({ status: 'blocked' });
+  expect(recordGallerySale(sold, { itemId: 11, definitionId: 222, state: 'sold', soldPrice: 500 })).toMatchObject({ status: 'blocked' });
+});

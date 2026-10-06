@@ -364,6 +364,8 @@ export async function exerciseGalleryCatalog(context, directory) {
     await planningHost.getByRole('button', { name: '查看卡片', exact: true }).click();
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /200/);
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /目录奖励预估/);
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /累计奖励/);
     assert.doesNotMatch(await planningHost.locator('#gallery-set-detail').innerText(), /价格读取失败|报价快照待更新/);
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
     const planBeforeCompare = await planningHost.locator('.gallery-plan-output').innerText();
@@ -377,6 +379,19 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await planningHost.locator('.gallery-plan-output').innerText(), planBeforeCompare);
     assert.equal(await page.evaluate(() => globalThis.compareCalls), 2);
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
+    await planningHost.getByRole('button', { name: '各档费用', exact: true }).click();
+    await planningHost.locator('.gallery-grade-overview-row').nth(4).waitFor();
+    const rewardRows = await planningHost.locator('.gallery-grade-overview-row').allTextContents();
+    assert.ok(rewardRows.every(text => text.includes('本档：') && text.includes('累计：')));
+    assert.match(rewardRows[0], /Club Badge ×1/);
+    assert.match(rewardRows[4], /Gallery Tokens ×100/);
+    assert.equal(await page.evaluate(() => globalThis.planningCalls), 2, 'reward display adds no account reads');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      await planningHost.locator('.gallery-grade-overview').scrollIntoViewIfNeeded();
+      assert.equal(await planningHost.evaluate(el => el.scrollWidth > el.clientWidth + 1), false);
+      await page.screenshot({ path: path.join(directory, `gallery-single-rewards-${width}.png`) });
+    }
     await page.evaluate(() => {
       const original = globalThis.planningDetail.progress.rows[2];
       globalThis.planningDetail.progress = { ...globalThis.planningDetail.progress,

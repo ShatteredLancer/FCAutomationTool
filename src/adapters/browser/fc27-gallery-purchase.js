@@ -10,7 +10,7 @@ import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
 
 export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequest, reader, liveEnabled,
-  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), publicPrices = null, diagnosticLog = null }) {
+  readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), publicPrices = null, diagnosticLog = null, accounting = null }) {
   let busy = false, stopped = false;
   const create = ({ onProgress, isCurrent = () => true } = {}) => {
     const context = readFc27Context(root), scope = traditionalJournalScope(context);
@@ -22,6 +22,7 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
       get: gmGetValue, set: gmSetValue, request: createFc27FutbinHttp(gmRequest) });
     const buyer = createGalleryPurchaseSession({ scope, context, get: gmGetValue, set: gmSetValue,
       exclusive: persistence.exclusive, assertCurrent: account, onProgress,
+      onPurchaseRecord: accounting ? record => accounting.recordPurchase(record) : null,
       shouldStop: () => stopped,
       preparePrices: publicPrices ? record => publicPrices.preparePurchase(record, { isCurrent: () => { account(); return !stopped; },
         onProgress: value => onProgress?.({ ...value, phase: 'reference-prices', total: value.total, purchased: 0, completed: 0, spent: 0 }) }) : null,

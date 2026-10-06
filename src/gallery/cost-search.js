@@ -2,6 +2,10 @@ import { galleryCostBundles, galleryBonusBundles } from './cost-bundles.js';
 
 const bundleKey = ids => ids.slice().sort((a, b) => a - b).join(',');
 const costOf = state => Number.isFinite(state.cost) ? state.cost : Infinity;
+function* evaluateSteps(evaluate, ids) {
+  const result = evaluate(ids);
+  return result && typeof result.next === 'function' ? yield* result : result;
+}
 
 function candidateFrontier(candidates, limit) {
   const cheapest = candidates.slice().sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)
@@ -90,7 +94,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
         if (ids && !seen.has(bundleKey(ids))) {
           if (evaluations >= maxEvaluations) { stopped = true; break; }
           seen.add(bundleKey(ids));
-          const state = evaluate(ids); evaluations++;
+          const state = yield* evaluateSteps(evaluate, ids); evaluations++;
           if (state && Number.isFinite(state.cost) && !state.missingPrices) {
             seedStates.push(state);
             if (better(state, bestState)) bestState = state;
@@ -115,7 +119,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
       if (seen.has(key)) continue;
       if (evaluations >= maxEvaluations) { stopped = true; break; }
       seen.add(key);
-      const state = evaluate(ids); evaluations++;
+      const state = yield* evaluateSteps(evaluate, ids); evaluations++;
       if (state && Number.isFinite(state.cost) && !state.missingPrices) {
         seedStates.push(state);
         if (better(state, bestState)) bestState = state;
@@ -140,7 +144,7 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
         const key = bundleKey(ids);
         if (seen.has(key)) continue;
         seen.add(key);
-        const state = evaluate(ids); evaluations++;
+        const state = yield* evaluateSteps(evaluate, ids); evaluations++;
         if (state && Number.isFinite(state.cost) && !state.missingPrices) {
           const value = measure(state);
           if (better(state, bestState)) bestState = state;

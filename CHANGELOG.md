@@ -5,6 +5,28 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.12] - 2026-10-06
+
+### Gallery Completion
+
+- Exclude unknown collection versions from scoring and procurement without
+  blocking plans based on confirmed cards; retain incomplete-search reporting.
+- Estimate cumulative rewards from each set's own grade thresholds and reward
+  definitions. Show tier/cumulative rewards in grade costs and current/projected
+  rewards in single-set plans; optimize same-type rewards in joint budget plans.
+- Persist account-scoped score caches, yield during scoring, remove redundant
+  purchases within existing search limits, and support Fodder single/joint plans.
+- Preserve market-comparison state during sync redraws and expose sync progress;
+  keep Bulk List controls reachable in long lists and narrow viewports.
+- Record confirmed purchases, listings and sale receipts in a persistent net-cost
+  ledger; reserve diagnostic history for transaction outcomes and planning replay.
+- Add current-build installation verification and automated read-only Gallery
+  checks. User-confirmed trade acceptance closes the main Gallery milestone;
+  special-case live coverage remains separately documented.
+- Gallery rewards must be claimed in-game. Catalogue estimates do not indicate
+  claimed rewards or offset purchasing budgets; Web App claiming is out of scope.
+- Keep FSU Local at 26.09.9. This is a local versioned commit, not a public release.
+
 ## [27.0.11] - 2026-10-05
 
 ### Prices, Purchases And Listing

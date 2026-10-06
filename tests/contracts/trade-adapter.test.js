@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEaInventoryAdapter } from '../../src/adapters/ea/inventory.js';
 import { createEaTradeAdapter } from '../../src/adapters/ea/trade.js';
+import { createFc27GallerySaleReader } from '../../src/adapters/ea/fc27-gallery-sales.js';
 import { createFakeTradeAdapter } from '../../src/adapters/fake/trade.js';
 import { createRuntimeAdapters } from '../../src/adapters/index.js';
 
@@ -52,6 +53,37 @@ function eaRuntime(item) {
 }
 
 describe('Trade Adapter contracts', () => {
+  it('reads sales with the Enhancer transfer/auction refresh sequence without buying or clearing sold items', async () => {
+    const auction = { tradeId: 9001, currentBid: 500, buyNowPrice: 500,
+      isSold: () => true, isExpired: () => true, isClosedTrade: () => true };
+    const item = { id: 11, definitionId: 111, getAuctionData: () => auction }, root = eaRuntime(item), calls = [];
+    root.services.Item.requestTransferItems = () => { calls.push('transfer'); return Promise.resolve({ success: true }); };
+    root.services.Item.refreshAuctions = items => { calls.push('auctions'); expect(items).toEqual([item]); return Promise.resolve({ success: true }); };
+    expect(await createFc27GallerySaleReader(root).refreshGallerySaleReceipts()).toMatchObject({ status: 'observed',
+      receipts: [{ itemId: 11, definitionId: 111, listingTradeId: '9001', sold: true, soldPrice: 500 }] });
+    expect(calls).toEqual(['transfer', 'auctions']);
+  });
+  it('preserves exact auction IDs and leaves unknown native sold predicates unknown', async () => {
+    const item = { id: 11, definitionId: 111, getAuctionData: () => ({ tradeId: '90071992547409933',
+      currentBid: 500, buyNowPrice: 500, isActiveTrade: () => true }) }, root = eaRuntime(item);
+    root.services.Item.requestTransferItems = async () => ({ success: true });
+    root.services.Item.refreshAuctions = async () => ({ success: true });
+    expect(await createFc27GallerySaleReader(root).refreshGallerySaleReceipts()).toMatchObject({ status: 'observed',
+      receipts: [{ listingTradeId: '90071992547409933', sold: null, expired: null, state: 'active' }] });
+  });
+  it('bounds a hung auction refresh and does not accept partial sale facts after failure', async () => {
+    vi.useFakeTimers();
+    try {
+      const root = eaRuntime({ id: 11, definitionId: 111 });
+      root.services.Item.requestTransferItems = async () => ({ success: true });
+      root.services.Item.refreshAuctions = () => new Promise(() => {});
+      const result = createFc27GallerySaleReader(root).refreshGallerySaleReceipts();
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(await result).toMatchObject({ status: 'error', receipts: [] });
+      delete root.repositories.Item.getTransferItems;
+      expect(await createFc27GallerySaleReader(root).refreshGallerySaleReceipts()).toMatchObject({ status: 'unsupported', receipts: [] });
+    } finally { vi.useRealTimers(); }
+  });
   it('EA capability diagnostics are serializable, allowlisted and read-only', () => {
     const adapter = createEaTradeAdapter(eaRuntime({ id: 10, definitionId: 20 }));
     const result = adapter.inspectCapabilities();

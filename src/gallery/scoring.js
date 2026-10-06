@@ -256,11 +256,16 @@ export function createGalleryScoreSummarizer(catalog) {
   const compiled = compileGalleryScoringRules(catalog);
   const memo = { compiled, totals: new Map(), signatures: new Map(),
     fields: [...new Set((compiled.tags ?? []).map(tag => tag.field))] };
-  return input => {
+  const stepsFor = function* (input) {
     if (memo.signatures.size > 8192) { memo.signatures.clear(); memo.totals.clear(); }
-    const steps = summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+    return yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+  };
+  const summarize = input => {
+    const steps = stepsFor(input);
     let next;
     do { next = steps.next(); } while (!next.done);
     return next.value;
   };
+  summarize.steps = stepsFor;
+  return summarize;
 }

@@ -83,6 +83,24 @@ describe('Gallery grade planner', () => {
     expect(result).toMatchObject({ status: 'partial', reason: 'existing-score-unknown', plans: [] });
   });
 
+  it('plans from explicit rows while excluding an unknown collection version', () => {
+    const result = planGalleryGrade({ set: { ...set, requiredCards: 3 }, catalog, targetGrade: 'B',
+      progress: { complete: true, rows: [row(1, 100, true), row(2, 100, true), row(3, 200, false), row(4, 999, null)] },
+      prices: { 3: 1, 4: 1 } });
+    expect(result.status).toBe('ready');
+    expect(result.collectionUnknownCount).toBe(1);
+    expect(result.searchComplete).toBe(false);
+    expect(result.plans[0].items.map(item => item.eaId)).toEqual([3]);
+  });
+
+  it('retains incomplete request and invalid collection flag guards', () => {
+    const input = { set, catalog, targetGrade: 'B', prices: { 2: 100 },
+      progress: { complete: false, rows: [row(1, 100, true), row(2, 200, false)] } };
+    expect(planGalleryGrade(input)).toMatchObject({ status: 'partial', reason: 'collection-status-unknown', plans: [] });
+    input.progress.complete = true; input.progress.rows[1].collected = 'false';
+    expect(planGalleryGrade(input)).toMatchObject({ status: 'unavailable', reason: 'input-invalid' });
+  });
+
   it.each([{ inClub: true }, { held: true }])('does not invent a score for an already-held version: %o', ownership => {
     const result = planGalleryGrade({ set, catalog, targetGrade: 'B',
       progress: { rows: [row(1, 100, true), row(2, null, false, ownership)] }, prices: { 2: 1 } });
@@ -126,7 +144,7 @@ describe('Gallery grade planner', () => {
   it('does not treat unverified collection rows as missing purchases', () => {
     const result = planGalleryGrade({ set, catalog, targetGrade: 'B',
       progress: { rows: [row(1, 100, true), row(2, 200, null)] }, prices: { 2: 100 } });
-    expect(result).toMatchObject({ status: 'partial', reason: 'collection-status-unknown', plans: [] });
+    expect(result).toMatchObject({ status: 'partial', reason: 'collection-status-unknown', plans: [], collectionUnknownCount: 1 });
   });
 
   it.each([{ inClub: true }, { held: true }])('does not purchase a version already held outside the Gallery collected flag: %o', ownership => {

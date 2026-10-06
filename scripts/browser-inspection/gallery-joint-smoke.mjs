@@ -92,6 +92,30 @@ export async function exerciseGalleryJoint(context, directory) {
     await host.getByRole('button', { name: '对照逐集合', exact: true }).first().click();
     await page.waitForFunction(() => globalThis.document.getElementById('gallery-joint-test').shadowRoot.querySelector('.gallery-joint-benchmark').textContent.includes('逐集合 100'));
     assert.match(await host.locator('#gallery-joint-output').innerText(), /方案 1/);
+    await host.locator('#gallery-joint-objective').selectOption('catalog');
+    assert.equal(await host.locator('.gallery-joint-target select').first().isDisabled(), true);
+    assert.equal(await host.locator('#gallery-joint-reward').inputValue(), 'event_token_1');
+    assert.equal(await host.locator('#gallery-joint-reward').isHidden(), false);
+    await host.locator('#gallery-joint-plan').click();
+    assert.match(await host.locator('#gallery-joint-output').innerText(), /目录预估/);
+    assert.match(await host.locator('#gallery-joint-output').innerText(), /Gallery Tokens · 0 → 10/);
+    assert.match(await host.locator('#gallery-joint-output').innerText(), /方案 1 · 1 张 · 70/);
+    assert.equal(await host.getByRole('button', { name: '对照逐集合', exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => globalThis.jointCalls), 2, 'reward mode never rereads collection');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.equal(await host.evaluate(element => element.scrollWidth > element.clientWidth + 1), false, `Rewards ${width} overflow`);
+      await page.screenshot({ path: path.join(directory, `gallery-catalog-rewards-${width}.png`) });
+    }
+    await host.locator('#gallery-joint-budget').fill('');
+    await host.locator('#gallery-joint-plan').click();
+    assert.match(await host.locator('#gallery-joint-output').innerText(), /目录预估需要总预算/);
+    await host.locator('#gallery-joint-budget').fill('70');
+    await host.locator('#gallery-joint-objective').selectOption('grade');
+    assert.equal(await host.locator('.gallery-joint-target select').first().isDisabled(), false);
+    assert.equal(await host.locator('#gallery-joint-output').textContent(), '');
+    await host.locator('#gallery-joint-plan').click();
+    assert.match(await host.locator('#gallery-joint-output').innerText(), /方案 1/);
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 800 });
       assert.equal(await host.evaluate(element => element.scrollWidth > element.clientWidth + 1), false, `Joint ${width} overflow`);

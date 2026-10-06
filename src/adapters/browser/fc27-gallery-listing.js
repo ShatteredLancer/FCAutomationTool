@@ -53,7 +53,7 @@ const saveCircuit = async (get, set, scope, value) => {
 // Independent of FSU/Enhancer loading. EA writes remain in the sole trade.js
 // listItem call site. Preparing and pricing never grants mutation permission.
 export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: set, purchase, loadPrices,
-  liveEnabled = false, schedulingEnabled = false, diagnosticLog, adapterFactory = createEaTradeAdapter, sleep } = {}) {
+  liveEnabled = false, schedulingEnabled = false, diagnosticLog, accounting = null, adapterFactory = createEaTradeAdapter, sleep } = {}) {
   let busy = false, stopped = false, prepared = null, planned = null, publicApi = null;
   const sessionPrices = new Map();
   const stage = input => {
@@ -375,8 +375,25 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
         if (!resume && prepared.expiresAt <= Date.now() && plan.entries.some(e => e.priceOrigin === 'market')) {
           fail('FC27_GALLERY_LISTING_QUOTE_EXPIRED');
         }
-        return await env.session.execute({ approved, entries: plan?.entries, binding: prepared?.binding,
+        const result = await env.session.execute({ approved, entries: plan?.entries, binding: prepared?.binding,
           settings, resume, expectedRunId });
+        const entries = Array.isArray(result?.entries) ? result.entries : [];
+        const acceptedCount = entries.filter(entry => entry.status === 'accepted').length;
+        const rejectedCount = entries.filter(entry => entry.status === 'rejected').length;
+        const skippedCount = entries.filter(entry => entry.status === 'skipped').length;
+        const unknownCount = entries.filter(entry => ['list-pending', 'unknown'].includes(entry.status)).length;
+        if (accounting && acceptedCount) {
+          const accountingResult = await accounting.recordListings(entries.filter(entry => entry.status === 'accepted'));
+          if (accountingResult?.status === 'blocked') {
+            void stage({ event: 'listing-accounting', phase: 'readback', status: 'failed', reason: accountingResult.reason,
+              count: acceptedCount });
+            result.accountingWarning = accountingResult.reason;
+          }
+        }
+        void stage({ event: 'listing-result', phase: 'execute', status: result?.status ?? 'blocked',
+          reason: result?.reason ?? null, count: acceptedCount, acceptedCount, rejectedCount, skippedCount, unknownCount,
+          requestedCount: entries.length });
+        return result;
       } catch (error) {
         void stage({ phase: 'execute', status: 'failed', reason: safe(error), httpStatus: error?.httpStatus });
         return { status: 'blocked', reason: safe(error), phase: 'execute', httpStatus: error?.httpStatus ?? null };

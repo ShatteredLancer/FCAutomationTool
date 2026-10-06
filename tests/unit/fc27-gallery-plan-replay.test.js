@@ -54,3 +54,15 @@ it('bounds diagnostic inputs and drops broken replay without blocking the event'
   await expect(log.record({ area: 'gallery', event: 'grade-plan', status: 'success', replayInput: bad })).resolves.toBe(true);
   expect((await log.exportPayload()).planning).toEqual([]);
 });
+
+it('retains a sanitized catalogue objective and rewards for exact reward-plan replay', () => {
+  const t = input();
+  t.set.grades[0].rewards = [{ type: 'event_token_1', count: 1, value: 50, label: 'private-label' }];
+  t.set.grades[0].rewardsComplete = true;
+  const value = { targets: [t], budget: 1000, catalogRewardKey: 'event_token_1' };
+  const replay = createGalleryPlanReplay(value);
+  expect(JSON.stringify(replay)).not.toContain('private');
+  expect(replay.input.catalogRewardKey).toBe('event_token_1');
+  expect(project(planGalleryJoint(replay.input))).toEqual(project(planGalleryJoint(value)));
+  expect(planGalleryJoint(replay.input).plans[0].rewardEstimate.projectedQuantity).toBe(50);
+});

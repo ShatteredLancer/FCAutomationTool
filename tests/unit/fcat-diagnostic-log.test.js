@@ -10,6 +10,23 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('keeps bounded transaction summaries across public quote floods and reloads without exposing identities', async () => {
+  const t = harness({ maxEntries: 1, maxCriticalEntries: 2 });
+  for (let count = 0; count < 45; count++) await t.log.record({ area: 'gallery', event: 'listing-result',
+    phase: 'execute', status: 'partial', count, requestedCount: 14, acceptedCount: 12, rejectedCount: 1,
+    skippedCount: 0, unknownCount: 1, itemId: 123, tradeId: '456', operationId: 'private-run', account: 'private-account' });
+  for (let count = 0; count < 130; count++) await t.log.record({ area: 'pricing', event: 'public-quote', count });
+  const reloaded = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await reloaded.exportPayload();
+  expect(payload.transactionResults).toHaveLength(40);
+  expect(payload.transactionResults[0].count).toBe(5);
+  expect(payload.transactionResults.at(-1)).toMatchObject({ event: 'listing-result', status: 'partial', requestedCount: 14,
+    acceptedCount: 12, rejectedCount: 1, skippedCount: 0, unknownCount: 1 });
+  expect(JSON.stringify(payload)).not.toMatch(/itemId|tradeId|operationId|private-/);
+  payload.transactionResults[0].count = 999;
+  expect((await reloaded.exportPayload()).transactionResults[0].count).toBe(5);
+});
+
 it('exports bounded public-version price provenance but never account or transaction identities', async () => {
   const t = harness();
   await t.log.record({ area: 'pricing', event: 'public-quote', source: 'futgg', definitionId: 71494,

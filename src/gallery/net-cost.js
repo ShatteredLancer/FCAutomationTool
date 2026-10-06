@@ -20,6 +20,8 @@ function normalizePurchase(value) {
     definitionId: value.definitionId,
     purchasePrice: value.purchasePrice,
     tradeId: typeof value.tradeId === 'string' && /^[1-9]\d{0,19}$/.test(value.tradeId) ? value.tradeId : null,
+    listingTradeId: typeof value.listingTradeId === 'string' && /^[1-9]\d{0,19}$/.test(value.listingTradeId) ? value.listingTradeId : null,
+    operationId: typeof value.operationId === 'string' ? value.operationId.slice(0, 100) : null,
     purchasedAt: integer(value.purchasedAt) ? value.purchasedAt : null,
     state,
     listedPrice: price(value.listedPrice) ? value.listedPrice : null,
@@ -30,12 +32,13 @@ function normalizePurchase(value) {
 }
 
 export function normalizeGalleryNetCostLedger(input = {}) {
-  if (!input || typeof input !== 'object' || input.schema !== GALLERY_NET_COST_SCHEMA) return null;
-  const entries = Array.isArray(input.entries) ? input.entries.map(normalizePurchase) : [];
+  if (!input || typeof input !== 'object' || input.schema !== GALLERY_NET_COST_SCHEMA
+      || !Array.isArray(input.entries) || input.scope != null && (typeof input.scope !== 'string' || !input.scope)) return null;
+  const entries = input.entries.map(normalizePurchase);
   if (entries.some(entry => !entry) || new Set(entries.map(entry => entry.itemId)).size !== entries.length) return null;
   const taxBps = input.taxBps ?? GALLERY_MARKET_TAX_BPS;
   if (!integer(taxBps, 0, 10000)) return null;
-  return { schema: GALLERY_NET_COST_SCHEMA, scope: typeof input.scope === 'string' ? input.scope.slice(0, 160) : null,
+  return { schema: GALLERY_NET_COST_SCHEMA, scope: input.scope ?? null,
     taxBps, entries };
 }
 
@@ -75,15 +78,26 @@ export function recordGallerySale(ledger, sale = {}) {
   if (!current || !id(sale.itemId)) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
   const index = current.entries.findIndex(entry => entry.itemId === sale.itemId);
   if (index < 0) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_IDENTITY_UNKNOWN' };
+  const existing = current.entries[index];
+  if (sale.definitionId != null && sale.definitionId !== existing.definitionId)
+    return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_IDENTITY_CONFLICT' };
   const state = String(sale.state || 'unknown');
+  if (sale.listingTradeId != null && (typeof sale.listingTradeId !== 'string' || !/^[1-9]\d{0,19}$/.test(sale.listingTradeId)))
+    return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
   if (!STATES.has(state) || state === 'held') return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
   if (state === 'sold' && !price(sale.soldPrice)) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
   if (state === 'listed' && !price(sale.listedPrice)) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
   if (['listed', 'unsold'].includes(state) && sale.soldPrice != null) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_SALE_INVALID' };
+  if (existing.state === 'sold') {
+    if (state === 'sold' && (existing.soldPrice !== sale.soldPrice || existing.listingTradeId && sale.listingTradeId
+      && existing.listingTradeId !== sale.listingTradeId)) return { status: 'blocked', reason: 'FC27_GALLERY_NET_COST_IDENTITY_CONFLICT' };
+    return { status: 'unchanged', ledger: current };
+  }
   const updated = { ...current.entries[index], state,
     listedPrice: price(sale.listedPrice) ? sale.listedPrice : current.entries[index].listedPrice,
     soldPrice: state === 'sold' ? sale.soldPrice : null,
     soldAt: state === 'sold' && integer(sale.soldAt) ? sale.soldAt : null,
+    listingTradeId: typeof sale.listingTradeId === 'string' && /^[1-9]\d{0,19}$/.test(sale.listingTradeId) ? sale.listingTradeId : existing.listingTradeId,
     reason: typeof sale.reason === 'string' ? sale.reason.slice(0, 160) : null };
   const entries = [...current.entries]; entries[index] = updated;
   return nextLedger(current, entries);

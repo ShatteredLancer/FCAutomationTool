@@ -45,8 +45,10 @@ export function validateGalleryPurchaseRecord(record, scope, context) {
 const validate = validateGalleryPurchaseRecord;
 export function createGalleryPurchaseSession({ scope, context, get, set, exclusive, createAdapter,
   preparePrices = null,
+  onPurchaseRecord = null,
   assertCurrent = () => {}, checkOtherTransactions = async () => {}, shouldStop = () => false, onProgress = () => {}, operationId = () => `gallery-${Date.now()}-${Math.random().toString(16).slice(2)}` } = {}) {
   const key = galleryPurchaseKey(scope), pendingKey = galleryPurchasePendingKey(scope);
+  let accountingWarning = null;
   const read = async storageKey => {
     try { return await get(storageKey, null); }
     catch { throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED'); }
@@ -58,6 +60,12 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
     } catch (error) {
       if (error?.message === 'FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED') throw error;
       throw new Error('FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED');
+    }
+    if (storageKey === key && typeof onPurchaseRecord === 'function') {
+      try {
+        const accounting = await onPurchaseRecord(structuredClone(value));
+        accountingWarning = accounting?.status === 'blocked' ? accounting.reason : null;
+      } catch { accountingWarning = 'FC27_GALLERY_ACCOUNTING_UNAVAILABLE'; }
     }
   };
   return Object.freeze({
@@ -173,11 +181,13 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
           else await write(pendingKey, { schema: 1, operationId: record.operationId });
           return { status: record.entries.every(entry => ['club', 'collected'].includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
         });
-        return result ?? { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };
+        return result ? { ...result, ...(accountingWarning ? { accountingWarning } : {}) }
+          : { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };
       } catch (error) {
         // Only validated records reach these summary helpers. A malformed old
         // record must retain its original failure reason and stay untouched.
-        return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), results: itemResults(record), ...summary(record) };
+        return { status: record && pending(record) ? 'recovery-required' : 'blocked', reason: safeReason(error), results: itemResults(record), ...summary(record),
+          ...(accountingWarning ? { accountingWarning } : {}) };
       }
       finally { adapter?.cancel?.(); }
     },

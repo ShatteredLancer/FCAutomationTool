@@ -1,4 +1,5 @@
 import { compileGalleryScoringRules } from './scoring.js';
+import { galleryRewardIdentity } from './catalog-rewards.js';
 
 const numeric = ['eaId', 'playerEaId', 'overall', 'gradingScore', 'galleryScore', 'nationEaId',
   'clubEaId', 'leagueEaId', 'rarityEaId', 'weakFoot', 'skillMoves'];
@@ -11,6 +12,7 @@ const gradeName = value => typeof value === 'string' && /^[A-S][+-]?$/.test(valu
 export function createGalleryPlanReplay(input) {
   try {
     const joint = Array.isArray(input?.targets), targets = joint ? input.targets : [input];
+    const rewardMode = joint && input.catalogRewardKey != null;
     if (!targets.length || targets.length > 4
         || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
     const clean = targets.map(target => {
@@ -44,13 +46,33 @@ export function createGalleryPlanReplay(input) {
       for (const row of rows) if (integer(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
       return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map(grade => {
         if (!gradeName(grade.name) || !integer(grade.threshold)) throw Error('invalid');
-        return { name: grade.name, threshold: grade.threshold };
+        if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
+        if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error('invalid');
+        const rewards = grade.rewards.map(reward => {
+          if (!/^[a-z][a-z0-9_]{0,99}$/.test(reward.type) || !galleryRewardIdentity(reward)) throw Error('invalid');
+          const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
+          for (const key of ['assetId', 'teamEaId', 'resourceId']) {
+            if (reward[key] != null) { if (!integer(reward[key])) throw Error('invalid'); value[key] = reward[key]; }
+          }
+          for (const key of ['itemType', 'itemCategory']) {
+            if (reward[key] != null) {
+              if (!(integer(reward[key]) || typeof reward[key] === 'string' && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key]))) throw Error('invalid');
+              value[key] = reward[key];
+            }
+          }
+          if (reward.untradeable != null) { if (typeof reward.untradeable !== 'boolean') throw Error('invalid'); value.untradeable = reward.untradeable; }
+          return value;
+        });
+        return { name: grade.name, threshold: grade.threshold, rewards, rewardsComplete: grade.rewardsComplete === true };
       }) }, catalog: { source: 'futgg', tags }, progress: { season: '27', setId: Number(set.id.slice(6)),
         complete: progress.complete !== false, candidateOnly: progress.candidateOnly === true,
         poolComplete: progress.poolComplete !== false, rows }, prices: quotes, targetGrade };
     });
     if (joint && input.budget != null && !integer(input.budget)) return null;
+    if (rewardMode && !clean.some(target => target.set.grades.some(grade => grade.rewards.some(reward =>
+      galleryRewardIdentity(reward)?.key === input.catalogRewardKey)))) return null;
     return { schema: 1, mode: joint ? 'joint' : 'grade',
-      input: joint ? { targets: clean, budget: input.budget ?? null } : clean[0] };
+      input: joint ? { targets: clean, budget: input.budget ?? null,
+        ...(rewardMode ? { catalogRewardKey: input.catalogRewardKey } : {}) } : clean[0] };
   } catch { return null; }
 }
