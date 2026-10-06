@@ -1,13 +1,35 @@
 import { it, expect, vi } from 'vitest';
 import { normalizeGalleryPricePolicy, galleryReferenceQuote, createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
+it('projects each requested TTL from original fetch time without mutating prior snapshots or failure cooldowns', async () => {
+  let time = 1000;
+  const readFutgg = vi.fn(async ids => ids.map(definitionId => ({ definitionId, price: 200 })));
+  const service = createGalleryReferencePrices({ readFutgg, readFutbin: async () => null, now: () => time });
+  const options = { platform: 'pc', sources: ['futgg'] };
+  const first = await service.load([1], { ...options, quoteTtlMs: 60000 });
+  time += 90000;
+  const extended = await service.load([1], { ...options, quoteTtlMs: 600000 });
+  expect(readFutgg).toHaveBeenCalledTimes(1);
+  expect(extended.references[1].quotes.futgg).toMatchObject({ fetchedAt: 1000, expiresAt: 601000 });
+  expect(first.expiresAt).toBe(61000);
+  const shorter = await service.load([1], { ...options, quoteTtlMs: 60000 });
+  expect(readFutgg).toHaveBeenCalledTimes(2);
+  expect(shorter.expiresAt).toBe(time + 60000);
+  readFutgg.mockRejectedValue(Error('offline'));
+  const failed = await service.load([2], { ...options, quoteTtlMs: 1800000 });
+  expect(failed.references[2].quotes.futgg.expiresAt).toBe(time + 30000);
+  time += 10000;
+  await service.load([2], { ...options, quoteTtlMs: 60000 });
+  expect(readFutgg).toHaveBeenCalledTimes(3);
+});
+
 it('uses only the configured public source and computes fixed/percentage ceilings without rounding up', () => {
   expect(galleryReferenceQuote({ futgg: 200, futbin: 250, ea: 900 })).toMatchObject({ estimate: 200, maxBuy: 200 });
   expect(galleryReferenceQuote({ futgg: 200, futbin: 250 }, { source: 'futbin', premiumMode: 'fixed', premium: 75 })).toMatchObject({ estimate: 250, maxBuy: 325 });
   expect(galleryReferenceQuote({ futgg: 200, futbin: 250 }, { source: 'futgg', premiumMode: 'percent', premium: 12 })).toMatchObject({ estimate: 200, maxBuy: 224 });
   expect(galleryReferenceQuote({ futgg: 200, futbin: 250 }, { source: 'futbin', premiumMode: 'percent', premium: 10 })).toMatchObject({ estimate: 250, maxBuy: 275 });
   expect(galleryReferenceQuote({ futbin: 250, ea: 200 })).toMatchObject({ estimate: null, maxBuy: null });
-  expect(normalizeGalleryPricePolicy()).toEqual({ source: 'futgg', premiumMode: 'fixed', premium: 0, purchaseAttempts: 3, futbinEnabled: true, futbinRefresh: 'cache', readSources: 'both', listingSource: 'futgg' });
+  expect(normalizeGalleryPricePolicy()).toEqual({ source: 'futgg', premiumMode: 'fixed', premium: 0, purchaseAttempts: 3, futbinEnabled: true, futbinRefresh: 'cache', readSources: 'both', listingSource: 'futgg', quoteValidityMinutes: 5 });
   expect(() => normalizeGalleryPricePolicy({ source: 'lower' })).toThrow();
   expect(() => normalizeGalleryPricePolicy({ source: 'higher' })).toThrow();
   expect(normalizeGalleryPricePolicy({ purchaseAttempts: 21 }).purchaseAttempts).toBe(21);
@@ -123,6 +145,27 @@ it('ignores legacy forced FUTBIN preference, reuses cache and still permits expl
   await service.load([1], { ...base, sources: ['futbin'], force: true });
   expect(readFutbin).toHaveBeenCalledTimes(2);
   expect(readFutgg).toHaveBeenCalledTimes(1);
+});
+
+it('projects concurrent and restored cache reads using each caller lifetime', async () => {
+  const data = new Map();
+  const readFutgg = vi.fn(async ids => ids.map(definitionId => ({ definitionId, price: 200 })));
+  const args = { readFutgg, now: () => 1000, get: async key => data.get(key),
+    set: async (key, row) => data.set(key, structuredClone(row)) };
+  const service = createGalleryReferencePrices(args), base = { platform: 'pc', sources: ['futgg'] };
+  const [long, short] = await Promise.all([
+    service.load([1], { ...base, quoteTtlMs: 1800000 }),
+    service.load([1], { ...base, quoteTtlMs: 60000 }),
+  ]);
+  expect(long.expiresAt).toBe(1801000);
+  expect(short.expiresAt).toBe(61000);
+  const restored = await createGalleryReferencePrices({ ...args, now: () => 62000 })
+    .load([1], { ...base, quoteTtlMs: 300000 });
+  expect(restored.expiresAt).toBe(301000);
+  expect(restored.references[1].quotes.futgg.fetchedAt).toBe(1000);
+  expect(readFutgg).toHaveBeenCalledTimes(1);
+  expect(long.expiresAt).toBe(1801000);
+  expect(short.expiresAt).toBe(61000);
 });
 
 it('does not read FUTBIN when the account policy disables it', async () => {

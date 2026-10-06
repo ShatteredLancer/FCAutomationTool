@@ -24,6 +24,9 @@ export async function exerciseGalleryBulkList(context, previewPath = null, { sch
       host.style.display = 'block';
       const candidates = Array.from({ length: 25 }, (_, index) => index + 11).map(id => ({ item: { id, definitionId: id + 100, pile: 'club' },
         name: `Player ${id}`, purchase: { tradeId: String(9000 + id) } }));
+      Object.assign(candidates[0], { boughtFor: 150, boughtForSource: 'ea', purchase: null });
+      Object.assign(candidates[1], { boughtFor: null, boughtForSource: 'first-owner', purchase: null });
+      Object.assign(candidates[2], { boughtFor: null, boughtForSource: 'unknown', purchase: null });
       const prices = Object.fromEntries(candidates.map(row => [row.item.definitionId, 1000]));
       const limits = Object.fromEntries(candidates.map(row => [row.item.id, { status: 'loaded', minimum: 150, maximum: 15000000 }]));
       globalThis.bulkCalls = []; globalThis.bulkCardCalls = []; globalThis.bulkDisposedCards = 0;
@@ -85,6 +88,9 @@ export async function exerciseGalleryBulkList(context, previewPath = null, { sch
     assert.equal(await page.getByRole('button', { name: '关闭', exact: true }).textContent(), '×');
     assert.match(await page.locator('.list-source').textContent(), /FUT.GG \+ FUTBIN · 基准 FUTBIN/);
     assert.equal(await page.locator('thead th').count(), 6);
+    assert.deepEqual(await page.locator('tbody tr').evaluateAll(rows => rows.slice(0, 3).map(row => row.children[4].textContent)),
+      ['150', 'N/A', '未知']);
+    assert.equal(await page.locator('tbody tr').first().locator('.list-profit').textContent(), '40');
     const assertLayout = async () => {
       const layout = await dialog.evaluate(node => {
         const groups = [...node.querySelectorAll('.list-group')].map(group => group.getBoundingClientRect());

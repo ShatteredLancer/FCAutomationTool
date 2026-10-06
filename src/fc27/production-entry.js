@@ -93,9 +93,10 @@ const galleryAssets = Object.freeze({
     } catch { return ''; }
   },
   nation: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.NATION, Number(id)) || ''; } catch { return ''; } },
-  category: (slug, name = '') => {
+  category: (slug, name = '', sets = []) => {
     const key = `${String(slug ?? '')} ${String(name ?? '')}`.toLocaleLowerCase();
     const rarityCategory = key.includes('rarit');
+    if (rarityCategory) return [...new Set(sets.flatMap(set => galleryAssets.set(set.name, { slug: 'rarities' }, set)))];
     const ids = key.includes('england') || key.includes('premier') || key.includes('wsl')
       ? [13, 2216]
       : key.includes('spain') || key.includes('laliga') || key.includes('liga-f') || key.includes('la-liga')
@@ -104,7 +105,7 @@ const galleryAssets = Object.freeze({
           : key.includes('france') || key.includes('ligue') || key.includes('arkema') ? [16, 2218]
             : key.includes('italy') || key.includes('serie-a') || key.includes('serie a') ? [31]
               : key.includes('leagues') || key === 'league' ? [13, 53, 19, 2215, 16, 31]
-                : rarityCategory ? [1, 3, 4, 5, 6] : [];
+                : [];
     // Enhancer uses the rendered player shell for rarity/foil icons (Qce),
     // while league categories use the EA filter emblem route.
     return ids.map(id => rarityCategory ? galleryAssets.rarity(id) : galleryAssets.league(id)).filter(Boolean);
@@ -169,7 +170,8 @@ const publicGalleryCatalog = createFc27GalleryCatalogProvider({ http: galleryTra
   gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
 const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
 const galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgress);
-const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog });
+const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog,
+  gmGetValue: GM_getValue, gmSetValue: GM_setValue });
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });

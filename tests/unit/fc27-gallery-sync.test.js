@@ -6,9 +6,9 @@ function fixture() {
   const provider = { load: async () => ({ source: 'futgg', catalog: { categories: [{ sets: [{id:1},{id:2}] }] } }),
     peek: async () => ({ source: 'futgg', catalog: { categories: [{ sets: [{id:1},{id:2}] }] } }),
     peekPool: async ({setId}) => pools.get(setId) ?? null,
-    loadPool: vi.fn(async ({setId}) => { trace.push(`pool:${setId}`); const result = {status:'observed',pool:{source:'futgg',setId}}; pools.set(setId,result); return result; }) };
+    loadPool: vi.fn(async ({setId}) => { trace.push(`pool:${setId}`); const result = {status:'observed',pool:{source:'futgg',setId,revision:`rev-${setId}`}}; pools.set(setId,result); return result; }) };
   const reader = { scope: () => scope, syncState: () => ({synced}), stop: vi.fn(), subscribe: () => () => {},
-    project: async pool => ({status:'observed',scope,pool,progress:{setId:pool.setId}}),
+    project: async pool => ({status:'observed',scope,pool,progress:{setId:pool.setId,complete:true}}),
     sync: vi.fn(async pool => { trace.push(pool ? `ea:${pool.setId}` : 'ea:all'); synced = true; return {status:'observed',scope}; }) };
   const wait = vi.fn(async () => {}), make = () => createFc27GallerySync({provider,reader,wait});
   return {provider,reader,wait,trace,pools,make,switchAccount: () => {scope='account-b';}};
@@ -48,7 +48,7 @@ it('lets a selected collection preempt a background full sync without stale task
   f.provider.loadPool.mockImplementation(async ({setId}) => {
     f.trace.push(`pool:${setId}`);
     if (setId === 1 && !release) await new Promise(resolve => { release = resolve; });
-    const result = { status: 'observed', pool: { source: 'futgg', setId } };
+    const result = { status: 'observed', pool: { source: 'futgg', setId, revision: `rev-${setId}` } };
     f.pools.set(setId, result); return result;
   });
   const full = sync.sync({source:'futgg'});

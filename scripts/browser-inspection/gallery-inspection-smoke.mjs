@@ -8,6 +8,7 @@ import { exerciseGalleryComparison } from './gallery-comparison-smoke.mjs';
 import { readProductionGallery } from './agent-session.mjs';
 import { verifyProductionGallery } from './gallery-verification.mjs';
 import { verifyGalleryPlanning } from './gallery-planning-verification.mjs';
+import { verifyGalleryListingPreview } from './gallery-listing-verification.mjs';
 import { clickPanelControl, panelCall, selectPanelTab } from './production-panel-inspection.mjs';
 import { diffGalleryCatalog, normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
@@ -72,10 +73,10 @@ export async function exerciseGalleryInspection(context) {
           globalThis.gallerySetCalls++; globalThis.gallerySetArgs.push(args);
           const pool = await poolProvider.loadPool(args);
           if (pool.status !== 'observed') return pool;
-          return { status: 'observed', scope: 'fixture', progress };
+          return { status: 'observed', scope: 'fixture', progress, pool: pool.pool };
         },
         galleryListing: {
-          prepare: async () => { globalThis.galleryListingOpens++; return { status: 'ready', candidates: [], prices: {}, liveEnabled: false }; },
+          prepare: async args => { globalThis.galleryListingTarget = args.target ?? null; globalThis.galleryListingOpens++; return { status: 'ready', candidates: [], prices: {}, liveEnabled: false }; },
           plan: () => ({ status: 'observed', entries: [], skipped: [] }),
           execute: async () => ({ status: 'completed', entries: [] }), inspect: async () => ({ status: 'absent' }),
           dispose() {}, stop() {},
@@ -128,6 +129,15 @@ export async function exerciseGalleryInspection(context) {
     await assertListingHidden();
     await selectPanelTab(context, page, 'settings');
     await assertListingHidden();
+    await selectPanelTab(context, page, 'gallery');
+    const listingPreview = await verifyGalleryListingPreview(context, page, 'Arsenal', { readGallery: readProductionGallery, installCurrent: false });
+    assert.deepEqual(listingPreview, { status: 'observed', executable: false, rows: 0,
+      text: '0 张可挂牌 · 0 张跳过 · 尚无计划', scheduleVisible: false,
+      purchaseCosts: { priced: 0, firstOwner: 0, unknown: 0 } });
+    assert.equal(await page.evaluate(() => globalThis.galleryListingTarget?.set?.id), 'futgg:30');
+    assert.equal(await page.evaluate(() => globalThis.galleryPurchaseCalls), 0);
+    await clickPanelControl(context, page, '#gallery-back');
+    assert.equal(await panelCall(context, page, function () { return this.getElementById('gallery-list-range').value; }), 'purchased');
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://game-assets.fut.gg/')), []);
     console.log('Offline Gallery inspection smoke passed: closed shadow, 127 sets, native scroll, filter/back, one set read.');
 

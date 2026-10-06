@@ -1,0 +1,58 @@
+{
+  "set": "AJ Auxerre",
+  "requiredCards": 15,
+  "purpose": "EA screenshot versus public lineup references; no account identifiers",
+  "provenance": {
+    "date": "2026-10-06",
+    "screenshots": ["EA.jpg", "fodder.PNG", "futgg.png", "fcat.PNG", "enhancer.PNG"],
+    "publicPool": "https://www.fut.gg/api/fut/gallery/fc27/sets/75/pool/",
+    "columns": ["eaId", "playerEaId", "gradingScore", "overall", "nationEaId", "clubEaId", "leagueEaId", "rarityEaId", "positions"],
+    "limits": "Screenshot lineup reconstruction with public metadata, not an EA lineup DTO. First Owner is inactive in the observed tags; false in replay does not assert ownership history. FCAT's screenshot contains totals only, so its exact lineup is unconfirmed. Enhancer displays base score only."
+  },
+  "lineups": {
+    "ea": [
+      [67348495,239631,338,80,103,57,16,3,["CAM","LM","LW","ST"]],
+      [50571279,239631,225,80,103,57,16,3,["CAM","LM","LW","ST"]],
+      [272894,272894,100,76,18,57,16,0,["CDM","CM"]],
+      [242577,242577,90,75,18,57,16,0,["RM","RW"]],
+      [78215,78215,35,66,18,57,16,0,["CB"]],
+      [50580121,248473,35,70,18,57,16,0,["CDM","CM"]],
+      [50563133,231485,35,73,110,57,16,0,["CB","CDM","RB"]],
+      [263031,263031,35,67,108,57,16,0,["LB","LM"]],
+      [275337,275337,35,67,107,57,16,0,["CB","RB","RM"]],
+      [230144,230144,35,69,136,57,16,0,["CDM","CM"]],
+      [239631,239631,35,73,103,57,16,0,["CAM","LM","LW","ST"]],
+      [268440,268440,35,73,18,57,16,0,["RB","RM"]],
+      [259205,259205,35,70,18,57,16,0,["CAM","CDM","CM"]],
+      [260100,260100,35,71,36,57,16,0,["LB","LM"]],
+      [274692,274692,35,73,18,57,16,0,["LM","LW","RM","RW","ST"]]
+    ],
+    "fodder": [
+      [67348495,239631,338,80,103,57,16,3,["CAM","LM","LW","ST"]],
+      [50571279,239631,225,80,103,57,16,3,["CAM","LM","LW","ST"]],
+      [272894,272894,100,76,18,57,16,0,["CDM","CM"]],
+      [242577,242577,90,75,18,57,16,0,["RM","RW"]],
+      [276315,276315,35,70,7,57,16,0,["CDM","CM"]],
+      [50580121,248473,35,70,18,57,16,0,["CDM","CM"]],
+      [50563133,231485,35,73,110,57,16,0,["CB","CDM","RB"]],
+      [263031,263031,35,67,108,57,16,0,["LB","LM"]],
+      [275337,275337,35,67,107,57,16,0,["CB","RB","RM"]],
+      [230144,230144,35,69,136,57,16,0,["CDM","CM"]],
+      [239631,239631,35,73,103,57,16,0,["CAM","LM","LW","ST"]],
+      [268440,268440,35,73,18,57,16,0,["RB","RM"]],
+      [259205,259205,35,70,18,57,16,0,["CAM","CDM","CM"]],
+      [260100,260100,35,71,36,57,16,0,["LB","LM"]],
+      [274692,274692,35,73,18,57,16,0,["LM","LW","RM","RW","ST"]]
+    ]
+  },
+  "futggReplacement": {
+    "fromEaId": 50580121,
+    "card": [82670,82670,20,59,18,57,16,0,["RM","RW"]]
+  },
+  "expected": {
+    "ea": {"base":1138,"bonus":350,"total":1488},
+    "fodder": {"base":1138,"bonus":396,"total":1534},
+    "futgg": {"base":1123,"bonus":386,"total":1509},
+    "difference": 46
+  }
+}

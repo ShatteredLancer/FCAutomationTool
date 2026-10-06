@@ -1,5 +1,7 @@
 # FSU Club Cache Optimization and Integration Guide
 
+2026-10-06 Gallery 挂牌列表只读库存例外：新 Gallery listing inventory 显式以 `nativeReauth:true` 调用 FC27 Club transport，保留 EA 原生 `doReauth/doRetry` 的 401 会话更新及重发。实机证明原检查用双 false 在 stats 返回 401，而原生恢复后 stats/Club 返回 200；不是放宽库存身份校验。总超时到达时同时关闭两标志并中止自有请求，避免迟到认证回调重发；Puzzle/传统提交/隔离检查默认仍为 false。新实体只保留在挂牌本地读取器，不注入 EA/FSU Repository，FSU 源码、缓存 readiness 与下文 FC26 合同不变。详情见 [Gallery 当前修复](../docs/FC27_GALLERY_REMAINING_PLAN_ZH.md)。
+
 2026-09-18 FC27 单次事务接线：隔离 Acceptance Provider 继续读取原 FSU 策略/Club 缓存，选中整阵通过已有原生只读 Adapter 按 definition 查询再精确匹配 item 与安全属性；原 FSU ready 时的 `cached:true` 不冒充 fresh。未复制全量库存服务，未改 FSU 源码或下文 FC26 合同。提交前使用经源码指纹核验的原 `markClubCacheDirty`，权威消费确认后才按精确 item ID 清理本地 Club entries 并失效 stats；恢复检查本身不清理，明确确认完成后才执行。该写后维护只通过合成回归，实机为 2/2 只读验证，未发生真实消费。见 [实现与验收边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-ea-provider-与真实-gm-验收)。
 
 2026-09-18 当前维护版 `26.09.9` 仅修复 FC27 共用弹窗的按钮兼容；Club cache/readiness 合同未改。历史 `26.09.8` 的 Home 专用有界 readiness 等待仍是当前启动基线，自然冷启动及连续两次刷新均成功进入 `initialized`，随后进入 `trusted-provisional`。2/2 fresh 定向复核仍通过，未将 provisional 提升为全量 ready。见 [修复记录](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-自然重启与初始化竞态定位)。

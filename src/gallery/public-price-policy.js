@@ -7,11 +7,12 @@ export function normalizeGalleryPricePolicy(value = {}) {
   const readSources = value.readSources ?? (value.futbinEnabled === false ? 'futgg' : 'both');
   const policy = { source: value.source ?? (readSources === 'futbin' ? 'futbin' : 'futgg'), premiumMode: value.premiumMode ?? 'fixed', premium: value.premium ?? 0,
     purchaseAttempts: value.purchaseAttempts ?? 3, futbinEnabled: value.futbinEnabled ?? readSources !== 'futgg',
-    futbinRefresh: value.futbinRefresh ?? 'cache', readSources,
+    futbinRefresh: value.futbinRefresh ?? 'cache', readSources, quoteValidityMinutes: value.quoteValidityMinutes ?? 5,
     listingSource: value.listingSource ?? (readSources === 'futbin' ? 'futbin' : 'futgg') };
   if (!['futgg', 'futbin'].includes(policy.source) || !['fixed', 'percent'].includes(policy.premiumMode)
       || !Number.isSafeInteger(policy.premium) || policy.premium < 0
       || !Number.isSafeInteger(policy.purchaseAttempts) || policy.purchaseAttempts < 1
+      || !Number.isSafeInteger(policy.quoteValidityMinutes) || policy.quoteValidityMinutes < 1 || policy.quoteValidityMinutes > 30
       || typeof policy.futbinEnabled !== 'boolean' || !policy.futbinEnabled && policy.source === 'futbin'
       || !['futgg', 'futbin', 'both'].includes(readSources) || policy.futbinEnabled !== (readSources !== 'futgg')
       || !['futgg', 'futbin'].includes(policy.listingSource)

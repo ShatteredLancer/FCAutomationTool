@@ -110,11 +110,13 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
       || !Number.isSafeInteger(ttlMs) || ttlMs < 1) throw new TypeError('FC27_GALLERY_PROVIDER_INVALID');
   const cacheKey = `fcat-fc27-gallery-catalog:${season}:${scope}`;
   const poolCacheKey = `fcat-fc27-gallery-pools:${season}:${scope}`;
+  const poolEntryKey = setId => `${poolCacheKey}:set:${setId}`;
   const entries = new Map(); let active = null; let inFlight = null; let reading = null;
   // Keep only bounded, normalized source errors for the visible fallback
   // diagnosis. Response bodies, URLs and account data never enter this state.
   let lastSourceErrors = Object.freeze({});
-  const pools = new Map(); let poolsReading = null; let poolsWriting = Promise.resolve();
+  const pools = new Map(); let poolsReading = null;
+  const poolReads = new Map();
   const poolInFlight = new Map(); const poolRetryAt = new Map();
   const priceInFlight = new Map(); const priceMemory = new Map(); const priceErrors = new Map();
   const retryAt = new Map();
@@ -159,16 +161,52 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
       } catch { /* Corrupt pool snapshots are discarded individually. */ }
     } catch { /* Pool cache is optional. */ }
   })();
+  const readPool = setId => {
+    const numericId = poolInput(setId);
+    if (numericId === null || typeof gmGetValue !== 'function') return Promise.resolve();
+    if (poolReads.has(numericId)) return poolReads.get(numericId);
+    const task = (async () => {
+      await readPools();
+      const valid = row => row?.schema === 1 && row.season === season && row.scope === scope
+        && row.setId === numericId && Number.isSafeInteger(row.fetchedAt)
+        && row.fetchedAt >= 0 && row.fetchedAt <= now();
+      try {
+        const row = await gmGetValue(poolEntryKey(numericId), null);
+        if (valid(row)) {
+          const pool = normalizeGalleryPool('futgg', row.payload, numericId, season);
+          if (row.revision === pool.revision) pools.set(numericId, { source: 'futgg', setId: numericId,
+            pool, fetchedAt: row.fetchedAt, etag: validator(row.etag), modified: validator(row.modified) });
+        }
+      } catch { /* The legacy snapshot remains an optional migration fallback. */ }
+      try {
+        const meta = await gmGetValue(`${poolEntryKey(numericId)}:checked`, null);
+        const entry = pools.get(numericId);
+        // Freshness can only extend the exact payload that was checked. This
+        // also supports legacy payloads without rewriting them after a 304.
+        if (entry && valid(meta) && meta.revision === entry.pool.revision && meta.fetchedAt >= entry.fetchedAt) {
+          pools.set(numericId, { ...entry, fetchedAt: meta.fetchedAt,
+            etag: validator(meta.etag), modified: validator(meta.modified) });
+        }
+      } catch { /* Missing freshness means a conservative conditional request. */ }
+    })();
+    poolReads.set(numericId, task); return task;
+  };
   const persist = async () => {
     if (typeof gmSetValue !== 'function') return;
     const records = [...entries.values()].map(({ catalog, ...entry }) => ({ ...entry, payload: galleryCachePayload(catalog) }));
     try { await gmSetValue(cacheKey, { schema: 2, season, scope, active: active?.source, entries: records }); } catch { /* Memory snapshot remains usable. */ }
   };
-  const persistPools = () => poolsWriting = poolsWriting.then(async () => {
+  const persistPool = async entry => {
     if (typeof gmSetValue !== 'function') return;
-    const records = [...pools.values()].map(({ pool, ...entry }) => ({ ...entry, payload: galleryPoolCachePayload(pool) }));
-    try { await gmSetValue(poolCacheKey, { schema: 1, season, scope, entries: records }); } catch { /* Memory snapshot remains usable. */ }
-  });
+    const meta = { schema: 1, season, scope, setId: entry.setId, revision: entry.pool.revision,
+      fetchedAt: entry.fetchedAt, etag: entry.etag, modified: entry.modified };
+    try {
+      if (!entry.unchanged) await gmSetValue(poolEntryKey(entry.setId), {
+        ...meta, payload: galleryPoolCachePayload(entry.pool),
+      });
+      await gmSetValue(`${poolEntryKey(entry.setId)}:checked`, meta);
+    } catch { /* Keep memory usable; a failed write cannot certify a different saved revision. */ }
+  };
   const peek = async () => { await read(); return active ? observe(active, 'FC27_GALLERY_CATALOG_CACHE', { cached: true, stale: now() - active.fetchedAt >= ttlMs }) : null; };
   const request = async source => {
     if (now() < (retryAt.get(source) ?? 0)) throw new Error('FC27_GALLERY_BACKOFF');
@@ -219,9 +257,13 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     try { pool = response.status === 304 ? previous.pool : normalizeGalleryPool('futgg', JSON.parse(response.text), setId, season); }
     catch { throw new Error('FC27_GALLERY_POOL_PAYLOAD_INVALID'); }
     const entry = { source: 'futgg', setId, pool, fetchedAt: now(),
+      unchanged: response.status === 304 || previous?.pool?.revision === pool.revision,
       etag: validator(h.etag) ?? (response.status === 304 ? previous.etag : null),
       modified: validator(h['last-modified']) ?? (response.status === 304 ? previous.modified : null) };
-    pools.set(setId, entry); await persistPools();
+    pools.set(setId, entry);
+    // Persist only this Set. A 304 or an identical 200 updates its freshness
+    // checkpoint without rewriting the other 126 pools.
+    await persistPool(entry);
     record('pool-request', { source: 'futgg', phase: 'request', status: 'success', count: pool.items.length,
       httpStatus: response.status, cached: response.status === 304 });
     return entry;
@@ -232,13 +274,19 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     const current = poolInFlight.get(numericId);
     if (current) return current;
     const task = (async () => {
-      await readPools();
+      await readPools(); await readPool(numericId);
       const previous = pools.get(numericId);
       if (!force && previous && now() - previous.fetchedAt < ttlMs) {
         record('pool-cache', { source: 'futgg', status: 'success', cached: true, count: previous.pool.items.length });
         return observePool(previous, 'FC27_GALLERY_POOL_CACHE', { cached: true });
       }
-      try { return observePool(await requestPool(numericId), 'FC27_GALLERY_POOL_UPDATED', { cached: false }); }
+      try {
+        const updated = await requestPool(numericId);
+        // Unchanged public data can reuse mapping when account EA coverage is
+        // also intact. Public cache identity alone is not ownership evidence.
+        return observePool(updated, updated.unchanged ? 'FC27_GALLERY_POOL_UNCHANGED' : 'FC27_GALLERY_POOL_UPDATED',
+          { cached: !!updated.unchanged, unchanged: !!updated.unchanged });
+      }
       catch (error) {
         if (error?.message !== 'FC27_GALLERY_BACKOFF') poolRetryAt.set(numericId, Math.max(poolRetryAt.get(numericId) ?? 0, now() + ttlMs));
         const errorReason = safeReason(error);
@@ -256,7 +304,7 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
   const peekPool = async ({ source = 'futgg', setId } = {}) => {
     const numericId = poolInput(setId);
     if (source !== 'futgg' || numericId === null) return null;
-    await readPools(); const entry = pools.get(numericId);
+    await readPools(); await readPool(numericId); const entry = pools.get(numericId);
     return entry ? observePool(entry, 'FC27_GALLERY_POOL_CACHE', { cached: true, stale: now() - entry.fetchedAt >= ttlMs }) : null;
   };
   const priceIds = ids => [...new Set((ids ?? []).map(Number).filter(value => Number.isSafeInteger(value) && value > 0))].sort((a, b) => a - b);

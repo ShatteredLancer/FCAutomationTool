@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compileGalleryScoringRules, evaluateGalleryLineup, summarizeGalleryScore, createGalleryScoreSummarizer } from '../../src/gallery/scoring.js';
+import auxerre from '../fixtures/fc27-gallery-auxerre-score.json';
 
 const tag = (id, attribute, type = 'COUNT', values = ['1'], tiers = [{ minItems: 2, bonus: 10 }]) => ({
   id, name: `Tag ${id}`, bonusType: 'ITEM_SCORE_PERCENTAGE', thresholdType: 'ITEM_COUNT',
@@ -17,6 +18,45 @@ const summary = (rows, tags = [tag(99,'RARE','COUNT',['999'])], target = set) =>
   catalog: {source:'futgg',tags}, progress: {season:'27',setId:30,complete:true,rows} });
 
 describe('Gallery scoring from public rules and exact EA base scores', () => {
+  it('characterizes the AJ Auxerre EA lineup separately from the public optimized lineup', () => {
+    const tags = [
+      tag(3, 'NATION', 'MAX_COUNT_ALL_SAME', ['0'], [{ minItems: 5, bonus: 1 }, { minItems: 10, bonus: 2 }, { minItems: 20, bonus: 4 }]),
+      tag(17, 'NATION', 'COUNT_DIFF', ['0'], [{ minItems: 5, bonus: 1 }, { minItems: 10, bonus: 2 }, { minItems: 20, bonus: 4 }]),
+      tag(8, 'CLUB', 'MAX_COUNT_ALL_SAME', ['0'], [{ minItems: 5, bonus: 1 }, { minItems: 10, bonus: 2 }, { minItems: 20, bonus: 4 }]),
+      tag(16, 'LEAGUEID', 'MAX_COUNT_ALL_SAME', ['0'], [{ minItems: 5, bonus: 1 }, { minItems: 10, bonus: 2 }, { minItems: 20, bonus: 8 }]),
+      tag(11, 'LEVEL', 'COUNT', ['silver'], [{ minItems: 5, bonus: 15 }, { minItems: 10, bonus: 30 }, { minItems: 20, bonus: 60 }]),
+      tag(15, 'BASE_DEF_ID', 'MAX_COUNT_ALL_SAME', ['0'], [{ minItems: 2, bonus: 10 }, { minItems: 3, bonus: 15 }, { minItems: 4, bonus: 20 }]),
+      tag(21, 'POSSIBLE_POSITIONS', 'COUNT_ANY', ['RB', 'CB', 'LB'], [{ minItems: 5, bonus: 3 }, { minItems: 10, bonus: 6 }, { minItems: 15, bonus: 10 }]),
+      tag(22, 'POSSIBLE_POSITIONS', 'COUNT_ANY', ['CDM', 'RM', 'CM', 'LM', 'CAM'], [{ minItems: 5, bonus: 3 }, { minItems: 10, bonus: 6 }, { minItems: 15, bonus: 10 }]),
+      tag(23, 'POSSIBLE_POSITIONS', 'COUNT_ANY', ['ST', 'LW', 'RW'], [{ minItems: 5, bonus: 3 }, { minItems: 10, bonus: 6 }, { minItems: 15, bonus: 10 }]),
+    ];
+    const toCard = ([eaId, playerEaId, gradingScore, overall, nationEaId, clubEaId, leagueEaId, rarityEaId, positions]) =>
+      card(eaId, { playerEaId, gradingScore, overall, nationEaId, clubEaId, leagueEaId, rarityEaId, positions });
+    const compiled = rules(tags);
+    const ea = evaluateGalleryLineup(auxerre.lineups.ea.map(toCard), compiled);
+    const fodder = evaluateGalleryLineup(auxerre.lineups.fodder.map(toCard), compiled);
+    const futgg = evaluateGalleryLineup(auxerre.lineups.fodder.map(row => toCard(
+      row[0] === auxerre.futggReplacement.fromEaId ? auxerre.futggReplacement.card : row)), compiled);
+    expect({ base: ea.base, bonus: ea.bonus, total: ea.total }).toEqual(auxerre.expected.ea);
+    expect({ base: fodder.base, bonus: fodder.bonus, total: fodder.total }).toEqual(auxerre.expected.fodder);
+    expect({ base: futgg.base, bonus: futgg.bonus, total: futgg.total }).toEqual(auxerre.expected.futgg);
+    expect(fodder.total - ea.total).toBe(auxerre.expected.difference);
+    expect(ea.tags.find(item => item.name === 'Tag 22')).toMatchObject({ count: 14, bonus: 66 });
+    expect(fodder.tags.find(item => item.name === 'Tag 22')).toMatchObject({ count: 15, bonus: 113 });
+    expect(ea.tags.find(item => item.name === 'Tag 21')).toMatchObject({ count: 6, bonus: 6 });
+    expect(fodder.tags.find(item => item.name === 'Tag 21')).toMatchObject({ count: 5, bonus: 5 });
+    // Equal base scores do not imply equal lineups. The optimizer can replace
+    // Siwe with Piedfort and cross the 15-midfielder tier without adding base.
+    const candidates = auxerre.lineups.ea.map(toCard);
+    candidates.push(toCard(auxerre.lineups.fodder.find(row => row[0] === 276315)));
+    const optimized = summary(candidates, tags, { ...set, requiredCards: 15, grades: [
+      { name: 'A', threshold: 1000 }, { name: 'S', threshold: 1500 },
+    ] });
+    expect(optimized.low.total).toBe(1534);
+    expect(optimized.lineup.map(row => row.eaId)).toContain(276315);
+    expect(optimized.lineup.map(row => row.eaId)).not.toContain(78215);
+    expect(optimized.grade).toBe('S');
+  });
   it('reuses scoring work across candidate pools without changing lineups, bonuses or FO semantics', () => {
     const catalog = { source: 'futgg', tags: [tag(1, 'FIRST_OWNED'),
       tag(2, 'NATION', 'COUNT_DIFF', ['0']), tag(3, 'BASE_DEF_ID', 'MAX_COUNT_ALL_SAME', ['0'])] };

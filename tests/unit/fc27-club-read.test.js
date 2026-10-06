@@ -55,6 +55,13 @@ it('uses an owned native request, disables retries and exports fresh count only'
   expect(transport.getRequestCount()).toBe(1);
 });
 
+it('allows Gallery to use native 401 session renewal and its native resend', async () => {
+  const { root, calls } = fixture();
+  const transport = await createFc27ClubReadTransport(root, { nativeReauth: true });
+  await transport.readCount();
+  expect(calls[0]).toMatchObject({ doReauth: true, doRetry: true });
+});
+
 it('accepts the reviewed FC27-27 current request runtime compatibility set', async () => {
   const { root } = fixture();
   const current = [
@@ -146,16 +153,17 @@ it('accepts explicit empty itemData and rejects mismatched request owners', asyn
   await expect((await createFc27ClubReadTransport(other.root)).readCount()).rejects.toThrow('OWNER_MISMATCH');
 });
 
-it('times out, aborts only its own request and does not permit another read', async () => {
+it.each([false, true])('times out, cancels native renewal=%s, and does not permit another read', async nativeReauth => {
   vi.useFakeTimers();
   try {
     const { root, response, calls } = fixture();
     response.timeout = true;
-    const transport = await createFc27ClubReadTransport(root);
+    const transport = await createFc27ClubReadTransport(root, { nativeReauth });
     const pending = expect(transport.readCount()).rejects.toThrow('READ_TIMEOUT');
     await vi.advanceTimersByTimeAsync(16001);
     await pending;
     expect(calls).toContain('abort');
+    expect(calls.find(value => typeof value === 'object')).toMatchObject({ doRetry: false, doReauth: false });
     await expect(transport.readCount()).rejects.toThrow('READ_BLOCKED');
   } finally { vi.useRealTimers(); }
 });

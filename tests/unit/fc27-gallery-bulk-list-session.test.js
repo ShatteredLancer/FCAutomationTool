@@ -31,10 +31,41 @@ function harness({ listResults = [], transferMatches = true, limits = true, cont
     assertCurrent: () => {}, sleep, random,
     operationId: () => 'run-1',
   });
-  return { session, calls, values };
+  return { session, calls, values, adapter };
 }
 
 describe('FC27 Gallery bulk list session', () => {
+  it('uses valid native cached limits without forcing a redundant item request', async () => {
+    const h = harness(), reads = [];
+    h.adapter.inspectPriceLimits = async (_ref, options) => {
+      reads.push(options.refresh);
+      return options.refresh ? { status: 'rejected', error: { code: 403 } }
+        : { status: 'loaded', refreshStatus: 'not-requested', after: { minimum: 150, maximum: 1000 } };
+    };
+    expect(await h.session.execute({ approved: true, binding: 'b', entries: [entry(1)] }))
+      .toMatchObject({ status: 'completed', accepted: 1 });
+    expect(reads).toEqual([false]);
+  });
+  it('requests missing limits once and still stops on explicit service failure', async () => {
+    const h = harness(), reads = [];
+    h.adapter.inspectPriceLimits = async (_ref, options) => {
+      reads.push(options.refresh);
+      return options.refresh ? { status: 'rejected', error: { code: 403 } } : { status: 'unavailable' };
+    };
+    expect(await h.session.execute({ approved: true, binding: 'b', entries: [entry(1)] }))
+      .toMatchObject({ status: 'partial', reason: 'FC27_GALLERY_LISTING_SERVICE_STOP' });
+    expect(reads).toEqual([false, true]); expect(h.calls.list).toBe(0);
+  });
+  it('requires an explicit set source for entities with no purchase receipt, and binds it to the set', async () => {
+    const h = harness(), item = { ...entry(1), purchase: null };
+    expect(await h.session.execute({ approved: true, binding: 'b', entries: [item] })).toMatchObject({ status: 'blocked' });
+    expect(await h.session.execute({ approved: true, binding: 'set:futgg:2', source: { kind: 'set', setId: 'futgg:1' }, entries: [item] }))
+      .toMatchObject({ status: 'blocked' });
+    expect(h.calls.list).toBe(0);
+    expect(await h.session.execute({ approved: true, binding: 'set:futgg:1', source: { kind: 'set', setId: 'futgg:1' }, entries: [item] }))
+      .toMatchObject({ status: 'completed', accepted: 1 });
+    expect((await h.session.inspect()).entries[0].purchaseTradeId).toBeNull();
+  });
   it('uses Enhancer integer waits after accepted and explicitly rejected items, including the final item', async () => {
     const delays = [], samples = [0.24, 0.25, 0.76];
     const h = harness({ random: () => samples.shift(), sleep: async value => delays.push(value),

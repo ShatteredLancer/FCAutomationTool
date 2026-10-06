@@ -15,7 +15,10 @@ const validPrices = entry => Number.isSafeInteger(entry.startPrice) && entry.sta
   && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15000000 && DURATIONS.has(entry.durationSeconds);
 const validRef = ref => id(ref?.id) && id(ref?.definitionId) && ['club', 'transfer'].includes(ref.pile);
 const validDelay = value => Array.isArray(value) && value.length === 2
-  && value.every(v => Number.isFinite(v) && v >= 1 && v <= 15) && value[0] <= value[1];
+    && value.every(v => Number.isFinite(v) && v >= 1 && v <= 15) && value[0] <= value[1];
+const validSetSource = source => source?.kind === 'set' && typeof source.setId === 'string'
+  && /^(futgg|fodder):[a-zA-Z0-9/_-]+$/.test(source.setId) && source.setId.length <= 240;
+const validPurchase = (value, source) => validSetSource(source) ? value === null : tradeId(value);
 
 export function normalizeGalleryBulkListJournal(input) {
   if (!input || input.schema !== 1 || typeof input.scope !== 'string' || !input.scope || !input.context
@@ -23,7 +26,8 @@ export function normalizeGalleryBulkListJournal(input) {
     || !['active', 'completed', 'recovery-required'].includes(input.status) || !validDelay(input.delaySeconds)
     || !Array.isArray(input.entries) || !input.entries.length || input.entries.length > 256
     || new Set(input.entries.map(e => e?.item?.id)).size !== input.entries.length
-    || input.entries.some(e => !validRef(e?.item) || !tradeId(e.purchaseTradeId) || !validPrices(e)
+    || input.source !== undefined && (!validSetSource(input.source) || input.binding !== `set:${input.source.setId}`)
+    || input.entries.some(e => !validRef(e?.item) || !validPurchase(e.purchaseTradeId, input.source) || !validPrices(e)
       || !['pending', 'list-pending', 'unknown', 'accepted', 'rejected', 'skipped'].includes(e.status)
       || e.status === 'accepted' && !tradeId(e.listingTradeId))) return null;
   return clone(input);
@@ -167,14 +171,15 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
     async inspect() {
       assertCurrent(); const record = await read(); assertCurrent();
       return record ? { status: 'observed', state: record.status, ...summary(record), runId: record.runId,
-        binding: record.binding, entries: clone(record.entries), lastReason: record.lastReason } : { status: 'absent' };
+        binding: record.binding, entries: clone(record.entries), ...(record.source ? { source: clone(record.source) } : {}), lastReason: record.lastReason } : { status: 'absent' };
     },
-    async execute({ approved = false, entries, binding, settings = {}, resume = false, expectedRunId = null } = {}) {
+    async execute({ approved = false, entries, binding, source, settings = {}, resume = false, expectedRunId = null } = {}) {
       const delaySeconds = settings.delaySeconds ?? [3, 5];
       if (!approved || !validDelay(delaySeconds) || !resume && (typeof binding !== 'string' || !binding
         || !Array.isArray(entries) || !entries.length || entries.length > 256
         || new Set(entries.map(e => e?.item?.id)).size !== entries.length
-        || entries.some(e => !validRef(e?.item) || !tradeId(String(e.purchase?.tradeId ?? '')) || !validPrices(e)))) {
+        || source !== undefined && (!validSetSource(source) || binding !== `set:${source.setId}`)
+        || entries.some(e => !validRef(e?.item) || !validPurchase(e.purchase == null ? null : String(e.purchase.tradeId ?? ''), source) || !validPrices(e)))) {
         return { status: 'blocked', reason: 'FC27_GALLERY_BULK_LIST_APPROVAL_REQUIRED' };
       }
       let record;
@@ -201,9 +206,10 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
               assertCurrent();
             }
             record = { schema: 1, scope, context: clone(context), runId: operationId(), binding, delaySeconds: [...delaySeconds],
+              ...(source ? { source: clone(source) } : {}),
               status: 'active', createdAt: now(), updatedAt: now(), lastReason: null,
               entries: entries.map(e => ({ item: clone(e.item), name: String(e.name ?? '').slice(0, 120),
-                purchaseTradeId: String(e.purchase.tradeId), listingTradeId: null,
+                purchaseTradeId: e.purchase ? String(e.purchase.tradeId) : null, listingTradeId: null,
                 startPrice: e.startPrice, buyNow: e.buyNow, durationSeconds: e.durationSeconds,
                 status: 'pending', reason: null, response: null })) };
             await write(record);
@@ -231,10 +237,15 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
             const capacity = tradeAdapter.inspectCapabilities().transferCapacity;
             if (!skip && entry.item.pile !== 'transfer' && (!Number.isFinite(capacity?.free) || capacity.free <= 0)) skip = 'FC27_GALLERY_TRANSFER_FULL_OR_UNKNOWN';
             if (!skip) {
-              const limits = await tradeAdapter.inspectPriceLimits(entry.item, { refresh: true }); assertCurrent();
+              // Enhancer requestPriceLimits reads the entity cache first.
+              let limits = await tradeAdapter.inspectPriceLimits(entry.item, { refresh: false }); assertCurrent();
+              const cached = limits?.status === 'loaded' && Number.isSafeInteger(limits?.after?.minimum)
+                && Number.isSafeInteger(limits?.after?.maximum) && limits.after.minimum >= 150
+                && limits.after.maximum >= limits.after.minimum;
+              if (!cached) { limits = await tradeAdapter.inspectPriceLimits(entry.item, { refresh: true }); assertCurrent(); }
               if (mustStop(limits)) { record.lastReason = 'FC27_GALLERY_LISTING_SERVICE_STOP'; break; }
               const min = limits?.after?.minimum, max = limits?.after?.maximum;
-              if (limits?.refreshStatus !== 'completed' || !Number.isSafeInteger(min) || !Number.isSafeInteger(max)
+              if ((!cached && limits?.refreshStatus !== 'completed') || !Number.isSafeInteger(min) || !Number.isSafeInteger(max)
                 || entry.startPrice < min || entry.buyNow > max) skip = 'FC27_GALLERY_LISTING_PRICE_OUT_OF_RANGE';
             }
             if (skip) { entry.status = 'skipped'; entry.reason = skip; await write(record); report(record, 'skipped', index + 1); continue; }

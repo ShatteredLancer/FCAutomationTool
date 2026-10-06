@@ -30,10 +30,11 @@ export function mountFc27PurchaseResults({ document, parent, refreshPrices, retr
   style.textContent += `.fcat-purchase-results button,.fcat-purchase-results input,.fcat-purchase-results select{font:inherit;color:#edf1f4;background:#202d36;border:1px solid #46545d;border-radius:5px;max-width:100%}
     .fcat-purchase-results select{width:auto;min-height:36px;padding:6px 10px}.fcat-purchase-results button{width:auto;cursor:pointer}.fcat-purchase-results button:disabled{opacity:.45;cursor:default}
     .fcat-purchase-results p{margin:6px 0;font:inherit}.fcat-purchase-results label{margin:0;font:inherit}
-    .fcat-purchase-results .purchase-row{padding:10px 6px}.fcat-purchase-results .purchase-row[data-active=true]{background:#304451;border-left:3px solid #9df3d5}
-    .fcat-purchase-results .purchase-row-title{display:flex;justify-content:space-between;gap:8px}.fcat-purchase-results strong{font:600 14px/1.5 Arial,sans-serif}
-    .fcat-purchase-results .purchase-state{font-size:13px;color:#c1ced5}.fcat-purchase-results .purchase-price{font-size:13px;font-variant-numeric:tabular-nums}
-    .fcat-purchase-results summary{margin:0;padding:4px 0;color:#b3c5cd;font:12px/1.5 Arial,sans-serif;cursor:pointer}
+    .fcat-purchase-results .purchase-row{padding:6px}.fcat-purchase-results .purchase-row[data-active=true]{background:#304451;border-left:3px solid #9df3d5}
+    .fcat-purchase-results .purchase-row-title{display:flex;gap:4px 10px}.fcat-purchase-results strong{font:600 14px/1.4 Arial,sans-serif}
+    .fcat-purchase-results .purchase-state{font-size:12px;color:#c1ced5}.fcat-purchase-results .purchase-price{margin-left:auto;font-size:12px;font-variant-numeric:tabular-nums}
+    .fcat-purchase-results .purchase-row-info{display:flex;gap:2px 12px;align-items:baseline;flex-wrap:wrap}.fcat-purchase-results .purchase-row-info details{flex:1;min-width:140px}
+    .fcat-purchase-results summary{margin:0;padding:1px 0;color:#b3c5cd;font:12px/1.5 Arial,sans-serif;cursor:pointer}
     .fcat-purchase-results small{margin:2px 0;font:12px/1.5 Arial,sans-serif;color:#b3c5cd}
     .fcat-purchase-results .purchase-error:empty,.fcat-purchase-results .purchase-actions:empty{display:none}
     .fcat-purchase-results .purchase-row>label:not(:first-child){margin-top:6px}`;
@@ -90,9 +91,10 @@ export function mountFc27PurchaseResults({ document, parent, refreshPrices, retr
     add(label, 'strong', name || `球员 #${row.definitionId}`);
     add(label, 'span', state).className = 'purchase-state';
     const reference = references[row.definitionId] ?? row.reference;
-    add(line, 'div', `${row.price == null ? '' : `成交 ${amount(row.price)} · `}上限 ${amount(row.reference?.maxBuy)}`).className = 'purchase-price';
-    if (row.reason) add(line, 'small', messages[row.reason] ?? row.reason);
-    const detail = add(line, 'details'); detail.className = 'purchase-quote-details'; detail.open = expanded.has(row.definitionId);
+    add(label, 'span', `${row.price == null ? '' : `成交 ${amount(row.price)} · `}上限 ${amount(row.reference?.maxBuy)}`).className = 'purchase-price';
+    const info = add(line, 'div'); info.className = 'purchase-row-info';
+    if (row.reason) add(info, 'small', messages[row.reason] ?? row.reason);
+    const detail = add(info, 'details'); detail.className = 'purchase-quote-details'; detail.open = expanded.has(row.definitionId);
     add(detail, 'summary', '报价与尝试详情');
     detail.addEventListener('toggle', () => { if (detail.isConnected) { if (detail.open) expanded.add(row.definitionId); else expanded.delete(row.definitionId); } });
     add(detail, 'small', `版本 ${row.definitionId}`);

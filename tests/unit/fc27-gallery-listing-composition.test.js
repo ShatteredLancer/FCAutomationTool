@@ -7,6 +7,61 @@ import { galleryPurchaseKey } from '../../src/gallery/purchase-session.js';
 
 afterEach(() => vi.restoreAllMocks());
 
+it('previews and lists all eligible exact set entities without reading purchase history or forging receipts', async () => {
+  const f = fixture();
+  const refs = [11, 12, 13, 14].map(id => ({ id, definitionId: 111, pile: id === 12 ? 'transfer' : 'club' }));
+  const inventory = { scan: vi.fn(async () => refs), resolve: () => null, validate: vi.fn(async () => {}) };
+  f.deps.purchase.inspect = vi.fn(async () => { throw Error('must not use purchases'); });
+  const inspect = f.adapter.inspectListingItem;
+  f.adapter.inspectListingItem = ref => {
+    const value = inspect(ref);
+    if (ref.id === 13) value.candidate.tradeable = false;
+    if (ref.id === 14) value.candidate.auction.state = 'active';
+    return value;
+  };
+  const service = createFc27GalleryListing({ ...f.deps, inventoryFactory: () => inventory });
+  const target = { source: 'futgg', set: { id: 'futgg:1', name: 'Set' }, pool: { items: [{ eaId: 111 }] } };
+  expect(await service.prepare({ target })).toMatchObject({ status: 'ready', candidates: [
+    { item: refs[0], purchase: null }, { item: refs[1], purchase: null },
+  ] });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+  const plan = service.plan({ selectedIds: [11, 12], settings: f.settings });
+  expect(await service.saveSchedule({ approved: true, plan })).toMatchObject({ reason: 'FC27_GALLERY_LISTING_SET_SCHEDULE_UNSUPPORTED' });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true })).toMatchObject({ status: 'completed', accepted: 2 });
+  expect(inventory.validate).toHaveBeenCalledWith(refs[0]);
+  expect(f.deps.purchase.inspect).not.toHaveBeenCalled();
+  expect(await service.inspect()).toMatchObject({ source: { kind: 'set', setId: 'futgg:1' },
+    entries: [{ purchaseTradeId: null }, { purchaseTradeId: null }] });
+});
+
+it('does not list when a set entity disappears at final live validation', async () => {
+  const f = fixture(), ref = { id: 11, definitionId: 111, pile: 'club' };
+  const service = createFc27GalleryListing({ ...f.deps, inventoryFactory: () => ({
+    scan: async () => [ref], resolve: () => null,
+    validate: async () => { throw Error('FC27_GALLERY_LISTING_ITEM_CHANGED'); },
+  }) });
+  await service.prepare({ target: { source: 'futgg', set: { id: 'futgg:1' } } });
+  const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ reason: 'FC27_GALLERY_LISTING_ITEM_CHANGED' });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('resumes an interrupted set listing across reload without requiring a purchase journal', async () => {
+  const f = fixture(), ref = { id: 11, definitionId: 111, pile: 'club' };
+  const deps = { ...f.deps, inventoryFactory: () => ({ scan: async () => [ref], resolve: () => null, hydrate: async () => true, validate: async () => {} }) };
+  const service = createFc27GalleryListing(deps);
+  const target = { source: 'futgg', set: { id: 'futgg:1' } };
+  await service.prepare({ target }); const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  f.adapter.acquireRequestPermit = async () => ({ status: 'blocked' });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true })).toMatchObject({ status: 'partial' });
+  const next = createFc27GalleryListing(deps);
+  const old = await next.prepare({ target }); expect(old.status).toBe('resume-required');
+  f.adapter.acquireRequestPermit = async () => ({ status: 'acquired', permit: {} });
+  expect(await next.execute({ approved: true, resume: true, expectedRunId: old.runId, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+});
+
 it('records a terminal summary only after exact active-auction readback and journal confirmation', async () => {
   const f = fixture(), diagnosticLog = { record: vi.fn(async () => true) };
   const service = createFc27GalleryListing({ ...f.deps, diagnosticLog });
@@ -74,6 +129,10 @@ function fixture() {
     gmSetValue: (key, value) => { values.set(key, structuredClone(value)); },
     purchase: { inspect: async () => structuredClone(snapshot) }, liveEnabled: true, schedulingEnabled: true,
     adapterFactory: () => adapter, loadPrices: async () => ({ freshPrices: { 111: 200 }, expiresAt: 100000 }), sleep: async () => {} };
+  deps.readPriceLimits = async (_root, refs) => Object.fromEntries(await Promise.all(refs.map(async ref => {
+    const result = await adapter.inspectPriceLimits(ref);
+    return [ref.id, { status: result?.status ?? 'unknown', ...result?.after }];
+  })));
   const service = createFc27GalleryListing(deps);
   const settings = { priceMode: 'fixed', fixedPrice: 200, fixedStartPrice: 150, durationSeconds: 3600 };
   const prepare = async () => { expect((await service.prepare()).status).toBe('ready'); return service.plan({ selectedIds: [11], settings }); };
@@ -227,6 +286,35 @@ it('does not replace receipt cost with EA lastSalePrice', async () => {
   const f = fixture();
   f.deps.root.repositories.Item.club.items._collection[11] = { id: 11, definitionId: 111, lastSalePrice: 9999 };
   expect(await f.service.prepare()).toMatchObject({ candidates: [{ boughtFor: 200 }] });
+});
+
+it.each([
+  [{ lastSalePrice: 750, owners: 2 }, 750, 'ea'],
+  [{ lastSalePrice: 0, owners: 1 }, null, 'first-owner'],
+  [{ lastSalePrice: 0, owners: 2 }, null, 'unknown'],
+  [{ owners: 2 }, null, 'unknown'],
+  [{ lastSalePrice: -1, owners: 2 }, null, 'unknown'],
+  [{ definitionId: 999, lastSalePrice: 750, owners: 2 }, null, 'unknown'],
+  [{ id: 12, lastSalePrice: 750, owners: 2 }, null, 'unknown'],
+])('projects native sellable purchase cost without inventing a purchase receipt: %j', async (fields, boughtFor, boughtForSource) => {
+  const f = fixture(), ref = { id: 11, definitionId: 111, pile: 'club' };
+  const item = { ...ref, ...fields };
+  const service = createFc27GalleryListing({ ...f.deps, inventoryFactory: () => ({
+    scan: async () => [ref], resolve: () => ({ item }),
+  }) });
+  expect(await service.prepare({ target: { source: 'futgg', set: { id: 'futgg:1' } } }))
+    .toMatchObject({ status: 'ready', candidates: [{ boughtFor, boughtForSource, purchase: null }] });
+  expect(f.adapter.listItem).not.toHaveBeenCalled();
+});
+
+it('uses each Transfer entity cost even for two copies of the same version', async () => {
+  const f = fixture(), refs = [11, 12].map(id => ({ id, definitionId: 111, pile: 'transfer' }));
+  f.deps.root.repositories.Item.transfer = refs.map((ref, index) => ({ ...ref, lastSalePrice: 400 + index * 150, owners: 2 }));
+  const service = createFc27GalleryListing({ ...f.deps, inventoryFactory: () => ({
+    scan: async () => refs, resolve: () => null,
+  }) });
+  expect(await service.prepare({ target: { source: 'futgg', set: { id: 'futgg:1' } } }))
+    .toMatchObject({ status: 'ready', candidates: [{ boughtFor: 400, purchase: null }, { boughtFor: 550, purchase: null }] });
 });
 
 it('keeps a market preview distinct from manual overrides and rejects it after quote expiry', async () => {

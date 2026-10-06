@@ -25,6 +25,15 @@ export function selectGallerySetIcon(candidates, random = Math.random) {
   return images.length ? images[Math.floor(random() * images.length)] : null;
 }
 
+// Enhancer mPt/YPt samples up to three available category images once per
+// mounted category. Cache the result so background progress cannot flicker it.
+export function selectGalleryCategoryIcons(candidates, random = Math.random) {
+  const remaining = [...new Set(candidates.filter(value => typeof value === 'string' && value.startsWith('https://')))];
+  const selected = [];
+  while (remaining.length && selected.length < 3) selected.push(remaining.splice(Math.floor(random() * remaining.length), 1)[0]);
+  return selected;
+}
+
 // Enhancer JAe/yPt: each segment spans the previous threshold to this one.
 // Known progress is useful even before a full lineup exists. An uncertain
 // interval is projected using its known lower score, never the upper estimate.
@@ -66,12 +75,34 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
+  const categoryIconSelections = new Map();
   const bulkList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
   const listingButton = node('gallery-list-purchased');
+  let listingRange = null;
   if (listingButton) {
     listingButton.hidden = !bulkList;
+    if (bulkList) {
+      listingRange = document.createElement('select'); listingRange.id = 'gallery-list-range';
+      listingRange.setAttribute('aria-label', '挂牌范围');
+      for (const [value, text] of [['purchased', '挂牌已购卡'], ['set', '挂牌可售卡']]) {
+        const option = document.createElement('option'); option.value = value; option.textContent = text;
+        option.disabled = value === 'set'; listingRange.append(option);
+      }
+      const listingControls = document.createElement('div'); listingControls.className = 'gallery-list-controls';
+      listingButton.before(listingControls); listingControls.append(listingRange, listingButton);
+      listingButton.textContent = '挂牌';
+    }
     listingButton.addEventListener('click', event => {
-      if (event.isTrusted && bulkList) void bulkList.open();
+      if (!event.isTrusted || !bulkList) return;
+      if (listingRange?.value !== 'set') { void bulkList.open(); return; }
+      const set = result?.catalog?.categories.flatMap(category => category.sets).find(row => row.id === selectedSetId);
+      const detail = details.get(selectedSetId);
+      if (!set || !detail?.pool || detail.stale || detail.poolStale) {
+        node('gallery-progress-note').textContent = '当前集合卡池尚未就绪或已过期，请先刷新当前集合，再打开挂牌可售卡。';
+        return;
+      }
+      const target = { source: result.source, set, pool: detail.pool };
+      void bulkList.open({ target, isTargetCurrent: () => selectedSetId === set.id && result.source === target.source });
     });
   }
   const relistStartButton = node('gallery-relist-start');
@@ -806,6 +837,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const showBrowseLevel = () => {
     const detail = selectedSetId !== null, category = categoryId !== null;
+    if (listingRange) {
+      listingRange.querySelector('[value="set"]').disabled = !detail || jointMode;
+      if (!detail || jointMode) listingRange.value = 'purchased';
+    }
     node('gallery-summary').hidden = detail || category;
     node('gallery-sets').hidden = detail || !category;
     node('gallery-set-detail').hidden = !detail;
@@ -1642,10 +1677,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         total: state.progress.total ?? null, completed: state.progress.completed ?? null,
         pages: state.progress.pages ?? null, count: state.progress.count ?? null } : null });
     node('gallery-sync-time').textContent = state.syncedAt ? `上次同步 ${date(state.syncedAt)}` : '尚未同步';
+    node('gallery-sync-time').title = '进入 Gallery 后恢复账号缓存并增量同步；页面可见时每 5 分钟检查。已收集记录保留，复查最多 1000 个未收集版本。积分按数据变化重新计算，当前集合优先。';
     const progress = foregroundSync?.progress ?? state.progress;
     const bar = node('gallery-background-progress');
     if (progress && (foregroundSync || state.busy && !state.synced) && ['futgg', 'fodder'].includes(result?.source)) {
-      const phase = progress.phase === 'pools' ? '同步集合卡池' : progress.phase === 'catalog' ? '读取集合目录' : '同步 EA 收集';
+      const phase = ({ pools: '同步集合卡池', 'pool-check': '检查卡池变化', cache: '恢复集合缓存', catalog: '读取集合目录' })[progress.phase] ?? '同步 EA 收集';
       const index = Number.isSafeInteger(progress.index) ? progress.index : 0;
       const total = Number.isSafeInteger(progress.total) ? progress.total : 0;
       bar.hidden = false; bar.max = total || 1;
@@ -1653,7 +1689,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const page = Number.isSafeInteger(progress.pages) ? ` · 已读 ${progress.pages} 页` : '';
       const count = Number.isSafeInteger(progress.count) ? ` · 已读 ${progress.count}` : '';
       const collection = foregroundSync ? `${foregroundSync.name} · ` : '';
-      node('gallery-progress-note').textContent = `${collection}${phase} ${index}/${total}${page}${count}`;
+      const changes = Number.isSafeInteger(progress.changed) ? ` · 复用 ${progress.reused ?? 0} · 更新 ${progress.changed}` : '';
+      node('gallery-progress-note').textContent = `${collection}${phase} ${index}/${total}${page}${count}${changes}`;
     } else if (bar) {
       bar.hidden = true; bar.value = 0;
     }
@@ -1682,7 +1719,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         node('gallery-sync-progress').value = progress.completed ?? Math.max(0, progress.index - 1);
         const page = Number.isSafeInteger(progress.pages) ? ` · 已读 ${progress.pages} 页` : '';
         const count = Number.isSafeInteger(progress.count) ? ` · 已读 ${progress.count}` : '';
-        node('gallery-sync-message').textContent = `${progress.phase === 'pools' ? '映射集合' : '同步收集'} ${progress.index}/${progress.total}${page}${count}`;
+        const phase = ({ pools: '映射集合', 'pool-check': '检查卡池变化', cache: '恢复集合缓存', catalog: '读取集合目录' })[progress.phase] ?? '同步收集';
+        const changes = Number.isSafeInteger(progress.changed) ? ` · 复用 ${progress.reused ?? 0} · 更新 ${progress.changed}` : '';
+        node('gallery-sync-message').textContent = `${phase} ${progress.index}/${progress.total}${page}${count}${changes}`;
         if (progress.details?.length) applySyncDetails(progress.details);
         updateSyncButton();
       } });
@@ -1771,8 +1810,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const button = add(buttons, 'button');
       const top = add(button, 'span', '', 'gallery-category-top');
       const iconsBox = add(top, 'span', '', 'gallery-category-icons');
-      const icons = assets?.category?.(row.slug, row.name) ?? [];
-      for (const src of (Array.isArray(icons) ? icons : [icons]).slice(0, 3)) image(iconsBox, src, row.name, 'gallery-category-icon');
+      const icons = assets?.category?.(row.slug, row.name, row.sets) ?? [];
+      const iconKey = JSON.stringify([row.id, icons]);
+      if (!categoryIconSelections.has(iconKey)) {
+        if (categoryIconSelections.size >= 256) categoryIconSelections.clear();
+        categoryIconSelections.set(iconKey, selectGalleryCategoryIcons(Array.isArray(icons) ? icons : [icons]));
+      }
+      for (const src of categoryIconSelections.get(iconKey)) image(iconsBox, src, row.name, 'gallery-category-icon');
       add(top, 'span', `${row.sets.length} 个集合`, 'gallery-category-count');
       renderRewardSummary(top, row.sets, 'gallery-category-rewards');
       add(button, 'strong', row.name, 'gallery-category-name');

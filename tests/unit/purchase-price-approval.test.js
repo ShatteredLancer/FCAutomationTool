@@ -24,7 +24,7 @@ it('records missing or expired selected sources without substituting another sou
   expect(purchaseApprovedPrice(approval, 11)).toMatchObject({ maxBuy: null, reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' });
 });
 
-it.each([['futbinEnabled'], ['futbinRefresh'], ['futbinEnabled', 'futbinRefresh']])('validates legacy approvals missing %j without rewriting their frozen source or caps', (...fields) => {
+it.each([['futbinEnabled'], ['futbinRefresh'], ['quoteValidityMinutes'], ['futbinEnabled', 'futbinRefresh', 'quoteValidityMinutes']])('validates legacy approvals missing %j without rewriting their frozen source or caps', (...fields) => {
   const approval = createPurchasePriceApproval(approvalFixture());
   for (const field of fields) delete approval.policy[field];
   const before = structuredClone(approval);

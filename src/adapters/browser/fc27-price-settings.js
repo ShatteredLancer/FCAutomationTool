@@ -19,14 +19,16 @@ export function mountFc27PriceSettings({ document, parent, service }) {
     control.setAttribute('aria-label', label); return control;
   };
   const premium = number('溢价数值', 0), attempts = number('每卡购买尝试次数', 1);
+  const validity = number('报价有效期（分钟）', 1); validity.max = '30';
   add(card, 'small', '购买与挂牌共用参考来源，溢价仅用于购买。报价优先复用有效缓存，缺失或过期时更新。保存后新方案生效，已批准的价格不变。');
+  add(card, 'small', '报价有效期 1–30 分钟，默认 5，从实际获取报价时计时。保存后新读取生效；已打开的挂牌窗口请关闭后重新打开。失败重试等待不受此设置影响。');
   const preview = add(card, 'output'); preview.setAttribute('aria-live', 'polite');
   const row = add(card, 'div'); row.className = 'row';
   const save = add(row, 'button', '保存价格设置'); save.type = 'button'; save.className = 'primary';
   const status = add(card, 'output'); status.setAttribute('aria-live', 'polite');
   let scope = null, busy = false, epoch = 0;
   const enabled = value => {
-    for (const control of [source, mode, premium, attempts, readSources, save]) control.disabled = !value;
+    for (const control of [source, mode, premium, attempts, validity, readSources, save]) control.disabled = !value;
   };
   const syncFutbin = () => {
     for (const control of [source]) {
@@ -40,7 +42,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
       ? `单卡上限：${source.value === 'futgg' ? 'FUT.GG' : 'FUTBIN'} 参考价 + ${value}${mode.value === 'percent' ? '%' : ' 金币'}` : '请输入非负整数溢价';
   };
   const reason = error => ({
-    FC27_PUBLIC_PRICE_POLICY_INVALID: '设置无效，请检查来源、非负整数溢价及正整数尝试次数。',
+    FC27_PUBLIC_PRICE_POLICY_INVALID: '设置无效，请检查来源、非负整数溢价、正整数尝试次数及 1–30 分钟整数有效期。',
     FC27_PUBLIC_PRICE_POLICY_SAVE_FAILED: '保存失败，设置尚未确认，请重试。',
     FC27_PUBLIC_PRICE_CONTEXT_CHANGED: '账号已变化，请重新打开设置。',
   })[error?.message] ?? '无法读取当前账号设置，请登录后重试。';
@@ -54,6 +56,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
       if (service.scope() !== expected) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
       scope = expected; source.value = value.source; mode.value = value.premiumMode;
       premium.value = String(value.premium); attempts.value = String(value.purchaseAttempts);
+      validity.value = String(value.quoteValidityMinutes ?? 5);
       readSources.value = value.readSources ?? (value.futbinEnabled === false ? 'futgg' : 'both');
       syncFutbin();
       summary(); status.textContent = ''; enabled(true);
@@ -66,6 +69,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
       if (!scope || scope !== service.scope()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
       await service.saveSettings({ source: source.value, premiumMode: mode.value, premium: premium.valueAsNumber,
         purchaseAttempts: attempts.valueAsNumber, readSources: readSources.value, listingSource: source.value,
+        quoteValidityMinutes: validity.valueAsNumber,
         futbinEnabled: readSources.value !== 'futgg', futbinRefresh: 'cache' });
       if (scope !== service.scope()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
       status.textContent = '当前账号价格设置已保存；新批次生效，进行中的购买上限不变。';

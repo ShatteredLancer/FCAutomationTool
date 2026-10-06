@@ -202,6 +202,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
   let generatedPrices = null;
   let viewMode = 'cards', pageIndex = 0;
   let busy = false, identity = null, prepared = null, plan = null, resumeRunId = null, disposed = false, scheduleState = 'absent';
+  let targetCurrent = () => true;
   const settings = () => ({ priceMode: mode.value, percentageRange: [Number(pctMin.value), Number(pctMax.value)],
     fixedPrice: fixedControl.getValue(), fixedStartPrice: startControl.getValue(),
     steps: Number(steps.value), durationSeconds: Number(duration.value), delaySeconds: [...delayRangeValues], playerView: viewMode });
@@ -216,9 +217,12 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
     const at = record?.schedule?.runAt;
     return `${entries.length} 张 · Buy Now 合计 ${total} · ${Number.isFinite(at) ? new Date(at).toLocaleString() : '时间未知'}`;
   };
-  const current = () => !disposed && identity === accountScope();
+  const current = () => !disposed && identity === accountScope() && targetCurrent();
   const label = state => ({ pending: '待处理', 'list-pending': '核对中', listing: '挂牌中', accepted: '已挂牌', rejected: '失败', skipped: '跳过', unknown: '待恢复' })[state] ?? state;
   const reasonText = reason => ({
+    FC27_GALLERY_LISTING_SET_POOL_INCOMPLETE: '此集合仅提供部分卡池，暂不能确认全部可售卡；不会只挂牌最高分的部分版本。',
+    FC27_GALLERY_LISTING_SET_UNAVAILABLE: '当前集合尚未读取完成，请等待集合加载后重试。',
+    FC27_GALLERY_LISTING_CLUB_INCOMPLETE: 'Club 读取不完整或库存发生变化，请重新打开挂牌窗口。',
     FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED: '上一批挂牌仍有未核对结果，请点击“核对并继续”恢复该批次。',
     FC27_GALLERY_BULK_LIST_JOURNAL_INVALID: '旧挂牌记录格式异常，无法确定所属批次，未开始挂牌；请保留记录并导出诊断日志。',
     FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED: '读取旧挂牌记录失败，未开始挂牌；请重试，仍失败请导出诊断日志。',
@@ -318,7 +322,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
     const effectiveOverrides = { ...overrides };
     plan = service.plan({ selectedIds: [...selected], settings: settings(),
       overridesByItem: effectiveOverrides, previewPrices: generatedPrices });
-    let total = 0;
+    let total = 0, costKnown = true;
     for (const [id, row] of rows) {
       const entry = plan.entries?.find(e => e.item.id === id), skip = plan.skipped?.find(e => e.itemId === id);
       if (!row.price) continue;
@@ -329,8 +333,9 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
       row.check.checked = selected.has(id);
       const amount = Number.isFinite(bin) && row.purchasePrice > 0 ? Math.round(bin * .95) - row.purchasePrice : null;
       profit(row.profit, amount); if (selected.has(id) && amount != null) total += amount;
+      if (selected.has(id) && amount == null) costKnown = false;
     }
-    profit(totalProfit, total);
+    profit(totalProfit, costKnown ? total : null);
     submit.disabled = plan.status !== 'observed' || !plan.entries?.length || prepared.liveEnabled !== true;
     submit.textContent = `挂牌 ${plan.entries?.length ?? 0} 张`;
     output.textContent = `${plan.entries?.length ?? 0} 张可挂牌 · ${plan.skipped?.length ?? 0} 张跳过${plan.skipped?.some(row => row.reason.includes('unavailable')) ? ' · 未知报价/限制已跳过' : ''}`;
@@ -432,15 +437,17 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
   all.addEventListener('click', event => { if (event.isTrusted && !busy) { prepared?.candidates.forEach(e => selected.add(e.item.id)); refresh(); } });
   none.addEventListener('click', event => { if (event.isTrusted && !busy) { selected.clear(); refresh(); } });
   return Object.freeze({
-    async open() {
+    async open({ target = null, isTargetCurrent = () => true } = {}) {
       if (busy || disposed) return;
+      targetCurrent = isTargetCurrent;
       identity = accountScope(); disposeCards(); selected.clear(); rows.clear(); body.replaceChildren(); prepared = null; plan = null; resumeRunId = null; scheduleState = 'absent'; pageIndex = 0;
       controls.hidden = toolbar.hidden = tableWrap.hidden = cancel.hidden = submit.hidden = false;
       progress.hidden = execution.hidden = true; execution.replaceChildren(); progress.value = 0;
       for (const key of Object.keys(overrides)) delete overrides[key];
       generatedPrices = null;
       scheduleStatus.textContent = '尚无计划'; scheduleValue.value = '';
-      dialog.showModal(); setBusy(true); output.textContent = '正在读取已购实体和报价…';
+      scheduleBox.hidden = !scheduleCapability.enabled || !!target;
+      dialog.showModal(); setBusy(true); output.textContent = target ? `正在读取 ${target.set.name} 的可售实体和报价…` : '正在读取已购实体和报价…';
       try {
         const saved = await service.readSettings?.();
         viewMode = saved?.playerView === 'table' ? 'table' : 'cards';
@@ -451,7 +458,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
         if (Number.isSafeInteger(saved?.steps)) steps.value = String(saved.steps);
         if (Number.isSafeInteger(saved?.durationSeconds)) duration.value = String(saved.durationSeconds);
         if (Array.isArray(saved?.delaySeconds)) { delayRangeValues = [...saved.delaySeconds]; delayRange.setValue(delayRangeValues); }
-        if (scheduleCapability.enabled) {
+        if (scheduleCapability.enabled && !target) {
           const savedSchedule = await service.readSchedule?.();
           if (savedSchedule?.schedule) {
             scheduleState = savedSchedule.schedule.armed && ['waiting-time', 'waiting-session', 'ready', 'armed'].includes(savedSchedule.status)
@@ -464,7 +471,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
             }
           }
         }
-        const result = await service.prepare({ isCurrent: current });
+        const result = await service.prepare({ isCurrent: current, ...(target ? { target } : {}) });
         if (!current()) { output.textContent = '账号已变化，请重新打开'; return; }
         if (result.status === 'resume-required') {
           resumeRunId = result.runId; showEntries(result.entries);
@@ -492,7 +499,9 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
             const price = currency.input;
             const quoteLine = add(priceCell, 'small');
             const purchasePrice = e.boughtFor ?? e.purchase?.purchasePrice;
-            add(tr, 'td', purchasePrice > 0 ? String(purchasePrice) : 'N/A');
+            const cost = add(tr, 'td', purchasePrice > 0 ? String(purchasePrice) : e.boughtForSource === 'first-owner' ? 'N/A' : '未知');
+            cost.title = purchasePrice > 0 ? e.boughtForSource === 'ea' ? 'EA 记录的购入价格' : '已确认成交价格'
+              : e.boughtForSource === 'first-owner' ? '一手卡，无购入价格' : '未读取到购入价格，不能据此认定为一手卡';
             const profitCell = add(tr, 'td'); profitCell.className = 'list-profit';
             const state = add(priceCell, 'small');
             const quoteKnown = Number.isFinite(Number(result.prices?.[e.item.definitionId])) && Number(result.prices[e.item.definitionId]) > 0;

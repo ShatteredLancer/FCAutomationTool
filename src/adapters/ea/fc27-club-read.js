@@ -37,7 +37,7 @@ export const FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const validId = value => Number.isSafeInteger(value) && value > 0;
 
-export async function createFc27ClubReadTransport(root) {
+export async function createFc27ClubReadTransport(root, { onEntity = null, nativeReauth = false } = {}) {
   const context = readFc27Context(root);
   const reviewed = new Map();
   let factoryOutputValidated = false;
@@ -105,8 +105,10 @@ export async function createFc27ClubReadTransport(root) {
           || req.setPath !== reviewed.get('UTHttpRequest.prototype.setPath')
           || req.setRequestBody !== reviewed.get('EAHttpRequest.prototype.setRequestBody')
           || req.abort !== reviewed.get('EAHttpRequest.prototype.abort')) throw new Error('FC27_CLUB_RUNTIME_UNVERIFIED');
-      req.doRetry = false;
-      req.doReauth = false;
+      req.doRetry = nativeReauth === true;
+      // Gallery browsing follows EA/Enhancer's native 401 session
+      // renewal. Existing inspection/submission callers retain no-reauth.
+      req.doReauth = nativeReauth === true;
       req.timeout = 15000;
       req.requestType = kind === 'stats' ? 'GET' : 'POST';
       const endpoint = `/ut/game/${game}/club${kind === 'stats' ? '/stats/club' : ''}`;
@@ -131,11 +133,15 @@ export async function createFc27ClubReadTransport(root) {
         };
         const timer = setTimeout(() => {
           stopped = true;
+          // A pending native reauthentication callback must not resend after
+          // this owned read has timed out and its observer has been removed.
+          req.doRetry = false; req.doReauth = false;
           finish(new Error('FC27_CLUB_READ_TIMEOUT'));
           try { req.abort(); } catch { /* No retry after timeout, even if abort fails. */ }
         }, 16000);
         try {
           req.observe(observer, (sender, value) => {
+            if (done) return;
             if (sender !== req) { finish(new Error('FC27_CLUB_RESPONSE_OWNER_MISMATCH')); return; }
             finish(null, value);
           });
@@ -191,7 +197,11 @@ export async function createFc27ClubReadTransport(root) {
         if (ownData(entity, 'type') !== 'player' || ownData(entity, 'id') !== ownData(data, 'id')
             || ownData(entity, 'definitionId') !== ownData(data, 'resourceId')
             || factoryOutputValidated && ownData(entity, 'concept') === true) throw new Error('FC27_CLUB_ENTITY_UNVERIFIED');
-        return snapshotFc27ClubPlayer(entity, root);
+        const snapshot = snapshotFc27ClubPlayer(entity, root);
+        // Optional local consumer; never insert a fresh entity into EA/FSU's
+        // shared repositories. The regular snapshot-only contract is unchanged.
+        onEntity?.(entity);
+        return snapshot;
       });
     },
   });

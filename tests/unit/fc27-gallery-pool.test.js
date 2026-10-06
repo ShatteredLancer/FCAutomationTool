@@ -93,11 +93,11 @@ it('restores pool cache with 304 and rejects unknown sources and invalid persist
     gmGetValue:k=>store.get(k),gmSetValue:(k,v)=>store.set(k,v)});
   const p=make();await p.loadPool({setId:30});time+=300001;
   getPool.mockResolvedValueOnce({status:304,headers:{}});
-  expect((await make().loadPool({setId:30})).status).toBe('observed');
+  expect(await make().loadPool({setId:30})).toMatchObject({ status: 'observed', unchanged: true });
   expect(getPool.mock.calls.at(-1)).toEqual([30,{'If-None-Match':'"pool"'}]);
   expect((await p.loadPool({source:'fodder',setId:30})).status).toBe('blocked');
   expect((await p.loadPool({setId:'futgg:99999999999999999999'})).status).toBe('blocked');
-  store.get(p.poolCacheKey).season='26';
+  store.get(`${p.poolCacheKey}:set:30`).season='26';
   expect(await make().peekPool({setId:30})).toBeNull();
 });
 
@@ -109,7 +109,8 @@ it('honors pool backoff including forced clicks and does not lose concurrent set
     gmSetValue:async(k,v)=>{if(++writes===1)await new Promise(resolve=>{release=resolve;});store.set(k,v);}});
   const a=p.loadPool({setId:30});await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
   const b=p.loadPool({setId:31});release();await Promise.all([a,b]);
-  expect(store.get(p.poolCacheKey).entries.map(e=>e.setId).sort()).toEqual([30,31]);
+  expect(store.get(`${p.poolCacheKey}:set:30`).setId).toBe(30);
+  expect(store.get(`${p.poolCacheKey}:set:31`).setId).toBe(31);
   time+=300001;getPool.mockResolvedValueOnce({status:429,headers:{'retry-after':'600'}});
   expect((await p.loadPool({setId:30})).stale).toBe(true);
   const count=getPool.mock.calls.length;

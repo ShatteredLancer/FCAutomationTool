@@ -2,6 +2,17 @@ import { expect, it } from 'vitest';
 import { createPublicPricePolicyStore, publicPricePolicyKey, purchasePriceCap, normalizeGalleryPricePolicy } from '../../src/gallery/public-price-policy.js';
 
 const tiers = [{ min: 100000, inc: 1000 }, { min: 50000, inc: 500 }, { min: 10000, inc: 250 }, { min: 1000, inc: 100 }, { min: 0, inc: 50 }];
+it('persists account quote lifetime and defaults older accounts to five minutes', async () => {
+  const data = new Map(), store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
+    set: async (key, value) => data.set(key, value) });
+  expect((await store.read('a')).quoteValidityMinutes).toBe(5);
+  await store.save('a', { quoteValidityMinutes: 30 });
+  expect((await store.read('a')).quoteValidityMinutes).toBe(30);
+  expect((await store.read('b')).quoteValidityMinutes).toBe(5);
+});
+it.each([0, 31, 1.5, '10', NaN])('rejects invalid quote lifetime %s', quoteValidityMinutes => {
+  expect(() => normalizeGalleryPricePolicy({ quoteValidityMinutes })).toThrow('FC27_PUBLIC_PRICE_POLICY_INVALID');
+});
 it('migrates account preferences to one reference and cache without changing frozen policy normalization', async () => {
   const legacy = { source: 'futbin', listingSource: 'futgg', futbinRefresh: 'force' };
   const data = new Map([[publicPricePolicyKey('a'), { schema: 1, scope: 'a', policy: legacy }]]);

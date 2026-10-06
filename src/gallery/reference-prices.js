@@ -19,7 +19,10 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
     && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt)
     && (row.error === null || typeof row.error === 'string' && /^FC27_[A-Z0-9_]+$/.test(row.error));
   const record = fields => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', event: 'public-quote', ...fields })).catch(() => {}); } catch { /* Optional diagnostics. */ } };
-  const ensure = (source, ids, options, byId, current, force, progress) => {
+  // Reproject successful cache entries per caller without extending a frozen
+  // snapshot or changing the original fetch time. Error cooldowns are separate.
+  const lifetime = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
+  const ensure = (source, ids, options, byId, current, force, progress, duration) => {
     // Reserve exact per-version promises synchronously, before storage awaits,
     // so overlapping Gallery/Puzzle reads share the same in-flight request.
     const freshIds = ids.filter(id => !pending.has(keyOf(source, options, id)));
@@ -31,6 +34,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
           const key = keyOf(source, options, id);
           let saved = cache.get(key);
           if (!saved) { try { saved = await get(key, null); } catch { /* Optional quote cache. */ } }
+          if (valid(saved, source, options, id)) saved = lifetime(saved, duration);
           if (valid(saved, source, options, id) && saved.expiresAt > now() && (!force || saved.error)
               && !['FC27_PUBLIC_PRICE_PLAYER_INVALID', 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', 'FC27_PUBLIC_PRICE_FUTGG_DISABLED'].includes(saved.error)) {
             cache.set(key, saved);
@@ -61,7 +65,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
             // outage. Network/payload failures stop request storms per source.
             if (!['FC27_PUBLIC_PRICE_PLAYER_INVALID', 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', 'FC27_PUBLIC_PRICE_FUTGG_DISABLED'].includes(error)) cooldowns.set(cooldownKey, { retryAt, reason: error });
           }
-          const fetchedAt = now(), expiresAt = error ? retryAt : fetchedAt + ttlMs;
+          const fetchedAt = now(), expiresAt = error ? retryAt : fetchedAt + duration;
           for (const id of batch) {
             const value = rows.find(row => row.definitionId === id);
             const entry = { schema: 2, source, ...options, definitionId: id, price: value?.price ?? null,
@@ -86,9 +90,10 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
   return Object.freeze({
     async load(ids, { season = '27', platform, rows = [], policy = {}, force = false,
       sources = ['futgg', 'futbin'], forceSources = [], purpose = 'gallery',
-      isCurrent = () => true, onProgress = () => {} } = {}) {
+      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs } = {}) {
       policy = normalizeGalleryPricePolicy(policy);
-      if (season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
+      if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 1800000
+          || season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
           || ids.length > 250 || ids.some(id => !positive(id))
           || !Array.isArray(sources) || !sources.length || sources.some(source => !['futgg', 'futbin'].includes(source))
           || new Set(sources).size !== sources.length || !Array.isArray(forceSources)
@@ -107,7 +112,8 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
       const quotes = {}, options = { season, platform };
       for (const source of requested) {
         progress({ source, index: 0, total: unique.length });
-        quotes[source] = await ensure(source, unique, options, byId, current, forced.has(source), progress); current();
+        quotes[source] = (await ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs))
+          .map(row => lifetime(row, quoteTtlMs)); current();
         progress({ source, index: unique.length, total: unique.length });
       }
       const prices = {}, references = {}; let expiresAt = null;

@@ -66,6 +66,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       .filter(source => publicPriceSourceEnabled(settings, source));
     if (!sources.length) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
     const snapshot = await service.load(ids, { ...options, sources, purpose,
+      quoteTtlMs: settings.quoteValidityMinutes * 60000,
       season: captured.context.season, platform: captured.platform, policy,
       rows: options.rows ?? ids.map(id => rows.get(id)).filter(Boolean),
       isCurrent: () => { captured.assert(); return options.isCurrent?.() ?? true; } });

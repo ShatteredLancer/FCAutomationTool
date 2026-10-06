@@ -15,6 +15,7 @@ export async function exerciseGalleryRelistControls(context, directory) {
       globalThis.arms = []; globalThis.stops = 0; globalThis.relistState = { status: 'absent' };
       globalThis.panel = globalThis.RelistSmoke.mountFc27AcceptancePanel({ document: globalThis.document, hostId: 'relist-smoke', targets: () => [],
         galleryCatalog: { peek: async () => null, load: async () => ({ status: 'blocked', reason: 'OFFLINE_FIXTURE' }) },
+        galleryListing: { prepare: async () => ({ status: 'blocked', reason: 'OFFLINE_FIXTURE' }) },
         galleryAccountScope: () => 'fixture', galleryRelist: {
           read: async () => globalThis.relistState,
           arm: async args => { globalThis.arms.push(args); return globalThis.relistState = { ...args, status: 'armed', runs: 0 }; },
@@ -43,6 +44,30 @@ export async function exerciseGalleryRelistControls(context, directory) {
     await page.evaluate(() => { globalThis.relistState = { status: 'blocked', pending: [{}] }; });
     await page.waitForFunction(() => globalThis.document.querySelector('#relist-smoke').shadowRoot.querySelector('#gallery-relist-start').disabled);
     assert.equal(await host.locator('#gallery-relist-recover').isVisible(), true);
+    // Reproduce the complete toolbar, including recovery and synchronization.
+    // A full-width listing selector previously forced all following actions down.
+    await host.locator('#gallery-sync').evaluate(node => { node.hidden = false; });
+    await host.locator('#gallery-sync-time').evaluate(node => { node.textContent = '上次同步 2026/10/6 16:55:45'; });
+    for (const width of [1440, 1024, 650, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const bounds = await host.evaluate(node => {
+        const root = node.shadowRoot;
+        const rect = selector => {
+          const { x, y, width, height, right } = root.querySelector(selector).getBoundingClientRect();
+          return { x, y, width, height, right };
+        };
+        return { select: rect('#gallery-list-range'), action: rect('#gallery-list-purchased'),
+          toolbar: rect('.gallery-toolbar'), heading: rect('.gallery-header'),
+          workbench: rect('.workbench'), overflow: root.querySelector('.workbench').scrollWidth > root.querySelector('.workbench').clientWidth };
+      });
+      assert.ok(bounds.select.width < 180, `listing range must stay compact at ${width}px: ${JSON.stringify(bounds)}`);
+      assert.ok(Math.abs(bounds.select.y - bounds.action.y) < 1, `listing selector/action must stay together at ${width}px`);
+      assert.ok(bounds.action.x >= bounds.select.right, `listing action follows range at ${width}px`);
+      assert.equal(bounds.overflow, false, `toolbar must not overflow at ${width}px`);
+      assert.ok(bounds.toolbar.right <= bounds.workbench.right, `toolbar stays inside panel at ${width}px`);
+      if (width === 1440) assert.ok(bounds.heading.height <= 90, 'desktop toolbar must not expand into three rows');
+      await page.screenshot({ path: `${directory}/artifacts/fc27-browser/gallery-toolbar-${width}.png` });
+    }
     await host.locator('#gallery-relist-recover').click();
     assert.equal(await start.isDisabled(), false);
     await page.setViewportSize({ width: 390, height: 844 });

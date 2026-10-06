@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest';
-import { sameGalleryRuntimeCards, galleryGradeSegments, selectGallerySetIcon, galleryPlanningStateKey } from '../../src/adapters/browser/fc27-gallery-view.js';
+import { sameGalleryRuntimeCards, galleryGradeSegments, selectGallerySetIcon, selectGalleryCategoryIcons, galleryPlanningStateKey } from '../../src/adapters/browser/fc27-gallery-view.js';
+
+it('samples category icons without replacement from real candidates, never inventing a shell', () => {
+  const candidates = ['https://ea.test/72', 'https://ea.test/12', 'https://ea.test/87', 'https://ea.test/150', 'https://ea.test/12', ''];
+  expect(selectGalleryCategoryIcons(candidates, () => 0.999)).toEqual(['https://ea.test/150', 'https://ea.test/87', 'https://ea.test/12']);
+  expect(selectGalleryCategoryIcons([])).toEqual([]);
+  expect(selectGalleryCategoryIcons(['https://ea.test/72'], () => 0)).toEqual(['https://ea.test/72']);
+});
 
 it('invalidates planning for business inputs, not display hydration or observation timestamps', () => {
   const detail = { status: 'observed', scope: 'a', progress: { complete: true,

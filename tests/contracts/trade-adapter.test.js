@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEaInventoryAdapter } from '../../src/adapters/ea/inventory.js';
 import { createEaTradeAdapter } from '../../src/adapters/ea/trade.js';
 import { createFc27GallerySaleReader } from '../../src/adapters/ea/fc27-gallery-sales.js';
+import { galleryListingInventoryRuntime } from '../../src/adapters/ea/fc27-gallery-listing-inventory.js';
 import { createFakeTradeAdapter } from '../../src/adapters/fake/trade.js';
 import { createRuntimeAdapters } from '../../src/adapters/index.js';
 
@@ -53,6 +54,27 @@ function eaRuntime(item) {
 }
 
 describe('Trade Adapter contracts', () => {
+  it('uses isolated fresh Club entities for opted-in listing, never repository fallback or Transfer override', async () => {
+    const club = { id: 11, definitionId: 111, type: 'player', untradeable: false };
+    const transfer = { id: 12, definitionId: 112 }, runtime = eaRuntime(transfer);
+    runtime.repositories.Item.club = { items: { _collection: [club] } };
+    const clubItems = vi.fn(() => [club]);
+    const adapter = createEaTradeAdapter(galleryListingInventoryRuntime(runtime, { clubItems }));
+    expect(adapter.inspectListingItem({ id: 11, definitionId: 111, pile: 'club' }).status).toBe('loaded');
+    expect((await adapter.inspectPriceLimits({ id: 11, definitionId: 111, pile: 'club' }, { refresh: true })).after.minimum).toBe(300);
+    expect(adapter.inspectListingItem({ id: 12, definitionId: 112, pile: 'transfer' }).status).toBe('loaded');
+    runtime.services.Item.list = function (entity) {
+      expect(this).toBe(runtime.services.Item); expect(entity).toBe(club);
+      return Promise.resolve({ success: true });
+    };
+    const permit = await adapter.acquireRequestPermit('list');
+    expect(await adapter.listItem({ id: 11, definitionId: 111, pile: 'club' },
+      { startPrice: 300, buyNow: 350, durationSeconds: 3600 }, { requestPermit: permit.permit })).toMatchObject({ status: 'accepted' });
+    expect(runtime.repositories.Item.club.items._collection).toEqual([club]);
+    clubItems.mockReturnValue([]);
+    expect(adapter.inspectListingItem({ id: 11, definitionId: 111, pile: 'club' }).status).toBe('not-found');
+    expect(createEaTradeAdapter(runtime).inspectListingItem({ id: 11, definitionId: 111, pile: 'club' }).status).toBe('loaded');
+  });
   it('reads sales with the Enhancer transfer/auction refresh sequence without buying or clearing sold items', async () => {
     const auction = { tradeId: 9001, currentBid: 500, buyNowPrice: 500,
       isSold: () => true, isExpired: () => true, isClosedTrade: () => true };

@@ -49,10 +49,10 @@ export function validatePurchasePriceApproval(approval, scope, definitionIds) {
     references: Object.fromEntries(approval.rows.map(row => [row.definitionId, { ...row, season: approval.season, platform: approval.platform }])),
     policy: approval.policy, season: approval.season, platform: approval.platform, now: approval.approvedAt,
     overrides: Object.fromEntries(approval.rows.filter(row => row.overrideCap !== undefined).map(row => [row.definitionId, row.overrideCap])) });
-  // Both read preferences were added after price approvals shipped. Neither
+  // Read preferences were added after price approvals shipped. None of them
   // changes a frozen price/cap. Validate legacy records in their original
   // shape; do not rewrite receipts or apply today's account policy to them.
-  for (const field of ['futbinEnabled', 'futbinRefresh', 'readSources', 'listingSource']) {
+  for (const field of ['futbinEnabled', 'futbinRefresh', 'readSources', 'listingSource', 'quoteValidityMinutes']) {
     if (!Object.hasOwn(approval.policy, field)) delete rebuilt.policy[field];
   }
   if (!same(rebuilt, approval)) fail();

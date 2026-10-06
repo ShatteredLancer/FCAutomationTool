@@ -46,10 +46,16 @@ it('uses league icons for league sets before pools load, never a matching team n
 });
 
 it('uses Enhancer shell assets for the Rarities category overview', () => {
-  const icons = assets.category('rarities', 'Rarities');
-  expect(icons.length).toBeGreaterThan(0);
+  const icons = assets.category('rarities', 'Rarities', [
+    { name: 'Heroes', slug: 'heroes' }, { name: 'Holographics', slug: 'holographics' },
+    { name: 'Heroes duplicate', slug: 'heroes' },
+  ]);
+  expect(Array.from(icons)).toEqual(['https://ea.test/shell/large/1/72/none/guid.png', 'https://ea.test/shell/large/1/12/none/guid.png']);
   expect(icons.every(value => value.startsWith('https://ea.test/shell/large/1/'))).toBe(true);
   expect(icons).not.toContain('https://ea.test/rarity/1.png');
+  expect(Array.from(assets.category('rarities', 'Rarities'))).toEqual([]);
+  expect(Array.from(assets.category('rarities', 'Rarities', [{ name: 'Future', conditions: { rareflags: [180] } }])) )
+    .toEqual(['https://ea.test/shell/large/1/180/none/guid.png']);
 });
 
 it('preserves club sets and uses rarity icons for rarity sets', () => {

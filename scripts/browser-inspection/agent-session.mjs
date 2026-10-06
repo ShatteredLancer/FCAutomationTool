@@ -243,7 +243,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
       if (command === 'tabs') {
         const tabs = [];
         for (const [index, candidate] of context.pages().entries()) tabs.push({ index, url: candidate.url(),
@@ -331,6 +331,12 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
           const requested = command.split(' ').slice(1).join(' ') || 'Arsenal';
           observation.gallery = await readProductionGallery(context, target, requested);
           observation.action = observation.gallery.status === 'observed' ? 'PRODUCTION_GALLERY_READ' : observation.gallery.reason;
+        }
+        if (command.startsWith('gallery-list-preview')) {
+          const { verifyGalleryListingPreview } = await import(`./gallery-listing-verification.mjs?revision=${revision}`);
+          observation.galleryListingPreview = await verifyGalleryListingPreview(context, target,
+            command.split(' ').slice(1).join(' ') || 'Arsenal', { readGallery: readProductionGallery, installCurrent: true });
+          observation.action = 'PRODUCTION_GALLERY_LISTING_PREVIEW';
         }
         if (command.startsWith('gallery-verify')) {
           if (report.season !== '27' || observation.ui?.login !== false || observation.ui.modal !== false || observation.ui.loading !== false) {

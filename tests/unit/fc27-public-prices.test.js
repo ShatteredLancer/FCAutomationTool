@@ -28,6 +28,31 @@ it('does not keep an omitted FUTBIN version as a new price', async () => {
   f.gm.mockImplementation(options => options.onload({ status: 200, responseText: '{"data":[]}' }));
   expect((await f.service.quote(f.player)).futbin).toBeNull();
 });
+it('applies account quote lifetime to new reads without rewriting previous snapshots or approvals', async () => {
+  const f = fixture(), ids = [f.player.definitionId];
+  const original = await f.service.load(ids, { purpose: 'listing', rows: [f.player] });
+  const fetchedAt = original.references[71494].quotes.futgg.fetchedAt;
+  expect(original.expiresAt).toBe(fetchedAt + 300000);
+  const record = { scope: f.service.scope(), entries: [{ definitionId: 71494, state: 'waiting' }],
+    plan: [{ definitionId: 71494, priceReference: original.references[71494], pricePolicy: original.policy }] };
+  const approval = await f.service.preparePurchase(record), frozen = JSON.stringify({ original, approval });
+  f.advance();
+  await f.service.saveSettings({ quoteValidityMinutes: 30 });
+  for (const purpose of ['listing', 'puzzle', 'purchase']) {
+    const result = await f.service.load(ids, { purpose, rows: [f.player], policy: original.policy });
+    expect(result.expiresAt).toBe(fetchedAt + 1800000);
+    expect(result.references[71494].quotes.futgg.fetchedAt).toBe(fetchedAt);
+  }
+  expect(f.transport.getPrices).toHaveBeenCalledTimes(1);
+  expect(f.gm).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify({ original, approval })).toBe(frozen);
+  expect(purchaseApprovedPrice(approval, 71494, { now: fetchedAt + 300001 }).reason).toBe('FC27_BUY_REFERENCE_PRICE_EXPIRED');
+  await f.service.saveSettings({ quoteValidityMinutes: 1 });
+  const refreshed = await f.service.load(ids, { purpose: 'listing', rows: [f.player] });
+  expect(refreshed.expiresAt).toBe(fetchedAt + 300001 + 60000);
+  expect(f.transport.getPrices).toHaveBeenCalledTimes(2);
+  expect(f.gm).toHaveBeenCalledTimes(2);
+});
 it('does not send malformed filters when a player lacks required attributes', async () => {
   const f = fixture();
   expect((await f.service.quote({ definitionId: 71494 })).quotes.futbin.error).toBe('FC27_PUBLIC_PRICE_PLAYER_INVALID');

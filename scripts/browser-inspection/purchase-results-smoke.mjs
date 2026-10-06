@@ -189,6 +189,12 @@ async function exercisePurchaseSurfaces(context, directory, fixture) {
       assert.equal(await dialog.locator('[data-definition-id="3"] strong').innerText(), kind === 'puzzle' ? 'Cached player' : '球员 #3');
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 844 });
+        const compact = await dialog.locator('[data-definition-id="3"]').evaluate(node => {
+          const name = node.querySelector('strong').getBoundingClientRect(), price = node.querySelector('.purchase-price').getBoundingClientRect();
+          return { height: node.getBoundingClientRect().height, sameLine: Math.abs(name.y - price.y) < 4 };
+        });
+        assert.ok(compact.height < 90, `compact pending row at ${width}px: ${compact.height}`);
+        if (width === 1280) assert.equal(compact.sameLine, true, 'name/status/price share the desktop row');
         const geometry = await dialog.evaluate(node => {
           const rect = node.getBoundingClientRect(), header = node.querySelector('.purchase-dialog-header').getBoundingClientRect();
           return { centered: Math.abs(rect.x + rect.width / 2 - globalThis.innerWidth / 2) < 2,

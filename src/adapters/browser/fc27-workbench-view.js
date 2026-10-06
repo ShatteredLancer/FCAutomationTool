@@ -18,6 +18,7 @@ export function fc27WorkbenchMarkup() {
   return `<style>
     ${currencyInputStyles}
     #gallery-relist-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}#gallery-relist-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}#gallery-relist-controls button{margin:0}#gallery-relist-status{font-size:12px}
+    .gallery-header{flex-wrap:wrap}.gallery-header .gallery-toolbar{min-width:0;max-width:100%}.gallery-list-controls{display:inline-flex;align-items:center;flex:0 0 auto;gap:6px;max-width:100%}.gallery-list-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}.gallery-list-controls button{flex:0 0 auto;white-space:nowrap}#gallery-sync-time,#gallery-purchase-journal-status{min-width:0;overflow-wrap:anywhere}
     :host{all:initial;position:fixed;inset:0;z-index:100002;display:none;padding:24px 12px;background:#0008;font:14px/1.5 Arial,sans-serif;color:#edf1f4;letter-spacing:0}
     *{box-sizing:border-box;letter-spacing:0}[hidden]{display:none!important}
     .workbench{width:min(1100px,100%);height:100%;margin:auto;background:#17212c;border:1px solid #3c4852;border-radius:8px;overflow:auto}
