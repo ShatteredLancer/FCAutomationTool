@@ -4,6 +4,21 @@ import { observePageUi } from './navigation.mjs';
 // Open only the sellable-card preview. Never press the listing, resume or
 // scheduling actions. The existing helper returns to the selected category.
 export async function verifyGalleryListingPreview(context, page, setName, { readGallery, installCurrent = true }) {
+  // Follow-up after an already verified installation/login. Do not reload
+  // the account again merely to read category counters.
+  if (setName === '--category-current') {
+    const { readFile } = await import('node:fs/promises');
+    const { createHash } = await import('node:crypto');
+    const source = await readFile('FCAutomationTool.user.js');
+    const installed = JSON.parse(await readFile('artifacts/fc27-browser/current-install.json', 'utf8'));
+    if (!installed.exactSource || createHash('sha256').update(source).digest('hex') !== installed.sha256) {
+      return { status: 'blocked', reason: 'FC27_GALLERY_INSTALLATION_UNVERIFIED', executable: false };
+    }
+    const { verifyGalleryCategories } = await import(`./gallery-category-verification.mjs?revision=${Date.now()}`);
+    const result = await verifyGalleryCategories(context, page);
+    if (result.after?.version !== installed.version) return { status: 'blocked', reason: 'FC27_GALLERY_RUNTIME_VERSION_UNVERIFIED', executable: false };
+    return { ...result, installation: installed, runtimeVersion: result.after.version };
+  }
   if (setName === '--plan-state') return panelCall(context, page, function () {
     return { runtimeVersion: this.host.dataset.version, activeTab: this.host.dataset.activeTab,
       detail: this.getElementById('gallery-set-detail')?.textContent?.slice(0, 16000),
@@ -36,6 +51,10 @@ export async function verifyGalleryListingPreview(context, page, setName, { read
     const { verifyGalleryPlanning } = await import(`./gallery-planning-verification.mjs?revision=${Date.now()}`);
     return { ...await verifyGalleryPlanning(context, page, setName.slice(12).replaceAll('_', ' '),
       { readGallery, targetGrade: 'S', planOnly: true }), installation, runtimeVersion };
+  }
+  if (setName === '--category-scores') {
+    const { verifyGalleryCategories } = await import(`./gallery-category-verification.mjs?revision=${Date.now()}`);
+    return { ...await verifyGalleryCategories(context, page), installation, runtimeVersion };
   }
   if (setName === '--trade-styles') {
     const { verifyGalleryTradeStyles } = await import(`./gallery-trade-styles-verification.mjs?revision=${Date.now()}`);

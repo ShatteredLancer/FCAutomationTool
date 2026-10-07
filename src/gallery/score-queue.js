@@ -65,6 +65,8 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
     for (const [key, entry] of entries) if (entry.pending) entries.delete(key);
   };
   return Object.freeze({
+    // Presentation-only lookup: no hashing, scheduling, cache I/O or requests.
+    peek: (scope, setId) => entries.get(`${scope}:${setId}`)?.summary ?? null,
     read(scope, input, { priority = 1 } = {}) {
       if (disposed) return null;
       const id = `${scope}:${input.set.id}`;

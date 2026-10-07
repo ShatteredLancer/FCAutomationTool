@@ -13,6 +13,11 @@ export async function exerciseGalleryResponsive(context) {
   const raw = futggGallery(), base = raw.data.categories[0].sets[0];
   raw.data.categories[0].sets = Array.from({length:127}, (_,i) => ({...base,
     id:1000+i, slug:`set-${i}`, name:`Set ${i}`, requiredCards:11}));
+  raw.data.categories.push({id:2, slug:'pending', name:'Pending data', sets:[
+    {...base, id:2000, categoryId:2, slug:'missing', name:'Missing pool'},
+    {...base, id:2001, categoryId:2, slug:'unknown', name:'Unknown score'}]});
+  raw.data.categories.push({id:3, slug:'intervals', name:'Intervals', sets:[
+    {...base, id:3000, categoryId:3, slug:'interval', name:'Interval score', requiredCards:1}]});
   raw.data.tags = [{id:1,name:'Rare',bonusType:'ITEM_SCORE_PERCENTAGE',thresholdType:'ITEM_COUNT',
     rules:[{attribute:'RARE',type:'COUNT',target:'ATTRIBUTE',values:['1']}],tiers:[{minItems:5,bonus:50}]}];
   const catalog = normalizeGalleryCatalog('futgg',raw), page = await context.newPage();
@@ -31,6 +36,14 @@ export async function exerciseGalleryResponsive(context) {
           rows:Array.from({length:100},(_,i)=>({eaId:i+1,playerEaId:i+1,name:`Player ${i}`,overall:80,
             gradingScore:100+i,collected:i<80,status:i<80?'collected':'missing',rarityEaId:i%2,firstOwned:true}))}}));
       const value={status:'observed',source:'futgg',catalog};
+      details.unshift({status:'observed',scope:'fixture',pool:{source:'futgg',setId:3000,revision:'pool'},
+        progress:{season:'27',source:'futgg',setId:3000,complete:false,
+          rows:[{eaId:3000,playerEaId:3000,overall:80,collected:true,gradingScore:100,rarityEaId:1,firstOwned:true}],
+          totals:{total:1,collected:1,missing:0,unknown:0}}});
+      details.unshift({status:'observed',scope:'fixture',pool:{source:'futgg',setId:2001,revision:'pool'},
+        progress:{season:'27',source:'futgg',setId:2001,complete:true,
+          rows:[{eaId:2001,playerEaId:2001,overall:80,collected:true,gradingScore:null}],
+          totals:{total:1,collected:1,missing:0,unknown:0}}});
       globalThis.responsivePanel=globalThis.GalleryResponsive.mountFc27AcceptancePanel({document:globalThis.document,hostId:'responsive',targets:()=>[],
         galleryAccountScope:()=> 'fixture',galleryCatalog:{peek:async()=>value,load:async()=>value},
         gallerySetLoader:async({setId})=>details.find(row=>`futgg:${row.pool.setId}`===setId),
@@ -44,11 +57,33 @@ export async function exerciseGalleryResponsive(context) {
     await host.locator('#tab-settings').click();
     await host.locator('#tab-gallery').click();
     assert.equal(await host.locator('.gallery-set').count(),0,'entry must not rebuild cached set cards');
+    await page.waitForFunction(()=>Number(globalThis.document.getElementById('responsive').shadowRoot
+      .querySelector('.gallery-category-score progress')?.value)>0);
+    assert.match(await host.locator('.gallery-category-score').first().innerText(), /已计分 \d+\/127/,
+      'category home must show background scoring without opening a category');
+    await page.waitForFunction(()=>JSON.parse(globalThis.document.getElementById('responsive').shadowRoot
+      .querySelectorAll('.gallery-category-score')[1]?.dataset.scoreCounts ?? '{}').unavailable === 1);
+    assert.equal(await host.locator('.gallery-category-score').nth(1).innerText(), '已计分 0/2');
+    await page.waitForFunction(()=>globalThis.document.getElementById('responsive').shadowRoot
+      .querySelectorAll('.gallery-category-score')[2]?.textContent.includes('已计分 1/1'));
+    assert.equal(await host.locator('.gallery-category-score').nth(2).innerText(), '已计分 1/1',
+      'a finished partial score counts as completed without annotations on the category home');
+    await page.screenshot({path:'artifacts/fc27-browser/gallery-category-scoring.png'});
+    await page.setViewportSize({width:390,height:844});
+    assert.ok(await host.locator('.gallery-category-score').first().evaluate(node=>node.getBoundingClientRect().right<=390));
+    await page.screenshot({path:'artifacts/fc27-browser/gallery-category-scoring-narrow.png'});
+    await page.setViewportSize({width:1280,height:800});
     await host.locator('#gallery-categories button').first().click();
     await page.waitForFunction(()=>globalThis.document.getElementById('responsive').shadowRoot.querySelectorAll('.gallery-summary').length===127);
     await page.waitForFunction(()=>[...globalThis.document.getElementById('responsive').shadowRoot.querySelectorAll('.gallery-summary')]
       .some(row=>/^[\d,]+ 分$/.test(row.textContent)));
     assert.equal(await host.locator('.gallery-set').count(),127);
+    await host.locator('#gallery-back').click();
+    await page.waitForFunction(()=>globalThis.document.getElementById('responsive').shadowRoot
+      .querySelector('.gallery-category-score span')?.textContent.includes('已计分 127/127'));
+    assert.match(await host.locator('.gallery-category-score').first().innerText(), /已计分 127\/127/,
+      'returning from a category must refresh its aggregate score count');
+    await host.locator('#gallery-categories button').first().click();
     // Switching away must interrupt pending work; returning reuses completed
     // entries even though peekDetails creates new projection object identities.
     const completed=await host.locator('.gallery-set').evaluateAll(cards=>cards.filter(card=>/^[\d,]+ 分$/.test(card.querySelector('.gallery-summary')?.textContent)).map(card=>card.dataset.setId));

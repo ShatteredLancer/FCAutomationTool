@@ -10586,6 +10586,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     @media(min-width:651px) and (max-width:1023px){.gallery-categories,.gallery-set-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:650px){.gallery-browse-nav{top:64px}.gallery-set>.gallery-open-set{align-self:stretch}}
     .gallery-grade-letter{display:block;transform:rotate(-45deg)}
+    .gallery-category-score{display:grid;gap:5px;width:100%;font-size:11px;color:#b9c8d0;text-align:left}.gallery-category-score progress{display:block;width:100%;height:4px;accent-color:#9df3d5;border:0;border-radius:3px;overflow:hidden;background:#455a66}.gallery-category-score progress::-webkit-progress-bar{background:#455a66}.gallery-category-score progress::-webkit-progress-value{background:#9df3d5}
     .gallery-category-top{flex-wrap:wrap}.gallery-category-icons{margin-right:auto}.gallery-category-rewards,.gallery-reward-summary{display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;max-width:100%;font-size:12px;color:#b9c8d0}.gallery-reward-token{display:inline-flex;align-items:center;gap:5px;min-width:0}.gallery-reward-token-icon{width:16px;height:16px;object-fit:contain}.gallery-reward-label{overflow-wrap:anywhere}.gallery-reward-token-value{font-variant-numeric:tabular-nums;font-weight:600}.gallery-set-metrics .gallery-reward-summary{margin-left:auto}.gallery-score-caption{font-size:11px;color:#9dabb5}.gallery-collection-flag{color:#e7dbad}.gallery-browse-tools{margin-bottom:12px}.gallery-browse-tools>summary{padding:6px 0;font-size:12px;color:#9dabb5}.gallery-categories button,.gallery-set,.gallery-set-detail{border-radius:8px}
     .gallery-grade-diamond.grade-d{border-color:#b9703f}.gallery-grade-diamond.grade-c{border-color:#a3acb6}.gallery-grade-diamond.grade-b{border-color:#d8a93f}.gallery-grade-diamond.grade-a{border-color:#33b6a6}.gallery-grade-diamond.grade-s{border-color:#9b72ff}.gallery-grade-diamond.grade-d.is-reached{background:#b9703f;color:#fff}.gallery-grade-diamond.grade-c.is-reached{background:#a3acb6;color:#17212c}.gallery-grade-diamond.grade-b.is-reached{background:#d8a93f;color:#17212c}.gallery-grade-diamond.grade-a.is-reached{background:#33b6a6;color:#17212c}.gallery-grade-diamond.grade-s.is-reached{background:#9b72ff;color:#fff}
     .gallery-player-card{grid-template-columns:184px minmax(0,1fr)}.gallery-card-list{grid-template-columns:repeat(auto-fit,minmax(min(350px,100%),1fr))}.gallery-player-art{position:relative;align-content:start;min-height:228px;background:none;overflow:visible;gap:4px;padding-inline:20px;box-sizing:border-box}.gallery-card-pricebar{display:flex;justify-content:space-between;gap:4px;width:100%;align-items:center;color:#fff;font-size:10px;font-weight:700;pointer-events:none}.gallery-card-price,.gallery-card-gallery-score{padding:2px 4px;border-radius:4px;background:#1119;white-space:nowrap}.gallery-player-art>slot{display:block;width:144px;height:200px}.gallery-player-art>slot::slotted(.gallery-native-card){width:144px;height:200px}.gallery-card-select{position:absolute;top:38px;left:4px;width:20px;height:20px;min-height:20px;margin:0;padding:0;z-index:2;accent-color:#9df3d5}.gallery-text-card{box-sizing:border-box;width:144px;min-height:200px;border:1px solid #617883;border-radius:8px;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:12px;text-align:center;color:#dae9ef;background:#273944}.gallery-text-card-rating{font-size:28px}.gallery-text-card-name{font-size:13px}.gallery-text-card-meta{font-size:11px;color:#b5c5ce}
@@ -10594,6 +10595,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     .gallery-browse-controls{align-items:center;margin:10px 0}.gallery-browse-controls>input{flex:1;min-width:120px;width:auto}.gallery-browse-controls>select{width:auto;max-width:100%}.gallery-followed-toggle{display:flex;align-items:center;gap:6px;margin:0}.gallery-followed-toggle input{width:18px;height:18px}.gallery-watch{min-width:36px;width:36px;height:36px;flex:0 0 auto;padding:0!important}.gallery-watch[aria-pressed=true]{color:#b3ffe3;border-color:#9df3d5}.gallery-joint-target .gallery-target-open{width:auto;grid-column:1/-1;justify-self:start;padding:4px 10px}#gallery-target-status{display:block;font-size:12px;color:#e7dbad;overflow-wrap:anywhere}
     #gallery-selection-footer{position:fixed;bottom:8px;z-index:10;padding:10px 12px;margin:0;border:1px solid #72808a;border-radius:7px}#gallery-set-detail{padding-bottom:160px}.gallery-selection-preview{margin:0}.gallery-card-select{order:3}.gallery-card-pricebar{order:0}.gallery-player-art>slot,.gallery-text-card{order:1}.gallery-grade-overview-row{overflow-wrap:anywhere}.gallery-reward-estimate{display:block;overflow-wrap:anywhere;color:#b3ffe3}.gallery-grade-overview-row .gallery-reward-estimate{grid-column:1/-1}@media(max-width:650px){#gallery-set-detail{padding-bottom:210px}.gallery-card-tools{position:static}}
     .gallery-unknown,.gallery-market-comparison{white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:100%}
+    .gallery-header{justify-content:flex-start;align-items:center;gap:10px 20px;margin-bottom:6px}.gallery-header h2{flex:0 0 auto}.gallery-header .gallery-toolbar{flex:1;gap:6px}.gallery-header .gallery-toolbar button,.gallery-header .gallery-toolbar select{min-height:32px;height:32px;padding:4px 8px;font-size:12px;line-height:20px}.gallery-header .gallery-toolbar button{min-width:32px}.gallery-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:#bdcbd3}.gallery-meta #gallery-accounting{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%;margin:0}.gallery-meta #gallery-accounting-summary{min-width:0;overflow-wrap:anywhere}.gallery-meta #gallery-accounting-refresh{flex:0 0 28px;min-height:28px;height:28px;padding:0;line-height:1}.gallery-meta .gallery-source-details{margin:0;min-width:0;max-width:100%}.gallery-meta .gallery-source-details summary{padding:2px 0}.gallery-meta .gallery-source-details[open]{flex-basis:100%}.gallery-notices{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 16px;margin-top:4px;font-size:12px}.gallery-notices>*{min-width:0;max-width:100%;overflow-wrap:anywhere;margin:0}.gallery-notices>:empty{display:none}.gallery-notices #gallery-relist-status,.gallery-notices #gallery-purchase-journal-status{color:#e7dbad}.gallery-modes{margin:8px 0 12px}.gallery-modes button{min-height:34px;padding:5px 12px}.gallery-background-progress{margin-top:6px}
+    @media(max-width:650px){.gallery-header .gallery-toolbar{flex-basis:100%}.gallery-header .gallery-toolbar button,.gallery-header .gallery-toolbar select{min-height:40px;height:40px}.gallery-meta{gap:4px 12px}.gallery-meta #gallery-accounting{flex-basis:100%}.gallery-modes button{min-height:40px}}
   </style><div class="workbench"><details open><summary></summary>
     <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id12, label], index) => `<button type="button" role="tab" id="tab-${id12}" aria-controls="page-${id12}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
     <div class="body">
@@ -10614,12 +10617,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       </section>
       <section id="page-gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
         <nav id="gallery-browse-nav" class="gallery-browse-nav" aria-label="Gallery \u5BFC\u822A" hidden><button id="gallery-back" type="button" aria-label="\u8FD4\u56DE\u96C6\u5408" title="\u8FD4\u56DE\u96C6\u5408">\u2190</button><strong id="gallery-browse-title"></strong></nav>
-        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div><output id="gallery-purchase-journal-status" hidden role="status"></output><span id="gallery-sync-time"></span></div></div>
-        <output id="gallery-relist-status" hidden role="status"></output>
-        <div id="gallery-accounting" class="row" hidden><output id="gallery-accounting-summary" role="status"></output><button id="gallery-accounting-refresh" type="button" aria-label="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4" title="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\uFF0C\u4E0D\u6302\u724C\u3001\u4E0D\u6E05\u9664\u5DF2\u552E\u5361">\u21BB</button></div>
+        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div></div></div>
+        <div class="gallery-meta"><div id="gallery-accounting" hidden><output id="gallery-accounting-summary" role="status"></output><button id="gallery-accounting-refresh" type="button" aria-label="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4" title="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\uFF0C\u4E0D\u6302\u724C\u3001\u4E0D\u6E05\u9664\u5DF2\u552E\u5361">\u21BB</button></div><span id="gallery-sync-time"></span><details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details></div>
+        <div class="gallery-notices"><output id="gallery-purchase-journal-status" hidden role="status"></output><output id="gallery-relist-status" hidden role="status"></output><small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small></div>
         <progress id="gallery-background-progress" class="gallery-background-progress" hidden max="1" value="0" aria-label="Gallery \u6536\u96C6\u540C\u6B65\u8FDB\u5EA6"></progress>
-        <small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small>
-        <details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details>
         <dialog id="gallery-sync-dialog"><div class="dialog-header"><strong>\u540C\u6B65\u6536\u96C6</strong><button id="gallery-sync-stop" aria-label="\u505C\u6B62\u540C\u6B65" title="\u505C\u6B62\u540C\u6B65">\u505C\u6B62</button></div><progress id="gallery-sync-progress" max="1" value="0" style="width:100%"></progress><output id="gallery-sync-message" role="status"></output></dialog>
         ${purchaseDialogMarkup("gallery")}
         <div class="gallery-modes" role="group" aria-label="Gallery \u89C6\u56FE"><button id="gallery-mode-browse" aria-pressed="true">\u6536\u96C6\u8FDB\u5EA6</button><button id="gallery-mode-joint" aria-pressed="false">\u8054\u5408\u89C4\u5212 <span id="gallery-joint-count">0</span></button></div>
@@ -12108,6 +12109,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       for (const [key, entry] of entries2) if (entry.pending) entries2.delete(key);
     };
     return Object.freeze({
+      // Presentation-only lookup: no hashing, scheduling, cache I/O or requests.
+      peek: (scope2, setId) => entries2.get(`${scope2}:${setId}`)?.summary ?? null,
       read(scope2, input, { priority = 1 } = {}) {
         if (disposed) return null;
         const id12 = `${scope2}:${input.set.id}`;
@@ -12141,6 +12144,31 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         entries2.clear();
       }
     });
+  }
+
+  // src/gallery/category-scoring.js
+  function galleryCategoryScoring(rows) {
+    const counts = {
+      total: rows.length,
+      completed: 0,
+      pending: 0,
+      missing: 0,
+      unavailable: 0,
+      intervals: 0,
+      collectionUnknown: 0,
+      ruleDifference: 0
+    };
+    for (const { detail, summary: summary3 } of rows) {
+      if (!detail?.progress) counts.missing++;
+      else if (!summary3 || summary3.status === "calculating") counts.pending++;
+      else if (Number.isFinite(summary3.low?.total) && Number.isFinite(summary3.high?.total)) {
+        counts.completed++;
+        if (summary3.low.total !== summary3.high.total) counts.intervals++;
+        if (summary3.collectionUnknown) counts.collectionUnknown++;
+        if (summary3.ruleDifference) counts.ruleDifference++;
+      } else counts.unavailable++;
+    }
+    return counts;
   }
 
   // src/gallery/cost-bundles.js
@@ -16799,6 +16827,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (disposed || !active) return;
         const changed = new Set(scoredSets);
         scoredSets.clear();
+        updateCategoryScores();
         const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
         for (const card of node("gallery-set-list").querySelectorAll(".gallery-set")) {
           if (!changed.has(card.dataset.setId)) continue;
@@ -16841,6 +16870,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const scoreSummary = (value, set, priority = 1) => {
       if (!active || !value?.progress || !result?.catalog) return null;
       return scoreQueue.read(scope2(), { set, catalog: result.catalog, progress: value.progress }, { priority });
+    };
+    const updateCategoryScores = ({ enqueue = false } = {}) => {
+      if (!active || !result?.catalog) return;
+      const identity5 = scope2();
+      for (const category of result.catalog.categories) {
+        const counts = galleryCategoryScoring(category.sets.map((set) => {
+          const detail = details.get(set.id);
+          const summary3 = detail?.progress ? enqueue ? scoreSummary(detail, set, 0) : scoreQueue.peek(identity5, set.id) ?? scoreSummary(detail, set, 0) : null;
+          return { detail, summary: summary3 };
+        }));
+        const { completed, total } = counts;
+        const button = [...node("gallery-categories").children].find((row) => row.dataset.categoryId === category.id);
+        const area = button?.querySelector(".gallery-category-score");
+        if (!area) continue;
+        const text5 = `\u5DF2\u8BA1\u5206 ${completed}/${total}`;
+        area.querySelector("span").textContent = text5;
+        const bar = area.querySelector("progress");
+        bar.max = Math.max(1, total);
+        bar.value = completed;
+        bar.setAttribute("aria-label", `${category.name}\uFF1A${text5}`);
+        area.dataset.scoreCounts = JSON.stringify(counts);
+        area.title = "\u5DF2\u5B8C\u6210\u8BA1\u5206\u7684\u96C6\u5408\u6570\u91CF\uFF1B\u5177\u4F53\u5206\u6570\u548C\u52A0\u6210\u89C1\u96C6\u5408\u8BE6\u60C5\u3002";
+      }
     };
     const scoreText = (summary3) => {
       if (summary3?.status === "calculating") return "\u8BA1\u5206\u4E2D\u2026";
@@ -17750,7 +17802,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       node("gallery-set-detail").replaceChildren();
       categoryId = null;
       showBrowseLevel();
-      if (result) renderSets();
+      if (result) {
+        renderSets();
+        updateCategoryScores();
+      }
       updateSyncButton();
       void refreshShared();
       return false;
@@ -18189,6 +18244,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (changed && jointTargets.has(set.id)) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
         renderJoint();
         renderSets();
+        updateCategoryScores({ enqueue: true });
         const currentSet = result.catalog.categories.flatMap((category) => category.sets).find((row) => row.id === set.id);
         if (currentSet && !jointMode) renderSetDetail(details.get(set.id) ?? value, currentSet);
       }).catch((error2) => {
@@ -18309,12 +18365,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const setId = value?.pool?.setId ?? value?.progress?.setId;
         const source = value?.pool?.source ?? value?.progress?.source;
         const id12 = `${source}:${setId}`;
-        if (source !== result?.source || !sets2.some((set) => set.id === id12) || value.scope && value.scope !== currentScope || !value.progress) continue;
+        if (source !== result?.source || !sets2.some((set2) => set2.id === id12) || value.scope && value.scope !== currentScope || !value.progress) continue;
         const previous = details.get(id12);
         if (previous && JSON.stringify(previous.progress) === JSON.stringify(value.progress) && previous.pool?.revision === value.pool?.revision && previous.stale === value.stale && sameGalleryRuntimeCards(previous.runtimeCards, value.runtimeCards)) continue;
         const merged = { ...previous, ...value };
         if (jointTargets.has(id12) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
         details.set(id12, merged);
+        const set = sets2.find((row) => row.id === id12);
+        scoreSummary(merged, set, id12 === selectedSetId ? 3 : 0);
         changed = true;
         if (id12 === selectedSetId) selectedChanged = true;
       }
@@ -18322,6 +18380,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (jointChanged) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
       renderJoint();
       renderSets();
+      updateCategoryScores();
       if (selectedChanged && !activePlans && !foregroundSync && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
         const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
         if (set) renderSetDetail(details.get(selectedSetId), set);
@@ -18519,6 +18578,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add(top, "span", `${row.sets.length} \u4E2A\u96C6\u5408`, "gallery-category-count");
         renderRewardSummary(top, row.sets, "gallery-category-rewards");
         add(button, "strong", row.name, "gallery-category-name");
+        const score2 = add(button, "span", "", "gallery-category-score");
+        add(score2, "span");
+        add(score2, "progress");
         button.type = "button";
         button.dataset.categoryId = row.id;
         button.addEventListener("click", () => {
@@ -18527,6 +18589,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
       }
       renderSets();
+      updateCategoryScores({ enqueue: true });
       updateSyncButton();
       void refreshShared();
       if (active && sync && value.source === "futgg") {
@@ -18623,10 +18686,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         disposeNativeCards();
         node("gallery-set-detail").replaceChildren();
         renderSets();
+        updateCategoryScores({ enqueue: true });
       } else if (categoryId !== null) {
         categoryId = null;
         node("gallery-set-list").replaceChildren();
         showBrowseLevel();
+        updateCategoryScores({ enqueue: true });
       }
     });
     node("gallery-search").addEventListener("input", renderSets);

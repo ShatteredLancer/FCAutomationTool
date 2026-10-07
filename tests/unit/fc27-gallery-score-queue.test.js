@@ -17,17 +17,34 @@ it('returns immediately, yields while scoring, and caches equal data in new proj
   const schedule=vi.fn(async()=>{}), update=vi.fn(); let clock=0;
   const queue=createGalleryScoreQueue({schedule,now:()=>++clock,onUpdate:update}), value=input();
   expect(queue.read('account-a',value)).toMatchObject({status:'calculating'});
+  expect(queue.peek('account-a', value.set.id)).toMatchObject({status:'calculating'});
+  expect(queue.peek('account-b', value.set.id)).toBeNull();
   expect(update).not.toHaveBeenCalled(); await queue.idle();
   expect(schedule.mock.calls.length).toBeGreaterThan(10);
   expect(queue.read('account-a',structuredClone(value))).toEqual(summarizeGalleryScore(value));
+  expect(queue.peek('account-a', value.set.id)).toEqual(summarizeGalleryScore(value));
   expect(update).toHaveBeenCalledOnce(); queue.dispose();
 });
 it('discards interrupted or old-account scoring and permits a new run', async () => {
   let release; const schedule=()=>new Promise(resolve=>{release=resolve;});
   const update=vi.fn(), queue=createGalleryScoreQueue({schedule,onUpdate:update});
   queue.read('a',input()); const first=queue.idle(); queue.cancel(); release(); await first;
+  expect(queue.peek('a', input().set.id)).toBeNull();
   expect(update).not.toHaveBeenCalled();
   expect(queue.read('b',input()).status).toBe('calculating'); queue.cancel(); release(); await queue.idle(); queue.dispose();
+});
+it('prioritizes an opened collection over queued homepage collections', async () => {
+  const completed = [], queue = createGalleryScoreQueue({ schedule: async () => {}, onUpdate: id => completed.push(id) });
+  const first = input(), opened = structuredClone(first), last = structuredClone(first);
+  opened.set.id = 'futgg:2'; opened.progress.setId = 2;
+  last.set.id = 'futgg:3'; last.progress.setId = 3;
+  queue.read('a', first, { priority: 0 });
+  queue.read('a', opened, { priority: 0 });
+  queue.read('a', last, { priority: 0 });
+  queue.read('a', opened, { priority: 3 });
+  await queue.idle();
+  expect(completed).toEqual(['futgg:2', 'futgg:1', 'futgg:3']);
+  queue.dispose();
 });
 it('invalidates equal-sized projections when scoring inputs change', async () => {
   const update=vi.fn(), queue=createGalleryScoreQueue({schedule:async()=>{},onUpdate:update});

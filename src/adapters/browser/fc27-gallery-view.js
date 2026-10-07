@@ -1,6 +1,7 @@
 import { GALLERY_TTL_MS } from './fc27-gallery-catalog.js';
 import { diffGalleryCatalog } from '../../gallery/catalog.js';
 import { createGalleryScoreQueue } from '../../gallery/score-queue.js';
+import { galleryCategoryScoring } from '../../gallery/category-scoring.js';
 import { planGalleryGrade, planGalleryGradeSteps } from '../../gallery/planner.js';
 import { planGalleryJointSteps } from '../../gallery/joint-planner.js';
 import { galleryRewardOptions } from '../../gallery/catalog-rewards.js';
@@ -578,6 +579,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       scoreRenderTimer = null;
       if (disposed || !active) return;
       const changed = new Set(scoredSets); scoredSets.clear();
+      updateCategoryScores();
       const sets = result?.catalog?.categories.flatMap(category => category.sets) ?? [];
       for (const card of node('gallery-set-list').querySelectorAll('.gallery-set')) {
         if (!changed.has(card.dataset.setId)) continue;
@@ -612,6 +614,28 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const scoreSummary = (value, set, priority = 1) => {
     if (!active || !value?.progress || !result?.catalog) return null;
     return scoreQueue.read(scope(), { set, catalog: result.catalog, progress: value.progress }, { priority });
+  };
+  const updateCategoryScores = ({ enqueue = false } = {}) => {
+    if (!active || !result?.catalog) return;
+    const identity = scope();
+    for (const category of result.catalog.categories) {
+      const counts = galleryCategoryScoring(category.sets.map(set => {
+        const detail = details.get(set.id);
+        const summary = detail?.progress ? enqueue ? scoreSummary(detail, set, 0)
+          : scoreQueue.peek(identity, set.id) ?? scoreSummary(detail, set, 0) : null;
+        return { detail, summary };
+      }));
+      const { completed, total } = counts;
+      const button = [...node('gallery-categories').children].find(row => row.dataset.categoryId === category.id);
+      const area = button?.querySelector('.gallery-category-score');
+      if (!area) continue;
+      const text = `已计分 ${completed}/${total}`;
+      area.querySelector('span').textContent = text;
+      const bar = area.querySelector('progress'); bar.max = Math.max(1, total); bar.value = completed;
+      bar.setAttribute('aria-label', `${category.name}：${text}`);
+      area.dataset.scoreCounts = JSON.stringify(counts);
+      area.title = '已完成计分的集合数量；具体分数和加成见集合详情。';
+    }
   };
   const scoreText = summary => {
     if (summary?.status === 'calculating') return '计分中…';
@@ -1263,7 +1287,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     disposeNativeCards(node('gallery-set-detail'));
     node('gallery-set-detail').replaceChildren();
     categoryId = null; showBrowseLevel();
-    if (result) renderSets();
+    if (result) { renderSets(); updateCategoryScores(); }
     updateSyncButton(); void refreshShared();
     return false;
   };
@@ -1582,7 +1606,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         await restorePlanCache(set, value);
         if (token !== selection || source !== result?.source || startedScope !== currentScope) return;
         if (changed && jointTargets.has(set.id)) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
-        renderJoint(); renderSets();
+        renderJoint(); renderSets(); updateCategoryScores({ enqueue: true });
         const currentSet = result.catalog.categories.flatMap(category => category.sets).find(row => row.id === set.id);
         if (currentSet && !jointMode) renderSetDetail(details.get(set.id) ?? value, currentSet);
       })
@@ -1694,11 +1718,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const merged = { ...previous, ...value };
       if (jointTargets.has(id) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
       details.set(id, merged);
+      const set = sets.find(row => row.id === id);
+      scoreSummary(merged, set, id === selectedSetId ? 3 : 0);
       changed = true; if (id === selectedSetId) selectedChanged = true;
     }
     if (!changed) return;
     if (jointChanged) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
-    renderJoint(); renderSets();
+    renderJoint(); renderSets(); updateCategoryScores();
     if (selectedChanged && !activePlans && !foregroundSync && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
       const set = result?.catalog?.categories.flatMap(category => category.sets).find(row => row.id === selectedSetId);
       if (set) renderSetDetail(details.get(selectedSetId), set);
@@ -1862,10 +1888,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       add(top, 'span', `${row.sets.length} 个集合`, 'gallery-category-count');
       renderRewardSummary(top, row.sets, 'gallery-category-rewards');
       add(button, 'strong', row.name, 'gallery-category-name');
+      const score = add(button, 'span', '', 'gallery-category-score');
+      add(score, 'span'); add(score, 'progress');
       button.type = 'button'; button.dataset.categoryId = row.id;
       button.addEventListener('click', () => { categoryId = row.id; renderSets(); });
     }
-    renderSets();
+    renderSets(); updateCategoryScores({ enqueue: true });
     updateSyncButton(); void refreshShared();
     // Account collection and public pool mapping run without blocking navigation.
     if (active && sync && value.source === 'futgg') {
@@ -1928,8 +1956,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   node('gallery-refresh').disabled = !provider;
   node('gallery-back').addEventListener('click', event => {
     if (!event.isTrusted) return;
-    if (selectedSetId !== null) { selection++; selectedSetId = null; cardPage = 1; disposeNativeCards(); node('gallery-set-detail').replaceChildren(); renderSets(); }
-    else if (categoryId !== null) { categoryId = null; node('gallery-set-list').replaceChildren(); showBrowseLevel(); }
+    if (selectedSetId !== null) { selection++; selectedSetId = null; cardPage = 1; disposeNativeCards(); node('gallery-set-detail').replaceChildren(); renderSets(); updateCategoryScores({ enqueue: true }); }
+    else if (categoryId !== null) { categoryId = null; node('gallery-set-list').replaceChildren(); showBrowseLevel(); updateCategoryScores({ enqueue: true }); }
   });
   node('gallery-search').addEventListener('input', renderSets);
   node('gallery-sort').addEventListener('change', renderSets);
