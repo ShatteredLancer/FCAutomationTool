@@ -3,7 +3,6 @@ import { createEaInventoryAdapter } from '../ea/inventory.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
 import { traditionalJournalScope, isTerminalTraditionalJournal } from '../../fc27/traditional-journal.js';
-import { puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
 import { galleryPurchaseKey, galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
 import { projectGalleryListingReceipts, projectGalleryListingCandidates, planGalleryListingPrices } from '../../gallery/listing-candidates.js';
 import { createGalleryBulkListSession, galleryListingCandidateAllowed } from '../../gallery/bulk-list-session.js';
@@ -82,7 +81,8 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
       const other = await persistence.journal.read(scope);
       if (other && !isTerminalTraditionalJournal(other)) fail('FC27_RECOVERY_REQUIRED');
       if (await get(galleryPurchasePendingKey(scope), null) !== null) fail('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
-      if (await get(puzzleBuyPendingKey(scope), null) !== null) fail('FC27_BUY_RECOVERY_REQUIRED');
+      // Puzzle purchase history is scoped to its own target and does not block
+      // Gallery listing. Unknown entries remain historical and non-retriable.
     };
     const session = createGalleryBulkListSession({ scope, context, get, set, exclusive: persistence.exclusive,
       tradeAdapter: adapter, assertCurrent, checkOtherTransactions, shouldStop: () => stopped, sleep,

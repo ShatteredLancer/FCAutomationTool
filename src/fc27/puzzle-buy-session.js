@@ -10,6 +10,7 @@ const safeReason = e => /^FC27_[A-Z0-9_]+$/.test(e?.message ?? '') ? e.message :
 export const puzzleBuyKey = (scope, target) => `fcat-fc27-puzzle-buy:${scope}:${target.setId}:${target.challengeId}`;
 export const puzzleBuyPendingKey = scope => `fcat-fc27-puzzle-buy-pending:${scope}`;
 export const conceptDraftKey = (scope, target) => `fcat-fc27-concept-draft:${scope}:${target.setId}:${target.challengeId}`;
+export const puzzleBuyHistoryKey = (scope, target) => `${puzzleBuyKey(scope, target)}:history`;
 const settled = record => Array.isArray(record?.entries) && record.entries.every(e => !['buy-pending', 'bought', 'move-pending'].includes(e.state)) && record.phase !== 'save-pending';
 
 export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive, loadDraft,
@@ -56,8 +57,27 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           record = await get(key, null);
           if (record) {
             check(record);
-            if (record.operationId !== draft.operationId) {
+            if (record.closure) {
+              const history = await get(puzzleBuyHistoryKey(scope, target), []);
+              if (!Array.isArray(history) || !history.some(row => same(row, record))) fail('FC27_BUY_HISTORY_UNCONFIRMED');
+              if (record.operationId === draft.operationId || recoverOnly || retry
+                  || draft.closedOperationId !== record.operationId) fail('FC27_BUY_ARCHIVED_APPROVAL_EXPIRED');
+              record = null;
+            } else if (record.operationId !== draft.operationId) {
               if (!settled(record) || pending) fail('FC27_BUY_RECOVERY_REQUIRED');
+              // Normal completion already released its marker. Preserve that
+              // record before a new current-squad batch replaces the target key.
+              const historyKey = puzzleBuyHistoryKey(scope, target), history = await get(historyKey, []);
+              if (!Array.isArray(history)) fail('FC27_BUY_HISTORY_UNCONFIRMED');
+              const previous = history.find(row => row.operationId === record.operationId);
+              if (previous) {
+                const { closure, ...original } = previous;
+                if (closure?.autoRetryAllowed !== false || !same(original, record)) fail('FC27_BUY_HISTORY_UNCONFIRMED');
+              } else {
+                const complete = record.entries.every(e => e.state === 'club') && same(record.entries, record.applied);
+                await store(historyKey, [...history, { ...record, closure: { schema: 1,
+                  reason: complete ? 'settled' : 'target-changed', at: Date.now(), autoRetryAllowed: false } }]);
+              }
               record = null;
             } else if (!same(record.base, draft.plan)) fail('FC27_BUY_PLAN_CHANGED');
           }

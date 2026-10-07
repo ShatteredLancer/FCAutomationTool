@@ -4,7 +4,6 @@ import { createFc27TransactionPersistence } from './fc27-transaction-persistence
 import { traditionalJournalScope, isTerminalTraditionalJournal } from '../../fc27/traditional-journal.js';
 import { galleryPurchasePendingKey, galleryPurchaseKey } from '../../gallery/purchase-session.js';
 import { projectGalleryListingReceipts } from '../../gallery/listing-candidates.js';
-import { puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
 import { createGalleryBulkListSession, readGalleryBulkListRecovery, assertNoGalleryListingPending } from '../../gallery/bulk-list-session.js';
 import { normalizeBulkRelistSnapshot, bulkRelistSnapshotFingerprint } from '../../trade/bulk-relist-snapshot.js';
 import { createBulkRelistTransaction } from '../../trade/bulk-relist-transaction.js';
@@ -54,7 +53,7 @@ export function createFc27GalleryRelist({ root, get, set, purchase, liveEnabled 
       if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope)) fail('FC27_GALLERY_LISTING_DISABLED');
       const journal = await persistence.journal.read(scope);
       if (journal && !isTerminalTraditionalJournal(journal)) fail('FC27_RECOVERY_REQUIRED');
-      if (await get(galleryPurchasePendingKey(scope), null) || await get(puzzleBuyPendingKey(scope), null)) fail('FC27_BUY_RECOVERY_REQUIRED');
+      if (await get(galleryPurchasePendingKey(scope), null)) fail('FC27_BUY_RECOVERY_REQUIRED');
       const circuit = await get(`fcat-fc27-gallery-listing-circuit-v1:${scope}`, null);
       if (circuit && (circuit.schema !== 1 || circuit.scope !== scope || typeof circuit.persistent !== 'boolean'
         || !Number.isSafeInteger(circuit.retryAt))) fail('FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED');

@@ -87,6 +87,8 @@ if (help) {
       await exercisePuzzleResultPanel(page, out);
       const { exercisePuzzleProgress } = await import('./puzzle-progress-smoke.mjs');
       await exercisePuzzleProgress(context);
+      const { exerciseStreamlined } = await import('./streamlined-smoke.mjs');
+      await exerciseStreamlined(context);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');
       await exerciseTraditionalPersistence(context, out);
       const { exerciseProductionLivePanel } = await import('./production-live-smoke.mjs');

@@ -1,5 +1,9 @@
 # FSU Club Cache Optimization and Integration Guide
 
+2026-10-07 Streamlined Provider 的前置与后置 Club 定向读取显式使用同一 `nativeReauth:true` 路径；Storage 计划材料另按 EA 原生 `searchStorageItems` 读取 `/storagepile?skuMode=FUT`，不注入共享 FSU Repository。只读查询的认证重试不改变贡献 POST 的 `doRetry:false/doReauth:false`，也不改变其它调用方默认值。贡献按钮仍要求 Live 合同、精确材料复核、Journal 和写后对账；离线回放及适配器接线不代表 Agent 已自动投入材料。
+
+2026-10-07 Streamlined 定向只读检查：隔离 `inspectFc27StreamlinedFresh` 对所选 Club 小批显式使用 `nativeReauth:true`，实机从原先 401 恢复到 17 张材料精确身份/积分校验通过。默认 Club transport、传统/Puzzle 提交与 Streamlined 写请求不变；不注入 EA/FSU 缓存。EA 可能同时返回非目标版本，Streamlined 仅核对并消费计划中的精确 item/definition，不用额外版本替代缺失卡。贡献前后适配器与只读会话验证见 [Streamlined 最新恢复点](../docs/FC27_STREAMLINED_SBC_PLAN_ZH.md#2026-10-07-登录后续实施新鲜读取贡献组合与实机证据)。
+
 2026-10-06 Gallery 挂牌列表只读库存例外：新 Gallery listing inventory 显式以 `nativeReauth:true` 调用 FC27 Club transport，保留 EA 原生 `doReauth/doRetry` 的 401 会话更新及重发。实机证明原检查用双 false 在 stats 返回 401，而原生恢复后 stats/Club 返回 200；不是放宽库存身份校验。总超时到达时同时关闭两标志并中止自有请求，避免迟到认证回调重发；Puzzle/传统提交/隔离检查默认仍为 false。新实体只保留在挂牌本地读取器，不注入 EA/FSU Repository，FSU 源码、缓存 readiness 与下文 FC26 合同不变。详情见 [Gallery 当前修复](../docs/FC27_GALLERY_REMAINING_PLAN_ZH.md)。
 
 2026-09-18 FC27 单次事务接线：隔离 Acceptance Provider 继续读取原 FSU 策略/Club 缓存，选中整阵通过已有原生只读 Adapter 按 definition 查询再精确匹配 item 与安全属性；原 FSU ready 时的 `cached:true` 不冒充 fresh。未复制全量库存服务，未改 FSU 源码或下文 FC26 合同。提交前使用经源码指纹核验的原 `markClubCacheDirty`，权威消费确认后才按精确 item ID 清理本地 Club entries 并失效 stats；恢复检查本身不清理，明确确认完成后才执行。该写后维护只通过合成回归，实机为 2/2 只读验证，未发生真实消费。见 [实现与验收边界](../docs/FC27_LIVE_ADAPTATION_ZH.md#2026-09-18-ea-provider-与真实-gm-验收)。

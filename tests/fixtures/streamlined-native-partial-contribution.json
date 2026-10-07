@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "source": "passive native contribution 2026-10-07 and subsequent fresh DAO progress",
+  "observed": { "setId": 48, "challengeId": 85, "httpStatus": 200, "submittedScore": 20, "targetScore": 6750,
+    "challengeAwardArrayCount": null, "setAwardArrayCount": null, "squadsPresent": false, "clubCachedBefore": 466, "clubCachedAfter": 465 },
+  "note": "Award counts were null in the original sanitized capture; absent versus JSON null was not retained. Native _applyOneClickSubmission uses nullish defaults for both. Item IDs below are synthetic, not a captured request.",
+  "expected": { "setId": 48, "challengeId": 85, "previousScore": 0, "itemIds": [11] },
+  "reply": { "success": true, "status": 200, "response": { "setId": 48, "challengeId": 85, "submittedScore": 20 } }
+}

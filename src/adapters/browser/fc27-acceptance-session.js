@@ -18,6 +18,8 @@ import { DEFAULT_PUZZLE_QUOTE_CEILING, isPuzzleQuoteCeiling } from '../../fc27/p
 import { createFc27MarketReadTransport, readFc27MarketPlayerName } from '../ea/fc27-market-read.js';
 import { createFc27PuzzleConceptSession, readFc27ConceptPending, readFc27ConceptReservation } from '../../fc27/puzzle-concept-session.js';
 import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
+import { assertPuzzleBuyTargetAvailable } from '../../fc27/puzzle-buy-lifecycle.js';
+import { maintainFc27PuzzlePurchases } from './fc27-puzzle-buy-lifecycle.js';
 import { createFc27PuzzleBuyAdapter, readFc27PuzzleBuyPlan } from '../ea/fc27-puzzle-buy.js';
 import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
 import { readFc27PurchasePageSlots } from '../ea/fc27-puzzle-page.js';
@@ -195,7 +197,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
   const assertNoPuzzlePending = async target => {
     await assertNoGalleryListingPending(gmGetValue, scope);
     if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
-    if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) throw new Error('FC27_BUY_RECOVERY_REQUIRED');
+    await assertPuzzleBuyTargetAvailable(gmGetValue, scope, target, context);
     if ((await puzzlePersistence.journal.read(scope, target))?.phase === 'save-pending') throw new Error('FC27_PUZZLE_FILL_RECOVERY_REQUIRED');
     if (await readFc27ConceptPending(gmGetValue, scope, target) !== null) throw new Error('FC27_CONCEPT_RECOVERY_REQUIRED');
   };
@@ -265,10 +267,14 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
   const provider = () => createFc27TraditionalProvider(root, { canWrite: () => {
     unchanged(); return liveEnabled === true && armed && persistence.inspect().active;
   } });
-  const run = async task => {
+  const run = async (task, requestedTarget = null) => {
     if (busy) return blocked('FC27_ATTEMPT_BUSY');
     busy = true;
-    try { unchanged(); return await task(); }
+    try {
+      unchanged();
+      await maintainFc27PuzzlePurchases(root, { get: gmGetValue, set: gmSetValue, diagnosticLog, requestedTarget });
+      unchanged(); return await task();
+    }
     catch (error) { return blocked(safeReason(error)); }
     finally { busy = false; armed = false; }
   };
@@ -582,17 +588,24 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       });
     });
   let buyStopped = false;
+  const freshBuyDrafts = new Map();
   const readBuyDraft = async target => {
     unchanged();
     const buy = await gmGetValue(puzzleBuyKey(scope, target), null);
-    if (buy && buy.scope === scope && JSON.stringify(buy.context) === JSON.stringify(context)
-        && (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null
+    if (buy && !buy.closure && buy.scope === scope && JSON.stringify(buy.context) === JSON.stringify(context)
+        && ((await gmGetValue(puzzleBuyPendingKey(scope), null))?.key === puzzleBuyKey(scope, target)
           || buy.phase === 'save-pending' || buy.entries.some(e => ['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(e.state))
           || buy.entries.filter(e => e.state === 'club').length !== buy.applied.length
           || puzzleBuyMatchesSlots(buy, readFc27PurchasePageSlots(root, target, buy)))) {
       return { phase: 'saved', operationId: buy.operationId, plan: buy.base };
     }
     const plan = readFc27PuzzleBuyPlan(root, target);
+    if (buy?.closure) {
+      const key = puzzleBuyKey(scope, target), binding = JSON.stringify([buy.operationId, buy.closure, plan]);
+      if (freshBuyDrafts.get(key)?.binding !== binding) freshBuyDrafts.set(key, { binding,
+        draft: { phase: 'saved', operationId: `fresh:${root.crypto.randomUUID()}`, closedOperationId: buy.operationId, plan } });
+      return freshBuyDrafts.get(key).draft;
+    }
     return { phase: 'saved', operationId: JSON.stringify(plan.slots), plan };
   };
   const inspectPurchases = async target => {
@@ -692,7 +705,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
             count: result?.purchased, spent: result?.spent });
         } catch { /* Optional export cannot change a purchase result or recovery. */ }
       }
-    }),
+    }, approval?.approved === true && liveEnabled === true && typeof isCurrent === 'function' ? target : null),
     inspectPuzzlePolicy: () => run(async () => ({ status: 'observed', ...await readPuzzleSettings() })),
     setPuzzlePolicy,
     setPuzzleMaxRating: maxRating => setPuzzlePolicy({ maxRating }),
@@ -708,7 +721,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           || !Number.isSafeInteger(target?.challengeId) || target.challengeId <= 0
           || typeof isCurrent !== 'function') return blocked('FC27_PUZZLE_FILL_TARGET_CHANGED');
       if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) return blocked('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
-      if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) return blocked('FC27_BUY_RECOVERY_REQUIRED');
+      await assertPuzzleBuyTargetAvailable(gmGetValue, scope, target, context);
       const purchased = await gmGetValue(puzzleBuyKey(scope, target), null) ? await inspectPurchases(target) : { status: 'absent' };
       if (purchased.status === 'ready' && purchased.spent > 0) return { status: 'blocked', reason: 'FC27_BUY_DRAFT_ACTIVE' };
       const assertTarget = () => {

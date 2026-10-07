@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '../../src/fc27/puzzle-buy-session.js';
+import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey, puzzleBuyHistoryKey } from '../../src/fc27/puzzle-buy-session.js';
 
 function fixture(count = 2) {
   const scope = 'account'; const context = { season: '27', accountScope: 'account', platform: 'pc' };
@@ -29,6 +29,30 @@ it('buys serially, records exact receipts, moves to Club and saves once without 
   expect(await x.run()).toMatchObject({ status: 'purchased', spent: 400 });
   expect(x.adapter.buy).toHaveBeenCalledTimes(2); expect(x.adapter.save).toHaveBeenCalledTimes(1);
 });
+
+
+it('never replays an archived approval; a new explicit batch keeps its history intact', async () => {
+  const x = fixture(); await x.run();
+  const key = puzzleBuyKey(x.scope, x.target), closed = { ...x.data.get(key), closure: { schema: 1, autoRetryAllowed: false } };
+  x.data.set(key, closed); x.data.set(puzzleBuyHistoryKey(x.scope, x.target), [structuredClone(closed)]);
+  expect((await x.run()).reason).toBe('FC27_BUY_ARCHIVED_APPROVAL_EXPIRED');
+  expect(x.adapter.buy).toHaveBeenCalledTimes(2);
+  x.draft.operationId = 'new-click'; x.draft.closedOperationId = closed.operationId;
+  expect((await x.run({ expectedOperationId: 'new-click' })).status).toBe('purchased');
+  expect(x.data.get(puzzleBuyHistoryKey(x.scope, x.target))).toEqual([closed]);
+});
+
+it('preserves settled history when the current squad starts a different purchase batch', async () => {
+  const x = fixture(); await x.run();
+  const key = puzzleBuyKey(x.scope, x.target), previous = structuredClone(x.data.get(key));
+  x.draft.operationId = 'new-current-squad';
+  expect((await x.run({ expectedOperationId: 'new-current-squad' })).status).toBe('purchased');
+  expect(x.data.get(puzzleBuyHistoryKey(x.scope, x.target))).toEqual([
+    { ...previous, closure: expect.objectContaining({ reason: 'settled', autoRetryAllowed: false }) },
+  ]);
+  expect(x.data.get(key).operationId).toBe('new-current-squad');
+});
+
 it('emits FSU-style foreground phases for every card in serial order', async () => {
   const phases = [];
   const x = fixture();

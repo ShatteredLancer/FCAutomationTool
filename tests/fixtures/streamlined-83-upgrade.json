@@ -1,0 +1,14 @@
+{
+  "context": { "season": "27", "accountScope": "fixture:streamlined", "platform": "pc:fixture" },
+  "set": { "id": 31, "name": "83+ Upgrade", "repeats": 1, "repeatabilityMode": "REFRESH" },
+  "challenge": { "id": 61, "setId": 31, "name": "83+ Upgrade", "status": "IN_PROGRESS", "isOneClick": true, "eligibilityOperation": "AND",
+    "scoreRequirement": 2500, "submittedScore": 0, "selectionLimit": 30,
+    "eligibility": [{ "count": -1, "scope": 0, "pairs": [{ "key": 40, "values": [45] }, { "key": 41, "values": [1] }] }] },
+  "items": [
+    { "id": 1001, "definitionId": 5001, "rating": 49, "points": 20, "scoreVerified": true, "price": 200, "tradeable": false, "pile": "club", "source": "inventory" },
+    { "id": 1002, "definitionId": 5002, "rating": 65, "points": 35, "scoreVerified": true, "price": 550, "tradeable": false, "pile": "club", "source": "inventory" },
+    { "id": 1003, "definitionId": 5003, "rating": 83, "points": 410, "scoreVerified": true, "price": 2200, "tradeable": false, "pile": "club", "source": "inventory" },
+    { "id": 1004, "definitionId": 5004, "rating": 84, "points": 830, "scoreVerified": true, "price": 3000, "tradeable": false, "pile": "club", "source": "inventory" },
+    { "id": 1005, "definitionId": 5005, "rating": 85, "points": 2100, "scoreVerified": true, "price": 3500, "tradeable": false, "pile": "market", "source": "market", "quote": { "source": "futgg", "definitionId": 5005, "price": 3500, "fetchedAt": 100, "expiresAt": 1000000 } }
+  ]
+}

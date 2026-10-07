@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "observedAt": "2026-10-07",
+  "source": "read-only Streamlined targeted Club inspection",
+  "observedCounts": { "returned": 18, "outsideRequestedVersions": 1, "wrongPile": 0, "factoryMismatch": 0 },
+  "syntheticExtra": { "id": 999, "definitionId": 1001, "pile": "club" },
+  "note": "Identities are synthetic; a broader server result must not replace an exact selected entity."
+}

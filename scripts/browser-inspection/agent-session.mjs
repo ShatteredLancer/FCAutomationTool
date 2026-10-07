@@ -225,6 +225,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     ...await import(`./navigation-probe.mjs?revision=${revision}`),
     ...await import(`./gallery-reward-probe.mjs?revision=${revision}`),
     ...await import(`./gallery-verification.mjs?revision=${revision}`),
+    ...await import(`./streamlined-inspection.mjs?revision=${revision}`),
   }) }) {
   const network = createNetworkCollector(context);
   const directory = path.join(root, 'artifacts/fc27-browser');
@@ -239,11 +240,21 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       catch { console.log('Navigation incomplete; no automatic retry.'); }
     }
     console.log(`Agent session ready. Local report: ${reportFile}`);
-    console.log('Login/2FA manually if requested. The current production version and hash must be installed before acceptance. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-verify [set-name], gallery-sync, gallery-reward-probe, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
+    console.log('Streamlined: streamlined-open [exact title] navigates only; streamlined-read inspects the current native One Click page without selecting, contributing, buying or claiming.');
+    console.log('install-current installs and verifies current production source in this session. Before acceptance, including same-version source changes, also check root/dist SHA256 and refresh to verify the runtime version.');
+    console.log('Login/2FA manually if requested. The current production version and hash must be installed before acceptance. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, streamlined-open, streamlined-read, streamlined-recover, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-verify [set-name], gallery-sync, gallery-reward-probe, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|tabs|home|navigation-probe|provider|club|market-probe|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported read-only command.'); continue; }
+      if (!/^(inspect|install-current|tabs|home|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
+      if (command === 'install-current') {
+        if (!withExtensions) { console.log('Installation requires --with-extensions.'); continue; }
+        try {
+          const { installCurrentUserscript } = await import('./install-current.mjs');
+          console.log(JSON.stringify(await installCurrentUserscript(context)));
+        } catch { console.log('CURRENT_INSTALLATION_INCOMPLETE'); }
+        continue;
+      }
       if (command === 'tabs') {
         const tabs = [];
         for (const [index, candidate] of context.pages().entries()) tabs.push({ index, url: candidate.url(),
@@ -275,7 +286,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       try {
         // Reload diagnostic helpers between inspections, without restarting the login session.
         const revision = Date.now();
-        const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);
+        const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSbcReadOnly, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);
         const report = await collectPageReport(target);
         const runtime = await target.evaluate(observeRuntime);
         if (command === 'home') {
@@ -286,6 +297,15 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
             action = 'HOME_NAVIGATION_REQUESTED';
           } catch { /* Keep the page open for the next explicit inspection. */ }
           console.log(JSON.stringify({ saved: reportFile, action, season: report.season, ui: await observePageUi(target) }));
+          continue;
+        }
+        if (command === 'streamlined-open' || command.startsWith('streamlined-open ')) {
+          const title = command.slice('streamlined-open'.length).trim();
+          const action = await enterNativeSbcReadOnly(target, title ? { title } : {});
+          await target.waitForTimeout(1000);
+          const observation = { report, action, ui: await observePageUi(target) };
+          console.log(JSON.stringify(observation));
+          await writeFile(reportFile, `${JSON.stringify(observation, null, 2)}\n`);
           continue;
         }
         let action = 'NONE';
@@ -394,12 +414,27 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
             observation.action = observation.marketProbe.reason ?? observation.marketProbe.status;
           }
         }
+        if (command === 'streamlined-read' || command === 'streamlined-recover') {
+          const ui = observation.ui;
+          if (report.season !== '27' || ui?.login !== false || ui.modal !== false || ui.loading !== false) {
+            observation.action = 'STREAMLINED_SESSION_NOT_CONFIRMED';
+          } else {
+            const { inspectStreamlined } = await loadHelpers(revision);
+            observation.streamlined = await inspectStreamlined(target, { recover: command === 'streamlined-recover' });
+            observation.action = observation.streamlined.status === 'observed' ? 'STREAMLINED_READ_ONLY_INSPECTED'
+              : observation.streamlined.reason ?? 'STREAMLINED_READ_UNAVAILABLE';
+          }
+        }
         if (command === 'diagnostics-export') {
           await openProductionPanel(context, target);
           await selectPanelTab(context, target, 'settings');
-          const downloadPromise = target.waitForEvent('download', { timeout: 10000 });
-          await clickPanelControl(context, target, '#export-diagnostics', 10000);
-          const download = await downloadPromise;
+          // Attach both rejection handlers immediately. If clicking fails or
+          // times out, an orphaned download wait must not terminate Node (and
+          // consequently its owned browser) later.
+          const [download] = await Promise.all([
+            target.waitForEvent('download', { timeout: 15000 }),
+            clickPanelControl(context, target, '#export-diagnostics', 10000),
+          ]);
           const destination = path.join(directory, `diagnostics-captured-${Date.now()}.json`);
           await download.saveAs(destination);
           observation.diagnosticsExport = { status: 'observed', path: destination,

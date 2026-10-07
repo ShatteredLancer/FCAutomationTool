@@ -2,6 +2,15 @@ import { expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { observeRuntime } from '../../scripts/browser-inspection/runtime-observation.mjs';
 
+it('includes a bounded compact SBC catalogue beyond the detailed twelve-set sample', () => {
+  const sets = Array.from({ length: 105 }, (_, i) => ({ id: i + 1, name: `Set ${i + 1}`, timesCompleted: 1, secret: 'private-secret' }));
+  const result = observeRuntime({ services: { SBC: { repository: { sets } } } });
+  expect(result.sbc.catalogue.count).toBe(105);
+  expect(result.sbc.catalogue.samples).toHaveLength(100);
+  expect(result.sbc.catalogue.samples[20]).toEqual({ id: 21, name: 'Set 21', timesCompleted: 1 });
+  expect(JSON.stringify(result.sbc.catalogue)).not.toContain('private-secret');
+});
+
 it('reports unknown collections without claiming empty inventory or readiness', () => {
   const result = observeRuntime({});
   expect(result.inventory.club.count).toBeNull();

@@ -14,7 +14,7 @@ export async function exerciseProductionLivePanel(context, directory) {
     bundle: true, write: false, format: 'iife', globalName: 'NativePuzzlePageSmoke', target: 'chrome120' });
   const logBundle = await build({ absWorkingDir: root, entryPoints: ['src/diagnostics/fcat-diagnostic-log.js'],
     bundle: true, write: false, format: 'iife', globalName: 'DiagnosticLogSmoke', target: 'chrome120' });
-  const effectsBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/user-effects.js'],
+  const effectsBundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-diagnostic-download.js'],
     bundle: true, write: false, format: 'iife', globalName: 'DownloadEffectsSmoke', target: 'chrome120' });
   const page = await context.newPage();
   let externalRequests = 0;
@@ -38,7 +38,6 @@ export async function exerciseProductionLivePanel(context, directory) {
         gmSetValue: (key, value) => diagnosticStore.set(key, value), version: '27.0.2' });
       for (const status of ['started', 'failed', 'success']) void diagnosticLog.record({ area: 'gallery', event: 'catalog-request',
         source: 'futgg', status, reason: status === 'failed' ? 'HTTP 403' : undefined, token: 'must-not-export' });
-      const effects = globalThis.DownloadEffectsSmoke.createUserEffectsAdapter(globalThis, globalThis.document);
       const mount = liveEnabled => globalThis.LivePanelSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'live-smoke', title: 'FC Automation Tool', liveEnabled,
         targets: () => [{ setId: 4, name: 'Synthetic upgrade' }],
@@ -52,7 +51,7 @@ export async function exerciseProductionLivePanel(context, directory) {
           if (state.exportFailure) throw new Error('private download error');
           state.exports++;
           const payload = await diagnosticLog.exportPayload();
-          effects.downloadText(JSON.stringify(payload, null, 2), 'diagnostics.json');
+          globalThis.DownloadEffectsSmoke.downloadFc27Diagnostics(globalThis, globalThis.document, JSON.stringify(payload, null, 2), 'diagnostics.json');
           return { count: payload.entries.length, filename: 'diagnostics.json' };
         },
         inspectCatalog: async ({ setId }) => {

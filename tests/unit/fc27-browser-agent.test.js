@@ -147,7 +147,7 @@ it('operates one owned session through restricted stdin and writes only a saniti
     expect(text).not.toContain('do-not-export');
     expect(page.listenerCount('response')).toBe(0);
     expect(context.listenerCount('page')).toBe(0);
-    expect(log).toHaveBeenCalledWith('Unsupported read-only command.');
+    expect(log).toHaveBeenCalledWith('Unsupported inspection command.');
   } finally {
     log.mockRestore();
     await rm(root, { recursive: true, force: true });

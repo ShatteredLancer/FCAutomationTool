@@ -4,7 +4,6 @@ import { createFc27PuzzleBuyAdapter } from '../ea/fc27-puzzle-buy.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { traditionalJournalScope, isTerminalTraditionalJournal } from '../../fc27/traditional-journal.js';
-import { puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
 import { isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
@@ -29,7 +28,8 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
       checkOtherTransactions: async () => {
         const other = await persistence.journal.read(scope);
         if (other && !isTerminalTraditionalJournal(other)) throw new Error('FC27_RECOVERY_REQUIRED');
-        if (await gmGetValue(puzzleBuyPendingKey(scope), null) !== null) throw new Error('FC27_BUY_RECOVERY_REQUIRED');
+        // Puzzle purchase history is scoped to its own target; it is not a
+        // global Gallery lock. The Puzzle session owns exact-target recovery.
       },
       operationId: () => root.crypto.randomUUID(),
       createAdapter: async (record, callbacks = {}) => {

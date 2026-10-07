@@ -49,15 +49,20 @@ import { createGalleryScoreCache } from '../gallery/score-cache.js';
 import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
-import { createUserEffectsAdapter } from '../adapters/browser/user-effects.js';
+import { downloadFc27Diagnostics } from '../adapters/browser/fc27-diagnostic-download.js';
 import { createFc27PublicPrices } from '../adapters/browser/fc27-public-prices.js';
+import { mountFc27StreamlinedPanel } from '../adapters/browser/fc27-streamlined-panel.js';
+import { createFc27StreamlinedSession } from '../adapters/browser/fc27-streamlined-session.js';
+import { createFc27StreamlinedExecution } from '../adapters/browser/fc27-streamlined-execution.js';
+import { recoverFc27Streamlined } from '../adapters/browser/fc27-streamlined-recovery.js';
+import { maintainFc27PuzzlePurchases } from '../adapters/browser/fc27-puzzle-buy-lifecycle.js';
+import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, readFc27StreamlinedInputs } from '../adapters/ea/fc27-streamlined-read.js';
 
 // A new Tampermonkey identity: no legacy or Acceptance storage migration.
 const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest,
   lockManager: unsafeWindow.navigator.locks, liveEnabled: __FCAT_LIVE_ENABLED__ };
 const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: __FCAT_VERSION__ });
-const userEffects = createUserEffectsAdapter(unsafeWindow, unsafeWindow.document);
 // Gallery presentation may reuse EA's already loaded static image routes. It
 // uses the browser cache for league/club/nation emblems. Player cards are
 // rendered by the separate EA native view adapter below.
@@ -200,6 +205,19 @@ if (!galleryProgress.install()) {
 const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
 let session;
 const current = () => session ??= createFc27AcceptanceSession({ ...dependencies, publicPrices, diagnosticLog });
+// Reconcile an old Puzzle purchase marker in a bounded, read-only-first
+// maintenance pass. It never buys, moves or saves a squad. A retired target is
+// archived only after its history is durably written; unknown receipts remain
+// historical and no longer block unrelated Gallery/Streamlined work.
+let puzzleLifecycleBusy = false;
+const puzzleLifecyclePoll = unsafeWindow.setInterval(async () => {
+  if (puzzleLifecycleBusy) return;
+  puzzleLifecycleBusy = true;
+  try { await maintainFc27PuzzlePurchases(unsafeWindow, { get: GM_getValue, set: GM_setValue, diagnosticLog }); }
+  catch { /* lifecycle diagnostics are fail-closed and never affect page UI */ }
+  finally { puzzleLifecycleBusy = false; }
+}, 15000);
+unsafeWindow.addEventListener?.('beforeunload', () => unsafeWindow.clearInterval(puzzleLifecyclePoll), { once: true });
 // FSU's buyConceptPlayer presents one foreground loader while the batch runs.
 // FCAT keeps its own transaction and journal, but mirrors the same page-level
 // progress callbacks when the reviewed FSU event bridge is available.
@@ -266,7 +284,7 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
     const filename = `FCAutomationTool-FC27-diagnostics-${stamp}.json`;
-    userEffects.downloadText(JSON.stringify(payload, null, 2), filename);
+    downloadFc27Diagnostics(unsafeWindow, unsafeWindow.document, JSON.stringify(payload, null, 2), filename);
     return { count: payload.entries.length, filename };
   },
   gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
@@ -328,3 +346,30 @@ mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
   refreshPrices: (ids, options) => publicPrices.load(ids, options),
   foregroundProgress: foregroundPurchaseProgress,
 });
+const streamlinedSession = createFc27StreamlinedSession({
+  inspect: () => { const page = locateFc27StreamlinedPage(unsafeWindow); if (!page) return null;
+    const context = readFc27Context(unsafeWindow); return { context, challenge: projectFc27StreamlinedChallenge(page, context) }; },
+  readInputs: settings => readFc27StreamlinedInputs(unsafeWindow, settings),
+  get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog,
+  createExecution: context => createFc27StreamlinedExecution(unsafeWindow, { context,
+    get: GM_getValue, set: GM_setValue, lockManager: unsafeWindow.navigator.locks,
+    canWrite: () => __FCAT_LIVE_ENABLED__ }),
+});
+const streamlinedPanel = mountFc27StreamlinedPanel({ document: unsafeWindow.document,
+  readTarget: () => locateFc27StreamlinedPage(unsafeWindow), session: streamlinedSession, nativeRenderer: galleryNativeRenderer });
+// One attempt per account/session, only once the existing FSU cache is ready.
+// No pending journal means no EA request. Failed checks remain recoverable.
+const streamlinedRecoveryAccounts = new Set();
+const streamlinedRecoveryTimer = unsafeWindow.setInterval(() => {
+  try {
+    if (unsafeWindow.info?.base?.initialized !== true
+        || !['ready', 'trusted-provisional'].includes(unsafeWindow.info?.base?.clubCache?.status)) return;
+    const context = readFc27Context(unsafeWindow), key = JSON.stringify(context);
+    if (streamlinedRecoveryAccounts.has(key)) return;
+    streamlinedRecoveryAccounts.add(key);
+    void recoverFc27Streamlined(unsafeWindow, { get: GM_getValue, set: GM_setValue, lockManager: unsafeWindow.navigator.locks })
+      .then(result => diagnosticLog.record({ area: 'streamlined', event: 'recovery', ...result })).catch(() => {});
+  } catch { /* Wait for login; do not query or mutate an unknown account. */ }
+}, 1500);
+unsafeWindow.addEventListener?.('beforeunload', () => unsafeWindow.clearInterval(streamlinedRecoveryTimer), { once: true });
+unsafeWindow.addEventListener?.('beforeunload', () => streamlinedPanel?.dispose?.(), { once: true });
