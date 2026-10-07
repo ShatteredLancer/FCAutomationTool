@@ -112,8 +112,10 @@ it('requires exact fresh Club identities and confirmed tradeability/protection f
     .toContainEqual(expect.objectContaining({ itemId: 11, reason: 'purchased-item-not-found' }));
   expect(projectGalleryListingCandidates({ source, items: [{ ...items[0], eligibleForListing: false }, items[1]] }).skipped)
     .toContainEqual(expect.objectContaining({ itemId: 11, reason: 'listing-protection-unconfirmed' }));
-  expect(projectGalleryListingCandidates({ source, items: [{ ...items[0], pile: 'transfer' }, items[1]] }).skipped)
+  expect(projectGalleryListingCandidates({ source, items: [{ ...items[0], pile: 'storage' }, items[1]] }).skipped)
     .toContainEqual(expect.objectContaining({ itemId: 11, reason: 'purchased-item-no-longer-in-club' }));
+  for (const pile of ['unassigned', 'transfer']) expect(projectGalleryListingCandidates({ source,
+    items: [{ ...items[0], pile }, items[1]] }).entries[0].item.pile).toBe(pile);
 });
 
 it('matches Enhancer percentage, fixed, step, Start Bid and duration behavior', () => {

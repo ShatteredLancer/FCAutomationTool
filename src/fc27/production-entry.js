@@ -43,9 +43,11 @@ import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
 import { mergeGalleryAccountProgress } from '../gallery/progress.js';
 import { readCachedGalleryPrice } from '../gallery/prices.js';
 import { planGalleryGrade } from '../gallery/planner.js';
+import { loadGalleryPriceSnapshot } from '../gallery/planning-prices.js';
 import { createGalleryTargetStore } from '../gallery/targets.js';
 import { createGalleryPlanStore } from '../gallery/plans.js';
 import { createGalleryScoreCache } from '../gallery/score-cache.js';
+import { createGalleryTradePreferences } from '../gallery/trade-preferences.js';
 import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
@@ -180,9 +182,10 @@ const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: ga
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
+const galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
-  readSettings: () => current().inspectPuzzlePolicy(), publicPrices, diagnosticLog, accounting: galleryAccounting });
+  readSettings: () => current().inspectPuzzlePolicy(), publicPrices, tradePreferences: galleryTradePreferences, diagnosticLog, accounting: galleryAccounting });
 const galleryListing = createFc27GalleryListing({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   purchase: galleryPurchase, liveEnabled: dependencies.liveEnabled,
   schedulingEnabled: dependencies.liveEnabled === true,
@@ -279,7 +282,7 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
   galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
-  galleryAccounting,
+  galleryAccounting, galleryTradePreferences,
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
@@ -301,7 +304,11 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
     try {
       const context = readFc27Context(unsafeWindow);
       platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
-      priceSnapshot = await publicPrices.load(pool.pool.items.map(item => item.eaId), { purpose: 'display', rows: pool.pool.items });
+      const priceScope = publicPrices.scope();
+      priceSnapshot = await loadGalleryPriceSnapshot(pool.pool.items, {
+        load: (ids, options) => publicPrices.load(ids, { ...options, purpose: 'display' }),
+        current: () => publicPrices.scope() === priceScope,
+      });
       prices = priceSnapshot.prices;
     } catch (error) {
       priceError = /^FC27_[A-Z_]+$/.test(error?.message) || /^HTTP \d{3}$/.test(error?.message)

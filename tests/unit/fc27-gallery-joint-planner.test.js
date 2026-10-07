@@ -15,6 +15,13 @@ const target = (id, rows, prices = {}, targetGrade = 'B') => ({ id: `target-${id
   progress: { season: '27', setId: id, complete: true, rows }, prices, targetGrade });
 
 describe('Gallery joint planner', () => {
+  it('requires scoring-card fullness even when the existing points exceed every target', () => {
+    const result = planGalleryJoint({ targets: [target(30, [row(1, 2695, true), row(2, 35)], { 2: 200 }),
+      target(31, [row(1, 2695, true), row(2, 35)], { 2: 200 })] });
+    expect(result.status).toBe('ready');
+    expect(result.plans[0].totalPrice).toBe(200);
+    expect(result.plans[0].targets.every(value => value.reached)).toBe(true);
+  });
   it.each([2, 3, 7, 10])('retains a cheap %i-card tier combination shared across targets', count => {
     const bonusCatalog = { source: 'futgg', tags: [{ id: 2, name: 'Silver combination', bonusType: 'ITEM_SCORE_PERCENTAGE',
       thresholdType: 'ITEM_COUNT', rules: [{ attribute: 'LEVEL', type: 'COUNT', target: 'ATTRIBUTE', values: ['silver'] }],

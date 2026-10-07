@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-07 Gallery 交易风格与去向：用户要求 Enhancer/Fodder 两套独立 UI，Fodder 必须使用独立组件和限定选择器，不能通过修改原 Enhancer 组件/CSS 实现。默认 Enhancer + Club；Settings 的 Club/Unassigned 只影响新购买批次，恢复沿用已冻结去向。用户明确批准 Fodder 本批价格区间/尝试次数、Market/Bought for、累加价格调整与“仅发送 Transfer List”操作，公共报价选源、冻结购买上限及 EA 相邻价档继续有效。Unassigned 成交、当前持有位置和 EA 收集计分必须独立核对；只移入 Transfer List 不能发挂牌请求，普通挂牌按参考直接 Item.list。旧 Enhancer 行为须回归，真实交易仍由用户点击；实施证据及待验收项见 [Gallery 交易风格计划](docs/FC27_GALLERY_TRADE_STYLES_ZH.md)。
+
 2026-10-05 专用浏览器最新构建约束：用户要求每次实机验收均安装当前工作区的最新生产构建，不得使用旧版本或中间构建。验收前核对当前源码构建、根目录/dist 产物和 Tampermonkey 已安装源码的版本及 SHA256（同版本改动也须重装），刷新后核对页面运行时版本；保存安装证据，再进行功能检查。`--with-extensions` 仅启用已有扩展，不表示已更新；旧更新演练、旧会话及版本号本身不能替代精确源码核对。当前自动安装入口为 `node scripts/browser-inspection/install-current.mjs`。
 
 2026-10-05 设置与重挂界面精简：用户要求购买和挂牌共用一个价格参考；账号旧配置以购买 `source` 为准同步 `listingSource`，FUTBIN 更新选项移除，旧 `force` 不再导致新方案强制读取，有效缓存默认复用，显式刷新按钮保留。冻结方案/购买授权不改写，溢价仍仅用于购买。Gallery 自动重挂采用范围下拉（默认本批）、紧凑间隔和单个启动按钮；选择不触发任务，保留停止/恢复、两轮有限授权及原价重挂合同。本条覆盖下文独立挂牌基准和每次方案强制更新的历史约束。

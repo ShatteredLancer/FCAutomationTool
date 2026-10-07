@@ -47,10 +47,14 @@ export function createFc27GalleryListingInventory(root, { createTransport = crea
           seen.add(row.id);
         }
       }
-      const transfer = createEaInventoryAdapter(root).readPile('transfer');
-      const occupied = new Set(transfer.map(item => Number(item.id)));
+      const adapter = createEaInventoryAdapter(root), transfer = adapter.readPile('transfer');
+      const transferIds = new Set(transfer.map(item => Number(item.id)));
+      const unassigned = adapter.readPile('unassigned').filter(item => !transferIds.has(Number(item.id)));
+      const occupied = new Set([...transfer, ...unassigned].map(item => Number(item.id)));
       const club = [...entities.values()].filter(item => !occupied.has(item.id) && matches(item));
       return [...club.map(item => ({ id: item.id, definitionId: item.definitionId, pile: 'club' })),
+        ...unassigned.filter(item => item.type === 'player' && matches(item))
+          .map(item => ({ id: Number(item.id), definitionId: Number(item.definitionId), pile: 'unassigned' })),
         ...transfer.filter(item => item.type === 'player' && matches(item))
           .map(item => ({ id: Number(item.id), definitionId: Number(item.definitionId), pile: 'transfer' }))];
     },

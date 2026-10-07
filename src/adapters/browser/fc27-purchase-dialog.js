@@ -32,7 +32,7 @@ export function updatePurchaseDialogProgress(dialog, value) {
   const rows = value?.results ?? [];
   const total = value?.total ?? rows.length;
   // A purchase receipt alone is not completed: moving/reconciliation still runs.
-  const completed = Number.isFinite(value?.completed) ? value.completed : rows.filter(row => ['club', 'collected'].includes(row.state)
+  const completed = Number.isFinite(value?.completed) ? value.completed : rows.filter(row => ['club', 'unassigned', 'collected'].includes(row.state)
     || row.state === 'waiting' && row.attempt?.failed).length;
   progress.max = Number.isFinite(total) && total > 0 ? total : 1;
   progress.value = Number.isFinite(completed) ? Math.max(0, Math.min(progress.max, completed)) : 0;

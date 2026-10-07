@@ -113,6 +113,7 @@ function fixture() {
     plan: [{ definitionId: 111 }], entries: [{ definitionId: 111, itemId: 11, tradeId: '9011', price: 200, state: 'club' }], collection: { status: 'confirmed' } };
   values.set(galleryPurchaseKey(scope), record);
   const adapter = {
+    refreshPurchaseState: vi.fn(async () => ({ status: 'completed' })),
     refreshTransferItems: vi.fn(async () => ({ status: 'completed' })),
     inspectListingItem: ref => ({ status: 'loaded', candidate: { item: { ...ref }, tradeable: true,
       evolution: false, limitedUse: false, concept: false, academyEnrolled: false,

@@ -24,3 +24,8 @@ it('returns all grade costs and distinguishes an unreachable grade', () => {
   expect(output.grades[0]).toMatchObject({ status: 'ready', candidate: { totalPrice: 200 } });
   expect(output.grades[1].status).not.toBe('ready');
 });
+it('charges for missing scoring cards at every already-exceeded point threshold', () => {
+  const output = exhaust(planGalleryGradeOverviewSteps({ set, catalog,
+    progress: { ...progress, rows: [{ ...progress.rows[0], gradingScore: 600 }, progress.rows[1]] }, prices: { 2: 200 } }));
+  expect(output.grades.every(grade => grade.status === 'ready' && grade.candidate.totalPrice === 200)).toBe(true);
+});

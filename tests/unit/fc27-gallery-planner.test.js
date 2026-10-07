@@ -12,6 +12,16 @@ const row = (eaId, gradingScore, collected, extra = {}) => ({ eaId, playerEaId: 
   positions: ['ST'], skillMoves: 3, weakFoot: 3, nationEaId: 1, clubEaId: 1, leagueEaId: 1, rarityEaId: 1, ...extra });
 
 describe('Gallery grade planner', () => {
+  it('fills twelve missing scoring slots even when three owned cards exceed S', () => {
+    const missing = Array.from({ length: 15 }, (_, i) => row(10 + i, 35, false));
+    const result = planGalleryGrade({ set: { ...set, requiredCards: 15, grades: [{ name: 'S', threshold: 1400 }] },
+      catalog, targetGrade: 'S', progress: { complete: true, rows: [row(1, 1000, true), row(2, 1000, true), row(3, 695, true), ...missing] },
+      prices: Object.fromEntries(missing.map((card, i) => [card.eaId, 200 + i * 50])) });
+    expect(result.status).toBe('ready');
+    expect(result.plans[0].items).toHaveLength(12);
+    expect(result.plans[0]).toMatchObject({ reached: true, currentScore: 2695, totalPrice: 5700 });
+    expect(result.evaluations).toBeLessThan(20);
+  });
   it.each([2, 3, 7, 10])('prices a %i-card bonus bundle before accepting an expensive immediate solution', count => {
     const bonusCatalog = { source: 'futgg', tags: [{ id: 2, name: 'Silver combination', bonusType: 'ITEM_SCORE_PERCENTAGE',
       thresholdType: 'ITEM_COUNT', rules: [{ attribute: 'LEVEL', type: 'COUNT', target: 'ATTRIBUTE', values: ['silver'] }],
@@ -49,10 +59,15 @@ describe('Gallery grade planner', () => {
     expect(result.plans[0].items.map(item => item.eaId)).toEqual([3]);
   });
 
-  it('marks lower grades reached by the current partial score without pricing a refill', () => {
+  it('marks lower grades reached only with a complete current scoring lineup', () => {
     const result = planGalleryGrade({ set, catalog, targetGrade: 'D',
       progress: { rows: [row(1, 1000, true), row(2, 1000, true), row(3, 200, false)] }, prices: { 3: 350 } });
     expect(result).toMatchObject({ status: 'achieved', targetGrade: 'D', currentScore: 2000 });
+  });
+  it('does not count collected zero-score versions towards required scoring slots', () => {
+    const result = planGalleryGrade({ set, catalog, targetGrade: 'D',
+      progress: { complete: true, rows: [row(1, 2000, true), row(2, 0, true), row(3, 35, false)] }, prices: { 3: 200 } });
+    expect(result).toMatchObject({ status: 'ready', plans: [{ totalPrice: 200, reached: true }] });
   });
 
   it('plans only the unfilled slots and avoids an expensive card when cheap cards meet the target', () => {

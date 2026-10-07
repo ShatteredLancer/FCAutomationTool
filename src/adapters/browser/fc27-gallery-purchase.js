@@ -8,7 +8,7 @@ import { isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
 
-export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequest, reader, liveEnabled,
+export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequest, reader, liveEnabled, tradePreferences = null,
   readSettings = async () => ({ status: 'observed', queriesNumber: 5, quoteCeiling: null }), publicPrices = null, diagnosticLog = null, accounting = null }) {
   let busy = false, stopped = false;
   const create = ({ onProgress, isCurrent = () => true } = {}) => {
@@ -21,6 +21,7 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
       get: gmGetValue, set: gmSetValue, request: createFc27FutbinHttp(gmRequest) });
     const buyer = createGalleryPurchaseSession({ scope, context, get: gmGetValue, set: gmSetValue,
       exclusive: persistence.exclusive, assertCurrent: account, onProgress,
+      readDestination: async () => tradePreferences ? (await tradePreferences.read()).destination : 'club',
       onPurchaseRecord: accounting ? record => accounting.recordPurchase(record) : null,
       shouldStop: () => stopped,
       preparePrices: publicPrices ? record => publicPrices.preparePurchase(record, { isCurrent: () => { account(); return !stopped; },
@@ -94,6 +95,20 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
       }
       return result;
     } catch { return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' }; }
+  };
+  purchase.preview = async items => {
+    if (!publicPrices || !Array.isArray(items) || !items.length) throw Error('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE');
+    const context = readFc27Context(root), scope = traditionalJournalScope(context);
+    const assert = () => { if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root))) throw Error('FC27_GALLERY_CONTEXT_CHANGED'); };
+    const plan = items.map(item => ({ ...item, definitionId: item.definitionId ?? item.eaId }));
+    publicPrices.remember(plan);
+    const approval = await publicPrices.preparePurchase({ scope, plan, entries: plan.map(item => ({ definitionId: item.definitionId, state: 'waiting' })) }); assert();
+    const settings = await readSettings(); assert();
+    const preferences = tradePreferences ? await tradePreferences.read() : { destination: 'club', style: 'enhancer' }; assert();
+    return { approval, destination: preferences.destination, balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
+      absoluteCap: settings.quoteCeiling, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
+      items: plan.map(item => ({ ...item, priceReference: { ...approval.rows.find(row => row.definitionId === item.definitionId),
+        season: approval.season, platform: approval.platform }, pricePolicy: approval.policy })) };
   };
   if (publicPrices) purchase.refreshPrices = async (ids, options) => {
     const policy = await publicPrices.readSettings(), references = {};

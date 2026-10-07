@@ -35,6 +35,31 @@ function harness({ listResults = [], transferMatches = true, limits = true, cont
 }
 
 describe('FC27 Gallery bulk list session', () => {
+  it('lists an Unassigned entity directly, without an extra move', async () => {
+    const h = harness(), selected = entry(1); selected.item.pile = 'unassigned';
+    h.adapter.routePurchasedItem = () => { throw Error('must not move before listing'); };
+    expect(await h.session.execute({ approved: true, binding: 'b', entries: [selected] })).toMatchObject({ status: 'completed', accepted: 1 });
+    expect(h.calls.list).toBe(1);
+  });
+  it('transfer-only moves without listing or requesting prices and recovers unknown results without repeating the move', async () => {
+    const h = harness({ transferMatches: false }), selected = { ...entry(1), action: 'transfer', startPrice: null, buyNow: null, durationSeconds: null };
+    selected.item.pile = 'unassigned';
+    let moves = 0;
+    h.adapter.inspectPriceLimits = () => { throw Error('transfer must not read prices'); };
+    h.adapter.routePurchasedItem = async (ref, destination) => { expect(ref).toEqual(selected.item); expect(destination).toBe('transfer'); moves++; return { status: 'ambiguous' }; };
+    const first = await h.session.execute({ approved: true, binding: 'b', entries: [selected] });
+    expect(first).toMatchObject({ status: 'partial', pending: 1 });
+    expect(await h.session.execute({ approved: true, resume: true, expectedRunId: first.runId })).toMatchObject({ status: 'completed', accepted: 1 });
+    expect(moves).toBe(1); expect(h.calls.list).toBe(0);
+  });
+  it('transfer-only respects capacity and treats a confirmed full response as rejection', async () => {
+    const selected = { ...entry(1), action: 'transfer', startPrice: null, buyNow: null, durationSeconds: null };
+    const h = harness(); h.adapter.routePurchasedItem = async () => ({ status: 'destination-full', response: { success: false, status: 500 } });
+    expect(await h.session.execute({ approved: true, binding: 'b', entries: [selected] })).toMatchObject({ status: 'completed', rejected: 1 });
+    const full = harness(); full.adapter.inspectCapabilities = () => ({ transferCapacity: { free: 0 } });
+    expect(await full.session.execute({ approved: true, binding: 'b', entries: [selected] })).toMatchObject({ status: 'completed', skipped: 1 });
+    expect(full.calls.permits).toBe(0);
+  });
   it('uses valid native cached limits without forcing a redundant item request', async () => {
     const h = harness(), reads = [];
     h.adapter.inspectPriceLimits = async (_ref, options) => {

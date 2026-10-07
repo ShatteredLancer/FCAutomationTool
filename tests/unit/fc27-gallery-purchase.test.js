@@ -1,5 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { createGalleryPurchaseSession, galleryPurchaseKey, galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js';
+import { createPurchasePriceApproval } from '../../src/fc27/purchase-price-approval.js';
+import { priceTiers } from '../fixtures/enhancer-listing-price-reference.js';
 
 function fixture() {
   const store = new Map(), calls = [], locations = new Map(), collected = new Map([[10, false], [11, false]]);
@@ -25,6 +27,49 @@ it('buys exact versions, moves then confirms collection independently, and repea
   const f = fixture(); expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 400, purchased: 2, completed: 2, collection: { status: 'confirmed' } });
   expect(f.calls).toEqual([['find',10],['buy',10],['move',10],['find',11],['buy',11],['move',11]]);
   await f.create().execute(f.input); expect(f.calls).toHaveLength(6);
+});
+
+it('freezes Fodder attempt options across stop/resume without changing default policy or raising the approved ceiling', async () => {
+  const f = fixture(), at = Date.now(), caps = [];
+  const references = Object.fromEntries([10,11].map(definitionId => [definitionId, { definitionId, season: '27', platform: 'pc',
+    quotes: Object.fromEntries(['futgg','futbin'].map(source => [source, { schema: 2, source, definitionId, season: '27', platform: 'pc',
+      price: 1000, fetchedAt: at, expiresAt: at + 60000, sourceUpdatedAt: null, error: null }])) }]));
+  f.args.preparePrices = async () => createPurchasePriceApproval({ scope: f.args.scope, season: '27', platform: 'pc',
+    definitionIds: [10,11], references, policy: { source: 'futgg', premiumMode: 'fixed', premium: 0, purchaseAttempts: 5 }, now: at });
+  f.adapter.priceContext = async () => ({ priceTiers, balance: 10000 });
+  f.adapter.find = async (definitionId, cap) => { caps.push([definitionId, cap]); f.control.stop = caps.length === 1;
+    return { unavailable: true, reason: 'FC27_BUY_NO_LISTING' }; };
+  const input = { ...f.input, batchOptions: { minPct: 75, maxPct: 125, tries: 3 } };
+  expect(await f.create().execute(input)).toMatchObject({ status: 'partial', reason: 'FC27_GALLERY_PURCHASE_STOPPED' });
+  f.control.stop = false;
+  await f.create().execute({ ...f.input, resume: true, expectedOperationId: 'test-operation', batchOptions: { minPct: 200, maxPct: 200, tries: 1 } });
+  expect(caps).toEqual([[10,750],[10,1000],[10,1000],[11,750],[11,1000],[11,1000]]);
+  const saved = f.store.get(galleryPurchaseKey(f.args.scope));
+  expect(saved.batchOptions).toEqual(input.batchOptions);
+  expect(saved.priceApproval.policy.purchaseAttempts).toBe(5);
+  expect(saved.attempts[10]).toMatchObject({ limit: 3, used: 3, failed: true });
+});
+
+it('leaves exact bought items in Unassigned without moving or claiming collection; repeats do not rebuy', async () => {
+  const f = fixture(); f.args.readDestination = async () => 'unassigned';
+  f.adapter.confirmCollection = async () => ({ status: 'pending', confirmed: 0 });
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', completed: 2, purchased: 2, spent: 400,
+    destination: 'unassigned', collection: { status: 'pending' } });
+  expect(f.calls).toEqual([['find',10],['buy',10],['find',11],['buy',11]]);
+  expect(f.store.get(galleryPurchasePendingKey(f.args.scope))).toBeNull();
+  f.args.readDestination = async () => 'club';
+  await f.create().execute(f.input); expect(f.calls).toHaveLength(4);
+});
+it('freezes destination for interrupted recovery and checks the exact purchased item before completion', async () => {
+  const f = fixture(); f.args.readDestination = async () => 'unassigned'; f.control.buy = () => ({ status: 'unknown' });
+  expect((await f.create().execute(f.input)).status).toBe('recovery-required');
+  f.args.readDestination = async () => 'club'; f.locations.set(110, 'purchased'); f.control.buy = null;
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', destination: 'unassigned', spent: 400 });
+  expect(f.calls).toEqual([['find',10],['buy',10],['find',11],['buy',11]]);
+  const absent = fixture(); absent.args.readDestination = async () => 'unassigned';
+  absent.adapter.locate = async () => 'unknown';
+  expect((await absent.create().execute(absent.input)).status).toBe('recovery-required');
+  expect(absent.calls).toEqual([['find',10],['buy',10]]);
 });
 
 it('runs accounting only after durable purchase writes and never repeats a buy because accounting failed', async () => {

@@ -72,7 +72,7 @@ function cheaperState(a, b) {
 function materialize(state, targetGrade, threshold, currentScore = 0) {
   const missingPriceIds = state.items.filter(item => item.price == null).map(item => item.eaId);
   const estimated = state.items.some(item => item.scoreSource !== 'ea');
-  const reached = scoreOf(state) >= threshold;
+  const reached = state.summary?.full === true && scoreOf(state) >= threshold;
   return {
     targetGrade, threshold, reached, currentScore, addedScore: Number.isFinite(scoreOf(state)) ? scoreOf(state) - currentScore : null,
     score: Number.isFinite(scoreOf(state)) ? scoreOf(state) : null,
@@ -135,7 +135,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   }
   const existing = rows.filter(row => isGalleryOwned(row) && validScore(row.gradingScore));
   const incompleteExisting = rows.filter(row => isGalleryOwned(row) && !validScore(row.gradingScore));
-  const requiredSlots = Math.max(1, set.requiredCards - existing.length);
+  const requiredSlots = Math.max(1, set.requiredCards - existing.filter(row => row.gradingScore > 0).length);
   const eligibleCandidates = rows.filter(row => row.collected === false && !isGalleryOwned(row)).map(row => {
     const score = candidateScore(row);
     return score ? { row, score, id: row.eaId, price: asPrice(prices, row.eaId),
@@ -158,7 +158,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
     nextIndex: 0, summary: yield* summaryFor([]) };
   if (!base.summary?.low) return { status: 'unavailable', reason: base.summary?.reason ?? 'input-invalid', plans: [] };
   const currentRewards = gallerySetRewardSummary(set, base.summary);
-  if (scoreOf(base) >= threshold) {
+  if (base.summary.full === true && scoreOf(base) >= threshold) {
     return { status: 'achieved', targetGrade, threshold, currentScore: scoreOf(base), currentRewards, candidateCount: candidates.length,
       omittedCandidates, requestedCandidates, quotedCandidateCount, scoreSourceCounts,
       collectionUnknownCount: unknownRows.length, collectionUnknownIds: unknownRows.map(row => row.eaId),
@@ -215,7 +215,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       && !timeExhausted && !(cheapestSeed.summary?.full && scoreOf(cheapestSeed) >= threshold)) {
     const byId = new Map(candidates.map(candidate => [candidate.row.eaId, candidate]));
     const refinement = refineGalleryCostSteps({ initial: { ...cheapestSeed, cost: cheapestSeed.price, missingPrices: false },
-      seedSteps: galleryPriceBandSeedSteps({ targets: [{ set, catalog, progress }],
+      seedSteps: galleryPriceBandSeedSteps({ targets: [{ set, catalog, progress, threshold }],
         candidates: candidates.map(candidate => ({ id: candidate.row.eaId, price: asPrice(prices, candidate.row.eaId), score: candidate.score.value })) }),
       candidates: candidates.map(candidate => ({ id: candidate.row.eaId, price: asPrice(prices, candidate.row.eaId),
         score: candidate.score.value, diversityKeys: galleryCostSearchKeys(candidate.row, compiled.tags) })),
@@ -245,10 +245,15 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   }
   let scoringBounded = base.summary.selection === 'bounded-search';
   let scoreUncertain = base.summary.low.total !== base.summary.high.total || base.summary.ruleDifference;
+  // The cheapest required number of purchases is a cost lower bound. When
+  // that complete lineup already meets the target, enumerating thousands of
+  // more expensive supersets cannot improve it. Keep unknown/truncated input
+  // reporting below; this shortcut does not certify an exhaustive search.
+  const cheapestReached = cheapestSeed?.summary?.full === true && scoreOf(cheapestSeed) >= threshold;
   // Filling the missing slots is the cheap starting point, not a purchase
   // ceiling: a full low-score collection can still need lineup upgrades.
   for (let depth = 0; depth < set.requiredCards && states.length && evaluations < maxEvaluations
-      && !timeExhausted; depth++) {
+      && !timeExhausted && !cheapestReached; depth++) {
     const next = [];
     expansion: for (const state of states) for (let index = state.nextIndex; index < candidates.length; index++) {
       if (evaluations >= maxEvaluations) { budgetExhausted = true; break expansion; }
@@ -284,7 +289,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   }
   budgetExhausted ||= evaluations >= maxEvaluations && states.some(state => state.ids.length < set.requiredCards && state.nextIndex < candidates.length);
   let removedPurchases = 0;
-  if (plans.length && !timeExhausted && evaluations < maxEvaluations) {
+  if (plans.length && !timeExhausted && !cheapestReached && evaluations < maxEvaluations) {
     const initial = plans.slice().sort((a, b) => rank(a, b, threshold))[0];
     const trim = trimGalleryPlanSteps({ initial, maxEvaluations: Math.min(64, maxEvaluations - evaluations),
       price: id => asPrice(prices, id) ?? 0,
@@ -312,7 +317,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   const proofInputsKnown = candidates.every(candidate => candidate.score.source === 'ea' && candidate.price != null)
     && plans.every(state => !state.summary?.ruleDifference && state.summary?.low?.total === state.summary?.high?.total
       && state.summary?.selection !== 'bounded-search');
-  const searchComplete = unknownRows.length === 0 && !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated
+  const searchComplete = !cheapestReached && unknownRows.length === 0 && !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated
     && omittedCandidates === 0 && !scoringBounded && !scoreUncertain && proofInputsKnown;
   const unique = new Map();
   for (const state of plans.sort((a, b) => rank(a, b, threshold))) {

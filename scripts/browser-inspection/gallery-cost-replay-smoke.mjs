@@ -65,7 +65,13 @@ export async function exerciseGalleryCostReplay(context, directory) {
     const overview = await host.locator('.gallery-grade-overview-row').allTextContents();
     assert.ok(overview.every(text => text.includes('本档：') && text.includes('累计：')),
       'each grade cost exposes tier and cumulative reward estimates');
-    assert.ok(overview.slice(0, 4).every(text => text.includes('已达到')));
+    // Points alone are insufficient: all five grades still require the
+    // missing twelve scoring cards, even though the existing score is high.
+    assert.ok(overview.slice(0, 4).every(text => !text.includes('已达到')));
+    for (let index = 0; index < 4; index++) {
+      const price = Number((await host.locator('.gallery-grade-overview-row').nth(index).locator('span').textContent()).replace(/[^0-9]/g, ''));
+      assert.ok(price > 0 && price <= 13850, `missing-slot grade cost ${price}`);
+    }
     const sPrice = Number((await host.locator('.gallery-grade-overview-row').nth(4).locator('span').textContent()).replace(/[^0-9]/g, ''));
     assert.ok(sPrice > 0 && sPrice <= 13850, `overview replay cost ${sPrice}`);
     await host.getByRole('button', { name: '加入联合目标', exact: true }).click();

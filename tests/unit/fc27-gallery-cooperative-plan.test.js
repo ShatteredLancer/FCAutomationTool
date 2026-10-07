@@ -12,8 +12,11 @@ const progress = { season: '27', setId: 30, complete: true, rows: [1, 2, 3, 4].m
 const input = { set, catalog, progress, targetGrade: 'C', prices: {3: 200, 4: 300} };
 
 it('cooperative grade and joint evaluation preserve synchronous results and yield to UI', async () => {
-  for (const [sync, steps, value] of [[planGalleryGrade, planGalleryGradeSteps, input],
-    [planGalleryJoint, planGalleryJointSteps, {targets: [input]}]]) {
+  // The cheapest 360-point seed is insufficient: this scenario must search,
+  // unlike the immediate cheapest-lineup shortcut covered below.
+  const searching = { ...input, set: { ...set, grades: [{ name: 'C', threshold: 400, rewards: [] }] } };
+  for (const [sync, steps, value] of [[planGalleryGrade, planGalleryGradeSteps, searching],
+    [planGalleryJoint, planGalleryJointSteps, {targets: [searching]}]]) {
     let time = 0, yields = 0;
     const before = structuredClone(value);
     expect(await runGalleryPlan(steps(value), {now: () => time++, sliceMs: 1,
@@ -21,6 +24,13 @@ it('cooperative grade and joint evaluation preserve synchronous results and yiel
       schedule: async () => { yields++; }})).toEqual(sync(value));
     expect(yields).toBeGreaterThan(0); expect(value).toEqual(before);
   }
+});
+
+it('returns an immediately sufficient cheapest lineup without scheduling needless search', async () => {
+  const schedule = async () => { throw Error('cheap complete seed should not search'); };
+  const result = await runGalleryPlan(planGalleryGradeSteps(input), { sliceMs: 0, schedule });
+  expect(result).toEqual(planGalleryGrade(input));
+  expect(result.plans[0]).toMatchObject({ reached: true, totalPrice: 200 });
 });
 
 it('deadline returns partial, never a false proof of no solution', async () => {

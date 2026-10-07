@@ -2,12 +2,8 @@ import { isGalleryOwned } from './planner.js';
 
 // Quote the same candidate set used for cost comparison. Never start this on
 // category/tab navigation. The public service deduplicates across these sets.
-export async function priceGalleryPlanningTargets(targets, { load, current = () => true, onProgress = () => {} }) {
-  const rows = new Map();
-  const owned = new Set(targets.flatMap(target => target.progress.rows.filter(isGalleryOwned).map(row => row.eaId)));
-  for (const target of targets) for (const row of target.progress.rows) {
-    if (row.collected === false && !owned.has(row.eaId)) rows.set(row.eaId, row);
-  }
+export async function loadGalleryPriceSnapshot(inputRows, { load, current = () => true, onProgress = () => {} }) {
+  const rows = new Map(inputRows.map(row => [row.eaId, row]));
   const ids = [...rows.keys()], snapshot = { source: 'public-references', prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
   for (let start = 0; start < ids.length; start += 250) {
     if (!current()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
@@ -21,5 +17,12 @@ export async function priceGalleryPlanningTargets(targets, { load, current = () 
     Object.assign(snapshot.prices, part.prices); Object.assign(snapshot.freshPrices, part.freshPrices); Object.assign(snapshot.references, part.references);
     if (part.expiresAt != null) snapshot.expiresAt = Math.min(snapshot.expiresAt ?? Infinity, part.expiresAt);
   }
+  return snapshot;
+}
+
+export async function priceGalleryPlanningTargets(targets, options) {
+  const owned = new Set(targets.flatMap(target => target.progress.rows.filter(isGalleryOwned).map(row => row.eaId)));
+  const rows = targets.flatMap(target => target.progress.rows.filter(row => row.collected === false && !owned.has(row.eaId)));
+  const snapshot = await loadGalleryPriceSnapshot(rows, options);
   return targets.map(target => ({ ...target, prices: { ...snapshot.freshPrices }, priceSnapshot: snapshot }));
 }

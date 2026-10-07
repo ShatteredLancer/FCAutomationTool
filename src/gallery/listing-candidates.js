@@ -18,16 +18,16 @@ export function projectGalleryListingReceipts({ purchase, scope, context, expect
     if (pendingMarker !== null || purchase.entries.some(entry => pendingStates.has(entry.state))) {
       return blocked('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     }
-    if (purchase.collection?.status !== 'confirmed') return blocked('FC27_GALLERY_COLLECTION_UNCONFIRMED');
-    const acquired = purchase.entries.filter(entry => entry.state === 'club');
+    if (purchase.destination !== 'unassigned' && purchase.collection?.status !== 'confirmed') return blocked('FC27_GALLERY_COLLECTION_UNCONFIRMED');
+    const acquired = purchase.entries.filter(entry => ['club', 'unassigned'].includes(entry.state));
     if (new Set(acquired.map(entry => entry.itemId)).size !== acquired.length
         || new Set(acquired.map(entry => entry.tradeId)).size !== acquired.length) {
       return blocked('FC27_GALLERY_LISTING_RECEIPT_CONFLICT');
     }
     return { status: 'observed', scope, context: structuredClone(context), operationId: purchase.operationId,
       binding: purchase.binding, entries: acquired.map(entry => ({ itemId: entry.itemId, definitionId: entry.definitionId,
-        tradeId: entry.tradeId, purchasePrice: entry.price })),
-      skipped: purchase.entries.filter(entry => entry.state !== 'club').map(entry => ({ definitionId: entry.definitionId,
+        tradeId: entry.tradeId, purchasePrice: entry.price, ...(entry.state === 'unassigned' ? { pile: 'unassigned' } : {}) })),
+      skipped: purchase.entries.filter(entry => !['club', 'unassigned'].includes(entry.state)).map(entry => ({ definitionId: entry.definitionId,
         reason: entry.state === 'collected' ? 'already-collected-not-purchased' : 'not-purchased' })),
       executionEnabled: false };
   } catch { return blocked('FC27_GALLERY_LISTING_PURCHASE_UNCONFIRMED'); }
@@ -49,7 +49,7 @@ export function projectGalleryListingCandidates({ source, items } = {}) {
     const item = byId.get(receipt.itemId);
     let reason = null;
     if (!item || item.definitionId !== receipt.definitionId) reason = 'purchased-item-not-found';
-    else if (item.pile !== 'club') reason = 'purchased-item-no-longer-in-club';
+    else if (!['club', 'unassigned', 'transfer'].includes(item.pile)) reason = 'purchased-item-no-longer-in-club';
     else if (item.tradeable !== true) reason = 'not-tradeable';
     else if (item.eligibleForListing !== true) reason = 'listing-protection-unconfirmed';
     if (reason) { skipped.push({ itemId: receipt.itemId, definitionId: receipt.definitionId, reason }); continue; }

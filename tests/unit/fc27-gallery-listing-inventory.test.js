@@ -1,9 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { createFc27GalleryListingInventory } from '../../src/adapters/ea/fc27-gallery-listing-inventory.js';
 
-function fixture(items, transfer = []) {
+function fixture(items, transfer = [], unassigned = []) {
   let receive;
-  const root = { repositories: { Item: { getTransferItems: () => transfer } } };
+  const root = { repositories: { Item: { getTransferItems: () => transfer, getUnassignedItems: () => unassigned } } };
   const transport = { readCount: vi.fn(async () => items.length), readPage: vi.fn(async ({ start, count, definitionIds }) => {
     const rows = items.filter(item => !definitionIds.length || definitionIds.includes(item.definitionId)).slice(start, start + count);
     rows.forEach(receive); return rows.map(({ id, definitionId }) => ({ id, definitionId, pile: 'club' }));
@@ -13,6 +13,12 @@ function fixture(items, transfer = []) {
   return { inventory, transport, createTransport };
 }
 const target = { source: 'futgg', set: { id: 'futgg:1' }, pool: { setId: 1, complete: true, items: [{ eaId: 111 }] } };
+
+it('includes exact Unassigned versions and excludes stale Club copies and unrelated versions', async () => {
+  const item = { id: 1, definitionId: 111, type: 'player' };
+  const f = fixture([item], [], [item, { ...item, id: 2, definitionId: 222 }]);
+  expect(await f.inventory.scan(target)).toEqual([{ id: 1, definitionId: 111, pile: 'unassigned' }]);
+});
 
 it('reads paginated Club once and merges exact versions with Transfer, not collected history', async () => {
   const rows = Array.from({ length: 251 }, (_, index) => ({ id: index + 1, definitionId: index < 2 ? 111 : 222, type: 'player' }));

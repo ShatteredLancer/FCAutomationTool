@@ -38,6 +38,14 @@ Enhancer's application, UI bundle, authentication, or private price service.
 
 ## Runtime Services
 
+The optional Gallery Fodder-style dialogs adapt the layout and per-batch
+interactions observed in Fodder GG 1.3.3 (`nc/ei/sc`, `AI/PI`, `GC/KC/Dt`,
+and `VI/jI`). Fodder GG and its authors retain their code and branding rights.
+The inspected client is not bundled, loaded, or called by FCAT. EA account
+transactions and public-price policies remain FCAT's independent services;
+the style name does not imply affiliation or use of Fodder's private backend.
+See `docs/FC27_GALLERY_TRADE_STYLES_ZH.md` for the compatibility boundaries.
+
 FCAutomationTool can request player metadata or prices from FUT.GG, FUTBIN, and
 FUTNext, and can optionally send reward messages to ntfy.sh. These services
 are not bundled with or operated by this project and remain subject to their

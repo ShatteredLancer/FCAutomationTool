@@ -11,9 +11,10 @@ const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message || '') ? err
 export const FC27_GALLERY_BULK_LIST_SCHEMA = 1;
 export const FC27_GALLERY_BULK_LIST_KEY_PREFIX = 'fcat-fc27-gallery-bulk-list-v1:';
 export const galleryBulkListKey = scope => `${FC27_GALLERY_BULK_LIST_KEY_PREFIX}${scope}`;
-const validPrices = entry => Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150
+const validPrices = entry => entry.action === 'transfer' ? entry.startPrice == null && entry.buyNow == null && entry.durationSeconds == null
+  : Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150
   && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15000000 && DURATIONS.has(entry.durationSeconds);
-const validRef = ref => id(ref?.id) && id(ref?.definitionId) && ['club', 'transfer'].includes(ref.pile);
+const validRef = ref => id(ref?.id) && id(ref?.definitionId) && ['club', 'unassigned', 'transfer'].includes(ref.pile);
 const validDelay = value => Array.isArray(value) && value.length === 2
     && value.every(v => Number.isFinite(v) && v >= 1 && v <= 15) && value[0] <= value[1];
 const validSetSource = source => source?.kind === 'set' && typeof source.setId === 'string'
@@ -29,7 +30,8 @@ export function normalizeGalleryBulkListJournal(input) {
     || input.source !== undefined && (!validSetSource(input.source) || input.binding !== `set:${input.source.setId}`)
     || input.entries.some(e => !validRef(e?.item) || !validPurchase(e.purchaseTradeId, input.source) || !validPrices(e)
       || !['pending', 'list-pending', 'unknown', 'accepted', 'rejected', 'skipped'].includes(e.status)
-      || e.status === 'accepted' && !tradeId(e.listingTradeId))) return null;
+      || e.action !== undefined && e.action !== 'transfer'
+      || e.status === 'accepted' && e.action !== 'transfer' && !tradeId(e.listingTradeId))) return null;
   return clone(input);
 }
 
@@ -47,6 +49,12 @@ export async function assertNoGalleryListingPending(get, scope, recoveryOptions 
 
 const confirmActiveListing = (entry, seen) => {
   const candidate = seen?.candidate, auction = candidate?.auction;
+  if (entry.action === 'transfer') {
+    if (seen?.status !== 'loaded' || candidate?.item?.id !== entry.item.id
+      || candidate.item.definitionId !== entry.item.definitionId || candidate.item.pile !== 'transfer'
+      || !['none', 'inactive'].includes(auction?.state)) return false;
+    entry.status = 'accepted'; entry.reason = null; return true;
+  }
   if (seen?.status !== 'loaded' || candidate.item?.id !== entry.item.id
     || candidate.item?.definitionId !== entry.item.definitionId || candidate.item?.pile !== 'transfer'
     || auction?.state !== 'active' || auction.startingBid !== entry.startPrice || auction.buyNowPrice !== entry.buyNow
@@ -179,7 +187,8 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
         || !Array.isArray(entries) || !entries.length || entries.length > 256
         || new Set(entries.map(e => e?.item?.id)).size !== entries.length
         || source !== undefined && (!validSetSource(source) || binding !== `set:${source.setId}`)
-        || entries.some(e => !validRef(e?.item) || !validPurchase(e.purchase == null ? null : String(e.purchase.tradeId ?? ''), source) || !validPrices(e)))) {
+        || entries.some(e => !validRef(e?.item) || e.action !== undefined && e.action !== 'transfer'
+          || !validPurchase(e.purchase == null ? null : String(e.purchase.tradeId ?? ''), source) || !validPrices(e)))) {
         return { status: 'blocked', reason: 'FC27_GALLERY_BULK_LIST_APPROVAL_REQUIRED' };
       }
       let record;
@@ -209,6 +218,7 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
               ...(source ? { source: clone(source) } : {}),
               status: 'active', createdAt: now(), updatedAt: now(), lastReason: null,
               entries: entries.map(e => ({ item: clone(e.item), name: String(e.name ?? '').slice(0, 120),
+                ...(e.action === 'transfer' ? { action: 'transfer' } : {}),
                 purchaseTradeId: e.purchase ? String(e.purchase.tradeId) : null, listingTradeId: null,
                 startPrice: e.startPrice, buyNow: e.buyNow, durationSeconds: e.durationSeconds,
                 status: 'pending', reason: null, response: null })) };
@@ -236,7 +246,7 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
               : !galleryListingCandidateAllowed(current.candidate) ? 'FC27_GALLERY_LISTING_ITEM_PROTECTED' : null;
             const capacity = tradeAdapter.inspectCapabilities().transferCapacity;
             if (!skip && entry.item.pile !== 'transfer' && (!Number.isFinite(capacity?.free) || capacity.free <= 0)) skip = 'FC27_GALLERY_TRANSFER_FULL_OR_UNKNOWN';
-            if (!skip) {
+            if (!skip && entry.action !== 'transfer') {
               // Enhancer requestPriceLimits reads the entity cache first.
               let limits = await tradeAdapter.inspectPriceLimits(entry.item, { refresh: false }); assertCurrent();
               const cached = limits?.status === 'loaded' && Number.isSafeInteger(limits?.after?.minimum)
@@ -249,7 +259,11 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
                 || entry.startPrice < min || entry.buyNow > max) skip = 'FC27_GALLERY_LISTING_PRICE_OUT_OF_RANGE';
             }
             if (skip) { entry.status = 'skipped'; entry.reason = skip; await write(record); report(record, 'skipped', index + 1); continue; }
-            const permit = await tradeAdapter.acquireRequestPermit('list'); assertCurrent();
+            if (!skip && entry.action === 'transfer' && entry.item.pile === 'transfer') {
+              entry.status = 'accepted'; await write(record); report(record, 'accepted', index + 1); continue;
+            }
+            const operation = entry.action === 'transfer' ? 'purchase-route' : 'list';
+            const permit = await tradeAdapter.acquireRequestPermit(operation); assertCurrent();
             if (permit?.status !== 'acquired') { record.lastReason = 'FC27_GALLERY_LISTING_PERMIT_BLOCKED'; break; }
             if (shouldStop()) { record.lastReason = 'FC27_GALLERY_BULK_LIST_STOPPED'; break; }
             await beforeMutation(entry); assertCurrent();
@@ -257,11 +271,13 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
             if (!exact(final) || !galleryListingCandidateAllowed(final.candidate)) fail('FC27_GALLERY_LISTING_ITEM_CHANGED');
             entry.status = 'list-pending'; await write(record); assertCurrent();
             report(record, 'listing', index + 1);
-            const result = await tradeAdapter.listItem(entry.item, entry, { requestPermit: permit.permit });
+            const result = entry.action === 'transfer'
+              ? await tradeAdapter.routePurchasedItem(entry.item, 'transfer', { requestPermit: permit.permit })
+              : await tradeAdapter.listItem(entry.item, entry, { requestPermit: permit.permit });
             await afterMutation(entry, result); assertCurrent();
             entry.response = result?.response ? { success: result.response.success === true,
               status: Number(result.response.status) || null, code: Number(result.response.code) || null } : null;
-            if (result?.status === 'accepted') {
+            if (result?.status === 'accepted' || entry.action === 'transfer' && result?.status === 'completed') {
               await write(record);
               if (!await reconcile(entry)) {
                 entry.status = 'unknown'; entry.reason = record.lastReason = 'FC27_GALLERY_LISTING_READBACK_UNCONFIRMED';
@@ -269,7 +285,8 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
             } else if (mustStop(result)) {
               entry.status = result?.status === 'rejected' ? 'rejected' : 'unknown';
               entry.reason = record.lastReason = 'FC27_GALLERY_LISTING_SERVICE_STOP';
-            } else if (['rejected', 'not-found', 'moved'].includes(result?.status)) {
+            } else if (['rejected', 'not-found', 'moved'].includes(result?.status)
+                || entry.action === 'transfer' && result?.status === 'destination-full' && result.response?.success === false) {
               entry.status = 'rejected'; entry.reason = 'FC27_GALLERY_LISTING_REJECTED';
             } else { entry.status = 'unknown'; entry.reason = record.lastReason = 'FC27_GALLERY_LISTING_RESULT_UNKNOWN'; }
             await write(record); report(record, entry.status, index + 1);

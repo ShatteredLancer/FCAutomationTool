@@ -14,6 +14,8 @@ import { planGalleryRemainderSteps, isGalleryPurchaseReplanSafe, replanableGalle
 import { isGalleryOwned } from '../../gallery/planner.js';
 import { galleryFirstOwnerHistoryAction } from '../../gallery/first-owner-history.js';
 import { mountFc27BulkListView } from './fc27-bulk-list-view.js';
+import { mountFc27FodderListView } from './fc27-fodder-list-view.js';
+import { mountFc27FodderBuyView } from './fc27-fodder-buy-view.js';
 import { priceGalleryPlanningTargets } from '../../gallery/planning-prices.js';
 import { mountFc27PurchaseResults } from './fc27-purchase-results.js';
 import { updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
@@ -71,12 +73,26 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, loadPlanningPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null,
+  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
   const categoryIconSelections = new Map();
-  const bulkList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
+  const enhancerList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
+  let fodderList = null, fodderBuy = null, openingTrade = false;
+  const bulkList = listing ? { async open(options) {
+    if (openingTrade) return; openingTrade = true;
+    const identity = accountScope();
+    try {
+      const prefs = await tradePreferences?.read();
+      if (identity !== accountScope()) return;
+      if (prefs?.style === 'fodder') {
+        fodderList ??= mountFc27FodderListView({ document, parent: shadow, service: listing, accountScope, isActive: () => active && !disposed });
+        await fodderList.open(options);
+      } else await enhancerList.open(options);
+    } catch { node('gallery-progress-note').textContent = '交易设置读取失败，请重试。'; }
+    finally { openingTrade = false; }
+  }, dispose() { enhancerList?.dispose(); fodderList?.dispose(); } } : null;
   const listingButton = node('gallery-list-purchased');
   let listingRange = null;
   if (listingButton) {
@@ -228,6 +244,28 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   })[reason] ?? (reason ? `购买记录无法确认，未开始买卡（${reason}）。` : '购买记录检查失败，未开始买卡。');
   const runPurchase = async input => {
     if (buying || typeof purchase !== 'function' || checkScope() === false) return;
+    if (tradePreferences) {
+      if (openingTrade || fodderBuy?.isBusy()) return;
+      openingTrade = true;
+      const identity = scope();
+      try {
+        const prefs = await tradePreferences.read();
+        if (identity !== scope() || !active || disposed) return;
+        if (prefs.style === 'fodder') {
+          fodderBuy ??= mountFc27FodderBuyView({ document, parent: shadow, purchase, accountScope: scope,
+            host, nativeRenderer, readCard: definitionId => {
+              for (const detail of details.values()) {
+                const raw = detail.runtimeCards?.get?.(definitionId);
+                if (raw) return raw;
+              }
+              return null;
+            },
+            isActive: () => active && !disposed, onChanged: () => { void refreshPurchases(); } });
+          await fodderBuy.open(input); return;
+        }
+      } catch { node('gallery-purchase-journal-status').textContent = '交易设置读取失败，未下单。'; return; }
+      finally { openingTrade = false; }
+    }
     const identity = scope(); buying = true;
     const dialog = node('gallery-purchase-dialog'), output = node('gallery-purchase-message');
     node('gallery-purchase-close').hidden = true; node('gallery-purchase-stop').hidden = false;
@@ -265,7 +303,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         FC27_GALLERY_COLLECTION_UNCONFIRMED: '收集状态无法确认，已停止后续购买；请刷新后重试。',
       };
       if (outcome.reason && purchaseMessages[outcome.reason]) output.textContent += ` · ${purchaseMessages[outcome.reason]}`;
-      output.textContent += ' · 出售计划：买入后默认进入 Club 并保留，不自动挂牌；挂牌/重挂需单独确认。';
+      output.textContent += ` · 购卡去向：${outcome.destination === 'unassigned' ? 'Unassigned' : 'Club'}；挂牌/重挂需单独操作。`;
       if (outcome.accountingWarning) {
         output.textContent += ` · 成交已保留，出售账本未更新（${outcome.accountingWarning}），请核对账本，不要重复购买。`;
         void diag({ event: 'accounting', phase: 'purchase', status: 'failed', reason: outcome.accountingWarning });
@@ -279,7 +317,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         resultList.replaceChildren();
         for (const item of outcome.results ?? []) {
           const state = ({ waiting: '待处理', 'buy-pending': '成交核对中', bought: '已买入，待入库', 'move-pending': '入库中',
-            'move-rejected': '入库失败', club: '已入库', collected: '已确认收集' })[item.state] ?? item.reason ?? item.state;
+            'move-rejected': '入库失败', club: 'Club', unassigned: 'Unassigned', collected: '已确认收集' })[item.state] ?? item.reason ?? item.state;
           add(resultList, 'li', `${item.name || item.definitionId} · ${state}${item.price == null ? '' : ` · ${count(item.price)} 金币`}`);
         }
       }
@@ -288,7 +326,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         const remaining = replanableGalleryFailures(outcome);
         if (remaining.length) {
           purchaseReplan = { ...input.replanContext, outcome };
-          const acquired = (outcome.results ?? []).filter(item => ['club', 'collected'].includes(item.state)).length;
+          const acquired = (outcome.results ?? []).filter(item => ['club', 'unassigned', 'collected'].includes(item.state)).length;
           const replan = add(resultList ?? dialog, 'li', `已确认 ${acquired} 张；剩余 ${remaining.length} 张可重新计算方案`, 'gallery-replan-ready');
           const replanButton = add(replan, 'button', '重新规划剩余目标'); replanButton.type = 'button';
           replanButton.addEventListener('click', event => { if (event.isTrusted && !buying) { node('gallery-purchase-close').click(); renderPurchaseReplan(purchaseReplan); } });
@@ -353,7 +391,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     };
     button.addEventListener('click', event => {
       if (!event.isTrusted) { blocked('FC27_GALLERY_PURCHASE_CLICK_UNTRUSTED', '请直接点击购买按钮'); return; }
-      if (buying) { blocked('FC27_GALLERY_PURCHASE_BUSY', '已有购买正在处理，请等待当前购买结束'); return; }
+    if (buying || fodderBuy?.isBusy()) { blocked('FC27_GALLERY_PURCHASE_BUSY', '已有购买正在处理，请等待当前购买结束'); return; }
       if (identity !== scope()) { blocked('FC27_GALLERY_ACCOUNT_CHANGED', '账号已变化，请重新打开当前集合'); return; }
       if (!valid()) {
         blocked('FC27_GALLERY_PURCHASE_PLAN_STALE', '数据或报价已更新，请重新生成方案后再购买');
@@ -378,8 +416,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   });
   node('gallery-purchase-close').addEventListener('click', () => { if (!buying) node('gallery-purchase-dialog').close(); });
   node('gallery-purchase-dialog').addEventListener('cancel', event => { if (buying) event.preventDefault(); });
-  node('gallery-purchase-resume').addEventListener('click', event => {
+  node('gallery-purchase-resume').addEventListener('click', async event => {
     if (!event.isTrusted || buying || purchaseSummary?.status !== 'observed') return;
+    if (tradePreferences) {
+      try { if ((await tradePreferences.read()).style === 'fodder') { void runPurchase({ resume: true, expectedOperationId: purchaseSummary.operationId }); return; } }
+      catch { node('gallery-purchase-journal-status').textContent = '交易设置读取失败，未下单。'; return; }
+    }
     if (!purchase.refreshPrices || !purchaseSummary.retryContext) {
       void runPurchase({ resume: true, expectedOperationId: purchaseSummary.operationId }); return;
     }
@@ -1901,7 +1943,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     node('gallery-progress-note').textContent = message;
   }
   return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.(); bulkList?.dispose?.();
-    purchase?.stop?.(); node('gallery-purchase-dialog').close();
+    fodderBuy?.dispose(); purchase?.stop?.(); node('gallery-purchase-dialog').close();
     node('gallery-sync-dialog').close(); setActive(false); document.removeEventListener('visibilitychange', check);
     document.defaultView?.removeEventListener('resize', updateFooterGeometry); } });
 }

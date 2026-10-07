@@ -2,21 +2,23 @@ import { describeCatalogRule, describeCatalogRewards, describePreparedRequiremen
 import { fc27WorkbenchMarkup, bindFc27WorkbenchTabs } from './fc27-workbench-view.js';
 import { mountFc27GalleryView } from './fc27-gallery-view.js';
 import { mountFc27PriceSettings } from './fc27-price-settings.js';
+import { mountGalleryTradeSettings } from './fc27-gallery-trade-settings.js';
 import { bindCurrencyArrows } from './fc27-listing-currency.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
   galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryRelist = null, galleryFirstOwnerHistory = null,
-  galleryScoreCache = null, galleryAccounting = null,
+  galleryScoreCache = null, galleryAccounting = null, galleryTradePreferences = null,
   publicPrices = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = fc27WorkbenchMarkup();
-  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, relist: galleryRelist, setFirstOwner: galleryFirstOwnerHistory });
-  const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: publicPrices });
-  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery'); if (id === 'settings') void priceSettings.refresh(); });
+  const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets, prices: galleryPrices, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting, sync: gallerySync, purchase: purchaseGallery, listing: galleryListing, relist: galleryRelist, tradePreferences: galleryTradePreferences, setFirstOwner: galleryFirstOwnerHistory });
+  const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#settings-bottom'), service: publicPrices });
+  const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryTradePreferences });
+  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); } });
   const node = id => shadow.getElementById(id);
   node('workbench-version').textContent = version ?? title;
   node('workbench-mode').textContent = liveEnabled === true ? '已开放现有单次操作；提交需单独确认。' : '当前为只读模式。';
@@ -41,7 +43,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   };
   const update = () => {
     for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-      if (!button.closest('#page-gallery') && !button.closest('#public-price-settings')) button.disabled = busy;
+      if (!button.closest('#page-gallery') && !button.closest('#public-price-settings') && !button.closest('#gallery-trade-settings')) button.disabled = busy;
     }
     node('execute').disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
     node('fill').disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== 'function';

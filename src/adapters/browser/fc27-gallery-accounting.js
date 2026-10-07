@@ -23,7 +23,7 @@ export function createFc27GalleryAccounting({ root, get, set, adapterFactory = c
   };
   const ingest = async (env, record) => {
     env.assert(); validateGalleryPurchaseRecord(record, env.scope, env.context);
-    const receipts = record.entries.filter(row => ['bought', 'move-pending', 'move-rejected', 'club'].includes(row.state))
+    const receipts = record.entries.filter(row => ['bought', 'move-pending', 'move-rejected', 'club', 'unassigned'].includes(row.state))
       .map(row => ({ itemId: row.itemId, definitionId: row.definitionId, tradeId: row.tradeId,
         purchasePrice: row.price, operationId: record.operationId }));
     const result = await store.ingest(env.scope, receipts); env.assert(); return result;

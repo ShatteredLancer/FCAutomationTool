@@ -4,6 +4,12 @@ import { observePageUi } from './navigation.mjs';
 // Open only the sellable-card preview. Never press the listing, resume or
 // scheduling actions. The existing helper returns to the selected category.
 export async function verifyGalleryListingPreview(context, page, setName, { readGallery, installCurrent = true }) {
+  if (setName === '--plan-state') return panelCall(context, page, function () {
+    return { runtimeVersion: this.host.dataset.version, activeTab: this.host.dataset.activeTab,
+      detail: this.getElementById('gallery-set-detail')?.textContent?.slice(0, 16000),
+      planningControls: [...this.querySelectorAll('#gallery-set-detail .gallery-plan button')]
+        .map(node => ({ text: node.textContent, disabled: node.disabled })) };
+  });
   if (['--read-contracts', '--probe-reads'].includes(setName)) {
     const { probeGalleryListingReads } = await import(`./gallery-listing-read-probe.mjs?revision=${Date.now()}`);
     return probeGalleryListingReads(page, { readClub: setName === '--probe-reads' });
@@ -25,6 +31,15 @@ export async function verifyGalleryListingPreview(context, page, setName, { read
     await openProductionPanel(context, page);
     runtimeVersion = await panelCall(context, page, function () { return this.host.dataset.version; });
     if (runtimeVersion !== installation.version) return { status: 'blocked', reason: 'FC27_GALLERY_RUNTIME_VERSION_UNVERIFIED', executable: false, installation };
+  }
+  if (setName.startsWith('--plan-only=')) {
+    const { verifyGalleryPlanning } = await import(`./gallery-planning-verification.mjs?revision=${Date.now()}`);
+    return { ...await verifyGalleryPlanning(context, page, setName.slice(12).replaceAll('_', ' '),
+      { readGallery, targetGrade: 'S', planOnly: true }), installation, runtimeVersion };
+  }
+  if (setName === '--trade-styles') {
+    const { verifyGalleryTradeStyles } = await import(`./gallery-trade-styles-verification.mjs?revision=${Date.now()}`);
+    return { ...await verifyGalleryTradeStyles(context, page, { readGallery }), installation, runtimeVersion };
   }
   const purchased = setName === '--purchased';
   if (purchased) {
@@ -67,19 +82,23 @@ export async function verifyGalleryListingPreview(context, page, setName, { read
   await clickPanelControl(context, page, '#gallery-list-purchased');
   try {
     const result = await waitForPanel(context, page, function () {
-      const dialog = this.getElementById('gallery-bulk-list-dialog');
-      const close = dialog?.querySelector('button[aria-label="关闭"]');
+      const fodder = this.getElementById('gallery-fodder-list-dialog');
+      const dialog = fodder?.open ? fodder : this.getElementById('gallery-bulk-list-dialog');
+      const close = fodder?.open ? [...dialog.querySelectorAll('footer button')].find(node => /Cancel Esc|Close Esc/.test(node.textContent))
+        : dialog?.querySelector('button[aria-label="关闭"]');
       if (!dialog?.open || !close || close.disabled) return null;
       const status = [...dialog.querySelectorAll('output')].map(node => node.textContent).join(' · ');
       const costs = [...dialog.querySelectorAll('tbody tr')].map(row => row.children[4]?.textContent?.trim());
       return { status: /FC27_|失败|不完整/.test(status) ? 'blocked' : 'observed', executable: false,
-        rows: dialog.querySelectorAll('tbody tr').length, text: status.slice(0, 1200),
+        rows: dialog.querySelectorAll(fodder?.open ? '.fd-row:not(.fd-head)' : 'tbody tr').length, text: status.slice(0, 1200),
         purchaseCosts: { priced: costs.filter(value => /^\d+$/.test(value)).length,
           firstOwner: costs.filter(value => value === 'N/A').length, unknown: costs.filter(value => value === '未知').length },
         scheduleVisible: [...dialog.querySelectorAll('input[type="datetime-local"]')].some(node => node.checkVisibility()) };
     }, [], 120000);
     return { ...result, ...(installation ? { installation, runtimeVersion, toolbar } : {}) };
   } finally {
-    await clickPanelControl(context, page, '#gallery-bulk-list-dialog button[aria-label="关闭"]').catch(() => {});
+    await panelCall(context, page, function () {
+      for (const id of ['gallery-bulk-list-dialog','gallery-fodder-list-dialog']) this.getElementById(id)?.close();
+    }).catch(() => {});
   }
 }

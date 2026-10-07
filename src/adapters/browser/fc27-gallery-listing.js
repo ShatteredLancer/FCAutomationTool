@@ -1,5 +1,6 @@
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { createEaInventoryAdapter } from '../ea/inventory.js';
+import { planFodderListings } from '../../gallery/fodder-trade-options.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
 import { traditionalJournalScope, isTerminalTraditionalJournal } from '../../fc27/traditional-journal.js';
@@ -293,7 +294,11 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
             throw stageError('FC27_GALLERY_TRANSFER_UNCONFIRMED', 'transfer-refresh', refreshed);
           }
           void stage({ phase: 'transfer-refresh', status: 'success' });
-          const refs = setSource ? await env.inventory.scan(target) : source.entries.map(row => ({ id: row.itemId, definitionId: row.definitionId, pile: 'club' }));
+          if (setSource || source.entries.some(row => row.pile === 'unassigned')) {
+            const fresh = await env.adapter.refreshPurchaseState({ destination: 'unassigned' }); env.assertCurrent();
+            if (fresh?.status !== 'completed') fail('FC27_GALLERY_UNASSIGNED_UNCONFIRMED');
+          }
+          const refs = setSource ? await env.inventory.scan(target) : source.entries.map(row => ({ id: row.itemId, definitionId: row.definitionId, pile: row.pile ?? 'club' }));
           env.assertCurrent();
           const items = refs.flatMap(ref => {
             const seen = env.adapter.inspectListingItem(ref);
@@ -307,7 +312,7 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
           const limitsByItem = projected.entries.length
             ? await readPriceLimits(root, projected.entries.map(candidate => candidate.item), env.assertCurrent) : {};
           const candidates = [];
-          const displayItems = new Map(['club', 'transfer'].flatMap(pile => createEaInventoryAdapter(root).readPile(pile)).map(item => [Number(item?.id), item]));
+          const displayItems = new Map(['club', 'unassigned', 'transfer'].flatMap(pile => createEaInventoryAdapter(root).readPile(pile)).map(item => [Number(item?.id), item]));
           if (setSource) for (const ref of refs) {
             const item = env.inventory.resolve(ref)?.item;
             if (item) displayItems.set(ref.id, item);
@@ -357,7 +362,8 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
           const tiers = root.UTCurrencyInputControl?.PRICE_TIERS;
           prepared = { context: env.context, scope: env.scope, binding, setSource, inventory: env.inventory,
             candidates, limitsByItem, marketPrices: prices, priceTiers: tiers ? Array.from(tiers, t => ({ min: t.min, inc: t.inc })) : null,
-            expiresAt: quotes?.expiresAt ?? 0, listingPriceSource };
+            expiresAt: quotes?.expiresAt ?? 0, listingPriceSource,
+            quoteExpiresAt: Object.fromEntries(candidates.map(row => [row.item.definitionId, quotes?.expiresAt ?? 0])) };
           return { status: 'ready', source: sourceLabel, listingPriceSource, pricesBySource, ...(setSource ? { listingScope: setSource } : {}),
             requestedSources: quotes?.requestedSources ?? ['futgg'], candidates: structuredClone(candidates), skipped: projected.skipped,
             prices: structuredClone(prices), priceTiers: prepared.priceTiers,
@@ -379,6 +385,41 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
       planned = result?.status === 'observed' ? structuredClone(result) : null;
       return result;
     },
+    planFodder(options) {
+      if (!prepared || !same(prepared.context, readFc27Context(root))) return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' };
+      planned = planFodderListings({ ...options, candidates: prepared.candidates, prices: prepared.marketPrices,
+        priceTiers: prepared.priceTiers, limitsByItem: prepared.limitsByItem, quoteExpiresAt: prepared.quoteExpiresAt,
+        quoteExpired: prepared.expiresAt <= Date.now() });
+      return structuredClone(planned);
+    },
+    async refreshQuotes({ isCurrent = () => true, definitionIds = null } = {}) {
+      if (busy || !prepared) return { status: 'blocked', reason: 'FC27_GALLERY_LISTING_BUSY' };
+      const previous = prepared; busy = true; stopped = false;
+      try {
+      const ids = [...new Set(previous.candidates.map(row => row.item.definitionId))].filter(id => !definitionIds || definitionIds.includes(id));
+      if (!ids.length) return { prices: structuredClone(previous.marketPrices), expiresAt: previous.expiresAt };
+      const quotes = await loadPrices(ids, { force: true, isCurrent: () => isCurrent() && !stopped });
+      if (!isCurrent() || prepared !== previous || !same(previous.context, readFc27Context(root))) fail('FC27_GALLERY_CONTEXT_CHANGED');
+      if (stopped) fail('FC27_GALLERY_BULK_LIST_STOPPED');
+      if (quotes.listingPriceSource && quotes.listingPriceSource !== previous.listingPriceSource) fail('FC27_GALLERY_LISTING_PLAN_CHANGED');
+      const merged = { ...previous.marketPrices };
+      for (const id of ids) {
+        delete merged[id]; if (quotes.freshPrices?.[id] > 0) merged[id] = quotes.freshPrices[id];
+        prepared.quoteExpiresAt[id] = quotes.expiresAt ?? 0;
+      }
+      prepared.marketPrices = merged;
+      prepared.expiresAt = ids.length === new Set(previous.candidates.map(row => row.item.definitionId)).size
+        ? quotes.expiresAt : Math.min(previous.expiresAt, quotes.expiresAt); planned = null;
+      return { prices: structuredClone(prepared.marketPrices), expiresAt: prepared.expiresAt };
+      } finally { busy = false; }
+    },
+    planTransfer({ selectedIds }) {
+      if (!prepared || !same(prepared.context, readFc27Context(root))) return { status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' };
+      const ids = new Set(selectedIds);
+      planned = { status: 'observed', entries: prepared.candidates.filter(row => ids.has(row.item.id))
+        .map(row => ({ ...row, action: 'transfer', startPrice: null, buyNow: null, durationSeconds: null })), skipped: [] };
+      return structuredClone(planned);
+    },
     async execute({ approved, plan, settings, resume = false, expectedRunId, isCurrent, onProgress } = {}) {
       if (!approved || !liveEnabled || typeof isCurrent !== 'function') return { status: 'blocked', reason: 'FC27_GALLERY_LISTING_APPROVAL_REQUIRED' };
       if (busy) return { status: 'blocked', reason: 'FC27_GALLERY_LISTING_BUSY' };
@@ -393,13 +434,17 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
         if (resume && setSource) for (const entry of old.entries ?? []) {
           if (entry.status === 'pending') await env.inventory.hydrate(entry.item);
         }
+        if (resume && old.entries?.some(entry => entry.status === 'pending' && entry.item.pile === 'unassigned')) {
+          const refreshed = await env.adapter.refreshPurchaseState({ destination: 'unassigned' }); env.assertCurrent();
+          if (refreshed?.status !== 'completed') fail('FC27_GALLERY_UNASSIGNED_UNCONFIRMED');
+        }
         const circuit = await readCircuit(get, env.scope);
         if (circuit.persistent) fail('FC27_GALLERY_LISTING_CIRCUIT_OPEN');
         if (circuit.retryAt > Date.now()) fail('FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN');
         if (!resume && (!prepared || !same(prepared.context, env.context) || plan?.status !== 'observed'
           || !planned || !same(plan, planned)
           || !plan.entries?.length || plan.entries.some(e => !prepared.candidates.some(c => same(c.item, e.item) && same(c.purchase, e.purchase))))) fail('FC27_GALLERY_LISTING_PLAN_CHANGED');
-        if (!resume && prepared.expiresAt <= Date.now() && plan.entries.some(e => e.priceOrigin === 'market')) {
+        if (!resume && plan.entries.some(e => e.priceOrigin === 'market' && (e.quoteExpiresAt ?? prepared.expiresAt) <= Date.now())) {
           fail('FC27_GALLERY_LISTING_QUOTE_EXPIRED');
         }
         const result = await env.session.execute({ approved, entries: plan?.entries, binding: prepared?.binding, source: setSource ?? undefined,
@@ -409,11 +454,11 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
         const rejectedCount = entries.filter(entry => entry.status === 'rejected').length;
         const skippedCount = entries.filter(entry => entry.status === 'skipped').length;
         const unknownCount = entries.filter(entry => ['list-pending', 'unknown'].includes(entry.status)).length;
-        if (accounting && acceptedCount) {
+        if (accounting && entries.some(entry => entry.status === 'accepted' && entry.action !== 'transfer')) {
           // Set mode includes cards that were never bought by FCAT. Update
           // existing exact cost rows only; unknown cost must not become zero.
           const ledger = setSource ? await accounting.inspect() : null;
-          const receipts = entries.filter(entry => entry.status === 'accepted' && (!setSource
+          const receipts = entries.filter(entry => entry.status === 'accepted' && entry.action !== 'transfer' && (!setSource
             || ledger?.ledger?.entries?.some(row => row.itemId === entry.item.id && row.definitionId === entry.item.definitionId)));
           const accountingResult = ledger?.status === 'blocked' ? ledger
             : receipts.length ? await accounting.recordListings(receipts) : { status: 'observed' };

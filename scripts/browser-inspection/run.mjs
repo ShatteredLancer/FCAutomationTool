@@ -97,6 +97,8 @@ if (help) {
       await exercisePuzzleBuyButton(context, root);
       const { exercisePurchaseResults } = await import('./purchase-results-smoke.mjs');
       await exercisePurchaseResults(context, root);
+      const { exerciseGalleryTradeStyles } = await import('./gallery-trade-styles-smoke.mjs');
+      await exerciseGalleryTradeStyles(context, out);
       const { exerciseGalleryCatalog } = await import('./gallery-catalog-smoke.mjs');
       await exerciseGalleryCatalog(context, out);
       const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');

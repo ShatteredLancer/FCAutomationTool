@@ -9,7 +9,7 @@ const messages = {
   FC27_PUBLIC_PRICE_FUTBIN_DISABLED: 'FUTBIN 读取已关闭；原批次仍采用 FUTBIN，请重新开启读取或重新生成 FUT.GG 方案。',
   FC27_PUBLIC_PRICE_FUTGG_DISABLED: 'FUT.GG 读取已关闭；当前批次的价格授权不变，请重新启用该来源或生成新方案。',
 };
-const recovered = row => ['club', 'collected'].includes(row.state);
+const recovered = row => ['club', 'unassigned', 'collected'].includes(row.state);
 const uncertain = row => ['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(row.state);
 const failed = row => row.state === 'waiting' && row.attempt?.failed === true;
 const amount = n => Number.isFinite(n) ? n.toLocaleString() : '未知';
@@ -84,7 +84,7 @@ export function mountFc27PurchaseResults({ document, parent, refreshPrices, retr
     }
     const active = running && outcome?.definitionId === row.definitionId;
     const inFlight = { 'buy-pending': '买入中', bought: '已买入，待入库', 'move-pending': '入库中', 'move-rejected': '入库失败，保留回执' };
-    const state = recovered(row) ? '已完成' : uncertain(row) ? running ? inFlight[row.state] : '回执待核对，不能重买'
+    const state = recovered(row) ? row.state === 'unassigned' ? 'Unassigned' : '已完成' : uncertain(row) ? running ? inFlight[row.state] : '回执待核对，不能重买'
       : failed(row) ? '未买到' : active ? '正在查价' : '待处理';
     let name = row.name;
     if (!name && readPlayerName) { try { name = readPlayerName(row.definitionId); } catch { /* Display-only local lookup. */ } }

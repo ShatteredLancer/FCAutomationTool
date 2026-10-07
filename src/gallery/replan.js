@@ -17,7 +17,7 @@ export function isGalleryPurchaseReplanSafe(outcome = {}) {
   const resultIds = new Set();
   for (const result of outcome.results) {
     if (!validId(result?.definitionId) || resultIds.has(result.definitionId)
-        || !['waiting', 'club', 'collected'].includes(result.state)) return false;
+        || !['waiting', 'club', 'unassigned', 'collected'].includes(result.state)) return false;
     resultIds.add(result.definitionId);
   }
   return outcome.failures.every(failure => resultIds.has(failure.definitionId)
@@ -37,7 +37,7 @@ export function projectGalleryPurchaseProgress({ progress, items = [], outcome }
     return { status: 'blocked', reason: 'purchase-recovery-required', progress: null, acquiredIds: [] };
   }
   const allowed = new Set(items.map(item => item?.eaId ?? item?.definitionId).filter(validId));
-  const acquired = new Set(outcome.results.filter(result => ['club', 'collected'].includes(result.state))
+  const acquired = new Set(outcome.results.filter(result => ['club', 'unassigned', 'collected'].includes(result.state))
     .map(result => result.definitionId));
   if ([...acquired].some(id => !allowed.has(id))) {
     return { status: 'blocked', reason: 'purchase-result-mismatch', progress: null, acquiredIds: [] };
