@@ -9,7 +9,7 @@ import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
 import { reconcileGalleryTargets } from '../../gallery/targets.js';
 import { browseGallerySets } from '../../gallery/browse.js';
 import { filterGalleryCards, paginateGalleryCards, reconcileGallerySelection, selectCheapestGalleryCards, summarizeGallerySelection } from '../../gallery/selection.js';
-import { previewGallerySelectionSteps, planGalleryGradeOverviewSteps } from '../../gallery/preview.js';
+import { previewGallerySelectionSteps, runGalleryGradeOverview } from '../../gallery/preview.js';
 import { benchmarkGalleryPlans, planGallerySequentialSteps } from '../../gallery/benchmark.js';
 import { planGalleryRemainderSteps, isGalleryPurchaseReplanSafe, replanableGalleryFailures } from '../../gallery/replan.js';
 import { isGalleryOwned } from '../../gallery/planner.js';
@@ -20,6 +20,7 @@ import { mountFc27FodderBuyView } from './fc27-fodder-buy-view.js';
 import { priceGalleryPlanningTargets } from '../../gallery/planning-prices.js';
 import { mountFc27PurchaseResults } from './fc27-purchase-results.js';
 import { updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
+import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from '../../gallery/planning-settings.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -74,10 +75,19 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, loadPlanningPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null,
+  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null, planningSettings = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
+  const planningTimeout = async (current, output) => {
+    if (!planningSettings) return DEFAULT_GALLERY_PLANNING_TIMEOUT_MS;
+    try {
+      const expected = accountScope(), value = await planningSettings.read();
+      if (!current()) return null;
+      if (planningSettings.scope() !== expected) throw Error('FC27_GALLERY_CONTEXT_CHANGED');
+      return value.timeoutMs;
+    } catch { if (current() && output?.isConnected) output.textContent = '方案计算设置读取失败，请在 Settings 中重试。'; return null; }
+  };
   const categoryIconSelections = new Map();
   const enhancerList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
   let fodderList = null, fodderBuy = null, openingTrade = false;
@@ -353,10 +363,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     void (async () => {
       const targets = loadPlanningPrices ? await priceGalleryPlanningTargets(input.targets, { load: loadPlanningPrices, current,
         onProgress: state => { message.textContent = `读取 ${state.source} 报价 ${state.index}/${state.total}`; } }) : input.targets;
+      const maxMs = await planningTimeout(current, message);
+      if (maxMs == null) return null;
       const steps = planGalleryRemainderSteps({ targets, outcome: input.outcome,
         ledger: input.ledger, budget: input.budget, mode: input.mode ?? (targets.length === 1 ? 'single' : 'joint') });
       return runGalleryPlan(steps, {
       current,
+      maxMs,
       progress: state => { message.textContent = state.scoringWork ? `正在计分… ${count(state.scoringWork)} 次评估` : `正在重算… ${state.evaluations} 个候选`; },
       });
     })().then(plan => {
@@ -748,7 +761,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         add(output, 'small', '目录奖励预估 · 领取状态未知。', 'gallery-unknown');
         return;
       }
-      const reasons = { 'search-time-exhausted': '计算时间预算已用完，尚不能确认无解；可降低目标等级再试', 'search-budget-exhausted': '搜索预算耗尽，尚不能确认无解',
+      const reasons = { 'search-time-exhausted': '本次计算达到时间上限，尚不能确认无解；可在 Settings 增加时间上限后重试', 'search-budget-exhausted': '搜索预算耗尽，尚不能确认无解',
         'candidate-search-truncated': '候选范围未完整搜索，尚不能确认无解',
         'beam-search-truncated': '有界搜索未找到方案，尚不能确认无解',
         'score-selection-bounded': '计分选队使用有界搜索，尚不能确认无解',
@@ -813,10 +826,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       cancel.addEventListener('click', () => { planningEpoch++; output.replaceChildren(); add(output, 'small', '计算已取消'); });
       try {
       await priceForPlan(value, set, current, output);
+      const maxMs = await planningTimeout(current, output);
+      if (maxMs == null) return;
       const binding = planBinding(value, set);
       const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
         const plan = gradePlanner === planGalleryGrade
-          ? await runGalleryPlan(planGalleryGradeSteps(input), { current,
+          ? await runGalleryPlan(planGalleryGradeSteps(input), { current, maxMs,
             progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } })
           : await gradePlanner(input);
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
@@ -854,10 +869,24 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       activePlans++;
       try {
         await priceForPlan(value, set, current, overview);
+        const maxMs = await planningTimeout(current, overview);
+        if (maxMs == null) return;
         const binding = planBinding(value, set);
-        const plan = await runGalleryPlan(planGalleryGradeOverviewSteps({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }), {
-          current: () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && overview.isConnected,
-          maxMs: 8000, progress: state => { overview.textContent = `正在计算各档费用… ${state.completed}/${state.total}`; },
+        const isCurrent = () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && overview.isConnected;
+        const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
+          current: isCurrent, timeoutMs: maxMs,
+          progress: state => { overview.textContent = `正在计算各档费用… ${state.completed}/${state.total}`; },
+          runGrade: async ({ steps, grade, index, total, timeoutMs }) => {
+            const started = performance.now();
+            const labelProgress = state => {
+              const elapsed = Math.min(timeoutMs, Math.floor(performance.now() - started));
+              const detail = state.scoringWork ? ` · 计分 ${count(state.scoringWork)} 次` : ` · ${count(state.evaluations)} 个候选`;
+              overview.textContent = `正在计算各档费用… ${index + 1}/${total} · ${grade.name} 档 ${Math.floor(elapsed / 1000)}/${Math.ceil(timeoutMs / 1000)} 秒${detail}`;
+            };
+            labelProgress({ evaluations: 0 });
+            const result = await runGalleryPlan(steps, { current: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+            return result ? { ...result, elapsedMs: Math.floor(performance.now() - started) } : result;
+          },
         });
         if (plan && token === planningEpoch) {
           if (plan.status === 'observed' || plan.status === 'partial') {
@@ -1111,7 +1140,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (plan.status === 'achieved' && rewardEstimate) { add(output, 'p', '所选目录奖励已达当前目录上限，无需补卡。领取状态未确认。'); return; }
     if (plan.status === 'achieved') { add(output, 'p', '当前联合目标已达到，无需补卡。'); return; }
     if (plan.status !== 'ready') {
-      const messages = { 'search-time-exhausted': '计算时间预算已用完，尚不能确认无解；可缩小目标范围再试', 'target-state-unknown': '集合状态待更新', 'price-unknown': '缺少有效报价，预算方案尚未确定',
+      const messages = { 'search-time-exhausted': '本次计算达到时间上限，尚不能确认无解；可在 Settings 增加时间上限后重试', 'target-state-unknown': '集合状态待更新', 'price-unknown': '缺少有效报价，预算方案尚未确定',
         'search-budget-exhausted': '搜索预算耗尽，尚不能确认无解', 'candidate-search-truncated': '候选范围不完整，尚不能确认无解',
         'beam-search-truncated': '有界搜索未找到方案，尚不能确认无解', 'score-selection-bounded': '计分选队尚未穷尽，尚不能确认无解',
         'score-conditions-unknown': '部分计分属性待核实', 'collection-status-unknown': '已确认材料尚未找到方案，未知收集卡排除后不能确认无解', 'budget-unreachable': '当前预算不足',
@@ -1144,8 +1173,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           benchmark.disabled = true; comparison.textContent = '计算逐集合基准…';
           const token = ++planningEpoch;
           try {
+            const maxMs = await planningTimeout(() => active && !disposed && token === planningEpoch && identity === scope() && comparison.isConnected, comparison);
+            if (maxMs == null) return;
             const baseline = await runGalleryPlan(planGallerySequentialSteps({ targets: frozen }), {
               current: () => active && !disposed && token === planningEpoch && identity === scope() && comparison.isConnected,
+              maxMs,
             });
             if (!baseline) return;
             const value = baseline.status === 'observed' ? benchmarkGalleryPlans({ jointPlan: planRow, individualPlans: baseline.plans }) : baseline;
@@ -1216,6 +1248,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const cancel = add(node('gallery-joint-controls') ?? button.parentElement, 'button', '取消');
     cancel.addEventListener('click', () => { planningEpoch++; output.textContent = '计算已取消'; });
     try {
+      const maxMs = await planningTimeout(current, output);
+      if (maxMs == null) return;
       if (loadPlanningPrices) {
         const priced = await priceGalleryPlanningTargets(targets, { load: loadPlanningPrices, current,
           onProgress: state => { output.textContent = `读取 ${state.source} 报价 ${state.index}/${state.total}`; } });
@@ -1248,7 +1282,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         }
       }
       void diag({ event: 'joint-plan', phase: 'planner', status: 'started', count: targets.length });
-      const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget, catalogRewardKey }), { current,
+      const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget, catalogRewardKey }), { current, maxMs,
         progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } });
       if (plan) void diag({ event: 'joint-plan', phase: 'planner', status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
         replayInput: { targets, budget, catalogRewardKey },

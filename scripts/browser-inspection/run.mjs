@@ -117,6 +117,8 @@ if (help) {
       await exerciseGalleryInspection(context);
       const { exerciseGalleryAccounting } = await import('./gallery-accounting-smoke.mjs');
       await exerciseGalleryAccounting(context, root, out);
+      const { exerciseGalleryPlanningSettings } = await import('./gallery-planning-settings-smoke.mjs');
+      await exerciseGalleryPlanningSettings(context);
     } else if (agent) {
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       await runAgentSession({ context, terminal, root, withExtensions });

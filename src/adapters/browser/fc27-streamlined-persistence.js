@@ -56,5 +56,5 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
     completion.then(() => acquired(null), denied);
     return ready;
   } });
-  return Object.freeze({ journal, lock, inspect: exclusive.inspect });
+  return Object.freeze({ journal, lock, inspect: exclusive.inspect, assertHeld });
 }

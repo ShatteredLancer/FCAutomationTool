@@ -1,9 +1,11 @@
+import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from './planning-settings.js';
+
 // Preserve the planner's evaluation sequence while yielding to the browser.
 // A deadline asks the generator to finish with its best partial candidates;
 // invalidation discards the computation instead of publishing stale results.
 export async function runGalleryPlan(steps, { current = () => true, progress = () => {},
   now = () => performance.now(), schedule = () => new Promise(resolve => setTimeout(resolve, 0)),
-  sliceMs = 12, maxMs = 10000 } = {}) {
+  sliceMs = 12, maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } = {}) {
   const started = now(); let slice = started, finish = false;
   try {
     for (;;) {

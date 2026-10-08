@@ -27,6 +27,7 @@ export async function exerciseGalleryReplan(context, directory) {
         const attach = globalThis.Element.prototype.attachShadow;
         globalThis.Element.prototype.attachShadow = function (options) { return attach.call(this, { ...options, mode: 'open' }); };
         globalThis.replanScope = 'fixture-a'; globalThis.replanPurchases = []; globalThis.replanReads = 0;
+        globalThis.replanPlanningSettingsReads = 0;
         globalThis.replanDiagnostics = [];
         globalThis.publicPlanningCalls = [];
         const records = new Map(); globalThis.quoteDelta = 0;
@@ -55,6 +56,9 @@ export async function exerciseGalleryReplan(context, directory) {
           ? { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_JOURNAL_READ_FAILED' } : { status: 'absent' };
         globalThis.mountReplanPanel = () => { globalThis.replanPanel = globalThis.GalleryReplanSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
           hostId: 'gallery-replan-test', targets: () => [], galleryAccountScope: () => globalThis.replanScope,
+          galleryPlanningSettings: { scope: () => globalThis.replanScope, read: async () => {
+            globalThis.replanPlanningSettingsReads++; return { timeoutMs: 60000 };
+          } },
           purchaseGallery: purchase,
           galleryPlanningPrices: mode !== 'public' ? null : async (ids, options) => {
             globalThis.publicPlanningCalls.push(ids);

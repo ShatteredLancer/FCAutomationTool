@@ -28,7 +28,7 @@ it('reads exact native score, scope and source without a network request or Puzz
   expect(locateFc27StreamlinedPage(f.root)?.challengeId).toBe(61);
   const input = readFc27StreamlinedInputs(f.root);
   expect(input.challenge).toMatchObject({ targetScore: 2500, selectionLimit: 30, repeats: 1 });
-  expect(input.policy.maxRating).toBe(90);
+  expect(input.policy.maxRating).toBe(99);
   expect(input.inventory[0]).toMatchObject({ points: 20, scoreVerified: true, price: null, loans: -1, special: false });
   expect(input.eligibility.matches(input.inventory[0]).status).toBe('eligible');
   expect(input.resolveDisplayItem(input.inventory[0])).toBe(f.root.repositories.Item.club.items._collection[1]);
@@ -36,6 +36,42 @@ it('reads exact native score, scope and source without a network request or Puzz
   input.assertCurrent(); expect(f.calls).toEqual([]);
   f.challenge.submittedScore = 20;
   expect(input.assertCurrent).toThrow('CONTEXT_CHANGED');
+});
+
+it('does not apply the FSU golden range as a hidden Streamlined rating ceiling', () => {
+  const f = runtime();
+  f.root.info.set.goldenrange = 82;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.policy.maxRating).toBe(99);
+  expect(input.policy.goldRange).toEqual([75, 82]);
+});
+it('projects the EA static card name before falling back to a version identifier', () => {
+  const f = runtime();
+  const first = f.root.repositories.Item.club.items._collection[1];
+  first._staticData = { knownAs: 'Ada Lovelace', firstName: 'Ada', lastName: 'Lovelace', name: 'Static Name' };
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('Ada Lovelace');
+  delete first._staticData.knownAs;
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('Ada Lovelace');
+  delete first._staticData.firstName;
+  delete first._staticData.lastName;
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('Static Name');
+  delete first._staticData.name;
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBeNull();
+});
+it('skips native placeholder names and uses the already loaded static identity', () => {
+  const f = runtime();
+  const first = f.root.repositories.Item.club.items._collection[1];
+  first.displayName = '';
+  first._staticData = { knownAs: '---', firstName: 'Denzel', lastName: 'Dumfries', name: 'Dumfries' };
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('Denzel Dumfries');
+  first.displayName = ' --- ';
+  first._staticData.knownAs = 'João Cancelo';
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('João Cancelo');
+  first._staticData = { knownAs: '---', firstName: '---', lastName: '---', name: 'Dumfries' };
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBe('Dumfries');
+  first._staticData.name = '---';
+  expect(readFc27StreamlinedInputs(f.root).inventory[0].name).toBeNull();
+  expect(f.calls).toEqual([]);
 });
 it('rejects unrelated screens, invalid rules, missing point accessors and account changes', () => {
   const f = runtime(), input = readFc27StreamlinedInputs(f.root);

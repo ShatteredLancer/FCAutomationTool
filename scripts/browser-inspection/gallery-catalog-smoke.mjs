@@ -310,6 +310,8 @@ export async function exerciseGalleryCatalog(context, directory) {
     await page.evaluate(({ catalog, progress }) => {
       globalThis.planningCalls = 0;
       globalThis.compareCalls = 0;
+      globalThis.planningSettingsReads = 0;
+      globalThis.planningSettingsBroken = false;
       globalThis.planningDetail = { status: 'observed', scope: globalThis.galleryScope, progress,
         prices: { 900003: 200 }, priceError: 'HTTP 429', priceSnapshot: {
           prices: { 900003: 200 }, freshPrices: {}, stale: true, staleIds: [900003],
@@ -317,6 +319,11 @@ export async function exerciseGalleryCatalog(context, directory) {
         } };
       globalThis.planningPanel = globalThis.GallerySmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'gallery-plan-test', targets: () => [], galleryAccountScope: () => globalThis.galleryScope,
+        galleryPlanningSettings: { scope: () => globalThis.galleryScope, read: async () => {
+          globalThis.planningSettingsReads++;
+          if (globalThis.planningSettingsBroken) throw Error('fixture-read-failed');
+          return { timeoutMs: 5000 };
+        } },
         galleryCatalog: { peek: async () => null, load: async () => ({ status: 'observed', source: 'futgg', catalog }) },
         gallerySetLoader: async () => { globalThis.planningCalls++; return globalThis.planningDetail; },
         galleryMarketCompare: async () => {
@@ -338,6 +345,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await planningHost.locator('[data-price-state="snapshot"]').count(), 1);
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /报价未知/);
+    assert.equal(await page.evaluate(() => globalThis.planningSettingsReads), 1, 'new plans read the account deadline once');
     await planningHost.locator('.gallery-plan-output summary').first().click();
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /1 张卡缺少报价/);
     // A fresh quote that expires while the detail remains open cannot leak
@@ -379,12 +387,14 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await planningHost.locator('.gallery-plan-output').innerText(), planBeforeCompare);
     assert.equal(await page.evaluate(() => globalThis.compareCalls), 2);
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
+    const deadlineReads = await page.evaluate(() => globalThis.planningSettingsReads);
     await planningHost.getByRole('button', { name: '各档费用', exact: true }).click();
     await planningHost.locator('.gallery-grade-overview-row').nth(4).waitFor();
     const rewardRows = await planningHost.locator('.gallery-grade-overview-row').allTextContents();
     assert.ok(rewardRows.every(text => text.includes('本档：') && text.includes('累计：')));
     assert.match(rewardRows[0], /Club Badge ×1/);
     assert.match(rewardRows[4], /Gallery Tokens ×100/);
+    assert.equal(await page.evaluate(() => globalThis.planningSettingsReads), deadlineReads + 1, 'overview freezes one account timeout for all grades');
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2, 'reward display adds no account reads');
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 800 });
@@ -405,10 +415,14 @@ export async function exerciseGalleryCatalog(context, directory) {
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
     await page.waitForFunction(() => !globalThis.document.querySelector('#gallery-plan-test').shadowRoot
       .querySelector('.gallery-plan button').disabled, null, { timeout: 20000 });
-    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /(?:搜索预算耗尽|计算时间预算已用完|有界搜索未找到方案)，尚不能确认无解/);
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /(?:搜索预算耗尽|本次计算达到时间上限|有界搜索未找到方案)，尚不能确认无解/);
     assert.ok(await page.evaluate(() => { globalThis.clearInterval(globalThis.planningHeartbeatTimer);
       return globalThis.planningHeartbeats > 1; }), 'planning yields to browser heartbeat');
     assert.equal(await page.evaluate(() => globalThis.planningCalls), 2);
+    await page.evaluate(() => { globalThis.planningSettingsBroken = true; });
+    await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
+    assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /方案计算设置读取失败/);
+    await page.evaluate(() => { globalThis.planningSettingsBroken = false; });
     await planningHost.getByRole('button', { name: '返回集合', exact: true }).click();
     await page.evaluate(() => {
       globalThis.planningDetail.status = 'blocked'; globalThis.planningDetail.reason = 'FC27_GALLERY_HTTP_401';

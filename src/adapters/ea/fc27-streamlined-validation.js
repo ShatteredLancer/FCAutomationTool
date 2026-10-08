@@ -10,7 +10,7 @@ import { integer, same, fail } from '../../streamlined/contract.js';
 // Fresh, selected-material read only. No shared cache updates or contribution.
 export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
   createTransport = createFc27ClubReadTransport, createStorage = createFc27StreamlinedStorageReader,
-  readProgress = null, nativeReauth = false } = {}) {
+  readProgress = null, nativeReauth = false, purchaseVerifier = null } = {}) {
   let busy = false;
   return Object.freeze({ async verify(plan, batch, submittedScore, { onProgress = () => {}, stopped = () => false } = {}) {
     if (busy) fail('BUSY');
@@ -42,7 +42,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         if (!same(challenge, fresh ? pageChallenge : expectedChallenge)
             || fresh && now() - fresh.observedAt > 15000) fail('PROGRESS_CHANGED');
         if (challenge.endTime > 0 && challenge.endTime * 1000 <= now()) fail('CHALLENGE_EXPIRED');
-        if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating), plan.policy)) fail('POLICY_CHANGED');
+        if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail('POLICY_CHANGED');
       };
       check();
       const entities = new Map();
@@ -99,14 +99,30 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
       }
       check();
       const items = batch.refs.map(ref => projectFc27StreamlinedItem(entities.get(ref.id), root, ref.pile));
-      const filtered = filterStreamlinedItems(items, { policy: plan.policy,
-        eligibility: createFc27StreamlinedMatcher(root, plan.challenge, entities) });
+      const eligibility = createFc27StreamlinedMatcher(root, plan.challenge, entities);
+      // Check identity across the entire batch before any receipt-scoped exception.
+      const filtered = filterStreamlinedItems(items, { policy: plan.policy, eligibility });
+      if (filtered.status !== 'observed') fail('MATERIAL_CHANGED');
+      const accepted = new Set(filtered.items.map(item => item.key));
+      for (let index = 0; index < items.length; index++) {
+        const proof = plan.batches[batch.index][index]?.purchaseReceipt;
+        if (!proof) continue;
+        if (proof.itemId !== items[index]?.id || proof.definitionId !== items[index]?.definitionId
+            || typeof purchaseVerifier !== 'function' || await purchaseVerifier(items[index], proof, plan) !== true) fail('PURCHASE_RECEIPT_UNVERIFIED');
+        // Only this exact verified purchase bypasses stock range/untradeable
+        // restrictions. Preserve real rating and every other material fact.
+        const checked = filterStreamlinedItems([items[index]], {
+          policy: { ...plan.policy, maxRating: plan.policy.marketMaxRating ?? plan.policy.maxRating,
+            goldRange: [75, 99], onlyUntradeable: false }, eligibility });
+        if (checked.status !== 'observed' || checked.items.length !== 1) fail('MATERIAL_CHANGED');
+        accepted.add(items[index].key);
+      }
       // Price/name changes do not affect material identity, but a changed rating,
       // league, score or protection flag invalidates the frozen selection.
       const facts = item => Object.fromEntries(['id', 'definitionId', 'points', 'scoreVerified', 'pile',
         'rating', 'leagueId', 'loans', 'tradeable', 'special', 'concept', 'evolution', 'cosmetic',
         'academyEnrolled', 'activeTrade', 'limitedUse', 'locked', 'activeSquad', 'protected'].map(key => [key, item[key]]));
-      if (filtered.status !== 'observed' || filtered.items.length !== items.length
+      if (accepted.size !== items.length
           || items.some((item, index) => !same(facts(item), facts(plan.batches[batch.index][index])))) fail('MATERIAL_CHANGED');
       check();
       return { fresh: true, observedAt: now(), count: items.length, points: items.reduce((sum, item) => sum + item.points, 0),

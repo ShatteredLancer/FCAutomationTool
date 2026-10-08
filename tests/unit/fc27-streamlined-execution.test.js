@@ -6,6 +6,7 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { puzzleBuyPendingKey, puzzleBuyKey } from '../../src/fc27/puzzle-buy-session.js';
 import { galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js';
+import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.js';
 
 it('keeps unresolved purchases and malformed traditional records visible before any contribution', async () => {
   const f = streamlinedRuntime(), scope = traditionalJournalScope(f.plan.context);
@@ -130,4 +131,38 @@ it('recovers a mixed-pile contribution after the final checkpoint fails without 
   expect((await restarted.transaction.execute(f.plan, approval)).status).toBe('partial');
   expect(writes).toBe(1); expect(f.challenge.submittedScore).toBe(100);
   expect(f.set.totalSubmittedScore).toBe(100); expect(held).toBe(false);
+});
+
+it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'same-target'])('market recovery %s never grants EA write authority', async scenario => {
+  const f = streamlinedRuntime(), memory = new Map(), market = { ...f.plan.items[0], source: 'market', id: null,
+    key: 'market:101:0', price: 200, purchaseMaxBuy: 250 };
+  const plan = { ...f.plan, route: { groups: [{ source: 'market', quantity: 1, item: market, items: [market] }] } };
+  // This contract fixture exercises the journal orchestration independently
+  // of the already-tested production plan fingerprint parser.
+  delete plan.schema; delete plan.fingerprint;
+  const record = { schema: 1, context: plan.context, operationId: 'fixture', revision: 1, plan,
+    fingerprint: JSON.stringify(plan), challenge: plan.challenge, policy: plan.policy, route: plan.route,
+    budget: 250, spent: 200, submittedScore: 0, fulfilled: [0], consumedIds: [], contribution: null, completed: false,
+    entries: [{ key: 'fixture:0', source: 'market', groupIndex: 0, state: 'club', definitionId: market.definitionId,
+      itemId: 401, tradeId: '501', price: 200, cap: 250 }] };
+  if (scenario === 'completed') { record.completed = true; record.submittedScore = plan.challenge.targetScore;
+    record.fulfilled = [1]; record.consumedIds = [401]; record.entries[0].state = 'consumed'; }
+  if (scenario === 'unknown') record.entries[0].state = 'move-pending';
+  if (scenario !== 'absent') memory.set(streamlinedPurchaseKey(plan.context), record);
+  const buyer = { assertCurrent: vi.fn(), verifySquad: vi.fn(), locate: vi.fn(async () => scenario === 'unknown' ? 'unknown' : 'club'), cancel: vi.fn(),
+    buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  const createPurchaseAdapter = vi.fn(async () => buyer);
+  const execution = await createFc27StreamlinedExecution(f.root, { context: plan.context,
+    get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)), createPurchaseAdapter,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) } });
+  const challenge = { ...plan.challenge, ...(scenario === 'other-target' ? { id: 999 } : {}),
+    ...(scenario === 'changed-target' ? { targetScore: 999 } : {}) };
+  if (scenario === 'changed-target') await expect(execution.recoverPurchase(challenge)).rejects.toThrow('CONTEXT_CHANGED');
+  else { const outcome = await execution.recoverPurchase(challenge);
+    expect(outcome.status, outcome.reason).toBe({ absent: 'absent', completed: 'completed',
+      'other-target': 'recovery-required', unknown: 'recovery-required', 'same-target': 'recovered' }[scenario]); }
+  if (['absent', 'completed', 'other-target', 'changed-target'].includes(scenario)) expect(createPurchaseAdapter).not.toHaveBeenCalled();
+  expect(buyer.buy).not.toHaveBeenCalled(); expect(buyer.move).not.toHaveBeenCalled(); expect(buyer.contribute).not.toHaveBeenCalled();
+  expect(f.calls).toHaveLength(0);
 });

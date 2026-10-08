@@ -127,7 +127,7 @@ export async function verifyProductionGallery(context, page, setName,
   // Agent sessions stay open across inspection edits; refresh this helper too.
   const planningVerification = !reason && planning
     ? await (await import(`./gallery-planning-verification.mjs?revision=${Date.now()}`))
-      .verifyGalleryPlanning(context, page, setName, { readGallery }) : null;
+      .verifyGalleryPlanning(context, page, setName, { readGallery, timeoutSettings: 30 }) : null;
   const finalReason = reason ?? (planningVerification?.status === 'blocked' ? planningVerification.reason : undefined);
   return { status: finalReason ? 'blocked' : 'observed', reason: finalReason, planningVerification,
     runtimeVersion: initial.overview?.runtimeVersion ?? null,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.13
+// @version      27.0.14
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -1264,9 +1264,9 @@
       if (!["unassigned", "packs", "save", "save-concept", "save-purchase", "submit"].includes(action) || mutation && (!Number.isSafeInteger(id12) || id12 <= 0 || canWrite() !== true)) return fail3("FC27_LIVE_DISABLED");
       if (action === "save" || action === "save-concept" || action === "save-purchase") {
         const declaredBricks = target.simpleBrickIndices === void 0 ? [] : target.simpleBrickIndices;
-        const empty = action === "save-purchase" ? target.emptySlotIndices : [];
-        if (!Array.isArray(declaredBricks) || !Array.isArray(empty) || new Set(declaredBricks).size !== declaredBricks.length || declaredBricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11) || new Set(empty).size !== empty.length || empty.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail3("FC27_SAVE_INPUT_UNVERIFIED");
-        const bricks = action === "save-purchase" ? [.../* @__PURE__ */ new Set([...declaredBricks, ...empty])] : declaredBricks;
+        const empty2 = action === "save-purchase" ? target.emptySlotIndices : [];
+        if (!Array.isArray(declaredBricks) || !Array.isArray(empty2) || new Set(declaredBricks).size !== declaredBricks.length || declaredBricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11) || new Set(empty2).size !== empty2.length || empty2.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail3("FC27_SAVE_INPUT_UNVERIFIED");
+        const bricks = action === "save-purchase" ? [.../* @__PURE__ */ new Set([...declaredBricks, ...empty2])] : declaredBricks;
         const concepts = action === "save-concept" || action === "save-purchase" ? target.conceptSlots : [];
         if (!Array.isArray(concepts) || action === "save-concept" && !concepts.length || concepts.some((ref) => !Number.isInteger(ref?.slot) || ref.slot < 0 || ref.slot >= 11 || !Number.isSafeInteger(ref.definitionId) || ref.definitionId <= 0) || new Set(concepts.map((ref) => ref.slot)).size !== concepts.length || new Set(concepts.map((ref) => ref.definitionId)).size !== concepts.length) return fail3("FC27_SAVE_INPUT_UNVERIFIED");
         if (!Array.isArray(bricks) || bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11) || !Array.isArray(target.players) || target.players.length < 11 || target.players.length > 32 || new Set(target.players.slice(0, 11).filter((_, index) => !bricks.includes(index)).map((player) => `${player?.itemData?.dream}:${player?.itemData?.id}`)).size !== 11 - bricks.length || target.players.some((player, index) => player?.index !== index || !Number.isSafeInteger(player?.itemData?.id) || (index < 11 && !bricks.includes(index) ? player.itemData.id < 1 : ![0, -1].includes(player.itemData.id)) || player.itemData.dream !== concepts.some((ref) => ref.slot === index) || concepts.some((ref) => ref.slot === index && (bricks.includes(index) || player.itemData.id !== ref.definitionId))) || concepts.some((ref) => !target.players[ref.slot]?.itemData?.dream)) return fail3("FC27_SAVE_INPUT_UNVERIFIED");
@@ -5009,11 +5009,11 @@
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
     const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id12) => ({ [fields4[rule.kind]]: id12 })));
     const queries = [];
-    const add = (query) => {
+    const add2 = (query) => {
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
     };
-    for (const anchor of anchors.slice(0, 2)) add({ start: 0, count: 20, level: allowed[0].level, ...anchor });
-    for (const { level } of allowed) add({ start: 0, count: 20, level });
+    for (const anchor of anchors.slice(0, 2)) add2({ start: 0, count: 20, level: allowed[0].level, ...anchor });
+    for (const { level } of allowed) add2({ start: 0, count: 20, level });
     return {
       status: "ready",
       queries,
@@ -5259,7 +5259,7 @@
     const levelOf = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
     const tiers2 = material.length ? material.filter((rule) => rule.count > 0).sort((a, b) => Number(missing.includes(b)) - Number(missing.includes(a)) || b.count - a.count).map((rule) => levelOf(rule.qualities[0])) : [...new Set(generic.queries.map((query) => query.level))];
     const queries = [];
-    const add = (query) => {
+    const add2 = (query) => {
       if (queries.length < 3 && !queries.some((existing) => JSON.stringify(existing) === JSON.stringify(query))) queries.push(query);
     };
     const cappedClubs = parsed.rules.some((rule) => rule.kind === "distinct-clubs" && rule.mode !== "min" && rule.value < required(input));
@@ -5271,11 +5271,11 @@
         items: pool.candidates.filter((item2) => item2.nationId === nation && tiers2.includes(levelOf(quality(item2.rating))))
       })).sort((a, b) => b.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length - a.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length || b.items.length - a.items.length || a.nation - b.nation);
       const anchor = ranked[0];
-      for (const level of tiers2) add({ start: 0, count: 20, level, nation: anchor.nation });
+      for (const level of tiers2) add2({ start: 0, count: 20, level, nation: anchor.nation });
       const leagues2 = /* @__PURE__ */ new Map();
       for (const item2 of anchor.items) leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       const league = [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
-      add({ start: 0, count: 20, level: tiers2[0], ...positive7(league) ? { league } : {} });
+      add2({ start: 0, count: 20, level: tiers2[0], ...positive7(league) ? { league } : {} });
       return { status: "ready", executable: false, queries, complete: false };
     }
     if (cappedClubs) {
@@ -5294,22 +5294,22 @@
         return [...groups.values()].sort((a, b) => b.ids.size - a.ids.size || a.team - b.team).map(({ team }) => ({ start: 0, count: 20, level, team }));
       });
       for (const query of generic.queries.filter((query2) => query2.team || query2.nation || query2.league)) {
-        if (tiers2.includes(query.level)) add(query);
+        if (tiers2.includes(query.level)) add2(query);
       }
-      lanes.forEach((lane, index) => add(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
-      for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add(lane[index]);
+      lanes.forEach((lane, index) => add2(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
+      for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add2(lane[index]);
     }
     if (!missing.length) {
-      for (const query of generic.queries) if (tiers2.includes(query.level)) add(query);
+      for (const query of generic.queries) if (tiers2.includes(query.level)) add2(query);
     } else {
-      for (const rule of missing) add({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+      for (const rule of missing) add2({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
     }
-    if (!queries.length) for (const level of tiers2) add({ start: 0, count: 20, level });
+    if (!queries.length) for (const level of tiers2) add2({ start: 0, count: 20, level });
     const baseQueries = queries.slice();
     const leagues = /* @__PURE__ */ new Map();
     for (const item2 of pool.candidates) leagues.set(item2.leagueId, (leagues.get(item2.leagueId) ?? 0) + 1);
     for (const [league] of [...leagues].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
-      for (const query of baseQueries.filter((query2) => !query2.team && !query2.league && !query2.nation)) add({ ...query, league });
+      for (const query of baseQueries.filter((query2) => !query2.team && !query2.league && !query2.nation)) add2({ ...query, league });
       if (queries.length === 3) break;
     }
     return { status: "ready", executable: false, queries, complete: false };
@@ -10313,32 +10313,6 @@
       })
     });
   }
-  async function checkFc27GmInstallation({ gmGetValue, gmSetValue, lockManager, hold = false }) {
-    const context = { season: "27", accountScope: "acceptance-self-test", platform: "local" };
-    const scope2 = traditionalJournalScope(context);
-    const persistence = createFc27TransactionPersistence({ context, gmGetValue, gmSetValue, lockManager });
-    const result = await persistence.exclusive(scope2, async () => {
-      const previous = await persistence.journal.read(scope2);
-      if (!previous) await persistence.journal.write(scope2, {
-        schema: 2,
-        scope: scope2,
-        operationId: "installation-probe",
-        setId: 1,
-        challengeId: 1,
-        itemRefs: [{ id: 1, definitionId: 1, pile: "club" }],
-        reward: { scope: "set", type: "pack", value: 1, count: 1, tradable: false },
-        rewardBaselineCount: 0,
-        phase: "save-pending",
-        updatedAt: Date.now(),
-        submitted: false,
-        setTimesCompleted: 0
-      });
-      if (hold === true) await new Promise((resolve) => setTimeout(resolve, 4e3));
-      const record = await persistence.journal.read(scope2);
-      return { status: "verified", persistedPreviously: !!previous, phase: record.phase, synthetic: true, eaRequests: 0 };
-    });
-    return result ?? blocked9("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
-  }
 
   // src/fc27/sbc-presentation.js
   function describeCatalogRule(rule) {
@@ -10375,8 +10349,8 @@
     if (![1, -1].includes(direction) || !Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
     const legalMinimum = Math.max(150, minimum), legalMaximum = Math.min(15e6, maximum);
     if (legalMaximum < legalMinimum) return null;
-    const empty = value === "" || value == null, current2 = Number(value);
-    if (!empty && !Number.isFinite(current2)) return null;
+    const empty2 = value === "" || value == null, current2 = Number(value);
+    if (!empty2 && !Number.isFinite(current2)) return null;
     let low = Infinity, high = -Infinity, next = direction > 0 ? Infinity : -Infinity;
     tiers.forEach(([min, increment], index) => {
       const first = Math.ceil(Math.max(min, legalMinimum) / increment) * increment;
@@ -10388,7 +10362,7 @@
       if (candidate >= first && candidate <= last) next = direction > 0 ? Math.min(next, candidate) : Math.max(next, candidate);
     });
     if (!Number.isFinite(low)) return null;
-    return empty ? low : Number.isFinite(next) ? next : direction > 0 ? high : low;
+    return empty2 ? low : Number.isFinite(next) ? next : direction > 0 ? high : low;
   }
   function bindCurrencyArrows({ document, input, label, limits = () => ({}), enabled = () => !input.disabled, onStep }) {
     const wrap = document.createElement("div");
@@ -10541,7 +10515,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     <div class="feature-grid">${features.map(([name, text5]) => `<article class="card"><h3>${name}</h3><p>${text5}</p></article>`).join("")}</div>
     <p class="module-note">\u672C\u9875\u5F53\u524D\u4EC5\u5C55\u793A\u529F\u80FD\u89C4\u5212\uFF0C\u5C1A\u4E0D\u6267\u884C\u64CD\u4F5C\u3002</p>
   </section>`;
-  function fc27WorkbenchMarkup() {
+  function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
     return `<style>
     ${currencyInputStyles}
     #gallery-relist-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}#gallery-relist-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}#gallery-relist-controls button{margin:0}#gallery-relist-status{font-size:12px}
@@ -10647,7 +10621,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>\u8BBE\u7F6E\u4E0E\u8BCA\u65AD</h2></div></div>
         <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u300CSBC \u89E3\u9898\u300D\u9875\u8BBE\u7F6E\u3002</p></div>
         <div id="diagnostic-export-card" class="card"><h3>\u79BB\u7EBF\u8BCA\u65AD</h3><p>\u5BFC\u51FA\u6700\u8FD1\u7684\u8131\u654F\u8FD0\u884C\u4E8B\u4EF6\uFF0C\u7528\u4E8E\u79BB\u7EBF\u8C03\u67E5 Gallery \u56DE\u9000\u3001\u9650\u6D41\u548C\u7F51\u7EDC\u9519\u8BEF\u3002</p><small>\u4E0D\u5305\u542B URL\u3001\u54CD\u5E94\u6B63\u6587\u3001\u51ED\u8BC1\u3001\u8D26\u53F7\u6807\u8BC6\u6216\u5B8C\u6574\u7403\u5458\u6570\u636E\u3002</small><div class="row"><button id="export-diagnostics" class="primary">\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
-        <div class="card"><h3>\u5B89\u88C5\u4E0E\u591A\u6807\u7B7E\u68C0\u67E5</h3><p>\u4EC5\u5728\u9700\u8981\u6392\u67E5\u5B58\u50A8\u6216\u591A\u6807\u7B7E\u5360\u7528\u95EE\u9898\u65F6\u8FD0\u884C\u3002</p><div class="row"><button id="gm">\u68C0\u67E5\u811A\u672C\u5B58\u50A8</button><button id="hold">\u68C0\u67E5\u6807\u7B7E\u9501</button></div></div></div>
+        ${installationChecks ? '<div class="card"><h3>\u5B89\u88C5\u4E0E\u591A\u6807\u7B7E\u68C0\u67E5</h3><p>\u4EC5\u5728\u9700\u8981\u6392\u67E5\u5B58\u50A8\u6216\u591A\u6807\u7B7E\u5360\u7528\u95EE\u9898\u65F6\u8FD0\u884C\u3002</p><div class="row"><button id="gm">\u68C0\u67E5\u811A\u672C\u5B58\u50A8</button><button id="hold">\u68C0\u67E5\u6807\u7B7E\u9501</button></div></div>' : ""}</div>
         <div id="settings-bottom" class="settings-bottom"></div>
       </section>
     </div><div class="operation-status" aria-live="polite">\u6700\u8FD1\u4E00\u6B21\u5DE5\u4F5C\u53F0\u64CD\u4F5C<output id="status">\u5C1A\u65E0\u64CD\u4F5C</output></div>
@@ -11980,6 +11954,49 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     return summarize2;
   }
 
+  // src/gallery/planning-settings.js
+  var galleryPlanningSettingsKey = (scope2) => `fcat-fc27-gallery-planning-settings-v1:${scope2}`;
+  var DEFAULT_GALLERY_PLANNING_TIMEOUT_MS = 3e4;
+  var MIN_GALLERY_PLANNING_TIMEOUT_MS = 5e3;
+  var MAX_GALLERY_PLANNING_TIMEOUT_MS = 3e5;
+  function normalizeGalleryPlanningSettings(value = {}) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("FC27_GALLERY_PLANNING_SETTINGS_INVALID");
+    const timeoutMs = value.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < MIN_GALLERY_PLANNING_TIMEOUT_MS || timeoutMs > MAX_GALLERY_PLANNING_TIMEOUT_MS) {
+      throw Error("FC27_GALLERY_PLANNING_SETTINGS_INVALID");
+    }
+    return Object.freeze({ timeoutMs });
+  }
+  function createGalleryPlanningSettings({ scope: scope2, get, set }) {
+    const current2 = (expected) => {
+      if (!expected || scope2() !== expected) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+    };
+    return Object.freeze({
+      scope: scope2,
+      async read() {
+        const account = scope2();
+        current2(account);
+        const saved = await get(galleryPlanningSettingsKey(account), null);
+        current2(account);
+        if (saved !== null && (saved.schema !== 1 || saved.scope !== account || !saved.value)) {
+          throw Error("FC27_GALLERY_PLANNING_SETTINGS_INVALID");
+        }
+        return normalizeGalleryPlanningSettings(saved?.value);
+      },
+      async save(value) {
+        const account = scope2(), normalized = normalizeGalleryPlanningSettings(value);
+        current2(account);
+        const record = { schema: 1, scope: account, value: normalized }, key = galleryPlanningSettingsKey(account);
+        await set(key, record);
+        current2(account);
+        const stored = await get(key, null);
+        current2(account);
+        if (JSON.stringify(stored) !== JSON.stringify(record)) throw Error("FC27_GALLERY_PLANNING_SETTINGS_SAVE_FAILED");
+        return normalized;
+      }
+    });
+  }
+
   // src/gallery/cooperative-plan.js
   async function runGalleryPlan(steps, {
     current: current2 = () => true,
@@ -11988,7 +12005,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     now = () => performance.now(),
     schedule = () => new Promise((resolve) => setTimeout(resolve, 0)),
     sliceMs = 12,
-    maxMs = 1e4
+    maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS
   } = {}) {
     const started = now();
     let slice = started, finish = false;
@@ -12448,20 +12465,20 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function selectGalleryCandidatePool(candidates, limit) {
     if (!Array.isArray(candidates) || !Number.isSafeInteger(limit) || limit < 1) return [];
     const selected = /* @__PURE__ */ new Map();
-    const add = (candidate) => {
+    const add2 = (candidate) => {
       if (selected.size < limit) selected.set(candidate.id, candidate);
     };
     const byPrice = candidates.slice().sort(priceOrder);
     const byScore = candidates.slice().sort(scoreOrder);
-    for (const candidate of byPrice.slice(0, Math.ceil(limit / 2))) add(candidate);
-    for (const candidate of byScore.slice(0, Math.ceil(limit / 4))) add(candidate);
+    for (const candidate of byPrice.slice(0, Math.ceil(limit / 2))) add2(candidate);
+    for (const candidate of byScore.slice(0, Math.ceil(limit / 4))) add2(candidate);
     const representatives = /* @__PURE__ */ new Map();
     for (const candidate of byPrice) for (const key of candidate.diversityKeys ?? []) {
       if (!representatives.has(key)) representatives.set(key, candidate);
     }
-    for (const candidate of [...representatives.values()].sort(priceOrder)) add(candidate);
-    for (const candidate of byPrice) add(candidate);
-    for (const candidate of byScore) add(candidate);
+    for (const candidate of [...representatives.values()].sort(priceOrder)) add2(candidate);
+    for (const candidate of byPrice) add2(candidate);
+    for (const candidate of byScore) add2(candidate);
     return [...selected.values()];
   }
 
@@ -13731,34 +13748,28 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const summary3 = yield* summarizeGalleryScoreSteps({ set, catalog, progress: { ...progress, rows } });
     return { ...summary3, estimated, selectedCount: candidates.length, preview: true };
   }
-  function* planGalleryGradeOverviewSteps(input) {
-    if (!Array.isArray(input?.set?.grades)) return { status: "unavailable", reason: "input-invalid", grades: [] };
+  async function runGalleryGradeOverview(input, { runGrade, timeoutMs, current: current2 = () => true, progress = () => {
+  } } = {}) {
+    if (!Array.isArray(input?.set?.grades) || typeof runGrade !== "function") return { status: "unavailable", reason: "input-invalid", grades: [] };
     const grades3 = [];
-    for (const grade of input.set.grades) {
+    for (const [index, grade] of input.set.grades.entries()) {
+      if (!current2()) return null;
       const steps = planGalleryGradeSteps({ ...input, targetGrade: grade.name, maxPlans: 1 });
-      let next;
-      try {
-        next = steps.next();
-        while (!next.done) {
-          const stop6 = yield { ...next.value, completed: grades3.length, total: input.set.grades.length };
-          next = steps.next(stop6);
-        }
-      } finally {
-        steps.return();
-      }
-      const result = next.value;
+      const result = await runGrade({ steps, grade, index, total: input.set.grades.length, timeoutMs });
+      if (result == null || !current2()) return null;
       grades3.push({
         grade: grade.name,
         threshold: grade.threshold,
         status: result.status,
         reason: result.reason ?? null,
+        elapsedMs: Number.isFinite(result.elapsedMs) ? result.elapsedMs : null,
         rewards: galleryTierRewardSummary(input.set, grade),
         searchComplete: result.searchComplete === true,
         candidate: result.plans?.[0] ?? null
       });
-      if (yield { phase: "grade", completed: grades3.length, total: input.set.grades.length }) break;
+      progress({ phase: "grade", grade: grade.name, completed: index + 1, total: input.set.grades.length, result });
     }
-    return { status: grades3.length === input.set.grades.length ? "observed" : "partial", grades: grades3 };
+    return { status: "observed", grades: grades3 };
   }
 
   // src/gallery/benchmark.js
@@ -13933,26 +13944,26 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
 
   // src/adapters/browser/fc27-listing-range.js
   function mountListingRange({ document, parent, label, labels, min, max, value, onValueChange, enabled }) {
-    const add = (parent2, tag, className, text5 = "") => {
+    const add2 = (parent2, tag, className, text5 = "") => {
       const node = document.createElement(tag);
       node.className = className;
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const root = add(parent, "div", "listing-range");
+    const root = add2(parent, "div", "listing-range");
     root.dataset.slot = "slider";
-    add(root, "strong", "", label);
-    const box = add(root, "div", "listing-range-box"), control = add(box, "div", "listing-range-control");
-    const track = add(control, "div", "listing-range-track");
+    add2(root, "strong", "", label);
+    const box = add2(root, "div", "listing-range-box"), control = add2(box, "div", "listing-range-control");
+    const track = add2(control, "div", "listing-range-track");
     track.dataset.slot = "slider-track";
-    const indicator = add(track, "div", "listing-range-indicator");
+    const indicator = add2(track, "div", "listing-range-indicator");
     indicator.dataset.slot = "slider-range";
-    const values7 = add(box, "div", "listing-range-values");
+    const values7 = add2(box, "div", "listing-range-values");
     values7.dataset.slot = "slider-values";
-    const ends = add(root, "div", "listing-range-ends");
-    add(ends, "span", "", String(min));
-    add(ends, "span", "", String(max));
+    const ends = add2(root, "div", "listing-range-ends");
+    add2(ends, "span", "", String(min));
+    add2(ends, "span", "", String(max));
     let current2 = [...value];
     const numbers3 = [], thumbs = [], tips = [];
     const render = () => {
@@ -13981,16 +13992,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       onValueChange([...current2]);
     };
     for (let index = 0; index < 2; index++) {
-      const thumb = add(control, "input", "listing-range-thumb");
+      const thumb = add2(control, "input", "listing-range-thumb");
       thumb.type = "range";
       thumb.min = String(min);
       thumb.max = String(max);
       thumb.step = "1";
       thumb.dataset.slot = "slider-thumb";
       thumb.setAttribute("aria-label", `${labels[index]}\u6ED1\u5757`);
-      const tip = add(control, "span", "listing-range-tooltip");
+      const tip = add2(control, "span", "listing-range-tooltip");
       tip.hidden = true;
-      const input = add(values7, "input", "");
+      const input = add2(values7, "input", "");
       input.type = "number";
       input.step = "1";
       input.setAttribute("aria-label", labels[index]);
@@ -14062,17 +14073,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!service) return { open() {
     }, dispose() {
     } };
-    const add = (parent2, tag, text5 = "") => {
+    const add2 = (parent2, tag, text5 = "") => {
       const e = document.createElement(tag);
       e.textContent = text5;
       parent2.append(e);
       return e;
     };
-    const dialog = add(parent, "dialog");
+    const dialog = add2(parent, "dialog");
     dialog.id = "gallery-bulk-list-dialog";
     dialog.setAttribute("aria-label", "Bulk List");
     dialog.style.cssText = "width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden;box-sizing:border-box";
-    const style = add(dialog, "style");
+    const style = add2(dialog, "style");
     style.textContent = `
     #gallery-bulk-list-dialog{background:#151a20;color:#f2f4f6;border:1px solid #46525d;border-radius:10px;padding:16px;width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden!important;box-sizing:border-box;box-shadow:0 18px 55px #000b;scrollbar-gutter:stable}
     #gallery-bulk-list-dialog[open]{display:block}
@@ -14170,34 +14181,34 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     #gallery-bulk-list-dialog .list-pagebar{justify-content:flex-end;margin:26px 0 12px}
     #gallery-bulk-list-dialog .list-profit[data-sign=positive]{color:#00da55}#gallery-bulk-list-dialog .list-profit[data-sign=negative]{color:#ff9696}
   `;
-    const header = add(dialog, "div");
+    const header = add2(dialog, "div");
     header.className = "dialog-header";
-    add(header, "strong", "Bulk List");
-    const close = add(header, "button", "\xD7");
+    add2(header, "strong", "Bulk List");
+    const close = add2(header, "button", "\xD7");
     close.type = "button";
     close.setAttribute("aria-label", "\u5173\u95ED");
-    const source = add(dialog, "small", "\u62A5\u4EF7\u6765\u6E90\u8BFB\u53D6\u8BBE\u7F6E\u4E2D\u7684\u6765\u6E90 \xB7 \u6302\u724C\u4E0D\u662F\u6210\u4EA4\uFF0C\u9700 EA \u786E\u8BA4");
+    const source = add2(dialog, "small", "\u62A5\u4EF7\u6765\u6E90\u8BFB\u53D6\u8BBE\u7F6E\u4E2D\u7684\u6765\u6E90 \xB7 \u6302\u724C\u4E0D\u662F\u6210\u4EA4\uFF0C\u9700 EA \u786E\u8BA4");
     source.className = "list-source";
-    const controls = add(dialog, "div");
+    const controls = add2(dialog, "div");
     controls.className = "list-controls";
     const group = () => {
-      const e = add(controls, "section");
+      const e = add2(controls, "section");
       e.className = "list-group";
       return e;
     };
     const durationGroup = group(), priceGroup = group(), delayGroup = group();
-    const durationLabel = add(durationGroup, "label", "Duration"), duration = add(durationLabel, "select");
+    const durationLabel = add2(durationGroup, "label", "Duration"), duration = add2(durationLabel, "select");
     duration.setAttribute("aria-label", "\u65F6\u957F");
     for (const hours of [1, 3, 6, 12, 24, 72]) {
-      const o = add(duration, "option", `${hours} Hour${hours === 1 ? "" : "s"}`);
+      const o = add2(duration, "option", `${hours} Hour${hours === 1 ? "" : "s"}`);
       o.value = String(hours * 3600);
     }
-    add(priceGroup, "strong", "Price");
-    const segments = add(priceGroup, "div");
+    add2(priceGroup, "strong", "Price");
+    const segments = add2(priceGroup, "div");
     segments.className = "list-segments";
     const mode = { value: "percentage" }, modes = /* @__PURE__ */ new Map();
     for (const [value, label2] of [["fixed", "Fixed"], ["percentage", "Percentage"], ["steps", "Steps"]]) {
-      const button = add(segments, "button", label2);
+      const button = add2(segments, "button", label2);
       button.type = "button";
       modes.set(value, button);
       button.addEventListener("click", (event) => {
@@ -14207,10 +14218,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         }
       });
     }
-    const percentFields = add(priceGroup, "div"), fixedFields = add(priceGroup, "div");
+    const percentFields = add2(priceGroup, "div"), fixedFields = add2(priceGroup, "div");
     fixedFields.className = "list-fields";
     const field = (parent2, label2, value, type = "number") => {
-      const wrap = add(parent2, "label"), caption = add(wrap, "span", label2), input = add(wrap, "input");
+      const wrap = add2(parent2, "label"), caption = add2(wrap, "span", label2), input = add2(wrap, "input");
       input.type = type;
       input.value = String(value);
       input.setAttribute("aria-label", label2);
@@ -14253,7 +14264,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     } };
     const startControl = mountListingCurrency({
       document,
-      parent: add(fixedFields, "label", "Start Bid"),
+      parent: add2(fixedFields, "label", "Start Bid"),
       label: "Start Bid",
       enabled: () => !busy,
       onCommit: (value) => {
@@ -14267,7 +14278,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     });
     const fixedControl = mountListingCurrency({
       document,
-      parent: add(fixedFields, "label", "Buy Now"),
+      parent: add2(fixedFields, "label", "Buy Now"),
       label: "Buy Now",
       enabled: () => !busy,
       onCommit: (value) => {
@@ -14295,80 +14306,80 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         changeSettings(false);
       }
     });
-    const toolbar = add(dialog, "div");
+    const toolbar = add2(dialog, "div");
     toolbar.className = "list-toolbar";
-    const selectionTools = add(toolbar, "div");
+    const selectionTools = add2(toolbar, "div");
     selectionTools.className = "toolbar-group";
-    const all = add(selectionTools, "button", "Select all");
+    const all = add2(selectionTools, "button", "Select all");
     all.setAttribute("aria-label", "\u5168\u9009");
-    const none = add(selectionTools, "button", "Clear");
+    const none = add2(selectionTools, "button", "Clear");
     none.setAttribute("aria-label", "\u53D6\u6D88\u9009\u62E9");
-    const viewTools = add(toolbar, "div");
+    const viewTools = add2(toolbar, "div");
     viewTools.className = "toolbar-group";
-    const cards = add(viewTools, "button", "Cards");
+    const cards = add2(viewTools, "button", "Cards");
     cards.setAttribute("aria-label", "\u5361\u7247\u89C6\u56FE");
-    const tableView = add(viewTools, "button", "Table");
+    const tableView = add2(viewTools, "button", "Table");
     tableView.setAttribute("aria-label", "\u8868\u683C\u89C6\u56FE");
-    const tableWrap = add(dialog, "div");
+    const tableWrap = add2(dialog, "div");
     tableWrap.className = "list-table-wrap";
-    const table = add(tableWrap, "table");
-    const heading = add(table, "thead"), hr = add(heading, "tr");
-    for (const text5 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add(hr, "th", text5);
-    const body = add(table, "tbody");
-    const footer = add(add(table, "tfoot"), "tr");
-    const totalLabel = add(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
+    const table = add2(tableWrap, "table");
+    const heading = add2(table, "thead"), hr = add2(heading, "tr");
+    for (const text5 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add2(hr, "th", text5);
+    const body = add2(table, "tbody");
+    const footer = add2(add2(table, "tfoot"), "tr");
+    const totalLabel = add2(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
     totalLabel.colSpan = 5;
-    const totalProfit = add(footer, "td");
+    const totalProfit = add2(footer, "td");
     totalProfit.className = "list-profit";
-    const pages = add(dialog, "div");
+    const pages = add2(dialog, "div");
     pages.className = "list-toolbar";
-    const selectionCount = add(pages, "span");
+    const selectionCount = add2(pages, "span");
     selectionCount.className = "list-selection";
-    const previous = add(pages, "button", "Previous");
+    const previous = add2(pages, "button", "Previous");
     previous.setAttribute("aria-label", "\u4E0A\u4E00\u9875");
-    const pageStatus = add(pages, "span");
+    const pageStatus = add2(pages, "span");
     pages.classList.add("list-pagebar");
-    const next = add(pages, "button", "Next");
+    const next = add2(pages, "button", "Next");
     next.setAttribute("aria-label", "\u4E0B\u4E00\u9875");
-    const progress = add(dialog, "progress");
+    const progress = add2(dialog, "progress");
     progress.style.width = "100%";
     progress.max = 1;
     progress.value = 0;
     progress.hidden = true;
-    const execution = add(dialog, "div");
+    const execution = add2(dialog, "div");
     execution.hidden = true;
-    const output = add(dialog, "output");
+    const output = add2(dialog, "output");
     output.setAttribute("role", "status");
-    const actions = add(dialog, "div");
+    const actions = add2(dialog, "div");
     actions.className = "list-footer";
-    const cancel = add(actions, "button", "Cancel");
+    const cancel = add2(actions, "button", "Cancel");
     cancel.type = "button";
     cancel.setAttribute("aria-label", "\u53D6\u6D88");
-    const submit = add(actions, "button", "Bulk List");
+    const submit = add2(actions, "button", "Bulk List");
     submit.className = "primary";
-    const stop6 = add(actions, "button", "Stop");
+    const stop6 = add2(actions, "button", "Stop");
     stop6.hidden = true;
     stop6.setAttribute("aria-label", "\u505C\u6B62");
-    const scheduleBox = add(dialog, "details");
+    const scheduleBox = add2(dialog, "details");
     scheduleBox.id = "gallery-listing-schedule";
     const scheduleCapability = service.scheduleCapability?.() ?? { enabled: false };
     scheduleBox.hidden = !scheduleCapability.enabled;
-    add(scheduleBox, "summary", "\u5B9A\u65F6\u6302\u724C\u672C\u6279\u6B21");
-    const scheduleControls = add(scheduleBox, "div");
+    add2(scheduleBox, "summary", "\u5B9A\u65F6\u6302\u724C\u672C\u6279\u6B21");
+    const scheduleControls = add2(scheduleBox, "div");
     scheduleControls.className = "settings-grid";
-    const scheduleLabel = add(scheduleControls, "label", "\u6302\u724C\u65F6\u95F4");
-    const scheduleValue = add(scheduleLabel, "input");
+    const scheduleLabel = add2(scheduleControls, "label", "\u6302\u724C\u65F6\u95F4");
+    const scheduleValue = add2(scheduleLabel, "input");
     scheduleValue.type = "datetime-local";
     scheduleValue.setAttribute("aria-label", "\u6302\u724C\u65F6\u95F4");
-    const scheduleSave = add(scheduleControls, "button", "\u4FDD\u5B58\u8BA1\u5212");
+    const scheduleSave = add2(scheduleControls, "button", "\u4FDD\u5B58\u8BA1\u5212");
     scheduleSave.type = "button";
-    const scheduleArm = add(scheduleControls, "button", "\u542F\u7528\u5B9A\u65F6");
+    const scheduleArm = add2(scheduleControls, "button", "\u542F\u7528\u5B9A\u65F6");
     scheduleArm.type = "button";
     scheduleArm.disabled = true;
-    const scheduleCancel = add(scheduleControls, "button", "\u53D6\u6D88\u5B9A\u65F6");
+    const scheduleCancel = add2(scheduleControls, "button", "\u53D6\u6D88\u5B9A\u65F6");
     scheduleCancel.type = "button";
     scheduleCancel.disabled = true;
-    const scheduleStatus = add(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
+    const scheduleStatus = add2(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
     scheduleStatus.setAttribute("role", "status");
     dialog.append(actions);
     const selected = /* @__PURE__ */ new Set(), overrides = {}, rows = /* @__PURE__ */ new Map();
@@ -14472,10 +14483,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         row.name.hidden = show && !!row.native;
         row.reference.replaceChildren();
         row.quoteLine.textContent = "";
-        add(row.reference, "span", (viewMode === "table" ? row.quote : row.previousPrice) ?? "N/A");
+        add2(row.reference, "span", (viewMode === "table" ? row.quote : row.previousPrice) ?? "N/A");
         if (row.quotes) for (const source2 of ["futgg", "futbin"]) {
           const value = row.quotes[source2];
-          if (value != null) add(row.quoteLine, "span", `${source2 === "futgg" ? "GG" : "BIN"} ${value}`);
+          if (value != null) add2(row.quoteLine, "span", `${source2 === "futgg" ? "GG" : "BIN"} ${value}`);
         }
         if (!show) {
           row.native?.__fcatDealloc?.();
@@ -14565,21 +14576,21 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       for (const entry of entries2 ?? []) {
         let row = rows.get(entry.item.id);
         if (!row) {
-          const tr = add(body, "tr");
-          add(tr, "td");
-          add(tr, "td", entry.name || String(entry.item.definitionId));
-          add(tr, "td", "\u2014");
-          add(tr, "td", String(entry.buyNow));
-          add(tr, "td", "\u2014");
-          add(tr, "td", "\u2014");
-          row = { tr, state: add(tr.children[3], "small") };
+          const tr = add2(body, "tr");
+          add2(tr, "td");
+          add2(tr, "td", entry.name || String(entry.item.definitionId));
+          add2(tr, "td", "\u2014");
+          add2(tr, "td", String(entry.buyNow));
+          add2(tr, "td", "\u2014");
+          add2(tr, "td", "\u2014");
+          row = { tr, state: add2(tr.children[3], "small") };
           rows.set(entry.item.id, row);
         }
         row.state.textContent = `${label(entry.status)}${entry.reason ? ` \xB7 ${entry.reason}` : ""}`;
-        const line = add(execution, "div");
+        const line = add2(execution, "div");
         line.style.cssText = "padding:8px 0;border-bottom:1px solid #46515b;overflow-wrap:anywhere";
-        add(line, "strong", `${entry.name || entry.item.definitionId} \xB7 ${entry.buyNow} \u{1FA99}`);
-        add(line, "span", ` \xB7 ${row.state.textContent}`);
+        add2(line, "strong", `${entry.name || entry.item.definitionId} \xB7 ${entry.buyNow} \u{1FA99}`);
+        add2(line, "span", ` \xB7 ${row.state.textContent}`);
       }
     };
     const run = async () => {
@@ -14806,15 +14817,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             const names = (result.requestedSources ?? ["futgg"]).map((value) => value === "futgg" ? "FUT.GG" : "FUTBIN");
             source.textContent = `${names.join(" + ")} \xB7 \u57FA\u51C6 ${result.source ?? "FUT.GG"}`;
             for (const e of result.candidates) {
-              const tr = add(body, "tr"), check = add(add(tr, "td"), "input");
+              const tr = add2(body, "tr"), check = add2(add2(tr, "td"), "input");
               check.type = "checkbox";
               check.setAttribute("aria-label", `\u9009\u62E9 ${e.name}`);
-              const player = add(tr, "td"), card = add(player, "div"), slot = document.createElement("slot"), name = add(player, "span", e.name);
+              const player = add2(tr, "td"), card = add2(player, "div"), slot = document.createElement("slot"), name = add2(player, "span", e.name);
               card.className = "list-card";
               slot.name = `gallery-bulk-card-${String(e.item.id).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
               card.append(slot);
-              const reference = add(tr, "td");
-              const priceCell = add(tr, "td");
+              const reference = add2(tr, "td");
+              const priceCell = add2(tr, "td");
               const currency = mountListingCurrency({
                 document,
                 parent: priceCell,
@@ -14829,13 +14840,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                 }
               });
               const price2 = currency.input;
-              const quoteLine = add(priceCell, "small");
+              const quoteLine = add2(priceCell, "small");
               const purchasePrice = e.boughtFor ?? e.purchase?.purchasePrice;
-              const cost = add(tr, "td", purchasePrice > 0 ? String(purchasePrice) : e.boughtForSource === "first-owner" ? "N/A" : "\u672A\u77E5");
+              const cost = add2(tr, "td", purchasePrice > 0 ? String(purchasePrice) : e.boughtForSource === "first-owner" ? "N/A" : "\u672A\u77E5");
               cost.title = purchasePrice > 0 ? e.boughtForSource === "ea" ? "EA \u8BB0\u5F55\u7684\u8D2D\u5165\u4EF7\u683C" : "\u5DF2\u786E\u8BA4\u6210\u4EA4\u4EF7\u683C" : e.boughtForSource === "first-owner" ? "\u4E00\u624B\u5361\uFF0C\u65E0\u8D2D\u5165\u4EF7\u683C" : "\u672A\u8BFB\u53D6\u5230\u8D2D\u5165\u4EF7\u683C\uFF0C\u4E0D\u80FD\u636E\u6B64\u8BA4\u5B9A\u4E3A\u4E00\u624B\u5361";
-              const profitCell = add(tr, "td");
+              const profitCell = add2(tr, "td");
               profitCell.className = "list-profit";
-              const state = add(priceCell, "small");
+              const state = add2(priceCell, "small");
               const quoteKnown = Number.isFinite(Number(result.prices?.[e.item.definitionId])) && Number(result.prices[e.item.definitionId]) > 0;
               check.checked = quoteKnown;
               if (quoteKnown) selected.add(e.item.id);
@@ -14912,29 +14923,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return node;
   };
   function createFodderDialog(document, parent, id12, title) {
-    const add = (parent2, tag, text5, cls) => fodderAdd(document, parent2, tag, text5, cls);
-    const dialog = add(parent, "dialog", "", "fcat-fodder");
+    const add2 = (parent2, tag, text5, cls) => fodderAdd(document, parent2, tag, text5, cls);
+    const dialog = add2(parent, "dialog", "", "fcat-fodder");
     dialog.id = id12;
     dialog.setAttribute("aria-label", title);
-    add(dialog, "style", fodderTradeStyles);
-    const header = add(dialog, "header"), heading = add(header, "strong", title);
-    const body = add(dialog, "div", "", "fd-body"), footer = add(dialog, "footer");
-    return { dialog, header, heading, body, footer, add };
+    add2(dialog, "style", fodderTradeStyles);
+    const header = add2(dialog, "header"), heading = add2(header, "strong", title);
+    const body = add2(dialog, "div", "", "fd-body"), footer = add2(dialog, "footer");
+    return { dialog, header, heading, body, footer, add: add2 };
   }
 
   // src/adapters/browser/fc27-fodder-list-view.js
   function mountFc27FodderListView({ document, parent, service, accountScope, isActive = () => true }) {
-    const { dialog, body, footer, add } = createFodderDialog(document, parent, "gallery-fodder-list-dialog", "To Transfer List");
-    add(dialog, "style", currencyInputStyles);
+    const { dialog, body, footer, add: add2 } = createFodderDialog(document, parent, "gallery-fodder-list-dialog", "To Transfer List");
+    add2(dialog, "style", currencyInputStyles);
     const setting = (label) => {
-      const row = add(body, "div", "", "fd-setting");
-      add(row, "span", label);
-      return add(row, "div", "", "fd-options");
+      const row = add2(body, "div", "", "fd-setting");
+      add2(row, "span", label);
+      return add2(row, "div", "", "fd-options");
     };
-    const duration = add(setting("Duration"), "select");
+    const duration = add2(setting("Duration"), "select");
     duration.setAttribute("aria-label", "Duration");
     for (const h of [1, 3, 6, 12, 24, 72]) {
-      const option = add(duration, "option", `${h} Hour${h > 1 ? "s" : ""}`);
+      const option = add2(duration, "option", `${h} Hour${h > 1 ? "s" : ""}`);
       option.value = String(h * 3600);
     }
     let from = "market", adjustment = 0, busy = false, prepared = null, identity5 = null, resumeRunId = null, targetCurrent = () => true, disposed = false, finished = false;
@@ -14942,7 +14953,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let lastSelected = null;
     const current2 = () => !disposed && dialog.open && isActive() && identity5 === accountScope() && targetCurrent();
     const button = (parent2, text5, action) => {
-      const el = add(parent2, "button", text5);
+      const el = add2(parent2, "button", text5);
       el.type = "button";
       el.addEventListener("click", (event) => {
         if (event.isTrusted && !busy && current2()) action();
@@ -14983,39 +14994,39 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       adjustment += pct;
       render();
     });
-    const totalAdjust = add(adjust, "span");
+    const totalAdjust = add2(adjust, "span");
     button(adjust, "\xD7", () => {
       adjustment = 0;
       render();
     }).setAttribute("aria-label", "Clear adjustment");
-    const waitRow = setting("Wait"), wait = add(waitRow, "input");
+    const waitRow = setting("Wait"), wait = add2(waitRow, "input");
     wait.type = "range";
     wait.min = "2";
     wait.max = "15";
     wait.step = "1";
     wait.value = "5";
     wait.setAttribute("aria-label", "Wait");
-    const waitLabel = add(waitRow, "span", "5 s");
+    const waitLabel = add2(waitRow, "span", "5 s");
     wait.addEventListener("input", () => {
       waitLabel.textContent = `${wait.value} s`;
     });
-    const head = add(body, "div", "", "fd-row fd-head"), all = add(head, "input");
+    const head = add2(body, "div", "", "fd-row fd-head"), all = add2(head, "input");
     all.type = "checkbox";
     all.setAttribute("aria-label", "All cards");
-    for (const label of ["OVR", "Player", "Rarity", "Buy now", "Profit"]) add(head, "span", label);
-    const table = add(body, "div"), progress = add(body, "progress");
+    for (const label of ["OVR", "Player", "Rarity", "Buy now", "Profit"]) add2(head, "span", label);
+    const table = add2(body, "div"), progress = add2(body, "progress");
     progress.hidden = true;
-    const output = add(body, "output");
+    const output = add2(body, "output");
     output.setAttribute("role", "status");
-    const net = add(footer, "span", "", "fd-net");
-    const cancel = add(footer, "button", "Cancel Esc");
+    const net = add2(footer, "span", "", "fd-net");
+    const cancel = add2(footer, "button", "Cancel Esc");
     cancel.addEventListener("click", () => {
       if (!busy) dialog.close();
     });
     const transfer = button(footer, "Send to Transfer List", () => run(true));
     const submit = button(footer, "List 0 cards Enter", () => run(false));
     submit.className = "primary";
-    const stop6 = add(footer, "button", "Stop");
+    const stop6 = add2(footer, "button", "Stop");
     stop6.hidden = true;
     stop6.addEventListener("click", (event) => {
       if (event.isTrusted && busy) {
@@ -15149,14 +15160,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         prepared = value;
         for (const entry of value.candidates) {
-          const tr = add(table, "div", "", "fd-row"), box = add(tr, "input");
+          const tr = add2(table, "div", "", "fd-row"), box = add2(tr, "input");
           box.type = "checkbox";
           box.setAttribute("aria-label", `\u9009\u62E9 ${entry.name}`);
           const raw = service.readDisplayItem?.(entry.item);
-          add(tr, "span", String(raw?.rating ?? raw?._rating ?? ""));
-          add(tr, "span", entry.name, "fd-who");
-          add(tr, "span", raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : "\u2014");
-          const price2 = add(tr, "div"), currency = mountListingCurrency({
+          add2(tr, "span", String(raw?.rating ?? raw?._rating ?? ""));
+          add2(tr, "span", entry.name, "fd-who");
+          add2(tr, "span", raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : "\u2014");
+          const price2 = add2(tr, "div"), currency = mountListingCurrency({
             document,
             parent: price2,
             label: `${entry.name} Buy Now`,
@@ -15171,7 +15182,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               render();
             }
           });
-          const state = add(price2, "small"), profit = add(tr, "span", "", "fd-profit");
+          const state = add2(price2, "small"), profit = add2(tr, "span", "", "fd-profit");
           rows.set(entry.item.id, { entry, check: box, currency, state, profit });
           selected.add(entry.item.id);
           box.addEventListener("click", (event) => {
@@ -15217,14 +15228,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFodderRetryResults({ document, parent, refreshPrices, retry, resume, isCurrent }) {
     let outcome = null, context = null, references = {}, edits = /* @__PURE__ */ new Map(), selected = /* @__PURE__ */ new Set();
     let busy = false, running = false, disposed = false, errorText = "";
-    const add = (host, tag, text5 = "", className = "") => {
+    const add2 = (host, tag, text5 = "", className = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       if (className) node.className = className;
       host.append(node);
       return node;
     };
-    const root = add(parent, "div", "", "fd-retry-screen");
+    const root = add2(parent, "div", "", "fd-retry-screen");
     const render = () => {
       if (disposed) return;
       root.replaceChildren();
@@ -15232,16 +15243,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const rows = outcome.results ?? [], failed2 = rows.filter(retryFailed);
       const pending2 = rows.filter((row) => row.state === "waiting" && !retryFailed(row));
       const recovery = outcome.status === "recovery-required" || outcome.recovery || rows.some(retryUncertain);
-      const head = add(root, "div", "", "fd-retry-head");
-      add(head, "strong", "Purchase results");
-      add(head, "span", `${outcome.purchased ?? rows.filter(retryRecovered).length} bought \xB7 Spent ${(outcome.spent ?? 0).toLocaleString()}`);
-      const layout = add(root, "div", "", "fd-retry-layout");
-      const table = add(layout, "div", "", "fd-retry-table");
-      const header = add(table, "div", "", "fd-retry-row fd-retry-head-row");
-      for (const label of ["", "OVR", "PLAYER", "STATUS", "BUY NOW"]) add(header, "small", label);
+      const head = add2(root, "div", "", "fd-retry-head");
+      add2(head, "strong", "Purchase results");
+      add2(head, "span", `${outcome.purchased ?? rows.filter(retryRecovered).length} bought \xB7 Spent ${(outcome.spent ?? 0).toLocaleString()}`);
+      const layout = add2(root, "div", "", "fd-retry-layout");
+      const table = add2(layout, "div", "", "fd-retry-table");
+      const header = add2(table, "div", "", "fd-retry-row fd-retry-head-row");
+      for (const label of ["", "OVR", "PLAYER", "STATUS", "BUY NOW"]) add2(header, "small", label);
       for (const row of rows.filter((item2) => !retryRecovered(item2))) {
-        const line = add(table, "div", "", "fd-retry-row");
-        const box = add(line, "input");
+        const line = add2(table, "div", "", "fd-retry-row");
+        const box = add2(line, "input");
         box.type = "checkbox";
         box.checked = selected.has(row.definitionId);
         box.disabled = busy || !retryFailed(row);
@@ -15250,12 +15261,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           else selected.delete(row.definitionId);
           renderActions();
         });
-        add(line, "strong", String(row.overall ?? row.rating ?? "\u2014"));
-        const who = add(line, "div", "", "fd-retry-who");
-        add(who, "strong", row.name || `#${row.definitionId}`);
+        add2(line, "strong", String(row.overall ?? row.rating ?? "\u2014"));
+        const who = add2(line, "div", "", "fd-retry-who");
+        add2(who, "strong", row.name || `#${row.definitionId}`);
         const active = running && outcome.definitionId === row.definitionId;
-        add(line, "span", active ? outcome.phase ?? "Buying" : retryFailed(row) ? "Not found" : row.state === "waiting" ? "Pending" : row.state || "Pending", "fd-retry-state");
-        const input = add(line, "input");
+        add2(line, "span", active ? outcome.phase ?? "Buying" : retryFailed(row) ? "Not found" : row.state === "waiting" ? "Pending" : row.state || "Pending", "fd-retry-state");
+        const input = add2(line, "input");
         input.type = "number";
         input.min = "150";
         input.setAttribute("aria-label", `Retry ${row.name || row.definitionId}`);
@@ -15283,17 +15294,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         });
       }
-      const side = add(layout, "div", "", "fd-retry-side");
-      add(side, "strong", running ? "Purchase progress" : `${failed2.length} failed \xB7 ${pending2.length} pending`);
-      const progress = add(side, "progress");
+      const side = add2(layout, "div", "", "fd-retry-side");
+      add2(side, "strong", running ? "Purchase progress" : `${failed2.length} failed \xB7 ${pending2.length} pending`);
+      const progress = add2(side, "progress");
       progress.max = outcome.total || rows.length || 1;
       progress.value = outcome.completed || 0;
-      add(side, "small", `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
-      add(side, "small", running ? "\u6B63\u5728\u8D2D\u4E70\uFF0C\u53EF\u70B9\u51FB Stop \u505C\u6B62\u540E\u7EED\u64CD\u4F5C\u3002" : recovery ? "\u6210\u4EA4\u6216\u5165\u5E93\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u3002" : pending2.length ? "\u5C1A\u672A\u5904\u7406\u7684\u5361\u8BF7\u70B9\u51FB Continue pending\uFF0C\u6CBF\u7528\u672C\u6279\u4EF7\u683C\u8BBE\u7F6E\u3002" : "Select failed players and adjust Buy Now before retrying.");
-      if (outcome.reason) add(side, "output", outcome.reason);
-      const totals = add(side, "output", "", "fd-retry-total");
-      const actions = add(root, "div", "", "fd-retry-actions");
-      const retryButton = add(actions, "button", `Retry selected (${selected.size})`);
+      add2(side, "small", `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
+      add2(side, "small", running ? "\u6B63\u5728\u8D2D\u4E70\uFF0C\u53EF\u70B9\u51FB Stop \u505C\u6B62\u540E\u7EED\u64CD\u4F5C\u3002" : recovery ? "\u6210\u4EA4\u6216\u5165\u5E93\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u3002" : pending2.length ? "\u5C1A\u672A\u5904\u7406\u7684\u5361\u8BF7\u70B9\u51FB Continue pending\uFF0C\u6CBF\u7528\u672C\u6279\u4EF7\u683C\u8BBE\u7F6E\u3002" : "Select failed players and adjust Buy Now before retrying.");
+      if (outcome.reason) add2(side, "output", outcome.reason);
+      const totals = add2(side, "output", "", "fd-retry-total");
+      const actions = add2(root, "div", "", "fd-retry-actions");
+      const retryButton = add2(actions, "button", `Retry selected (${selected.size})`);
       retryButton.className = "primary";
       retryButton.disabled = busy || !selected.size || !context || !isCurrent();
       retryButton.addEventListener("click", async (event) => {
@@ -15318,7 +15329,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      const refresh = add(actions, "button", "Refresh prices");
+      const refresh = add2(actions, "button", "Refresh prices");
       refresh.disabled = busy || recovery || !failed2.length || !refreshPrices;
       refresh.addEventListener("click", async (event) => {
         if (!event.isTrusted || refresh.disabled || disposed || !isCurrent()) return;
@@ -15337,7 +15348,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      const resumeButton = add(actions, "button", recovery ? "Check and continue" : `Continue pending (${pending2.length})`);
+      const resumeButton = add2(actions, "button", recovery ? "Check and continue" : `Continue pending (${pending2.length})`);
       resumeButton.hidden = !recovery && !pending2.length;
       resumeButton.disabled = busy;
       resumeButton.addEventListener("click", async (event) => {
@@ -15351,7 +15362,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      if (errorText) add(root, "p", errorText, "fd-retry-error");
+      if (errorText) add2(root, "p", errorText, "fd-retry-error");
       const update = () => {
         const total = [...selected].reduce((sum2, id12) => sum2 + (Number.isFinite(edits.get(id12)) ? edits.get(id12) : 0), 0);
         totals.textContent = `${selected.size} selected \xB7 Maximum ${total.toLocaleString()} coins \xB7 ${context?.policy?.purchaseAttempts ?? "\u2014"} attempts/player`;
@@ -15391,17 +15402,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function mountFc27FodderBuyView({ document, parent, purchase, accountScope, host = null, nativeRenderer = null, readCard = () => null, isActive = () => true, onChanged = () => {
   } }) {
-    const { dialog, body, footer, add } = createFodderDialog(document, parent, "gallery-fodder-buy-dialog", "Gallery \xB7 Buy Players");
+    const { dialog, body, footer, add: add2 } = createFodderDialog(document, parent, "gallery-fodder-buy-dialog", "Gallery \xB7 Buy Players");
     dialog.style.width = "960px";
-    const layout = add(body, "div", "", "fd-buy-layout"), table = add(layout, "div"), side = add(layout, "div", "", "fd-buy-options");
+    const layout = add2(body, "div", "", "fd-buy-layout"), table = add2(layout, "div"), side = add2(layout, "div", "", "fd-buy-options");
     const field = (label) => {
-      const row = add(side, "div", "", "fd-setting");
-      add(row, "span", label);
-      return add(row, "div", "", "fd-options");
+      const row = add2(side, "div", "", "fd-setting");
+      add2(row, "span", label);
+      return add2(row, "div", "", "fd-options");
     };
-    const range = field("Price range"), rangeText = add(range, "strong"), track = add(range, "div", "", "fd-dual-range"), inputs = [];
+    const range = field("Price range"), rangeText = add2(range, "strong"), track = add2(range, "div", "", "fd-dual-range"), inputs = [];
     for (const label of ["Lowest price %", "Highest price %"]) {
-      const el = add(track, "input");
+      const el = add2(track, "input");
       el.type = "range";
       el.min = "75";
       el.max = "200";
@@ -15414,7 +15425,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const current2 = () => !disposed && isActive() && accountScope() === identity5 && dialog.open;
     const buttons = [], choices = field("Attempts per player");
     for (let n = 1; n <= 5; n++) {
-      const button = add(choices, "button", String(n));
+      const button = add2(choices, "button", String(n));
       button.type = "button";
       buttons.push(button);
       button.addEventListener("click", (event) => {
@@ -15424,18 +15435,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       });
     }
-    const progress = add(side, "progress");
+    const progress = add2(side, "progress");
     progress.max = 1;
     progress.value = 0;
-    const bought = add(side, "strong", "0 bought"), spent = add(side, "div", "Spent 0");
-    const ledger = add(side, "div", "", "fd-ledger");
-    const totals = add(side, "output", "", "fd-totals"), notice = add(side, "output");
+    const bought = add2(side, "strong", "0 bought"), spent = add2(side, "div", "Spent 0");
+    const ledger = add2(side, "div", "", "fd-ledger");
+    const totals = add2(side, "output", "", "fd-totals"), notice = add2(side, "output");
     notice.setAttribute("role", "status");
-    const retryRoot = add(body, "div");
+    const retryRoot = add2(body, "div");
     retryRoot.hidden = true;
-    const close = add(footer, "button", "Close Esc"), start = add(footer, "button", "Auto-buy 0 players Enter");
+    const close = add2(footer, "button", "Close Esc"), start = add2(footer, "button", "Auto-buy 0 players Enter");
     start.className = "primary";
-    const stop6 = add(footer, "button", "Stop");
+    const stop6 = add2(footer, "button", "Stop");
     stop6.hidden = true;
     const options = () => ({ minPct: Number(inputs[0].value), maxPct: Number(inputs[1].value), tries });
     const nativeCards = /* @__PURE__ */ new Set();
@@ -15467,12 +15478,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }, 0);
       totals.replaceChildren();
       for (const [label, value] of [["Players", preview.items.length], ["Minimum total", sum2(1)], ["Maximum total", sum2(tries)]]) {
-        const line = add(totals, "div");
-        add(line, "span", label);
-        add(line, "strong", value.toLocaleString());
+        const line = add2(totals, "div");
+        add2(line, "span", label);
+        add2(line, "strong", value.toLocaleString());
       }
       const missing = preview.approval.rows.filter((row) => row.maxBuy == null).length;
-      if (missing) add(totals, "small", `${missing} \u5F20\u7F3A\u4EF7\uFF0C\u5408\u8BA1\u4E0D\u5B8C\u6574\uFF1B\u8FD9\u4E9B\u5361\u4E0D\u4F1A\u4E0B\u5355\u3002`);
+      if (missing) add2(totals, "small", `${missing} \u5F20\u7F3A\u4EF7\uFF0C\u5408\u8BA1\u4E0D\u5B8C\u6574\uFF1B\u8FD9\u4E9B\u5361\u4E0D\u4F1A\u4E0B\u5355\u3002`);
       notice.textContent = `Destination ${preview.destination === "unassigned" ? "Unassigned" : "Club"} \xB7 ${preview.approval.policy.source.toUpperCase()} \xB7 \u5B9E\u9645\u4E0A\u9650\u53D6\u672C\u6279\u533A\u95F4\u4E0E\u5DF2\u6279\u51C6\u4E0A\u9650\u4E2D\u7684\u8F83\u4F4E\u503C`;
       start.textContent = `Auto-buy ${preview.items.length} players Enter`;
     };
@@ -15492,11 +15503,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       clearCards();
       rows.clear();
       table.replaceChildren();
-      const head = add(table, "div", "", "fd-buy-row");
-      for (const text5 of ["", "OVR", "Player", "Source", "Price"]) add(head, "small", text5);
+      const head = add2(table, "div", "", "fd-buy-row");
+      for (const text5 of ["", "OVR", "Player", "Source", "Price"]) add2(head, "small", text5);
       for (const item2 of items) {
-        const line = add(table, "div", "", "fd-buy-row"), art = add(line, "div", "", "fd-mini-card");
-        const raw = readCard(item2.definitionId), slot = add(art, "slot");
+        const line = add2(table, "div", "", "fd-buy-row"), art = add2(line, "div", "", "fd-mini-card");
+        const raw = readCard(item2.definitionId), slot = add2(art, "slot");
         slot.name = `gallery-fodder-buy-${item2.definitionId}`;
         let card = null;
         const fallback = () => {
@@ -15510,13 +15521,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (card) nativeCards.add(card);
         else fallback();
-        const paid = add(art, "small", "", "fd-paid");
-        add(line, "strong", String(item2.overall ?? item2.rating ?? raw?.rating ?? raw?._rating ?? ""));
-        const who = add(line, "div");
-        add(who, "strong", item2.name || `#${item2.definitionId}`);
-        add(who, "small", item2.version ?? (raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : ""));
-        const state = add(who, "small");
-        const source = add(line, "span", "Market", "fd-source"), price2 = add(
+        const paid = add2(art, "small", "", "fd-paid");
+        add2(line, "strong", String(item2.overall ?? item2.rating ?? raw?.rating ?? raw?._rating ?? ""));
+        const who = add2(line, "div");
+        add2(who, "strong", item2.name || `#${item2.definitionId}`);
+        add2(who, "small", item2.version ?? (raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : ""));
+        const state = add2(who, "small");
+        const source = add2(line, "span", "Market", "fd-source"), price2 = add2(
           line,
           "span",
           (item2.priceReference?.estimate ?? item2.reference?.estimate)?.toLocaleString() ?? "\u2014",
@@ -15542,9 +15553,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           cell.state.textContent = row.reason ?? "";
         }
         if (row.price > 0) {
-          const line = add(ledger, "div");
-          add(line, "span", row.name || String(row.definitionId));
-          add(line, "span", row.price.toLocaleString());
+          const line = add2(ledger, "div");
+          add2(line, "span", row.name || String(row.definitionId));
+          add2(line, "span", row.price.toLocaleString());
         }
       }
       notice.textContent = `${value.phase ?? value.status ?? ""}${value.reason ? ` \xB7 ${value.reason}` : ""}${value.collection?.status === "pending" ? " \xB7 \u6536\u96C6\u8FDB\u5EA6\u5F85 EA \u786E\u8BA4" : ""}`;
@@ -15578,9 +15589,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (outcome) show(outcome);
         const caps = override.retry?.items ?? (outcome?.results ?? []).filter((row) => row.state === "waiting" && !retryFailed(row)).map((row) => ({ definitionId: row.definitionId, maxBuy: row.reference?.maxBuy }));
         totals.replaceChildren();
-        const line = add(totals, "div");
-        add(line, "span", "Players");
-        add(line, "strong", String(caps.length));
+        const line = add2(totals, "div");
+        add2(line, "span", "Players");
+        add2(line, "strong", String(caps.length));
         for (const item2 of caps) {
           const cell = rows.get(item2.definitionId);
           if (cell) {
@@ -15764,15 +15775,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let running = false;
     const expanded = /* @__PURE__ */ new Set();
     let edits = /* @__PURE__ */ new Map(), references = {}, selected = /* @__PURE__ */ new Set(), actionError = "";
-    const add = (container, tag, text5 = "") => {
+    const add2 = (container, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       container.append(node);
       return node;
     };
-    const root = add(parent, "div");
+    const root = add2(parent, "div");
     root.className = "fcat-purchase-results";
-    const style = add(root, "style");
+    const style = add2(root, "style");
     style.textContent = ".fcat-purchase-results{font:14px/1.5 Arial,sans-serif;text-align:left;color:inherit}.fcat-purchase-results *{box-sizing:border-box}.fcat-purchase-results .purchase-row{padding:10px 0;border-bottom:1px solid #68766a;overflow-wrap:anywhere}.fcat-purchase-results label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fcat-purchase-results input[type=checkbox]{width:18px;height:18px;min-width:18px;margin:0}.fcat-purchase-results input[type=number]{width:120px;min-width:0;height:32px}.fcat-purchase-results .purchase-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0}.fcat-purchase-results button{height:auto;min-height:36px;margin:0;padding:6px 12px}.fcat-purchase-results small{display:block}.fcat-purchase-results [hidden]{display:none!important}.fcat-purchase-results .purchase-error{color:#ffb9aa;overflow-wrap:anywhere}";
     style.textContent += currencyInputStyles;
     style.textContent += `.fcat-purchase-results button,.fcat-purchase-results input,.fcat-purchase-results select{font:inherit;color:#edf1f4;background:#202d36;border:1px solid #46545d;border-radius:5px;max-width:100%}
@@ -15786,7 +15797,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     .fcat-purchase-results small{margin:2px 0;font:12px/1.5 Arial,sans-serif;color:#b3c5cd}
     .fcat-purchase-results .purchase-error:empty,.fcat-purchase-results .purchase-actions:empty{display:none}
     .fcat-purchase-results .purchase-row>label:not(:first-child){margin-top:6px}`;
-    const content = add(root, "div");
+    const content = add2(root, "div");
     let totals, error2, retryButton;
     const valid3 = () => {
       let total = 0, reason = "";
@@ -15811,7 +15822,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       retryButton.disabled = busy || !context || !!value.reason || !value.items.length || !isCurrent();
     };
     const button = (container, label, action) => {
-      const node = add(container, "button", label);
+      const node = add2(container, "button", label);
       node.type = "button";
       node.className = "btn-standard";
       node.disabled = busy;
@@ -15839,14 +15850,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return node;
     };
     const rowView = (container, row, editable) => {
-      const line = add(container, "div");
+      const line = add2(container, "div");
       line.className = "purchase-row";
       line.dataset.definitionId = row.definitionId;
       line.dataset.active = String(running && outcome?.definitionId === row.definitionId);
-      const label = add(line, "label");
+      const label = add2(line, "label");
       label.className = "purchase-row-title";
       if (editable) {
-        const box = add(label, "input");
+        const box = add2(label, "input");
         box.type = "checkbox";
         box.checked = selected.has(row.definitionId);
         box.disabled = busy;
@@ -15866,39 +15877,39 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         } catch {
         }
       }
-      add(label, "strong", name || `\u7403\u5458 #${row.definitionId}`);
-      add(label, "span", state).className = "purchase-state";
+      add2(label, "strong", name || `\u7403\u5458 #${row.definitionId}`);
+      add2(label, "span", state).className = "purchase-state";
       const reference = references[row.definitionId] ?? row.reference;
-      add(label, "span", `${row.price == null ? "" : `\u6210\u4EA4 ${amount(row.price)} \xB7 `}\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`).className = "purchase-price";
-      const info = add(line, "div");
+      add2(label, "span", `${row.price == null ? "" : `\u6210\u4EA4 ${amount(row.price)} \xB7 `}\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`).className = "purchase-price";
+      const info = add2(line, "div");
       info.className = "purchase-row-info";
-      if (row.reason) add(info, "small", messages[row.reason] ?? row.reason);
-      const detail = add(info, "details");
+      if (row.reason) add2(info, "small", messages[row.reason] ?? row.reason);
+      const detail = add2(info, "details");
       detail.className = "purchase-quote-details";
       detail.open = expanded.has(row.definitionId);
-      add(detail, "summary", "\u62A5\u4EF7\u4E0E\u5C1D\u8BD5\u8BE6\u60C5");
+      add2(detail, "summary", "\u62A5\u4EF7\u4E0E\u5C1D\u8BD5\u8BE6\u60C5");
       detail.addEventListener("toggle", () => {
         if (detail.isConnected) {
           if (detail.open) expanded.add(row.definitionId);
           else expanded.delete(row.definitionId);
         }
       });
-      add(detail, "small", `\u7248\u672C ${row.definitionId}`);
-      if (row.attempt) add(detail, "small", `\u672C\u8F6E ${row.attempt.used}/${row.attempt.limit} \u6B21 \xB7 \u7D2F\u8BA1 ${row.attempt.total} \u6B21 \xB7 \u7B2C ${row.attempt.round} \u8F6E \xB7 \u5E02\u573A\u67E5\u8BE2 ${row.attempt.queries ?? 0} \u6B21`);
+      add2(detail, "small", `\u7248\u672C ${row.definitionId}`);
+      if (row.attempt) add2(detail, "small", `\u672C\u8F6E ${row.attempt.used}/${row.attempt.limit} \u6B21 \xB7 \u7D2F\u8BA1 ${row.attempt.total} \u6B21 \xB7 \u7B2C ${row.attempt.round} \u8F6E \xB7 \u5E02\u573A\u67E5\u8BE2 ${row.attempt.queries ?? 0} \u6B21`);
       if (reference) {
         for (const source of ["futgg", "futbin"]) {
           const quote2 = reference.quotes?.[source];
           if (["FC27_PUBLIC_PRICE_SOURCE_NOT_REQUESTED", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED"].includes(quote2?.error)) {
-            add(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} \xB7 \u672A\u8BFB\u53D6`);
+            add2(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} \xB7 \u672A\u8BFB\u53D6`);
             continue;
           }
-          add(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} ${amount(quote2?.price)} \xB7 \u6293\u53D6 ${time(quote2?.fetchedAt)} \xB7 \u6E90\u7AD9\u66F4\u65B0 ${time(quote2?.sourceUpdatedAt)}`);
+          add2(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} ${amount(quote2?.price)} \xB7 \u6293\u53D6 ${time(quote2?.fetchedAt)} \xB7 \u6E90\u7AD9\u66F4\u65B0 ${time(quote2?.sourceUpdatedAt)}`);
         }
-        add(detail, "small", `\u91C7\u7528 ${context?.policy.source ?? reference.policy?.source ?? "\u2014"} \xB7 \u4E0A\u6B21\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`);
+        add2(detail, "small", `\u91C7\u7528 ${context?.policy.source ?? reference.policy?.source ?? "\u2014"} \xB7 \u4E0A\u6B21\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`);
       }
       if (editable) {
-        const edit = add(line, "label", "\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650");
-        const input = add(edit, "input");
+        const edit = add2(line, "label", "\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650");
+        const input = add2(edit, "input");
         input.type = "number";
         input.min = "150";
         input.value = edits.get(row.definitionId) ?? "";
@@ -15931,26 +15942,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       totals = error2 = retryButton = null;
       const rows = outcome?.results ?? [];
       if (!outcome) return;
-      add(content, "p", `\u7D2F\u8BA1\u5DF2\u652F\u51FA ${amount(outcome.spent ?? 0)} \u91D1\u5E01 \xB7 \u5269\u4F59\u9884\u7B97 ${context?.remainingBudget == null ? "\u6309\u53EF\u7528\u4F59\u989D" : amount(context.remainingBudget)}`);
+      add2(content, "p", `\u7D2F\u8BA1\u5DF2\u652F\u51FA ${amount(outcome.spent ?? 0)} \u91D1\u5E01 \xB7 \u5269\u4F59\u9884\u7B97 ${context?.remainingBudget == null ? "\u6309\u53EF\u7528\u4F59\u989D" : amount(context.remainingBudget)}`);
       const recovery = outcome.status === "recovery-required" || outcome.recovery || outcome.replacementPending || rows.some(uncertain);
       const canRetry = !busy && !recovery && !!context;
       if (!busy && rows.some(recovered)) {
-        const done = add(content, "details");
+        const done = add2(content, "details");
         done.className = "purchase-completed";
-        add(done, "summary", `\u5DF2\u5B8C\u6210 ${rows.filter(recovered).length} \u5F20`);
+        add2(done, "summary", `\u5DF2\u5B8C\u6210 ${rows.filter(recovered).length} \u5F20`);
         rows.filter(recovered).forEach((row) => rowView(done, row, false));
       }
       rows.filter((row) => busy || !recovered(row)).forEach((row) => rowView(content, row, canRetry && failed(row)));
-      const actions = add(content, "div");
+      const actions = add2(content, "div");
       actions.className = "purchase-actions";
       if (!recovery && rows.some(failed) && context) {
-        const mode = add(actions, "select");
+        const mode = add2(actions, "select");
         mode.disabled = busy;
         for (const [value, text5] of [["fixed", "\u52A0\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u52A0\u767E\u5206\u6BD4"]]) {
-          const option = add(mode, "option", text5);
+          const option = add2(mode, "option", text5);
           option.value = value;
         }
-        const premium = add(actions, "input");
+        const premium = add2(actions, "input");
         premium.type = "number";
         premium.min = "0";
         premium.value = "0";
@@ -15976,7 +15987,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           busy = false;
           render();
         });
-        totals = add(content, "p");
+        totals = add2(content, "p");
         retryButton = button(content, "\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361", () => {
           const value = valid3();
           if (value.reason || !value.items.length) throw Error("FC27_BUY_RETRY_CAP_INVALID");
@@ -15992,7 +16003,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!busy && (recovery || rows.some((row) => row.state === "waiting" && !row.attempt?.failed))) {
         button(content, recovery ? "\u6838\u5BF9\u5E76\u7EE7\u7EED" : "\u7EE7\u7EED\u672A\u5904\u7406", () => resume());
       }
-      error2 = add(content, "p");
+      error2 = add2(content, "p");
       error2.className = "purchase-error";
       error2.setAttribute("role", "status");
       updateTotals();
@@ -16111,10 +16122,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     listing = null,
     relist = null,
     tradePreferences = null,
+    planningSettings = null,
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
     const node = (id12) => shadow.getElementById(id12);
+    const planningTimeout = async (current2, output) => {
+      if (!planningSettings) return DEFAULT_GALLERY_PLANNING_TIMEOUT_MS;
+      try {
+        const expected = accountScope(), value = await planningSettings.read();
+        if (!current2()) return null;
+        if (planningSettings.scope() !== expected) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+        return value.timeoutMs;
+      } catch {
+        if (current2() && output?.isConnected) output.textContent = "\u65B9\u6848\u8BA1\u7B97\u8BBE\u7F6E\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u5728 Settings \u4E2D\u91CD\u8BD5\u3002";
+        return null;
+      }
+    };
     const categoryIconSelections = /* @__PURE__ */ new Map();
     const enhancerList = listing ? mountFc27BulkListView({ document, parent: shadow, host, nativeRenderer, service: listing, accountScope }) : null;
     let fodderList = null, fodderBuy = null, openingTrade = false;
@@ -16260,7 +16284,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     relistRecoverButton?.addEventListener("click", (event) => {
       if (event.isTrusted) void runRelist(() => relist.poll({ recover: true }));
     });
-    const add = (parent, tag, value = "", className = "") => {
+    const add2 = (parent, tag, value = "", className = "") => {
       const child = document.createElement(tag);
       child.textContent = value;
       child.className = className;
@@ -16465,7 +16489,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               unassigned: "Unassigned",
               collected: "\u5DF2\u786E\u8BA4\u6536\u96C6"
             }[item2.state] ?? item2.reason ?? item2.state;
-            add(resultList, "li", `${item2.name || item2.definitionId} \xB7 ${state2}${item2.price == null ? "" : ` \xB7 ${count2(item2.price)} \u91D1\u5E01`}`);
+            add2(resultList, "li", `${item2.name || item2.definitionId} \xB7 ${state2}${item2.price == null ? "" : ` \xB7 ${count2(item2.price)} \u91D1\u5E01`}`);
           }
         }
         purchaseReplan = null;
@@ -16474,8 +16498,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (remaining.length) {
             purchaseReplan = { ...input.replanContext, outcome };
             const acquired = (outcome.results ?? []).filter((item2) => ["club", "unassigned", "collected"].includes(item2.state)).length;
-            const replan = add(resultList ?? dialog, "li", `\u5DF2\u786E\u8BA4 ${acquired} \u5F20\uFF1B\u5269\u4F59 ${remaining.length} \u5F20\u53EF\u91CD\u65B0\u8BA1\u7B97\u65B9\u6848`, "gallery-replan-ready");
-            const replanButton = add(replan, "button", "\u91CD\u65B0\u89C4\u5212\u5269\u4F59\u76EE\u6807");
+            const replan = add2(resultList ?? dialog, "li", `\u5DF2\u786E\u8BA4 ${acquired} \u5F20\uFF1B\u5269\u4F59 ${remaining.length} \u5F20\u53EF\u91CD\u65B0\u8BA1\u7B97\u65B9\u6848`, "gallery-replan-ready");
+            const replanButton = add2(replan, "button", "\u91CD\u65B0\u89C4\u5212\u5269\u4F59\u76EE\u6807");
             replanButton.type = "button";
             replanButton.addEventListener("click", (event) => {
               if (event.isTrusted && !buying) {
@@ -16497,7 +16521,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const renderPurchaseReplan = (input) => {
       const target = node(input?.mode === "joint" ? "gallery-joint-output" : "gallery-set-detail");
       if (!target || !input?.targets?.length || !input.outcome) return;
-      const message = input.mode === "joint" ? target : target.querySelector(".gallery-plan-output") ?? add(target, "div", "", "gallery-plan-output");
+      const message = input.mode === "joint" ? target : target.querySelector(".gallery-plan-output") ?? add2(target, "div", "", "gallery-plan-output");
       message.replaceChildren();
       message.textContent = "\u6B63\u5728\u6839\u636E\u5DF2\u786E\u8BA4\u6536\u96C6\u548C\u5269\u4F59\u9884\u7B97\u91CD\u65B0\u89C4\u5212\u2026";
       const identity5 = scope2(), token = ++planningEpoch;
@@ -16511,6 +16535,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             message.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
           }
         }) : input.targets;
+        const maxMs = await planningTimeout(current2, message);
+        if (maxMs == null) return null;
         const steps = planGalleryRemainderSteps({
           targets,
           outcome: input.outcome,
@@ -16520,6 +16546,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         return runGalleryPlan(steps, {
           current: current2,
+          maxMs,
           progress: (state2) => {
             message.textContent = state2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(state2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u91CD\u7B97\u2026 ${state2.evaluations} \u4E2A\u5019\u9009`;
           }
@@ -16529,12 +16556,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         message.replaceChildren();
         if (plan.status === "ready") {
           attachPlanPrices(plan, plan.targets.map((target2) => target2.priceSnapshot));
-          add(message, "small", "\u539F\u8D2D\u4E70\u7ED3\u679C\u5DF2\u4FDD\u7559\uFF1B\u4EE5\u4E0B\u4EC5\u662F\u65B0\u7684\u672C\u5730\u66FF\u4EE3\u65B9\u6848\uFF0C\u9700\u8981\u518D\u6B21\u70B9\u51FB\u8D2D\u4E70\u3002", "gallery-unknown");
+          add2(message, "small", "\u539F\u8D2D\u4E70\u7ED3\u679C\u5DF2\u4FDD\u7559\uFF1B\u4EE5\u4E0B\u4EC5\u662F\u65B0\u7684\u672C\u5730\u66FF\u4EE3\u65B9\u6848\uFF0C\u9700\u8981\u518D\u6B21\u70B9\u51FB\u8D2D\u4E70\u3002", "gallery-unknown");
           for (const candidate of plan.plans) {
-            const detail = add(message, "details");
-            add(detail, "summary", `${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`}${candidate.score == null ? "" : ` \xB7 \u6700\u7EC8 ${count2(candidate.score)} \u5206`}`);
-            const list2 = add(detail, "ul");
-            for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}`);
+            const detail = add2(message, "details");
+            add2(detail, "summary", `${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`}${candidate.score == null ? "" : ` \xB7 \u6700\u7EC8 ${count2(candidate.score)} \u5206`}`);
+            const list2 = add2(detail, "ul");
+            for (const item2 of candidate.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}`);
             const executionBudget = plan.remainingBudget ?? input.budget;
             purchaseButton(detail, candidate.items, `${input.binding ?? "gallery"}:replan:${candidate.items.map((item2) => item2.eaId).join(",")}`, {
               budget: executionBudget,
@@ -16543,8 +16570,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               valid: () => current2() && !buying
             });
           }
-        } else if (plan.status === "achieved") add(message, "small", "\u5F53\u524D\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u7EE7\u7EED\u8D2D\u4E70\u3002");
-        else add(message, "small", `\u5269\u4F59\u76EE\u6807\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan.reason ?? plan.status}`, "gallery-unknown");
+        } else if (plan.status === "achieved") add2(message, "small", "\u5F53\u524D\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u7EE7\u7EED\u8D2D\u4E70\u3002");
+        else add2(message, "small", `\u5269\u4F59\u76EE\u6807\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan.reason ?? plan.status}`, "gallery-unknown");
       }).catch(() => {
         if (current2()) message.textContent = "\u5269\u4F59\u76EE\u6807\u91CD\u89C4\u5212\u5931\u8D25\uFF0C\u539F Journal \u4FDD\u7559\u3002";
       });
@@ -16558,13 +16585,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       replanContext = null
     } = {}) => {
       if (typeof purchase !== "function" || !items.length) return null;
-      const button = add(parent, "button", label, "primary gallery-purchase");
+      const button = add2(parent, "button", label, "primary gallery-purchase");
       button.type = "button";
       const identity5 = scope2();
       const blocked11 = (reason, message) => {
         let notice = parent.querySelector(".gallery-purchase-error");
         if (!notice) {
-          notice = add(parent, "small", "", "gallery-purchase-error");
+          notice = add2(parent, "small", "", "gallery-purchase-error");
           notice.setAttribute("role", "status");
         }
         notice.textContent = message;
@@ -16687,17 +16714,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       nativeCards.clear();
     };
     const renderTextCard = (parent, row) => {
-      const fallback = add(parent, "div", "", "gallery-text-card");
-      add(fallback, "strong", String(row.overall ?? "\u2014"), "gallery-text-card-rating");
-      add(fallback, "span", row.name, "gallery-text-card-name");
-      add(fallback, "small", `${row.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${row.positions?.[0] ?? "\u4F4D\u7F6E\u672A\u77E5"}`, "gallery-text-card-meta");
+      const fallback = add2(parent, "div", "", "gallery-text-card");
+      add2(fallback, "strong", String(row.overall ?? "\u2014"), "gallery-text-card-rating");
+      add2(fallback, "span", row.name, "gallery-text-card-name");
+      add2(fallback, "small", `${row.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${row.positions?.[0] ?? "\u4F4D\u7F6E\u672A\u77E5"}`, "gallery-text-card-meta");
       fallback.title = "EA \u539F\u751F\u5361\u9762\u6682\u672A\u53D6\u5F97";
       return fallback;
     };
     const cardImage = (parent, row, runtimeCards, setId) => {
       if (!active || disposed || jointMode) return;
       let native, fallbackRendered = false;
-      const slot = add(parent, "slot");
+      const slot = add2(parent, "slot");
       slot.name = `gallery-card-${++cardSequence}`;
       const fallback = () => {
         if (fallbackRendered || disposed || !active || !slot.isConnected || selectedSetId !== setId) return;
@@ -16766,26 +16793,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const purchasePriceText = (item2) => item2.priceReference ? `FUT.GG ${count2(item2.priceReference.futgg)} / FUTBIN ${count2(item2.priceReference.futbin)} \xB7 \u4F30\u4EF7 ${count2(item2.price)} \xB7 \u4E0A\u9650 ${count2(item2.priceReference.maxBuy)}` : item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`;
     const statusIcon = (parent, value, label) => {
-      const icon = add(parent, "span", value === true ? "\u2713" : value === false ? "\u25CB" : "?", `gallery-status-icon ${value === true ? "is-yes" : value === false ? "is-no" : "is-unknown"}`);
+      const icon = add2(parent, "span", value === true ? "\u2713" : value === false ? "\u25CB" : "?", `gallery-status-icon ${value === true ? "is-yes" : value === false ? "is-no" : "is-unknown"}`);
       icon.title = label;
       icon.setAttribute("aria-label", label);
       return icon;
     };
     const gradeTrack = (parent, grades3, summary3 = null) => {
       const state2 = summary3?.status ?? "";
-      const track = add(parent, "div", "", `gallery-grade-track ${state2}`);
+      const track = add2(parent, "div", "", `gallery-grade-track ${state2}`);
       track.setAttribute("role", "list");
       for (const { grade, reached, current: current2, fraction } of galleryGradeSegments(grades3, summary3)) {
-        const cell = add(track, "span", "", "gallery-grade-cell");
+        const cell = add2(track, "span", "", "gallery-grade-cell");
         cell.setAttribute("role", "listitem");
-        const bar = add(cell, "span", "", "gallery-grade-bar");
-        const fill = add(bar, "i");
+        const bar = add2(cell, "span", "", "gallery-grade-bar");
+        const fill = add2(bar, "i");
         fill.style.width = `${Math.round(fraction * 100)}%`;
-        const diamond = add(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 ? "is-current" : ""}`);
-        add(diamond, "span", grade.name, "gallery-grade-letter");
+        const diamond = add2(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 ? "is-current" : ""}`);
+        add2(diamond, "span", grade.name, "gallery-grade-letter");
         diamond.title = `${grade.name} \xB7 ${count2(grade.threshold)} \u5206 \xB7 ${grade.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u5956\u52B1"}${grade.rewardsComplete ? "" : " \xB7 \u672A\u63D0\u4F9B\u975E\u4EE3\u5E01\u5956\u52B1"}`;
         diamond.setAttribute("aria-label", `${grade.name} \u6863\uFF0C${count2(grade.threshold)} \u5206${reached ? "\uFF0C\u5DF2\u8FBE\u5230" : ""}`);
-        add(cell, "small", count2(grade.threshold), "gallery-grade-threshold");
+        add2(cell, "small", count2(grade.threshold), "gallery-grade-threshold");
       }
       return track;
     };
@@ -16805,13 +16832,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const renderRewardSummary = (parent, sets2, className = "gallery-reward-summary") => {
       const rewards2 = summarizeRewards(sets2).map((reward) => ({ ...reward, icon: asset("reward", reward.type) })).filter((reward) => reward.icon);
       if (!rewards2.length) return null;
-      const summary3 = add(parent, "span", "", className);
+      const summary3 = add2(parent, "span", "", className);
       summary3.setAttribute("aria-label", "\u5956\u52B1\u6C47\u603B");
       for (const reward of rewards2) {
-        const item2 = add(summary3, "span", "", "gallery-reward-token");
+        const item2 = add2(summary3, "span", "", "gallery-reward-token");
         item2.dataset.rewardType = reward.type;
         image(item2, reward.icon, reward.type, "gallery-reward-token-icon");
-        add(item2, "span", count2(reward.value), "gallery-reward-token-value");
+        add2(item2, "span", count2(reward.value), "gallery-reward-token-value");
         item2.title = `${reward.type} ${count2(reward.value)}`;
         item2.setAttribute("aria-label", item2.title);
       }
@@ -16861,7 +16888,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const ids = new Set(summary3.lineup?.map((row) => String(row.eaId)) ?? []);
             for (const card of target.querySelectorAll(".gallery-card")) {
               card.querySelector(".gallery-score-member")?.remove();
-              if (ids.has(card.dataset.definitionId)) add(card.querySelector(".gallery-player-meta"), "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
+              if (ids.has(card.dataset.definitionId)) add2(card.querySelector(".gallery-player-meta"), "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
             }
           }
         }
@@ -16905,22 +16932,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const compactScore = (summary3) => !summary3?.low ? summary3?.status === "calculating" ? "\u8BA1\u5206\u4E2D\u2026" : "\u8BA1\u5206\u5F85\u540C\u6B65" : `${count2(summary3.low.total)}${summary3.low.total !== summary3.high?.total ? `\u2013${count2(summary3.high?.total)}` : ""} \u5206`;
     const renderScoring = (target, summary3, value) => {
-      const section = add(target, "section", "", "gallery-score");
-      add(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167" : "\u5F53\u524D"}\u8BA1\u5206\uFF1A${scoreText(summary3)}`);
+      const section = add2(target, "section", "", "gallery-score");
+      add2(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167" : "\u5F53\u524D"}\u8BA1\u5206\uFF1A${scoreText(summary3)}`);
       if (!summary3?.low) {
         if (summary3?.status === "calculating") {
-          add(section, "small", "\u6B63\u5728\u540E\u53F0\u8BA1\u7B97\uFF0C\u53EF\u7EE7\u7EED\u6D4F\u89C8\u6216\u5207\u6362\u9875\u9762\u3002");
+          add2(section, "small", "\u6B63\u5728\u540E\u53F0\u8BA1\u7B97\uFF0C\u53EF\u7EE7\u7EED\u6D4F\u89C8\u6216\u5207\u6362\u9875\u9762\u3002");
           return;
         }
-        add(section, "small", summary3?.reason === "base-score-unknown" ? "\u90E8\u5206\u5DF2\u6536\u96C6\u5361\u7F3A\u5C11 EA \u57FA\u7840\u5206\uFF1B\u516C\u5F00\u4F30\u503C\u4E0D\u4F1A\u4EE3\u66FF\u8D26\u53F7\u5206\u503C\u3002" : "\u76EE\u5F55\u5305\u542B\u672A\u8BC6\u522B\u7684\u8BA1\u5206\u6761\u4EF6\uFF0C\u4FDD\u7559\u6536\u96C6\u8FDB\u5EA6\u5E76\u7B49\u5F85\u89C4\u5219\u9002\u914D\u3002");
+        add2(section, "small", summary3?.reason === "base-score-unknown" ? "\u90E8\u5206\u5DF2\u6536\u96C6\u5361\u7F3A\u5C11 EA \u57FA\u7840\u5206\uFF1B\u516C\u5F00\u4F30\u503C\u4E0D\u4F1A\u4EE3\u66FF\u8D26\u53F7\u5206\u503C\u3002" : "\u76EE\u5F55\u5305\u542B\u672A\u8BC6\u522B\u7684\u8BA1\u5206\u6761\u4EF6\uFF0C\u4FDD\u7559\u6536\u96C6\u8FDB\u5EA6\u5E76\u7B49\u5F85\u89C4\u5219\u9002\u914D\u3002");
         return;
       }
-      add(section, "small", `\u57FA\u7840\u5206 ${count2(summary3.low.base)} \uFF0B \u5DF2\u77E5\u52A0\u6210 ${count2(summary3.low.bonus)} \xB7 \u8BA1\u5206 ${summary3.lineup.length} \u5F20`);
-      if (summary3.zeroScoreCards) add(section, "small", `${summary3.zeroScoreCards} \u5F20\u5DF2\u6536\u96C6\u7248\u672C\u7684 EA \u57FA\u7840\u5206\u4E3A 0\uFF0C\u6309\u53C2\u8003\u89C4\u5219\u4E0D\u8BA1\u5165\u8BA1\u5206\u4EBA\u6570\u3002`);
-      if (summary3.full && summary3.nextGrade) add(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(summary3.pointsToNext)} \u5206`);
-      else if (summary3.full) add(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
+      add2(section, "small", `\u57FA\u7840\u5206 ${count2(summary3.low.base)} \uFF0B \u5DF2\u77E5\u52A0\u6210 ${count2(summary3.low.bonus)} \xB7 \u8BA1\u5206 ${summary3.lineup.length} \u5F20`);
+      if (summary3.zeroScoreCards) add2(section, "small", `${summary3.zeroScoreCards} \u5F20\u5DF2\u6536\u96C6\u7248\u672C\u7684 EA \u57FA\u7840\u5206\u4E3A 0\uFF0C\u6309\u53C2\u8003\u89C4\u5219\u4E0D\u8BA1\u5165\u8BA1\u5206\u4EBA\u6570\u3002`);
+      if (summary3.full && summary3.nextGrade) add2(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(summary3.pointsToNext)} \u5206`);
+      else if (summary3.full) add2(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
       if (summary3.full && summary3.low.total !== summary3.high.total) {
-        add(section, "small", `\u540C\u4E00\u8BA1\u5206\u7EC4\u5408\u7684\u6761\u4EF6\u7B49\u7EA7\uFF1A${summary3.lowGrade ?? "\u672A\u8FBE D"}\u2013${summary3.highGrade ?? "\u672A\u8FBE D"}\u3002\u533A\u95F4\u4EC5\u9488\u5BF9\u5DF2\u9009\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6240\u6709\u7EC4\u5408\u7684\u6700\u9AD8\u5206\u3002`, "gallery-unknown");
+        add2(section, "small", `\u540C\u4E00\u8BA1\u5206\u7EC4\u5408\u7684\u6761\u4EF6\u7B49\u7EA7\uFF1A${summary3.lowGrade ?? "\u672A\u8FBE D"}\u2013${summary3.highGrade ?? "\u672A\u8FBE D"}\u3002\u533A\u95F4\u4EC5\u9488\u5BF9\u5DF2\u9009\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6240\u6709\u7EC4\u5408\u7684\u6700\u9AD8\u5206\u3002`, "gallery-unknown");
       }
       const names = {
         firstOwned: "First Owner \u5386\u53F2",
@@ -16935,27 +16962,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         overall: "\u8BC4\u5206",
         rarityEaId: "\u5361\u79CD"
       };
-      if (summary3.unknownFields.length) add(section, "small", `\u672A\u77E5\uFF1A${summary3.unknownFields.map((field) => names[field] ?? field).join("\u3001")}\u3002\u5DF2\u77E5\u8D21\u732E\u4E0D\u8BA1\u672A\u77E5\u9879\uFF0C\u533A\u95F4\u53E6\u4E00\u7AEF\u6309\u672A\u77E5\u9879\u6EE1\u8DB3\u6761\u4EF6\u8BA1\u7B97\uFF1B\u91CD\u65B0\u540C\u6B65\u672A\u5FC5\u80FD\u627E\u56DE\u5DF2\u79BB\u961F\u5361\u7684\u9996\u4EFB\u5386\u53F2\u3002`, "gallery-unknown");
-      if (summary3.ruleDifference) add(section, "small", `\u5206\u7EC4\u89C4\u5219\u6709\u5DEE\u5F02\uFF1A\u540C\u7EC4\u5408 Fodder ${count2(summary3.low.total)}\u2013${count2(summary3.high.total)}\uFF0CFUT.GG ${count2(summary3.comparison.low.total)}\u2013${count2(summary3.comparison.high.total)}\uFF1BEA \u89C4\u5219\u4ECD\u5F85\u5BF9\u7167\u3002`, "gallery-unknown");
-      if (summary3.collectionUnknown) add(section, "small", "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u5B8C\u6574\uFF0C\u5F53\u524D\u4EC5\u8BA1\u7B97\u5DF2\u786E\u8BA4\u6536\u96C6\u5361\u3002", "gallery-unknown");
-      add(section, "small", `${summary3.selection === "bounded-search" ? "\u6309\u53C2\u8003\u63D2\u4EF6\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club \u7F13\u5B58\u3002`);
-      const explanation = add(section, "details");
-      add(explanation, "summary", "\u8BA1\u5206\u5361\u7247\u4E0E\u52A0\u6210\u660E\u7EC6");
-      const selected = add(explanation, "ul", "", "gallery-lineup");
-      for (const row of summary3.lineup) add(selected, "li", `${row.name ?? row.eaId} \xB7 ${row.version ?? ""} \xB7 EA ${count2(row.gradingScore)}`);
-      add(explanation, "p", "\u53EA\u8BA1\u6536\u76CA\u6700\u9AD8\u7684\u5341\u9879\u52A0\u6210\uFF1B\u6BCF\u9879\u6309\u5339\u914D\u5361\u7247\u7684\u57FA\u7840\u5206\u5411\u4E0B\u53D6\u6574\u3002");
-      const bonuses = add(explanation, "ul", "", "gallery-bonuses");
+      if (summary3.unknownFields.length) add2(section, "small", `\u672A\u77E5\uFF1A${summary3.unknownFields.map((field) => names[field] ?? field).join("\u3001")}\u3002\u5DF2\u77E5\u8D21\u732E\u4E0D\u8BA1\u672A\u77E5\u9879\uFF0C\u533A\u95F4\u53E6\u4E00\u7AEF\u6309\u672A\u77E5\u9879\u6EE1\u8DB3\u6761\u4EF6\u8BA1\u7B97\uFF1B\u91CD\u65B0\u540C\u6B65\u672A\u5FC5\u80FD\u627E\u56DE\u5DF2\u79BB\u961F\u5361\u7684\u9996\u4EFB\u5386\u53F2\u3002`, "gallery-unknown");
+      if (summary3.ruleDifference) add2(section, "small", `\u5206\u7EC4\u89C4\u5219\u6709\u5DEE\u5F02\uFF1A\u540C\u7EC4\u5408 Fodder ${count2(summary3.low.total)}\u2013${count2(summary3.high.total)}\uFF0CFUT.GG ${count2(summary3.comparison.low.total)}\u2013${count2(summary3.comparison.high.total)}\uFF1BEA \u89C4\u5219\u4ECD\u5F85\u5BF9\u7167\u3002`, "gallery-unknown");
+      if (summary3.collectionUnknown) add2(section, "small", "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u5B8C\u6574\uFF0C\u5F53\u524D\u4EC5\u8BA1\u7B97\u5DF2\u786E\u8BA4\u6536\u96C6\u5361\u3002", "gallery-unknown");
+      add2(section, "small", `${summary3.selection === "bounded-search" ? "\u6309\u53C2\u8003\u63D2\u4EF6\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club \u7F13\u5B58\u3002`);
+      const explanation = add2(section, "details");
+      add2(explanation, "summary", "\u8BA1\u5206\u5361\u7247\u4E0E\u52A0\u6210\u660E\u7EC6");
+      const selected = add2(explanation, "ul", "", "gallery-lineup");
+      for (const row of summary3.lineup) add2(selected, "li", `${row.name ?? row.eaId} \xB7 ${row.version ?? ""} \xB7 EA ${count2(row.gradingScore)}`);
+      add2(explanation, "p", "\u53EA\u8BA1\u6536\u76CA\u6700\u9AD8\u7684\u5341\u9879\u52A0\u6210\uFF1B\u6BCF\u9879\u6309\u5339\u914D\u5361\u7247\u7684\u57FA\u7840\u5206\u5411\u4E0B\u53D6\u6574\u3002");
+      const bonuses = add2(explanation, "ul", "", "gallery-bonuses");
       for (const tag of summary3.low.tags) {
         const high = summary3.high.tags.find((row) => row.id === tag.id);
         const suffix = tag.bonus > 0 && !tag.counted ? " \xB7 \u672A\u8FDB\u524D\u5341\uFF0C\u4E0D\u8BA1\u5165" : tag.counted ? " \xB7 \u8BA1\u5165" : "";
-        add(bonuses, "li", `${tag.name}\uFF1A${tag.count} \u5F20 \xB7 ${count2(tag.matched)} \xD7 ${tag.pct}% = ${count2(tag.bonus)}${suffix}${high.bonus !== tag.bonus ? ` \xB7 \u672A\u77E5\u9879\u6EE1\u8DB3\u65F6 ${count2(high.bonus)}` : ""}${tag.next ? ` \xB7 \u518D ${tag.next.needed} \u5F20\u8FBE ${tag.next.pct}%` : ""}`);
+        add2(bonuses, "li", `${tag.name}\uFF1A${tag.count} \u5F20 \xB7 ${count2(tag.matched)} \xD7 ${tag.pct}% = ${count2(tag.bonus)}${suffix}${high.bonus !== tag.bonus ? ` \xB7 \u672A\u77E5\u9879\u6EE1\u8DB3\u65F6 ${count2(high.bonus)}` : ""}${tag.next ? ` \xB7 \u518D ${tag.next.needed} \u5F20\u8FBE ${tag.next.pct}%` : ""}`);
       }
     };
     const renderPlan = (target, value, set, summary3) => {
       if (typeof gradePlanner !== "function" || !value?.progress || !result?.catalog) return;
-      const section = add(target, "section", "", "gallery-plan");
-      add(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
-      const row = add(section, "div", "", "row");
+      const section = add2(target, "section", "", "gallery-plan");
+      add2(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
+      const row = add2(section, "div", "", "row");
       const select = document.createElement("select");
       for (const grade of set.grades) {
         const option = document.createElement("option");
@@ -16968,11 +16995,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         select.dataset.edited = "true";
       });
       row.append(select);
-      const button = add(row, "button", "\u751F\u6210\u65B9\u6848");
+      const button = add2(row, "button", "\u751F\u6210\u65B9\u6848");
       button.type = "button";
-      const overviewButton = add(row, "button", "\u5404\u6863\u8D39\u7528");
+      const overviewButton = add2(row, "button", "\u5404\u6863\u8D39\u7528");
       overviewButton.type = "button";
-      const jointAdd = add(row, "button", "+", "gallery-joint-add");
+      const jointAdd = add2(row, "button", "+", "gallery-joint-add");
       jointAdd.type = "button";
       jointAdd.title = "\u52A0\u5165\u8054\u5408\u76EE\u6807";
       jointAdd.setAttribute("aria-label", "\u52A0\u5165\u8054\u5408\u76EE\u6807");
@@ -16988,9 +17015,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         persistTargets();
         jointAdd.title = "\u5DF2\u52A0\u5165\u8054\u5408\u76EE\u6807";
       });
-      const output = add(section, "div", "", "gallery-plan-output");
+      const output = add2(section, "div", "", "gallery-plan-output");
       output.setAttribute("aria-live", "polite");
-      const overview = add(section, "div", "", "gallery-grade-overview");
+      const overview = add2(section, "div", "", "gallery-grade-overview");
       overview.setAttribute("aria-live", "polite");
       const rewardText = (snapshot) => {
         if (!snapshot) return "\u8BF7\u91CD\u65B0\u751F\u6210";
@@ -16998,7 +17025,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return `${text5 || (snapshot.rewardsComplete ? "\u65E0" : "\u672A\u63D0\u4F9B")}${snapshot.rewardsComplete ? "" : "\uFF08\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1\uFF09"}`;
       };
       const showRewardChange = (parent, current2, projected2) => {
-        const line = add(parent, "small", "", "gallery-reward-estimate");
+        const line = add2(parent, "small", "", "gallery-reward-estimate");
         if (!current2 || !projected2) {
           line.textContent = "\u5956\u52B1\u9884\u4F30\uFF1A\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848";
           return;
@@ -17013,32 +17040,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const showOverview = (plan) => {
         overview.replaceChildren();
         if (!plan) return;
-        add(overview, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
+        add2(overview, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
         for (const item2 of plan.grades ?? []) {
           const saved2 = planCache.get(set.id)?.plan;
           const candidate = saved2?.status === "ready" && saved2.targetGrade === item2.grade ? saved2.plans?.[0] ?? item2.candidate : item2.candidate;
-          const line = add(overview, "div", "", "gallery-grade-overview-row");
-          add(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
-          add(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
-          if (candidate?.score != null) add(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
-          add(line, "small", `\u672C\u6863\uFF1A${rewardText(item2.rewards?.tier)} \xB7 \u7D2F\u8BA1\uFF1A${rewardText(item2.rewards?.cumulative)}`, "gallery-reward-estimate");
+          const line = add2(overview, "div", "", "gallery-grade-overview-row");
+          add2(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
+          add2(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
+          if (candidate?.score != null) add2(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
+          add2(line, "small", `\u672C\u6863\uFF1A${rewardText(item2.rewards?.tier)} \xB7 \u7D2F\u8BA1\uFF1A${rewardText(item2.rewards?.cumulative)}`, "gallery-reward-estimate");
         }
       };
       const show = (plan, expectedPlanBinding = planCache.get(set.id)?.binding) => {
         output.replaceChildren();
         if (!plan || plan.status === "unavailable") {
-          add(output, "small", `\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan?.reason ?? "\u8F93\u5165\u4E0D\u5B8C\u6574"}`, "gallery-unknown");
+          add2(output, "small", `\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan?.reason ?? "\u8F93\u5165\u4E0D\u5B8C\u6574"}`, "gallery-unknown");
           return;
         }
-        if (plan.collectionUnknownCount) add(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+        if (plan.collectionUnknownCount) add2(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
         if (plan.status === "achieved") {
-          add(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
+          add2(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
           showRewardChange(output, plan.currentRewards, plan.currentRewards);
-          add(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
+          add2(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
           return;
         }
         const reasons2 = {
-          "search-time-exhausted": "\u8BA1\u7B97\u65F6\u95F4\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3\uFF1B\u53EF\u964D\u4F4E\u76EE\u6807\u7B49\u7EA7\u518D\u8BD5",
+          "search-time-exhausted": "\u672C\u6B21\u8BA1\u7B97\u8FBE\u5230\u65F6\u95F4\u4E0A\u9650\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3\uFF1B\u53EF\u5728 Settings \u589E\u52A0\u65F6\u95F4\u4E0A\u9650\u540E\u91CD\u8BD5",
           "search-budget-exhausted": "\u641C\u7D22\u9884\u7B97\u8017\u5C3D\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
           "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u672A\u5B8C\u6574\u641C\u7D22\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
           "beam-search-truncated": "\u6709\u754C\u641C\u7D22\u672A\u627E\u5230\u65B9\u6848\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
@@ -17049,34 +17076,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "target-unreachable": "\u5F53\u524D\u6750\u6599\u8FBE\u4E0D\u5230\u76EE\u6807"
         };
         if (plan.status !== "ready") {
-          add(output, "small", reasons2[plan.reason] ?? "\u6682\u672A\u627E\u5230\u53EF\u884C\u65B9\u6848", "gallery-unknown");
+          add2(output, "small", reasons2[plan.reason] ?? "\u6682\u672A\u627E\u5230\u53EF\u884C\u65B9\u6848", "gallery-unknown");
           if (plan.bestScore != null) {
             const distance = plan.distanceToTarget == null ? "" : ` \xB7 \u8FD8\u5DEE ${count2(plan.distanceToTarget)} \u5206`;
-            add(output, "small", `\u5DF2\u68C0\u67E5\u5230\u7684\u6700\u4F73\u7EC4\u5408\uFF1A${count2(plan.bestScore)} \u5206${distance} \xB7 ${plan.bestCandidate?.totalPrice == null ? "\u62A5\u4EF7\u672A\u5B8C\u6574" : `${count2(plan.bestCandidate.totalPrice)} \u91D1\u5E01`}`);
+            add2(output, "small", `\u5DF2\u68C0\u67E5\u5230\u7684\u6700\u4F73\u7EC4\u5408\uFF1A${count2(plan.bestScore)} \u5206${distance} \xB7 ${plan.bestCandidate?.totalPrice == null ? "\u62A5\u4EF7\u672A\u5B8C\u6574" : `${count2(plan.bestCandidate.totalPrice)} \u91D1\u5E01`}`);
             if (plan.bestCandidate?.ids?.length) {
-              const details2 = add(output, "details");
-              add(details2, "summary", "\u6700\u4F73\u5DF2\u77E5\u8865\u5361\u7EC4\u5408\uFF08\u641C\u7D22\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\uFF09");
-              const list2 = add(details2, "ul");
+              const details2 = add2(output, "details");
+              add2(details2, "summary", "\u6700\u4F73\u5DF2\u77E5\u8865\u5361\u7EC4\u5408\uFF08\u641C\u7D22\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\uFF09");
+              const list2 = add2(details2, "ul");
               for (const item2 of plan.bestCandidate.items ?? plan.bestCandidate.ids.map((eaId) => ({ eaId }))) {
-                add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.score == null ? "\u5206\u6570\u672A\u77E5" : `${count2(item2.score)} \u5206`} \xB7 ${item2.price == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
+                add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.score == null ? "\u5206\u6570\u672A\u77E5" : `${count2(item2.score)} \u5206`} \xB7 ${item2.price == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
               }
             }
           }
           return;
         }
-        add(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
-        add(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
-        if (!plan.searchComplete) add(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
-        if (plan.costAudit) add(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
+        add2(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
+        add2(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
+        if (!plan.searchComplete) add2(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
+        if (plan.costAudit) add2(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
         for (const [index, candidate] of plan.plans.entries()) {
-          const details2 = add(output, "details");
+          const details2 = add2(output, "details");
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count2(candidate.currentScore)} + \u65B0\u589E ${count2(candidate.addedScore ?? 0)} = ${count2(candidate.score)} \u5206` : `${count2(candidate.score)} \u5206`;
-          const heading = add(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
+          const heading = add2(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
           showRewardChange(heading, plan.currentRewards, candidate.rewards);
-          const list2 = add(details2, "ul");
-          for (const item2 of candidate.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
-          if (candidate.missingPriceIds.length) add(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
-          if (candidate.unknownFields?.length) add(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
+          const list2 = add2(details2, "ul");
+          for (const item2 of candidate.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
+          if (candidate.missingPriceIds.length) add2(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
+          if (candidate.unknownFields?.length) add2(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
           purchaseButton(
             details2,
             candidate.items,
@@ -17107,33 +17134,36 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (saved?.plan) {
         show(saved.plan);
         if (saved.binding !== planBinding(value, set))
-          add(output, "small", "\u96C6\u5408\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4EE5\u4E0B\u4FDD\u7559\u4E0A\u6B21\u65B9\u6848\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u786E\u8BA4\u91D1\u989D\u3002", "gallery-unknown");
+          add2(output, "small", "\u96C6\u5408\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4EE5\u4E0B\u4FDD\u7559\u4E0A\u6B21\u65B9\u6848\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u786E\u8BA4\u91D1\u989D\u3002", "gallery-unknown");
       }
       if (saved?.overview) {
         showOverview(saved.overview);
-        if (saved.overviewBinding !== planBinding(value, set)) add(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
+        if (saved.overviewBinding !== planBinding(value, set)) add2(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
       }
       button.addEventListener("click", async (event) => {
         if (!event.isTrusted) return;
         button.disabled = true;
         output.replaceChildren();
-        add(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
+        add2(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
         const token = ++planningEpoch, identity5 = scope2(), revision = result;
         activePlans++;
         const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
-        const cancel = add(row, "button", "\u53D6\u6D88");
+        const cancel = add2(row, "button", "\u53D6\u6D88");
         cancel.type = "button";
         cancel.addEventListener("click", () => {
           planningEpoch++;
           output.replaceChildren();
-          add(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
+          add2(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
         });
         try {
           await priceForPlan(value, set, current2, output);
+          const maxMs = await planningTimeout(current2, output);
+          if (maxMs == null) return;
           const binding = planBinding(value, set);
           const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
             current: current2,
+            maxMs,
             progress: (value2) => {
               output.textContent = value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value2.evaluations} \u4E2A\u5019\u9009`;
             }
@@ -17195,12 +17225,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         activePlans++;
         try {
           await priceForPlan(value, set, current2, overview);
+          const maxMs = await planningTimeout(current2, overview);
+          if (maxMs == null) return;
           const binding = planBinding(value, set);
-          const plan = await runGalleryPlan(planGalleryGradeOverviewSteps({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }), {
-            current: () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected,
-            maxMs: 8e3,
+          const isCurrent = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected;
+          const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
+            current: isCurrent,
+            timeoutMs: maxMs,
             progress: (state2) => {
               overview.textContent = `\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026 ${state2.completed}/${state2.total}`;
+            },
+            runGrade: async ({ steps, grade, index, total, timeoutMs }) => {
+              const started = performance.now();
+              const labelProgress = (state2) => {
+                const elapsed = Math.min(timeoutMs, Math.floor(performance.now() - started));
+                const detail = state2.scoringWork ? ` \xB7 \u8BA1\u5206 ${count2(state2.scoringWork)} \u6B21` : ` \xB7 ${count2(state2.evaluations)} \u4E2A\u5019\u9009`;
+                overview.textContent = `\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026 ${index + 1}/${total} \xB7 ${grade.name} \u6863 ${Math.floor(elapsed / 1e3)}/${Math.ceil(timeoutMs / 1e3)} \u79D2${detail}`;
+              };
+              labelProgress({ evaluations: 0 });
+              const result2 = await runGalleryPlan(steps, { current: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+              return result2 ? { ...result2, elapsedMs: Math.floor(performance.now() - started) } : result2;
             }
           });
           if (plan && token === planningEpoch) {
@@ -17210,7 +17254,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               while (overviewCache.size > 8) overviewCache.delete(overviewCache.keys().next().value);
             }
             showOverview(plan);
-            if (plan.status === "partial") add(overview, "small", "\u8D39\u7528\u8BA1\u7B97\u672A\u5B8C\u6210\uFF1B\u5DF2\u663E\u793A\u90E8\u5206\u6863\u4F4D\uFF0C\u53EF\u5355\u72EC\u9009\u62E9\u76EE\u6807\u6863\u4F4D\u8BA1\u7B97\u3002", "gallery-unknown");
+            if (plan.status === "partial") add2(overview, "small", "\u8D39\u7528\u8BA1\u7B97\u672A\u5B8C\u6210\uFF1B\u5DF2\u663E\u793A\u90E8\u5206\u6863\u4F4D\uFF0C\u53EF\u5355\u72EC\u9009\u62E9\u76EE\u6807\u6863\u4F4D\u8BA1\u7B97\u3002", "gallery-unknown");
           }
         } catch {
           if (token === planningEpoch) overview.textContent = "\u5404\u6863\u8D39\u7528\u6682\u4E0D\u53EF\u7528";
@@ -17403,7 +17447,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const output = node("gallery-joint-output");
       const hadPlan = output.hasChildNodes();
       output.replaceChildren();
-      if (message && hadPlan) add(output, "small", message, "gallery-unknown");
+      if (message && hadPlan) add2(output, "small", message, "gallery-unknown");
     };
     const renderJoint = () => {
       const container = node("gallery-joint-targets");
@@ -17422,18 +17466,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if ([...rewardSelect.options].some((row) => row.value === previousReward)) rewardSelect.value = previousReward;
       if (catalogObjective() && !rewardSelect.options.length) node("gallery-joint-plan").disabled = true;
       if (!jointTargets.size) {
-        add(container, "small", "\u5C1A\u65E0\u8054\u5408\u76EE\u6807");
+        add2(container, "small", "\u5C1A\u65E0\u8054\u5408\u76EE\u6807");
         return;
       }
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
       for (const [id12, grade] of jointTargets) {
         const set = sets2.find((set2) => set2.id === id12);
-        const row = add(container, "div", "", "gallery-joint-target");
+        const row = add2(container, "div", "", "gallery-joint-target");
         row.dataset.setId = id12;
         if (!set) {
-          add(row, "strong", id12);
-          add(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
-          const remove2 = add(row, "button", "\xD7");
+          add2(row, "strong", id12);
+          add2(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
+          const remove2 = add2(row, "button", "\xD7");
           remove2.title = "\u79FB\u9664\u76EE\u6807";
           remove2.setAttribute("aria-label", `\u79FB\u9664 ${id12}`);
           remove2.disabled = restoringTargets;
@@ -17447,7 +17491,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
           continue;
         }
-        add(row, "strong", set.name);
+        add2(row, "strong", set.name);
         const select = document.createElement("select");
         select.setAttribute("aria-label", `${set.name} \u76EE\u6807\u7B49\u7EA7`);
         for (const grade2 of set.grades) {
@@ -17465,7 +17509,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           invalidateJoint();
           persistTargets();
         });
-        const remove = add(row, "button", "\xD7");
+        const remove = add2(row, "button", "\xD7");
         remove.title = "\u79FB\u9664\u76EE\u6807";
         remove.setAttribute("aria-label", `\u79FB\u9664 ${set.name}`);
         remove.disabled = restoringTargets;
@@ -17478,10 +17522,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           persistTargets();
         });
         const value = details.get(id12);
-        if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
-        else add(row, "small", scoreText(scoreSummary(value, set)));
+        if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add2(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
+        else add2(row, "small", scoreText(scoreSummary(value, set)));
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
-          const open = add(row, "button", "\u67E5\u770B\u5361\u7247", "gallery-target-open");
+          const open = add2(row, "button", "\u67E5\u770B\u5361\u7247", "gallery-target-open");
           open.addEventListener("click", (event) => {
             if (!event.isTrusted) return;
             setJointMode(false);
@@ -17509,23 +17553,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const showJointPlan = (plan, inputs = []) => {
       const output = node("gallery-joint-output");
       output.replaceChildren();
-      if (plan.collectionUnknownCount) add(output, "small", `${plan.collectionUnknownCount} \u6761\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+      if (plan.collectionUnknownCount) add2(output, "small", `${plan.collectionUnknownCount} \u6761\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
       const rewardEstimate = plan.rewardEstimate;
       if (rewardEstimate) {
-        const note = add(output, "small", `\u76EE\u5F55\u9884\u4F30 \xB7 ${rewardEstimate.label} \xB7 \u5F53\u524D ${count2(rewardEstimate.baselineQuantity)}`, "gallery-unknown");
+        const note = add2(output, "small", `\u76EE\u5F55\u9884\u4F30 \xB7 ${rewardEstimate.label} \xB7 \u5F53\u524D ${count2(rewardEstimate.baselineQuantity)}`, "gallery-unknown");
         note.title = "\u6BCF\u4E2A\u96C6\u5408\u7D2F\u8BA1\u5DF2\u8FBE\u5230\u7684\u5404\u7EA7\u76EE\u5F55\u5956\u52B1\uFF1B\u4E0D\u540C\u5956\u52B1\u4E0D\u6298\u7B97\u91D1\u5E01\u3002\u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002";
       }
       if (plan.status === "achieved" && rewardEstimate) {
-        add(output, "p", "\u6240\u9009\u76EE\u5F55\u5956\u52B1\u5DF2\u8FBE\u5F53\u524D\u76EE\u5F55\u4E0A\u9650\uFF0C\u65E0\u9700\u8865\u5361\u3002\u9886\u53D6\u72B6\u6001\u672A\u786E\u8BA4\u3002");
+        add2(output, "p", "\u6240\u9009\u76EE\u5F55\u5956\u52B1\u5DF2\u8FBE\u5F53\u524D\u76EE\u5F55\u4E0A\u9650\uFF0C\u65E0\u9700\u8865\u5361\u3002\u9886\u53D6\u72B6\u6001\u672A\u786E\u8BA4\u3002");
         return;
       }
       if (plan.status === "achieved") {
-        add(output, "p", "\u5F53\u524D\u8054\u5408\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u8865\u5361\u3002");
+        add2(output, "p", "\u5F53\u524D\u8054\u5408\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u8865\u5361\u3002");
         return;
       }
       if (plan.status !== "ready") {
         const messages2 = {
-          "search-time-exhausted": "\u8BA1\u7B97\u65F6\u95F4\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3\uFF1B\u53EF\u7F29\u5C0F\u76EE\u6807\u8303\u56F4\u518D\u8BD5",
+          "search-time-exhausted": "\u672C\u6B21\u8BA1\u7B97\u8FBE\u5230\u65F6\u95F4\u4E0A\u9650\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3\uFF1B\u53EF\u5728 Settings \u589E\u52A0\u65F6\u95F4\u4E0A\u9650\u540E\u91CD\u8BD5",
           "target-state-unknown": "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0",
           "price-unknown": "\u7F3A\u5C11\u6709\u6548\u62A5\u4EF7\uFF0C\u9884\u7B97\u65B9\u6848\u5C1A\u672A\u786E\u5B9A",
           "search-budget-exhausted": "\u641C\u7D22\u9884\u7B97\u8017\u5C3D\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u65E0\u89E3",
@@ -17543,27 +17587,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "reward-type-unknown": "\u8BF7\u9009\u62E9\u76EE\u5F55\u5956\u52B1\u7C7B\u578B",
           "reward-improvement-not-found": "\u672C\u6B21\u6709\u754C\u641C\u7D22\u672A\u627E\u5230\u66F4\u9AD8\u76EE\u5F55\u5956\u52B1\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u65E0\u89E3"
         };
-        add(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
-        for (const target of plan.targets ?? []) add(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
+        add2(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
+        for (const target of plan.targets ?? []) add2(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
         return;
       }
-      if (!plan.searchComplete) add(output, "small", rewardEstimate ? "\u6709\u754C\u76EE\u5F55\u9884\u4F30\uFF0C\u4E0D\u4FDD\u8BC1\u5956\u52B1\u6700\u591A\u6216\u603B\u4EF7\u6700\u4F4E\u3002" : "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
-      if (plan.costAudit) add(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\uFF0C\u6700\u4F4E\u76EE\u6807\u8BA1\u5206 ${count2(plan.costAudit.score)} \u5206\u3002`, "gallery-unknown");
+      if (!plan.searchComplete) add2(output, "small", rewardEstimate ? "\u6709\u754C\u76EE\u5F55\u9884\u4F30\uFF0C\u4E0D\u4FDD\u8BC1\u5956\u52B1\u6700\u591A\u6216\u603B\u4EF7\u6700\u4F4E\u3002" : "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
+      if (plan.costAudit) add2(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\uFF0C\u6700\u4F4E\u76EE\u6807\u8BA1\u5206 ${count2(plan.costAudit.score)} \u5206\u3002`, "gallery-unknown");
       for (const [index, planRow] of plan.plans.entries()) {
-        const detail = add(output, "details");
+        const detail = add2(output, "details");
         detail.open = index === 0;
-        add(detail, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${planRow.items.length} \u5F20 \xB7 ${planRow.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(planRow.totalPrice)} \u{1FA99}`}`);
-        if (planRow.remainingBudget != null) add(detail, "small", `\u5269\u4F59\u9884\u7B97 ${count2(planRow.remainingBudget)} \u{1FA99}`);
-        if (planRow.estimated) add(detail, "small", "\u5305\u542B\u516C\u5F00\u4F30\u5206", "gallery-unknown");
+        add2(detail, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${planRow.items.length} \u5F20 \xB7 ${planRow.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(planRow.totalPrice)} \u{1FA99}`}`);
+        if (planRow.remainingBudget != null) add2(detail, "small", `\u5269\u4F59\u9884\u7B97 ${count2(planRow.remainingBudget)} \u{1FA99}`);
+        if (planRow.estimated) add2(detail, "small", "\u5305\u542B\u516C\u5F00\u4F30\u5206", "gallery-unknown");
         if (planRow.rewardEstimate) {
           const estimate = planRow.rewardEstimate;
-          add(detail, "strong", `${estimate.label} \xB7 ${count2(estimate.baselineQuantity)} \u2192 ${count2(estimate.projectedQuantity)}\uFF08\u76EE\u5F55\u5DEE\u989D +${count2(estimate.change)}\uFF09`);
-          if (estimate.projectedTargets.some((target) => !target.rewardsComplete)) add(detail, "small", "\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1", "gallery-unknown");
+          add2(detail, "strong", `${estimate.label} \xB7 ${count2(estimate.baselineQuantity)} \u2192 ${count2(estimate.projectedQuantity)}\uFF08\u76EE\u5F55\u5DEE\u989D +${count2(estimate.change)}\uFF09`);
+          if (estimate.projectedTargets.some((target) => !target.rewardsComplete)) add2(detail, "small", "\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1", "gallery-unknown");
         }
         if (inputs.length && !rewardEstimate) {
-          const benchmark = add(detail, "button", "\u5BF9\u7167\u9010\u96C6\u5408");
+          const benchmark = add2(detail, "button", "\u5BF9\u7167\u9010\u96C6\u5408");
           benchmark.type = "button";
-          const comparison = add(detail, "output", "", "gallery-joint-benchmark");
+          const comparison = add2(detail, "output", "", "gallery-joint-benchmark");
           const frozen = structuredClone(inputs), identity5 = scope2();
           benchmark.addEventListener("click", async (event) => {
             if (!event.isTrusted || benchmark.disabled) return;
@@ -17571,8 +17615,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             comparison.textContent = "\u8BA1\u7B97\u9010\u96C6\u5408\u57FA\u51C6\u2026";
             const token = ++planningEpoch;
             try {
+              const maxMs = await planningTimeout(() => active && !disposed && token === planningEpoch && identity5 === scope2() && comparison.isConnected, comparison);
+              if (maxMs == null) return;
               const baseline = await runGalleryPlan(planGallerySequentialSteps({ targets: frozen }), {
-                current: () => active && !disposed && token === planningEpoch && identity5 === scope2() && comparison.isConnected
+                current: () => active && !disposed && token === planningEpoch && identity5 === scope2() && comparison.isConnected,
+                maxMs
               });
               if (!baseline) return;
               const value = baseline.status === "observed" ? benchmarkGalleryPlans({ jointPlan: planRow, individualPlans: baseline.plans }) : baseline;
@@ -17585,16 +17632,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           });
         }
-        const targets = add(detail, "table");
+        const targets = add2(detail, "table");
         for (const target of planRow.targets) {
-          const row = add(targets, "tr");
-          add(row, "th", `${target.name} \xB7 ${target.targetGrade ?? "\u672A\u8FBE\u6863\u4F4D"}`);
-          add(row, "td", `${count2(target.score)} \u5206`);
-          add(row, "td", target.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u76EE\u5F55\u5956\u52B1");
+          const row = add2(targets, "tr");
+          add2(row, "th", `${target.name} \xB7 ${target.targetGrade ?? "\u672A\u8FBE\u6863\u4F4D"}`);
+          add2(row, "td", `${count2(target.score)} \u5206`);
+          add2(row, "td", target.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u76EE\u5F55\u5956\u52B1");
         }
-        add(detail, "small", "\u5956\u52B1\u4E3A\u76EE\u5F55\u5185\u5BB9\uFF0C\u672A\u786E\u8BA4\u53EF\u9886\u6216\u65B0\u589E\u6536\u76CA\u3002");
-        const list2 = add(detail, "ul");
-        for (const item2 of planRow.items) add(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
+        add2(detail, "small", "\u5956\u52B1\u4E3A\u76EE\u5F55\u5185\u5BB9\uFF0C\u672A\u786E\u8BA4\u53EF\u9886\u6216\u65B0\u589E\u6536\u76CA\u3002");
+        const list2 = add2(detail, "ul");
+        for (const item2 of planRow.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
         const targetsBinding = JSON.stringify([...jointTargets]);
         const jointBinding = () => JSON.stringify([
           targetValue().budget,
@@ -17672,12 +17719,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       button.disabled = true;
       const output = node("gallery-joint-output");
       output.textContent = "\u6B63\u5728\u8BA1\u7B97\u2026";
-      const cancel = add(node("gallery-joint-controls") ?? button.parentElement, "button", "\u53D6\u6D88");
+      const cancel = add2(node("gallery-joint-controls") ?? button.parentElement, "button", "\u53D6\u6D88");
       cancel.addEventListener("click", () => {
         planningEpoch++;
         output.textContent = "\u8BA1\u7B97\u5DF2\u53D6\u6D88";
       });
       try {
+        const maxMs = await planningTimeout(current2, output);
+        if (maxMs == null) return;
         if (loadPlanningPrices) {
           const priced2 = await priceGalleryPlanningTargets(targets, {
             load: loadPlanningPrices,
@@ -17718,6 +17767,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         void diag({ event: "joint-plan", phase: "planner", status: "started", count: targets.length });
         const plan = await runGalleryPlan(planGalleryJointSteps({ targets, budget, catalogRewardKey }), {
           current: current2,
+          maxMs,
           progress: (value) => {
             output.textContent = value.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value.evaluations} \u4E2A\u5019\u9009`;
           }
@@ -17817,11 +17867,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       showBrowseLevel();
       node("gallery-selection-footer").replaceChildren();
       node("gallery-selection-footer").hidden = true;
-      const heading = add(target, "div", "", "gallery-detail-heading");
-      const headingIdentity = add(heading, "div", "", "gallery-identity");
-      add(headingIdentity, "h3", set.name);
+      const heading = add2(target, "div", "", "gallery-detail-heading");
+      const headingIdentity = add2(heading, "div", "", "gallery-identity");
+      add2(headingIdentity, "h3", set.name);
       if (sync) {
-        const button = add(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408");
+        const button = add2(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408");
         button.title = "\u540C\u6B65\u5F53\u524D\u96C6\u5408";
         button.disabled = foregroundSync?.setId === set.id;
         button.addEventListener("click", (event) => {
@@ -17830,44 +17880,44 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       if (!value) return;
       if (value.status === "loading") {
-        add(target, "p", "\u6B63\u5728\u8BFB\u53D6\u5361\u6C60\u548C\u8D26\u53F7\u72B6\u6001\u2026");
+        add2(target, "p", "\u6B63\u5728\u8BFB\u53D6\u5361\u6C60\u548C\u8D26\u53F7\u72B6\u6001\u2026");
         return;
       }
       if (!value.progress) {
-        add(target, "p", value.reason ?? "\u96C6\u5408\u5361\u6C60\u6216\u8D26\u53F7\u8FDB\u5EA6\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
+        add2(target, "p", value.reason ?? "\u96C6\u5408\u5361\u6C60\u6216\u8D26\u53F7\u8FDB\u5EA6\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
         return;
       }
       const progress = value.progress;
       const summary3 = scoreSummary(value, set, 3);
-      if (value.status !== "observed") add(target, "small", `\u8D26\u53F7\u72B6\u6001\u672A\u540C\u6B65 \xB7 ${value.reason ?? "\u8BFB\u53D6\u5931\u8D25"}`, "gallery-unknown");
-      if (value.priceError) add(target, "small", `\u4EF7\u683C\u8BFB\u53D6\u5931\u8D25 \xB7 ${value.priceError}`, "gallery-unknown");
-      if (value.priceSnapshot?.stale || priceExpired(value)) add(target, "small", "\u62A5\u4EF7\u5FEB\u7167\u5F85\u66F4\u65B0", "gallery-unknown");
+      if (value.status !== "observed") add2(target, "small", `\u8D26\u53F7\u72B6\u6001\u672A\u540C\u6B65 \xB7 ${value.reason ?? "\u8BFB\u53D6\u5931\u8D25"}`, "gallery-unknown");
+      if (value.priceError) add2(target, "small", `\u4EF7\u683C\u8BFB\u53D6\u5931\u8D25 \xB7 ${value.priceError}`, "gallery-unknown");
+      if (value.priceSnapshot?.stale || priceExpired(value)) add2(target, "small", "\u62A5\u4EF7\u5FEB\u7167\u5F85\u66F4\u65B0", "gallery-unknown");
       const first = progress.rows[0];
-      const emblems = add(headingIdentity, "div", "", "gallery-emblems");
+      const emblems = add2(headingIdentity, "div", "", "gallery-emblems");
       image(emblems, asset("club", first?.clubEaId), "\u4FF1\u4E50\u90E8\u5FBD\u7AE0", "gallery-emblem");
       image(emblems, asset("league", first?.leagueEaId), "\u8054\u8D5B\u6807\u5FD7", "gallery-emblem");
-      const overview = add(target, "div", "", "gallery-overview");
+      const overview = add2(target, "div", "", "gallery-overview");
       const unconfirmed = progress.totals.unknown === progress.totals.total && progress.totals.total > 0;
-      add(overview, "strong", unconfirmed ? `?/${set.requiredCards}` : `${progress.totals.collected}/${set.requiredCards}`, "gallery-big-count");
-      add(overview, "span", unconfirmed ? "\u5F85\u540C\u6B65" : progress.candidateOnly ? "\u5019\u9009\u5185\u5DF2\u6536\u96C6" : "\u5DF2\u786E\u8BA4\u6536\u96C6", "gallery-muted");
-      add(overview, "span", `${progress.totals.missing} \u7F3A\u5931 \xB7 ${progress.totals.unknown} \u5F85\u6838\u5B9E`, "gallery-muted");
-      add(overview, "span", progress.candidateOnly ? `\u9AD8\u5206\u5019\u9009 ${progress.totals.total} / \u5168\u90E8 ${progress.poolSize ?? "?"}` : `\u5361\u6C60 ${progress.totals.total}`, "gallery-muted");
+      add2(overview, "strong", unconfirmed ? `?/${set.requiredCards}` : `${progress.totals.collected}/${set.requiredCards}`, "gallery-big-count");
+      add2(overview, "span", unconfirmed ? "\u5F85\u540C\u6B65" : progress.candidateOnly ? "\u5019\u9009\u5185\u5DF2\u6536\u96C6" : "\u5DF2\u786E\u8BA4\u6536\u96C6", "gallery-muted");
+      add2(overview, "span", `${progress.totals.missing} \u7F3A\u5931 \xB7 ${progress.totals.unknown} \u5F85\u6838\u5B9E`, "gallery-muted");
+      add2(overview, "span", progress.candidateOnly ? `\u9AD8\u5206\u5019\u9009 ${progress.totals.total} / \u5168\u90E8 ${progress.poolSize ?? "?"}` : `\u5361\u6C60 ${progress.totals.total}`, "gallery-muted");
       gradeTrack(overview, set.grades, summary3);
-      const rewards2 = add(target, "details", "", "gallery-rewards");
-      add(rewards2, "summary", "\u7B49\u7EA7\u5956\u52B1");
+      const rewards2 = add2(target, "details", "", "gallery-rewards");
+      add2(rewards2, "summary", "\u7B49\u7EA7\u5956\u52B1");
       for (const grade of set.grades) {
-        const row = add(rewards2, "div", "", "gallery-reward-row");
-        add(row, "strong", grade.name);
-        add(row, "span", `${count2(grade.threshold)} \u5206`);
-        add(row, "span", grade.rewards.map((reward) => reward.label).join("\u3001") || (grade.rewardsComplete ? "\u65E0\u5956\u52B1" : "\u975E\u4EE3\u5E01\u5956\u52B1\u672A\u63D0\u4F9B"));
+        const row = add2(rewards2, "div", "", "gallery-reward-row");
+        add2(row, "strong", grade.name);
+        add2(row, "span", `${count2(grade.threshold)} \u5206`);
+        add2(row, "span", grade.rewards.map((reward) => reward.label).join("\u3001") || (grade.rewardsComplete ? "\u65E0\u5956\u52B1" : "\u975E\u4EE3\u5E01\u5956\u52B1\u672A\u63D0\u4F9B"));
       }
-      const facts2 = add(target, "details", "", "gallery-facts");
-      add(facts2, "summary", "\u6536\u96C6\u72B6\u6001\u8BE6\u60C5");
-      add(facts2, "small", `Club \u53EF\u89C1 ${progress.totals.inClub} / \u672A\u77E5 ${progress.totals.clubUnknown} \xB7 \u9996\u4EFB\u53EF\u89C1 ${progress.totals.firstOwned} / \u672A\u77E5 ${progress.totals.firstOwnedUnknown}`);
-      add(facts2, "small", "Club \u6765\u81EA\u5F53\u524D\u7F13\u5B58\uFF1B\u672A\u770B\u5230\u4E0D\u7B49\u4E8E\u6CA1\u6709\u3002\u516C\u5F00\u5206\u503C\u4E0E EA \u5355\u5361\u57FA\u7840\u5206\u5206\u522B\u663E\u793A\u3002");
-      if (value.stale) add(target, "small", `\u66F4\u65B0\u672A\u6210\u529F\uFF0C\u4FDD\u7559\u6700\u8FD1\u5FEB\u7167 \xB7 ${value.reason ?? ""}`, "gallery-unknown");
-      if (value.poolStale) add(target, "small", "\u516C\u5171\u5361\u6C60\u6682\u65F6\u65E0\u6CD5\u66F4\u65B0\uFF0C\u4F7F\u7528\u4E0A\u6B21\u5361\u6C60\u3002", "gallery-unknown");
-      if (value.fetchedAt) add(target, "small", `\u6536\u96C6\u72B6\u6001\u8BFB\u53D6\u4E8E ${date(value.fetchedAt)}`);
+      const facts2 = add2(target, "details", "", "gallery-facts");
+      add2(facts2, "summary", "\u6536\u96C6\u72B6\u6001\u8BE6\u60C5");
+      add2(facts2, "small", `Club \u53EF\u89C1 ${progress.totals.inClub} / \u672A\u77E5 ${progress.totals.clubUnknown} \xB7 \u9996\u4EFB\u53EF\u89C1 ${progress.totals.firstOwned} / \u672A\u77E5 ${progress.totals.firstOwnedUnknown}`);
+      add2(facts2, "small", "Club \u6765\u81EA\u5F53\u524D\u7F13\u5B58\uFF1B\u672A\u770B\u5230\u4E0D\u7B49\u4E8E\u6CA1\u6709\u3002\u516C\u5F00\u5206\u503C\u4E0E EA \u5355\u5361\u57FA\u7840\u5206\u5206\u522B\u663E\u793A\u3002");
+      if (value.stale) add2(target, "small", `\u66F4\u65B0\u672A\u6210\u529F\uFF0C\u4FDD\u7559\u6700\u8FD1\u5FEB\u7167 \xB7 ${value.reason ?? ""}`, "gallery-unknown");
+      if (value.poolStale) add2(target, "small", "\u516C\u5171\u5361\u6C60\u6682\u65F6\u65E0\u6CD5\u66F4\u65B0\uFF0C\u4F7F\u7528\u4E0A\u6B21\u5361\u6C60\u3002", "gallery-unknown");
+      if (value.fetchedAt) add2(target, "small", `\u6536\u96C6\u72B6\u6001\u8BFB\u53D6\u4E8E ${date(value.fetchedAt)}`);
       renderScoring(target, summary3, value);
       const cachedPlan = planCache.get(set.id);
       if (cachedPlan) cachedPlan.stale = cachedPlan.binding !== planBinding(value, set);
@@ -17877,9 +17927,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         selectionSource = result?.source ?? null;
         cardPage = 1;
       }
-      const filters = add(target, "div", "", "row gallery-card-filters");
+      const filters = add2(target, "div", "", "row gallery-card-filters");
       for (const [key, label] of [["all", "\u5168\u90E8"], ["collected", "\u5DF2\u6536\u96C6"], ["missing", "\u672A\u6536\u96C6"], ["unknown", "\u5F85\u6838\u5B9E"], ["held", "\u6301\u6709"], ["lineup", "\u8BA1\u5206\u9635\u5BB9"], ["firstOwned", "First Owner"]]) {
-        const button = add(filters, "button", label);
+        const button = add2(filters, "button", label);
         button.setAttribute("aria-pressed", String(filter === key));
         button.addEventListener("click", (event) => {
           if (!event.isTrusted) return;
@@ -17888,8 +17938,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           renderSetDetail(value, set);
         });
       }
-      const cardTools = add(target, "div", "", "row gallery-card-tools");
-      const search = add(cardTools, "input");
+      const cardTools = add2(target, "div", "", "row gallery-card-tools");
+      const search = add2(cardTools, "input");
       search.type = "search";
       search.value = cardQuery;
       search.placeholder = "\u641C\u7D22\u7403\u5458";
@@ -17904,32 +17954,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         order2.append(option);
       }
       cardTools.append(order2);
-      const clear = add(cardTools, "button", "\xD7");
+      const clear = add2(cardTools, "button", "\xD7");
       clear.title = "\u6E05\u9664\u9009\u62E9";
       clear.setAttribute("aria-label", "\u6E05\u9664\u9009\u62E9");
       clear.type = "button";
       clear.disabled = !selectedCards.size;
       const missingRows = progress.rows.filter((row) => !isGalleryOwned(row) && row.collected === false);
-      const cheapCount = add(cardTools, "input");
+      const cheapCount = add2(cardTools, "input");
       cheapCount.type = "number";
       cheapCount.min = "1";
       cheapCount.max = String(Math.max(1, missingRows.length));
       cheapCount.value = String(Math.max(1, set.requiredCards - progress.totals.collected));
       cheapCount.setAttribute("aria-label", "\u6700\u4F4E\u4EF7\u9009\u5361\u6570\u91CF");
       cheapCount.className = "gallery-cheapest-count";
-      const cheapest = add(cardTools, "button", "\u6700\u4F4E\u4EF7 N \u5F20");
+      const cheapest = add2(cardTools, "button", "\u6700\u4F4E\u4EF7 N \u5F20");
       cheapest.type = "button";
       cheapest.disabled = typeof purchase !== "function" || !missingRows.length;
       const filtered = filterGalleryCards(progress.rows, { filter, query: cardQuery, order: cardOrder, prices: planningPrices(value) ?? {}, lineupIds: summary3?.lineup?.map((row) => row.eaId) ?? [] });
       const page = paginateGalleryCards(filtered, { page: cardPage, pageSize: 24 });
       cardPage = page.page;
-      add(cardTools, "span", `${page.total ? `${(page.page - 1) * page.pageSize + 1}-${Math.min(page.page * page.pageSize, page.total)}` : 0} / ${page.total}`, "gallery-card-page");
-      const previous = add(cardTools, "button", "\u2190");
+      add2(cardTools, "span", `${page.total ? `${(page.page - 1) * page.pageSize + 1}-${Math.min(page.page * page.pageSize, page.total)}` : 0} / ${page.total}`, "gallery-card-page");
+      const previous = add2(cardTools, "button", "\u2190");
       previous.type = "button";
       previous.title = "\u4E0A\u4E00\u9875";
       previous.setAttribute("aria-label", "\u4E0A\u4E00\u9875");
       previous.disabled = page.page <= 1;
-      const next = add(cardTools, "button", "\u2192");
+      const next = add2(cardTools, "button", "\u2192");
       next.type = "button";
       next.title = "\u4E0B\u4E00\u9875";
       next.setAttribute("aria-label", "\u4E0B\u4E00\u9875");
@@ -17937,12 +17987,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const reconciled = reconcileGallerySelection(selectedCards, selectionContext().rows);
       selectedCards.clear();
       for (const [id12, row] of reconciled) selectedCards.set(id12, row);
-      const list2 = add(target, "div", "", "gallery-card-list");
+      const list2 = add2(target, "div", "", "gallery-card-list");
       const selectionBar = node("gallery-selection-footer");
       selectionBar.hidden = typeof purchase !== "function" || !selectedCards.size;
-      const selectedBuy = typeof purchase === "function" ? add(selectionBar, "button", "Buy 0", "primary gallery-purchase") : null;
-      const selectionSummary = add(selectionBar, "span", "", "gallery-selection-summary");
-      const preview = add(selectionBar, "div", "", "gallery-selection-preview");
+      const selectedBuy = typeof purchase === "function" ? add2(selectionBar, "button", "Buy 0", "primary gallery-purchase") : null;
+      const selectionSummary = add2(selectionBar, "span", "", "gallery-selection-summary");
+      const preview = add2(selectionBar, "div", "", "gallery-selection-preview");
       preview.setAttribute("role", "status");
       let selectedSummary, previewEpoch = 0;
       const updateSelected = () => {
@@ -17987,7 +18037,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
       };
       if (selectedBuy) {
-        const budget = add(selectionBar, "input");
+        const budget = add2(selectionBar, "input");
         budget.type = "number";
         budget.min = "0";
         budget.max = "165000000";
@@ -18048,13 +18098,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       const scoredIds = new Set(summary3?.lineup?.map((row) => row.eaId) ?? []);
       for (const row of page.rows) {
-        const card = add(list2, "article", "", "gallery-card gallery-player-card");
+        const card = add2(list2, "article", "", "gallery-card gallery-player-card");
         card.dataset.definitionId = String(row.eaId);
         card.dataset.rarityId = String(row.rarityEaId ?? "");
-        const art = add(card, "div", "", "gallery-player-art");
+        const art = add2(card, "div", "", "gallery-player-art");
         art.dataset.galleryCardArt = String(row.eaId);
         if (selectedBuy && !isGalleryOwned(row) && row.collected === false && value.status === "observed" && !value.stale && !value.poolStale) {
-          const select = add(art, "button", selectedCards.has(String(row.eaId)) ? "Added" : "Buy", "gallery-card-select");
+          const select = add2(art, "button", selectedCards.has(String(row.eaId)) ? "Added" : "Buy", "gallery-card-select");
           select.type = "button";
           select.setAttribute("aria-label", `${selectedCards.has(String(row.eaId)) ? "\u79FB\u9664" : "\u6DFB\u52A0"} ${row.name} ${row.version ?? ""}`);
           select.dataset.cardName = `${row.name} ${row.version ?? ""}`;
@@ -18072,34 +18122,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
         }
         const price2 = cachedPrice(row, value);
-        const priceBar = add(art, "div", "", "gallery-card-pricebar");
-        const priceLabel = add(priceBar, "span", price2 == null ? "\u4EF7\u683C\u672A\u77E5" : `${price2.toLocaleString()} \u{1FA99}`, "gallery-card-price");
+        const priceBar = add2(art, "div", "", "gallery-card-pricebar");
+        const priceLabel = add2(priceBar, "span", price2 == null ? "\u4EF7\u683C\u672A\u77E5" : `${price2.toLocaleString()} \u{1FA99}`, "gallery-card-price");
         const stalePrice = price2 != null && (priceExpired(value) || value.priceSnapshot?.staleIds?.includes(row.eaId) || value.priceSnapshot && !Object.hasOwn(value.priceSnapshot.prices, row.eaId));
         if (stalePrice) {
           priceLabel.dataset.priceState = "snapshot";
           priceLabel.title = "\u65E7\u62A5\u4EF7\u5FEB\u7167\uFF0C\u4E0D\u7528\u4E8E\u65B9\u6848\u6210\u672C";
           priceLabel.classList.add("gallery-unknown");
         }
-        add(priceBar, "span", `Gallery ${row.galleryScore == null ? "\u2014" : row.galleryScore.toLocaleString()}`, "gallery-card-gallery-score");
+        add2(priceBar, "span", `Gallery ${row.galleryScore == null ? "\u2014" : row.galleryScore.toLocaleString()}`, "gallery-card-gallery-score");
         cardImage(art, row, value.runtimeCards, set.id);
         const selectControl = art.querySelector(".gallery-card-select");
         if (selectControl) art.append(selectControl);
-        const meta = add(card, "div", "", "gallery-player-meta");
-        add(meta, "strong", row.name);
-        add(meta, "span", `${row.overall ?? "\u2014"} OVR \xB7 ${row.version ?? "\u7248\u672C\u672A\u77E5"}`, "gallery-player-version");
-        const logos = add(meta, "div", "", "gallery-player-logos");
+        const meta = add2(card, "div", "", "gallery-player-meta");
+        add2(meta, "strong", row.name);
+        add2(meta, "span", `${row.overall ?? "\u2014"} OVR \xB7 ${row.version ?? "\u7248\u672C\u672A\u77E5"}`, "gallery-player-version");
+        const logos = add2(meta, "div", "", "gallery-player-logos");
         image(logos, asset("club", row.clubEaId), "\u4FF1\u4E50\u90E8", "gallery-mini-emblem");
         image(logos, asset("league", row.leagueEaId), "\u8054\u8D5B", "gallery-mini-emblem");
         image(logos, asset("nation", row.nationEaId), "\u56FD\u7C4D", "gallery-mini-emblem");
-        const flags2 = add(meta, "div", "", "gallery-player-flags");
+        const flags2 = add2(meta, "div", "", "gallery-player-flags");
         statusIcon(flags2, row.collected, row.collected === true ? "\u5DF2\u6536\u96C6" : row.collected === false ? "\u672A\u6536\u96C6" : "\u6536\u96C6\u72B6\u6001\u672A\u77E5");
         statusIcon(flags2, row.inClub, row.inClub === true ? "Club \u53EF\u89C1" : row.inClub === false && row.held ? "\u5176\u4ED6\u5E93\u5B58\u533A\u6301\u6709\uFF0CClub \u672A\u770B\u5230" : row.inClub === false ? "Club \u672A\u770B\u5230" : "Club \u72B6\u6001\u672A\u77E5");
         statusIcon(flags2, row.firstOwned, row.firstOwned === true ? "First Owner" : row.firstOwned === false ? "\u975E First Owner" : "First Owner \u672A\u77E5");
-        add(meta, "span", `EA ${row.gradingScore == null ? "\u672A\u77E5" : row.gradingScore}`, "gallery-player-score");
+        add2(meta, "span", `EA ${row.gradingScore == null ? "\u672A\u77E5" : row.gradingScore}`, "gallery-player-score");
         const firstOwnerAction = galleryFirstOwnerHistoryAction(row);
         if (typeof setFirstOwner === "function" && firstOwnerAction) {
           const localFirstOwner = firstOwnerAction === "clear";
-          const firstOwner = add(meta, "button", localFirstOwner ? "\u6E05\u9664\u5386\u53F2 FO" : "\u6807\u8BB0\u5386\u53F2 FO", "gallery-first-owner-toggle");
+          const firstOwner = add2(meta, "button", localFirstOwner ? "\u6E05\u9664\u5386\u53F2 FO" : "\u6807\u8BB0\u5386\u53F2 FO", "gallery-first-owner-toggle");
           firstOwner.type = "button";
           firstOwner.title = localFirstOwner ? "\u6E05\u9664\u672C\u5730\u9996\u4EFB\u5386\u53F2\u58F0\u660E\uFF0C\u6062\u590D\u81EA\u52A8\u8BC6\u522B\u7ED3\u679C\uFF1B\u4E0D\u6539\u53D8 EA \u8BB0\u5F55" : "\u4EC5\u5728\u786E\u5B9A\u66FE\u9996\u4EFB\u83B7\u5F97\u8FD9\u4E2A\u7248\u672C\u65F6\u6807\u8BB0\uFF1B\u4EC5\u4ECE\u5E02\u573A\u4E70\u8FC7\u7684\u4E0D\u8981\u6807\u8BB0\u3002\u53EA\u5F71\u54CD FCAT \u672C\u5730\u4F30\u5206\uFF0C\u4E0D\u6539\u53D8 EA \u8BB0\u5F55";
           firstOwner.addEventListener("click", async (event) => {
@@ -18133,7 +18183,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             } catch {
               firstOwner.title = "\u672C\u5730 FO \u5386\u53F2\u4FDD\u5B58\u5931\u8D25";
               if (identity5 === scope2() && thisDetailCurrent(value, set.id)) {
-                const failure = meta.querySelector(".gallery-first-owner-error") ?? add(meta, "small", "", "gallery-first-owner-error");
+                const failure = meta.querySelector(".gallery-first-owner-error") ?? add2(meta, "small", "", "gallery-first-owner-error");
                 failure.textContent = "\u672C\u5730 FO \u5386\u53F2\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5";
               }
             } finally {
@@ -18141,11 +18191,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           });
         }
-        if (scoredIds.has(row.eaId)) add(meta, "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
+        if (scoredIds.has(row.eaId)) add2(meta, "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
         if (typeof marketCompare === "function" && !isGalleryOwned(row) && row.collected === false) {
-          const compare = add(meta, "button", "\u6BD4\u4EF7", "gallery-card-compare");
+          const compare = add2(meta, "button", "\u6BD4\u4EF7", "gallery-card-compare");
           compare.type = "button";
-          const comparison = add(meta, "small", "", "gallery-market-comparison");
+          const comparison = add2(meta, "small", "", "gallery-market-comparison");
           const compareScope = scope2(), compareSource = result?.source;
           const key = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
           const current2 = () => !disposed && active && !jointMode && selectedSetId === set.id && compareScope === scope2() && compareSource === result?.source && comparison.isConnected;
@@ -18171,9 +18221,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const reference = cachedPrice(row, details.get(set.id) ?? value);
             comparison.textContent = `EA ${quote2.price == null ? "\u65E0\u6709\u6548\u6302\u724C" : `${count2(quote2.price)} \u91D1\u5E01`} \xB7 \u53C2\u8003 ${reference == null ? "\u672A\u77E5" : `${count2(reference)} \u91D1\u5E01`}`;
             if (quote2.listings?.length) {
-              const detail = add(meta, "details", "", "gallery-market-listings");
-              add(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
-              for (const listing2 of quote2.listings.slice(0, 3)) add(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
+              const detail = add2(meta, "details", "", "gallery-market-listings");
+              add2(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
+              for (const listing2 of quote2.listings.slice(0, 3)) add2(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
             }
           };
           const stored = comparisonViews.get(key);
@@ -18286,14 +18336,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         targets: targetValue().targets,
         summaries
       });
-      if (!filtered.length) add(list2, "p", "\u6CA1\u6709\u5339\u914D\u7684\u96C6\u5408", "gallery-unknown");
+      if (!filtered.length) add2(list2, "p", "\u6CA1\u6709\u5339\u914D\u7684\u96C6\u5408", "gallery-unknown");
       for (const { set } of filtered) {
-        const card = add(list2, "article", "", "gallery-set");
+        const card = add2(list2, "article", "", "gallery-set");
         card.dataset.setId = set.id;
-        const title = add(card, "div", "", "gallery-set-title");
+        const title = add2(card, "div", "", "gallery-set-title");
         const configuredIcons = assets?.set?.(set.name, category, set, details.get(set.id)?.pool?.items ?? []);
         const titleIcons = Array.isArray(configuredIcons) && configuredIcons.length ? configuredIcons : ["leagues", "rarities"].includes(category.slug) ? [] : details.get(set.id)?.pool?.items?.slice(0, 3).map((item2) => asset("club", item2.clubEaId)) ?? [];
-        const iconBox = add(title, "span", "", "gallery-set-icons");
+        const iconBox = add2(title, "span", "", "gallery-set-icons");
         const iconKind = category.slug === "leagues" ? "league" : category.slug === "rarities" ? "rarity" : "club";
         const candidates = (Array.isArray(titleIcons) ? titleIcons : [titleIcons]).map((value) => typeof value === "string" && value.startsWith("https://") ? value : asset(iconKind, value)).filter(Boolean);
         let chosen = setIconSelections.get(set.id);
@@ -18302,8 +18352,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           setIconSelections.set(set.id, chosen);
         }
         if (chosen.src) image(iconBox, chosen.src, set.name, "gallery-set-icon");
-        add(title, "h4", set.name);
-        const watch = add(title, "button", jointTargets.has(set.id) ? "\u2605" : "\u2606", "gallery-watch");
+        add2(title, "h4", set.name);
+        const watch = add2(title, "button", jointTargets.has(set.id) ? "\u2605" : "\u2606", "gallery-watch");
         watch.type = "button";
         watch.title = jointTargets.has(set.id) ? "\u53D6\u6D88\u5173\u6CE8" : "\u5173\u6CE8\u96C6\u5408";
         watch.setAttribute("aria-label", `${watch.title} ${set.name}`);
@@ -18321,32 +18371,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           renderSets();
           persistTargets();
         });
-        if (result.changes?.added.includes(set.id)) add(card, "span", "\u65B0\u96C6\u5408", "badge");
+        if (result.changes?.added.includes(set.id)) add2(card, "span", "\u65B0\u96C6\u5408", "badge");
         const detail = details.get(set.id), totals = detail?.progress?.totals, summary3 = scoreSummary(detail, set, 2);
-        const grades3 = add(card, "div", "", "gallery-grades");
+        const grades3 = add2(card, "div", "", "gallery-grades");
         gradeTrack(grades3, set.grades, summary3);
-        const metrics = add(card, "div", "", "gallery-set-metrics");
-        const collected = add(metrics, "span", totals ? `${totals.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, "gallery-collected");
+        const metrics = add2(card, "div", "", "gallery-set-metrics");
+        const collected = add2(metrics, "span", totals ? `${totals.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, "gallery-collected");
         collected.title = totals ? `\u5DF2\u6536\u96C6 / \u76EE\u6807 \xB7 ${totals.unknown} \u5F85\u6838\u5B9E` : "\u6536\u96C6\u8FDB\u5EA6\uFF1A\u672A\u540C\u6B65";
         if (!totals || totals.total > 0 && totals.unknown === totals.total) collected.textContent = `? / ${set.requiredCards}`;
-        const scoreCaption = add(metrics, "span", "Base score", "gallery-score-caption");
+        const scoreCaption = add2(metrics, "span", "Base score", "gallery-score-caption");
         scoreCaption.title = "\u96C6\u5408\u57FA\u7840\u5206\uFF08\u672C\u5730\u53C2\u8003\u8BA1\u5206\uFF09";
-        const score2 = add(metrics, "span", compactScore(summary3), "gallery-summary");
+        const score2 = add2(metrics, "span", compactScore(summary3), "gallery-summary");
         score2.title = `Base score \xB7 ${scoreText(summary3)}`;
         score2.setAttribute("aria-label", `Base score ${scoreText(summary3)}`);
         renderRewardSummary(metrics, [set]);
         if (detail?.progress?.candidateOnly) {
-          const candidate = add(metrics, "span", "\u25A3", "gallery-collection-flag");
+          const candidate = add2(metrics, "span", "\u25A3", "gallery-collection-flag");
           candidate.title = `\u9AD8\u5206\u5019\u9009 ${detail.progress.totals?.total ?? "?"} / \u5168\u90E8 ${detail.progress.poolSize ?? "?"}`;
           candidate.setAttribute("aria-label", candidate.title);
         }
         if (detail?.stale || detail?.poolStale) {
-          const snapshot = add(metrics, "span", "\u25F7", "gallery-collection-flag");
+          const snapshot = add2(metrics, "span", "\u25F7", "gallery-collection-flag");
           snapshot.title = "\u5F53\u524D\u663E\u793A\u6700\u8FD1\u4E00\u6B21\u5FEB\u7167";
           snapshot.setAttribute("aria-label", snapshot.title);
         }
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
-          const button = add(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
+          const button = add2(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
           button.type = "button";
           button.addEventListener("click", (event) => {
             if (event.isTrusted) void loadSetDetails(set);
@@ -18565,9 +18615,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const buttons = node("gallery-categories");
       buttons.replaceChildren();
       for (const row of catalog.categories) {
-        const button = add(buttons, "button");
-        const top = add(button, "span", "", "gallery-category-top");
-        const iconsBox = add(top, "span", "", "gallery-category-icons");
+        const button = add2(buttons, "button");
+        const top = add2(button, "span", "", "gallery-category-top");
+        const iconsBox = add2(top, "span", "", "gallery-category-icons");
         const icons = assets?.category?.(row.slug, row.name, row.sets) ?? [];
         const iconKey = JSON.stringify([row.id, icons]);
         if (!categoryIconSelections.has(iconKey)) {
@@ -18575,12 +18625,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           categoryIconSelections.set(iconKey, selectGalleryCategoryIcons(Array.isArray(icons) ? icons : [icons]));
         }
         for (const src of categoryIconSelections.get(iconKey)) image(iconsBox, src, row.name, "gallery-category-icon");
-        add(top, "span", `${row.sets.length} \u4E2A\u96C6\u5408`, "gallery-category-count");
+        add2(top, "span", `${row.sets.length} \u4E2A\u96C6\u5408`, "gallery-category-count");
         renderRewardSummary(top, row.sets, "gallery-category-rewards");
-        add(button, "strong", row.name, "gallery-category-name");
-        const score2 = add(button, "span", "", "gallery-category-score");
-        add(score2, "span");
-        add(score2, "progress");
+        add2(button, "strong", row.name, "gallery-category-name");
+        const score2 = add2(button, "span", "", "gallery-category-score");
+        add2(score2, "span");
+        add2(score2, "progress");
         button.type = "button";
         button.dataset.categoryId = row.id;
         button.addEventListener("click", () => {
@@ -18730,23 +18780,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFc27PriceSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add = (parent2, tag, text5 = "") => {
+    const add2 = (parent2, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const card = add(parent, "section");
+    const card = add2(parent, "section");
     card.className = "card";
     card.id = "public-price-settings";
-    add(card, "h3", "\u62A5\u4EF7\u4E0E\u4EA4\u6613\u4EF7\u683C \xB7 Gallery / Puzzle");
-    const fields4 = add(card, "div");
+    add2(card, "h3", "\u62A5\u4EF7\u4E0E\u4EA4\u6613\u4EF7\u683C \xB7 Gallery / Puzzle");
+    const fields4 = add2(card, "div");
     fields4.className = "settings-grid";
     const select = (label, values7) => {
-      const control = add(add(fields4, "label", label), "select");
+      const control = add2(add2(fields4, "label", label), "select");
       control.setAttribute("aria-label", label);
       for (const [value, text5] of values7) {
-        const option = add(control, "option", text5);
+        const option = add2(control, "option", text5);
         option.value = value;
       }
       return control;
@@ -18755,7 +18805,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const source = select("\u8D2D\u4E70 / \u6302\u724C\u4EF7\u683C\u53C2\u8003", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"]]);
     const mode = select("\u5141\u8BB8\u8D85\u8FC7\u53C2\u8003\u4EF7", [["fixed", "\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u767E\u5206\u6BD4"]]);
     const number3 = (label, min) => {
-      const control = add(add(fields4, "label", label), "input");
+      const control = add2(add2(fields4, "label", label), "input");
       control.type = "number";
       control.min = String(min);
       control.step = "1";
@@ -18765,16 +18815,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const premium = number3("\u6EA2\u4EF7\u6570\u503C", 0), attempts = number3("\u6BCF\u5361\u8D2D\u4E70\u5C1D\u8BD5\u6B21\u6570", 1);
     const validity = number3("\u62A5\u4EF7\u6709\u6548\u671F\uFF08\u5206\u949F\uFF09", 1);
     validity.max = "30";
-    add(card, "small", "\u8D2D\u4E70\u4E0E\u6302\u724C\u5171\u7528\u53C2\u8003\u6765\u6E90\uFF0C\u6EA2\u4EF7\u4EC5\u7528\u4E8E\u8D2D\u4E70\u3002\u62A5\u4EF7\u4F18\u5148\u590D\u7528\u6709\u6548\u7F13\u5B58\uFF0C\u7F3A\u5931\u6216\u8FC7\u671F\u65F6\u66F4\u65B0\u3002\u4FDD\u5B58\u540E\u65B0\u65B9\u6848\u751F\u6548\uFF0C\u5DF2\u6279\u51C6\u7684\u4EF7\u683C\u4E0D\u53D8\u3002");
-    add(card, "small", "\u62A5\u4EF7\u6709\u6548\u671F 1\u201330 \u5206\u949F\uFF0C\u9ED8\u8BA4 5\uFF0C\u4ECE\u5B9E\u9645\u83B7\u53D6\u62A5\u4EF7\u65F6\u8BA1\u65F6\u3002\u4FDD\u5B58\u540E\u65B0\u8BFB\u53D6\u751F\u6548\uFF1B\u5DF2\u6253\u5F00\u7684\u6302\u724C\u7A97\u53E3\u8BF7\u5173\u95ED\u540E\u91CD\u65B0\u6253\u5F00\u3002\u5931\u8D25\u91CD\u8BD5\u7B49\u5F85\u4E0D\u53D7\u6B64\u8BBE\u7F6E\u5F71\u54CD\u3002");
-    const preview = add(card, "output");
+    add2(card, "small", "\u8D2D\u4E70\u4E0E\u6302\u724C\u5171\u7528\u53C2\u8003\u6765\u6E90\uFF0C\u6EA2\u4EF7\u4EC5\u7528\u4E8E\u8D2D\u4E70\u3002\u62A5\u4EF7\u4F18\u5148\u590D\u7528\u6709\u6548\u7F13\u5B58\uFF0C\u7F3A\u5931\u6216\u8FC7\u671F\u65F6\u66F4\u65B0\u3002\u4FDD\u5B58\u540E\u65B0\u65B9\u6848\u751F\u6548\uFF0C\u5DF2\u6279\u51C6\u7684\u4EF7\u683C\u4E0D\u53D8\u3002");
+    add2(card, "small", "\u62A5\u4EF7\u6709\u6548\u671F 1\u201330 \u5206\u949F\uFF0C\u9ED8\u8BA4 5\uFF0C\u4ECE\u5B9E\u9645\u83B7\u53D6\u62A5\u4EF7\u65F6\u8BA1\u65F6\u3002\u4FDD\u5B58\u540E\u65B0\u8BFB\u53D6\u751F\u6548\uFF1B\u5DF2\u6253\u5F00\u7684\u6302\u724C\u7A97\u53E3\u8BF7\u5173\u95ED\u540E\u91CD\u65B0\u6253\u5F00\u3002\u5931\u8D25\u91CD\u8BD5\u7B49\u5F85\u4E0D\u53D7\u6B64\u8BBE\u7F6E\u5F71\u54CD\u3002");
+    const preview = add2(card, "output");
     preview.setAttribute("aria-live", "polite");
-    const row = add(card, "div");
+    const row = add2(card, "div");
     row.className = "row";
-    const save = add(row, "button", "\u4FDD\u5B58\u4EF7\u683C\u8BBE\u7F6E");
+    const save = add2(row, "button", "\u4FDD\u5B58\u4EF7\u683C\u8BBE\u7F6E");
     save.type = "button";
     save.className = "primary";
-    const status = add(card, "output");
+    const status = add2(card, "output");
     status.setAttribute("aria-live", "polite");
     let scope2 = null, busy = false, epoch2 = 0;
     const enabled = (value) => {
@@ -18866,33 +18916,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryTradeSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add = (parent2, tag, text5 = "") => {
+    const add2 = (parent2, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const card = add(parent, "section");
+    const card = add2(parent, "section");
     card.id = "gallery-trade-settings";
     card.className = "card";
-    add(card, "h3", "Gallery \u4EA4\u6613");
-    const grid = add(card, "div");
+    add2(card, "h3", "Gallery \u4EA4\u6613");
+    const grid = add2(card, "div");
     grid.className = "settings-grid";
     const select = (label, options) => {
-      const control = add(add(grid, "label", label), "select");
+      const control = add2(add2(grid, "label", label), "select");
       control.setAttribute("aria-label", label);
       for (const [value, text5] of options) {
-        const option = add(control, "option", text5);
+        const option = add2(control, "option", text5);
         option.value = value;
       }
       return control;
     };
     const destination = select("Gallery \u8D2D\u5361\u53BB\u5411", [["club", "Club"], ["unassigned", "Unassigned"]]);
     const style = select("Gallery \u8D2D\u4E70 / \u6302\u724C\u98CE\u683C", [["enhancer", "Enhancer"], ["fodder", "Fodder"]]);
-    add(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002Unassigned \u7684\u6536\u96C6\u8FDB\u5EA6\u4EE5 EA \u56DE\u8BFB\u4E3A\u51C6\u3002");
-    const save = add(card, "button", "\u4FDD\u5B58 Gallery \u4EA4\u6613\u8BBE\u7F6E");
+    add2(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002Unassigned \u7684\u6536\u96C6\u8FDB\u5EA6\u4EE5 EA \u56DE\u8BFB\u4E3A\u51C6\u3002");
+    const save = add2(card, "button", "\u4FDD\u5B58 Gallery \u4EA4\u6613\u8BBE\u7F6E");
     save.type = "button";
-    const output = add(card, "output");
+    const output = add2(card, "output");
     output.setAttribute("role", "status");
     let account = null, busy = false, epoch2 = 0;
     const enable = (value) => {
@@ -18926,6 +18976,84 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         await service.save({ destination: destination.value, style: style.value });
         if (service.scope() !== account) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
         output.textContent = "\u5DF2\u4FDD\u5B58\uFF1B\u65B0\u7A97\u53E3\u548C\u65B0\u8D2D\u4E70\u6279\u6B21\u751F\u6548\u3002";
+      } catch (error2) {
+        output.textContent = message(error2);
+      } finally {
+        busy = false;
+        try {
+          enable(service.scope() === account);
+        } catch {
+          enable(false);
+        }
+      }
+    });
+    enable(false);
+    return { refresh };
+  }
+
+  // src/adapters/browser/fc27-gallery-planning-settings.js
+  function mountGalleryPlanningSettings({ document, parent, service }) {
+    if (!service) return { refresh() {
+    } };
+    const add2 = (owner, tag, text5 = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      owner.append(node);
+      return node;
+    };
+    const card = add2(parent, "section");
+    card.id = "gallery-planning-settings";
+    card.className = "card";
+    add2(card, "h3", "Gallery \u65B9\u6848\u8BA1\u7B97");
+    const label = add2(card, "label", "\u65B9\u6848\u8BA1\u7B97\u65F6\u95F4\u4E0A\u9650\uFF08\u79D2\uFF09");
+    const input = add2(label, "input");
+    input.type = "number";
+    input.min = String(MIN_GALLERY_PLANNING_TIMEOUT_MS / 1e3);
+    input.max = String(MAX_GALLERY_PLANNING_TIMEOUT_MS / 1e3);
+    input.step = "1";
+    input.setAttribute("aria-label", "\u65B9\u6848\u8BA1\u7B97\u65F6\u95F4\u4E0A\u9650\uFF08\u79D2\uFF09");
+    add2(card, "small", `\u9ED8\u8BA4 ${DEFAULT_GALLERY_PLANNING_TIMEOUT_MS / 1e3} \u79D2\uFF0C\u8303\u56F4 ${input.min}-${input.max} \u79D2\u3002\u4EC5\u5F71\u54CD Gallery \u65B9\u6848\u641C\u7D22\uFF0C\u4E0D\u6539\u53D8\u62A5\u4EF7\u3001\u9884\u7B97\u6216\u8D2D\u4E70\u6388\u6743\u3002`);
+    const save = add2(card, "button", "\u4FDD\u5B58 Gallery \u65B9\u6848\u8BBE\u7F6E");
+    save.type = "button";
+    const output = add2(card, "output");
+    output.setAttribute("role", "status");
+    let account = null, busy = false, epoch2 = 0;
+    const enable = (enabled) => {
+      input.disabled = !enabled;
+      save.disabled = !enabled;
+    };
+    const message = (error2) => error2?.message === "FC27_GALLERY_CONTEXT_CHANGED" ? "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u8BBE\u7F6E\u3002" : "Gallery \u65B9\u6848\u8BBE\u7F6E\u8BFB\u53D6\u6216\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002";
+    const refresh = async () => {
+      if (busy) return;
+      const token = ++epoch2;
+      account = null;
+      enable(false);
+      try {
+        const expected = service.scope(), value = await service.read();
+        if (token !== epoch2) return;
+        if (service.scope() !== expected) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+        account = expected;
+        input.value = String(value.timeoutMs / 1e3);
+        output.textContent = "";
+        enable(true);
+      } catch (error2) {
+        if (token === epoch2) output.textContent = message(error2);
+      }
+    };
+    save.addEventListener("click", async (event) => {
+      if (!event.isTrusted || busy || !account) return;
+      const seconds = Number(input.value);
+      if (!Number.isSafeInteger(seconds) || seconds < Number(input.min) || seconds > Number(input.max)) {
+        output.textContent = `\u8BF7\u8F93\u5165 ${input.min}-${input.max} \u79D2\u3002`;
+        return;
+      }
+      busy = true;
+      enable(false);
+      try {
+        if (service.scope() !== account) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+        await service.save({ timeoutMs: seconds * 1e3 });
+        if (service.scope() !== account) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+        output.textContent = "\u5DF2\u4FDD\u5B58\uFF1B\u4E0B\u4E00\u6B21\u65B9\u6848\u8BA1\u7B97\u751F\u6548\u3002";
       } catch (error2) {
         output.textContent = message(error2);
       } finally {
@@ -18975,6 +19103,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     galleryScoreCache = null,
     galleryAccounting: galleryAccounting2 = null,
     galleryTradePreferences: galleryTradePreferences2 = null,
+    galleryPlanningSettings: galleryPlanningSettings2 = null,
     publicPrices: publicPrices2 = null,
     galleryPlanningPrices = null,
     exportDiagnostics = null,
@@ -18988,15 +19117,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     host.id = hostId;
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = fc27WorkbenchMarkup();
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, setFirstOwner: galleryFirstOwnerHistory });
+    shadow.innerHTML = fc27WorkbenchMarkup({ installationChecks: typeof checkInstallation === "function" });
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, planningSettings: galleryPlanningSettings2, setFirstOwner: galleryFirstOwnerHistory });
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#settings-bottom"), service: publicPrices2 });
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
+    const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
     const selectTab = bindFc27WorkbenchTabs(shadow, host, (id12) => {
       gallery.setActive(id12 === "gallery");
       if (id12 === "settings") {
         void priceSettings.refresh();
         void tradeSettings.refresh();
+        void planningSettings.refresh();
       }
     });
     const node = (id12) => shadow.getElementById(id12);
@@ -19036,7 +19167,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const update = () => {
       for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-        if (!button.closest("#page-gallery") && !button.closest("#public-price-settings") && !button.closest("#gallery-trade-settings")) button.disabled = busy;
+        if (!button.closest("#page-gallery") && !button.closest("#public-price-settings") && !button.closest("#gallery-trade-settings") && !button.closest("#gallery-planning-settings")) button.disabled = busy;
       }
       node("execute").disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
       node("fill").disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== "function";
@@ -19205,14 +19336,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return result;
       });
     });
-    on("gm", () => {
-      clear();
-      void run(() => checkInstallation(false));
-    });
-    on("hold", () => {
-      clear();
-      void run(() => checkInstallation(true));
-    });
+    if (typeof checkInstallation === "function") {
+      on("gm", () => {
+        clear();
+        void run(() => checkInstallation(false));
+      });
+      on("hold", () => {
+        clear();
+        void run(() => checkInstallation(true));
+      });
+    }
     on("catalog", () => {
       clear();
       void run(() => inspectCatalog({ setId: Number(node("target").value) }));
@@ -23061,9 +23194,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     function inspectDefinitionOwnership(definitionIdInput) {
       const definitionId = Number(definitionIdInput);
-      const empty = { definitionId, club: 0, transfer: 0, unassigned: 0, storage: 0 };
-      if (!Number.isInteger(definitionId) || definitionId <= 0) return empty;
-      return inspectDefinitionOwnerships([definitionId])[definitionId] || empty;
+      const empty2 = { definitionId, club: 0, transfer: 0, unassigned: 0, storage: 0 };
+      if (!Number.isInteger(definitionId) || definitionId <= 0) return empty2;
+      return inspectDefinitionOwnerships([definitionId])[definitionId] || empty2;
     }
     function inspectDefinitionOwnerships(definitionIdsInput = []) {
       const definitionIds = [...new Set(
@@ -25190,7 +25323,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return null;
         }
         wrapper = document.createElement("div");
-        wrapper.className = "gallery-native-card";
+        wrapper.className = `gallery-native-card${ownedDisplay ? " owned-card" : ""}`;
         if (slot) wrapper.slot = String(slot);
         wrapper.style.cssText = "display:block;position:relative;pointer-events:none";
         wrapper.setAttribute("role", "img");
@@ -26201,6 +26334,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-streamlined-panel.js
   var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString() : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
+  function streamlinedRouteSummary(route) {
+    const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
+    return `${number2(route.purchaseCost)} \u25C9 \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u79EF\u5206 \xB7 ${route.count} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${route.minBatches} \u6279`;
+  }
   function streamlinedExecutionMessage(reason, recovery = null) {
     if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
       const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? `\uFF08Set ${recovery.setId} / Challenge ${recovery.challengeId}\uFF09` : "";
@@ -26221,6 +26358,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return `\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Puzzle \u8D2D\u5361\u8BB0\u5F55${target}${phase ? `\uFF1A${phase}` : ""}\u3002${counts.length ? `\u8BB0\u5F55\u72B6\u6001\uFF1A${counts.join("\u3001")}\u3002` : ""}\u8BF7\u5148\u56DE\u5BF9\u5E94 SBC \u7684\u6279\u91CF\u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u82E5\u8BE5 SBC \u5DF2\u4E0B\u67B6\uFF0C\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002\u672C\u6B21\u672A\u6295\u5165\u6750\u6599\u3002`;
     }
     const messages2 = {
+      FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u6CA1\u6709\u53EF\u8D2D\u4E70\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u6838\u5BF9\u5E76\u6062\u590D\u540E\u53EF\u91CD\u8BD5\u3002",
+      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u91CD\u8BD5\u3002",
+      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
+      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
       FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
       FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
       FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
@@ -26230,7 +26376,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_RECOVERY_REQUIRED: "\u4E0A\u6B21\u8D21\u732E\u5DF2\u53D1\u51FA\uFF0C\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u518D\u6B21\u6295\u5165\u3002",
       FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
-      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002"
+      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
     };
     return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
   }
@@ -26243,7 +26390,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     unschedule = clearInterval
   } = {}) {
     if (!document?.body || document.getElementById("fcat-streamlined-entry")) return null;
-    const add = (parent, tag, value = "") => {
+    const add2 = (parent, tag, value = "") => {
       const node2 = document.createElement(tag);
       node2.textContent = value;
       parent.append(node2);
@@ -26263,13 +26410,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     *{box-sizing:border-box} [hidden]{display:none!important}
     dialog{width:min(720px,94vw);max-width:94vw;max-height:88vh;overflow:auto;background:#17232c;color:#ecf2f5;border:1px solid #53636d;border-radius:10px;padding:16px;font:14px/1.5 Arial,sans-serif}
     dialog::backdrop{background:#000a}header,footer,.tabs{display:flex;gap:10px;align-items:center}header{margin-bottom:12px}header strong{flex:1}footer{position:sticky;bottom:-16px;background:#17232c;padding:12px 0;justify-content:flex-end;border-top:1px solid #46545d}
-    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:10px;min-height:52px;padding:4px 0;border-top:1px solid #364956}.player-card{flex:0 0 30px;position:relative;width:30px;height:42px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.2083333);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 66px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 72px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:6px}.player-points{flex-basis:58px}.player-price{flex-basis:62px}dialog{padding:12px}}
+    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:12px;min-height:92px;padding:8px 0;border-top:1px solid #364956}.player-card{flex:0 0 64px;position:relative;width:64px;height:88px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.4444444);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 76px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 82px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:8px}.player-card{flex-basis:54px;width:54px;height:74px}.player-card slot{transform:scale(.375)}.player-points{flex-basis:62px}.player-price{flex-basis:68px}dialog{padding:12px}}
+    .player-row{display:grid;grid-template-columns:104px minmax(0,1fr) 90px 112px;min-height:156px}
+    .player-card{width:104px;height:145px}.player-card slot{transform:scale(.7222222)}
+    .player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75);transform-origin:top left}
+    .player-text strong{white-space:normal;overflow-wrap:anywhere;font-size:16px}.player-text span{font-size:14px}
+    .player-points,.player-price{font-size:15px}.player-price small{margin:3px 0;font-size:12px}
+    @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
   </style><dialog aria-label="FCAT Streamlined SBC"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
     <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-coins">\u6700\u4F4E\u5F85\u8D2D\u603B\u989D\uFF0C\u6750\u6599\u4F30\u503C\u6B21\u4E4B</option><option value="fewest-cards">\u6700\u5C11\u5361\u7247</option></select></label>
     <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58\uFF0B\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u8D2D\u4E70\u6750\u6599</option></select></label>
-    <label>\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label></div>
-    <small>\u6700\u9AD8\u8BC4\u5206\u4ECD\u53D7 FSU \u8BBE\u7F6E\u7EA6\u675F\uFF1B\u4EC5\u666E\u901A\u4E0D\u53EF\u4EA4\u6613\u5361\u3002\u8865\u5361\u5019\u9009\u7684\u79EF\u5206\u4E0E\u8DEF\u7531\u5C1A\u5F85\u9A8C\u8BC1\uFF0C\u5F53\u524D\u63D0\u4F9B\u5E93\u5B58\u9884\u89C8\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
+    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label></div>
+    <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
     <output data-status aria-live="polite"></output><progress hidden></progress><section data-result></section>
     <footer><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></footer></dialog>`;
     const node = (key) => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector("dialog");
@@ -26277,7 +26430,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const rendered = /* @__PURE__ */ new Set();
     let renderGeneration = 0;
     let shown = null, selected = /* @__PURE__ */ new Set();
-    const contributionReady = () => shown?.liveExecutionEnabled === true && selected.size > 0;
+    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
     const clearRendered = () => {
       renderGeneration++;
       for (const node2 of rendered) {
@@ -26324,6 +26477,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       node("objective").value = s.objective;
       node("mode").value = s.mode;
       node("rating").value = String(s.maxRating);
+      node("market-rating").value = String(s.marketMaxRating ?? 99);
+      node("wait").value = String(s.partialWaitMs / 1e3);
       for (const key of ["club", "storage"]) node(key).checked = s.sources.includes(key);
     };
     const selectScope = (value) => {
@@ -26351,6 +26506,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       objective: node("objective").value,
       mode: node("mode").value,
       maxRating: Number(node("rating").value),
+      marketMaxRating: Number(node("market-rating").value),
+      partialWaitMs: Number(node("wait").value) * 1e3,
       sources: ["club", "storage"].filter((key) => node(key).checked)
     });
     const on = (key, handler) => node(key).addEventListener("click", (event) => {
@@ -26409,65 +26566,107 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       shown = null;
       if (!result.plan) return;
       shown = result;
+      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
+      node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
       const output = node("result"), p = result.progress;
-      add(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number2(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number2(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number2(p.remaining)} / \u8D85\u989D ${number2(p.excess)}`).className = "result-summary";
-      add(output, "small", `\u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${result.items.length} \u5F20 / ${result.batches.length} \u6279`);
-      if (!result.searchComplete) add(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
-      if (!result.poolComplete) add(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
-      if (result.marketPending) add(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
-      if (result.quoteReadError) add(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
-      if (result.unknownValueCount) add(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
-      const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || result.record.batches[index]?.state !== "waiting");
+      if (marketRun) add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85 ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2 \xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+      if (result.routes?.length) {
+        const routes = add2(output, "div");
+        routes.className = "route-list";
+        for (const route of result.routes) {
+          const button = add2(routes, "button", streamlinedRouteSummary(route));
+          button.type = "button";
+          button.style.cssText = "display:block;width:100%;text-align:left;margin:6px 0";
+          button.setAttribute("aria-pressed", String(route.id === result.selectedRoute));
+          button.addEventListener("click", async (event) => {
+            if (!event.isTrusted || busy) return;
+            const serial = opened;
+            setBusy(true);
+            try {
+              const next = await session2.selectRoute(route.id);
+              if (serial === opened) {
+                renderResult(next);
+                node("status").textContent = next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
+              }
+            } catch (error2) {
+              node("status").textContent = safeReason9(error2);
+            } finally {
+              setBusy(false);
+            }
+          });
+        }
+      }
+      add2(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number2(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number2(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number2(p.remaining)} / \u8D85\u989D ${number2(p.excess)}`).className = "result-summary";
+      add2(output, "small", `\u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${result.items.length} \u5F20 / ${result.batches.length} \u6279`);
+      if (!result.searchComplete) add2(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
+      if (!result.poolComplete) add2(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
+      if (result.marketPending) add2(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
+      if (result.quoteReadError) add2(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
+      if (result.marketError) add2(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
+      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
+      const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
       selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
-      const selection = add(output, "output");
+      const selection = add2(output, "output");
       selection.dataset.selection = "";
       const updateSelection = () => {
         const items = [...selected].flatMap((index) => result.batches[index]);
         const points = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-        selection.textContent = `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number2(points)} \u5206 \xB7 \u8FD8\u5DEE ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        selection.textContent = marketRun ? "\u5E02\u573A\u8DEF\u7EBF\u5DF2\u51BB\u7ED3\uFF1A\u6309\u5269\u4F59\u76EE\u6807\u9010\u6279\u6267\u884C\uFF1B\u4E0B\u65B9\u6279\u6B21\u4EC5\u4E3A\u9884\u4F30\u3002" : `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number2(points)} \u5206 \xB7 \u8FD8\u5DEE ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        if (marketRun && result.record) {
+          const r = result.record, rows = r.entries ?? [];
+          selection.textContent += `
+\u5DF2\u786E\u8BA4 ${number2(r.submittedScore)} / ${number2(p.target)} \u5206 \xB7 \u5DF2\u82B1\u8D39 ${number2(r.spent)} / ${number2(r.budget)} \u91D1\u5E01
+\u5DF2\u8D2D\u5F85\u5165\u5E93 ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u5C31\u7EEA ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u8D21\u732E ${r.consumedIds?.length ?? 0} \u5F20`;
+        }
         node("contribute").disabled = busy || !contributionReady();
       };
       updateSelection();
       const generation = renderGeneration;
       result.batches.forEach((batch, index) => {
-        const details = add(output, "details");
+        const details = add2(output, "details");
         details.open = index === 0;
-        const summary3 = add(details, "summary"), choice = add(summary3, "input");
+        const summary3 = add2(details, "summary"), choice = add2(summary3, "input");
         choice.type = "checkbox";
         choice.checked = !settled2(index);
+        if (marketRun) choice.hidden = true;
         choice.dataset.settled = String(settled2(index));
         choice.disabled = busy || settled2(index);
         choice.setAttribute("aria-label", `\u9009\u62E9\u7B2C ${index + 1} \u6279`);
         choice.addEventListener("click", (event) => event.stopPropagation());
         choice.addEventListener("change", () => {
+          if (marketRun) return;
           if (choice.checked) selected.add(index);
           else selected.delete(index);
           updateSelection();
         });
-        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${batch.length} \u5F20 \xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206`));
+        const pending2 = batch.filter((item2) => item2.source === "market");
+        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${batch.length} \u5F20\uFF08\u5E93\u5B58 ${batch.length - pending2.length} / \u5F85\u8D2D ${pending2.length}\uFF09\xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206 \xB7 \u5F85\u8D2D ${number2(pending2.reduce((sum2, item2) => sum2 + item2.price, 0))} \u91D1\u5E01`));
         let populated = false;
         const populate = () => {
           if (populated || !details.open || generation !== renderGeneration || disposed) return;
           populated = true;
-          const list2 = add(details, "div");
+          const list2 = add2(details, "div");
           list2.className = "player-list";
           for (const item2 of batch) {
-            const row = add(list2, "div");
+            const row = add2(list2, "div");
             row.className = "player-row";
-            const card = add(row, "div");
+            const card = add2(row, "div");
             card.className = "player-card";
-            const fallback = add(card, "span", number2(item2.rating));
+            const fallback = add2(card, "span", number2(item2.rating));
             fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
-            const slot = add(card, "slot");
+            const slot = add2(card, "slot");
             slot.name = `streamlined-card-${generation}-${item2.key}`;
-            const text5 = add(row, "div");
+            const text5 = add2(row, "div");
             text5.className = "player-text";
-            add(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
-            add(text5, "span", item2.pile === "storage" ? "SBC Storage" : item2.source === "market" ? "\u5F85\u8D2D" : "Club");
-            add(row, "span", `${number2(item2.points)} \u5206`).className = "player-points";
-            const price2 = add(row, "span", `${number2(item2.price)} \u25C9`);
+            add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
+            add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} \u5206`);
+            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC Storage \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            const points = add2(row, "span", `${number2(item2.points)} \u5206`);
+            points.className = "player-points";
+            const price2 = add2(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number2(item2.price)} \u91D1\u5E01`);
             price2.className = "player-price";
-            price2.title = "\u6750\u6599\u4F30\u503C";
+            price2.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
+            if (item2.source === "market") add2(price2, "small", `\u4E0A\u9650 ${number2(item2.purchaseMaxBuy)}`);
             let native = null, failed2 = false;
             const unavailable = () => {
               failed2 = true;
@@ -26486,7 +26685,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             };
             try {
               const raw = session2.resolveDisplayItem?.(item2);
-              if (raw) native = nativeRenderer?.renderOwned({
+              if (raw) native = (item2.source === "market" ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({
                 parent: host,
                 raw,
                 slot: slot.name,
@@ -26507,11 +26706,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count2]) => `${key}: ${count2}`).join(" \xB7 ");
       if (skipped) {
-        const details = add(output, "details");
-        add(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
-        add(details, "small", skipped);
+        const details = add2(output, "details");
+        add2(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
+        add2(details, "small", skipped);
       }
-      add(output, "small", result.liveExecutionEnabled ? "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
+      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
       node("contribute").hidden = false;
     };
     on("solve", async () => {
@@ -26527,9 +26726,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const result = await session2.plan(config(), { onProgress: (p) => {
           if (serial !== opened) return;
           const bar = shadow.querySelector("progress");
-          bar.max = p.phase === "quotes" ? p.total || 1 : p.maxNodes || 1;
-          bar.value = p.phase === "quotes" ? p.completed : p.nodes;
-          node("status").textContent = p.phase === "quotes" ? `\u62A5\u4EF7 ${number2(p.completed)} / ${number2(p.total)}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
+          const stage = { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
+          bar.max = stage ? p.total || 1 : p.maxNodes || 1;
+          bar.value = stage ? p.completed : p.nodes;
+          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
         node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.reason ?? result.status;
@@ -26544,7 +26744,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const labels = {
         completed: "\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u5956\u52B1\u72B6\u6001\u9700\u53E6\u884C\u6838\u5BF9\u3002",
         partial: "\u672C\u6B21\u8D21\u732E\u5DF2\u786E\u8BA4\uFF0C\u53EF\u7EE7\u7EED\u5269\u4F59\u6279\u6B21\u3002",
-        stopped: "\u5DF2\u505C\u6B62\uFF0C\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002",
+        stopped: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u7684\u6210\u4EA4\u548C\u8D21\u732E\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
         recovered: "\u5DF2\u6062\u590D\u8BB0\u5F55\uFF0C\u672A\u91CD\u590D\u8D21\u732E\u3002",
         observed: "\u5DF2\u8BFB\u53D6\u4E0A\u6B21\u8BB0\u5F55\u3002",
         absent: "\u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002",
@@ -26557,11 +26757,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     on("contribute", async () => {
       if (busy || !contributionReady()) return;
       const serial = opened, result = shown, indices = [...selected].sort((a, b) => a - b);
+      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
       setBusy(true);
       try {
         const outcome = await session2.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === "partial" }, {
           onProgress: (p) => {
             if (serial !== opened) return;
+            if (marketRun) {
+              const label2 = {
+                search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
+                buying: "\u4E70\u5165\u4E2D",
+                moving: "\u79FB\u5165 Club",
+                "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
+                contribution: "\u8D21\u732E\u4E2D",
+                confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4"
+              }[p.phase] ?? p.phase;
+              node("status").textContent = `\u7B2C ${number2(p.batchNumber)} \u6279 \xB7 ${label2}
+\u5DF2\u8D2D ${number2(p.purchased)} / ${number2(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number2(p.spent)} / ${number2(p.budget)} \u91D1\u5E01
+\u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
+              if (p.readyCount !== void 0) node("status").textContent += `
+\u672C\u6279\u5C31\u7EEA ${number2(p.readyCount)} / ${number2(p.selectionLimit)} \u5F20 \xB7 ${number2(p.readyPoints)} \u5206`;
+              const bar2 = shadow.querySelector("progress");
+              bar2.max = p.targetScore || 1;
+              bar2.value = p.submittedScore;
+              return;
+            }
             const label = { validation: "\u590D\u6838\u6750\u6599", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
             node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} \u5206`;
             const bar = shadow.querySelector("progress");
@@ -26723,7 +26943,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     materialValue = null,
     searchComplete = null,
     items = [],
-    batches = []
+    batches = [],
+    route = null,
+    execution = null
   } = {}) {
     const keyOf5 = (item2) => typeof item2?.key === "string" ? item2.key : integer15(item2?.id, 1) ? `item:${item2.id}` : integer15(item2?.definitionId, 1) ? `definition:${item2.definitionId}` : "unknown";
     return JSON.stringify({
@@ -26738,8 +26960,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       purchaseCost,
       materialValue,
       searchComplete,
+      ...execution ? { execution } : {},
       items: items.map((item2) => ({ ...item2, key: keyOf5(item2) })).sort((a, b) => a.key.localeCompare(b.key)),
-      batches: batches.map((batch) => batch.map(keyOf5))
+      batches: batches.map((batch) => batch.map(keyOf5)),
+      ...route ? { route } : {}
     });
   }
 
@@ -26747,11 +26971,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function normalizeStreamlinedSettings(value = {}) {
     const result = {
       maxRating: value.maxRating ?? 99,
+      marketMaxRating: value.marketMaxRating ?? 99,
       objective: value.objective ?? "lowest-coins",
       mode: value.mode ?? "inventory-market",
-      sources: value.sources ?? ["club", "storage"]
+      sources: value.sources ?? ["club", "storage"],
+      partialWaitMs: value.partialWaitMs ?? 6e4
     };
-    if (!integer15(result.maxRating, 1, 99) || !["lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 2 || result.sources.some((s) => !["club", "storage"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
+    if (!integer15(result.maxRating, 1, 99) || !integer15(result.marketMaxRating, 1, 99) || !["lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer15(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 2 || result.sources.some((s) => !["club", "storage"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
     return deepFreeze(structuredClone(result));
   }
   function createStreamlinedSettings({ get, set }) {
@@ -26797,7 +27023,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function filterStreamlinedItems(items, { eligibility, policy } = {}) {
     const blocked11 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
     if (!Array.isArray(items) || items.length > 2e4 || !eligibility?.known) return blocked11("ELIGIBILITY_UNVERIFIED");
-    if (!policy || !integer15(policy.maxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer15(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer15(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean")) return blocked11("POLICY_UNVERIFIED");
+    if (!policy || !integer15(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer15(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer15(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer15(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean")) return blocked11("POLICY_UNVERIFIED");
     const excluded = {}, excludedRows = [], accepted = [], keys2 = /* @__PURE__ */ new Set(), ids = /* @__PURE__ */ new Set();
     for (const item2 of items) {
       if (!item2 || !integer15(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer15(item2.id, 1) || ids.has(item2.id))) return blocked11("IDENTITY_CONFLICT");
@@ -26805,8 +27031,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (item2.source === "inventory") ids.add(item2.id);
       const checks = [
         ["points-unknown", integer15(item2.points, 1, 1e9) && item2.scoreVerified === true],
-        ["rating", integer15(item2.rating, 1, policy.maxRating)],
-        ["fsu-gold-range", item2.rating < 75 || integer15(item2.rating, ...policy.goldRange)],
+        // Frozen legacy plans without a separate procurement limit retain their
+        // original ceiling. New settings explicitly supply marketMaxRating.
+        ["rating", integer15(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
+        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer15(item2.rating, ...policy.goldRange)],
         ["special", item2.special === false],
         ["evolution", item2.evolution === false],
         ["cosmetic", item2.cosmetic === false],
@@ -26887,9 +27115,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
     const target = challenge.remainingScore, started = now();
     let nodes = 0, processed = 0, budget = null, best = null;
-    const empty = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
-    let partial = empty;
-    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
+    const empty2 = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
+    let partial = empty2;
+    const rank4 = (a, b) => compareStreamlinedPlans(a, b, objective);
     const append = (prev, item2) => ({
       score: prev.score + item2.points,
       purchaseCost: prev.purchaseCost + (item2.source === "market" ? item2.price : 0),
@@ -26902,16 +27130,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     const remember = (state) => {
       if (state.score >= target) {
-        if (!best || rank3(state, best) < 0) best = state;
-      } else if (state.score > partial.score || state.score === partial.score && rank3(state, partial) < 0) partial = state;
+        if (!best || rank4(state, best) < 0) best = state;
+      } else if (state.score > partial.score || state.score === partial.score && rank4(state, partial) < 0) partial = state;
     };
-    let seed = empty;
+    let seed = empty2;
     for (const item2 of candidates) {
       seed = append(seed, item2);
       remember(seed);
       if (seed.score >= target) break;
     }
-    const states4 = /* @__PURE__ */ new Map([[0, empty]]);
+    const states4 = /* @__PURE__ */ new Map([[0, empty2]]);
     outer: for (const item2 of candidates) {
       const before = [...states4.values()];
       for (const state of before) {
@@ -26924,7 +27152,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         remember(candidate);
         if (candidate.score < target) {
           const previous = states4.get(candidate.score);
-          if (!previous || rank3(candidate, previous) < 0) states4.set(candidate.score, candidate);
+          if (!previous || rank4(candidate, previous) < 0) states4.set(candidate.score, candidate);
         }
         if (nodes % 256 === 0) {
           const cancelled = yield {
@@ -27004,6 +27232,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/streamlined/plan.js
   function validPlanContents(plan) {
     const { challenge, items, batches } = plan;
+    if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
     if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
     if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage"].includes(i.pile) : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
@@ -27011,15 +27240,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const value = inventory.some((i) => !integer15(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
     return plan.score === score2 && same25(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
   }
-  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-coins" } = {}) {
+  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-coins", execution = null } = {}) {
     if (!same25(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer15(challenge.selectionLimit, 1, 1e3)) fail28("PLAN_UNCONFIRMED");
     const items = structuredClone(result.items), batches = structuredClone(result.batches);
-    if (!validPlanContents({ ...result, challenge, objective, items, batches })) fail28("PLAN_UNCONFIRMED");
+    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail28("PLAN_UNCONFIRMED");
+    const route = result.route ? structuredClone(result.route) : null;
     const fingerprint = streamlinedPlanFingerprint({
       context,
       challenge,
       policy,
       objective,
+      execution,
       status: result.status,
       score: result.score,
       progress: result.progress,
@@ -27027,7 +27258,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       materialValue: result.materialValue,
       searchComplete: result.searchComplete === true,
       items,
-      batches
+      batches,
+      route
     });
     return deepFreeze({
       schema: 1,
@@ -27042,14 +27274,254 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       materialValue: result.materialValue,
       items,
       batches,
+      ...route ? { route } : {},
+      ...execution ? { execution: structuredClone(execution) } : {},
       fingerprint,
       searchComplete: result.searchComplete === true,
       liveExecutionEnabled: false
     });
   }
   function assertStreamlinedPlan(plan) {
-    if (plan?.schema !== 1 || !same25(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint(plan)) fail28("PLAN_CHANGED");
+    if (plan?.schema !== 1 || !same25(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail28("PLAN_CHANGED");
     return plan;
+  }
+
+  // src/streamlined/routes.js
+  var rank3 = (a, b) => a.purchaseCost - b.purchaseCost || a.unknownValue - b.unknownValue || a.materialValue - b.materialValue || a.score - b.score || a.count - b.count;
+  var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
+  var add = (state, group, index, count2) => {
+    const counts = state.counts.slice();
+    counts[index] = (counts[index] ?? 0) + count2;
+    return {
+      score: state.score + group.item.points * count2,
+      count: state.count + count2,
+      counts,
+      purchaseCost: state.purchaseCost + (group.source === "market" ? group.item.price * count2 : 0),
+      materialValue: state.materialValue + (group.source === "inventory" ? (group.item.price ?? 0) * count2 : 0),
+      unknownValue: state.unknownValue + (group.source === "inventory" && group.item.price == null ? count2 : 0)
+    };
+  };
+  function groupStreamlinedCandidates({
+    inventory = [],
+    market = [],
+    mode = "inventory-market",
+    challenge,
+    eligibility,
+    policy,
+    quoteSource = "futgg",
+    quoteAt = Date.now()
+  }) {
+    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer15(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer15(quoteAt)) fail28("ROUTE_INPUT_INVALID");
+    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
+    if (filtered.status !== "observed") throw Error(filtered.reason);
+    const groups = [], byKey = /* @__PURE__ */ new Map(), excluded = { ...filtered.excluded };
+    for (const item2 of filtered.items) {
+      const q = item2.quote;
+      if (item2.source === "market" && (!integer15(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer15(q.fetchedAt) || q.fetchedAt > quoteAt || !integer15(q.expiresAt) || q.expiresAt <= quoteAt)) {
+        excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
+        continue;
+      }
+      const key = JSON.stringify([item2.source, item2.points, item2.rating, item2.rarity ?? null, item2.price, item2.pile]);
+      let group = byKey.get(key);
+      if (!group) {
+        group = { key, source: item2.source, item: item2, items: [], quantity: 0 };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      if (group.items.some((row) => row.key === item2.key || item2.source === "market" && row.definitionId === item2.definitionId)) continue;
+      group.items.push(item2);
+      group.quantity = item2.source === "inventory" ? group.items.length : Math.ceil(challenge.remainingScore / item2.points);
+    }
+    return { groups, excluded };
+  }
+  function* planStreamlinedRoutesSteps(input, {
+    maxNodes = 3e5,
+    maxStates = 2e4,
+    maxMs = 4e3,
+    now = () => Date.now(),
+    budget = null
+  } = {}) {
+    const { challenge } = input;
+    if (!integer15(maxNodes, 1, 5e6) || !integer15(maxStates, 1, 1e5) || !integer15(maxMs, 1, 6e4) || budget !== null && !integer15(budget) || !integer15(challenge?.selectionLimit, 1, 1e3)) fail28("ROUTE_INPUT_INVALID");
+    const { groups, excluded } = groupStreamlinedCandidates(input);
+    const target = challenge.remainingScore, started = now(), frontier2 = [];
+    let nodes = 0, stopped = null, labels = 1;
+    const remember = (state) => {
+      if (state.score < target || budget !== null && state.purchaseCost > budget) return;
+      if (frontier2.some((row) => row.purchaseCost <= state.purchaseCost && row.count <= state.count && (row.purchaseCost !== state.purchaseCost || row.count !== state.count || rank3(row, state) <= 0))) return;
+      for (let i = frontier2.length - 1; i >= 0; i--) {
+        if (state.purchaseCost <= frontier2[i].purchaseCost && state.count <= frontier2[i].count) frontier2.splice(i, 1);
+      }
+      frontier2.push(state);
+    };
+    function* checkpoint() {
+      if (nodes % 128 === 0) {
+        const cancelled = yield {
+          phase: "routes",
+          nodes,
+          maxNodes,
+          candidates: groups.length,
+          elapsedMs: now() - started,
+          routeCount: frontier2.length,
+          bestPurchaseCost: frontier2.length ? Math.min(...frontier2.map((r) => r.purchaseCost)) : null
+        };
+        if (cancelled) stopped = "cancelled";
+        else if (now() - started >= maxMs) stopped = "time";
+      }
+      if (nodes >= maxNodes) stopped ??= "nodes";
+      return !!stopped;
+    }
+    const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
+    const market = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
+    const bases = [empty()];
+    for (const order2 of [
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
+      stock.slice().sort((a, b) => b.g.item.points - a.g.item.points)
+    ]) {
+      let state = empty();
+      for (const { g, i } of order2) {
+        if (state.score >= target) break;
+        state = add(state, g, i, Math.min(g.quantity, Math.ceil((target - state.score) / g.item.points)));
+      }
+      remember(state);
+      bases.push(state);
+    }
+    for (const base of bases) for (const { g, i } of market) {
+      if (base.score < target) remember(add(base, g, i, Math.ceil((target - base.score) / g.item.points)));
+    }
+    seed: for (const base of bases) {
+      if (base.score >= target) continue;
+      for (let a = 0; a < market.length; a++) {
+        const left = market[a];
+        remember(add(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
+        for (let b = a + 1; b < market.length; b++) {
+          const right = market[b], count2 = Math.ceil((target - base.score) / left.g.item.points);
+          for (let n = 0; n <= count2; n++) {
+            let state = add(base, left.g, left.i, n);
+            if (state.score < target) state = add(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
+            remember(state);
+            nodes++;
+            if (yield* checkpoint()) break seed;
+          }
+        }
+      }
+    }
+    const states4 = /* @__PURE__ */ new Map([[0, [empty()]]]);
+    search: for (let i = 0; i < groups.length && !stopped; i++) {
+      const group = groups[i];
+      let remaining = group.quantity;
+      for (let chunk = 1; remaining > 0; chunk *= 2) {
+        const count2 = Math.min(chunk, remaining);
+        remaining -= count2;
+        const before = [...states4.values()].flat();
+        for (const state of before) {
+          const candidate = add(state, group, i, count2);
+          nodes++;
+          if (candidate.score >= target) remember(candidate);
+          else if (budget === null || candidate.purchaseCost <= budget) {
+            const rows = states4.get(candidate.score) ?? [];
+            const dominates = (a, b) => a.purchaseCost <= b.purchaseCost && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.count !== b.count || rank3(a, b) <= 0);
+            if (!rows.some((row) => dominates(row, candidate))) {
+              const retained = rows.filter((row) => !dominates(candidate, row));
+              labels += retained.length + 1 - rows.length;
+              states4.set(candidate.score, [...retained, candidate]);
+            }
+          }
+          if (labels > maxStates) stopped = "states";
+          if (yield* checkpoint()) break search;
+        }
+      }
+    }
+    frontier2.sort(rank3);
+    const routes = frontier2.map((state, index) => ({
+      id: `route:${index}`,
+      score: state.score,
+      excess: state.score - target,
+      count: state.count,
+      purchaseCost: state.purchaseCost,
+      materialValue: state.unknownValue ? null : state.materialValue,
+      inventoryCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "inventory" ? n : 0), 0),
+      marketCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "market" ? n : 0), 0),
+      minBatches: Math.ceil(state.count / challenge.selectionLimit),
+      groups: state.counts.flatMap((count2, i) => count2 ? [{ ...groups[i], quantity: count2 }] : []),
+      searchComplete: stopped === null,
+      supplyVerified: false
+    }));
+    const selected = /* @__PURE__ */ new Set();
+    if (routes.length) {
+      selected.add(routes[0]);
+      for (const extra of [5, 10, 20, 30]) {
+        const cap = Math.floor(routes[0].purchaseCost * (1 + extra / 100));
+        const choice = routes.filter((r) => r.purchaseCost <= cap).sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0];
+        if (choice) selected.add(choice);
+      }
+      selected.add(routes.slice().sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0]);
+    }
+    return deepFreeze({
+      status: stopped === "cancelled" ? "cancelled" : routes.length ? "ready" : "unavailable",
+      reason: stopped ? `FC27_STREAMLINED_SEARCH_${stopped.toUpperCase()}` : "FC27_STREAMLINED_ROUTES",
+      routes: [...selected],
+      excluded,
+      nodes,
+      searchComplete: stopped === null,
+      candidateCount: groups.length,
+      elapsedMs: now() - started,
+      poolComplete: false,
+      liveExecutionEnabled: false
+    });
+  }
+  async function runStreamlinedRoutes(input, {
+    onProgress = () => {
+    },
+    stopped = () => false,
+    schedule = () => new Promise((resolve) => setTimeout(resolve, 0)),
+    ...options
+  } = {}) {
+    const iterator = planStreamlinedRoutesSteps(input, options);
+    try {
+      let step = iterator.next();
+      while (!step.done) {
+        try {
+          onProgress(step.value);
+        } catch {
+        }
+        await schedule();
+        step = iterator.next(stopped());
+      }
+      return step.value;
+    } finally {
+      iterator.return();
+    }
+  }
+  function expandStreamlinedRoute(route, challenge) {
+    if (!route || !integer15(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail28("ROUTE_INVALID");
+    const items = [], copies = /* @__PURE__ */ new Map();
+    for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market"))) {
+      if (!integer15(group.quantity, 1, 2e4) || !group.items?.length) fail28("ROUTE_INVALID");
+      for (let n = 0; n < group.quantity; n++) {
+        if (group.source === "inventory") {
+          if (!group.items[n]) fail28("ROUTE_INVALID");
+          items.push(group.items[n]);
+        } else {
+          const item2 = group.items[n % group.items.length], copy2 = copies.get(item2.definitionId) ?? 0;
+          copies.set(item2.definitionId, copy2 + 1);
+          items.push({ ...item2, key: `market:${item2.definitionId}:${copy2}` });
+        }
+      }
+    }
+    if (items.length !== route.count) fail28("ROUTE_INVALID");
+    return {
+      status: "ready",
+      items,
+      batches: splitStreamlinedBatches(items, challenge.selectionLimit),
+      score: route.score,
+      purchaseCost: route.purchaseCost,
+      materialValue: route.materialValue,
+      progress: streamlinedProgress(challenge, route.score),
+      searchComplete: route.searchComplete,
+      unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
+      poolComplete: false
+    };
   }
 
   // src/adapters/browser/fc27-streamlined-session.js
@@ -27066,7 +27538,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     createExecution = null
   } = {}) {
     const settings = createStreamlinedSettings({ get, set });
-    let busy = false, stopRequested = false, preview = null, activeExecution = null;
+    let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null;
     const safeReason10 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_EXECUTION_UNAVAILABLE";
     const log = (row) => {
       try {
@@ -27099,13 +27571,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       },
       stop() {
         stopRequested = true;
-        activeExecution?.transaction.stop();
+        if (typeof activeExecution?.stop === "function") activeExecution.stop();
+        else activeExecution?.transaction?.stop?.();
       },
       clearPreview() {
         preview = null;
+        routePreview = null;
       },
       resolveDisplayItem(ref) {
-        if (!preview || !preview.items.some((item2) => item2.id === ref?.id && item2.definitionId === ref?.definitionId)) return null;
+        if (!preview) return null;
+        if (!preview.items.some((item2) => item2.key === ref?.key && item2.source === ref?.source && item2.id === ref?.id && item2.definitionId === ref?.definitionId)) return null;
         try {
           unchanged(preview.origin);
           return preview.input.resolveDisplayItem?.(ref) ?? null;
@@ -27119,6 +27594,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         busy = true;
         stopRequested = false;
         preview = null;
+        routePreview = null;
         const progress = (row) => {
           try {
             onProgress(row);
@@ -27138,7 +27614,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (filtered.status !== "observed") return filtered;
           const ids = [...new Set(filtered.items.map((i) => i.definitionId))];
           const references = {};
-          let quoteSource = "futgg", quoteReadError = null;
+          let quoteSource = "futgg", quoteReadError = null, purchaseAttempts = 3;
           if (prices && config.mode !== "market") {
             for (let offset = 0; offset < ids.length; offset += 250) {
               check();
@@ -27154,6 +27630,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 });
                 if (offset && snapshot.policy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
                 quoteSource = snapshot.policy.source;
+                purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
                 Object.assign(references, snapshot.references);
               } catch (error2) {
                 quoteReadError = /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_QUOTES_UNAVAILABLE";
@@ -27162,28 +27639,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }
           check();
-          const quoteAt = now();
-          let market = [];
+          let market = [], marketError = null;
           if (config.mode !== "inventory" && typeof readMarketCandidates === "function") {
-            check();
-            market = await readMarketCandidates({ input, ids, quoteSource, references });
-            if (!Array.isArray(market)) fail28("MARKET_CANDIDATES_UNVERIFIED");
+            try {
+              check();
+              const data = await readMarketCandidates({ input, ids, quoteSource, references, check, onProgress: progress });
+              market = Array.isArray(data) ? data : data.market;
+              if (!Array.isArray(market)) fail28("MARKET_CANDIDATES_UNVERIFIED");
+              if (data.pricePolicy) {
+                if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
+                quoteSource = data.pricePolicy.source;
+                purchaseAttempts = data.pricePolicy.purchaseAttempts ?? 3;
+              }
+            } catch (error2) {
+              marketError = safeReason10(error2);
+              market = [];
+            }
           }
+          check();
+          const quoteAt = now();
           const inventory = input.inventory.map((item2) => {
             const q = references[item2.definitionId]?.quotes?.[quoteSource];
             const valid3 = q?.definitionId === item2.definitionId && q?.source === quoteSource && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.fetchedAt <= quoteAt && q.expiresAt > quoteAt;
             return { ...item2, price: valid3 ? q.price : null, quote: valid3 ? q : null };
           });
-          const result = await runStreamlinedPlan({
-            ...input,
-            inventory,
-            market,
-            mode: config.mode,
-            objective: config.objective,
-            quoteSource,
-            quoteAt,
-            now
-          }, {
+          const options = {
             onProgress: (p) => {
               check();
               progress(p);
@@ -27194,13 +27674,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               return stopRequested;
             },
             schedule
-          });
+          };
+          let result, routes = [];
+          if (market.length) {
+            const output = await runStreamlinedRoutes({ ...input, inventory, market, mode: config.mode, quoteSource, quoteAt }, { ...options, now });
+            routes = output.routes;
+            if (routes.length && output.status !== "cancelled") {
+              const selected = config.objective === "fewest-cards" ? routes.reduce((a, b) => a.count <= b.count ? a : b) : routes[0];
+              result = { ...output, ...expandStreamlinedRoute(selected, input.challenge), route: selected, routes, selectedRoute: selected.id };
+            } else result = output;
+          } else result = await runStreamlinedPlan({
+            ...input,
+            inventory,
+            market,
+            mode: config.mode,
+            objective: config.objective,
+            quoteSource,
+            quoteAt,
+            now
+          }, options);
           check();
-          const plan = ["ready", "partial"].includes(result.status) ? createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy, result, objective: config.objective }) : null;
+          const plan = ["ready", "partial"].includes(result.status) ? createStreamlinedPlan({
+            context: input.context,
+            challenge: input.challenge,
+            policy: input.policy,
+            result,
+            objective: config.objective,
+            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs }
+          }) : null;
           let execution = null, executionReason = "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED", executionRecovery = null;
           if (plan && typeof createExecution === "function") {
             try {
-              execution = await createExecution(origin.context);
+              execution = await createExecution(origin.context, plan);
               check();
               execution.prepare(plan);
               executionReason = null;
@@ -27212,6 +27717,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             check();
           }
           if (plan) preview = { origin, input, items: result.items, plan, execution };
+          if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError, execution: plan.execution };
           log({
             status: result.status,
             evaluations: result.nodes,
@@ -27249,6 +27755,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             plan,
             quoteSource,
             quoteReadError,
+            marketError,
             marketAvailable: typeof readMarketCandidates === "function",
             marketPending: config.mode !== "inventory" && market.length === 0,
             policy: input.policy,
@@ -27264,6 +27771,58 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           busy = false;
         }
       },
+      async selectRoute(routeId) {
+        if (busy || !routePreview) return { status: "blocked", reason: "FC27_STREAMLINED_PLAN_CHANGED" };
+        busy = true;
+        try {
+          const saved = routePreview;
+          unchanged(saved.origin);
+          saved.input.assertCurrent();
+          const route = saved.routes.find((row) => row.id === routeId);
+          if (!route) fail28("ROUTE_INVALID");
+          const result = { ...expandStreamlinedRoute(route, saved.input.challenge), route };
+          const plan = createStreamlinedPlan({
+            context: saved.input.context,
+            challenge: saved.input.challenge,
+            policy: saved.input.policy,
+            result,
+            objective: saved.config.objective,
+            execution: saved.execution
+          });
+          let execution = null, executionReason = "FC27_STREAMLINED_PURCHASE_PENDING";
+          if (typeof createExecution === "function") {
+            try {
+              execution = await createExecution(saved.origin.context, plan);
+              unchanged(saved.origin);
+              execution.prepare(plan);
+              executionReason = null;
+            } catch (error2) {
+              execution = null;
+              executionReason = safeReason10(error2);
+            }
+          }
+          unchanged(saved.origin);
+          preview = { origin: saved.origin, input: saved.input, items: result.items, plan, execution };
+          return {
+            ...saved.result,
+            ...result,
+            plan,
+            routes: saved.routes,
+            selectedRoute: routeId,
+            quoteSource: saved.quoteSource,
+            marketAvailable: true,
+            marketPending: false,
+            marketError: saved.marketError,
+            executionReason,
+            liveExecutionEnabled: !!execution
+          };
+        } catch (error2) {
+          preview = null;
+          return { status: "blocked", reason: safeReason10(error2) };
+        } finally {
+          busy = false;
+        }
+      },
       async contribute({ fingerprint, batchIndices, allowPartial = false } = {}, callbacks = {}) {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: "blocked", reason: "FC27_STREAMLINED_PLAN_CHANGED" };
@@ -27273,7 +27832,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         try {
           unchanged(selected.origin);
           activeExecution = selected.execution;
-          const result = await activeExecution.transaction.execute(
+          const result = selected.plan.route?.groups?.some((group) => group.source === "market") && typeof activeExecution.purchase === "function" ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial }, callbacks) : await activeExecution.transaction.execute(
             selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial },
             callbacks
@@ -27295,16 +27854,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       async recover() {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         preview = null;
+        routePreview = null;
         if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
         busy = true;
         try {
           const origin = capture();
           activeExecution = await createExecution(origin.context);
           unchanged(origin);
-          const result = await activeExecution.transaction.recover(
+          const purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
+          if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
+            log({ event: "recovery", status: purchase.status, reason: purchase.reason });
+            return purchase;
+          }
+          const contribution = await activeExecution.transaction.recover(
             origin.context,
             { setId: origin.challenge.setId, challengeId: origin.challenge.id }
           );
+          const result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
           const current2 = capture();
           if (!same25(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
           log({
@@ -27316,15 +27882,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             challengeId: origin.challenge.id
           });
           const record = result.record;
-          if (record && !["recovery-required", "replan-required"].includes(result.status)) {
+          if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
             if (!same25(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail28("CONTEXT_CHANGED");
-            activeExecution.prepare(record.plan);
-            const input = readInputs({ maxRating: record.plan.policy.maxRating });
-            preview = { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution };
+            const completed = record.submittedScore >= record.plan.challenge.targetScore;
+            if (!completed) activeExecution.prepare(record.plan);
+            const input = readInputs({
+              maxRating: record.plan.policy.maxRating,
+              marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating
+            });
+            preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution };
             return { ...result, preview: {
               ...record.plan,
               plan: record.plan,
-              liveExecutionEnabled: true,
+              liveExecutionEnabled: !completed,
               quoteSource: record.plan.items.find((item2) => item2.quote)?.quote?.source ?? "unknown",
               record
             } };
@@ -27341,6 +27911,233 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
     });
+  }
+
+  // src/adapters/browser/fc27-streamlined-catalog.js
+  function createFc27StreamlinedCatalog({ gmRequest, now = () => Date.now() }) {
+    const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
+    const read = (path) => {
+      const old = cache.get(path);
+      if (old && now() - old.at < 3e5) return Promise.resolve(old.value);
+      if (pending2.has(path)) return pending2.get(path);
+      const url = `https://www.fut.gg/api/fut/sbc/27/${path}`;
+      const promise = new Promise((resolve, reject) => {
+        const error2 = (code2) => reject(Error(`FC27_STREAMLINED_CATALOG_${code2}`));
+        if (typeof gmRequest !== "function") return error2("UNAVAILABLE");
+        gmRequest({
+          method: "GET",
+          url,
+          anonymous: true,
+          timeout: 15e3,
+          onload: (response) => {
+            if (response.finalUrl && response.finalUrl !== url) return error2("REDIRECT");
+            if (response.status !== 200) return error2(integer15(response.status, 100, 599) ? `HTTP_${response.status}` : "RESPONSE_INVALID");
+            try {
+              if (typeof response.responseText !== "string" || response.responseText.length > 3e6) return error2("RESPONSE_INVALID");
+              const value = JSON.parse(response.responseText).data;
+              if (!value || typeof value !== "object") return error2("RESPONSE_INVALID");
+              cache.set(path, { at: now(), value });
+              resolve(value);
+            } catch {
+              error2("RESPONSE_INVALID");
+            }
+          },
+          onerror: () => error2("NETWORK"),
+          ontimeout: () => error2("TIMEOUT")
+        });
+      }).finally(() => pending2.delete(path));
+      pending2.set(path, promise);
+      return promise;
+    };
+    return Object.freeze({ async load({ challenge, context, policy, check = () => {
+    }, onProgress = () => {
+    } }) {
+      if (context?.season !== "27" || !integer15(challenge?.setId, 1) || !integer15(challenge.id, 1)) fail28("CATALOG_INPUT_INVALID");
+      const platform = /^pc:/i.test(context.platform) ? "pc" : /^(psn|xbox):/i.test(context.platform) ? "ps5" : null;
+      if (!platform) fail28("CATALOG_PLATFORM_INVALID");
+      check();
+      const set = await read(`set/${challenge.setId}/`);
+      check();
+      if (set.game !== "27" || set.eaId !== challenge.setId || !set.challengeEaIds?.includes(challenge.id) || typeof set.slug !== "string" || !/^27-[a-z0-9-]{1,150}$/.test(set.slug)) fail28("CATALOG_TARGET_CHANGED");
+      const base = `${set.slug}/streamlined-solutions/`;
+      const data = await read(`${base}?challenge=${challenge.id}&pool=${platform}`);
+      check();
+      const target = data.challenges?.find((row) => row.challengeEaId === challenge.id);
+      const solution = target?.[platform];
+      if (data.setEaId !== challenge.setId || target?.scoreRequirement !== challenge.targetScore || !Array.isArray(solution?.rates) || solution.rates.length > 100) fail28("CATALOG_RULES_CHANGED");
+      const marketMaxRating = policy.marketMaxRating ?? policy.maxRating;
+      const rates = solution.rates.filter((row) => integer15(row.overall, 1, marketMaxRating) && integer15(row.rarityEaId, 0, 1e4) && integer15(row.score, 1)).sort((a, b) => a.overall - b.overall);
+      const ids = /* @__PURE__ */ new Set();
+      let completed = 0;
+      for (const rate of rates) {
+        check();
+        onProgress({ phase: "catalog", completed, total: rates.length });
+        const group = await read(`${base}?challenge=${challenge.id}&overall=${rate.overall}&rarity=${rate.rarityEaId}&limit=30&platform=${platform}`);
+        check();
+        completed++;
+        if (group.challengeEaId !== challenge.id || group.overall !== rate.overall || group.rarityEaId !== rate.rarityEaId || group.platform !== platform || !Array.isArray(group.players) || group.players.length > 30) fail28("CATALOG_GROUP_INVALID");
+        for (const row of group.players) {
+          if (!integer15(row.player?.eaId, 1) || row.player.overall !== rate.overall) fail28("CATALOG_PLAYER_INVALID");
+          ids.add(row.player.eaId);
+        }
+      }
+      onProgress({ phase: "catalog", completed, total: rates.length });
+      return { ids: [...ids], complete: false, source: "futgg-streamlined", observedAt: now() };
+    } });
+  }
+
+  // src/adapters/ea/fc27-streamlined-market.js
+  function createFc27StreamlinedMarket(root, { catalog, prices, now = () => Date.now() }) {
+    const cache = /* @__PURE__ */ new Map();
+    let busy = false;
+    const request = (criteria) => new Promise((resolve, reject) => {
+      const owner = {};
+      let observable, done = false;
+      const finish = (error2, value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try {
+          observable?.unobserve(owner);
+        } catch {
+        }
+        error2 ? reject(error2) : resolve(value);
+      };
+      const timer = setTimeout(() => finish(Error("FC27_STREAMLINED_MARKET_TIMEOUT")), 16e3);
+      try {
+        observable = root.services.Item.searchConceptItems(criteria);
+        observable.observe(owner, (_sender, reply) => finish(null, reply));
+      } catch {
+        finish(Error("FC27_STREAMLINED_MARKET_READ_FAILED"));
+      }
+    });
+    return async ({ input, check = () => {
+    }, onProgress = () => {
+    } }) => {
+      if (busy) fail28("BUSY");
+      busy = true;
+      try {
+        const assert = () => {
+          check();
+          input.assertCurrent();
+          if (!same25(readFc27Context(root), input.context)) fail28("CONTEXT_CHANGED");
+        };
+        assert();
+        const result = await catalog.load({ ...input, check: assert, onProgress });
+        assert();
+        if (!Array.isArray(result.ids) || result.ids.length > 3e3) fail28("MARKET_CANDIDATES_UNVERIFIED");
+        if (root.GAME_NAME !== "fc27" || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function") fail28("MARKET_RUNTIME_UNVERIFIED");
+        const contextKey2 = JSON.stringify(input.context), entities = /* @__PURE__ */ new Map(), missing = [];
+        for (const id12 of result.ids) {
+          const row = cache.get(`${contextKey2}:${id12}`);
+          if (row && now() - row.at < 3e5) entities.set(id12, row.entity);
+          else missing.push(id12);
+        }
+        for (let start = 0; start < missing.length; start += 100) {
+          const batch = missing.slice(start, start + 100), seen = /* @__PURE__ */ new Set();
+          for (let offset = 0; offset < 1e3; offset += 250) {
+            assert();
+            onProgress({ phase: "market-validation", completed: start, total: missing.length });
+            const criteria = new root.UTSearchCriteriaDTO();
+            Object.assign(criteria, { type: root.SearchType.PLAYER, category: root.SearchCategory.ANY, defId: batch, count: 250, offset });
+            const reply = await request(criteria);
+            assert();
+            if (reply?.success !== true || reply.status !== 200) fail28(integer15(reply?.status, 100, 599) ? `MARKET_HTTP_${reply.status}` : "MARKET_RESPONSE_INVALID");
+            const rows = (reply.response ?? reply.data)?.items;
+            if (!Array.isArray(rows) || rows.length > 250) fail28("MARKET_RESPONSE_INVALID");
+            for (const entity of rows) {
+              if (!integer15(entity?.definitionId, 1)) fail28("MARKET_IDENTITY_INVALID");
+              if (!batch.includes(entity.definitionId)) continue;
+              if (seen.has(entity.definitionId)) fail28("MARKET_IDENTITY_INVALID");
+              seen.add(entity.definitionId);
+              entities.set(entity.definitionId, entity);
+              cache.set(`${contextKey2}:${entity.definitionId}`, { at: now(), entity });
+            }
+            if (rows.length < 250 || batch.every((id12) => seen.has(id12))) break;
+            if (offset === 750) fail28("MARKET_READ_LIMIT");
+          }
+        }
+        assert();
+        const projected2 = [];
+        for (const entity of entities.values()) {
+          const cosmetics = entity.cosmetics, hyper = entity._hyperCosmeticDTOs;
+          if (entity.type !== "player" || entity.concept !== true || entity.upgrades !== null || !Array.isArray(cosmetics) || !hyper || typeof hyper !== "object" || cosmetics.length || Object.keys(hyper).length || !integer15(entity.sbsScore, 1) || !integer15(entity._rareflag, 0, 1)) continue;
+          const item2 = normalizeStreamlinedItem({
+            source: "market",
+            definitionId: entity.definitionId,
+            points: entity.sbsScore,
+            scoreVerified: true,
+            rating: entity._rating,
+            leagueId: entity.leagueId,
+            nationId: entity.nationId,
+            teamId: entity.teamId,
+            preferredPosition: entity.preferredPosition,
+            special: Number(entity._rareflag) > 1,
+            evolution: false,
+            cosmetic: false,
+            academyEnrolled: false,
+            protected: Number(entity._rareflag) > 1,
+            name: entity.name ?? entity.lastName ?? null
+          });
+          input.registerMarketEntity(item2, entity);
+          projected2.push(item2);
+        }
+        const filtered = filterStreamlinedItems(projected2, input);
+        if (filtered.status !== "observed") throw Error(filtered.reason);
+        const market = [], references = {};
+        let pricePolicy = null;
+        for (let start = 0; start < filtered.items.length; start += 250) {
+          assert();
+          onProgress({ phase: "market-quotes", completed: start, total: filtered.items.length });
+          const batch = filtered.items.slice(start, start + 250);
+          const snapshot = await prices.load(batch.map((row) => row.definitionId), {
+            purpose: "puzzle",
+            rows: batch.map((item2) => {
+              const raw = entities.get(item2.definitionId);
+              return {
+                definitionId: item2.definitionId,
+                rating: item2.rating,
+                nationId: raw.nationId,
+                leagueId: raw.leagueId,
+                teamId: raw.teamId,
+                preferredPosition: raw.preferredPosition
+              };
+            }),
+            isCurrent: () => {
+              assert();
+              return true;
+            }
+          });
+          assert();
+          if (pricePolicy && !same25(pricePolicy, snapshot.policy)) fail28("PRICE_POLICY_CHANGED");
+          pricePolicy = snapshot.policy;
+          Object.assign(references, snapshot.references);
+          for (const item2 of batch) {
+            const quote2 = snapshot.references[item2.definitionId]?.quotes?.[pricePolicy.source];
+            if (!quote2?.error && integer15(quote2?.price, 150, 15e6) && quote2.fetchedAt <= now() && quote2.expiresAt > now()) {
+              const values7 = { [pricePolicy.source]: quote2.price };
+              const authority = galleryReferenceQuote(values7, pricePolicy);
+              if (!integer15(authority.maxBuy, 150, 15e6)) continue;
+              const raw = entities.get(item2.definitionId);
+              market.push({
+                ...item2,
+                price: quote2.price,
+                purchaseMaxBuy: authority.maxBuy,
+                quote: quote2,
+                priceReference: snapshot.references[item2.definitionId],
+                pricePolicy,
+                nationId: raw.nationId,
+                teamId: raw.teamId,
+                preferredPosition: raw.preferredPosition
+              });
+            }
+          }
+        }
+        return { market, references, pricePolicy, complete: false, candidateCount: projected2.length };
+      } finally {
+        busy = false;
+      }
+    };
   }
 
   // src/streamlined/contribution.js
@@ -27565,7 +28362,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       completion.then(() => acquired(null), denied);
       return ready;
     } });
-    return Object.freeze({ journal, lock, inspect: exclusive.inspect });
+    return Object.freeze({ journal, lock, inspect: exclusive.inspect, assertHeld });
   }
 
   // src/adapters/ea/fc27-streamlined-storage-read.js
@@ -27739,7 +28536,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return vo;
     });
     return createStreamlinedEligibility({ rules, matcher: (item2) => {
-      const entity = entities.get(item2.id);
+      const entity = entities.get(item2.source === "market" ? `market:${item2.definitionId}` : item2.id);
       if (!entity || entity.definitionId !== item2.definitionId) return null;
       const matched = rules.map((vo) => vo.meetsRequirements(entity));
       if (matched.some((v) => typeof v !== "boolean")) return null;
@@ -27748,6 +28545,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function projectFc27StreamlinedItem(item2, root, pile) {
     const base = snapshotFc27ClubPlayer(item2, root);
+    const staticData = ownData(item2, "_staticData");
+    const ownString = (object, key) => {
+      const value = ownData(object, key);
+      const text5 = typeof value === "string" ? value.trim() : "";
+      return text5 && text5 !== "---" ? text5 : null;
+    };
+    const name = ownString(item2, "displayName") ?? ownString(item2, "name") ?? ownString(staticData, "knownAs") ?? ([ownString(staticData, "firstName"), ownString(staticData, "lastName")].filter(Boolean).join(" ") || null) ?? ownString(staticData, "name") ?? ownString(item2, "lastName");
     let points = null;
     try {
       points = item2.sbsScore;
@@ -27759,7 +28563,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       points,
       scoreVerified: integer15(points, 1),
       protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
-      name: item2.name ?? item2.lastName ?? null,
+      name,
       price: null,
       source: "inventory"
     });
@@ -27769,7 +28573,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!page) fail28("PAGE_UNAVAILABLE");
     const context = readFc27Context(root);
     const challenge = projectFc27StreamlinedChallenge(page, context);
-    const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99);
+    const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
     const entities = /* @__PURE__ */ new Map(), inventory = [];
     const sources3 = settings.sources ?? ["club", "storage"];
     for (const pile of sources3) {
@@ -27788,7 +28592,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const eligibility = createFc27StreamlinedMatcher(root, challenge, entities);
     const assertCurrent = () => {
       const current2 = locateFc27StreamlinedPage(root);
-      if (!current2 || current2.controller !== page.controller || !same25(readFc27Context(root), context) || !same25(projectFc27StreamlinedChallenge(current2, context), challenge) || !same25(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99), policy)) fail28("CONTEXT_CHANGED");
+      if (!current2 || current2.controller !== page.controller || !same25(readFc27Context(root), context) || !same25(projectFc27StreamlinedChallenge(current2, context), challenge) || !same25(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99), policy)) fail28("CONTEXT_CHANGED");
     };
     assertCurrent();
     return {
@@ -27798,11 +28602,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       inventory,
       eligibility,
       assertCurrent,
+      registerMarketEntity(item2, entity) {
+        assertCurrent();
+        if (item2?.source !== "market" || entity?.definitionId !== item2.definitionId || entity.concept !== true) fail28("MARKET_IDENTITY_INVALID");
+        entities.set(`market:${item2.definitionId}`, entity);
+      },
       // UI-only reference, never included in a plan/Journal or diagnostic export.
       resolveDisplayItem(ref) {
         assertCurrent();
-        const raw = entities.get(ref?.id);
-        return raw?.definitionId === ref?.definitionId && raw?.concept === false ? raw : null;
+        const key = ref?.source === "market" ? `market:${ref.definitionId}` : ref?.id;
+        const raw = entities.get(key);
+        if (raw?.definitionId !== ref?.definitionId) return null;
+        if (ref?.source === "market") return raw?.concept === true ? raw : null;
+        return raw?.concept === false ? raw : null;
       },
       // Repository presence is provisional, never proof of a fresh full inventory.
       inventoryComplete: false,
@@ -27819,8 +28631,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       })
     };
   }
-  function readFc27StreamlinedPolicy(root, maxRating = 99) {
-    if (!integer15(maxRating, 1, 99)) fail28("POLICY_INVALID");
+  function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating = void 0) {
+    if (!integer15(maxRating, 1, 99) || marketMaxRating !== void 0 && !integer15(marketMaxRating, 1, 99)) fail28("POLICY_INVALID");
     const context = readFc27Context(root), base = at8(root, "info.base");
     const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key) => at8(root, `info.build.${key}`));
     const goldenMax = at8(root, "info.set.goldenrange"), leagues = at8(root, "info.set.shield_league");
@@ -27830,7 +28642,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       schema: 1,
       context,
       reviewed: true,
-      maxRating: Math.min(maxRating, goldenMax),
+      // Market demand uses the explicit Streamlined ceiling. Keep the FSU
+      // range separately so expanding procurement never exposes protected stock.
+      maxRating,
+      ...marketMaxRating !== void 0 ? { marketMaxRating } : {},
       onlyUntradeable: true,
       protectFsuLockedPlayers: false,
       protectActiveSquad: false,
@@ -27849,7 +28664,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     createTransport = createFc27ClubReadTransport,
     createStorage = createFc27StreamlinedStorageReader,
     readProgress = null,
-    nativeReauth = false
+    nativeReauth = false,
+    purchaseVerifier = null
   } = {}) {
     let busy = false;
     return Object.freeze({ async verify(plan, batch, submittedScore, { onProgress = () => {
@@ -27884,7 +28700,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const challenge = projectFc27StreamlinedChallenge(current2, plan.context);
           if (!same25(challenge, fresh ? pageChallenge : expectedChallenge) || fresh && now() - fresh.observedAt > 15e3) fail28("PROGRESS_CHANGED");
           if (challenge.endTime > 0 && challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
-          if (!same25(readFc27StreamlinedPolicy(root, plan.policy.maxRating), plan.policy)) fail28("POLICY_CHANGED");
+          if (!same25(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail28("POLICY_CHANGED");
         };
         check();
         const entities = /* @__PURE__ */ new Map();
@@ -27942,10 +28758,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         check();
         const items = batch.refs.map((ref) => projectFc27StreamlinedItem(entities.get(ref.id), root, ref.pile));
-        const filtered = filterStreamlinedItems(items, {
-          policy: plan.policy,
-          eligibility: createFc27StreamlinedMatcher(root, plan.challenge, entities)
-        });
+        const eligibility = createFc27StreamlinedMatcher(root, plan.challenge, entities);
+        const filtered = filterStreamlinedItems(items, { policy: plan.policy, eligibility });
+        if (filtered.status !== "observed") fail28("MATERIAL_CHANGED");
+        const accepted = new Set(filtered.items.map((item2) => item2.key));
+        for (let index = 0; index < items.length; index++) {
+          const proof = plan.batches[batch.index][index]?.purchaseReceipt;
+          if (!proof) continue;
+          if (proof.itemId !== items[index]?.id || proof.definitionId !== items[index]?.definitionId || typeof purchaseVerifier !== "function" || await purchaseVerifier(items[index], proof, plan) !== true) fail28("PURCHASE_RECEIPT_UNVERIFIED");
+          const checked = filterStreamlinedItems([items[index]], {
+            policy: {
+              ...plan.policy,
+              maxRating: plan.policy.marketMaxRating ?? plan.policy.maxRating,
+              goldRange: [75, 99],
+              onlyUntradeable: false
+            },
+            eligibility
+          });
+          if (checked.status !== "observed" || checked.items.length !== 1) fail28("MATERIAL_CHANGED");
+          accepted.add(items[index].key);
+        }
         const facts2 = (item2) => Object.fromEntries([
           "id",
           "definitionId",
@@ -27967,7 +28799,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "activeSquad",
           "protected"
         ].map((key) => [key, item2[key]]));
-        if (filtered.status !== "observed" || filtered.items.length !== items.length || items.some((item2, index) => !same25(facts2(item2), facts2(plan.batches[batch.index][index])))) fail28("MATERIAL_CHANGED");
+        if (accepted.size !== items.length || items.some((item2, index) => !same25(facts2(item2), facts2(plan.batches[batch.index][index])))) fail28("MATERIAL_CHANGED");
         check();
         return {
           fresh: true,
@@ -28291,11 +29123,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     createReconciler = createFc27StreamlinedReconciler,
     maintenance = null,
     checkOtherTransactions = async () => {
-    }
+    },
+    purchaseVerifier = null
   } = {}) {
     let lease = null, busy = false;
     const progress = createProgress(root, { now });
-    const validator2 = createValidator(root, { now, readProgress: (expected) => progress.read(expected), nativeReauth: true });
+    const validator2 = createValidator(root, { now, readProgress: (expected) => progress.read(expected), nativeReauth: true, purchaseVerifier });
     const reconciler = createReconciler(root, { now, nativeReauth: true });
     const binding = () => {
       const page = locateFc27StreamlinedPage(root);
@@ -28306,7 +29139,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const unchanged = (origin, plan) => {
       const current2 = binding();
       if (current2.controller !== origin.controller || !same25(current2.context, plan.context) || !same25(current2.challenge, origin.challenge)) fail28("CONTEXT_CHANGED");
-      if (!same25(readFc27StreamlinedPolicy(root, plan.policy.maxRating), plan.policy)) fail28("POLICY_CHANGED");
+      if (!same25(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail28("POLICY_CHANGED");
       if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
     };
     return Object.freeze({
@@ -28723,6 +29556,655 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } });
   }
 
+  // src/streamlined/purchase-journal.js
+  var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
+  function validateStreamlinedPurchase(record, context) {
+    if (record?.plan?.schema === 1) {
+      assertStreamlinedPlan(record.plan);
+      if (record.plan.fingerprint !== record.fingerprint || !same25(record.plan.context, context) || !same25(record.plan.route, record.route) || !same25(record.plan.challenge, record.challenge) || !same25(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    if (!record || record.schema !== 1 || !same25(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer15(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer15(record.budget) || !integer15(record.spent) || record.spent > record.budget || !integer15(record.submittedScore) || !integer15(record.challenge?.id, 1) || !integer15(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer15(record.confirmedBatches) || !integer15(record.challenge?.targetScore, 1) || !integer15(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer15(n, 0, record.route.groups[i]?.quantity ?? -1)) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer15(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    for (const group of record.route.groups) {
+      if (!["inventory", "market"].includes(group.source) || !integer15(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer15(group.item?.points, 1) || group.items.some((item2) => !integer15(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer15(item2.price, 150, 15e6) || !integer15(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer15(item2.id, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
+    let spent = 0;
+    for (const entry of record.entries) {
+      const group = record.route.groups[entry.groupIndex];
+      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer15(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer15(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail28("PURCHASE_JOURNAL_INVALID");
+      keys2.add(entry.key);
+      if (entry.source === "inventory") {
+        if (!integer15(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        continue;
+      }
+      if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
+        if (!integer15(entry.itemId, 1) || !integer15(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer15(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
+      } else if (entry.cap !== null && !integer15(entry.cap, 150, 15e6)) fail28("PURCHASE_JOURNAL_INVALID");
+      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    if (spent !== record.spent) fail28("PURCHASE_JOURNAL_INVALID");
+    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail28("PURCHASE_JOURNAL_INVALID");
+    if (record.contribution) {
+      const material = record.contribution.material;
+      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    return record;
+  }
+  function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
+  } }) {
+    const read = async (context) => {
+      let record;
+      try {
+        record = await get(streamlinedPurchaseKey(context), null);
+      } catch {
+        fail28("PURCHASE_JOURNAL_READ_FAILED");
+      }
+      return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
+    };
+    const write = async (record, previousRevision = record.revision) => {
+      assertHeld();
+      const old = await read(record.context);
+      if ((old?.revision ?? 0) !== previousRevision) fail28("PURCHASE_JOURNAL_CHANGED");
+      const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
+      try {
+        assertHeld();
+        await set(streamlinedPurchaseKey(record.context), next);
+        assertHeld();
+        if (!same25(next, await get(streamlinedPurchaseKey(record.context), null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+      return structuredClone(next);
+    };
+    return Object.freeze({ read, write });
+  }
+  async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
+    const proof = item2?.purchaseReceipt;
+    if (!proof || proof.itemId !== item2.id || proof.definitionId !== item2.definitionId) return false;
+    const journal = createStreamlinedPurchaseJournal({ get });
+    const record = await journal.read(context);
+    if (!record || record.operationId !== proof.operationId) return false;
+    if (!challenge || record.challenge.id !== challenge.id || record.challenge.setId !== challenge.setId || record.challenge.targetScore !== challenge.targetScore) return false;
+    const entry = record.entries.find((row) => row.itemId === item2.id && row.definitionId === item2.definitionId);
+    return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
+  }
+
+  // src/adapters/ea/fc27-streamlined-purchase.js
+  async function createFc27StreamlinedPurchaseAdapter(root, {
+    plan,
+    persistence,
+    canWrite,
+    searchAttempts = 5,
+    now = () => Date.now(),
+    contributionAdapter = null,
+    createBuyer = createFc27PuzzleBuyAdapter,
+    prices = null
+  } = {}) {
+    if (!plan?.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
+    const origin = readFc27Context(root), marketItems = plan.route.groups.flatMap((group) => group.source === "market" ? group.items : []);
+    const players = new Map(marketItems.map((item2) => [item2.definitionId, {
+      _rating: item2.rating,
+      nationId: item2.nationId,
+      teamId: item2.teamId,
+      leagueId: item2.leagueId,
+      preferredPosition: item2.preferredPosition
+    }]));
+    const references = new Map(marketItems.map((item2) => [item2.definitionId, item2.price]));
+    const assertTarget = () => {
+      if (!same25(origin, readFc27Context(root))) fail28("CONTEXT_CHANGED");
+      const page = locateFc27StreamlinedPage(root);
+      if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail28("CONTEXT_CHANGED");
+      const current2 = projectFc27StreamlinedChallenge(page, origin);
+      for (const key of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode", "endTime"]) {
+        if (!same25(current2[key], plan.challenge[key])) fail28("CONTEXT_CHANGED");
+      }
+    };
+    const buyer = await createBuyer(root, {
+      canWrite: () => canWrite() === true && persistence.inspect().active === true,
+      assertTarget,
+      attempts: searchAttempts,
+      playerDetails: players,
+      referencePrice: ({ definitionId }) => references.get(definitionId),
+      verifyCurrent: () => assertTarget(),
+      verifySquad: async () => assertTarget()
+    });
+    const materialize3 = async (entries2, currentRecord) => {
+      const output = [];
+      for (const entry of entries2) {
+        const group = currentRecord.route.groups[entry.groupIndex];
+        if (entry.source === "inventory") {
+          const item2 = group?.items.find((row) => row.id === entry.itemId && row.definitionId === entry.definitionId);
+          if (!item2) fail28("PURCHASE_MATERIAL_UNKNOWN");
+          output.push({ groupIndex: entry.groupIndex, item: item2 });
+          continue;
+        }
+        const entities = /* @__PURE__ */ new Map();
+        const transport = await createFc27ClubReadTransport(root, {
+          nativeReauth: true,
+          onEntity: (entity2) => entities.set(entity2.id, entity2)
+        });
+        const rows = await transport.readPage({ start: 0, count: 250, definitionIds: [entry.definitionId] });
+        const raw = rows.find((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId && item2.pile === "club");
+        if (!raw) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        const entity = entities.get(entry.itemId);
+        if (!entity || entity.id !== raw.id || entity.definitionId !== raw.definitionId) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        const projected2 = projectFc27StreamlinedItem(entity, root, "club");
+        output.push({ groupIndex: entry.groupIndex, item: { ...projected2, purchaseReceipt: {
+          operationId: currentRecord.operationId,
+          itemId: entry.itemId,
+          definitionId: entry.definitionId,
+          tradeId: entry.tradeId,
+          price: entry.price
+        } } });
+      }
+      return output;
+    };
+    const contribute = async (batchPlan) => {
+      if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail28("WRITE_CONTRACT_UNVERIFIED");
+      const result = await createStreamlinedTransaction({
+        adapter: contributionAdapter.adapter,
+        journal: contributionAdapter.journal,
+        lock: { acquire: async () => () => {
+        } },
+        now
+      }).execute(
+        batchPlan,
+        { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }
+      );
+      return result.status === "completed" || result.status === "partial" ? { confirmed: true, submittedScore: result.record.submittedScore } : { confirmed: false, reason: result.reason };
+    };
+    return Object.freeze({
+      async assertCurrent(currentRecord) {
+        assertTarget();
+        await buyer.verifySquad(currentRecord);
+      },
+      async readState(currentRecord) {
+        assertTarget();
+        const page = locateFc27StreamlinedPage(root), challenge = projectFc27StreamlinedChallenge(page, origin);
+        const purchased = root.repositories?.Item?.numItemsInCache?.(root.ItemPile.PURCHASED);
+        if (!Number.isSafeInteger(purchased) || purchased < 0) throw new Error("FC27_BUY_CAPACITY_UNVERIFIED");
+        const capacity = Number.isSafeInteger(root.MAX_NEW_ITEMS) && root.MAX_NEW_ITEMS >= purchased ? root.MAX_NEW_ITEMS : null;
+        if (capacity === null) throw new Error("FC27_BUY_CAPACITY_UNVERIFIED");
+        const heldDefinitions = [];
+        const clubItems = root.repositories?.Item?.club?.items?._collection ?? {};
+        for (const value of Object.values(clubItems)) {
+          const definitionId = value?.definitionId ?? value?.resourceId;
+          if (Number.isSafeInteger(definitionId) && definitionId > 0) heldDefinitions.push(definitionId);
+        }
+        return {
+          submittedScore: challenge.submittedScore,
+          freeSlots: Math.max(0, capacity - purchased),
+          heldDefinitions: [...new Set(heldDefinitions)],
+          blockedDefinitions: []
+        };
+      },
+      async find(item2, cap) {
+        assertTarget();
+        if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
+        let quote2 = item2.quote;
+        if (prices) {
+          const snapshot = await prices.load([item2.definitionId], {
+            purpose: "purchase",
+            policy: item2.pricePolicy,
+            rows: [item2],
+            isCurrent: () => {
+              assertTarget();
+              return true;
+            }
+          });
+          assertTarget();
+          quote2 = snapshot.references[item2.definitionId]?.quotes?.[item2.pricePolicy.source];
+        }
+        if (!integer15(quote2?.expiresAt) || quote2.expiresAt <= now()) fail28("PURCHASE_QUOTE_EXPIRED");
+        if (quote2?.definitionId !== item2.definitionId || quote2.error || !integer15(quote2.price, 150, 15e6) || !integer15(quote2.fetchedAt) || quote2.fetchedAt > now()) fail28("PURCHASE_PRICE_UNVERIFIED");
+        const authority = item2.pricePolicy ? galleryReferenceQuote({ [quote2.source]: quote2.price }, item2.pricePolicy) : { maxBuy: cap };
+        cap = purchasePriceCap({ maxBuy: authority.maxBuy, approvedCap: cap, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS });
+        if (cap === null) return { unavailable: true, reason: "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED" };
+        references.set(item2.definitionId, quote2.price);
+        return buyer.find(item2.definitionId, cap);
+      },
+      async buy(entry) {
+        return buyer.buy(entry);
+      },
+      async locate(entry) {
+        return buyer.locate(entry);
+      },
+      async move(entry) {
+        return buyer.move(entry);
+      },
+      async afterPlayer() {
+        return buyer.afterPlayer?.();
+      },
+      materialize: materialize3,
+      async prepareContribution(material, currentRecord) {
+        const page = locateFc27StreamlinedPage(root), challenge = projectFc27StreamlinedChallenge(page, origin);
+        const items = material.map((row) => row.item), score2 = items.reduce((sum2, item2) => sum2 + item2.points, 0);
+        const progress = {
+          target: challenge.targetScore,
+          submitted: currentRecord.submittedScore,
+          added: score2,
+          total: currentRecord.submittedScore + score2,
+          remaining: Math.max(0, challenge.targetScore - currentRecord.submittedScore - score2),
+          excess: Math.max(0, currentRecord.submittedScore + score2 - challenge.targetScore),
+          reached: currentRecord.submittedScore + score2 >= challenge.targetScore
+        };
+        return createStreamlinedPlan({
+          context: origin,
+          challenge: {
+            ...challenge,
+            submittedScore: currentRecord.submittedScore,
+            remainingScore: Math.max(0, challenge.targetScore - currentRecord.submittedScore)
+          },
+          policy: plan.policy,
+          result: {
+            status: progress.reached ? "ready" : "partial",
+            items,
+            batches: [items],
+            score: score2,
+            progress,
+            purchaseCost: 0,
+            materialValue: items.every((item2) => integer15(item2.price, 1, 15e6)) ? items.reduce((sum2, item2) => sum2 + item2.price, 0) : null,
+            searchComplete: true
+          }
+        });
+      },
+      async contribute(batchPlan) {
+        return contribute(batchPlan);
+      },
+      async recoverContribution(saved) {
+        assertTarget();
+        const previous = await contributionAdapter.journal.read(origin);
+        if (!previous || previous.plan.fingerprint !== saved.batchPlan.fingerprint && previous.batches.every((batch) => ["confirmed", "rejected"].includes(batch.state))) return { notDispatched: true };
+        if (previous.plan.fingerprint !== saved.batchPlan.fingerprint) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+        if (previous.batches.every((batch) => ["waiting", "rejected"].includes(batch.state))) return { notDispatched: true };
+        const result = await createStreamlinedTransaction({
+          adapter: contributionAdapter.adapter,
+          journal: contributionAdapter.journal,
+          lock: { acquire: async () => () => {
+          } },
+          now
+        }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
+        if (result.status === "recovered" || result.status === "observed") {
+          const score2 = result.record?.submittedScore;
+          if (integer15(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
+        }
+        return { confirmed: false, reason: result.reason ?? "FC27_STREAMLINED_CONTRIBUTION_RECOVERY_REQUIRED" };
+      },
+      async waitForPartial(ms, stopped) {
+        for (let left = ms; left > 0 && !stopped(); left -= 250) await new Promise((resolve) => setTimeout(resolve, Math.min(250, left)));
+      },
+      cancel() {
+        buyer.cancel?.();
+      }
+    });
+  }
+
+  // src/streamlined/waves.js
+  function nextStreamlinedWave(route, {
+    limit,
+    submittedScore,
+    targetScore,
+    consumedIds = [],
+    fulfilled = [],
+    heldDefinitions = [],
+    ready = [],
+    freeSlots,
+    blockedDefinitions = []
+  } = {}) {
+    if (!Array.isArray(route?.groups) || !integer15(limit, 1, 1e3) || !integer15(submittedScore) || !integer15(targetScore, 1) || !integer15(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id12) => integer15(id12, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer15(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail28("WAVE_INPUT_INVALID");
+    const material = [], purchases = [], blocked11 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
+    let points = submittedScore, capacity = freeSlots;
+    const append = (row) => {
+      material.push(row);
+      points += row.item.points;
+    };
+    for (const row of ready) {
+      const group = route.groups[row.groupIndex];
+      if (!group || !integer15(row.item?.id, 1) || !integer15(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail28("WAVE_RECEIPT_INVALID");
+      append(row);
+      blocked11.add(row.item.definitionId);
+    }
+    for (let i = 0; i < route.groups.length && material.length < limit && points < targetScore; i++) {
+      const group = route.groups[i];
+      if (group.source !== "inventory") continue;
+      for (const item2 of group.items.slice(0, group.quantity)) {
+        if (consumedIds.includes(item2.id) || material.some((row) => row.item.id === item2.id)) continue;
+        append({ groupIndex: i, item: item2 });
+        if (material.length >= limit || points >= targetScore) break;
+      }
+    }
+    if (points < targetScore) {
+      for (let i = 0; i < route.groups.length && material.length + purchases.length < limit; i++) {
+        const group = route.groups[i];
+        if (group.source !== "market") continue;
+        const pending2 = group.quantity - (fulfilled[i] ?? 0) - ready.filter((row) => row.groupIndex === i).length;
+        if (pending2 < 0) fail28("WAVE_QUANTITY_CHANGED");
+        let count2 = 0;
+        for (const item2 of group.items) {
+          if (count2 >= pending2 || capacity <= 0 || points >= targetScore || material.length + purchases.length >= limit) break;
+          if (blocked11.has(item2.definitionId)) continue;
+          purchases.push({ groupIndex: i, item: item2, ordinal: (fulfilled[i] ?? 0) + count2 });
+          blocked11.add(item2.definitionId);
+          capacity--;
+          count2++;
+          points += item2.points;
+        }
+      }
+    }
+    const inventoryUnlock = material.length > 0 && purchases.length === 0;
+    return deepFreeze({
+      status: submittedScore >= targetScore ? "completed" : material.length || purchases.length ? "ready" : "waiting",
+      material,
+      purchases,
+      projectedScore: points,
+      capacityAfterPurchase: capacity,
+      reason: inventoryUnlock ? "inventory-first" : material.length || purchases.length ? null : "no-available-route",
+      maxCards: limit
+    });
+  }
+
+  // src/streamlined/procurement.js
+  function createStreamlinedProcurement({ journal, lock, adapter, operationId, now = () => Date.now() }) {
+    let busy = false, stopped = false;
+    const stoppedError = () => {
+      const error2 = new Error("FC27_STREAMLINED_STOPPED");
+      error2.stopped = true;
+      return error2;
+    };
+    const reason = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_PURCHASE_UNCONFIRMED";
+    const execute = async (plan, approval, { onProgress = () => {
+    }, reconcileOnly = false } = {}) => {
+      if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
+      busy = true;
+      stopped = false;
+      let release, record;
+      const report = (phase, extra = {}) => {
+        try {
+          onProgress({
+            phase,
+            spent: record?.spent ?? 0,
+            budget: record?.budget,
+            submittedScore: record?.submittedScore ?? 0,
+            targetScore: record?.challenge.targetScore,
+            purchased: record?.entries.filter((e) => e.source === "market" && ["bought", "move-pending", "club", "consumed"].includes(e.state)).length ?? 0,
+            purchasedWaitingMove: record?.entries.filter((e) => e.source === "market" && ["bought", "move-pending"].includes(e.state)).length ?? 0,
+            ownedUnconsumed: (record?.entries.filter((e) => e.source === "inventory" && e.state === "ready").length ?? 0) + (record?.entries.filter((e) => e.source === "market" && e.state === "club").length ?? 0),
+            purchaseTarget: record?.route.groups.filter((g) => g.source === "market").reduce((n, g) => n + g.quantity, 0),
+            remainingQuantity: record?.route.groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0) - record.entries.filter((e) => e.groupIndex === i && ["ready", "bought", "move-pending", "club"].includes(e.state)).length), 0),
+            batchNumber: (record?.confirmedBatches ?? 0) + (phase === "confirmed" ? 0 : 1),
+            contributed: record?.consumedIds.length ?? 0,
+            remainingScore: Math.max(0, (record?.challenge.targetScore ?? 0) - (record?.submittedScore ?? 0)),
+            ...extra
+          });
+        } catch {
+        }
+      };
+      const save = async () => {
+        record = await journal.write(record);
+      };
+      try {
+        if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer15(approval.budget) || !integer15(approval.attempts, 1) || !integer15(approval.expiresAt) || !plan?.route?.groups?.length || !integer15(plan.challenge?.selectionLimit, 1, 1e3))) fail28("PURCHASE_APPROVAL_REQUIRED");
+        release = await lock.acquire(plan.context);
+        if (typeof release !== "function") fail28("BUSY");
+        record = await journal.read(plan.context);
+        const fingerprint = plan.fingerprint ?? JSON.stringify(plan);
+        if (reconcileOnly && !record) return { status: "absent" };
+        if (record && (reconcileOnly || !record.completed) && record.fingerprint !== fingerprint) fail28("PURCHASE_RECOVERY_REQUIRED");
+        if (record?.completed && record.fingerprint === fingerprint) return { status: "completed", record };
+        const hasPending = record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending"].includes(entry.state)) || !!record?.contribution;
+        if (!reconcileOnly && now() >= approval.expiresAt && !hasPending) fail28("PURCHASE_APPROVAL_EXPIRED");
+        if (!record || record.completed) {
+          if (now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
+          const inventoryEntries = plan.route.groups.flatMap((group, groupIndex) => group.source === "inventory" ? group.items.slice(0, group.quantity).map((item2, index) => ({
+            key: `inventory:${item2.id}:${index}`,
+            source: "inventory",
+            groupIndex,
+            definitionId: item2.definitionId,
+            itemId: item2.id,
+            price: null,
+            cap: null,
+            tradeId: null,
+            state: "ready"
+          })) : []);
+          record = await journal.write({
+            schema: 1,
+            context: plan.context,
+            operationId: operationId(),
+            revision: record?.revision ?? 0,
+            fingerprint: approval.fingerprint,
+            plan,
+            challenge: plan.challenge,
+            policy: plan.policy,
+            route: plan.route,
+            budget: approval.budget,
+            spent: 0,
+            submittedScore: plan.challenge.submittedScore,
+            consumedIds: [],
+            fulfilled: plan.route.groups.map(() => 0),
+            contribution: null,
+            completed: false,
+            entries: inventoryEntries
+          }, record?.revision ?? 0);
+        }
+        if (!reconcileOnly && record.budget !== approval.budget) fail28("PURCHASE_APPROVAL_CHANGED");
+        const check = async ({ recovery = false } = {}) => {
+          if (stopped && !recovery) throw stoppedError();
+          if (!recovery && now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
+          await adapter.assertCurrent(record);
+        };
+        await check({ recovery: true });
+        if (record.contribution) {
+          const result = await adapter.recoverContribution(record.contribution);
+          if (result?.notDispatched) {
+            record.contribution = null;
+            await save();
+          } else {
+            if (!result?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+            await settleContribution(result);
+          }
+        }
+        for (let index = 0; index < record.entries.length; index++) {
+          if (!["buy-pending", "bought", "move-pending", "club"].includes(record.entries[index].state)) continue;
+          const entry = record.entries[index];
+          if (entry.state === "club" && record.consumedIds.includes(entry.itemId)) continue;
+          const location = await adapter.locate(entry);
+          if (!["club", "purchased"].includes(location)) fail28("PURCHASE_RECOVERY_REQUIRED");
+          if (record.entries[index].state === "buy-pending") {
+            record.entries[index].state = "bought";
+            record.spent += entry.price;
+          }
+          record.entries[index].state = location === "club" ? "club" : "bought";
+          await save();
+        }
+        if (reconcileOnly) return { status: record.completed ? "completed" : "recovered", record };
+        if (now() >= approval.expiresAt) return { status: "paused", reason: "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED", record };
+        while (!stopped && record.submittedScore < record.challenge.targetScore) {
+          await check();
+          for (let i = 0; i < record.entries.length; i++) {
+            const entry = record.entries[i];
+            if (!["bought", "move-pending"].includes(entry.state)) continue;
+            await check();
+            record.entries[i].state = "move-pending";
+            await save();
+            await check();
+            const moved = await adapter.move(record.entries[i]);
+            if (moved?.status === "rejected") fail28("PURCHASE_MOVE_REJECTED");
+            if (await adapter.locate(record.entries[i]) !== "club") fail28("PURCHASE_RECOVERY_REQUIRED");
+            record.entries[i].state = "club";
+            await save();
+          }
+          if (record.contribution) {
+            const result2 = await adapter.recoverContribution(record.contribution);
+            if (!result2?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+            await settleContribution(result2);
+            continue;
+          }
+          const state = await adapter.readState(record);
+          await check();
+          if (state.submittedScore !== record.submittedScore) fail28("PROGRESS_CHANGED");
+          const readyEntries = record.entries.filter((e) => ["ready", "club"].includes(e.state)).slice(0, record.challenge.selectionLimit);
+          const materialized = await adapter.materialize(readyEntries, record);
+          if (!Array.isArray(materialized)) fail28("PURCHASE_MATERIAL_UNKNOWN");
+          const ready = materialized.map((row, index) => row?.item ? row : {
+            groupIndex: readyEntries[index]?.groupIndex,
+            item: row
+          }).filter((row) => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
+          const wave = nextStreamlinedWave(record.route, {
+            ...state,
+            ready,
+            limit: record.challenge.selectionLimit,
+            submittedScore: record.submittedScore,
+            targetScore: record.challenge.targetScore,
+            consumedIds: record.consumedIds,
+            fulfilled: record.fulfilled
+          });
+          if (wave.status === "waiting") return { status: "paused", reason: "FC27_STREAMLINED_NO_AFFORDABLE_CARDS", record };
+          const material = [...wave.material], attempted = new Set(state.blockedDefinitions ?? []);
+          let lastBought = now(), boughtThisWave = 0;
+          while (!stopped) {
+            const next = nextStreamlinedWave(record.route, {
+              ...state,
+              ready: material,
+              freeSlots: Math.max(0, state.freeSlots - boughtThisWave),
+              blockedDefinitions: [...attempted],
+              limit: record.challenge.selectionLimit,
+              submittedScore: record.submittedScore,
+              targetScore: record.challenge.targetScore,
+              consumedIds: record.consumedIds,
+              fulfilled: record.fulfilled
+            });
+            const slot = next.purchases[0];
+            if (!slot) break;
+            const candidate = slot.item;
+            attempted.add(candidate.definitionId);
+            if (stopped) break;
+            await check();
+            const cap = candidate.purchaseMaxBuy;
+            if (!integer15(cap, 150, 15e6)) fail28("PURCHASE_PRICE_UNVERIFIED");
+            if (record.spent + cap > record.budget) continue;
+            for (let attempt = 0; attempt < approval.attempts && !stopped; attempt++) {
+              report("search");
+              const offer = await adapter.find(candidate, cap, record);
+              await check();
+              if (!offer || offer.unavailable) break;
+              if (record.entries.some((e) => e.state === "rejected" && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
+              if (offer.definitionId !== candidate.definitionId || !integer15(offer.price, 150, cap) || !integer15(offer.itemId, 1) || record.entries.some((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId)) fail28("PURCHASE_OFFER_CHANGED");
+              const index = record.entries.length;
+              record.entries.push({ ...offer, source: "market", key: `${record.operationId}:${index}`, groupIndex: slot.groupIndex, cap, state: "buy-pending" });
+              await save();
+              report("buying");
+              if (stopped || now() >= approval.expiresAt) {
+                record.entries.splice(index, 1);
+                await save();
+                await check();
+              }
+              const receipt = await adapter.buy(record.entries[index]);
+              if (receipt?.status === "rejected") {
+                record.entries[index].state = "rejected";
+                await save();
+                continue;
+              }
+              if (receipt?.status !== "bought" || !same25(
+                [receipt.itemId, receipt.definitionId, receipt.tradeId, receipt.price],
+                [offer.itemId, offer.definitionId, offer.tradeId, offer.price]
+              )) fail28("PURCHASE_RECOVERY_REQUIRED");
+              record.entries[index].state = "bought";
+              record.spent += receipt.price;
+              await save();
+              if (stopped) break;
+              record.entries[index].state = "move-pending";
+              await save();
+              report("moving");
+              await check();
+              if ((await adapter.move(record.entries[index]))?.status === "rejected") fail28("PURCHASE_MOVE_REJECTED");
+              if (await adapter.locate(record.entries[index]) !== "club") fail28("PURCHASE_RECOVERY_REQUIRED");
+              record.entries[index].state = "club";
+              await save();
+              if (stopped) break;
+              const rows = await adapter.materialize([record.entries[index]], record);
+              if (rows.length !== 1) fail28("PURCHASE_MATERIAL_UNKNOWN");
+              material.push(rows[0]?.item ? rows[0] : { groupIndex: slot.groupIndex, item: rows[0] });
+              lastBought = now();
+              boughtThisWave++;
+              await adapter.afterPlayer?.();
+              break;
+            }
+          }
+          if (stopped) break;
+          if (!material.length) return { status: "paused", reason: "FC27_STREAMLINED_NO_AFFORDABLE_CARDS", record };
+          if (wave.purchases.length && material.length < record.challenge.selectionLimit && material.reduce((sum2, r) => sum2 + r.item.points, record.submittedScore) < record.challenge.targetScore) {
+            report("partial-ready", {
+              readyCount: material.length,
+              readyPoints: material.reduce((sum2, row) => sum2 + row.item.points, 0),
+              selectionLimit: record.challenge.selectionLimit,
+              nextBatch: (record.confirmedBatches ?? 0) + 1
+            });
+            await adapter.waitForPartial?.(Math.max(0, (approval.idleMs ?? 6e4) - (now() - lastBought)), () => stopped);
+          }
+          if (stopped) break;
+          await check();
+          const batchPlan = await adapter.prepareContribution(material, record);
+          await check();
+          record.contribution = { batchPlan, material, dispatched: true };
+          await save();
+          report("contribution");
+          await check();
+          const result = await adapter.contribute(batchPlan);
+          if (!result?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+          await settleContribution(result);
+        }
+        record.completed = record.submittedScore >= record.challenge.targetScore;
+        await save();
+        return { status: record.completed ? "completed" : "stopped", record };
+        async function settleContribution(result) {
+          const material = record.contribution.material;
+          if (!integer15(
+            result.submittedScore,
+            record.submittedScore + 1,
+            record.submittedScore + material.reduce((sum2, r) => sum2 + r.item.points, 0)
+          )) fail28("PROGRESS_CHANGED");
+          for (const row of material) {
+            if (record.consumedIds.includes(row.item.id)) fail28("PURCHASE_IDENTITY_CONFLICT");
+            record.consumedIds.push(row.item.id);
+            record.fulfilled[row.groupIndex]++;
+            const entry = record.entries.find((e) => e.itemId === row.item.id);
+            if (entry) entry.state = "consumed";
+          }
+          const expected = record.submittedScore + material.reduce((sum2, r) => sum2 + r.item.points, 0);
+          record.submittedScore = result.submittedScore;
+          record.contribution = null;
+          record.completed = record.submittedScore >= record.challenge.targetScore;
+          record.confirmedBatches = (record.confirmedBatches ?? 0) + 1;
+          record.progressChanged = result.submittedScore !== expected && result.submittedScore < record.challenge.targetScore;
+          await save();
+          report("confirmed");
+          if (record.progressChanged) fail28("PROGRESS_CHANGED");
+        }
+      } catch (error2) {
+        if (error2?.stopped || error2?.message === "FC27_STREAMLINED_STOPPED") {
+          return { status: "stopped", reason: "FC27_STREAMLINED_STOPPED", record };
+        }
+        return { status: "recovery-required", reason: reason(error2), record };
+      } finally {
+        try {
+          adapter.cancel?.();
+        } finally {
+          try {
+            await release?.();
+          } finally {
+            busy = false;
+          }
+        }
+      }
+    };
+    return Object.freeze({ execute, stop: () => {
+      stopped = true;
+    } });
+  }
+
   // src/adapters/browser/fc27-streamlined-execution.js
   async function assertStreamlinedOtherTransactions(get, context) {
     const scope2 = traditionalJournalScope(context), raw = await get(scope2, null);
@@ -28733,13 +30215,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   async function createFc27StreamlinedExecution(root, {
     context,
+    plan = null,
     get,
     set,
     lockManager,
+    prices = null,
     canWrite = () => false,
     now = () => Date.now(),
     createMaintenance = createFc27StreamlinedPageMaintenance,
-    createProvider = createFc27StreamlinedProvider
+    createProvider = createFc27StreamlinedProvider,
+    createPurchaseAdapter = createFc27StreamlinedPurchaseAdapter
   } = {}) {
     await maintainFc27PuzzlePurchases(root, { get, set });
     await assertStreamlinedOtherTransactions(get, context);
@@ -28753,25 +30238,92 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       now
     });
     const maintenance = await createMaintenance(root, { now });
+    const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
+    const purchaseVerifier = async (item2, proof, currentPlan = plan) => verifyStreamlinedPurchasedItem(
+      get,
+      context,
+      { ...item2, purchaseReceipt: proof },
+      { id: currentPlan?.challenge?.id ?? 0, setId: currentPlan?.challenge?.setId ?? 0, targetScore: currentPlan?.challenge?.targetScore ?? 0 }
+    );
+    let marketPurchase = null;
+    let activeProcurement = null;
     const adapter = createProvider(root, {
       journal: persistence.journal,
       canWrite,
       now,
       maintenance,
-      checkOtherTransactions: () => assertStreamlinedOtherTransactions(get, context)
+      checkOtherTransactions: () => assertStreamlinedOtherTransactions(get, context),
+      purchaseVerifier
     });
     const transaction = createStreamlinedTransaction({ adapter, ...persistence, now });
+    const createMarket = async (plan2) => {
+      if (!plan2?.route?.groups?.some((group) => group.source === "market")) return null;
+      const contribution = { adapter, journal: persistence.journal };
+      return createPurchaseAdapter(root, { plan: plan2, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution });
+    };
     return Object.freeze({
       transaction,
       journal: persistence.journal,
-      prepare(plan) {
+      async recoverPurchase(challenge) {
+        const saved = await marketJournal.read(context);
+        if (!saved) return { status: "absent" };
+        if (saved.challenge.setId !== challenge.setId || saved.challenge.id !== challenge.id) {
+          if (saved.completed) return { status: "absent" };
+          return {
+            status: "recovery-required",
+            reason: "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED",
+            recovery: { setId: saved.challenge.setId, challengeId: saved.challenge.id }
+          };
+        }
+        if (saved.challenge.targetScore !== challenge.targetScore) fail28("CONTEXT_CHANGED");
+        if (!saved.plan) fail28("PURCHASE_JOURNAL_INVALID");
+        if (saved.completed) return { status: "completed", record: saved };
+        marketPurchase = await createMarket(saved.plan);
+        if (!marketPurchase) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        const driver = createStreamlinedProcurement({ journal: marketJournal, lock: persistence.lock, adapter: marketPurchase, now });
+        activeProcurement = driver;
+        try {
+          return await driver.execute(saved.plan, null, { reconcileOnly: true });
+        } finally {
+          activeProcurement = null;
+        }
+      },
+      async purchase(plan2, approval = {}, callbacks = {}) {
+        marketPurchase = await createMarket(plan2);
+        if (!marketPurchase) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        const runPlan = { ...plan2, route: plan2.route ?? { groups: [] } };
+        const driver = createStreamlinedProcurement({
+          journal: marketJournal,
+          lock: persistence.lock,
+          adapter: marketPurchase,
+          operationId: () => root.crypto.randomUUID(),
+          now
+        });
+        activeProcurement = driver;
+        try {
+          return await driver.execute(runPlan, {
+            ...approval,
+            budget: approval.budget ?? runPlan.route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0),
+            attempts: runPlan.execution?.purchaseAttempts ?? 3,
+            idleMs: runPlan.execution?.partialWaitMs ?? 6e4,
+            expiresAt: approval.expiresAt ?? now() + 6e5
+          }, callbacks);
+        } finally {
+          activeProcurement = null;
+        }
+      },
+      prepare(plan2) {
         if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
         if (!persistence.inspect().supported) fail28("EXCLUSIVE_ACCESS_REQUIRED");
-        if (plan.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
-        if (plan.items.some((item2) => item2.source !== "inventory")) fail28("PURCHASE_PENDING");
-        if (plan.items.some((item2) => !["club", "storage"].includes(item2.pile))) fail28("PILE_UNVERIFIED");
-        maintenance.prepare(plan.items);
+        if (plan2.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
+        if (plan2.items.some((item2) => item2.source === "inventory" && !["club", "storage"].includes(item2.pile))) fail28("PILE_UNVERIFIED");
+        if (plan2.items.some((item2) => item2.source === "market") && !plan2.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        maintenance.prepare(plan2.items.filter((item2) => item2.source === "inventory"));
         return true;
+      },
+      stop() {
+        activeProcurement?.stop();
+        transaction.stop();
       }
     });
   }
@@ -28820,7 +30372,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.13" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.14" });
   var galleryAssets = Object.freeze({
     reward: (type) => {
       try {
@@ -28974,6 +30526,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   });
   var galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
   var galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
+  var galleryPlanningSettings = createGalleryPlanningSettings({ scope: galleryProgress.scope, get: GM_getValue, set: GM_setValue });
   var galleryPurchase = createFc27GalleryPurchase({
     root: unsafeWindow,
     gmGetValue: GM_getValue,
@@ -29077,8 +30630,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.13"}`,
-    version: "27.0.13",
+    title: `FC Automation Tool ${"27.0.14"}`,
+    version: "27.0.14",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -29101,6 +30654,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
     galleryAccounting,
     galleryTradePreferences,
+    galleryPlanningSettings,
     exportDiagnostics: async () => {
       const payload = await diagnosticLog.exportPayload();
       const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-");
@@ -29150,8 +30704,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     execute: (approval) => current().execute(approval),
     fillPuzzle: (approval) => current().fillPuzzle(approval),
     inspectRecovery: () => current().inspectRecovery(),
-    resolveRecovery: (approved) => current().resolveRecovery(approved),
-    checkInstallation: (hold) => checkFc27GmInstallation({ ...dependencies, hold })
+    resolveRecovery: (approved) => current().resolveRecovery(approved)
   });
   mountFc27WorkbenchNavigation({ document: unsafeWindow.document, runtime: unsafeWindow, onOpen: (container) => acceptancePanel?.open?.(container) });
   mountFc27PuzzleNativeButton({
@@ -29181,14 +30734,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return { context, challenge: projectFc27StreamlinedChallenge(page, context) };
     },
     readInputs: (settings) => readFc27StreamlinedInputs(unsafeWindow, settings),
+    readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
+      catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }),
+      prices: publicPrices
+    }),
     get: GM_getValue,
     set: GM_setValue,
     prices: publicPrices,
     diagnosticLog,
-    createExecution: (context) => createFc27StreamlinedExecution(unsafeWindow, {
+    createExecution: (context, plan) => createFc27StreamlinedExecution(unsafeWindow, {
       context,
+      plan,
       get: GM_getValue,
       set: GM_setValue,
+      prices: publicPrices,
       lockManager: unsafeWindow.navigator.locks,
       canWrite: () => true
     })

@@ -14,7 +14,7 @@ const planned = (id, title, description, features, status = '规划中 · 尚未
     <p class="module-note">本页当前仅展示功能规划，尚不执行操作。</p>
   </section>`;
 
-export function fc27WorkbenchMarkup() {
+export function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
   return `<style>
     ${currencyInputStyles}
     #gallery-relist-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}#gallery-relist-controls select{width:auto;min-width:0;margin:0;padding:4px 6px}#gallery-relist-controls button{margin:0}#gallery-relist-status{font-size:12px}
@@ -120,7 +120,7 @@ export function fc27WorkbenchMarkup() {
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>设置与诊断</h2></div></div>
         <div class="feature-grid"><div class="card"><h3>当前版本</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">解题与采购参数在「SBC 解题」页设置。</p></div>
         <div id="diagnostic-export-card" class="card"><h3>离线诊断</h3><p>导出最近的脱敏运行事件，用于离线调查 Gallery 回退、限流和网络错误。</p><small>不包含 URL、响应正文、凭证、账号标识或完整球员数据。</small><div class="row"><button id="export-diagnostics" class="primary">导出诊断日志</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
-        <div class="card"><h3>安装与多标签检查</h3><p>仅在需要排查存储或多标签占用问题时运行。</p><div class="row"><button id="gm">检查脚本存储</button><button id="hold">检查标签锁</button></div></div></div>
+        ${installationChecks ? '<div class="card"><h3>安装与多标签检查</h3><p>仅在需要排查存储或多标签占用问题时运行。</p><div class="row"><button id="gm">检查脚本存储</button><button id="hold">检查标签锁</button></div></div>' : ''}</div>
         <div id="settings-bottom" class="settings-bottom"></div>
       </section>
     </div><div class="operation-status" aria-live="polite">最近一次工作台操作<output id="status">尚无操作</output></div>

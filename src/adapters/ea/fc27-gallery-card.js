@@ -120,7 +120,7 @@ export function createFc27GalleryNativeRenderer(root, { document = root?.documen
       const rootElement = view.getRootElement();
       if (!rootElement || rootElement.nodeType !== 1) { record(phase, 'FC27_GALLERY_CARD_VIEW_UNAVAILABLE'); dispose(); return null; }
       wrapper = document.createElement('div');
-      wrapper.className = 'gallery-native-card';
+      wrapper.className = `gallery-native-card${ownedDisplay ? ' owned-card' : ''}`;
       // Slot assignment must happen before insertion. EA's global card CSS
       // and the shadow host resolve the slot during append, so assigning it
       // afterwards creates an intermittent blank/un-styled special card.

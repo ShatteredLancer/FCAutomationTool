@@ -53,4 +53,43 @@ describe('installed Gallery planning acceptance', () => {
     expect(result).toMatchObject({ status: 'blocked', phase: 'plan', reason: 'FC27_GALLERY_PLANNING_VERIFICATION_FAILED' });
     expect(JSON.stringify(result)).not.toContain('private response');
   });
+  const settingsFixture = () => {
+    panelCall.mockResolvedValueOnce({ x: 100, y: 100 });
+    const helpers = fixture();
+    panelCall.mockResolvedValueOnce({ x: 100, y: 100 }).mockResolvedValueOnce('30');
+    for (const value of [30, true, '60', true, 'result', 'result', true, true]) waitForPanel.mockResolvedValueOnce(value);
+    const settingsPage = { ...page, evaluate: vi.fn().mockResolvedValue(true),
+      mouse: { click: vi.fn().mockResolvedValue(undefined) },
+      keyboard: { press: vi.fn().mockResolvedValue(undefined), type: vi.fn().mockResolvedValue(undefined) } };
+    return { helpers: { ...helpers, timeoutSettings: 60 }, settingsPage };
+  };
+  it('saves the timeout, verifies tab-return retention and restores the original account setting', async () => {
+    const { helpers, settingsPage } = settingsFixture();
+    const result = await verifyGalleryPlanning({}, settingsPage, 'Arsenal', helpers);
+    expect(result).toMatchObject({ status: 'observed', timeoutSettings: {
+      originalSeconds: 30, requestedSeconds: 60, savedSeconds: 60, saved: true,
+      restoredSeconds: 30, restored: true,
+    } });
+    expect(settingsPage.keyboard.type.mock.calls.map(row => row[0])).toEqual(['60', '30']);
+    expect(clickPanelControl.mock.calls.map(row => row[2])).toEqual([
+      '#gallery-planning-settings button', '.gallery-open-set', '.plan-generate', '.plan-overview',
+      '.gallery-open-set', '#gallery-planning-settings button',
+    ]);
+  });
+  it('reports restoration failure instead of returning a successful inspection', async () => {
+    const { helpers, settingsPage } = settingsFixture();
+    settingsPage.keyboard.type.mockResolvedValueOnce(undefined).mockRejectedValueOnce(Error('private'));
+    const result = await verifyGalleryPlanning({}, settingsPage, 'Arsenal', helpers);
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_PLANNING_SETTINGS_NOT_RESTORED',
+      timeoutSettings: { restoreFailed: true } });
+    expect(JSON.stringify(result)).not.toContain('private');
+  });
+  it('never restores a setting into a different account', async () => {
+    const { helpers, settingsPage } = settingsFixture();
+    settingsPage.evaluate.mockResolvedValueOnce(true).mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const result = await verifyGalleryPlanning({}, settingsPage, 'Arsenal', helpers);
+    expect(result).toMatchObject({ status: 'blocked', timeoutSettings: { restoreFailed: true } });
+    expect(settingsPage.keyboard.type.mock.calls.map(row => row[0])).toEqual(['60']);
+  });
 });

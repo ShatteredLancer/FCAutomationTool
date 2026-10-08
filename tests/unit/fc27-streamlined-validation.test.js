@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
-import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
+import { readFc27StreamlinedInputs, projectFc27StreamlinedItem } from '../../src/adapters/ea/fc27-streamlined-read.js';
 import { createFc27StreamlinedValidator } from '../../src/adapters/ea/fc27-streamlined-validation.js';
 import extraVersion from '../fixtures/streamlined-club-extra-version.json';
 import { addStorageRuntime } from '../helpers/fc27-storage-runtime.js';
@@ -48,6 +48,56 @@ function transportFor(f, mutate = () => {}) {
     },
   });
 }
+
+function purchasedSetup({ receipt = true, maxRating = 82, marketMaxRating = 99 } = {}) {
+  const f = setup();
+  f.root.info.set.goldenrange = 82;
+  const raw = f.root.repositories.Item.club.items._collection[1];
+  raw._rating = 84; raw.tradable = true;
+  f.input = readFc27StreamlinedInputs(f.root, { maxRating, marketMaxRating });
+  const bought = { ...projectFc27StreamlinedItem(raw, f.root, 'club') };
+  if (receipt) bought.purchaseReceipt = { operationId: 'test-purchase', itemId: 1, definitionId: 101, tradeId: 'trade-1', price: 1100 };
+  f.selected = [bought, ...f.selected.slice(1)];
+  f.plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
+    result: { ...f.plan, items: f.selected, batches: [f.selected] } });
+  return f;
+}
+
+it('allows an exact verified purchased 84 above stock range 82 without changing its real rating', async () => {
+  const f = purchasedSetup(), purchaseVerifier = vi.fn(async () => true);
+  await expect(createFc27StreamlinedValidator(f.root, { createTransport: transportFor(f), purchaseVerifier })
+    .verify(f.plan, f.batch, 0)).resolves.toMatchObject({ fresh: true, count: 5 });
+  expect(purchaseVerifier).toHaveBeenCalledWith(expect.objectContaining({ rating: 84, tradeable: true }),
+    expect.objectContaining({ itemId: 1, definitionId: 101 }), f.plan);
+  expect(f.plan.policy.goldRange).toEqual([75, 82]);
+});
+
+it('does not extend the purchased exception to unreceipted stock, explicit caps or changed material', async () => {
+  for (const scenario of ['no-receipt', 'explicit-cap', 'special', 'rating-changed', 'other-stock']) {
+    const f = purchasedSetup({ receipt: scenario !== 'no-receipt', marketMaxRating: scenario === 'explicit-cap' ? 82 : 99 });
+    const mutate = (raw, item) => {
+      if (item.id === 1 && scenario === 'special') raw._rareflag = 72;
+      if (item.id === 1 && scenario === 'rating-changed') raw._rating = 85;
+      if (item.id === 2 && scenario === 'other-stock') raw._rating = 84;
+    };
+    await expect(createFc27StreamlinedValidator(f.root, { createTransport: transportFor(f, mutate), purchaseVerifier: async () => true })
+      .verify(f.plan, f.batch, 0)).rejects.toThrow('MATERIAL_CHANGED');
+  }
+});
+
+it('requires a verified receipt bound to the exact purchased entity', async () => {
+  for (const scenario of ['missing-verifier', 'rejected', 'wrong-item', 'wrong-version']) {
+    const f = purchasedSetup();
+    if (scenario === 'wrong-item' || scenario === 'wrong-version') {
+      f.selected[0].purchaseReceipt[scenario === 'wrong-item' ? 'itemId' : 'definitionId'] = 999;
+      f.plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
+        result: { ...f.plan, items: f.selected, batches: [f.selected] } });
+    }
+    await expect(createFc27StreamlinedValidator(f.root, { createTransport: transportFor(f),
+      purchaseVerifier: scenario === 'missing-verifier' ? null : async () => scenario !== 'rejected' })
+      .verify(f.plan, f.batch, 0)).rejects.toThrow('PURCHASE_RECEIPT_UNVERIFIED');
+  }
+});
 
 it('performs one targeted fresh Club read and never mutates the repository', async () => {
   const f = setup();

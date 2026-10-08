@@ -69,12 +69,12 @@ export function streamlinedProgress(challenge, added = 0) {
 // Exact canonical binding, not a security hash. Never exported as diagnostics.
 export function streamlinedPlanFingerprint({ context, challenge, policy = null, objective = null,
   status = null, score = null, progress = null, purchaseCost = null, materialValue = null,
-  searchComplete = null, items = [], batches = [] } = {}) {
+  searchComplete = null, items = [], batches = [], route = null, execution = null } = {}) {
   const keyOf = item => typeof item?.key === 'string' ? item.key
     : integer(item?.id, 1) ? `item:${item.id}`
       : integer(item?.definitionId, 1) ? `definition:${item.definitionId}` : 'unknown';
   return JSON.stringify({ schema: 1, context: createSeasonContext(context), challenge, policy, objective,
-    status, score, progress, purchaseCost, materialValue, searchComplete,
+    status, score, progress, purchaseCost, materialValue, searchComplete, ...(execution ? { execution } : {}),
     items: items.map(item => ({ ...item, key: keyOf(item) })).sort((a, b) => a.key.localeCompare(b.key)),
-    batches: batches.map(batch => batch.map(keyOf)) });
+    batches: batches.map(batch => batch.map(keyOf)), ...(route ? { route } : {}) });
 }

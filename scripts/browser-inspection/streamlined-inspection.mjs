@@ -12,18 +12,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // allow-list prevents this command from importing a writer or page service.
 export async function inspectStreamlined(page, { recover = false } = {}) {
   if (pageKind(page.url()) !== 'web-app') return { status: 'blocked', reason: 'WEB_APP_REQUIRED', liveExecutionEnabled: false };
-  // A same-version replacement still needs one reload. Keep this marker on the
-  // owned Playwright page (not the EA page) across hot-loaded helper modules.
+  // Installation is checked before inspection. The inspector must not reload
+  // after a caller has navigated to a target challenge: doing so destroys the
+  // native One Click work-area controller and makes a valid target look absent.
   if (typeof page.reload === 'function') {
     const installed = JSON.parse(await readFile(path.join(root, 'artifacts/fc27-browser/current-install.json'), 'utf8'));
     const hash = createHash('sha256').update(await readFile(path.join(root, 'FCAutomationTool.user.js'))).digest('hex');
     if (!installed.installed || !installed.exactSource || installed.sha256 !== hash) return { status: 'blocked', reason: 'CURRENT_INSTALLATION_REQUIRED' };
-    const marker = Symbol.for('fcat.streamlined.checked-build');
-    if (page[marker] !== hash) {
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      page[marker] = hash;
-      await page.waitForTimeout(2000);
-    }
   }
   const result = await build({ absWorkingDir: root, stdin: { contents: `
     export { inspectFc27Streamlined, readFc27StreamlinedInputs, locateFc27StreamlinedPage } from './src/adapters/ea/fc27-streamlined-read.js';
@@ -65,7 +60,7 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
   }));
   const methods = await page.evaluate(readStreamlinedMethodSources);
   const preview = report.status === 'observed' && typeof page.context === 'function'
-    ? await inspectStreamlinedPreview(page, { recover }) : null;
+    ? await inspectStreamlinedPreview(page, { recover, keepOpen: true }) : null;
   // Latest installed preview must be verified before fresh read acceptance.
   const fresh = preview?.status === 'observed'
     ? await page.evaluate(`(async () => { ${result.outputFiles[0].text}
@@ -79,13 +74,23 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
 
 // Only the installed preview's entry/Solve/Close may be clicked here. No save,
 // selection, purchase or contribution controls, and no injected planner.
-export async function inspectStreamlinedPreview(page, { recover = false } = {}) {
+export async function inspectStreamlinedPreview(page, { recover = false, keepOpen = false } = {}) {
   const installed = JSON.parse(await readFile(path.join(root, 'artifacts/fc27-browser/current-install.json'), 'utf8'));
   const source = await readFile(path.join(root, 'FCAutomationTool.user.js'));
   if (!installed.installed || !installed.exactSource || createHash('sha256').update(source).digest('hex') !== installed.sha256) {
     return { status: 'blocked', reason: 'CURRENT_INSTALLATION_REQUIRED' };
   }
   const cdp = await page.context().newCDPSession(page);
+  const reads = [], errors = [], startedAt = Date.now();
+  const response = reply => {
+    const url = new URL(reply.url());
+    if (reads.length >= 100 || !/\/ut\/game\/fc27\/(?:defid|item)$|\/streamlined-solutions\/$/.test(url.pathname)) return;
+    reads.push({ host: url.hostname, path: url.pathname, status: reply.status(), elapsedMs: Date.now() - startedAt });
+  };
+  const pageerror = error => {
+    if (errors.length < 8) errors.push({ name: ['Error', 'TypeError', 'ReferenceError', 'RangeError'].includes(error.name) ? error.name : 'Error' });
+  };
+  page.on('response', response); page.on('pageerror', pageerror);
   let objectId;
   const call = async (fn, args = []) => {
     const result = await cdp.send('Runtime.callFunctionOn', { objectId, returnByValue: true,
@@ -124,14 +129,15 @@ export async function inspectStreamlinedPreview(page, { recover = false } = {}) 
         contributionDisabled: this.querySelector('[data-contribute]')?.disabled,
         notes: Array.from(this.querySelectorAll('[data-result] small')).map(node => node.textContent.slice(0, 600)).slice(0, 8) };
     });
-    if (current && !recover) return { status: 'existing-panel-observed', installedSha256: installed.sha256,
-      runtimeVersion: version, ...current, eaMutationsPerformed: false };
     if (!current) await page.locator('#fcat-streamlined-entry').click({ timeout: 5000 });
     for (let n = 0; n < 50; n++) {
       if (await call(function () { return !this.querySelector('[data-solve]').disabled; })) break;
       await page.waitForTimeout(100);
     }
-    await click(recover ? '[data-recover]' : '[data-solve]');
+    // One explicit read-only replan of an earlier failed market preview. Never
+    // retry a contribution, purchase or recovery as part of this inspection.
+    const retryMarket = current?.notes?.some(text => text.includes('FC27_STREAMLINED_MARKET_TIMEOUT'));
+    if (!current || recover || retryMarket) await click(recover ? '[data-recover]' : '[data-solve]');
     let snapshot;
     for (let n = 0; n < 240; n++) {
       snapshot = await call(function () { return {
@@ -140,6 +146,10 @@ export async function inspectStreamlinedPreview(page, { recover = false } = {}) 
         message: this.querySelector('[data-status]').textContent,
         summary: this.querySelector('.result-summary')?.textContent ?? null,
         selection: this.querySelector('[data-selection]')?.textContent ?? null,
+        routes: Array.from(this.querySelectorAll('.route-list button')).map(button => ({
+          text: button.textContent, selected: button.getAttribute('aria-pressed') === 'true',
+          overflow: button.scrollWidth > button.clientWidth,
+        })),
         rows: this.querySelectorAll('.player-row').length,
         cards: this.host.querySelectorAll('.gallery-native-card').length,
         batches: this.querySelectorAll('summary input').length,
@@ -149,11 +159,62 @@ export async function inspectStreamlinedPreview(page, { recover = false } = {}) 
       if (!snapshot.busy) break;
       await page.waitForTimeout(250);
     }
+    // Native EA canvases load their shell/portrait asynchronously after the
+    // planner completes; allow one bounded paint window before judging artwork.
+    await page.waitForTimeout(3000);
+    snapshot.layout = await call(function () {
+      const dialog = this.querySelector('dialog');
+      dialog.scrollTop = 0;
+      const rect = dialog.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, horizontalOverflow: dialog.scrollWidth > dialog.clientWidth };
+    });
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-preview.png') });
-    await click('[data-close]');
+    if (snapshot.routes.length) {
+      await call(function () { this.querySelector('.route-list')?.scrollIntoView({ block: 'start' }); });
+      await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-preview-routes.png') });
+    }
+    snapshot.cardPreview = await call(function () {
+      const rows = Array.from(this.querySelectorAll('.player-row')).slice(0, 3);
+      rows[0]?.scrollIntoView({ block: 'center' });
+      return rows.map(row => {
+        const rect = row.querySelector('.player-card')?.getBoundingClientRect();
+        const slot = row.querySelector('slot'), native = slot?.assignedElements?.()[0];
+        return { text: row.textContent.slice(0, 400), nativeHtml: native?.innerHTML?.slice(0, 6000),
+          cardWidth: rect?.width ?? 0, cardHeight: rect?.height ?? 0 };
+      });
+    });
+    snapshot.displayData = await page.evaluate(() => {
+      const descriptor = (object, key) => {
+        for (let current = object, depth = 0; current && depth < 4; depth++, current = Object.getPrototypeOf(current)) {
+          const found = Object.getOwnPropertyDescriptor(current, key);
+          if (!found) continue;
+          return { depth, kind: found.value !== undefined ? 'data' : 'accessor',
+            value: typeof found.value === 'string' ? found.value.slice(0, 120) : null,
+            getter: typeof found.get === 'function' ? String(found.get).slice(0, 400) : null };
+        }
+        return null;
+      };
+      const rows = Object.values(globalThis.repositories?.Item?.club?.items ?? {})
+        .flatMap(value => value && typeof value === 'object' ? Object.values(value) : [])
+        .filter(value => value?.type === 'player' && value.rating === 83).slice(0, 3);
+      return rows.map(item => ({ definitionId: item.definitionId,
+        keys: Object.keys(item).filter(k => /name|bio|player|data/i.test(k)),
+        playerData: item._staticData ? Object.keys(item._staticData) : null,
+        descriptors: Object.fromEntries(['displayName', 'name', 'firstName', 'lastName', 'knownAs', '_staticData']
+          .map(key => [key, descriptor(item, key)])),
+        staticDescriptors: Object.fromEntries(['name', 'firstName', 'lastName', 'knownAs']
+          .map(key => [key, descriptor(item._staticData, key)])),
+        staticPrototypeKeys: item._staticData && typeof item._staticData === 'object'
+          ? Object.getOwnPropertyNames(Object.getPrototypeOf(item._staticData) ?? {}).filter(k => /name|player|data/i.test(k)).slice(0, 20) : [],
+        getName: descriptor(item, 'getName'),
+        localization: globalThis.services?.Localization?.localize?.(`search.playerName.${item.assetId}`) }));
+    });
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-preview-cards.png') });
+    if (!keepOpen) await click('[data-close]');
     return { status: snapshot.busy ? 'timeout' : snapshot.summary ? 'observed' : 'blocked', installedSha256: installed.sha256,
-      runtimeVersion: version, ...snapshot, eaMutationsPerformed: false };
+      runtimeVersion: version, ...snapshot, reads, errors, eaMutationsPerformed: false };
   } finally {
+    page.off('response', response); page.off('pageerror', pageerror);
     await cdp.send('Runtime.releaseObjectGroup', { objectGroup: 'streamlined-preview' }).catch(() => {});
     await cdp.detach();
   }
@@ -171,7 +232,7 @@ export function readStreamlinedMethodSources() {
     for (let depth = 0; proto && depth < 4; depth++, proto = Object.getPrototypeOf(proto)) {
       for (const key of Object.getOwnPropertyNames(proto)) {
         if (!(/HttpRequest$/.test(name) && ['setPath', 'setUrlVariables'].includes(key))
-            && !(name === 'EAObservable' && key === 'notify') && !/OneClick|sbsScore|submit|SelectionLimit|SelectedItems|calculateScore|_updateSbcProgress|_evictSubmittedItems|removeItemsById|requestChallenge|requestSet/i.test(key)) continue;
+            && !(name === 'EAObservable' && key === 'notify') && !/OneClick|sbsScore|submit|SelectionLimit|SelectedItems|calculateScore|_updateSbcProgress|_evictSubmittedItems|removeItemsById|requestChallenge|requestSet|searchConceptItems/i.test(key)) continue;
         const d = Object.getOwnPropertyDescriptor(proto, key);
         const fn = d.value ?? d.get;
         if (typeof fn !== 'function' || rows.some(row => row.owner === name && row.name === key)) continue;
@@ -195,7 +256,7 @@ export function readStreamlinedMethodSources() {
     let proto = instance && Object.getPrototypeOf(instance);
     for (let depth = 0; proto && depth < 6; depth++, proto = Object.getPrototypeOf(proto)) {
       for (const name of Object.getOwnPropertyNames(proto)) {
-        if (!/OneClick|sbsScore|submitPlayers|_updateSbcProgress|requestChallenge|getChallengesForSet|getHub|resetSquadsCache|removeItemsById|storage/i.test(name)) continue;
+        if (!/OneClick|sbsScore|submitPlayers|_updateSbcProgress|requestChallenge|getChallengesForSet|getHub|resetSquadsCache|removeItemsById|searchConceptItems|storage/i.test(name)) continue;
         const descriptor = Object.getOwnPropertyDescriptor(proto, name), fn = descriptor.value ?? descriptor.get;
         if (typeof fn !== 'function' || rows.some(row => row.owner === owner && row.name === name)) continue;
         const source = Function.prototype.toString.call(fn);

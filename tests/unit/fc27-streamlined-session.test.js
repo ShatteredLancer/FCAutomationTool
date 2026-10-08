@@ -1,6 +1,38 @@
 import { expect, it, vi } from 'vitest';
 import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-streamlined-session.js';
 import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined.js';
+import { assertStreamlinedPlan } from '../../src/streamlined/plan.js';
+import { normalizeStreamlinedSettings } from '../../src/streamlined/settings.js';
+
+it('migrates settings without relaxing stock protection and validates the separate market ceiling', () => {
+  expect(normalizeStreamlinedSettings({ maxRating: 82 })).toMatchObject({ maxRating: 82, marketMaxRating: 99 });
+  expect(normalizeStreamlinedSettings({ maxRating: 82, marketMaxRating: 85 })).toMatchObject({ maxRating: 82, marketMaxRating: 85 });
+  expect(() => normalizeStreamlinedSettings({ marketMaxRating: 100 })).toThrow('SETTINGS_INVALID');
+});
+
+it('selects alternate compressed routes without fetching again or granting purchase/contribution authority', async () => {
+  const c = challenge({ scoreRequirement: 100 }), item = (id, points, price) => safeItem({ source: 'market', definitionId: id, points, price,
+    quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 1000 } });
+  const readMarketCandidates = vi.fn(async () => ({ market: [item(1, 10, 150), item(2, 100, 2000)], pricePolicy: { source: 'futgg' } }));
+  const inspect = () => ({ context: c.context, challenge: c });
+  const native = { name: 'native concept' }, resolveDisplayItem = vi.fn(() => native);
+  const session = createFc27StreamlinedSession({ inspect, get: async () => null, set: async () => {}, now: () => 100,
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory: [], assertCurrent() {}, resolveDisplayItem }), readMarketCandidates });
+  const result = await session.plan({ mode: 'market' });
+  expect(result.routes).toHaveLength(2); expect(result.purchaseCost).toBe(1500);
+  expect(session.resolveDisplayItem({ ...result.items[0], key: 'market:1:999' })).toBeNull();
+  const copy = result.items[1];
+  expect(copy.key).toBe('market:1:1');
+  expect(session.resolveDisplayItem(copy)).toBe(native);
+  for (const change of [{ definitionId: 999 }, { id: 3 }, { source: 'inventory' }]) {
+    expect(session.resolveDisplayItem({ ...copy, ...change })).toBeNull();
+  }
+  expect(resolveDisplayItem).toHaveBeenCalledOnce();
+  const next = await session.selectRoute(result.routes[1].id);
+  expect(next.purchaseCost).toBe(2000); expect(next.items).toHaveLength(1); expect(next.liveExecutionEnabled).toBe(false);
+  expect(readMarketCandidates).toHaveBeenCalledOnce();
+  session.clearPreview(); expect((await session.selectRoute(result.routes[0].id)).status).toBe('blocked');
+});
 
 function setup(overrides = {}) {
   const c = challenge({ scoreRequirement: 40 }), context = c.context, store = new Map();
@@ -64,6 +96,24 @@ it('persists per-account/per-challenge settings, keeps global defaults separate 
   f.prices.load.mockImplementation(async () => { f.input.assertCurrent.mockImplementation(() => { throw Error('FC27_STREAMLINED_CONTEXT_CHANGED'); }); return { policy: { source: 'futgg' }, references: {} }; });
   expect(await f.session.plan({})).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_CONTEXT_CHANGED' });
 });
+
+it('freezes shared retry policy and partial wait without changing the material protection policy', async () => {
+  const c = challenge({ scoreRequirement: 100 }), candidate = (id, points, price) => safeItem({ source: 'market', definitionId: id, points, price,
+    quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 1000 } });
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+    get: async () => null, set: async () => {}, now: () => 100,
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory: [], assertCurrent() {} }),
+    readMarketCandidates: async () => ({ market: [candidate(1, 10, 150), candidate(2, 100, 2000)],
+      pricePolicy: { source: 'futgg', purchaseAttempts: 7 } }) });
+  const first = await session.plan({ mode: 'market', partialWaitMs: 12000 });
+  expect(first.plan.execution).toEqual({ purchaseAttempts: 7, partialWaitMs: 12000 });
+  expect(first.plan.policy).toEqual(policy); expect(assertStreamlinedPlan(first.plan)).toBe(first.plan);
+  const next = await session.selectRoute(first.routes[1].id);
+  expect(next.plan.execution).toEqual(first.plan.execution);
+  expect(() => assertStreamlinedPlan({ ...next.plan, execution: { purchaseAttempts: 10, partialWaitMs: 12000 } })).toThrow('PLAN_CHANGED');
+  expect(normalizeStreamlinedSettings().partialWaitMs).toBe(60000);
+  expect(() => normalizeStreamlinedSettings({ partialWaitMs: -1 })).toThrow('SETTINGS_INVALID');
+});
 it('keeps native display entities outside serializable plans and drops them when preview closes or context changes', async () => {
   const f = setup(), raw = { native: true };
   f.input.resolveDisplayItem = vi.fn(() => raw);
@@ -85,6 +135,39 @@ function recoverySetup() {
   const f = setup({ diagnosticLog, createExecution: async () => ({ prepare, transaction }) });
   return { ...f, transaction, prepare, diagnosticLog };
 }
+
+it('restores the market run rather than displaying its last contribution as the whole plan', async () => {
+  const recoverPurchase = vi.fn(), transaction = { recover: vi.fn(), execute: vi.fn() }, prepare = vi.fn();
+  const f = setup({ createExecution: async () => ({ prepare, transaction, recoverPurchase }) });
+  const result = await f.session.plan({});
+  const record = { context: f.input.context, plan: result.plan, submittedScore: 0, entries: [], fulfilled: [], completed: false };
+  recoverPurchase.mockResolvedValue({ status: 'recovered', record });
+  transaction.recover.mockResolvedValue({ status: 'observed', record: { plan: { fingerprint: 'last-wave' } } });
+  expect(await f.session.recover()).toMatchObject({ status: 'recovered', preview: { plan: result.plan, record },
+    contributionRecovery: { status: 'observed' } });
+  expect(recoverPurchase).toHaveBeenCalledWith(f.input.challenge);
+  expect(transaction.execute).not.toHaveBeenCalled();
+});
+
+it('does not revive a preview or continue contribution when purchase recovery is uncertain', async () => {
+  const recoverPurchase = vi.fn(async () => ({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' }));
+  const transaction = { recover: vi.fn(), execute: vi.fn() };
+  const f = setup({ createExecution: async () => ({ prepare() {}, transaction, recoverPurchase }) });
+  const result = await f.session.plan({});
+  expect(await f.session.recover()).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
+  expect(transaction.recover).not.toHaveBeenCalled();
+  expect((await f.session.contribute({ fingerprint: result.plan.fingerprint })).status).toBe('blocked');
+});
+
+it('completed market recovery stays disabled and does not require a new writable challenge', async () => {
+  const recoverPurchase = vi.fn(), prepare = vi.fn();
+  const transaction = { recover: vi.fn(async () => ({ status: 'absent' })) };
+  const f = setup({ createExecution: async () => ({ prepare, transaction, recoverPurchase }) });
+  const result = await f.session.plan({}); prepare.mockImplementation(() => { throw Error('FC27_STREAMLINED_INITIATION_UNVERIFIED'); });
+  recoverPurchase.mockResolvedValue({ status: 'completed', record: { context: f.input.context, plan: result.plan, completed: true, submittedScore: 40 } });
+  expect(await f.session.recover()).toMatchObject({ status: 'completed', preview: { liveExecutionEnabled: false } });
+  expect(prepare).toHaveBeenCalledTimes(1);
+});
 
 it('binds recovery to the displayed target and invalidates the old preview when no recovery is needed', async () => {
   const f = recoverySetup(), result = await f.session.plan({});

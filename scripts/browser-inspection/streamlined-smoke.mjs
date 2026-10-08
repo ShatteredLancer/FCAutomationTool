@@ -58,7 +58,7 @@ export async function exerciseStreamlined(context) {
         nativeRenderer: { renderOwned({ parent, raw, slot, onUnavailable }) {
           if (raw.id % 5 === 0) return null;
           const node = globalThis.document.createElement('div'); node.slot = slot; node.className = 'gallery-native-card';
-          node.textContent = 'Native card fixture'; node.style.cssText = 'width:144px;height:200px'; parent.append(node);
+          node.textContent = 'Native card fixture'; node.style.cssText = 'width:144px;height:200px'; node.classList.add('owned-card'); parent.append(node);
           globalThis.streamlinedEvidence.rendered++;
           let disposed = false;
           node.__fcatDealloc = () => { if (!disposed) globalThis.streamlinedEvidence.disposed++; disposed = true; };
@@ -71,7 +71,12 @@ export async function exerciseStreamlined(context) {
     await page.getByText('第 3 批', { exact: false }).waitFor();
     const text = await page.getByRole('dialog').innerText();
     assert.match(text, /80 张 \/ 3 批/);
-    assert.match(text, /第 1 批 · 30 张 · 1,050 分/);
+    assert.match(text, /第 1 批 · 30 张（库存 30 \/ 待购 0）· 1,050 分/);
+    assert.match(text, /Fixture 1/);
+    assert.match(text, /55 OVR/);
+    assert.match(text, /Club · 已有/);
+    assert.equal(await page.locator('[data-market-rating]').inputValue(), '99');
+    assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 100, 'Readable desktop card');
     assert.match(text, /待购 0 金币/);
     assert.equal(await page.getByRole('button', { name: '贡献所选批次' }).isDisabled(), true);
     assert.ok((await page.evaluate(() => globalThis.streamlinedEvidence.progress)).length > 0);
@@ -83,6 +88,7 @@ export async function exerciseStreamlined(context) {
     await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelectorAll('.player-row').length === 60);
     assert.equal(await page.locator('.player-row').count(), 60);
     await page.setViewportSize({ width: 390, height: 600 });
+    assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 88, 'Readable mobile card');
     const metrics = await page.getByRole('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }));
     assert.ok(metrics.width <= 390 && metrics.scrollWidth <= metrics.clientWidth + 1, 'No horizontal overflow on mobile');
     await page.getByRole('button', { name: '关闭', exact: true }).click();
@@ -148,6 +154,119 @@ export async function exerciseStreamlined(context) {
     assert.match(blocked, /当前不能贡献：当前账号有待核对的 Puzzle 购卡记录/);
     assert.doesNotMatch(blocked, /提交接口未接通/);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1, 'Pending purchase never spends materials');
-    console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, visible progress, responsive dialog, context invalidation, no EA writes.');
+    await exerciseStreamlinedMarket(page);
+    console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, market routes, frozen settings, partial progress, stop/recover, unavailable supply, completion, responsive dialog, no EA writes.');
   } finally { await page.close(); }
+}
+
+async function exerciseStreamlinedMarket(page) {
+  // This is a separate synthetic session. Trusted clicks exercise the real
+  // panel/session, while every execution effect stays in this fixture.
+  let requests = 0;
+  await page.route('**/*', route => { requests++; return route.abort(); });
+  await page.evaluate(() => {
+    globalThis.streamlinedMount.dispose();
+    const a = globalThis.StreamlinedSmoke, c = a.challenge({ scoreRequirement: 100 });
+    const saved = new Map(), evidence = { calls: 0, mode: 'stopped', saved: [], record: null };
+    globalThis.marketSmoke = evidence;
+    let finish;
+    const transaction = { recover: async () => ({ status: 'absent' }) };
+    const execution = {
+      prepare() {}, transaction,
+      stop() { finish?.(); },
+      recoverPurchase: async () => ({ status: 'recovered', record: evidence.record }),
+      async purchase(plan, approval, { onProgress }) {
+        evidence.calls++; evidence.execution = plan.execution;
+        evidence.record = { context: c.context, plan, submittedScore: 0, spent: 300, budget: 1500,
+          completed: false, consumedIds: [], entries: [{ state: 'club' }, { state: 'club' }] };
+        if (evidence.mode === 'stopped') {
+          await new Promise(resolve => {
+            finish = resolve;
+            onProgress({ phase: 'partial-ready', batchNumber: 1, purchased: 2, purchaseTarget: 10,
+              spent: 300, budget: 1500, contributed: 0, submittedScore: 0, targetScore: 100,
+              readyCount: 2, selectionLimit: 30, readyPoints: 20 });
+          });
+          finish = null;
+          return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record: evidence.record };
+        }
+        if (evidence.mode === 'no-supply') return { status: 'blocked',
+          reason: 'FC27_STREAMLINED_NO_AFFORDABLE_CARDS', record: evidence.record };
+        evidence.record = { ...evidence.record, completed: true, submittedScore: 100 };
+        return { status: 'completed', record: evidence.record };
+      },
+    };
+    const session = a.createFc27StreamlinedSession({
+      inspect: () => ({ context: c.context, challenge: c }), now: () => 100,
+      get: async (key, fallback) => saved.get(key) ?? fallback,
+      set: async (key, value) => { saved.set(key, value); evidence.saved.push(value); },
+      readInputs: () => ({ context: c.context, challenge: c, policy: a.policy, eligibility: a.eligibility,
+        inventory: [], assertCurrent() {} }),
+      readMarketCandidates: async () => ({ pricePolicy: { source: 'futgg', purchaseAttempts: 7 },
+        market: [[101, 10, 150], [102, 100, 2000]].map(([definitionId, points, price]) => a.safeItem({
+          source: 'market', definitionId, points, price,
+          quote: { definitionId, source: 'futgg', price, fetchedAt: 1, expiresAt: 1000 },
+        })) }),
+      createExecution: async () => execution,
+    });
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+      readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
+  });
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  assert.equal(await page.locator('[data-wait]').inputValue(), '60');
+  await page.locator('[data-wait]').fill('12');
+  await page.locator('[data-mode]').selectOption('market');
+  await page.getByRole('button', { name: '保存设置', exact: true }).click();
+  await page.getByText('当前 SBC 设置已保存。', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.saved[0].settings.partialWaitMs), 12000);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  assert.equal(await page.locator('[data-wait]').inputValue(), '12');
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.locator('.route-list button').first().waitFor();
+  assert.equal(await page.locator('.route-list button').count(), 2);
+  assert.match(await page.locator('.route-list').innerText(), /1,500.*100 积分.*10 张/);
+  const routeLabels = await page.locator('.route-list button').allTextContents();
+  assert.equal(routeLabels.some(label => /OVR|版本|待购估价|库存材料估值/.test(label)), false,
+    'Route choices stay compact and do not repeat per-card details');
+  assert.equal(routeLabels.some(label => /82|83|84/.test(label)), false,
+    'Route choices do not expose individual ratings');
+  await page.locator('.route-list button').last().click();
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
+    .querySelector('.route-list button:last-child').getAttribute('aria-pressed') === 'true');
+  assert.match(await page.locator('[data-result]').innerText(), /2,000 金币/);
+  assert.match(await page.locator('[data-result]').innerText(), /第 1 批/);
+  assert.match(await page.locator('[data-result]').innerText(), /市场概念卡/);
+  await page.locator('.route-list button').first().click();
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
+    .querySelector('.route-list button').getAttribute('aria-pressed') === 'true');
+  assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).count(), 0);
+  assert.match(await page.locator('[data-selection]').innerText(), /市场路线已冻结/);
+  assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待 12 秒/);
+  const run = page.getByRole('button', { name: '按方案购买并贡献', exact: true });
+  assert.equal(await run.isEnabled(), true);
+  await run.evaluate(button => button.click());
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 0);
+  await run.click();
+  await page.getByText('本批就绪 2 / 30 张 · 20 分', { exact: false }).waitFor();
+  assert.match(await page.locator('[data-status]').innerText(), /已购 2 \/ 10 张/);
+  assert.equal(await page.locator('[data-mode]').isDisabled(), true);
+  await page.getByRole('button', { name: '停止', exact: true }).click();
+  await page.getByText('已停止；已确认成交保留，可核对并恢复。', { exact: true }).waitFor();
+  assert.match(await page.locator('[data-selection]').innerText(), /已就绪 2 张/);
+  assert.deepEqual(await page.evaluate(() => globalThis.marketSmoke.execution), { purchaseAttempts: 7, partialWaitMs: 12000 });
+  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+  assert.equal(await run.isEnabled(), true);
+  await page.evaluate(() => { globalThis.marketSmoke.mode = 'no-supply'; });
+  await run.click();
+  await page.getByText('当前没有可购买的限价内候选，已暂停。已购材料保留，核对并恢复后可重试。', { exact: true }).waitFor();
+  assert.equal(await run.isDisabled(), true);
+  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+  await page.evaluate(() => { globalThis.marketSmoke.mode = 'completed'; });
+  await run.click();
+  await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
+  assert.equal(await run.isDisabled(), true);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3);
+  assert.equal(requests, 0, 'The synthetic market UI must never make network requests');
 }

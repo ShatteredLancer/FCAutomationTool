@@ -80,12 +80,13 @@ export async function exerciseProductionLivePanel(context, directory) {
         },
         fillPuzzle: async approval => { state.fills.push(approval); return { status: 'filled', saved: true, submitted: false }; },
         inspectRecovery: async () => ({ status: 'idle' }), resolveRecovery: async () => ({ status: 'resolved' }),
-        checkInstallation: async () => ({ status: 'verified', synthetic: true }),
       });
       state.mount = mount; state.panel = mount(true);
     });
     const host = page.locator('#live-smoke');
     const button = id => host.locator(`#${id}`);
+    assert.equal(await button('gm').count(), 0, 'production settings omit the storage self-test');
+    assert.equal(await button('hold').count(), 0, 'production settings omit the tab-lock self-test');
     assert.equal(await host.isVisible(), false);
     // The same panel is embedded in an EA-owned page without rebuilding its
     // state or covering the navigation rail. Leaving that page hides it.

@@ -15,10 +15,10 @@ import { integer, same, fail } from '../../streamlined/contract.js';
 export function createFc27StreamlinedProvider(root, { journal, canWrite = () => false, now = () => Date.now(),
   createValidator = createFc27StreamlinedValidator, createProgress = createFc27StreamlinedProgressReader,
   createTransport = createFc27StreamlinedContributionTransport, createReconciler = createFc27StreamlinedReconciler,
-  maintenance = null, checkOtherTransactions = async () => {} } = {}) {
+  maintenance = null, checkOtherTransactions = async () => {}, purchaseVerifier = null } = {}) {
   let lease = null, busy = false;
   const progress = createProgress(root, { now });
-  const validator = createValidator(root, { now, readProgress: expected => progress.read(expected), nativeReauth: true });
+  const validator = createValidator(root, { now, readProgress: expected => progress.read(expected), nativeReauth: true, purchaseVerifier });
   const reconciler = createReconciler(root, { now, nativeReauth: true });
   const binding = () => {
     const page = locateFc27StreamlinedPage(root);
@@ -30,7 +30,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
     const current = binding();
     if (current.controller !== origin.controller || !same(current.context, plan.context)
         || !same(current.challenge, origin.challenge)) fail('CONTEXT_CHANGED');
-    if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating), plan.policy)) fail('POLICY_CHANGED');
+    if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail('POLICY_CHANGED');
     if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1000 <= now()) fail('CHALLENGE_EXPIRED');
   };
   return Object.freeze({

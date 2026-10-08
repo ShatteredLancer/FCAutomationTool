@@ -14,7 +14,9 @@ export function createStreamlinedEligibility({ matcher = null, rules = null } = 
 export function filterStreamlinedItems(items, { eligibility, policy } = {}) {
   const blocked = reason => ({ status: 'blocked', reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
   if (!Array.isArray(items) || items.length > 20000 || !eligibility?.known) return blocked('ELIGIBILITY_UNVERIFIED');
-  if (!policy || !integer(policy.maxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2
+  if (!policy || !integer(policy.maxRating, 1, 99)
+      || policy.marketMaxRating !== undefined && !integer(policy.marketMaxRating, 1, 99)
+      || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2
       || policy.goldRange.some(v => !integer(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1]
       || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some(v => !integer(v, 1))
       || ['onlyUntradeable', 'protectFsuLockedPlayers', 'protectActiveSquad', 'storageFirst'].some(key => typeof policy[key] !== 'boolean')) return blocked('POLICY_UNVERIFIED');
@@ -26,8 +28,10 @@ export function filterStreamlinedItems(items, { eligibility, policy } = {}) {
     keys.add(item.key); if (item.source === 'inventory') ids.add(item.id);
     const checks = [
       ['points-unknown', integer(item.points, 1, 1e9) && item.scoreVerified === true],
-      ['rating', integer(item.rating, 1, policy.maxRating)],
-      ['fsu-gold-range', item.rating < 75 || integer(item.rating, ...policy.goldRange)],
+      // Frozen legacy plans without a separate procurement limit retain their
+      // original ceiling. New settings explicitly supply marketMaxRating.
+      ['rating', integer(item.rating, 1, item.source === 'market' ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
+      ['fsu-gold-range', item.source === 'market' || item.rating < 75 || integer(item.rating, ...policy.goldRange)],
       ['special', item.special === false], ['evolution', item.evolution === false], ['cosmetic', item.cosmetic === false],
       ['academy', item.academyEnrolled === false], ['protected', item.protected === false],
       ['league', integer(item.leagueId, 1) && !policy.excludedLeagueIds.includes(item.leagueId)],

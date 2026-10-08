@@ -64,7 +64,7 @@ export function createFc27StreamlinedMatcher(root, contract, entities) {
     return vo;
   });
   return createStreamlinedEligibility({ rules, matcher: item => {
-    const entity = entities.get(item.id);
+    const entity = entities.get(item.source === 'market' ? `market:${item.definitionId}` : item.id);
     if (!entity || entity.definitionId !== item.definitionId) return null;
     const matched = rules.map(vo => vo.meetsRequirements(entity));
     if (matched.some(v => typeof v !== 'boolean')) return null;
@@ -74,11 +74,27 @@ export function createFc27StreamlinedMatcher(root, contract, entities) {
 
 export function projectFc27StreamlinedItem(item, root, pile) {
   const base = snapshotFc27ClubPlayer(item, root);
+  const staticData = ownData(item, '_staticData');
+  const ownString = (object, key) => {
+    const value = ownData(object, key);
+    const text = typeof value === 'string' ? value.trim() : '';
+    // EA uses `---` when a card has no known-as alias. It is a display
+    // placeholder, not a player name; continue to the loaded full-name fields.
+    return text && text !== '---' ? text : null;
+  };
+  // FC27 stores the display name on the static card payload. Keep this
+  // projection read-only: no model getters or EA calls are invoked here.
+  const name = ownString(item, 'displayName')
+    ?? ownString(item, 'name')
+    ?? ownString(staticData, 'knownAs')
+    ?? ([ownString(staticData, 'firstName'), ownString(staticData, 'lastName')].filter(Boolean).join(' ') || null)
+    ?? ownString(staticData, 'name')
+    ?? ownString(item, 'lastName');
   // sbsScore is the native preview accessor, intentionally read (no rating formula).
   let points = null; try { points = item.sbsScore; } catch { /* Unknown remains null. */ }
   return normalizeStreamlinedItem({ ...base, pile, points, scoreVerified: integer(points, 1),
     protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
-    name: item.name ?? item.lastName ?? null, price: null, source: 'inventory' });
+    name, price: null, source: 'inventory' });
 }
 
 export function readFc27StreamlinedInputs(root, settings = {}) {
@@ -87,8 +103,8 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
   const context = readFc27Context(root);
   const challenge = projectFc27StreamlinedChallenge(page, context);
   // Streamlined has no Puzzle 82 ceiling. Read the FSU protection state, then
-  // apply only an explicitly supplied Streamlined ceiling (default: FSU max).
-  const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99);
+  // apply the explicit Streamlined ceiling; FSU's range still protects stock.
+  const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
   const entities = new Map(), inventory = [];
   const sources = settings.sources ?? ['club', 'storage'];
   for (const pile of sources) {
@@ -109,15 +125,23 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
     const current = locateFc27StreamlinedPage(root);
     if (!current || current.controller !== page.controller || !same(readFc27Context(root), context)
         || !same(projectFc27StreamlinedChallenge(current, context), challenge)
-        || !same(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99), policy)) fail('CONTEXT_CHANGED');
+        || !same(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99), policy)) fail('CONTEXT_CHANGED');
   };
   assertCurrent();
   return { context, challenge, policy, inventory, eligibility, assertCurrent,
+    registerMarketEntity(item, entity) {
+      assertCurrent();
+      if (item?.source !== 'market' || entity?.definitionId !== item.definitionId || entity.concept !== true) fail('MARKET_IDENTITY_INVALID');
+      entities.set(`market:${item.definitionId}`, entity);
+    },
     // UI-only reference, never included in a plan/Journal or diagnostic export.
     resolveDisplayItem(ref) {
       assertCurrent();
-      const raw = entities.get(ref?.id);
-      return raw?.definitionId === ref?.definitionId && raw?.concept === false ? raw : null;
+      const key = ref?.source === 'market' ? `market:${ref.definitionId}` : ref?.id;
+      const raw = entities.get(key);
+      if (raw?.definitionId !== ref?.definitionId) return null;
+      if (ref?.source === 'market') return raw?.concept === true ? raw : null;
+      return raw?.concept === false ? raw : null;
     },
     // Repository presence is provisional, never proof of a fresh full inventory.
     inventoryComplete: false, priceRows: inventory.map(item => {
@@ -127,8 +151,8 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
     }) };
 }
 
-export function readFc27StreamlinedPolicy(root, maxRating = 99) {
-  if (!integer(maxRating, 1, 99)) fail('POLICY_INVALID');
+export function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating = undefined) {
+  if (!integer(maxRating, 1, 99) || marketMaxRating !== undefined && !integer(marketMaxRating, 1, 99)) fail('POLICY_INVALID');
   const context = readFc27Context(root), base = at(root, 'info.base');
   const flags = ['untradeable', 'academy', 'league', 'firststorage'].map(key => at(root, `info.build.${key}`));
   const goldenMax = at(root, 'info.set.goldenrange'), leagues = at(root, 'info.set.shield_league');
@@ -137,7 +161,9 @@ export function readFc27StreamlinedPolicy(root, maxRating = 99) {
   if (flags.some(v => typeof v !== 'boolean') || !integer(goldenMax, 75, 99)
       || !Array.isArray(leagues) || leagues.length > 200 || leagues.some(v => !integer(v, 1))) fail('POLICY_UNVERIFIED');
   return { schema: 1, context, reviewed: true,
-    maxRating: Math.min(maxRating, goldenMax), onlyUntradeable: true,
+    // Market demand uses the explicit Streamlined ceiling. Keep the FSU
+    // range separately so expanding procurement never exposes protected stock.
+    maxRating, ...(marketMaxRating !== undefined ? { marketMaxRating } : {}), onlyUntradeable: true,
     protectFsuLockedPlayers: false, protectActiveSquad: false,
     storageFirst: flags[3], goldRange: [75, goldenMax], excludedLeagueIds: flags[2] ? [...leagues] : [],
     // Snapshot relevant upstream settings even where FCAT is stricter.

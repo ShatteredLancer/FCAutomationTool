@@ -39,6 +39,15 @@ it('deadline returns partial, never a false proof of no solution', async () => {
   expect(result).toMatchObject({status: 'partial', reason: 'search-time-exhausted', searchComplete: false});
 });
 
+it('default deadline allows work beyond the former ten second limit', async () => {
+  let ticks = 0;
+  const steps = (function* () { for (let i = 0; i < 12; i++) {
+    if (yield { evaluations: i + 1 }) return { status: 'partial' };
+  } return { status: 'ready' }; }());
+  const result = await runGalleryPlan(steps, { now: () => (ticks += 1000), sliceMs: 0, schedule: async () => {} });
+  expect(result).toEqual({ status: 'ready' });
+});
+
 it('account/navigation cancellation discards results and closes iterator', async () => {
   let active = true, closed = false;
   function* steps() { try { yield {evaluations: 1}; return {status: 'ready'}; } finally { closed = true; } }

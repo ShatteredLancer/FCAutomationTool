@@ -3,6 +3,8 @@ import { scoreStreamlinedItems } from './scoring.js';
 
 function validPlanContents(plan) {
   const { challenge, items, batches } = plan;
+  if (plan.execution && (!integer(plan.execution.purchaseAttempts, 1)
+      || !integer(plan.execution.partialWaitMs, 0, 3600000))) return false;
   if (!challenge || challenge.mechanism !== 'streamlined' || !integer(challenge.targetScore, 1)
       || !integer(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore)
       || !integer(challenge.selectionLimit, 1, 1000) || !['lowest-coins', 'fewest-cards'].includes(plan.objective)
@@ -21,23 +23,25 @@ function validPlanContents(plan) {
     && plan.materialValue === value;
 }
 
-export function createStreamlinedPlan({ context, challenge, policy, result, objective = 'lowest-coins' } = {}) {
+export function createStreamlinedPlan({ context, challenge, policy, result, objective = 'lowest-coins', execution = null } = {}) {
   if (!same(context, challenge?.context) || !['ready', 'partial'].includes(result?.status)
       || !Array.isArray(result.items) || !result.items.length || result.items.length > 20000
       || !Array.isArray(result.batches) || !integer(challenge.selectionLimit, 1, 1000)) fail('PLAN_UNCONFIRMED');
   const items = structuredClone(result.items), batches = structuredClone(result.batches);
-  if (!validPlanContents({ ...result, challenge, objective, items, batches })) fail('PLAN_UNCONFIRMED');
-  const fingerprint = streamlinedPlanFingerprint({ context, challenge, policy, objective,
+  if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail('PLAN_UNCONFIRMED');
+  const route = result.route ? structuredClone(result.route) : null;
+  const fingerprint = streamlinedPlanFingerprint({ context, challenge, policy, objective, execution,
     status: result.status, score: result.score, progress: result.progress,
     purchaseCost: result.purchaseCost, materialValue: result.materialValue,
-    searchComplete: result.searchComplete === true, items, batches });
+    searchComplete: result.searchComplete === true, items, batches, route });
   return deepFreeze({ schema: 1, context, challenge, policy, objective, status: result.status,
     score: result.score, progress: result.progress, purchaseCost: result.purchaseCost, materialValue: result.materialValue,
-    items, batches, fingerprint, searchComplete: result.searchComplete === true, liveExecutionEnabled: false });
+    items, batches, ...(route ? { route } : {}), ...(execution ? { execution: structuredClone(execution) } : {}), fingerprint,
+    searchComplete: result.searchComplete === true, liveExecutionEnabled: false });
 }
 
 export function assertStreamlinedPlan(plan) {
   if (plan?.schema !== 1 || !same(plan.context, plan.challenge?.context)
-      || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint(plan)) fail('PLAN_CHANGED');
+      || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail('PLAN_CHANGED');
   return plan;
 }

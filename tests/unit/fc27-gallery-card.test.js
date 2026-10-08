@@ -39,6 +39,7 @@ it('renders an owned native entity only through the explicit display-only path',
   expect(f.entity.concept).toBe(false);
   expect(f.root.UTItemViewFactory.createSmallItem).toHaveBeenCalledOnce();
   expect(f.root.UTItemViewFactory.createLargeItem).not.toHaveBeenCalled();
+  expect(wrapper.className).toContain('owned-card');
   wrapper.__fcatDealloc();
 });
 it.skipIf(!eaSource).each(['normal','portrait-retry','shell-retry','terminal-failure','stalled'])

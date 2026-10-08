@@ -29,6 +29,7 @@ export async function exerciseGalleryJoint(context, directory) {
       const attach = globalThis.Element.prototype.attachShadow;
       globalThis.Element.prototype.attachShadow = function (options) { return attach.call(this, { ...options, mode: 'open' }); };
       globalThis.jointScope = 'fixture-account-a'; globalThis.jointCalls = 0;
+      globalThis.jointPlanningSettingsReads = 0;
       globalThis.jointSyncDetails = []; globalThis.jointPriceCalls = [];
       const row = (eaId, gradingScore, collected) => ({ eaId, playerEaId: eaId, name: `Player ${eaId}`, version: 'Gallery',
         gradingScore, galleryScore: gradingScore, collected, firstOwned: false, holographic: false, overall: 80,
@@ -38,6 +39,9 @@ export async function exerciseGalleryJoint(context, directory) {
         expiresAt: Date.now() + 300000, stale: false, staleIds: [] };
       globalThis.jointPanel = globalThis.GalleryJointSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'gallery-joint-test', targets: () => [], galleryAccountScope: () => globalThis.jointScope,
+        galleryPlanningSettings: { scope: () => globalThis.jointScope, read: async () => {
+          globalThis.jointPlanningSettingsReads++; return { timeoutMs: 60000 };
+        } },
         galleryCatalog: { peek: async () => null, load: async () => globalThis.jointState, refresh: async () => globalThis.jointState },
         galleryPriceLoader: async ids => { globalThis.jointPriceCalls.push(ids); return globalThis.jointFreshSnapshot; },
         gallerySync: { state: () => ({ synced: true, busy: false }), stop() {},
@@ -70,6 +74,7 @@ export async function exerciseGalleryJoint(context, directory) {
     await host.locator('#gallery-joint-budget').fill('70');
     await host.locator('#gallery-joint-plan').click();
     assert.match(await host.locator('#gallery-joint-output').innerText(), /方案 1 · 1 张 · 70/);
+    assert.equal(await page.evaluate(() => globalThis.jointPlanningSettingsReads), 1);
     assert.match(await host.locator('#gallery-joint-output').innerText(), /共用 2 个目标/);
     assert.match(await host.locator('#gallery-joint-output').innerText(), /奖励为目录内容/);
     const stablePlan = await host.locator('#gallery-joint-output').innerText();
@@ -91,6 +96,7 @@ export async function exerciseGalleryJoint(context, directory) {
     assert.equal(await host.locator('#gallery-joint-output').innerText(), stablePlan, 'display-only entity hydration preserves the plan');
     await host.getByRole('button', { name: '对照逐集合', exact: true }).first().click();
     await page.waitForFunction(() => globalThis.document.getElementById('gallery-joint-test').shadowRoot.querySelector('.gallery-joint-benchmark').textContent.includes('逐集合 100'));
+    assert.equal(await page.evaluate(() => globalThis.jointPlanningSettingsReads), 2, 'sequential comparison reads the same setting');
     assert.match(await host.locator('#gallery-joint-output').innerText(), /方案 1/);
     await host.locator('#gallery-joint-objective').selectOption('catalog');
     assert.equal(await host.locator('.gallery-joint-target select').first().isDisabled(), true);

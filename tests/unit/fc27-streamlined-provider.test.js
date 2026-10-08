@@ -5,8 +5,13 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
 
-async function setup() {
+async function setup({ legacyPolicy = false } = {}) {
   const f = streamlinedRuntime(), pending = await pendingContribution(f);
+  if (legacyPolicy) {
+    const { marketMaxRating: _marketMaxRating, ...policy } = f.plan.policy;
+    f.plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy, result: f.plan });
+    pending.record.plan = f.plan;
+  }
   delete pending.record.batches[0].receipt;
   pending.record = await pending.journal.write(f.plan.context, pending.record, pending.record.revision);
   pending.batch = pending.record.batches[0];
@@ -22,8 +27,8 @@ async function setup() {
   return { ...f, ...pending, provider, request, dispatched, setClock: n => { clock = n; }, disable: () => { enabled = false; } };
 }
 
-it('uses actual fresh readers, checks durable pending intent then sends one exact contribution', async () => {
-  const f = await setup();
+it.each([false, true])('checks fresh readers and durable intent with legacy policy=%s before one exact contribution', async legacyPolicy => {
+  const f = await setup({ legacyPolicy });
   expect(await f.provider.verify(f.plan, f.batch, 0)).toBe(true);
   expect(await f.provider.contribute(f.plan, f.batch)).toMatchObject({ schema: 1, status: 'accepted', submittedScore: 100 });
   expect(f.dispatched).toHaveBeenCalledWith({ challengeId: 61, itemIds: [1, 2, 3, 4, 5] });

@@ -2,10 +2,12 @@ import { contextKey } from '../fc27/prelaunch-contract.js';
 import { deepFreeze, integer, same, fail } from './contract.js';
 
 export function normalizeStreamlinedSettings(value = {}) {
-  const result = { maxRating: value.maxRating ?? 99, objective: value.objective ?? 'lowest-coins',
-    mode: value.mode ?? 'inventory-market', sources: value.sources ?? ['club', 'storage'] };
-  if (!integer(result.maxRating, 1, 99) || !['lowest-coins', 'fewest-cards'].includes(result.objective)
+  const result = { maxRating: value.maxRating ?? 99, marketMaxRating: value.marketMaxRating ?? 99, objective: value.objective ?? 'lowest-coins',
+    mode: value.mode ?? 'inventory-market', sources: value.sources ?? ['club', 'storage'],
+    partialWaitMs: value.partialWaitMs ?? 60000 };
+  if (!integer(result.maxRating, 1, 99) || !integer(result.marketMaxRating, 1, 99) || !['lowest-coins', 'fewest-cards'].includes(result.objective)
       || !['inventory', 'inventory-market', 'market'].includes(result.mode)
+      || !integer(result.partialWaitMs, 0, 3600000)
       || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 2
       || result.sources.some(s => !['club', 'storage'].includes(s)) || new Set(result.sources).size !== result.sources.length) fail('SETTINGS_INVALID');
   return deepFreeze(structuredClone(result));

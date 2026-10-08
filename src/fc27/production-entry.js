@@ -20,7 +20,7 @@
 // @run-at       document-end
 // ==/UserScript==
 
-import { createFc27AcceptanceSession, checkFc27GmInstallation } from '../adapters/browser/fc27-acceptance-session.js';
+import { createFc27AcceptanceSession } from '../adapters/browser/fc27-acceptance-session.js';
 import { mountFc27AcceptancePanel } from '../adapters/browser/fc27-acceptance-panel.js';
 import { readFc27ChallengeTargets } from '../adapters/ea/fc27-fsu-read.js';
 import { mountFc27PuzzleNativeButton } from '../adapters/browser/fc27-puzzle-native-button.js';
@@ -48,6 +48,7 @@ import { createGalleryTargetStore } from '../gallery/targets.js';
 import { createGalleryPlanStore } from '../gallery/plans.js';
 import { createGalleryScoreCache } from '../gallery/score-cache.js';
 import { createGalleryTradePreferences } from '../gallery/trade-preferences.js';
+import { createGalleryPlanningSettings } from '../gallery/planning-settings.js';
 import { createGalleryMarketComparison } from '../gallery/market-comparison.js';
 import { createFc27MarketReadTransport } from '../adapters/ea/fc27-market-read.js';
 import { createFcatDiagnosticLog } from '../diagnostics/fcat-diagnostic-log.js';
@@ -55,6 +56,8 @@ import { downloadFc27Diagnostics } from '../adapters/browser/fc27-diagnostic-dow
 import { createFc27PublicPrices } from '../adapters/browser/fc27-public-prices.js';
 import { mountFc27StreamlinedPanel } from '../adapters/browser/fc27-streamlined-panel.js';
 import { createFc27StreamlinedSession } from '../adapters/browser/fc27-streamlined-session.js';
+import { createFc27StreamlinedCatalog } from '../adapters/browser/fc27-streamlined-catalog.js';
+import { createFc27StreamlinedMarket } from '../adapters/ea/fc27-streamlined-market.js';
 import { createFc27StreamlinedExecution } from '../adapters/browser/fc27-streamlined-execution.js';
 import { recoverFc27Streamlined } from '../adapters/browser/fc27-streamlined-recovery.js';
 import { maintainFc27PuzzlePurchases } from '../adapters/browser/fc27-puzzle-buy-lifecycle.js';
@@ -183,6 +186,7 @@ const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
 const galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
+const galleryPlanningSettings = createGalleryPlanningSettings({ scope: galleryProgress.scope, get: GM_getValue, set: GM_setValue });
 const galleryPurchase = createFc27GalleryPurchase({ root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
   gmRequest: GM_xmlhttpRequest, reader: galleryProgress, liveEnabled: dependencies.liveEnabled,
   readSettings: () => current().inspectPuzzlePolicy(), publicPrices, tradePreferences: galleryTradePreferences, diagnosticLog, accounting: galleryAccounting });
@@ -282,7 +286,7 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
   galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
-  galleryAccounting, galleryTradePreferences,
+  galleryAccounting, galleryTradePreferences, galleryPlanningSettings,
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
@@ -333,7 +337,6 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   prepare: options => current().prepare(options), execute: approval => current().execute(approval),
   fillPuzzle: approval => current().fillPuzzle(approval),
   inspectRecovery: () => current().inspectRecovery(), resolveRecovery: approved => current().resolveRecovery(approved),
-  checkInstallation: hold => checkFc27GmInstallation({ ...dependencies, hold }),
 });
 mountFc27WorkbenchNavigation({ document: unsafeWindow.document, runtime: unsafeWindow, onOpen: container => acceptancePanel?.open?.(container) });
 mountFc27PuzzleNativeButton({ document: unsafeWindow.document,
@@ -357,9 +360,11 @@ const streamlinedSession = createFc27StreamlinedSession({
   inspect: () => { const page = locateFc27StreamlinedPage(unsafeWindow); if (!page) return null;
     const context = readFc27Context(unsafeWindow); return { context, challenge: projectFc27StreamlinedChallenge(page, context) }; },
   readInputs: settings => readFc27StreamlinedInputs(unsafeWindow, settings),
+  readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
+    catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }), prices: publicPrices }),
   get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog,
-  createExecution: context => createFc27StreamlinedExecution(unsafeWindow, { context,
-    get: GM_getValue, set: GM_setValue, lockManager: unsafeWindow.navigator.locks,
+  createExecution: (context, plan) => createFc27StreamlinedExecution(unsafeWindow, { context, plan,
+    get: GM_getValue, set: GM_setValue, prices: publicPrices, lockManager: unsafeWindow.navigator.locks,
     canWrite: () => __FCAT_LIVE_ENABLED__ }),
 });
 const streamlinedPanel = mountFc27StreamlinedPanel({ document: unsafeWindow.document,
