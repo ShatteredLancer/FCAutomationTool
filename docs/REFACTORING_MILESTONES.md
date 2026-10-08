@@ -1,5 +1,17 @@
 # FC Automation Tool 架构重构与里程碑
 
+## 2026-10-08 连续远程 CI 失败调查与修复
+
+核对 `41bd0ba`、`473b9f7`、`cdf0379`、`702afb4` 的远程校验，七份完整 job 日志均在 `npm run verify` 出现相同的 5 文件 / 8 项失败；尚未执行后续构建比对和浏览器检查。最新 [Verify run 37751707089](https://github.com/ShatteredLancer/FCAutomationTool/actions/runs/37751707089) 使用 Windows Server 2025 / Node 22.23.3。失败不由 push、代理或 EA 登录造成。
+
+定位与最小修复：
+
+- Streamlined Club/Storage 混合读取的四项失败：Git `core.autocrlf` 在 CI 将测试 helper 转为 CRLF；嵌套假 digest 只对登记键规范化，未规范化查询，导致 `UTHttpRequest.prototype.send` 返回全零假 hash。仅修正 Storage/Streamlined 测试替身的两侧规范化，新增 LF/CRLF 与未知函数仍拒绝的回归；生产指纹、身份和事务验证不改。
+- AI 启动器依赖检查失败：根目录 `npm ci` 不安装独立检查器的 Playwright 依赖，而原工作流在 full verify 之后才安装。Verify、FC27 offline preparation 和 Release 全部改为先安装 `tools/browser-inspection`，不跳过真实启动依赖检查。
+- AI 配置创建、封存和错误恢复三项失败：PowerShell 7 → Node → Windows PowerShell 5.1 继承不兼容 `PSModulePath`，`Set-Acl` 自动加载了错误引擎的安全模块。已用独立 PowerShell 7.6.6 重现原来的三项失败，并在脱敏探测中确认模块加载错误；现在从 `$PSHOME` 显式导入当前引擎的安全模块并使用限定 cmdlet 名称。保留原 ACL、当前用户 DPAPI、原子写入、端点绑定及错误脱敏。新增不兼容模块路径下创建/替换、私有 ACL 和加密保存回归。
+
+定向复验：PowerShell 7 → Node → Windows PowerShell 5.1 下 6 文件 / 46 项全部通过，包含此前 8 项失败与新增回归。完整验证进行中；本轮不改版本和生产脚本，不自动提交、push、tag 或发布。远程新 run 仍须修复提交上传后确认，不能把本地通过表述为远程通过。
+
 ## 2026-10-08 27.0.14 累计修改提交
 
 用户要求升版并提交当前累计改动：Gallery 账号级计算时限、各档独立预算、Settings 移除安装自检，以及 Streamlined 多路线补卡规划、采购/贡献接线与汇总/卡片 UI。包版本升为 27.0.14，FSU Local 仍为 26.09.9。提交前完整回归 398 文件 / 4359 项、FC27 检查 84 文件 / 1414 项和离线浏览器检查均通过；root/dist SHA256 为 `270caef3a943ee824422d79b518381f026ec1701d29611d9b04eba7b39891790`。真实 Streamlined 交易和贡献仍待用户主动点击，不以已有只读证据代替。最终产物和验收边界见 [27.0.14 说明](releases/27.0.14.md)。本次仅本地提交，不 push、tag 或发布。

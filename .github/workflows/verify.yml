@@ -16,6 +16,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install inspection dependencies required by launcher tests
+        run: npm ci --prefix tools/browser-inspection
       - name: Run full verification
         id: verify
         shell: pwsh

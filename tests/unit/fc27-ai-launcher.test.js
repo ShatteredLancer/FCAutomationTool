@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +69,32 @@ describe.skipIf(process.platform !== 'win32')('Windows AI launcher and protected
     expect(checked).not.toContain('synthetic-test-key');
     expect(powershell(`function Read-Host { throw 'UNEXPECTED_PROMPT' }; & ${quote(launcher)} -ConfigPath ${quote(file)} -SaveConfig`))
       .toContain('FCAT_AI_CONFIG_SAVED');
+  }));
+
+  it('preserves private ACLs and atomic saves with an incompatible inherited PowerShell module path', () => fixture(file => {
+    const moduleRoot = path.join(path.dirname(file), 'modules');
+    const incompatible = path.join(moduleRoot, 'Microsoft.PowerShell.Security');
+    mkdirSync(incompatible, { recursive: true });
+    writeFileSync(path.join(incompatible, 'Microsoft.PowerShell.Security.psd1'),
+      "@{ ModuleVersion='99.0'; PowerShellVersion='99.0'; GUID='8062ea41-1772-462c-a1dc-7da9778a1187'; CmdletsToExport=@('Set-Acl') }");
+    const modulePath = `${moduleRoot};${path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/Modules')}`;
+    const result = powershell(`$env:PSModulePath=${quote(modulePath)};
+      . ${quote(helper)};
+      $seed=New-FcatAiConfig; $seed.endpoint='https://relay.example/v1/chat/completions'; $seed.model='test-model';
+      $seed.protectedCredential=Protect-FcatAiCredential -Config $seed -ApiKey 'synthetic-test-key';
+      Write-FcatAiConfig -Path ${quote(file)} -Config $seed -CreateOnly;
+      & ${quote(launcher)} -ConfigPath ${quote(file)} -SaveConfig;
+      $acl=[IO.File]::GetAccessControl(${quote(file)});
+      $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));
+      $expected=@([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18');
+      if (-not $acl.AreAccessRulesProtected -or $rules.Count -ne 2 -or
+          @($rules | Where-Object { $_.IdentityReference.Value -notin $expected -or $_.AccessControlType -ne 'Allow' -or $_.FileSystemRights -ne 'FullControl' }).Count) { throw 'ACL_CHANGED' };
+      Write-Output 'PRIVATE_ACL_OK'`);
+    expect(result).toContain('PRIVATE_ACL_OK');
+    expect(result).not.toContain('synthetic-test-key');
+    const saved = JSON.parse(readFileSync(file, 'utf8'));
+    expect(saved.apiKey).toBe('');
+    expect(saved.protectedCredential.length).toBeGreaterThan(50);
   }));
 
   it('rejects malformed settings and JSON without printing any raw content', () => fixture(file => {

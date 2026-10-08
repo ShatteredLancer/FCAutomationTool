@@ -77,11 +77,14 @@ function Get-FcatAiCredential {
 }
 function Set-FcatPrivateFileAcl {
     param([string]$Path)
+    # pwsh -> Node -> powershell.exe inherits pwsh's module path. Resolve the
+    # security module from this engine, never an incompatible inherited module.
+    Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
     $acl = New-Object Security.AccessControl.FileSecurity; $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
     $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18'); $acl.SetOwner($user); $acl.SetAccessRuleProtection($true, $false)
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($user,'FullControl','Allow')))
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($system,'FullControl','Allow')))
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    Microsoft.PowerShell.Security\Set-Acl -LiteralPath $Path -AclObject $acl
 }
 function Write-FcatAiConfig {
     param([string]$Path, [object]$Config, [switch]$CreateOnly)

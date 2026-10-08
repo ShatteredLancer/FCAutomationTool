@@ -73,11 +73,13 @@ export function streamlinedRuntime({ targetScore = 200, mixedStorage = false } =
   additionalHashes.set(String(ProgressDAO.prototype.getHub).replace(/\r\n/g, '\n'), FC27_STREAMLINED_PAGE_METHODS[0][1]);
   additionalHashes.set(String(root.EAObservable.prototype.notify).replace(/\r\n/g, '\n'), FC27_STREAMLINED_PAGE_METHODS[1][1]);
   const originalDigest = root.crypto.subtle.digest;
-  root.crypto.subtle.digest = vi.fn(async (algorithm, bytes) =>
-    new TextDecoder().decode(bytes) === String(ProgressDAO.prototype.getChallengesForSet)
+  root.crypto.subtle.digest = vi.fn(async (algorithm, bytes) => {
+    const source = new TextDecoder().decode(bytes).replace(/\r\n/g, '\n');
+    return source === String(ProgressDAO.prototype.getChallengesForSet).replace(/\r\n/g, '\n')
       ? Uint8Array.from(Buffer.from(FC27_STREAMLINED_PROGRESS_HASH, 'hex')).buffer
-      : additionalHashes.has(new TextDecoder().decode(bytes)) ? Uint8Array.from(Buffer.from(additionalHashes.get(new TextDecoder().decode(bytes)), 'hex')).buffer
-        : originalDigest(algorithm, bytes));
+      : additionalHashes.has(source) ? Uint8Array.from(Buffer.from(additionalHashes.get(source), 'hex')).buffer
+        : originalDigest(algorithm, bytes);
+  });
   root.services.SBC.sbcDAO = new ProgressDAO();
   f.state.filterClubQueries = true; f.state.playerFacts = { sbsScore: 20 };
   return { ...f, challenge, set, controller, anchor, input, selected, plan, replies, unobserve, storage };

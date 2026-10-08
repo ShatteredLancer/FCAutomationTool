@@ -1,5 +1,7 @@
 import { FC27_STREAMLINED_STORAGE_HASH, FC27_STREAMLINED_STORAGE_QUERY_HASH } from '../../src/adapters/ea/fc27-streamlined-storage-read.js';
 
+const normalizeSource = source => source.replace(/\r\n/g, '\n');
+
 export function addStorageRuntime(f, { payload = [], status = 200 } = {}) {
   const { root } = f;
   const state = { payload, status, hold: false, wrongOwner: false };
@@ -11,8 +13,9 @@ export function addStorageRuntime(f, { payload = [], status = 200 } = {}) {
   root.UTHttpRequest.prototype.setUrlVariables = query;
   const originalDigest = root.crypto.subtle.digest;
   root.crypto.subtle.digest = async (algorithm, bytes) => {
-    if (new TextDecoder().decode(bytes) === String(search)) return Uint8Array.from(Buffer.from(FC27_STREAMLINED_STORAGE_HASH, 'hex')).buffer;
-    if (new TextDecoder().decode(bytes) === String(query)) return Uint8Array.from(Buffer.from(FC27_STREAMLINED_STORAGE_QUERY_HASH, 'hex')).buffer;
+    const source = normalizeSource(new TextDecoder().decode(bytes));
+    if (source === normalizeSource(String(search))) return Uint8Array.from(Buffer.from(FC27_STREAMLINED_STORAGE_HASH, 'hex')).buffer;
+    if (source === normalizeSource(String(query))) return Uint8Array.from(Buffer.from(FC27_STREAMLINED_STORAGE_QUERY_HASH, 'hex')).buffer;
     return originalDigest(algorithm, bytes);
   };
   const NativeRequest = root.UTHttpRequest;
@@ -27,16 +30,16 @@ export function addStorageRuntime(f, { payload = [], status = 200 } = {}) {
       response: { itemData: state.payload } });
   };
   NativeRequest.prototype.send = send;
-  const source = String(send).replace(/\r\n/g, '\n');
+  const source = normalizeSource(String(send));
   const digest = root.crypto.subtle.digest;
-  root.crypto.subtle.digest = (algorithm, bytes) => new TextDecoder().decode(bytes) === source
-    ? digest(algorithm, new TextEncoder().encode(String(originalSend).replace(/\r\n/g, '\n'))) : digest(algorithm, bytes);
+  root.crypto.subtle.digest = (algorithm, bytes) => normalizeSource(new TextDecoder().decode(bytes)) === source
+    ? digest(algorithm, new TextEncoder().encode(normalizeSource(String(originalSend)))) : digest(algorithm, bytes);
   const create = root.factories.Item.createItem;
   const createItem = data => ({ ...create.call(root.factories.Item, data),
     ...(data.pile === 8 ? { utasPile: 8 } : {}) });
   root.UTItemEntityFactory.prototype.createItem = createItem;
   const requestDigest = root.crypto.subtle.digest;
-  root.crypto.subtle.digest = (algorithm, bytes) => new TextDecoder().decode(bytes) === String(createItem).replace(/\r\n/g, '\n')
-    ? requestDigest(algorithm, new TextEncoder().encode(String(create).replace(/\r\n/g, '\n'))) : requestDigest(algorithm, bytes);
+  root.crypto.subtle.digest = (algorithm, bytes) => normalizeSource(new TextDecoder().decode(bytes)) === normalizeSource(String(createItem))
+    ? requestDigest(algorithm, new TextEncoder().encode(normalizeSource(String(create)))) : requestDigest(algorithm, bytes);
   return state;
 }

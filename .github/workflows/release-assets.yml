@@ -32,13 +32,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm ci --prefix tools/browser-inspection
       - run: npm run verify
       - name: Verify current release artifacts
         run: node scripts/check-release-readiness.mjs
       - name: Verify committed compatibility userscript
         run: git diff --exit-code -- FCAutomationTool.user.js
       - run: node scripts/verify-fc27-prelaunch.mjs
-      - run: npm ci --prefix tools/browser-inspection
       - name: Verify browser interactions
         run: node scripts/browser-inspection/run.mjs --self-test
       - run: node scripts/check-release-readiness.mjs --packaging
