@@ -9,20 +9,32 @@ import { validatePurchaseAttempts, beginPurchaseAttempt, finishPurchaseAttempt, 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const id = value => Number.isSafeInteger(value) && value > 0;
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_GALLERY_PURCHASE_UNCONFIRMED';
-const states = new Set(['waiting', 'buy-pending', 'bought', 'move-pending', 'move-rejected', 'club', 'unassigned', 'collected']);
+const completedStates = ['club', 'unassigned', 'acquired', 'collected'];
+const states = new Set(['waiting', 'buy-pending', 'bought', 'move-pending', 'move-rejected', ...completedStates]);
 export const galleryPurchaseKey = scope => `fcat-fc27-gallery-purchase:${scope}`;
 export const galleryPurchasePendingKey = scope => `fcat-fc27-gallery-purchase-pending:${scope}`;
 const pending = record => record.entries.some(entry => ['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(entry.state));
+// 'bought' is persisted only after an exact successful bid (or exact receipt
+// recovery). Unassigned needs no delivery request. This is purchase history,
+// not a claim that the entity is still held, or that EA has awarded its score.
+const settleUnassignedPurchases = record => {
+  let changed = false;
+  if (record.destination === 'unassigned') for (const entry of record.entries) {
+    if (entry.state === 'bought') { entry.state = 'unassigned'; changed = true; }
+  }
+  return changed;
+};
 const quote = (value, definitionId) => value?.definitionId === definitionId && id(value.itemId)
   && typeof value.tradeId === 'string' && /^[1-9]\d{0,19}$/.test(value.tradeId)
   && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15000000;
 const summary = record => {
-  const entries = record?.entries ?? [], acquired = entries.filter(entry => ['bought', 'move-pending', 'move-rejected', 'club', 'unassigned'].includes(entry.state));
+  const entries = record?.entries ?? [], acquired = entries.filter(entry => ['bought', 'move-pending', 'move-rejected', 'club', 'unassigned', 'acquired'].includes(entry.state));
   const purchases = acquired.filter(entry => id(entry.itemId) && id(entry.definitionId) && Number.isSafeInteger(entry.price))
     .map(entry => ({ itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId,
       purchasePrice: entry.price, state: 'held' }));
   const accounting = summarizeGalleryNetCost({ schema: 1, scope: record?.scope ?? null, entries: purchases });
-  return { destination: record?.destination ?? 'club', total: entries.length, purchased: acquired.length, completed: entries.filter(entry => ['club', 'unassigned', 'collected'].includes(entry.state)).length,
+  return { destination: record?.destination ?? 'club', total: entries.length, purchased: acquired.length, completed: entries.filter(entry => completedStates.includes(entry.state)).length,
+    deliveryUnavailable: entries.filter(entry => entry.state === 'acquired').length,
     spent: acquired.reduce((sum, entry) => sum + (entry.price ?? 0), 0), accounting };
 };
 const itemResults = record => (record?.entries ?? []).map((entry, index) => ({ definitionId: entry.definitionId,
@@ -74,8 +86,9 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
     }
   };
   return Object.freeze({
-    async inspect() { try { assertCurrent(); const record = await read(key); assertCurrent();
+    async inspect() { try { assertCurrent(); const record = structuredClone(await read(key)); assertCurrent();
       if (!record) return { status: 'absent' }; validate(record, scope, context);
+      settleUnassignedPurchases(record); // Read-only projection of legacy receipts.
       return { status: 'observed', recovery: pending(record), remaining: record.entries.filter(entry => entry.state === 'waiting').length,
         operationId: record.operationId, binding: record.binding, collection: record.collection, results: purchaseAttemptResults(record),
         retryContext: purchaseRetryContext(record, { remainingBudget: record.budget == null ? null : Math.max(0, record.budget - summary(record).spent) }), ...summary(record) };
@@ -88,9 +101,9 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
       try {
         const result = await exclusive(scope, async () => {
           assertCurrent(); await checkOtherTransactions();
-          const raw = await read(key), oldPending = await read(pendingKey); assertCurrent();
+          const raw = await read(key); let oldPending = await read(pendingKey); assertCurrent();
           if (raw !== null) validate(raw, scope, context);
-          record = raw;
+          record = structuredClone(raw);
           if (oldPending && (!record || oldPending.operationId !== record.operationId)) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
           if (resume && (!record || expectedOperationId !== record.operationId)) throw new Error('FC27_GALLERY_PURCHASE_PLAN_CHANGED');
           const plan = resume ? record.plan : items.map(item => ({ definitionId: item.definitionId ?? item.eaId,
@@ -98,15 +111,26 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
             ...(item.priceReference ? { priceReference: structuredClone(item.priceReference), pricePolicy: structuredClone(item.pricePolicy) } : {}) }));
           if (resume) { binding = record.binding; budget = record.budget ?? null; }
           if (plan.some(item => !id(item.definitionId)) || new Set(plan.map(item => item.definitionId)).size !== plan.length) throw new Error('FC27_GALLERY_PURCHASE_PLAN_CHANGED');
+          if (record) {
+            if (settleUnassignedPurchases(record)) { assertCurrent(); await write(key, record); }
+            // A historical receipt or pending scoring refresh is not an
+            // unresolved purchase. Clear only this validated batch's marker.
+            if (oldPending && !pending(record)) { assertCurrent(); await write(pendingKey, null); oldPending = null; }
+          }
           const changed = record && (!same(record.binding, binding) || !same(record.plan, plan));
           if (changed && (oldPending || pending(record))) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
           if (changed) await write(`${key}:${record.operationId}`, record);
           if (!record || changed) {
+            // Scoring may lag a confirmed receipt. When changing plans, do not
+            // bid again for versions already obtained in the previous batch.
+            // EA's scoring flag is still reread independently below.
+            const previousAcquisitions = new Set((record?.entries ?? []).filter(entry => completedStates.includes(entry.state)).map(entry => entry.definitionId));
             const destination = await readDestination(); assertCurrent();
             if (!['club', 'unassigned'].includes(destination)) throw Error('FC27_GALLERY_TRADE_SETTINGS_INVALID');
             record = { schema: 1, scope, context, operationId: operationId(), binding, budget, destination,
               ...(batchOptions ? { batchOptions: normalizeFodderBuyOptions(batchOptions) } : {}),
-              plan: structuredClone(plan), entries: plan.map(item => ({ definitionId: item.definitionId, state: 'waiting' })) };
+              plan: structuredClone(plan), entries: plan.map(item => ({ definitionId: item.definitionId,
+                state: previousAcquisitions.has(item.definitionId) ? 'collected' : 'waiting' })) };
           }
           else if (!resume) record.budget = budget;
           validate(record, scope, context); await write(key, record);
@@ -126,12 +150,17 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
           for (let cursor = 0; cursor < record.entries.length; cursor++) {
             if (stopReason) break;
             const entry = record.entries[cursor];
-            if (['club', 'unassigned', 'collected'].includes(entry.state)) continue;
+            if (completedStates.includes(entry.state)) continue;
             if (retry && entry.state === 'waiting' && !retry.items.some(item => item.definitionId === entry.definitionId)) continue;
             try {
               assertCurrent(); await adapter.verifyCurrent(record);
               if (['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(entry.state)) {
-                const located = await adapter.locate(entry); if (located === 'club') entry.state = 'club'; else if (located === 'purchased') entry.state = 'bought'; else throw new Error('FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED'); await save();
+                const located = await adapter.locate(entry, { allowAbsent: entry.state === 'bought' });
+                if (located === 'club') entry.state = 'club';
+                else if (located === 'purchased') entry.state = 'bought';
+                else if (located === 'absent' && entry.state === 'bought') entry.state = 'acquired';
+                else throw new Error('FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED');
+                await save();
               }
               if (entry.state === 'waiting') {
                 if (shouldStop()) { stopReason = 'FC27_GALLERY_PURCHASE_STOPPED'; break; }
@@ -187,11 +216,7 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
                 entry.state = 'bought'; await save(); report('bought', entry);
               }
               if (entry.state === 'bought' && record.destination === 'unassigned') {
-                // Leaving the purchased pile requires no move request. Confirm
-                // exact ownership, never infer it from the successful bid alone.
-                const location = await adapter.locate(entry);
-                if (!['club', 'purchased'].includes(location)) throw Error('FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED');
-                entry.state = location === 'club' ? 'club' : 'unassigned'; await save(); report('completed', entry);
+                entry.state = 'unassigned'; await save(); report('completed', entry);
               }
               if (entry.state === 'bought') { entry.state = 'move-pending'; await mark(); report('moving', entry); const moved = await adapter.move(entry); if (moved?.status === 'rejected') { entry.state = 'move-rejected'; failures.push({ definitionId: entry.definitionId, reason: moved.reason }); await save(); continue; } if (await adapter.locate(entry) !== 'club') throw new Error('FC27_GALLERY_MOVE_UNCONFIRMED'); entry.state = 'club'; await save(); report('completed', entry); }
             } catch (error) { stopReason = safeReason(error); break; }
@@ -200,12 +225,11 @@ export function createGalleryPurchaseSession({ scope, context, get, set, exclusi
           }
           record.lastResult = { reason: stopReason ?? failures[0]?.reason ?? 'FC27_GALLERY_PURCHASE_COMPLETED', failures }; await save();
           if (pending(record)) return { status: 'recovery-required', ...record.lastResult, ...await priceResult(), ...summary(record) };
-          try { record.collection = await adapter.confirmCollection(record.entries.filter(entry => ['club', 'unassigned', 'collected'].includes(entry.state)).map(entry => entry.definitionId)); }
+          try { record.collection = await adapter.confirmCollection(record.entries.filter(entry => completedStates.includes(entry.state)).map(entry => entry.definitionId)); }
           catch (error) { record.collection = { status: 'pending', reason: safeReason(error) }; }
           assertCurrent(); await save();
-          if (record.destination === 'unassigned' || record.collection?.status === 'confirmed' || summary(record).spent === 0) await write(pendingKey, null);
-          else await write(pendingKey, { schema: 1, operationId: record.operationId });
-          return { status: record.entries.every(entry => ['club', 'unassigned', 'collected'].includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
+          await write(pendingKey, null);
+          return { status: record.entries.every(entry => completedStates.includes(entry.state)) ? 'purchased' : 'partial', ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
         });
         return result ? { ...result, ...(accountingWarning ? { accountingWarning } : {}) }
           : { status: 'blocked', reason: 'FC27_GALLERY_PURCHASE_BUSY' };

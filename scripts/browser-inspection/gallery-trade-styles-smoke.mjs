@@ -151,9 +151,15 @@ export async function exerciseGalleryTradeStyles(context, directory = null) {
     await buy.getByRole('button', { name: 'Close Esc', exact: true }).click();
     await page.evaluate(() => {
       globalThis.retryThrows = false;
+      globalThis.retryFixture.results[0].state = 'acquired';
+      globalThis.retryFixture.collection = { status: 'pending' };
       globalThis.retryFixture.results[1].attempt = { failed: false, used: 0 };
       return globalThis.fodderBuyStyle.open({ resume: true });
     });
+    assert.equal(await buy.getByRole('button', { name: 'Check and continue', exact: true }).count(), 0);
+    assert.equal(await buy.locator('.fd-retry-who').filter({ hasText: 'Bought player' }).count(), 0);
+    assert.equal(await buy.getByText('买入已确认；部分卡当前不在 Club/Unassigned，未宣称已入库，也不会重买。', { exact: true }).isVisible(), true);
+    assert.equal(await buy.getByText('画廊计分待 EA 同步，不影响已确认成交。', { exact: true }).isVisible(), true);
     assert.equal(await buy.getByRole('button', { name: 'Refresh prices', exact: true }).isDisabled(), true);
     await buy.getByRole('button', { name: 'Continue pending (1)', exact: true }).click();
     assert.equal(await buy.locator('.fd-buy-layout').isVisible(), true);

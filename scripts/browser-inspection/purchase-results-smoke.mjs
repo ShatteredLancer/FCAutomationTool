@@ -80,6 +80,14 @@ export async function exercisePurchaseResults(context, directory) {
     await page.waitForFunction(() => ![...globalThis.document.querySelectorAll('button')].find(n => n.textContent.startsWith('重试所选')).disabled);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth), true);
+    await page.evaluate(() => {
+      const value = structuredClone(globalThis.resultFixture); value.results[0].state = 'acquired';
+      value.collection = { status: 'pending' }; globalThis.resultsUI.show(value);
+    });
+    assert.equal(await row(1).isVisible(), false, 'confirmed historical purchase must not become retryable');
+    assert.equal(await page.getByRole('button', { name: '核对并继续', exact: true }).count(), 0);
+    assert.equal(await page.getByText('买入已确认；部分卡当前不在 Club/Unassigned，未宣称已入库，也不会重买。', { exact: true }).isVisible(), true);
+    assert.equal(await page.getByText('画廊计分待 EA 同步，不影响已确认成交。', { exact: true }).isVisible(), true);
     for (const state of ['buy-pending','bought','move-pending','move-rejected']) {
       await page.evaluate(state => {
         const value = structuredClone(globalThis.resultFixture); value.results[0].state = state;

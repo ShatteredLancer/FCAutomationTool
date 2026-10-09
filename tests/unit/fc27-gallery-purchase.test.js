@@ -13,7 +13,7 @@ function fixture() {
     find: async definitionId => { calls.push(['find', definitionId]); return control.quote?.(definitionId) ?? { definitionId, itemId: definitionId + 100, tradeId: String(definitionId + 1000), price: 200 }; },
     buy: async entry => { calls.push(['buy', entry.definitionId]); const reply = control.buy?.(entry); if (reply) return reply; locations.set(entry.itemId, 'purchased'); return { ...entry, status: 'bought' }; },
     move: async entry => { calls.push(['move', entry.definitionId]); const reply = control.move?.(entry); if (reply) return reply; locations.set(entry.itemId, 'club'); },
-    locate: async entry => locations.get(entry.itemId) ?? 'unknown', afterPlayer: vi.fn(), cancel: vi.fn(),
+    locate: async (entry, options) => locations.get(entry.itemId) ?? (options?.allowAbsent ? 'absent' : 'unknown'), afterPlayer: vi.fn(), cancel: vi.fn(),
     confirmCollection: async ids => ({ status: 'confirmed', ids }),
   };
   const args = { scope: 'fixture-scope', context, get: key => store.get(key) ?? null,
@@ -23,6 +23,47 @@ function fixture() {
   const input = { items: [{ eaId: 10 }, { eaId: 11 }], binding: 'revision-fixture', approved: true };
   return { args, adapter, store, calls, control, locations, collected, input, create: () => createGalleryPurchaseSession(args) };
 }
+
+it.each(['club', 'unassigned'])('settles a legacy confirmed %s purchase no longer held without rebuying or claiming its current location', async destination => {
+  const f = fixture(); f.args.readDestination = async () => destination;
+  const input = { ...f.input, items: [{ eaId: 10 }] };
+  f.store.set(galleryPurchaseKey(f.args.scope), { schema: 1, scope: f.args.scope, context: f.args.context,
+    operationId: 'test-operation', binding: input.binding, budget: null, destination,
+    plan: [{ definitionId: 10, name: '' }],
+    entries: [{ definitionId: 10, itemId: 110, tradeId: '1010', price: 200, state: 'bought' }] });
+  f.store.set(galleryPurchasePendingKey(f.args.scope), { schema: 1, operationId: 'test-operation' });
+  expect(await f.create().execute({ approved: true, resume: true, expectedOperationId: 'test-operation' }))
+    .toMatchObject({ status: 'purchased', purchased: 1, completed: 1, spent: 200, destination });
+  expect(f.calls).toEqual([]);
+  expect(f.store.get(galleryPurchaseKey(f.args.scope)).entries[0].state).toBe(destination === 'club' ? 'acquired' : 'unassigned');
+  expect(f.store.get(galleryPurchasePendingKey(f.args.scope))).toBeNull();
+});
+
+it('does not lock the next batch when Club delivery completed but Gallery scoring is pending', async () => {
+  const f = fixture(); f.adapter.confirmCollection = async () => ({ status: 'pending', confirmed: 0 });
+  expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', completed: 2 });
+  expect(f.store.get(galleryPurchasePendingKey(f.args.scope))).toBeNull();
+  expect(await f.create().execute({ ...f.input, binding: 'next-plan' }))
+    .toMatchObject({ status: 'purchased', spent: 0 });
+  expect(f.calls.filter(([kind]) => kind === 'buy')).toHaveLength(2);
+});
+
+it('projects legacy Unassigned recovery read-only, and settles it durably before starting a changed plan', async () => {
+  const f = fixture(); f.args.readDestination = async () => 'unassigned';
+  await f.create().execute(f.input);
+  const key = galleryPurchaseKey(f.args.scope), marker = galleryPurchasePendingKey(f.args.scope);
+  const saved = f.store.get(key); saved.entries[0].state = 'bought';
+  f.store.set(marker, { schema: 1, operationId: saved.operationId });
+  const before = structuredClone([...f.store]);
+  expect(await f.create().inspect()).toMatchObject({ recovery: false, completed: 2 });
+  expect([...f.store]).toEqual(before);
+  f.args.readDestination = async () => 'club';
+  expect(await f.create().execute({ ...f.input, binding: 'new-plan' }))
+    .toMatchObject({ status: 'purchased', destination: 'club', spent: 0 });
+  expect(f.calls.filter(([kind]) => kind === 'buy')).toHaveLength(2);
+  expect(f.store.get(`${key}:test-operation`).entries[0].state).toBe('unassigned');
+  expect(f.store.get(marker)).toBeNull();
+});
 it('buys exact versions, moves then confirms collection independently, and repeats with zero mutations', async () => {
   const f = fixture(); expect(await f.create().execute(f.input)).toMatchObject({ status: 'purchased', spent: 400, purchased: 2, completed: 2, collection: { status: 'confirmed' } });
   expect(f.calls).toEqual([['find',10],['buy',10],['move',10],['find',11],['buy',11],['move',11]]);
@@ -68,8 +109,8 @@ it('freezes destination for interrupted recovery and checks the exact purchased 
   expect(f.calls).toEqual([['find',10],['buy',10],['find',11],['buy',11]]);
   const absent = fixture(); absent.args.readDestination = async () => 'unassigned';
   absent.adapter.locate = async () => 'unknown';
-  expect((await absent.create().execute(absent.input)).status).toBe('recovery-required');
-  expect(absent.calls).toEqual([['find',10],['buy',10]]);
+  expect((await absent.create().execute(absent.input)).status).toBe('purchased');
+  expect(absent.calls).toEqual([['find',10],['buy',10],['find',11],['buy',11]]);
 });
 
 it('runs accounting only after durable purchase writes and never repeats a buy because accounting failed', async () => {

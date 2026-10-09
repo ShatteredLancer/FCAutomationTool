@@ -17,7 +17,7 @@ export function isGalleryPurchaseReplanSafe(outcome = {}) {
   const resultIds = new Set();
   for (const result of outcome.results) {
     if (!validId(result?.definitionId) || resultIds.has(result.definitionId)
-        || !['waiting', 'club', 'unassigned', 'collected'].includes(result.state)) return false;
+        || !['waiting', 'club', 'unassigned', 'acquired', 'collected'].includes(result.state)) return false;
     resultIds.add(result.definitionId);
   }
   return outcome.failures.every(failure => resultIds.has(failure.definitionId)
@@ -37,7 +37,7 @@ export function projectGalleryPurchaseProgress({ progress, items = [], outcome }
     return { status: 'blocked', reason: 'purchase-recovery-required', progress: null, acquiredIds: [] };
   }
   const allowed = new Set(items.map(item => item?.eaId ?? item?.definitionId).filter(validId));
-  const acquired = new Set(outcome.results.filter(result => ['club', 'unassigned', 'collected'].includes(result.state))
+  const acquired = new Set(outcome.results.filter(result => ['club', 'unassigned', 'acquired', 'collected'].includes(result.state))
     .map(result => result.definitionId));
   if ([...acquired].some(id => !allowed.has(id))) {
     return { status: 'blocked', reason: 'purchase-result-mismatch', progress: null, acquiredIds: [] };
@@ -86,8 +86,9 @@ export function* planGalleryRemainderSteps({ targets, outcome, ledger = {}, budg
   for (const entry of outcome.results) {
     if (!rows.has(entry.definitionId)) return blocked('purchase-result-mismatch');
     if (entry.state === 'waiting') continue;
-    const price = entry.state === 'club' ? entry.price : 0;
-    if (entry.state === 'club' && !validPrice(price)) return blocked('purchase-result-mismatch');
+    const purchased = ['club', 'unassigned', 'acquired'].includes(entry.state);
+    const price = purchased ? entry.price : 0;
+    if (purchased && !validPrice(price)) return blocked('purchase-result-mismatch');
     attemptSpent += price;
     const previous = receipts.get(entry.definitionId);
     if (previous && previous.price !== price) return blocked('purchase-result-mismatch');

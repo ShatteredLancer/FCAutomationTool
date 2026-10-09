@@ -10,7 +10,7 @@ import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-09T02:00:00Z')); });
 afterEach(() => vi.useRealTimers());
 
-// Real Gallery journal -> native buyer -> owned Club read -> Unassigned receipt.
+// Real Gallery journal -> native buyer -> destination-aware purchase recovery.
 // Only the EA request bodies are synthetic; their digest observations reproduce
 // the public build reported by the user without touching an EA account.
 function fixture({ threePlayers = false } = {}) {
@@ -39,7 +39,7 @@ function fixture({ threePlayers = false } = {}) {
     bid(card, price) {
       calls.push({ kind: 'buy', id: card.id, price }); state.unassigned = [card];
       state.afterBid?.();
-      return observable({ success: true, status: 200, data: { itemIds: [card.id] } });
+      return observable(state.bidReply ?? { success: true, status: 200, data: { itemIds: [card.id] } });
     }
     move(card, pile) {
       calls.push({ kind: 'move', id: card.id, pile }); card.pile = pile;
@@ -75,8 +75,8 @@ function fixture({ threePlayers = false } = {}) {
   const create = () => createGalleryPurchaseSession({ scope, context: readFc27Context(root),
     get: key => store.get(key) ?? null, set: (key, value) => store.set(key, structuredClone(value)),
     exclusive: async (_scope, task) => task(), readDestination: async () => state.destination ?? 'unassigned', operationId: () => 'receipt-test',
-    createAdapter: () => createFc27PuzzleBuyAdapter(root, { canWrite: () => true,
-      preflightReceiptRead: state.preflightReceiptRead !== false,
+    createAdapter: record => createFc27PuzzleBuyAdapter(root, { canWrite: () => true,
+      preflightReceiptRead: (record.destination === 'club' || record.entries.some(entry => ['buy-pending', 'move-pending', 'move-rejected'].includes(entry.state))) && state.preflightReceiptRead !== false,
       verifyCurrent: () => {}, verifySquad: () => {}, playerDetails: new Map(versions.map(id => [id, item])),
       referencePrice: async () => 1100, wait: async () => {} }),
   });
@@ -92,7 +92,7 @@ function fixture({ threePlayers = false } = {}) {
       readSettings: async () => ({ status: 'observed', queriesNumber: 1, quoteCeiling: null }),
       tradePreferences: { read: async () => ({ destination: state.destination ?? 'unassigned' }) },
       reader: { readVersions: async ids => ({ status: 'observed', rows: ids.map(definitionId => ({
-        definitionId, isCollected: false, cardData: { rating: 80, nation: 1, teamId: 2, leagueId: 3, preferredPosition: 'ST' },
+        definitionId, isCollected: state.collected === true, cardData: { rating: 80, nation: 1, teamId: 2, leagueId: 3, preferredPosition: 'ST' },
       })) }) },
     });
     const promise = purchase({ ...input, ...options }); await vi.runAllTimersAsync(); return promise;
@@ -120,11 +120,10 @@ it.each([false, true])('settles the bought row alongside two unavailable players
   expect(x.store.get(galleryPurchasePendingKey(x.scope))).toBeNull();
 });
 
-it('retains the receipt when the request binding changes after preflight and recovers without a second bid', async () => {
+it('completes a confirmed Unassigned purchase without an unnecessary owned-item read even if that read binding drifts', async () => {
   const x = fixture(), original = x.root.UTHttpRequest.prototype.send;
   x.state.afterBid = () => { x.root.UTHttpRequest.prototype.send = () => {}; };
-  expect(await x.execute()).toMatchObject({ status: 'recovery-required', purchased: 1, spent: 1100,
-    reason: 'FC27_CLUB_RUNTIME_UNVERIFIED' });
+  expect(await x.execute()).toMatchObject({ status: 'purchased', purchased: 1, completed: 1, spent: 1100 });
   expect(x.calls.filter(call => call.kind === 'request')).toHaveLength(0);
   x.root.UTHttpRequest.prototype.send = original;
   expect(await x.execute({ resume: true, expectedOperationId: 'receipt-test' }))
@@ -133,13 +132,13 @@ it('retains the receipt when the request binding changes after preflight and rec
 });
 
 async function seedInterruptedPurchase(x) {
-  // Reproduce the previous version's lazy check after a successful bid.
-  x.state.preflightReceiptRead = false;
-  x.state.requestMethodHashes = { UTHttpRequest: '0'.repeat(64) };
-  expect(await x.execute()).toMatchObject({ status: 'recovery-required', purchased: 1, completed: 0, spent: 1100,
-    reason: 'FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED' });
-  expect(x.store.get(galleryPurchasePendingKey(x.scope))).not.toBeNull();
-  x.state.requestMethodHashes = {}; x.state.preflightReceiptRead = true;
+  // Persist the actual native bid, then project the legacy 27.0.16 snapshot:
+  // its successful purchase was saved as 'bought' before the read failed.
+  expect(await x.execute()).toMatchObject({ purchased: 1, completed: 1, spent: 1100 });
+  const record = x.store.get(galleryPurchaseKey(x.scope));
+  record.entries.find(entry => entry.definitionId === 901).state = 'bought';
+  record.lastResult.reason = 'FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED';
+  x.store.set(galleryPurchasePendingKey(x.scope), { schema: 1, operationId: record.operationId });
 }
 
 it.each(['unassigned', 'club'])('resumes the old bought receipt found in %s without another bid or move', async location => {
@@ -173,8 +172,75 @@ it('runs a fresh production Gallery purchase through the preflight and exact Una
   expect(x.store.get(galleryPurchasePendingKey(x.scope))).toBeNull();
 });
 
+it('recovers a confirmed purchase after manual sale through the real Gallery composition', async () => {
+  const x = fixture({ threePlayers: true }); await seedInterruptedPurchase(x);
+  x.state.unassigned = []; x.state.players = [];
+  expect(await x.executeComposed({ resume: true, expectedOperationId: 'receipt-test' }))
+    .toMatchObject({ status: 'partial', purchased: 1, completed: 1, spent: 1100, destination: 'unassigned' });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+  expect(x.store.get(galleryPurchasePendingKey(x.scope))).toBeNull();
+});
+
+it('settles a Club-destination legacy bid absent from both live piles without pretending it was moved to Club', async () => {
+  const x = fixture(); await seedInterruptedPurchase(x);
+  const record = x.store.get(galleryPurchaseKey(x.scope)); record.destination = 'club';
+  x.state.unassigned = []; x.state.players = []; x.state.collected = true;
+  expect(await x.executeComposed({ resume: true, expectedOperationId: 'receipt-test' }))
+    .toMatchObject({ status: 'purchased', purchased: 1, completed: 1, spent: 1100,
+      destination: 'club', deliveryUnavailable: 1, results: [{ state: 'acquired', price: 1100 }], collection: { status: 'confirmed' } });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+  expect(x.store.get(galleryPurchasePendingKey(x.scope))).toBeNull();
+});
+
+it('still moves a fresh Club purchase and does not require EA scoring to release its transaction marker', async () => {
+  const x = fixture(); x.state.destination = 'club';
+  expect(await x.executeComposed()).toMatchObject({ status: 'purchased', completed: 1, spent: 1100,
+    destination: 'club', results: [{ state: 'club' }], collection: { status: 'pending' } });
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(1);
+  expect(x.store.get(galleryPurchasePendingKey(x.scope))).toBeNull();
+});
+
+it('does not preflight irrelevant Club reads for a confirmed Unassigned purchase', async () => {
+  const x = fixture(); x.state.requestMethodHashes = { UTHttpRequest: '0'.repeat(64) };
+  expect(await x.executeComposed()).toMatchObject({ status: 'purchased', completed: 1, spent: 1100 });
+  expect(x.calls.filter(call => ['request', 'unassigned', 'move'].includes(call.kind))).toHaveLength(0);
+});
+
+it.each(['buy-pending', 'move-pending', 'move-rejected'])('does not settle %s using only historical collection or an absent entity', async state => {
+  const x = fixture(); await seedInterruptedPurchase(x);
+  const record = x.store.get(galleryPurchaseKey(x.scope)); record.destination = 'club'; record.entries[0].state = state;
+  x.state.unassigned = []; x.state.players = []; x.state.collected = true;
+  expect(await x.executeComposed({ resume: true, expectedOperationId: 'receipt-test' }))
+    .toMatchObject({ status: 'recovery-required', completed: 0, reason: 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+  expect(x.store.get(galleryPurchasePendingKey(x.scope))).not.toBeNull();
+});
+
+it('does not mistake an ambiguous Club-delivery receipt for an externally handled confirmed purchase', async () => {
+  const x = fixture(); await seedInterruptedPurchase(x);
+  const record = x.store.get(galleryPurchaseKey(x.scope)); record.destination = 'club';
+  x.state.unassigned = [x.item, x.item];
+  expect(await x.executeComposed({ resume: true, expectedOperationId: 'receipt-test' }))
+    .toMatchObject({ status: 'recovery-required', completed: 0, reason: 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' });
+  expect(record.entries[0].state).toBe('bought');
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+});
+
+it('does not infer Club absence from a truncated full page', async () => {
+  const x = fixture(); await seedInterruptedPurchase(x);
+  const record = x.store.get(galleryPurchaseKey(x.scope)); record.destination = 'club';
+  x.state.players = Array.from({ length: 250 }, (_, i) => ({ id: 1000 + i, resourceId: 901 }));
+  x.state.unassigned = [];
+  expect(await x.executeComposed({ resume: true, expectedOperationId: 'receipt-test' }))
+    .toMatchObject({ status: 'recovery-required', completed: 0, reason: 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' });
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+});
+
 it.each(Object.keys(observation.methods))('preflights unknown %s before any purchase, including later request methods', async path => {
-  const x = fixture(); x.state.requestMethodHashes = { [path]: '0'.repeat(64) };
+  const x = fixture(); x.state.destination = 'club'; x.state.requestMethodHashes = { [path]: '0'.repeat(64) };
   const result = await x.execute();
   expect(result).toMatchObject({ status: 'blocked', purchased: 0, spent: 0 });
   expect(result.reason).toMatch(/^FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_\d_CHANGED$/);
@@ -182,15 +248,16 @@ it.each(Object.keys(observation.methods))('preflights unknown %s before any purc
 });
 
 it.each(['absent', 'other-copy', 'ambiguous'])('keeps a %s receipt unresolved across repeated checks, without rebuying', async mode => {
-  const x = fixture(); await seedInterruptedPurchase(x);
+  const x = fixture(); x.state.bidReply = { status: 200 };
+  expect(await x.execute()).toMatchObject({ status: 'recovery-required', purchased: 0, spent: 0 });
   x.state.unassigned = mode === 'absent' ? [] : mode === 'other-copy' ? [{ ...x.item, id: 802 }] : [x.item, x.item];
   for (let attempt = 0; attempt < 3; attempt++) {
     expect(await x.execute({ resume: true, expectedOperationId: 'receipt-test' }))
-      .toMatchObject({ status: 'recovery-required', purchased: 1, completed: 0, spent: 1100,
+      .toMatchObject({ status: 'recovery-required', purchased: 0, completed: 0, spent: 0,
         reason: 'FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED' });
   }
   expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
   expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
-  expect(x.store.get(galleryPurchaseKey(x.scope)).entries[0].state).toBe('bought');
+  expect(x.store.get(galleryPurchaseKey(x.scope)).entries[0].state).toBe('buy-pending');
   expect(x.store.get(galleryPurchasePendingKey(x.scope))).not.toBeNull();
 });

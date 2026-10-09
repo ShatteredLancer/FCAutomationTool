@@ -72,12 +72,13 @@ it('preserves long account scopes and rejects malformed entries instead of repla
   expect(f.data.get(galleryNetCostKey('a'))).toEqual(corrupt);
 });
 
-it('migrates the current validated purchase journal and uses one read-only sale refresh', async () => {
+it.each(['club', 'unassigned', 'acquired'])('keeps %s confirmed purchase history and uses one read-only sale refresh', async state => {
   const f = fixture(), { root } = executionRuntime();
   root.navigator = { locks: { request: async (name, _options, task) => task({ name, mode: 'exclusive' }) } };
   const context = readFc27Context(root), scope = traditionalJournalScope(context);
   const record = { schema: 1, scope, context, operationId: 'batch-a', binding: 'binding', plan: [{ definitionId: 111 }],
-    entries: [{ definitionId: 111, itemId: 11, tradeId: '1111', price: 200, state: 'club' }] };
+    destination: state === 'unassigned' ? 'unassigned' : 'club',
+    entries: [{ definitionId: 111, itemId: 11, tradeId: '1111', price: 200, state }] };
   f.data.set(galleryPurchaseKey(scope), record);
   const refresh = vi.fn(async () => ({ status: 'observed', receipts: [{ itemId: 11, definitionId: 111, sold: true, soldPrice: 500, listingTradeId: '9999' }] }));
   const service = createFc27GalleryAccounting({ root, get: f.get, set: f.set, adapterFactory: () => ({ refreshGallerySaleReceipts: refresh }) });

@@ -18,6 +18,8 @@ export function projectGalleryListingReceipts({ purchase, scope, context, expect
     if (pendingMarker !== null || purchase.entries.some(entry => pendingStates.has(entry.state))) {
       return blocked('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
     }
+    // Keep the existing automatic-listing prerequisite. Releasing a completed
+    // purchase marker does not authorize selling before EA collection sync.
     if (purchase.destination !== 'unassigned' && purchase.collection?.status !== 'confirmed') return blocked('FC27_GALLERY_COLLECTION_UNCONFIRMED');
     const acquired = purchase.entries.filter(entry => ['club', 'unassigned'].includes(entry.state));
     if (new Set(acquired.map(entry => entry.itemId)).size !== acquired.length
@@ -28,7 +30,7 @@ export function projectGalleryListingReceipts({ purchase, scope, context, expect
       binding: purchase.binding, entries: acquired.map(entry => ({ itemId: entry.itemId, definitionId: entry.definitionId,
         tradeId: entry.tradeId, purchasePrice: entry.price, ...(entry.state === 'unassigned' ? { pile: 'unassigned' } : {}) })),
       skipped: purchase.entries.filter(entry => !['club', 'unassigned'].includes(entry.state)).map(entry => ({ definitionId: entry.definitionId,
-        reason: entry.state === 'collected' ? 'already-collected-not-purchased' : 'not-purchased' })),
+        reason: entry.state === 'collected' ? 'already-collected-not-purchased' : entry.state === 'acquired' ? 'purchase-location-unavailable' : 'not-purchased' })),
       executionEnabled: false };
   } catch { return blocked('FC27_GALLERY_LISTING_PURCHASE_UNCONFIRMED'); }
 }

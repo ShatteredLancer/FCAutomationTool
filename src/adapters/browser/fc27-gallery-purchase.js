@@ -52,7 +52,9 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
         const adapter = await createFc27PuzzleBuyAdapter(root, { assertTarget: account, referencePrice, onSearch: callbacks.onSearch,
           refreshReference: publicPrices ? async (definitionId, policy) =>
             (await publicPrices.load([definitionId], { purpose: 'purchase', policy, isCurrent: () => { account(); return !stopped; } })).references[definitionId] : null,
-          attempts: settings.queriesNumber, preflightReceiptRead: true,
+          attempts: settings.queriesNumber, preflightReceiptRead: record.entries.some(entry =>
+            ['buy-pending', 'move-pending', 'move-rejected'].includes(entry.state)
+            || (record.destination ?? 'club') === 'club' && ['waiting', 'bought'].includes(entry.state)),
           canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope),
           verifyCurrent: account, playerDetails: players,
           collectionState: definitionId => rows.get(definitionId)?.isCollected,

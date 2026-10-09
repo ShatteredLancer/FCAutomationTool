@@ -5,6 +5,22 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.17] - 2026-10-09
+
+### Gallery Historical Acquisition
+
+- Complete confirmed Unassigned purchases from the exact bid receipt, without
+  requiring continued possession after manual sale or SBC consumption.
+- Recover existing bought receipts without rebidding or changing the frozen
+  destination. Keep confirmed Club purchases unavailable for delivery as
+  historical acquisitions, not as falsely confirmed Club inventory.
+- Separate EA collection-score refresh from the completed purchase marker;
+  reuse previous confirmed acquisitions when switching plans during score lag.
+- Preserve unknown bid/move recovery, Club delivery, all price and listing
+  conditions, and default Puzzle/Streamlined adapter behavior.
+- Cover historical acquisition in both UI styles, net-cost accounting and
+  remaining-cost planning; EA scoring remains authoritative and unchanged.
+
 ## [27.0.16] - 2026-10-09
 
 ### Purchase Receipt Recovery

@@ -11,7 +11,7 @@ export function mountGalleryTradeSettings({ document, parent, service }) {
   };
   const destination = select('Gallery 购卡去向', [['club', 'Club'], ['unassigned', 'Unassigned']]);
   const style = select('Gallery 购买 / 挂牌风格', [['enhancer', 'Enhancer'], ['fodder', 'Fodder']]);
-  add(card, 'small', '去向仅作用于新购买批次；恢复沿用原批次设置。Unassigned 的收集进度以 EA 回读为准。');
+  add(card, 'small', '去向仅作用于新购买批次；恢复沿用原批次设置。画廊记录拥有过的卡，售出或用于 SBC 不撤销收集；计分以 EA 记录为准。');
   const save = add(card, 'button', '保存 Gallery 交易设置'); save.type = 'button';
   const output = add(card, 'output'); output.setAttribute('role', 'status');
   let account = null, busy = false, epoch = 0;

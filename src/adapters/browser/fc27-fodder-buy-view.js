@@ -11,7 +11,7 @@ const retryMessages = {
   FC27_PUBLIC_PRICE_FUTGG_DISABLED: 'FUT.GG 读取已关闭，请重新生成方案',
 };
 const retryFailed = row => row.state === 'waiting' && row.attempt?.failed === true;
-const retryRecovered = row => ['club', 'unassigned', 'collected'].includes(row.state);
+const retryRecovered = row => ['club', 'unassigned', 'acquired', 'collected'].includes(row.state);
 const retryUncertain = row => ['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(row.state);
 
 // Fodder has its own result screen. The generic Gallery/Puzzle result editor
@@ -63,6 +63,8 @@ function mountFodderRetryResults({ document, parent, refreshPrices, retry, resum
     add(side, 'strong', running ? 'Purchase progress' : `${failed.length} failed · ${pending.length} pending`);
     const progress = add(side, 'progress'); progress.max = outcome.total || rows.length || 1; progress.value = outcome.completed || 0;
     add(side, 'small', `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
+    if (rows.some(row => row.state === 'acquired')) add(side, 'small', '买入已确认；部分卡当前不在 Club/Unassigned，未宣称已入库，也不会重买。');
+    if (outcome.collection?.status === 'pending') add(side, 'small', '画廊计分待 EA 同步，不影响已确认成交。');
     add(side, 'small', running ? '正在购买，可点击 Stop 停止后续操作。' : recovery ? '成交或入库结果待核对，请先核对并继续。'
       : pending.length ? '尚未处理的卡请点击 Continue pending，沿用本批价格设置。' : 'Select failed players and adjust Buy Now before retrying.');
     if (outcome.reason) add(side, 'output', outcome.reason);
@@ -200,9 +202,9 @@ export function mountFc27FodderBuyView({ document, parent, purchase, accountScop
     for (const row of value.results ?? []) {
       const cell = rows.get(row.definitionId);
       if (cell) {
-        cell.source.textContent = ({ club: 'Club', unassigned: 'Unassigned', collected: 'Collected', waiting: row.attempt?.failed ? 'Not found' : 'Market', 'buy-pending': 'Buying', bought: 'Bought', 'move-pending': 'Moving', 'move-rejected': 'Not moved' })[row.state] ?? row.state;
+        cell.source.textContent = ({ club: 'Club', unassigned: 'Unassigned', acquired: 'Bought · route unavailable', collected: 'Collected', waiting: row.attempt?.failed ? 'Not found' : 'Market', 'buy-pending': 'Buying', bought: 'Bought', 'move-pending': 'Moving', 'move-rejected': 'Not moved' })[row.state] ?? row.state;
         cell.price.textContent = row.reference?.estimate?.toLocaleString() ?? cell.price.textContent;
-        cell.price.classList.toggle('fd-acquired', ['club', 'unassigned', 'collected'].includes(row.state));
+        cell.price.classList.toggle('fd-acquired', ['club', 'unassigned', 'acquired', 'collected'].includes(row.state));
         cell.paid.textContent = row.price > 0 ? row.price.toLocaleString() : '';
         cell.state.textContent = row.reason ?? '';
       }

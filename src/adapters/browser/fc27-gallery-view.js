@@ -337,7 +337,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         const remaining = replanableGalleryFailures(outcome);
         if (remaining.length) {
           purchaseReplan = { ...input.replanContext, outcome };
-          const acquired = (outcome.results ?? []).filter(item => ['club', 'unassigned', 'collected'].includes(item.state)).length;
+          const acquired = (outcome.results ?? []).filter(item => ['club', 'unassigned', 'acquired', 'collected'].includes(item.state)).length;
           const replan = add(resultList ?? dialog, 'li', `已确认 ${acquired} 张；剩余 ${remaining.length} 张可重新计算方案`, 'gallery-replan-ready');
           const replanButton = add(replan, 'button', '重新规划剩余目标'); replanButton.type = 'button';
           replanButton.addEventListener('click', event => { if (event.isTrusted && !buying) { node('gallery-purchase-close').click(); renderPurchaseReplan(purchaseReplan); } });

@@ -5,6 +5,15 @@ import { futggGalleryPool } from '../fixtures/fc27-gallery.js';
 
 const pool = () => normalizeGalleryPool('futgg', futggGalleryPool(), 30);
 
+it('retains collected eligibility and grading score after sale or SBC consumption, independently of the holding pile', () => {
+  const concepts = [{ definitionId: 900001, isCollected: true, gradingScore: 91 }];
+  for (const heldItems of [[], [{ definitionId: 900001 }]]) {
+    const progress = mergeGalleryAccountProgress(pool(), { conceptItems: concepts, clubKnown: true, clubItems: [], heldItems });
+    expect(progress.rows.find(row => row.eaId === 900001))
+      .toMatchObject({ collected: true, gradingScore: 91, inClub: false, status: 'collected' });
+  }
+});
+
 it('keeps collected, Club, First Owner and unknown facts independent', () => {
   const value = mergeGalleryAccountProgress(pool(), {
     conceptItems: [

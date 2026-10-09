@@ -65,8 +65,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       || root.ItemPile.PURCHASED !== 6 || root.GameCurrency.COINS !== 'COINS') fail('FC27_BUY_RUNTIME_UNVERIFIED');
   let provider;
   const legacyProvider = async () => provider ??= await createFc27PurchaseSquad(root, { canWrite, assertTarget });
-  // Gallery will locate each receipt, even when the destination is Unassigned.
-  // Check its entire read dependency before the first bid, not after spending.
+  // Preflight reads only when receipt recovery or Club delivery needs them.
   // This constructs the guarded transport only; it performs no request.
   let club = preflightReceiptRead === true ? await createFc27ClubReadTransport(root) : null;
   const auctions = new Map(); const auctionCaps = new Map(); const confirmedMoves = new Set();
@@ -206,7 +205,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
           ? 'FC27_BUY_LISTING_UNAVAILABLE' : 'FC27_BUY_REJECTED' };
       return { status: 'unknown' };
     },
-    async locate(entry) {
+    async locate(entry, { allowAbsent = false } = {}) {
       assertAccount();
       if (confirmedMoves.has(entry.itemId)) return 'club';
       club ??= await createFc27ClubReadTransport(root);
@@ -217,6 +216,10 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       const reply = await observe(() => service.requestUnassignedItems());
       if (reply?.success !== true || reply.status !== 200 || !Array.isArray(reply.response?.items)) fail('FC27_BUY_RECEIPT_UNCONFIRMED');
       const items = reply.response.items.filter(item => item.id === entry.itemId && item.definitionId === entry.definitionId);
+      // Absence is useful for historical, already-confirmed Gallery purchases.
+      // It is never proof of a lost bid or move, and a full/ambiguous read stays
+      // unknown. Legacy Puzzle callers retain the original unknown contract.
+      if (!items.length && matches.length < 250 && allowAbsent) return 'absent';
       if (items.length !== 1) return 'unknown';
       auctions.set(entry.tradeId, items[0]); return 'purchased';
     },

@@ -1585,6 +1585,16 @@ Gallery 规划器默认墙钟时间从 10 秒提高到 30 秒，并新增账号�
 
 用户要求从正式 Settings 移除“安装与多标签检查”整块。实施范围为工作台 markup、面板按钮绑定和生产入口：正式版不再注入 `checkInstallation`，不渲染两颗自检按钮；独立 Acceptance 验收构建仍显式启用原入口，存储、Web Lock、业务 Journal 与恢复逻辑不变。流程为移除入口、检查无按钮时的面板初始化、回归存储/互斥和导出、重建正式产物。离线生产页面 smoke 已确认两个按钮不存在且后续初始化/操作正常，原隔离 Acceptance 构建与跨标签存储 smoke 通过；完整 `npm run verify` 398 文件 / 4359 项、FC27 84 文件 / 1414 项及全部离线浏览器 smoke 通过，`git diff --check` 通过。当前版本仍为 27.0.13，根目录/dist 产物 SHA256 均为 `483afa4e79e2cf0d8da6ead5759f4002f202724cf1ccf3069421db456329b77e`；未升版、提交或执行 EA 写操作，本次没有重装专用浏览器或登录后真实 Settings 检查。更新正式 userscript 后该块即不显示，无需更改配置或清理记录。
 
+## 2026-10-09 27.0.17 Gallery 历史收集与购买状态分离
+
+用户在 27.0.16 手动卖掉已买入的卡后，仍反复出现 `FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED`。此前把“成交回执”“当前仍持有”和“EA 已计分”混为购买完成条件。用户明确画廊记录的是曾经获得的精确版本，取得方式不限，售出或 SBC 消耗不撤销；且要求提交前整体复查，不改变 ad 原 main 的其他主逻辑。
+
+先在实际 Gallery → native buyer → Journal 恢复调用链和最小单卡状态机中复现四项失败，再修：Unassigned 明确成交直接完成；已确认旧记录迁移；Club 正常入库保留，只有完整成功读取确认实体已不在两处可入库位置时记 `acquired`，不假报 Club、不重买；EA 收集 pending 独立展示，不保留已完成购买的全局 Pending。新计划复用上一批确认获得的版本，保持失败卡可重试和实际花费。共享 Adapter 的 absent 结果仅对 Gallery 已确认买入显式启用，未知 bid/move、歧义、HTTP/方法错误和满页截断仍保留原恢复保护。
+
+整体复查边界：以 origin/main 的 `6b66de2 / 27.0.16` 为基线，计分公式、选队、卡池、公共报价与价格上限、FSU、选材、SBC/Runtime 主逻辑无修改；原挂牌的计分前置条件及 Transfer List-only 保留。仅为新历史状态接通两套独立 UI、净成本、剩余补卡成本与挂牌跳过原因。Puzzle/Streamlined 未 opt-in，默认原生 Adapter 返回合同不变；无需改变主流程。
+
+新增 19 项回归。Gallery 重点 **7 文件 / 132 项**通过；完整 `npm run verify` **401 文件 / 4383 项通过、39 跳过（共 4422）**；FC27 专项 **86 文件 / 1421 项通过、34 跳过（共 1455）**，整套离线浏览器检查通过。root/dist 为 **1,681,172 bytes**，SHA256 `952d8c641da96f6ab39d35ddf0d70c99ebfa0360112ccf3345fbb18e7064a073`，FSU 26.09.9 不变。实机恢复待用户更新并主动点击验证；未代用户交易或提交材料。版本与恢复说明见 [27.0.17](releases/27.0.17.md)。
+
 ## 2026-10-09 27.0.16 Gallery 成交核对与恢复
 
 用户 27.0.15 新诊断与截图：Gallery 三张卡中两张 Not found、一张 bought，花费 1,100；反复 Check and continue 返回 `FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED`，完成核对始终 0。日志中的购买数量和花费未继续增加。上版买入方法适配不完整：修了 `bid/move`，漏了成交后 `locate()` 的 Club 请求依赖，Unassigned 去向也经过此路径。

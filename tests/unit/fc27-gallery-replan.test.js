@@ -22,6 +22,11 @@ it('keeps bought versions and costs, excludes missing versions and buys only the
   expect(result.targets[0].progress.rows.find(item => item.eaId === 2)).toMatchObject({ firstOwned: false, purchaseProjected: true });
   expect(input).toEqual(before);
 });
+it.each(['unassigned', 'acquired'])('replans using %s purchase history and real spend, without requiring current possession', state => {
+  const bought = outcome(); bought.results[0].state = state;
+  expect(run({ targets: [target()], outcome: bought, budget: 600 }))
+    .toMatchObject({ status: 'ready', spent: 200, remainingBudget: 400, plans: [{ items: [{ eaId: 4 }] }] });
+});
 it('replans all-failed attempts without requiring an acquisition', () => {
   const result = run({ targets: [target()], outcome: { ...outcome(), spent: 0,
     results: [{ definitionId: 3, state: 'waiting' }] } });

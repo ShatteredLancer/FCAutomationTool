@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.16
+// @version      27.0.17
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -7858,7 +7858,7 @@
         };
         return { status: "unknown" };
       },
-      async locate(entry) {
+      async locate(entry, { allowAbsent = false } = {}) {
         assertAccount();
         if (confirmedMoves.has(entry.itemId)) return "club";
         club ??= await createFc27ClubReadTransport(root);
@@ -7869,6 +7869,7 @@
         const reply = await observe(() => service.requestUnassignedItems());
         if (reply?.success !== true || reply.status !== 200 || !Array.isArray(reply.response?.items)) fail17("FC27_BUY_RECEIPT_UNCONFIRMED");
         const items = reply.response.items.filter((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId);
+        if (!items.length && matches2.length < 250 && allowAbsent) return "absent";
         if (items.length !== 1) return "unknown";
         auctions.set(entry.tradeId, items[0]);
         return "purchased";
@@ -8137,7 +8138,7 @@
         })),
         skipped: purchase.entries.filter((entry) => !["club", "unassigned"].includes(entry.state)).map((entry) => ({
           definitionId: entry.definitionId,
-          reason: entry.state === "collected" ? "already-collected-not-purchased" : "not-purchased"
+          reason: entry.state === "collected" ? "already-collected-not-purchased" : entry.state === "acquired" ? "purchase-location-unavailable" : "not-purchased"
         })),
         executionEnabled: false
       };
@@ -8423,13 +8424,24 @@
   var same17 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var id7 = (value) => Number.isSafeInteger(value) && value > 0;
   var safeReason5 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_PURCHASE_UNCONFIRMED";
-  var states2 = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club", "unassigned", "collected"]);
+  var completedStates = ["club", "unassigned", "acquired", "collected"];
+  var states2 = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "move-rejected", ...completedStates]);
   var galleryPurchaseKey = (scope2) => `fcat-fc27-gallery-purchase:${scope2}`;
   var galleryPurchasePendingKey = (scope2) => `fcat-fc27-gallery-purchase-pending:${scope2}`;
   var pending = (record) => record.entries.some((entry) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(entry.state));
+  var settleUnassignedPurchases = (record) => {
+    let changed = false;
+    if (record.destination === "unassigned") for (const entry of record.entries) {
+      if (entry.state === "bought") {
+        entry.state = "unassigned";
+        changed = true;
+      }
+    }
+    return changed;
+  };
   var quote = (value, definitionId) => value?.definitionId === definitionId && id7(value.itemId) && typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15e6;
   var summary = (record) => {
-    const entries2 = record?.entries ?? [], acquired = entries2.filter((entry) => ["bought", "move-pending", "move-rejected", "club", "unassigned"].includes(entry.state));
+    const entries2 = record?.entries ?? [], acquired = entries2.filter((entry) => ["bought", "move-pending", "move-rejected", "club", "unassigned", "acquired"].includes(entry.state));
     const purchases = acquired.filter((entry) => id7(entry.itemId) && id7(entry.definitionId) && Number.isSafeInteger(entry.price)).map((entry) => ({
       itemId: entry.itemId,
       definitionId: entry.definitionId,
@@ -8442,7 +8454,8 @@
       destination: record?.destination ?? "club",
       total: entries2.length,
       purchased: acquired.length,
-      completed: entries2.filter((entry) => ["club", "unassigned", "collected"].includes(entry.state)).length,
+      completed: entries2.filter((entry) => completedStates.includes(entry.state)).length,
+      deliveryUnavailable: entries2.filter((entry) => entry.state === "acquired").length,
       spent: acquired.reduce((sum2, entry) => sum2 + (entry.price ?? 0), 0),
       accounting
     };
@@ -8510,10 +8523,11 @@
       async inspect() {
         try {
           assertCurrent();
-          const record = await read(key);
+          const record = structuredClone(await read(key));
           assertCurrent();
           if (!record) return { status: "absent" };
           validate(record, scope2, context);
+          settleUnassignedPurchases(record);
           return {
             status: "observed",
             recovery: pending(record),
@@ -8536,10 +8550,11 @@
           const result = await exclusive(scope2, async () => {
             assertCurrent();
             await checkOtherTransactions();
-            const raw = await read(key), oldPending = await read(pendingKey);
+            const raw = await read(key);
+            let oldPending = await read(pendingKey);
             assertCurrent();
             if (raw !== null) validate(raw, scope2, context);
-            record = raw;
+            record = structuredClone(raw);
             if (oldPending && (!record || oldPending.operationId !== record.operationId)) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
             if (resume && (!record || expectedOperationId !== record.operationId)) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
             const plan = resume ? record.plan : items.map((item2) => ({
@@ -8552,10 +8567,22 @@
               budget = record.budget ?? null;
             }
             if (plan.some((item2) => !id7(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
+            if (record) {
+              if (settleUnassignedPurchases(record)) {
+                assertCurrent();
+                await write(key, record);
+              }
+              if (oldPending && !pending(record)) {
+                assertCurrent();
+                await write(pendingKey, null);
+                oldPending = null;
+              }
+            }
             const changed = record && (!same17(record.binding, binding) || !same17(record.plan, plan));
             if (changed && (oldPending || pending(record))) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
             if (changed) await write(`${key}:${record.operationId}`, record);
             if (!record || changed) {
+              const previousAcquisitions = new Set((record?.entries ?? []).filter((entry) => completedStates.includes(entry.state)).map((entry) => entry.definitionId));
               const destination = await readDestination();
               assertCurrent();
               if (!["club", "unassigned"].includes(destination)) throw Error("FC27_GALLERY_TRADE_SETTINGS_INVALID");
@@ -8569,7 +8596,10 @@
                 destination,
                 ...batchOptions ? { batchOptions: normalizeFodderBuyOptions(batchOptions) } : {},
                 plan: structuredClone(plan),
-                entries: plan.map((item2) => ({ definitionId: item2.definitionId, state: "waiting" }))
+                entries: plan.map((item2) => ({
+                  definitionId: item2.definitionId,
+                  state: previousAcquisitions.has(item2.definitionId) ? "collected" : "waiting"
+                }))
               };
             } else if (!resume) record.budget = budget;
             validate(record, scope2, context);
@@ -8611,15 +8641,16 @@
             for (let cursor = 0; cursor < record.entries.length; cursor++) {
               if (stopReason) break;
               const entry = record.entries[cursor];
-              if (["club", "unassigned", "collected"].includes(entry.state)) continue;
+              if (completedStates.includes(entry.state)) continue;
               if (retry && entry.state === "waiting" && !retry.items.some((item2) => item2.definitionId === entry.definitionId)) continue;
               try {
                 assertCurrent();
                 await adapter.verifyCurrent(record);
                 if (["buy-pending", "bought", "move-pending", "move-rejected"].includes(entry.state)) {
-                  const located = await adapter.locate(entry);
+                  const located = await adapter.locate(entry, { allowAbsent: entry.state === "bought" });
                   if (located === "club") entry.state = "club";
                   else if (located === "purchased") entry.state = "bought";
+                  else if (located === "absent" && entry.state === "bought") entry.state = "acquired";
                   else throw new Error("FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED");
                   await save();
                 }
@@ -8739,9 +8770,7 @@
                   report("bought", entry);
                 }
                 if (entry.state === "bought" && record.destination === "unassigned") {
-                  const location = await adapter.locate(entry);
-                  if (!["club", "purchased"].includes(location)) throw Error("FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED");
-                  entry.state = location === "club" ? "club" : "unassigned";
+                  entry.state = "unassigned";
                   await save();
                   report("completed", entry);
                 }
@@ -8778,15 +8807,14 @@
             await save();
             if (pending(record)) return { status: "recovery-required", ...record.lastResult, ...await priceResult(), ...summary(record) };
             try {
-              record.collection = await adapter.confirmCollection(record.entries.filter((entry) => ["club", "unassigned", "collected"].includes(entry.state)).map((entry) => entry.definitionId));
+              record.collection = await adapter.confirmCollection(record.entries.filter((entry) => completedStates.includes(entry.state)).map((entry) => entry.definitionId));
             } catch (error2) {
               record.collection = { status: "pending", reason: safeReason5(error2) };
             }
             assertCurrent();
             await save();
-            if (record.destination === "unassigned" || record.collection?.status === "confirmed" || summary(record).spent === 0) await write(pendingKey, null);
-            else await write(pendingKey, { schema: 1, operationId: record.operationId });
-            return { status: record.entries.every((entry) => ["club", "unassigned", "collected"].includes(entry.state)) ? "purchased" : "partial", ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
+            await write(pendingKey, null);
+            return { status: record.entries.every((entry) => completedStates.includes(entry.state)) ? "purchased" : "partial", ...record.lastResult, ...await priceResult(), ...summary(record), collection: record.collection, submitted: false };
           });
           return result ? { ...result, ...accountingWarning ? { accountingWarning } : {} } : { status: "blocked", reason: "FC27_GALLERY_PURCHASE_BUSY" };
         } catch (error2) {
@@ -13862,7 +13890,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (outcome?.status !== "partial" || outcome?.collection?.status !== "confirmed" || !Array.isArray(outcome.results) || !outcome.failures?.length || !safeFailures.has(outcome.reason)) return false;
     const resultIds = /* @__PURE__ */ new Set();
     for (const result of outcome.results) {
-      if (!validId9(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "unassigned", "collected"].includes(result.state)) return false;
+      if (!validId9(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "unassigned", "acquired", "collected"].includes(result.state)) return false;
       resultIds.add(result.definitionId);
     }
     return outcome.failures.every((failure) => resultIds.has(failure.definitionId) && safeFailures.has(failure.reason) && outcome.results.some((result) => result.definitionId === failure.definitionId && result.state === "waiting")) && Number.isSafeInteger(outcome.spent) && outcome.spent >= 0;
@@ -13894,8 +13922,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     for (const entry of outcome.results) {
       if (!rows.has(entry.definitionId)) return blocked10("purchase-result-mismatch");
       if (entry.state === "waiting") continue;
-      const price2 = entry.state === "club" ? entry.price : 0;
-      if (entry.state === "club" && !validPrice4(price2)) return blocked10("purchase-result-mismatch");
+      const purchased = ["club", "unassigned", "acquired"].includes(entry.state);
+      const price2 = purchased ? entry.price : 0;
+      if (purchased && !validPrice4(price2)) return blocked10("purchase-result-mismatch");
       attemptSpent += price2;
       const previous = receipts.get(entry.definitionId);
       if (previous && previous.price !== price2) return blocked10("purchase-result-mismatch");
@@ -15253,7 +15282,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     FC27_PUBLIC_PRICE_FUTGG_DISABLED: "FUT.GG \u8BFB\u53D6\u5DF2\u5173\u95ED\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848"
   };
   var retryFailed = (row) => row.state === "waiting" && row.attempt?.failed === true;
-  var retryRecovered = (row) => ["club", "unassigned", "collected"].includes(row.state);
+  var retryRecovered = (row) => ["club", "unassigned", "acquired", "collected"].includes(row.state);
   var retryUncertain = (row) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(row.state);
   function mountFodderRetryResults({ document, parent, refreshPrices, retry, resume, isCurrent }) {
     let outcome = null, context = null, references = {}, edits = /* @__PURE__ */ new Map(), selected = /* @__PURE__ */ new Set();
@@ -15330,6 +15359,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress.max = outcome.total || rows.length || 1;
       progress.value = outcome.completed || 0;
       add2(side, "small", `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
+      if (rows.some((row) => row.state === "acquired")) add2(side, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
+      if (outcome.collection?.status === "pending") add2(side, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
       add2(side, "small", running ? "\u6B63\u5728\u8D2D\u4E70\uFF0C\u53EF\u70B9\u51FB Stop \u505C\u6B62\u540E\u7EED\u64CD\u4F5C\u3002" : recovery ? "\u6210\u4EA4\u6216\u5165\u5E93\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u3002" : pending2.length ? "\u5C1A\u672A\u5904\u7406\u7684\u5361\u8BF7\u70B9\u51FB Continue pending\uFF0C\u6CBF\u7528\u672C\u6279\u4EF7\u683C\u8BBE\u7F6E\u3002" : "Select failed players and adjust Buy Now before retrying.");
       if (outcome.reason) add2(side, "output", outcome.reason);
       const totals = add2(side, "output", "", "fd-retry-total");
@@ -15576,9 +15607,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const row of value.results ?? []) {
         const cell = rows.get(row.definitionId);
         if (cell) {
-          cell.source.textContent = { club: "Club", unassigned: "Unassigned", collected: "Collected", waiting: row.attempt?.failed ? "Not found" : "Market", "buy-pending": "Buying", bought: "Bought", "move-pending": "Moving", "move-rejected": "Not moved" }[row.state] ?? row.state;
+          cell.source.textContent = { club: "Club", unassigned: "Unassigned", acquired: "Bought \xB7 route unavailable", collected: "Collected", waiting: row.attempt?.failed ? "Not found" : "Market", "buy-pending": "Buying", bought: "Bought", "move-pending": "Moving", "move-rejected": "Not moved" }[row.state] ?? row.state;
           cell.price.textContent = row.reference?.estimate?.toLocaleString() ?? cell.price.textContent;
-          cell.price.classList.toggle("fd-acquired", ["club", "unassigned", "collected"].includes(row.state));
+          cell.price.classList.toggle("fd-acquired", ["club", "unassigned", "acquired", "collected"].includes(row.state));
           cell.paid.textContent = row.price > 0 ? row.price.toLocaleString() : "";
           cell.state.textContent = row.reason ?? "";
         }
@@ -15795,7 +15826,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     FC27_PUBLIC_PRICE_FUTBIN_DISABLED: "FUTBIN \u8BFB\u53D6\u5DF2\u5173\u95ED\uFF1B\u539F\u6279\u6B21\u4ECD\u91C7\u7528 FUTBIN\uFF0C\u8BF7\u91CD\u65B0\u5F00\u542F\u8BFB\u53D6\u6216\u91CD\u65B0\u751F\u6210 FUT.GG \u65B9\u6848\u3002",
     FC27_PUBLIC_PRICE_FUTGG_DISABLED: "FUT.GG \u8BFB\u53D6\u5DF2\u5173\u95ED\uFF1B\u5F53\u524D\u6279\u6B21\u7684\u4EF7\u683C\u6388\u6743\u4E0D\u53D8\uFF0C\u8BF7\u91CD\u65B0\u542F\u7528\u8BE5\u6765\u6E90\u6216\u751F\u6210\u65B0\u65B9\u6848\u3002"
   };
-  var recovered = (row) => ["club", "unassigned", "collected"].includes(row.state);
+  var recovered = (row) => ["club", "unassigned", "acquired", "collected"].includes(row.state);
   var uncertain = (row) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(row.state);
   var failed = (row) => row.state === "waiting" && row.attempt?.failed === true;
   var amount = (n) => Number.isFinite(n) ? n.toLocaleString() : "\u672A\u77E5";
@@ -15899,7 +15930,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const active = running && outcome?.definitionId === row.definitionId;
       const inFlight = { "buy-pending": "\u4E70\u5165\u4E2D", bought: "\u5DF2\u4E70\u5165\uFF0C\u5F85\u5165\u5E93", "move-pending": "\u5165\u5E93\u4E2D", "move-rejected": "\u5165\u5E93\u5931\u8D25\uFF0C\u4FDD\u7559\u56DE\u6267" };
-      const state = recovered(row) ? row.state === "unassigned" ? "Unassigned" : "\u5DF2\u5B8C\u6210" : uncertain(row) ? running ? inFlight[row.state] : "\u56DE\u6267\u5F85\u6838\u5BF9\uFF0C\u4E0D\u80FD\u91CD\u4E70" : failed(row) ? "\u672A\u4E70\u5230" : active ? "\u6B63\u5728\u67E5\u4EF7" : "\u5F85\u5904\u7406";
+      const state = recovered(row) ? row.state === "acquired" ? "\u5DF2\u4E70\u5165\uFF0C\u53BB\u5411\u672A\u786E\u8BA4" : row.state === "unassigned" ? "Unassigned" : "\u5DF2\u5B8C\u6210" : uncertain(row) ? running ? inFlight[row.state] : "\u56DE\u6267\u5F85\u6838\u5BF9\uFF0C\u4E0D\u80FD\u91CD\u4E70" : failed(row) ? "\u672A\u4E70\u5230" : active ? "\u6B63\u5728\u67E5\u4EF7" : "\u5F85\u5904\u7406";
       let name = row.name;
       if (!name && readPlayerName) {
         try {
@@ -16033,6 +16064,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!busy && (recovery || rows.some((row) => row.state === "waiting" && !row.attempt?.failed))) {
         button(content, recovery ? "\u6838\u5BF9\u5E76\u7EE7\u7EED" : "\u7EE7\u7EED\u672A\u5904\u7406", () => resume());
       }
+      if (rows.some((row) => row.state === "acquired")) add2(content, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
+      if (outcome?.collection?.status === "pending") add2(content, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
       error2 = add2(content, "p");
       error2.className = "purchase-error";
       error2.setAttribute("role", "status");
@@ -16527,7 +16560,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const remaining = replanableGalleryFailures(outcome);
           if (remaining.length) {
             purchaseReplan = { ...input.replanContext, outcome };
-            const acquired = (outcome.results ?? []).filter((item2) => ["club", "unassigned", "collected"].includes(item2.state)).length;
+            const acquired = (outcome.results ?? []).filter((item2) => ["club", "unassigned", "acquired", "collected"].includes(item2.state)).length;
             const replan = add2(resultList ?? dialog, "li", `\u5DF2\u786E\u8BA4 ${acquired} \u5F20\uFF1B\u5269\u4F59 ${remaining.length} \u5F20\u53EF\u91CD\u65B0\u8BA1\u7B97\u65B9\u6848`, "gallery-replan-ready");
             const replanButton = add2(replan, "button", "\u91CD\u65B0\u89C4\u5212\u5269\u4F59\u76EE\u6807");
             replanButton.type = "button";
@@ -18969,7 +19002,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const destination = select("Gallery \u8D2D\u5361\u53BB\u5411", [["club", "Club"], ["unassigned", "Unassigned"]]);
     const style = select("Gallery \u8D2D\u4E70 / \u6302\u724C\u98CE\u683C", [["enhancer", "Enhancer"], ["fodder", "Fodder"]]);
-    add2(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002Unassigned \u7684\u6536\u96C6\u8FDB\u5EA6\u4EE5 EA \u56DE\u8BFB\u4E3A\u51C6\u3002");
+    add2(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002\u753B\u5ECA\u8BB0\u5F55\u62E5\u6709\u8FC7\u7684\u5361\uFF0C\u552E\u51FA\u6216\u7528\u4E8E SBC \u4E0D\u64A4\u9500\u6536\u96C6\uFF1B\u8BA1\u5206\u4EE5 EA \u8BB0\u5F55\u4E3A\u51C6\u3002");
     const save = add2(card, "button", "\u4FDD\u5B58 Gallery \u4EA4\u6613\u8BBE\u7F6E");
     save.type = "button";
     const output = add2(card, "output");
@@ -21458,7 +21491,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               return !stopped;
             } })).references[definitionId] : null,
             attempts: settings.queriesNumber,
-            preflightReceiptRead: true,
+            preflightReceiptRead: record.entries.some((entry) => ["buy-pending", "move-pending", "move-rejected"].includes(entry.state) || (record.destination ?? "club") === "club" && ["waiting", "bought"].includes(entry.state)),
             canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope2),
             verifyCurrent: account,
             playerDetails: players,
@@ -23453,7 +23486,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const ingest = async (env, record) => {
       env.assert();
       validateGalleryPurchaseRecord(record, env.scope, env.context);
-      const receipts = record.entries.filter((row) => ["bought", "move-pending", "move-rejected", "club", "unassigned"].includes(row.state)).map((row) => ({
+      const receipts = record.entries.filter((row) => ["bought", "move-pending", "move-rejected", "club", "unassigned", "acquired"].includes(row.state)).map((row) => ({
         itemId: row.itemId,
         definitionId: row.definitionId,
         tradeId: row.tradeId,
@@ -30429,7 +30462,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.16" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.17" });
   var galleryAssets = Object.freeze({
     reward: (type) => {
       try {
@@ -30687,8 +30720,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.16"}`,
-    version: "27.0.16",
+    title: `FC Automation Tool ${"27.0.17"}`,
+    version: "27.0.17",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

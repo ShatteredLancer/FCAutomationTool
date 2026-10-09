@@ -105,6 +105,15 @@ it('blocks foreign, changed, pending and unconfirmed purchase journals', () => {
   expect(projectGalleryListingReceipts({ purchase: unconfirmed, scope, context, expectedOperationId: 'op-1', expectedBinding: 'set-revision' }).reason).toBe('FC27_GALLERY_COLLECTION_UNCONFIRMED');
 });
 
+it('keeps a confirmed but externally handled purchase out of listing candidates without erasing its receipt', () => {
+  const purchase = journal(); purchase.entries[0].state = 'acquired';
+  const before = structuredClone(purchase);
+  const source = projectGalleryListingReceipts({ purchase, scope, context, expectedOperationId: 'op-1', expectedBinding: 'set-revision' });
+  expect(source).toMatchObject({ status: 'observed', entries: [{ itemId: 12 }],
+    skipped: [{ definitionId: 101, reason: 'purchase-location-unavailable' }] });
+  expect(purchase).toEqual(before);
+});
+
 it('requires exact fresh Club identities and confirmed tradeability/protection facts', () => {
   const source = projectGalleryListingReceipts({ purchase: journal(), scope, context,
     expectedOperationId: 'op-1', expectedBinding: 'set-revision' });
