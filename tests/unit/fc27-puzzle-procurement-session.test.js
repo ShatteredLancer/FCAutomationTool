@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
+import * as procurement from '../../src/fc27/puzzle-procurement.js';
 
 function fixture() {
   const input = puzzleFillFixture(); input.challenge.rawRequirements[1].pairs[0].values = [33];
@@ -17,6 +18,29 @@ function fixture() {
     get: async (key, fallback) => structuredClone(cache.get(key) ?? fallback),
     set: async (key, value) => { cache.set(key, structuredClone(value)); } };
   return { input, now, cache, transport, options, session: createFc27PuzzleProcurementSession(options) };
+}
+
+function publicPrices(x, priceOf) {
+  return vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId,
+      season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, {
+        schema: 2, source, definitionId, season: '27', platform: 'pc', price: priceOf(definitionId),
+        fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null,
+      }])) }])) }));
+}
+
+function refinementFixture(joint = false) {
+  const x = fixture();
+  if (joint) x.input.inventory.items.pop();
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query);
+    return { ...page, entries: Array.from({ length: query.start === 0 ? 20 : 1 }, (_, index) => ({
+      ...page.entries[0], definitionId: query.start === 0 ? 901 + index : 921,
+      ...(query.start === 0 && index > 0 ? { special: true } : {}),
+    })), pageEndObserved: query.start !== 0 };
+  });
+  return x;
 }
 
 it.each([false, true])('prices all eligible Puzzle candidates before solving with zero EA quotes (joint=%s)', async joint => {
@@ -324,6 +348,137 @@ it('stops quoting alternatives after the first complete priced repair plan', asy
   });
   expect(await x.session.plan(x.input)).toMatchObject({ status: 'suggested', requests: 2 });
   expect(x.transport.readQuotePage).toHaveBeenCalledTimes(1);
+});
+
+it.each([false, true])('refines a high-cost plan with a cheaper next page (joint=%s)', async joint => {
+  const x = fixture();
+  if (joint) x.input.inventory.items.pop();
+  const catalog = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await catalog(query);
+    const base = page.entries[0];
+    const entries = Array.from({ length: query.start === 0 ? 20 : 1 }, (_, index) => ({
+      ...base, definitionId: query.start === 0 ? 901 + index : 921,
+      ...(query.start === 0 && index > 0 ? { special: true } : {}),
+    }));
+    return { ...page, entries, pageEndObserved: query.start !== 0 };
+  });
+  const loadPublicPrices = publicPrices(x, definitionId => definitionId === 921 ? 200 : 10000);
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 200 }], diagnostics: {
+    catalogAttempts: 2, catalogCandidates: 21, estimatedCost: 200,
+  } });
+  expect(result.plans[0].purchases[0]).toMatchObject({ definitionId: 921, estimatedUnitPrice: 200 });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
+});
+
+it.each([false, true])('retains the incumbent when later candidates cost more, reusing pages after restart (joint=%s)', async joint => {
+  const x = refinementFixture(joint);
+  const loadPublicPrices = publicPrices(x, id => id === 921 ? 12000 : 10000);
+  const options = { ...x.options, loadPublicPrices };
+  const first = await createFc27PuzzleProcurementSession(options).plan(x.input);
+  expect(first).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 10000 }], diagnostics: {
+    initialEstimatedCost: 10000, estimatedCost: 10000, refinementPasses: 2,
+  } });
+  expect(first.diagnostics.nodes).toBeLessThanOrEqual(joint ? 50000 : 20000);
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(3);
+  const second = await createFc27PuzzleProcurementSession(options).plan(x.input);
+  expect(second).toMatchObject({ status: 'suggested', requests: 0, cacheHits: 3, plans: [{ estimatedCost: 10000 }] });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(3);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('does not paginate an explicitly exhausted catalog lane', async () => {
+  const x = refinementFixture();
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => ({ ...await original(query), pageEndObserved: true }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices: publicPrices(x, () => 10000) }).plan(x.input);
+  expect(result.status).toBe('suggested');
+  expect(x.transport.readCatalogPage.mock.calls.every(([query]) => query.start === 0)).toBe(true);
+});
+
+it.each(['FC27_MARKET_HTTP_401', 'FC27_MARKET_HTTP_429'])('does not hide a later catalog %s behind a valid incumbent', async reason => {
+  const x = refinementFixture();
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    if (query.start > 0) throw Error(reason);
+    return original(query);
+  });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices: publicPrices(x, () => 10000) }).plan(x.input);
+  expect(result).toMatchObject({ status: 'blocked', reason, plans: [], diagnostics: { initialEstimatedCost: 10000 } });
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
+});
+
+it('refuses context drift during refinement even when the first plan was valid', async () => {
+  const x = refinementFixture(); let changed = false;
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query); if (query.start > 0) changed = true; return page;
+  });
+  expect(await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices: publicPrices(x, () => 10000) }).plan(x.input,
+    { assertCurrent: () => { if (changed) throw Error('FC27_PUZZLE_FILL_TARGET_CHANGED'); } }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_FILL_TARGET_CHANGED', plans: [] });
+});
+
+it('keeps the valid incumbent when a new candidate lacks the selected public quote, without EA quote fallback', async () => {
+  const x = refinementFixture();
+  const result = await createFc27PuzzleProcurementSession({ ...x.options,
+    loadPublicPrices: publicPrices(x, id => id === 921 ? null : 10000) }).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 10000 }], diagnostics: { excludedUnavailable: 1 } });
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('rechecks incumbent quote expiry before returning after refinement', async () => {
+  const x = refinementFixture(); let clock = x.now;
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query);
+    if (query.start > 0) clock += 300001;
+    return { ...page, observedAt: clock };
+  });
+  expect(await createFc27PuzzleProcurementSession({ ...x.options, now: () => clock,
+    loadPublicPrices: publicPrices(x, () => 10000) }).plan(x.input))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED', plans: [] });
+});
+
+it('retains the improved total cost when a third lane produces no cheaper result', async () => {
+  const x = refinementFixture();
+  const original = x.transport.readCatalogPage.getMockImplementation();
+  let pageIndex = 0;
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const page = await original(query);
+    if (++pageIndex === 3) return { ...page, entries: [{ ...page.entries[0], definitionId: 922 }] };
+    return page;
+  });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options,
+    loadPublicPrices: publicPrices(x, id => id === 921 ? 800 : 10000) }).plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 800 }], diagnostics: {
+    initialEstimatedCost: 10000, estimatedCost: 800, refinementPasses: 2,
+  } });
+});
+
+it.each([false, true])('uses the last remaining search unit and retains the incumbent at exhaustion (joint=%s)', async joint => {
+  const x = refinementFixture(joint);
+  const budget = joint ? 50000 : 20000;
+  const method = joint ? 'suggestFc27PuzzleJointPurchasesCooperatively' : 'suggestFc27PuzzlePurchasesCooperatively';
+  const original = procurement[method]; let pass = 0;
+  const spy = vi.spyOn(procurement, method).mockImplementation(async (...args) => {
+    const options = args.at(-1);
+    expect(options[joint ? 'maxNodes' : 'maxChecks']).toBe(pass ? 1 : budget);
+    if (pass++) return { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', plans: [], truncated: true,
+      ...(joint ? { nodes: 1 } : { checks: 1 }) };
+    const result = await original(...args);
+    return { ...result, ...(joint ? { nodes: budget - 1 } : { checks: budget - 1 }) };
+  });
+  try {
+    const result = await createFc27PuzzleProcurementSession({ ...x.options,
+      loadPublicPrices: publicPrices(x, () => 10000) }).plan(x.input);
+    expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 10000 }], diagnostics: {
+      initialEstimatedCost: 10000, nodes: budget, optimizationBudgetExhausted: true,
+      searchComplete: false, optimalWithinPool: false,
+    } });
+    expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
+  } finally { spy.mockRestore(); }
 });
 
 it('continues to procurement and persists a full concept plan when an owned slot is missing', async () => {

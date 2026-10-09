@@ -7,7 +7,7 @@ function validPlanContents(plan) {
       || !integer(plan.execution.partialWaitMs, 0, 3600000))) return false;
   if (!challenge || challenge.mechanism !== 'streamlined' || !integer(challenge.targetScore, 1)
       || !integer(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore)
-      || !integer(challenge.selectionLimit, 1, 1000) || !['lowest-coins', 'fewest-cards'].includes(plan.objective)
+      || !integer(challenge.selectionLimit, 1, 1000) || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(plan.objective)
       || !['ready', 'partial'].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 20000
       || !Array.isArray(batches) || batches.some(b => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit)
       || !same(batches.flat(), items) || new Set(items.map(i => i?.key)).size !== items.length) return false;
@@ -23,7 +23,7 @@ function validPlanContents(plan) {
     && plan.materialValue === value;
 }
 
-export function createStreamlinedPlan({ context, challenge, policy, result, objective = 'lowest-coins', execution = null } = {}) {
+export function createStreamlinedPlan({ context, challenge, policy, result, objective = 'lowest-value', execution = null } = {}) {
   if (!same(context, challenge?.context) || !['ready', 'partial'].includes(result?.status)
       || !Array.isArray(result.items) || !result.items.length || result.items.length > 20000
       || !Array.isArray(result.batches) || !integer(challenge.selectionLimit, 1, 1000)) fail('PLAN_UNCONFIRMED');

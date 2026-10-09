@@ -1,4 +1,4 @@
-import { readFc27Context } from './fc27-local-read.js';
+import { readFc27Context, isFc27PlayerItem } from './fc27-local-read.js';
 import { normalizeStreamlinedItem, integer, same, fail } from '../../streamlined/contract.js';
 import { filterStreamlinedItems } from '../../streamlined/eligibility.js';
 import { galleryReferenceQuote } from '../../gallery/public-price-policy.js';
@@ -58,7 +58,7 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, now = () =>
       const projected = [];
       for (const entity of entities.values()) {
         const cosmetics = entity.cosmetics, hyper = entity._hyperCosmeticDTOs;
-        if (entity.type !== 'player' || entity.concept !== true || entity.upgrades !== null
+        if (!isFc27PlayerItem(entity) || entity.concept !== true || entity.upgrades !== null
             || !Array.isArray(cosmetics) || !hyper || typeof hyper !== 'object'
             || cosmetics.length || Object.keys(hyper).length || !integer(entity.sbsScore, 1)
             || !integer(entity._rareflag, 0, 1)) continue;

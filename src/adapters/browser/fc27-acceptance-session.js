@@ -815,6 +815,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           usableCandidates: d?.usableCandidates, excludedUnavailable: d?.excludedUnavailable,
           estimatedCost: purchase.estimatedCost ?? d?.estimatedCost, purchaseCount: purchase.purchaseCount,
           ownedCount: purchase.ownedCount, priceSource: d?.priceSource,
+          initialEstimatedCost: d?.initialEstimatedCost, refinementPasses: d?.refinementPasses,
+          optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
           searchComplete: d?.searchComplete, optimalWithinPool: d?.optimalWithinPool,
           cached: purchase.cacheHits > 0 });
         for (const card of purchase?.cards ?? []) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-card',

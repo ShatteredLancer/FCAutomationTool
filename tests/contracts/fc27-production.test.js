@@ -9,6 +9,8 @@ it('builds the current production version without historical feature or byte cei
   expect(artifact.manifest).not.toHaveProperty('pending');
   expect(artifact.metadata).toContain('// @name         FC Automation Tool\n');
   expect(artifact.metadata).toContain('// @namespace    https://github.com/ShatteredLancer/FCAutomationTool\n');
+  expect(artifact.metadata).toContain('// @grant        GM_listValues\n');
+  expect(artifact.manifest.inputs).toContain('src/adapters/browser/fc27-gallery-cache-migration.js');
   expect(artifact.metadata).toContain('/releases/latest/download/FCAutomationTool.meta.js');
   expect(artifact.metadata).toContain('/releases/latest/download/FCAutomationTool.user.js');
   expect(artifact.script).toContain('liveEnabled: true');

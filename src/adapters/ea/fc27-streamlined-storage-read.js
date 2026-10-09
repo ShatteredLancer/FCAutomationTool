@@ -1,5 +1,5 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
-import { readFc27Context, snapshotFc27ClubPlayer } from './fc27-local-read.js';
+import { readFc27Context, snapshotFc27ClubPlayer, isFc27PlayerItem } from './fc27-local-read.js';
 import { FC27_CLUB_READ_METHODS } from './fc27-club-read.js';
 import { verifyFc27Methods } from './fc27-transaction-transport.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
@@ -80,7 +80,7 @@ export async function createFc27StreamlinedStorageReader(root, { onEntity = null
             || ![undefined, 'player'].includes(ownData(item, 'itemType')))) fail('STORAGE_PAYLOAD_UNVERIFIED');
       const rows = data.map(data => {
         const entity = createItem.call(factory, { ...data });
-        if (ownData(entity, 'type') !== 'player' || ownData(entity, 'id') !== data.id
+        if (!isFc27PlayerItem(entity) || ownData(entity, 'id') !== data.id
             || ownData(entity, 'definitionId') !== data.resourceId || ownData(entity, 'utasPile') !== pile
             || ownData(entity, 'concept') !== false) fail('STORAGE_ENTITY_UNVERIFIED');
         const snapshot = { ...snapshotFc27ClubPlayer(entity, root), pile: 'storage' };

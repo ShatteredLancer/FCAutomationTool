@@ -282,7 +282,8 @@ it('exports procurement cost and selected public versions after a successful con
   const payload = await diagnosticLog.exportPayload();
   expect(payload.entries).toEqual(expect.arrayContaining([
     expect.objectContaining({ area: 'puzzle', event: 'procurement-result', setId: 4, challengeId: 16,
-      estimatedCost: 500, purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true }),
+      estimatedCost: 500, initialEstimatedCost: 500, refinementPasses: 0, optimizationBudgetExhausted: false,
+      purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true }),
     expect.objectContaining({ area: 'puzzle', event: 'procurement-card', definitionId: 901, referencePrice: 500 }),
   ]));
   expect(JSON.stringify(payload)).not.toMatch(/accountScope|selectedOwned|catalogRef|operationId/);

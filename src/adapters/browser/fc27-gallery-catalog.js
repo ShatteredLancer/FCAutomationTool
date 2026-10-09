@@ -1,6 +1,7 @@
 import { diffGalleryCatalog, galleryCachePayload, normalizeGalleryCatalog } from '../../gallery/catalog.js';
 import { galleryPoolCachePayload, normalizeGalleryPool } from '../../gallery/pool.js';
 import { parseGalleryPriceResponse } from '../../gallery/prices.js';
+import { decodeGalleryCacheValue, encodeGalleryCacheValue } from './fc27-gallery-cache-codec.js';
 
 export const FC27_GALLERY_URLS = Object.freeze({
   futgg: 'https://www.fut.gg/api/fut/gallery/fc27/',
@@ -105,7 +106,7 @@ export function createFc27GalleryTransport(gmRequest, { diagnosticLog = null } =
 }
 
 export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue, scope = 'public',
-  season = '27', now = () => Date.now(), ttlMs = GALLERY_TTL_MS, diagnosticLog = null } = {}) {
+  season = '27', now = () => Date.now(), ttlMs = GALLERY_TTL_MS, diagnosticLog = null, cacheMigration = null } = {}) {
   if (typeof http?.get !== 'function' || !validScope(scope) || season !== '27'
       || !Number.isSafeInteger(ttlMs) || ttlMs < 1) throw new TypeError('FC27_GALLERY_PROVIDER_INVALID');
   const cacheKey = `fcat-fc27-gallery-catalog:${season}:${scope}`;
@@ -135,9 +136,10 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     catalog: entry.catalog, fetchedAt: entry.fetchedAt, revision: entry.catalog.revision,
     fallback: entry.source === 'fodder', sourceErrors: lastSourceErrors, ...extra });
   const read = () => reading ??= (async () => {
+    await cacheMigration;
     if (typeof gmGetValue !== 'function') return;
     try {
-      const saved = await gmGetValue(cacheKey, null);
+      const saved = await decodeGalleryCacheValue(await gmGetValue(cacheKey, null));
       if (saved?.schema !== 2 || saved.season !== season || saved.scope !== scope || !Array.isArray(saved.entries)) return;
       for (const row of saved.entries.slice(0, 2)) try {
         if (!Number.isSafeInteger(row.fetchedAt) || row.fetchedAt < 0 || row.fetchedAt > now()) continue;
@@ -148,9 +150,10 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     } catch { /* Cache is optional. */ }
   })();
   const readPools = () => poolsReading ??= (async () => {
+    await cacheMigration;
     if (typeof gmGetValue !== 'function') return;
     try {
-      const saved = await gmGetValue(poolCacheKey, null);
+      const saved = await decodeGalleryCacheValue(await gmGetValue(poolCacheKey, null));
       if (saved?.schema !== 1 || saved.season !== season || saved.scope !== scope || !Array.isArray(saved.entries)) return;
       for (const row of saved.entries.slice(0, 256)) try {
         if (!Number.isSafeInteger(row.setId) || row.setId < 1 || !Number.isSafeInteger(row.fetchedAt)
@@ -171,7 +174,7 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
         && row.setId === numericId && Number.isSafeInteger(row.fetchedAt)
         && row.fetchedAt >= 0 && row.fetchedAt <= now();
       try {
-        const row = await gmGetValue(poolEntryKey(numericId), null);
+        const row = await decodeGalleryCacheValue(await gmGetValue(poolEntryKey(numericId), null));
         if (valid(row)) {
           const pool = normalizeGalleryPool('futgg', row.payload, numericId, season);
           if (row.revision === pool.revision) pools.set(numericId, { source: 'futgg', setId: numericId,
@@ -194,16 +197,16 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
   const persist = async () => {
     if (typeof gmSetValue !== 'function') return;
     const records = [...entries.values()].map(({ catalog, ...entry }) => ({ ...entry, payload: galleryCachePayload(catalog) }));
-    try { await gmSetValue(cacheKey, { schema: 2, season, scope, active: active?.source, entries: records }); } catch { /* Memory snapshot remains usable. */ }
+    try { await gmSetValue(cacheKey, await encodeGalleryCacheValue({ schema: 2, season, scope, active: active?.source, entries: records })); } catch { /* Memory snapshot remains usable. */ }
   };
   const persistPool = async entry => {
     if (typeof gmSetValue !== 'function') return;
     const meta = { schema: 1, season, scope, setId: entry.setId, revision: entry.pool.revision,
       fetchedAt: entry.fetchedAt, etag: entry.etag, modified: entry.modified };
     try {
-      if (!entry.unchanged) await gmSetValue(poolEntryKey(entry.setId), {
+      if (!entry.unchanged) await gmSetValue(poolEntryKey(entry.setId), await encodeGalleryCacheValue({
         ...meta, payload: galleryPoolCachePayload(entry.pool),
-      });
+      }));
       await gmSetValue(`${poolEntryKey(entry.setId)}:checked`, meta);
     } catch { /* Keep memory usable; a failed write cannot certify a different saved revision. */ }
   };

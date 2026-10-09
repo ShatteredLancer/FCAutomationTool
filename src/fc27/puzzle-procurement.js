@@ -87,8 +87,10 @@ export const suggestFc27PuzzlePurchases = (input, seed, entries, options) =>
   finishPuzzleSearch(iteratePurchases(input, seed, entries, options));
 export const suggestFc27PuzzlePurchasesCooperatively = (input, seed, entries, options) =>
   finishPuzzleSearchCooperatively(iteratePurchases(input, seed, entries, options), options);
-function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress = null, prices = null } = {}) {
+function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress = null, prices = null, costCeiling = null } = {}) {
   if (!validSeed(input, seed)) return stop('FC27_PURCHASE_REPAIR_INPUTS_CHANGED');
+  if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
+    return stop('FC27_MARKET_POLICY_INVALID');
   if (!Array.isArray(entries) || entries.length > 60 || !Number.isInteger(maxChecks) || maxChecks < 1 || maxChecks > 50000) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   const pool = poolOf(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
@@ -102,7 +104,7 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
   const slots = seed.squad.flatMap((item, index) => item ? [index] : []);
   const plans = []; const combinations = new Set(); let checks = 0; let lastProgressAt = 0;
   const cost = plan => prices ? plan.purchases.reduce((sum, item) => sum + prices.get(item.definitionId), 0) : 0;
-  let bestCost = Infinity;
+  let bestCost = costCeiling ?? Infinity;
   const reportProgress = (force = false) => {
     if (typeof onProgress !== 'function') return;
     const now = Date.now();
@@ -123,6 +125,7 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
       clubLinks: input.clubLinks, chemistry: facts.chemistry, teamRating: facts.teamRating });
     if (validation.status !== 'satisfied') return;
     const plan = projectSuggestion(squad, facts, parsed.rules.length);
+    if (prices && costCeiling !== null && cost(plan) >= costCeiling) return;
     const key = plan.purchases.map(item => item.definitionId).sort((a, b) => a - b).join(',');
     if (combinations.has(key)) return;
     combinations.add(key);
@@ -269,8 +272,11 @@ export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
   finishPuzzleSearch(iterateJointPurchases(input, entries, options));
 export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
-function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null } = {}) {
+function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null,
+  costCeiling = null } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
+  if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
+    return stop('FC27_MARKET_POLICY_INVALID');
   const pool = poolOf(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
@@ -286,7 +292,8 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   // The legacy inspection path keeps unit weights, never fabricated coins.
   const result = yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes,
     pool: { ...pool, candidates: [...pool.candidates, ...market] },
-    procurement: { budget: prices ? required(input) * MAX_PUZZLE_QUOTE_PRICE : required(input), maxPurchases: required(input),
+    procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
+      costCeiling === null ? Infinity : costCeiling - 1) : required(input), maxPurchases: required(input),
       priceAware: prices instanceof Map,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1 : 0 }, onProgress });
   if (result.status !== 'preview') return { ...stop(result.reason), marketCandidates: market.length,

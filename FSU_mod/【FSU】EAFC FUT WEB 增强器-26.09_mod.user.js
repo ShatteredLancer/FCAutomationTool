@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         【FSU】EAFC FUT WEB 增强器
 // @namespace    https://futcd.com/
-// @version      26.09.9
+// @version      26.09.10
 // @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
 // @author       Futcd_kcka
 // @contributor  ShatteredLancer
@@ -21,6 +21,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_listValues
 // @grant        GM_registerMenuCommand
 // @grant        GM_info
 // @connect      *
@@ -42,6 +43,98 @@
 
 (function () {
     'use strict';
+
+    // Lossless GM transport encoding only; native payloads and cache readiness are unchanged.
+    function createFsuClubCacheCodec() {
+        const format = 'fsu-club-gzip-v1', maxBytes = 32 * 1024 * 1024;
+        const collect = async stream => {
+            const reader = stream.getReader(), chunks = [];
+            let length = 0;
+            try {
+                for (;;) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    length += value.byteLength;
+                    if (length > maxBytes) throw new Error('FSU_CACHE_TOO_LARGE');
+                    chunks.push(value);
+                }
+            } catch (error) { await reader.cancel().catch(() => {}); throw error; }
+            finally { reader.releaseLock(); }
+            const result = new Uint8Array(length);
+            let offset = 0;
+            for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+            return result;
+        };
+        const encode = async value => {
+            const text = JSON.stringify(value);
+            if (typeof CompressionStream !== 'function') return text;
+            const bytes = new TextEncoder().encode(text);
+            if (bytes.byteLength < 128 * 1024 || bytes.byteLength > maxBytes) return text;
+            const packed = await collect(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')));
+            let binary = '';
+            for (let offset = 0; offset < packed.length; offset += 8192) {
+                binary += String.fromCharCode(...packed.subarray(offset, offset + 8192));
+            }
+            const encoded = JSON.stringify({ format, data: btoa(binary) });
+            return encoded.length < text.length ? encoded : text;
+        };
+        const decode = async stored => {
+            const value = typeof stored === 'string' ? JSON.parse(stored) : stored;
+            if (Array.isArray(value) || value == null) return value;
+            if (value.format !== format || typeof value.data !== 'string'
+                || value.data.length > maxBytes * 2 || typeof DecompressionStream !== 'function') {
+                throw new Error('FSU_CACHE_INVALID');
+            }
+            const binary = atob(value.data), bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+            const unpacked = await collect(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')));
+            const result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(unpacked));
+            if (!Array.isArray(result)) throw new Error('FSU_CACHE_INVALID');
+            return result;
+        };
+        const writeVerifiedChunk = async (key, chunk) => {
+            const encoded = await encode(chunk);
+            GM_setValue(key, encoded);
+            if (GM_getValue(key, null) !== encoded) throw new Error('FSU_CACHE_WRITE_UNVERIFIED');
+            return encoded;
+        };
+        const compact = async () => {
+            const report = { status: 'running', checked: 0, compacted: 0, failed: 0 };
+            try {
+                if (typeof GM_listValues !== 'function') throw new Error('FSU_CACHE_ENUMERATION_UNAVAILABLE');
+                const keys = GM_listValues();
+                if (!Array.isArray(keys) || keys.length > 100000) throw new Error('FSU_CACHE_KEYS_INVALID');
+                for (const key of keys) {
+                    if (!/^fsu_club_entities_v2_\d+_.+_slot[01]_\d+$/.test(key)) continue;
+                    report.checked++;
+                    try {
+                        const original = GM_getValue(key, null);
+                        if (original == null) continue;
+                        const parsed = typeof original === 'string' ? JSON.parse(original) : original;
+                        if (parsed?.format === format) continue;
+                        if (!Array.isArray(parsed)) throw new Error('FSU_CACHE_INVALID');
+                        const encoded = await encode(parsed);
+                        if (JSON.parse(encoded)?.format !== format) continue;
+                        if (JSON.stringify(await decode(encoded)) !== JSON.stringify(parsed)) throw new Error('FSU_CACHE_ROUNDTRIP');
+                        if (JSON.stringify(GM_getValue(key, null)) !== JSON.stringify(original)) throw new Error('FSU_CACHE_CHANGED');
+                        GM_setValue(key, encoded);
+                        if (GM_getValue(key, null) !== encoded) throw new Error('FSU_CACHE_WRITE_UNVERIFIED');
+                        report.compacted++;
+                    } catch { report.failed++; }
+                }
+                report.status = report.failed ? 'partial' : 'completed';
+            } catch { report.status = 'failed'; report.failed++; }
+            return report;
+        };
+        return { encode, decode, compact, writeVerifiedChunk };
+    }
+    const fsuClubCacheCodec = createFsuClubCacheCodec();
+    const fsuClubCacheMigration = (typeof navigator?.locks?.request === 'function'
+        ? navigator.locks.request('fsu:club-cache-compaction', { mode: 'exclusive' }, fsuClubCacheCodec.compact)
+        : fsuClubCacheCodec.compact()).catch(() => ({ status: 'failed', failed: 1 })).then(report => {
+            console.info('[FSU_CACHE_MIGRATION]', JSON.stringify(report));
+            return report;
+        });
 
     function futweb() {
         
@@ -8342,6 +8435,7 @@
                     && Boolean(entity.tradable) === !Boolean(payload.untradeable);
             };
             const restoreClubEntityCache = async expectedCount => {
+                await fsuClubCacheMigration;
                 const startedAt = Date.now();
                 const baseKey = getClubEntityCacheBaseKey();
                 const manifest = readJsonValue(`${baseKey}_manifest`);
@@ -8361,7 +8455,9 @@
 
                 const payloads = [];
                 for(let index = 0; index < Number(manifest.chunkCount); index++){
-                    const chunk = readJsonValue(`${baseKey}_slot${manifest.slot}_${index}`);
+                    let chunk;
+                    try { chunk = await fsuClubCacheCodec.decode(GM_getValue(`${baseKey}_slot${manifest.slot}_${index}`, null)); }
+                    catch { chunk = null; }
                     if(!Array.isArray(chunk)){
                         console.warn(`[FSU club cache] ignored incomplete cache; missing chunk ${index + 1}/${manifest.chunkCount}`);
                         info.base.clubCache = { status:"invalid", restored:0, verified:0, expected:expectedCount };
@@ -8418,6 +8514,7 @@
                 return { restored:ids.size > 0, ids, count:ids.size, manifest };
             };
             const saveClubEntityCache = async(expectedCount, snapshot, verifiedPayloads = null, cacheMetadata = {}) => {
+                await fsuClubCacheMigration;
                 const startedAt = Date.now();
                 const baseKey = getClubEntityCacheBaseKey();
                 const previousManifest = readJsonValue(`${baseKey}_manifest`, {});
@@ -8449,9 +8546,8 @@
                 let storedBytes = 0;
                 for(let index = 0; index < chunkCount; index++){
                     const chunk = payloads.slice(index * CLUB_ENTITY_CACHE_CHUNK_SIZE, (index + 1) * CLUB_ENTITY_CACHE_CHUNK_SIZE);
-                    const encoded = JSON.stringify(chunk);
+                    const encoded = await fsuClubCacheCodec.writeVerifiedChunk(`${baseKey}_slot${slot}_${index}`, chunk);
                     storedBytes += encoded.length;
-                    GM_setValue(`${baseKey}_slot${slot}_${index}`, encoded);
                     await delay(0);
                 }
                 const manifest = {

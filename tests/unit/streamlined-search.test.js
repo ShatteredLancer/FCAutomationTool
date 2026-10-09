@@ -9,7 +9,7 @@ it('matches an exhaustive oracle on small pools, including repeated versions and
     const target = 20 + rand(120);
     const inventory = Array.from({ length: 8 }, (_, i) => safeItem({ id: i + 1, definitionId: 9,
       points: 5 + rand(60), price: 100 + rand(1000) }));
-    for (const objective of ['lowest-coins', 'fewest-cards']) {
+    for (const objective of ['lowest-value', 'lowest-coins', 'fewest-cards']) {
       let best = null;
       for (let mask = 1; mask < 256; mask++) {
         const selected = inventory.filter((_, i) => mask & (1 << i));

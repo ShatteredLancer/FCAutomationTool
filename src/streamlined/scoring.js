@@ -7,9 +7,19 @@ export function scoreStreamlinedItems(items = []) {
   return { status: 'observed', total, count: items.length };
 }
 
-export function compareStreamlinedPlans(a, b, objective = 'lowest-coins') {
+export function streamlinedResourceCost(plan) {
+  return unknownValue(plan) > 0 || plan.materialValue == null ? Infinity : plan.purchaseCost + plan.materialValue;
+}
+
+const unknownValue = plan => plan.unknownValue ?? plan.unknownValueCount ?? Number(plan.materialValue == null);
+
+export function compareStreamlinedPlans(a, b, objective = 'lowest-value') {
   // Balanced's private weights are unknown and are not invented here.
   if (objective === 'fewest-cards' && a.count !== b.count) return a.count - b.count;
-  return a.purchaseCost - b.purchaseCost || a.unknownValue - b.unknownValue || a.materialValue - b.materialValue
-    || a.score - b.score || a.count - b.count || a.storagePenalty - b.storagePenalty;
+  if (objective === 'lowest-value') {
+    const cost = streamlinedResourceCost(a) - streamlinedResourceCost(b);
+    if (cost) return cost;
+  }
+  return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0)
+    || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
 }

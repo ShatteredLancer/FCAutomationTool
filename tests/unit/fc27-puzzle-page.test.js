@@ -30,6 +30,14 @@ it('binds the current native challenge and its right-side exchange anchor', () =
   expect(readFc27PuzzlePage(x.root).challengeId).toBe(44);
 });
 
+it('accepts an Enhancer wrapper with the same verified EA controller fields', () => {
+  const x = fixture();
+  x.root.UTSBCSquadSplitViewController = class MissingNativeConstructor {};
+  x.root.UTSBCSquadDetailPanelViewController = class MissingDetailConstructor {};
+  x.controller.getView = () => ({});
+  expect(readFc27PuzzlePage(x.root)).toMatchObject({ setId: 19, challengeId: 43, anchor: x.anchor });
+});
+
 it('reads rules and the native Challenge squad locally, including both EA empty item IDs', () => {
   const x = fixture();
   const request = vi.fn(() => { throw new Error('Unexpected request'); });

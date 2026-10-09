@@ -1,31 +1,127 @@
 diff --git a/FSU.user.js b/FSU.user.js
-index dd554ab..c214786 100644
+index dd554ab..1ceacc9 100644
 --- a/FSU.user.js
 +++ b/FSU.user.js
 @@ -3,5 +3,8 @@
  // @namespace    https://futcd.com/
 -// @version      26.09
 -// @description  EAFCFUT模式SBC任务便捷操作增强器👍👍👍，模拟开包、额外信息展示、近期低价自动查询、一键挂出球员、跳转FUTBIN、快捷搜索、拍卖行优化等等...👍👍👍
-+// @version      26.09.9
++// @version      26.09.10
 +// @description  Local maintained FSU 26.09 build with validated Club cache and scoped payload optimizations.
  // @author       Futcd_kcka
 +// @contributor  ShatteredLancer
 +// @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool/tree/main/FSU_mod
 +// @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
  // @match        https://www.ea.com/ea-sports-fc/ultimate-team/web-app/*
-@@ -20,2 +23,4 @@
+@@ -20,2 +23,5 @@
  // @grant        GM_setValue
++// @grant        GM_listValues
 +// @grant        GM_registerMenuCommand
 +// @grant        GM_info
  // @connect      *
-@@ -32,4 +37,4 @@
+@@ -32,4 +38,4 @@
  // @run-at       document-end
 -// @downloadURL https://update.greasyfork.org/scripts/431044/%E3%80%90FSU%E3%80%91EAFC%20FUT%20WEB%20%E5%A2%9E%E5%BC%BA%E5%99%A8.user.js
 -// @updateURL https://update.greasyfork.org/scripts/431044/%E3%80%90FSU%E3%80%91EAFC%20FUT%20WEB%20%E5%A2%9E%E5%BC%BA%E5%99%A8.meta.js
 +// @downloadURL  https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.user.js
 +// @updateURL    https://github.com/ShatteredLancer/FCAutomationTool/releases/latest/download/FSU-Local.meta.js
  // ==/UserScript==
-@@ -261,3 +266,35 @@
+@@ -40,2 +46,94 @@
+ 
++    // Lossless GM transport encoding only; native payloads and cache readiness are unchanged.
++    function createFsuClubCacheCodec() {
++        const format = 'fsu-club-gzip-v1', maxBytes = 32 * 1024 * 1024;
++        const collect = async stream => {
++            const reader = stream.getReader(), chunks = [];
++            let length = 0;
++            try {
++                for (;;) {
++                    const { value, done } = await reader.read();
++                    if (done) break;
++                    length += value.byteLength;
++                    if (length > maxBytes) throw new Error('FSU_CACHE_TOO_LARGE');
++                    chunks.push(value);
++                }
++            } catch (error) { await reader.cancel().catch(() => {}); throw error; }
++            finally { reader.releaseLock(); }
++            const result = new Uint8Array(length);
++            let offset = 0;
++            for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
++            return result;
++        };
++        const encode = async value => {
++            const text = JSON.stringify(value);
++            if (typeof CompressionStream !== 'function') return text;
++            const bytes = new TextEncoder().encode(text);
++            if (bytes.byteLength < 128 * 1024 || bytes.byteLength > maxBytes) return text;
++            const packed = await collect(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')));
++            let binary = '';
++            for (let offset = 0; offset < packed.length; offset += 8192) {
++                binary += String.fromCharCode(...packed.subarray(offset, offset + 8192));
++            }
++            const encoded = JSON.stringify({ format, data: btoa(binary) });
++            return encoded.length < text.length ? encoded : text;
++        };
++        const decode = async stored => {
++            const value = typeof stored === 'string' ? JSON.parse(stored) : stored;
++            if (Array.isArray(value) || value == null) return value;
++            if (value.format !== format || typeof value.data !== 'string'
++                || value.data.length > maxBytes * 2 || typeof DecompressionStream !== 'function') {
++                throw new Error('FSU_CACHE_INVALID');
++            }
++            const binary = atob(value.data), bytes = new Uint8Array(binary.length);
++            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
++            const unpacked = await collect(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')));
++            const result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(unpacked));
++            if (!Array.isArray(result)) throw new Error('FSU_CACHE_INVALID');
++            return result;
++        };
++        const writeVerifiedChunk = async (key, chunk) => {
++            const encoded = await encode(chunk);
++            GM_setValue(key, encoded);
++            if (GM_getValue(key, null) !== encoded) throw new Error('FSU_CACHE_WRITE_UNVERIFIED');
++            return encoded;
++        };
++        const compact = async () => {
++            const report = { status: 'running', checked: 0, compacted: 0, failed: 0 };
++            try {
++                if (typeof GM_listValues !== 'function') throw new Error('FSU_CACHE_ENUMERATION_UNAVAILABLE');
++                const keys = GM_listValues();
++                if (!Array.isArray(keys) || keys.length > 100000) throw new Error('FSU_CACHE_KEYS_INVALID');
++                for (const key of keys) {
++                    if (!/^fsu_club_entities_v2_\d+_.+_slot[01]_\d+$/.test(key)) continue;
++                    report.checked++;
++                    try {
++                        const original = GM_getValue(key, null);
++                        if (original == null) continue;
++                        const parsed = typeof original === 'string' ? JSON.parse(original) : original;
++                        if (parsed?.format === format) continue;
++                        if (!Array.isArray(parsed)) throw new Error('FSU_CACHE_INVALID');
++                        const encoded = await encode(parsed);
++                        if (JSON.parse(encoded)?.format !== format) continue;
++                        if (JSON.stringify(await decode(encoded)) !== JSON.stringify(parsed)) throw new Error('FSU_CACHE_ROUNDTRIP');
++                        if (JSON.stringify(GM_getValue(key, null)) !== JSON.stringify(original)) throw new Error('FSU_CACHE_CHANGED');
++                        GM_setValue(key, encoded);
++                        if (GM_getValue(key, null) !== encoded) throw new Error('FSU_CACHE_WRITE_UNVERIFIED');
++                        report.compacted++;
++                    } catch { report.failed++; }
++                }
++                report.status = report.failed ? 'partial' : 'completed';
++            } catch { report.status = 'failed'; report.failed++; }
++            return report;
++        };
++        return { encode, decode, compact, writeVerifiedChunk };
++    }
++    const fsuClubCacheCodec = createFsuClubCacheCodec();
++    const fsuClubCacheMigration = (typeof navigator?.locks?.request === 'function'
++        ? navigator.locks.request('fsu:club-cache-compaction', { mode: 'exclusive' }, fsuClubCacheCodec.compact)
++        : fsuClubCacheCodec.compact()).catch(() => ({ status: 'failed', failed: 1 })).then(report => {
++            console.info('[FSU_CACHE_MIGRATION]', JSON.stringify(report));
++            return report;
++        });
++
+     function futweb() {
+@@ -261,3 +359,35 @@
          };
 +        events.requireClubReady = function(action){
 +            const cacheStatus = info.base.clubCache?.status;
@@ -61,7 +157,7 @@ index dd554ab..c214786 100644
 +            }
 +            const run = async() => {
              SBCCount.init();
-@@ -648,3 +685,8 @@
+@@ -648,3 +778,8 @@
              }
 -            await events.reloadPlayers();
 +            events.reloadPlayers({ reason:"startup" }).then(success => {
@@ -71,7 +167,7 @@ index dd554ab..c214786 100644
 +            });
 +            console.log("[FSU init] core initialization continues while Club player data loads in the background");
  
-@@ -737,2 +779,17 @@
+@@ -737,2 +872,17 @@
              console.log(info.squad)
 +            };
 +            info.base.initPromise = run()
@@ -89,11 +185,11 @@ index dd554ab..c214786 100644
 +                });
 +            return info.base.initPromise;
          };
-@@ -1272,2 +1329,3 @@
+@@ -1272,2 +1422,3 @@
              "notice.ldataerror":["球员数据加载失败 请重刷新页面加载 否则核心功能无法使用","球員資料載入失敗 請重重新整理頁面載入 否則核心功能無法使用","Player data loading failed, please refresh the page to load, otherwise the core functions cannot be used"],
 +            "notice.ldataloading":["球员数据正在后台加载，请稍后再使用库存填充功能","球員資料正在背景載入，請稍後再使用庫存填充功能","Player data is loading in the background. Please retry the inventory action shortly."],
              "loadingclose.ldata":["正在读取球员数据（%1/%2）请耐心等待","正在讀取球員資料（%1/%2）請耐心等待","Reading player data (%1/%2) please be patient"],
-@@ -1636,4 +1694,7 @@
+@@ -1636,4 +1787,7 @@
          }
 -
 -
@@ -103,17 +199,17 @@ index dd554ab..c214786 100644
 +            return Number.isInteger(value) && value >= 20 && value <= 99 ? String(value) : null;
 +        };
          //25.01 新的获取价格接口
-@@ -1645,2 +1706,4 @@
+@@ -1645,2 +1799,4 @@
                  if([1, 2].includes(info.apiPlatform)){
 +                    const season = getPriceSeason();
 +                    if (!season) throw new Error("PRICE_SEASON_UNVERIFIED");
                      let params = data.join("%2C")
-@@ -1648,3 +1711,3 @@
+@@ -1648,3 +1804,3 @@
                      let platform = info.base.platform === "pc" ? `&platform=${info.base.platform}` : "";
 -                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/26/?ids=${params}${platform}`);
 +                    const response = await events.externalRequest("GET", `${baseUrl}player-prices/${season}/?ids=${params}${platform}`);
                      const originalJson = JSON.parse(response);
-@@ -2142,5 +2205,11 @@
+@@ -2142,5 +2298,11 @@
                  //26.04 自动切换价格获取接口的脚本
 +                const season = getPriceSeason();
 +                if (!season) {
@@ -126,13 +222,13 @@ index dd554ab..c214786 100644
 -                    url: `https://www.fut.gg/api/fut/player-prices/26/?ids=${_.random(20000, 39999)}`,
 +                    url: `https://www.fut.gg/api/fut/player-prices/${season}/?ids=${_.random(20000, 39999)}`,
                      anonymous: false, // 关键：利用当前页面的已存 Cookie
-@@ -4070,2 +4139,5 @@
+@@ -4070,2 +4232,5 @@
              let mp = new EADialogViewController({
 +                // FC27 uses named options; FC26 still reads dialogOptions.
 +                continueOption: o[0],
 +                cancelOption: o[1],
                  dialogOptions: o,
-@@ -4086,2 +4158,26 @@
+@@ -4086,2 +4251,26 @@
              gPopupClickShield.setActivePopup(mp);
 +            // Preserve FSU's custom labels and third action on the FC27 view.
 +            const modernDialogView = mp.getView();
@@ -159,7 +255,7 @@ index dd554ab..c214786 100644
 +                }
 +            }
              _.flatMap(mp.getView().dialogOptions,(v,i) => {
-@@ -6786,2 +6882,67 @@
+@@ -6786,2 +6975,67 @@
          }
 +        // Home can finish rendering before its Controller is attached to the navigation stack.
 +        events.scheduleHomeInitialization = (view) => {
@@ -227,7 +323,7 @@ index dd554ab..c214786 100644
 +            }, 100);
 +        };
          UTHomeHubView.prototype._generate = function (...args) {
-@@ -6815,14 +6976,6 @@
+@@ -6815,14 +7069,6 @@
                      (e) => {
 -                        services.Club.clubDao.clubRepo.items.reset();
                          events.waitForClickShieldToHide(() => {
@@ -245,7 +341,7 @@ index dd554ab..c214786 100644
 +                                console.error("[FSU club load] manual reload failed", error);
 +                            });
                          });
-@@ -6833,89 +6986,2325 @@
+@@ -6833,89 +7079,2328 @@
  
 -                events.waitForClickShieldToHide(() => {
 -                    try {
@@ -1624,6 +1720,7 @@ index dd554ab..c214786 100644
 +                    && Boolean(entity.tradable) === !Boolean(payload.untradeable);
 +            };
 +            const restoreClubEntityCache = async expectedCount => {
++                await fsuClubCacheMigration;
 +                const startedAt = Date.now();
 +                const baseKey = getClubEntityCacheBaseKey();
 +                const manifest = readJsonValue(`${baseKey}_manifest`);
@@ -1643,7 +1740,9 @@ index dd554ab..c214786 100644
 +
 +                const payloads = [];
 +                for(let index = 0; index < Number(manifest.chunkCount); index++){
-+                    const chunk = readJsonValue(`${baseKey}_slot${manifest.slot}_${index}`);
++                    let chunk;
++                    try { chunk = await fsuClubCacheCodec.decode(GM_getValue(`${baseKey}_slot${manifest.slot}_${index}`, null)); }
++                    catch { chunk = null; }
 +                    if(!Array.isArray(chunk)){
 +                        console.warn(`[FSU club cache] ignored incomplete cache; missing chunk ${index + 1}/${manifest.chunkCount}`);
 +                        info.base.clubCache = { status:"invalid", restored:0, verified:0, expected:expectedCount };
@@ -1700,6 +1799,7 @@ index dd554ab..c214786 100644
 +                return { restored:ids.size > 0, ids, count:ids.size, manifest };
 +            };
 +            const saveClubEntityCache = async(expectedCount, snapshot, verifiedPayloads = null, cacheMetadata = {}) => {
++                await fsuClubCacheMigration;
 +                const startedAt = Date.now();
 +                const baseKey = getClubEntityCacheBaseKey();
 +                const previousManifest = readJsonValue(`${baseKey}_manifest`, {});
@@ -1731,9 +1831,8 @@ index dd554ab..c214786 100644
 +                let storedBytes = 0;
 +                for(let index = 0; index < chunkCount; index++){
 +                    const chunk = payloads.slice(index * CLUB_ENTITY_CACHE_CHUNK_SIZE, (index + 1) * CLUB_ENTITY_CACHE_CHUNK_SIZE);
-+                    const encoded = JSON.stringify(chunk);
++                    const encoded = await fsuClubCacheCodec.writeVerifiedChunk(`${baseKey}_slot${slot}_${index}`, chunk);
 +                    storedBytes += encoded.length;
-+                    GM_setValue(`${baseKey}_slot${slot}_${index}`, encoded);
 +                    await delay(0);
 +                }
 +                const manifest = {
@@ -2640,7 +2739,7 @@ index dd554ab..c214786 100644
              });
 +            return info.base.reloadPlayersPromise;
          }
-@@ -8254,2 +10643,11 @@
+@@ -8254,2 +10739,11 @@
          events.playerListFillSquad = (challenge,list,type) => {
 +            if(!events.requireClubReady("squad fill")) return false;
 +            events.emitClubDiagnostic?.("log", "squad-fill-input", `squad fill received ${list?.length || 0} player(s)`, {
@@ -2652,7 +2751,7 @@ index dd554ab..c214786 100644
 +                input:Array.from(list || []).map(item => events.summarizeFillDiagnosticItem?.(item))
 +            });
              events.showLoader();
-@@ -8285,4 +10683,13 @@
+@@ -8285,4 +10779,13 @@
              })
 +            events.emitClubDiagnostic?.("log", "squad-fill-mapped", `squad fill mapped ${playerlist.filter(Boolean).length} player(s)`, {
 +                challenge:{ id:challenge?.id, setId:challenge?.setId, name:challenge?.name },
@@ -2666,19 +2765,19 @@ index dd554ab..c214786 100644
 +                squad:Array.from(challenge?.squad?.getPlayers?.() || []).map(slot => events.summarizeFillDiagnosticItem?.(slot?.item || slot))
 +            });
              //events.hideLoader();
-@@ -8293,2 +10700,3 @@
+@@ -8293,2 +10796,3 @@
          events.getTemplate = async function(e,type,sId){
 +            if(!events.requireClubReady("SBC template fill")) return false;
              e.setInteractionState(0);
-@@ -8851,2 +11259,3 @@
+@@ -8851,2 +11355,3 @@
          events.getRatingPlayers = (squad,ratings) => {
 +            if(!events.requireClubReady("rating squad fill")) return [];
              const assignPlayer = (playerlist, shortlist, Exclusionlist, index, pos) => {
-@@ -10012,2 +12421,3 @@
+@@ -10012,2 +12517,3 @@
          events.fastSBC = async (id,cId) => {
 +            if(!events.requireClubReady("Fast SBC")) return false;
              let controller = events.getCurrent(),
-@@ -10230,5 +12640,32 @@
+@@ -10230,5 +12736,32 @@
              function valuablePlayerTips(left,controller,e) {
 -                
 -                const preciousCount = left.getView().slotViews.slice(0, 11).reduce((acc, view) => {
@@ -2714,11 +2813,11 @@ index dd554ab..c214786 100644
 +
 +                    return acc + (priceItem.classList.contains("precious") ? 1 : 0);
                  }, 0);
-@@ -11813,2 +14250,3 @@
+@@ -11813,2 +14346,3 @@
          UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
 +            events.markClubCacheDirty("SBC submission started");
              let r = originalSubmitChallenge.apply(this, arguments);
-@@ -14402,2 +16840,34 @@
+@@ -14402,2 +16936,34 @@
                              (e) => {
 +                                const unassigned = Array.from(repositories.Item.getUnassignedItems() || []);
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-start", `one-click fill started with ${unassigned.length} Unassigned item(s)`, {
@@ -2753,14 +2852,14 @@ index dd554ab..c214786 100644
 +                                    return false;
 +                                }
                                  let playerList = [], removeIds = [];
-@@ -14408,3 +16878,5 @@
+@@ -14408,3 +16974,5 @@
                                      getCriteria = events.ignorePlayerToCriteria(getCriteria);
 -                                    playerList = events.getItemBy(2,getCriteria,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
 +                                    const candidates = events.getItemBy(2,getCriteria,unassigned);
 +                                    playerList = candidates.slice(0,criteriaNumber);
 +                                    events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill broad criteria selected ${playerList.length}/${criteriaNumber}`, events.collectOneFillDiagnostic?.(getCriteria, candidates, playerList, unassigned));
                                  }else{
-@@ -14417,6 +16889,6 @@
+@@ -14417,6 +16985,6 @@
                                          getCriteria["lock"] = false;
 -                                        let result = events.getItemBy(2, getCriteria, repositories.Item.getUnassignedItems());
 -
@@ -2769,18 +2868,18 @@ index dd554ab..c214786 100644
                                          console.log(cropping,_.map(cropping,"rating"))
 +                                        events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill criterion selected ${cropping.length}/${i.c}`, events.collectOneFillDiagnostic?.(getCriteria, result, cropping, unassigned));
                                          removeIds = removeIds.concat(cropping.map( i => {return i.databaseId}))
-@@ -14425,2 +16897,6 @@
+@@ -14425,2 +16993,6 @@
                                  }
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-selected", `one-click fill selected ${playerList.length} player(s)`, {
 +                                    challenge:{ id:thisController?._challenge?.id, setId:thisController?._challenge?.setId, name:thisController?._challenge?.name },
 +                                    selected:playerList.map(item => events.summarizeFillDiagnosticItem?.(item))
 +                                });
                                  if(playerList.length){
-@@ -14451,2 +16927,3 @@
+@@ -14451,2 +17023,3 @@
                          (e) => {
 +                            if(!events.requireClubReady("duplicate squad fill")) return false;
                              const dupIds = _.map(
-@@ -15733,2 +18210,2 @@
+@@ -15733,2 +18306,2 @@
      main()
 -})();
 \ No newline at end of file

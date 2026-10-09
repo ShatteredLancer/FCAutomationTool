@@ -59,3 +59,12 @@ it('rejects identity, permissions and version drift in maintained metadata', () 
     expect(() => assertFsuMaintenanceBoundary(input)).toThrow('FSU_MAINTENANCE_METADATA_CHANGED');
   }
 });
+
+it('allows only the explicit 26.09.10 own-storage enumeration grant', () => {
+  const input = fixture(); input.currentConfig.localVersion = '26.09.10';
+  input.currentSource = input.currentSource.replace('26.09.6', '26.09.10')
+    .replace('// ==/UserScript==', '// @grant        GM_listValues\n// ==/UserScript==');
+  expect(assertFsuMaintenanceBoundary(input).localVersion).toBe('26.09.10');
+  input.currentSource = input.currentSource.replace('// ==/UserScript==', '// @grant        GM_deleteValue\n// ==/UserScript==');
+  expect(() => assertFsuMaintenanceBoundary(input)).toThrow('FSU_MAINTENANCE_METADATA_CHANGED');
+});

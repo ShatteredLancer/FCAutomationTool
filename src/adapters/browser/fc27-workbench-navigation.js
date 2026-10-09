@@ -1,7 +1,10 @@
 // Native EA Tab/Flow/View lifecycle, as observed in Enhancer's sidebar.
 // The late-load DOM fallback is confined to the actual tab bar, never the
 // currency header or the page content container.
-const NAV_SELECTORS = Object.freeze(['.ut-tab-bar']);
+// Enhancer can leave the original tab bar in the DOM and render a second,
+// visible copy.  Keep the native selector first, then use the same item
+// classes as a narrow fallback for that wrapped sidebar.
+const NAV_SELECTORS = Object.freeze(['.ut-tab-bar', '.ut-navigation-container-view--content']);
 
 const TAB_PATCH = Symbol.for('fcat.fc27.tab-bar-patch');
 const TAB_OWNER = Symbol.for('fcat.fc27.workbench-tab');
@@ -83,10 +86,40 @@ export function mountFc27WorkbenchNavigation({ document, runtime, onOpen, observ
   let disposed = false;
   let button = null;
   let native = createNativeTab(runtime, onOpen);
+  const visible = node => {
+    if (!node) return false;
+    try {
+      if (node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+      const style = document.defaultView?.getComputedStyle?.(node);
+      if (style?.display === 'none' || style?.visibility === 'hidden') return false;
+      return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
+    } catch { return true; }
+  };
+  const navigationRoots = () => {
+    const candidates = [];
+    for (const selector of NAV_SELECTORS) {
+      const matches = document.querySelectorAll?.(selector);
+      if (matches?.length) candidates.push(...matches);
+      else {
+        const single = document.querySelector?.(selector);
+        if (single) candidates.push(single);
+      }
+    }
+    // A wrapped Enhancer sidebar still exposes its native item classes even
+    // when the parent no longer carries the EA class.
+    for (const item of document.querySelectorAll?.('.ut-tab-bar-item') ?? []) {
+      if (item.parentElement && !candidates.includes(item.parentElement)) candidates.push(item.parentElement);
+    }
+    return candidates.filter(visible).sort((left, right) => {
+      const leftNative = left.matches?.('.ut-tab-bar') ? 0 : 1;
+      const rightNative = right.matches?.('.ut-tab-bar') ? 0 : 1;
+      return leftNative - rightNative;
+    });
+  };
   const attach = () => {
     if (disposed) return;
     native ??= createNativeTab(runtime, onOpen);
-    const root = document.querySelector?.('.ut-tab-bar');
+    const root = navigationRoots()[0];
     if (!root) return;
     const nativeEntry = [...(root.querySelectorAll?.('.fcat-navigation-entry') ?? [root.querySelector?.('.fcat-navigation-entry')])]
       .find(entry => entry && entry !== button);

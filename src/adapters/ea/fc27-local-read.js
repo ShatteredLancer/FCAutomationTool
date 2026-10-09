@@ -5,6 +5,31 @@ const identity = value => Number.isSafeInteger(value) && value > 0;
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
 const boolean = value => typeof value === 'boolean' ? value : null;
 const at = (value, keys) => keys.reduce((next, key) => ownData(next, key), value);
+
+// FC27 UTItemEntity keeps a few ownership-independent fields on the loaded
+// static DTO. Read only data descriptors from the entity first, then the
+// observed _data/_staticData containers; never execute a model getter.
+const itemData = (item, key) => {
+  const direct = ownData(item, key);
+  if (direct !== undefined) return direct;
+  for (const container of [ownData(item, '_data'), ownData(item, '_staticData')]) {
+    const value = ownData(container, key);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
+// FC27's live UTItemEntity does not expose `type` as an own data field. The
+// native entity contract exposes the pure `isPlayer()` predicate instead.
+// Prefer the explicit DTO field when present, then use that observed method;
+// unknown entities remain non-player rather than being guessed as players.
+export function isFc27PlayerItem(item) {
+  const type = ownData(item, 'type');
+  if (type === 'player') return true;
+  if (type !== undefined && type !== null) return false;
+  try { return typeof item?.isPlayer === 'function' && item.isPlayer() === true; }
+  catch { return false; }
+}
 function numbers(value, limit, min, max) {
   if (!Array.isArray(value) || value.length > limit) return null;
   const result = Array.from({ length: value.length }, (_, index) => integer(ownData(value, String(index)), min, max));
@@ -79,7 +104,10 @@ export function snapshotFc27ClubPlayer(item, root) {
     evolution: evolutionPile !== undefined && pile === evolutionPile ? true : noUpgrades ? false : upgrades === undefined ? null : true,
     cosmetic, concept: boolean(get('concept')),
     academyEnrolled: noUpgrades ? false : boolean(ownData(upgrades, 'enrolled')),
-    tradeable: boolean(get('tradable')), loans: integer(get('loans'), -1, 10000),
+    // In the live FC27 payload `tradable` is absent on the entity and is
+    // exposed by its loaded static DTO. Preserve null when all observed data
+    // layers omit it so Only Untradeable remains fail-closed.
+    tradeable: boolean(itemData(item, 'tradable')), loans: integer(get('loans'), -1, 10000),
     limitedUse: limitedType !== null && Number.isInteger(none) && startTime !== null && endTime !== null
       ? limitedType !== none || startTime !== -1 || endTime !== -1 : null,
     leagueId: integer(get('leagueId'), 1, 1e9),
@@ -102,7 +130,8 @@ export function readFc27CachedClub(root) {
   const playerType = at(root, ['ItemType', 'PLAYER']);
   if (playerType !== 'player') throw new Error('FC27_PLAYER_TYPE_UNVERIFIED');
   const cached = entries(at(root, ['repositories', 'Item', 'club', 'items']));
-  const items = cached.filter(item => ownData(item, 'type') === playerType).map(item => snapshotFc27ClubPlayer(item, root));
+  const items = cached.filter(item => ownData(item, 'type') === playerType || isFc27PlayerItem(item))
+    .map(item => snapshotFc27ClubPlayer(item, root));
   if (new Set(items.map(item => item.id)).size !== items.length) throw new Error('FC27_CACHED_ITEM_IDENTITY_CONFLICT');
   if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error('FC27_CONTEXT_CHANGED');
   return Object.freeze({ schema: 1, context, kind: 'cached-club-inspection', status: 'partial',

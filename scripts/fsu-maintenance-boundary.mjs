@@ -32,7 +32,12 @@ export function assertFsuMaintenanceBoundary({ archivedConfig, currentConfig, ar
   if (versionLines?.length !== 1) throw new Error('FSU_MAINTENANCE_METADATA_CHANGED');
   const expectedMetadata = oldMetadata.replace(versionLines[0], versionLines[0]
     .replace(archivedConfig.localVersion, currentConfig.localVersion));
-  if (metadata(currentSource) !== expectedMetadata) throw new Error('FSU_MAINTENANCE_METADATA_CHANGED');
+  let currentMetadata = metadata(currentSource);
+  // 26.09.10 adds only own-storage enumeration for lossless startup cache migration.
+  if (before < 10 && after >= 10 && currentMetadata?.match(/^\/\/ @grant        GM_listValues$/gm)?.length === 1) {
+    currentMetadata = currentMetadata.replace('// @grant        GM_listValues\n', '');
+  }
+  if (currentMetadata !== expectedMetadata) throw new Error('FSU_MAINTENANCE_METADATA_CHANGED');
   if (before === after && renamed(archivedSource) !== normalize(currentSource)) {
     throw new Error('FSU_LOCAL_VERSION_NOT_BUMPED');
   }

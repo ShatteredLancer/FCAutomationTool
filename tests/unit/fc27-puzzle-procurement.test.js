@@ -36,6 +36,24 @@ function fixture() {
   return {input,card};
 }
 
+it.each([false, true])('accepts only strictly cheaper plans under an incumbent cost ceiling (joint=%s)', joint => {
+  const { input, card } = fixture();
+  if (joint) input.inventory.items.pop();
+  const prices = new Map([[901, 200]]);
+  const solve = costCeiling => joint ? suggestFc27PuzzleJointPurchases(input, [card], { prices, costCeiling })
+    : suggestFc27PuzzlePurchases(input, findFc27PuzzleRepairSeed(input), [card], { prices, costCeiling });
+  expect(solve(201)).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1 }] });
+  expect(solve(200)).toMatchObject({ status: 'blocked', plans: [] });
+});
+
+it.each([0, -1, 1.5, NaN, Infinity, 165000001])('rejects invalid incumbent cost ceiling %s in both solvers', costCeiling => {
+  const { input, card } = fixture(); const prices = new Map([[901, 200]]);
+  expect(suggestFc27PuzzlePurchases(input, findFc27PuzzleRepairSeed(input), [card], { prices, costCeiling }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_POLICY_INVALID' });
+  expect(suggestFc27PuzzleJointPurchases(input, [card], { prices, costCeiling }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_POLICY_INVALID' });
+});
+
 it('finds a detached near-solution without changing the real requirement or untradeable-only policy', () => {
   const {input} = fixture(); const original=structuredClone(input.challenge);
   const seed=findFc27PuzzleRepairSeed(input);

@@ -10,12 +10,12 @@ export function splitStreamlinedBatches(items, limit) {
 // Sparse 0/1 integer cover. Immutable back-links avoid copying complete card
 // lists at every node. Yields inside hot loops keep progress and Stop usable.
 export function* planStreamlinedSteps({ challenge, inventory = [], market = [], eligibility, policy,
-  objective = 'lowest-coins', mode = 'inventory-market', maxNodes = 250000, maxStates = 50000,
+  objective = 'lowest-value', mode = 'inventory-market', maxNodes = 250000, maxStates = 50000,
   allowPartial = true, now = () => Date.now(), maxMs = 4000, quoteSource = 'futgg', quoteAt = now(),
   inventoryComplete = false, marketComplete = false } = {}) {
   const blocked = reason => ({ status: 'blocked', reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
   if (challenge?.mechanism !== 'streamlined' || !integer(challenge.remainingScore)
-      || !['lowest-coins', 'fewest-cards'].includes(objective) || !['inventory', 'inventory-market', 'market'].includes(mode)
+      || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective) || !['inventory', 'inventory-market', 'market'].includes(mode)
       || !integer(maxNodes, 1, 5000000) || !integer(maxStates, 1, 100000) || !integer(maxMs, 1, 60000)
       || !integer(quoteAt) || !['futgg', 'futbin'].includes(quoteSource)) return blocked('PLAN_INPUT_INVALID');
   if (!challenge.remainingScore || challenge.status === 'COMPLETED') return { status: 'completed', items: [], batches: [], liveExecutionEnabled: false };
@@ -48,8 +48,11 @@ export function* planStreamlinedSteps({ challenge, inventory = [], market = [], 
     else if (state.score > partial.score || state.score === partial.score && rank(state, partial) < 0) partial = state;
   };
   // A feasible seed survives exhausted search. It is never labelled optimal.
-  let seed = empty;
-  for (const item of candidates) { seed = append(seed, item); remember(seed); if (seed.score >= target) break; }
+  for (const order of [candidates, candidates.slice().sort((a, b) => Number(a.source === 'market') - Number(b.source === 'market')
+    || (a.price ?? Infinity) - (b.price ?? Infinity) || b.points - a.points)]) {
+    let seed = empty;
+    for (const item of order) { seed = append(seed, item); remember(seed); if (seed.score >= target) break; }
+  }
   const states = new Map([[0, empty]]);
   outer: for (const item of candidates) {
     const before = [...states.values()];

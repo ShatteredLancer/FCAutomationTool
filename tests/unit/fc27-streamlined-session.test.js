@@ -34,6 +34,30 @@ it('selects alternate compressed routes without fetching again or granting purch
   session.clearPreview(); expect((await session.selectRoute(result.routes[0].id)).status).toBe('blocked');
 });
 
+it('selects the cheaper total-value market route while allowing zero-purchase stock without another request', async () => {
+  const c = challenge({ scoreRequirement: 100 });
+  const prices = { load: vi.fn(async () => ({ policy: { source: 'futgg' }, references: {
+    2: { quotes: { futgg: { source: 'futgg', definitionId: 2, price: 30000, fetchedAt: 1, expiresAt: 1000 } } },
+  } })) };
+  const readMarketCandidates = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+    points: 25, price: 2000, quote: { source: 'futgg', definitionId: 901, price: 2000, fetchedAt: 1, expiresAt: 1000 } })] }));
+  const diagnosticLog = { record: vi.fn() };
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }), diagnosticLog,
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility,
+      inventory: [safeItem({ points: 100, price: 30000 })], assertCurrent() {} }),
+    prices, readMarketCandidates, get: async () => null, set: async () => {}, now: () => 100 });
+  const result = await session.plan({});
+  expect(result).toMatchObject({ purchaseCost: 8000, materialValue: 0, plan: { objective: 'lowest-value' }, liveExecutionEnabled: false });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ objective: 'lowest-value',
+    priceSource: 'futgg', estimatedCost: 8000, materialValue: 0, totalValue: 8000 }));
+  const stock = result.routes.find(r => r.purchaseCost === 0);
+  const selected = await session.selectRoute(stock.id);
+  expect(selected).toMatchObject({ purchaseCost: 0, materialValue: 30000, liveExecutionEnabled: false });
+  expect(assertStreamlinedPlan(selected.plan)).toBe(selected.plan);
+  expect(prices.load).toHaveBeenCalledOnce(); expect(readMarketCandidates).toHaveBeenCalledOnce();
+  expect(await session.plan({ objective: 'lowest-coins' })).toMatchObject({ purchaseCost: 0, materialValue: 30000 });
+});
+
 function setup(overrides = {}) {
   const c = challenge({ scoreRequirement: 40 }), context = c.context, store = new Map();
   const input = { context, challenge: c, policy, eligibility, inventory: [safeItem({ points: 40 })], assertCurrent: vi.fn(), priceRows: [] };
@@ -49,6 +73,30 @@ it('loads only the shared selected source and displays a frozen inventory previe
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 0, materialValue: 300, quoteSource: 'futbin', marketPending: true, liveExecutionEnabled: false });
   expect(f.prices.load).toHaveBeenCalledWith([2], expect.objectContaining({ purpose: 'puzzle' }));
   expect(f.store.size).toBe(0); // preview does not create a contribution Journal
+});
+it('blocks a mixed plan when market candidates cannot be verified instead of falling back to inventory', async () => {
+  const diagnosticLog = { record: vi.fn() };
+  const f = setup({ diagnosticLog, readMarketCandidates: vi.fn(async () => {
+    throw Error('FC27_STREAMLINED_CATALOG_HTTP_403');
+  }) });
+  const result = await f.session.plan({ mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE',
+    marketError: 'FC27_STREAMLINED_CATALOG_HTTP_403', marketPending: true, plan: null, liveExecutionEnabled: false });
+  expect(result.items).toBeUndefined();
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({
+    status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE', marketRequested: true,
+  }));
+});
+it('keeps inventory-only mode explicit when the market provider is unavailable', async () => {
+  const f = setup({ readMarketCandidates: vi.fn(async () => { throw Error('FC27_STREAMLINED_CATALOG_HTTP_403'); }) });
+  const result = await f.session.plan({ mode: 'inventory' });
+  expect(result).toMatchObject({ status: 'ready', purchaseCost: 0, marketPending: false, liveExecutionEnabled: false });
+});
+it('blocks an empty verified market lane in mixed mode rather than claiming a complete inventory plan', async () => {
+  const f = setup({ readMarketCandidates: vi.fn(async () => ({ market: [] })) });
+  const result = await f.session.plan({ mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE',
+    marketError: 'FC27_STREAMLINED_MARKET_EMPTY', plan: null });
 });
 it('planning never executes; only the separate exact-plan contribution action does, and Stop is forwarded', async () => {
   const transaction = { execute: vi.fn(async () => ({ status: 'partial' })), stop: vi.fn() };

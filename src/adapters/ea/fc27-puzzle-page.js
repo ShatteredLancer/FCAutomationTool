@@ -17,16 +17,26 @@ function locate(root) {
     // controller is a modal and is normally null on the native SBC page.
     let controller = root.getAppMain().getRootViewController();
     for (let depth = 0; depth < 3; depth++) controller = ownData(controller, 'currentController');
-    if (typeof root.UTSBCSquadSplitViewController !== 'function'
-        || !(controller instanceof root.UTSBCSquadSplitViewController)) return null;
+    const splitTypeMatches = typeof root.UTSBCSquadSplitViewController === 'function'
+      && controller instanceof root.UTSBCSquadSplitViewController;
+    // Enhancer may proxy the native controller across a wrapper object. Keep
+    // the same stable EA fields and reject arbitrary page nodes.
+    const splitShapeMatches = controller && typeof controller === 'object'
+      && ownData(controller, '_set') && Number.isSafeInteger(ownData(controller, '_challengeId'))
+      && ownData(controller, '_challengeDetailsController')
+      && typeof controller.getView === 'function';
+    if (!splitTypeMatches && !splitShapeMatches) return null;
     const setId = ownData(ownData(controller, '_set'), 'id');
     const challengeId = ownData(controller, '_challengeId');
     if (![setId, challengeId].every(value => Number.isSafeInteger(value) && value > 0)) return null;
     const navigation = ownData(controller, '_challengeDetailsController');
     const detail = ownData(navigation, 'currentController');
-    if (typeof root.UTSBCSquadDetailPanelViewController !== 'function'
-        || !(detail instanceof root.UTSBCSquadDetailPanelViewController)
-        || ownData(ownData(detail, '_set'), 'id') !== setId
+    const detailTypeMatches = typeof root.UTSBCSquadDetailPanelViewController === 'function'
+      && detail instanceof root.UTSBCSquadDetailPanelViewController;
+    const detailShapeMatches = detail && typeof detail === 'object'
+      && typeof detail.getView === 'function' && ownData(detail, '_challenge');
+    if (!detailTypeMatches && !detailShapeMatches) return null;
+    if (ownData(ownData(detail, '_set'), 'id') !== setId
         || ownData(ownData(detail, '_challenge'), 'id') !== challengeId
         || ownData(ownData(detail, '_challenge'), 'setId') !== setId) return null;
     const anchor = detail?.getView?.()?._btnExchange?.getRootElement?.();

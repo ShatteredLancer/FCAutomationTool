@@ -1,5 +1,11 @@
 # FSU Club Cache Optimization and Integration Guide
 
+2026-10-09 当前维护版 `26.09.10` 增加 Club chunk 无损 gzip/base64 编码。旧数组/JSON 字符串继续兼容；manifest schema 2、双 slot、实体 factory 重建、exact scoped capture、provisional/readiness、12 小时快速路径和提交前定向校验不变。启动用 `GM_listValues` 仅枚举自身 v2 chunk 键，跨账号压缩两个 slot，无需登录；设置、锁卡、manifest 和其它记录不参与维护。写前重读、反解完整比较、写后回读核对，失败不切换 active manifest；restore/save 等待本页维护完成，维护使用独立 Web Lock。新的保存逐 chunk 压缩并核对后最后写 manifest，坏压缩记录走原 invalid/full-validation 回退，不伪造 ready。
+
+真实普通 Profile 只读副本中 116 个 chunk、100 个达到压缩阈值，实体 chunk 总体约 `24.46 MB -> 3.54 MB`，FSU 全 GM 存储约 `24.59 MB -> 3.66 MB`，反解完全一致。Chrome 离线回归覆盖原始/压缩/坏数据、两个 slot、完整字段与失败；专用 Tampermonkey 已安装并重新打开核对 `26.09.10` 精确源码 SHA256 `e67b349453325e6a954ef9c2b266052545a6e31855ca4fe35d0822ee5dd1ace2`，实际维护 8 个 chunk 中压缩 7 个、失败 0。该启动验证使用拦截 HTML fixture，没有 EA 请求，不作为真实 Club readiness/填阵验收。
+
+回退边界：`26.09.9` 不识别 gzip chunk；直接降级会忽略缓存并回退全量扫描，不能宣称保留快速恢复。保留旧源/设置身份与 immutable origin，patch 重放产物 hash 已核对。正常 Chrome 首次两脚本组合已超 64 MiB 时，安装新源码本身不能在注入前压缩旧值；可先临时停用 FCAT，仅运行新版 FSU，等待 Console `[FSU_CACHE_MIGRATION]` 完成且失败 0，再启用 FCAT 刷新完成 Gallery 压缩。不卸载脚本、不删除设置或交易记录，也不直接写浏览器数据库。
+
 2026-10-07 Streamlined Provider 的前置与后置 Club 定向读取显式使用同一 `nativeReauth:true` 路径；Storage 计划材料另按 EA 原生 `searchStorageItems` 读取 `/storagepile?skuMode=FUT`，不注入共享 FSU Repository。只读查询的认证重试不改变贡献 POST 的 `doRetry:false/doReauth:false`，也不改变其它调用方默认值。贡献按钮仍要求 Live 合同、精确材料复核、Journal 和写后对账；离线回放及适配器接线不代表 Agent 已自动投入材料。
 
 2026-10-07 Streamlined 定向只读检查：隔离 `inspectFc27StreamlinedFresh` 对所选 Club 小批显式使用 `nativeReauth:true`，实机从原先 401 恢复到 17 张材料精确身份/积分校验通过。默认 Club transport、传统/Puzzle 提交与 Streamlined 写请求不变；不注入 EA/FSU 缓存。EA 可能同时返回非目标版本，Streamlined 仅核对并消费计划中的精确 item/definition，不用额外版本替代缺失卡。贡献前后适配器与只读会话验证见 [Streamlined 最新恢复点](../docs/FC27_STREAMLINED_SBC_PLAN_ZH.md#2026-10-07-登录后续实施新鲜读取贡献组合与实机证据)。

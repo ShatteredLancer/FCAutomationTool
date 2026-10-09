@@ -1,5 +1,9 @@
 # FC Automation Tool 架构重构与里程碑
 
+## 2026-10-08 Streamlined 高价值库存被优先消耗修复
+
+用户截图反映的是 Streamlined，不是 Puzzle。已用失败 fixture 证实原支配剪枝仅看待购价和卡数，误删多卡低库存价值路线；现对同分中间路径和最终路线同时保留价值/卡数权衡。用户明确批准默认最低总材料价值（库存估值＋待购总价），保留待购优先与最少卡选项。旧冻结计划/交易 Journal 不改，读取旧默认设置迁移到新目标。补充低单价种子，不提高节点、状态或时间预算；汇总和脱敏日志分别显示总材料价值、库存估值和待购额。完整 verify **400 文件 / 4398 项**、FC27 **84 / 1436**与最终完整离线浏览器复验全部通过，包括 Streamlined 桌面/手机与真实点击。前一轮 Puzzle 待购成本修复保留，本轮不升版、提交、安装或消费。产物 hash 与恢复点见 [Streamlined 路线修复](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-08-高价库存选材修复)。
+
 ## 2026-10-08 连续远程 CI 失败调查与修复
 
 核对 `41bd0ba`、`473b9f7`、`cdf0379`、`702afb4` 的远程校验，七份完整 job 日志均在 `npm run verify` 出现相同的 5 文件 / 8 项失败；尚未执行后续构建比对和浏览器检查。最新 [Verify run 37751707089](https://github.com/ShatteredLancer/FCAutomationTool/actions/runs/37751707089) 使用 Windows Server 2025 / Node 22.23.3。失败不由 push、代理或 EA 登录造成。
@@ -1581,9 +1585,57 @@ Gallery 规划器默认墙钟时间从 10 秒提高到 30 秒，并新增账号�
 
 最新实机证据：专用 Chrome 已精确安装当前工作区生产构建 `27.0.13`，Tampermonkey 与 root/dist SHA256 均为 `38c6f0ffe0719ef7e082f2aafb1f0984787f69f53cf310d66cf086951211f108`，页面运行时版本一致。Arsenal 的账号设置原值/请求值/保存值均为 30 秒，未改变用户设置；生成方案约 595ms，“各档费用”总计约 104.68 秒。D/C 即时显示已达到，B/A/S 三档分别显示 `search-time-exhausted`，证实超时不再阻断后续档位；返回分类页后重新进入，方案与全部五档结果保留。该页面报告未采集逐档实测耗时，不能以总耗时断言每档精确 30.000 秒；协作中止在下一次 yield 生效，报价读取及调度开销不属于单档搜索预算。期间收集同步出现 `FC27_GALLERY_PROGRESS_BACKOFF`，仅记录并发情况，不据此断言额外耗时的具体来源。报告：`artifacts/fc27-browser/agent-2026-10-08T07-20-15.881Z.json`。未买卡、挂牌、贡献或提交，未升版或提交代码。
 
+## 2026-10-08 Puzzle 高价方案跨目录优化
+
+用户 Set 28 / Challenge 58 诊断为 39 候选、2,017 评估、28,800 待购成本，其中两卡合计 19,900。问题是找到已采样池内可行解后提前结束目录比较，非报价来源回退或缺少价格字段。现保留最低已定价方案，在最多三页/60 条内续读未结束满页及高价卡身份路线，严格按待购总价改善；repair/joint 公共报价跨页共用 20,000/50,000 计算预算，保留原首次可行性预算，后续优化共享剩余量并处理最后 1 单位边界。目录持久缓存、选源、报价有效期、认证/限流与上下文阻断不变。新增初始成本、优化次数和预算耗尽脱敏诊断及原生流程接线。定向 166 项、完整 verify（399 文件 / 4,383 项）、FC27 专项（84 文件 / 1,436 项）及全部离线浏览器通过；27.0.14 root/dist/hash 与 FSU 资产一致。实际账号成本及耗时仍未验收，不宣称全市场最低。完整计划、场景矩阵与恢复点见 [Puzzle 稳定性记录](FC27_PUZZLE_STABILITY_ZH.md#2026-10-08-高价-puzzle跨目录候选比较)。本轮不升版、不提交或交易。
+
+## 2026-10-09 普通 Chrome 无入口：注入/启动分层调查
+
+普通 Chrome 中 FCAT 导航和 SBC 按钮均不存在，不能再把问题视为单一导航 selector 失配。默认 Profile 的 Tampermonkey 5.5.1 配置已只读确认 `user_scripts_enabled:true`、`withholding_permissions:false`、空 `disable_reasons`，但磁盘存有源码仍不能证明当前 EA 标签页注入成功。普通 Chrome 没有调试控制通道，不关闭或重启该浏览器。
+
+构建现在在全部业务模块初始化之前添加无依赖启动标记（DOM `data-fcat-boot` / `data-fcat-boot-status` 和 `__FCAT_BOOT_STARTED__`），区分 `started`、`ready`、`failed`；记录版本、GM API 可用性及脱敏错误类型/标准停止码，不读取账号、业务记录或额外监听其它插件错误。诊断失败不阻断业务，业务原异常仍向浏览器传播。新增四项启动回归，完整测试 401 文件 / 4415 项，语法、undef、build、root/dist 校验通过。
+
+上述为诊断构建阶段，现已由以下真实存储及 Console 证据补全根因。用户确认普通 Chrome 的 Tampermonkey 编辑器可找到启动标记；此前通过压缩 LevelDB 文本搜索推断旧源码的结论已撤回。
+
+### 2026-10-09 64 MiB 注入消息超限与无损缓存迁移
+
+用户 Console 文件 `www.ea.com-1791526483294.log` 共 2,436 行，包含 2,414 条 `Message exceeded maximum allowed size of 64MiB`，启动标记为 `null`。末尾 EA settings 401 与两条扩展异步响应关闭不能代替注入超限根因。对普通 Profile 的 Tampermonkey 数据库只读副本进行结构化解码，确认启用 FCAT 的 GM 数据 43,520,181 bytes、FSU 24,587,569 bytes；最小组合启动载荷 70,919,680 bytes，已超过 67,108,864 bytes。脚本源码本身约 1.7 MB，不是该限制的主要来源；专用 Profile 缓存较少，故能启动。
+
+最大记录是账号级 Gallery collection cache（序列化 21,395,881 bytes），不是交易 Journal。新增标准 gzip/base64 codec，大缓存保持完整原生卡片 DTO、收集证据、FO 历史、覆盖范围和时间戳；schema 3 兼容读取、验证后同键无损迁移到 schema 4，持久化后续写入使用同一 codec。真实记录压缩后 2,048,651 bytes，反解逐字段完全一致；不删除缓存或交易记录、不修改卡面/计分/交易行为。解压有界且坏数据不作为收集证据，账号切换后不写入旧 scope。
+
+codec/native sync 定向 48 项及完整 `npm run verify`（402 文件 / 4,420 项）通过，包含 FSU patch/release、syntax、undef、architecture、build 和 dist 校验。当前仍 27.0.15，root/dist SHA256 均为 `a80e6c43a2c1b1a068d5a5bdecefee829cf8d39c7e1da11de9e9a6d9c7799bbe`，最新专用 Profile 安装源码精确核对成功，证据 `artifacts/fc27-browser/current-install.json`。专用安装成功不等于普通 Profile 已恢复。
+
+普通 Chrome 恢复步骤：导入最新根目录脚本；临时停用 FSU userscript（不卸载、不清数据）让组合载荷降至上限以内；刷新并登录存在该大缓存的账号，进入 FCAT Gallery 触发当前 scope 的迁移；确认诊断 `cache-compacted` 后再启用 FSU 并刷新核对导航/SBC 按钮。当前实现仅迁移登录账号的 collection cache，不声称自动遍历其它账号；若仍超限需继续核对启用脚本与缓存体积，不要求删除 Journal。普通 Chrome 不重启、不直接修改其数据库；本轮未交易、填阵、提交、升版或 Git 提交。
+
+### 2026-10-09 恢复接线补全：无需登录的全账号缓存迁移
+
+用户更新后仍超限，随后确认未临时停用 FSU。新的只读数据库副本证实普通 Chrome 已安装 `a80e6c43...7799bbe`，FCAT/FSU 都启用，collection 仍是 schema 3 / 21,395,881 bytes，最小组合启动消息 70,922,715 bytes。因此不是压缩后仍超限，而是脚本未能启动、迁移根本未执行。前一实现必须登录该缓存的账号并进入 Gallery 的恢复条件不够直接，现补全启动维护。
+
+生产入口新增 `GM_listValues`，仅枚举本脚本 GM 键；维护严格选择 FC27 `contextKey(..., 'gallery-collection')`，按原 context 同键无损压缩所有账号的旧记录，不要求登录、Club readiness、公共目录或 Gallery 页面。跳过已压缩/小缓存，写前重新读取避免覆盖另一页更新，写后回读核对；失败显式记入 `partial/failed`，不删除缓存、不读取 Journal、不暴露账号标识。全账号维护使用独立 Web Lock，本页 reader 恢复等待维护结束，避免同页持久化竞态。Console `[FCAT_CACHE_MIGRATION]` 与页面 `__FCAT_CACHE_MIGRATION__` 仅显示状态和计数。
+
+新增 8 项迁移回归及 reader 等待回归；定向 58 项、完整 verify **403 文件 / 4,429 项**、全套离线浏览器通过。Chrome codec/maintenance fixture 验证无登录无联网的完整还原；最新生产脚本已精确安装到专用 Profile，root/dist/安装源码 SHA256 为 `630664720ad0a11e96da4898bfaf66e7cecca307c446011157d0dca9cb5db845`，仍 27.0.15，1,701,473 bytes。真实 Tampermonkey 在被本地 fixture 替代的匹配页面执行最新脚本，启动 `ready`，维护 `completed / total:2 / compacted:1 / failed:0`；证据 `artifacts/fc27-browser/cache-migration-runtime.json`。这是实际扩展/GM 接线验证，不是普通 Profile 的恢复验收，也不等于 EA 登录后业务验收；此前真实 EA 导航因 `ERR_SOCKET_NOT_CONNECTED` 未完成，无交易、填阵或提交。
+
+最新恢复步骤覆盖上段：重新导入当前根目录脚本；临时停用 FSU，保留 FCAT，刷新 EA 标签页；无需登录，等待 Console `[FCAT_CACHE_MIGRATION]` 为 `completed`、`failed:0`、`compacted` 至少 1；再启用 FSU 并刷新确认双方正常启动。只替换源码不能在注入前压缩旧 GM 数据，首次临时停用仍不可省略。普通 Chrome 未重启或直接写数据库，所有交易 Journal 保持原样；未升版或 Git 提交。
+
+### 2026-10-09 FSU 与公共 Gallery 卡池继续压缩
+
+用户批准继续压缩。FCAT `27.0.15` 的目录/逐 Set 卡池读写共用 gzip codec，完整 DTO 不裁剪；旧聚合池按逐 Set 有效缓存优先级迁移，缺失/无效项逐一写入反解核对，全部成功且原聚合记录未变才置空聚合旧值。新增回读失败、坏行、并发更新及 `:checked` 元数据排除回归；304/未变 200 仍仅更新轻量 checked，Journal/计划/报价规则不变。生产 provider 在首次读取前等待维护。
+
+FSU Local 按维护规则升 `26.09.10`，仅新增自身 GM 枚举及 chunk gzip 字符串读写；两个 slot/manifest schema2、factory 重建、exact scoped 与 provisional 合同不变，保存逐 chunk 核对成功后才切 manifest。源、config、patch、manifest、release 已生成并重放一致；上游 origin 未改。真实只读普通 Profile 副本模拟：FCAT 全 GM `43,520,148 -> 15,896,706 bytes`，FSU `24,587,536 -> 3,661,306 bytes`，存储合计 `68,107,684 -> 19,558,012 bytes`（不含源码及 TM 消息开销）。公共维护 33 条数据记录压缩 12、迁移聚合 1、失败 0；FSU 116 chunk 压缩 100、失败 0；全部压缩原记录反解一致。副本包含私有数据，仅保留本地，未写普通浏览器数据库。
+
+完整回归及离线 Chrome 套件通过；新增 Chrome gzip/坏数据/双 slot/聚合迁移回归已纳入 self-test。专用 Tampermonkey 安装当前 FCAT SHA256 `1c30b4a122b7568eaa4729bb9fbdf514362871f2e912ec4abfa9d4a9e74f4ba9` / 1,706,927 bytes、FSU `e67b349453325e6a954ef9c2b266052545a6e31855ca4fe35d0822ee5dd1ace2`，安装器逐字核对源码，FSU 再次打开编辑器核对。拦截 EA URL 的离线 HTML 上，FCAT collection/public 与 FSU 实际 GM 维护均 completed / failed0。证据在 `artifacts/fc27-browser/current-install.json`、`fsu-cache-install.json`、`cache-compression-runtime.json`、`cache-compression-smoke.json`；没有 EA 请求或交易，不代替真实账号业务验收。
+
+当前恢复步骤：同时安装根目录 FCAT 和新版 `dist/FSU-Local.user.js`；若原环境仍超限，先临时停用 FCAT，让 FSU 单独刷新完成 `[FSU_CACHE_MIGRATION]`，再启用 FCAT 刷新完成两项 Gallery 维护。也可沿用上段先停 FSU 的恢复方式。不用登录、不清缓存/Journal、不卸载，两脚本压缩后的数据长期按新格式写入。普通 Chrome 加载和实际 Club ready 仍待原环境确认；本轮没有 Git 提交或推送。
+
 ## 2026-10-08 Settings 移除安装自检入口
 
 用户要求从正式 Settings 移除“安装与多标签检查”整块。实施范围为工作台 markup、面板按钮绑定和生产入口：正式版不再注入 `checkInstallation`，不渲染两颗自检按钮；独立 Acceptance 验收构建仍显式启用原入口，存储、Web Lock、业务 Journal 与恢复逻辑不变。流程为移除入口、检查无按钮时的面板初始化、回归存储/互斥和导出、重建正式产物。离线生产页面 smoke 已确认两个按钮不存在且后续初始化/操作正常，原隔离 Acceptance 构建与跨标签存储 smoke 通过；完整 `npm run verify` 398 文件 / 4359 项、FC27 84 文件 / 1414 项及全部离线浏览器 smoke 通过，`git diff --check` 通过。当前版本仍为 27.0.13，根目录/dist 产物 SHA256 均为 `483afa4e79e2cf0d8da6ead5759f4002f202724cf1ccf3069421db456329b77e`；未升版、提交或执行 EA 写操作，本次没有重装专用浏览器或登录后真实 Settings 检查。更新正式 userscript 后该块即不显示，无需更改配置或清理记录。
+
+## 2026-10-09 27.0.18 远程合并与累计修改收口
+
+用户要求先合并远程再升版提交。origin/main 已从 e0fdc0c 前进至 a31398c（27.0.17），用户确认本次用 27.0.18 而非倒退到 27.0.16。本地工作以 stash 完整保留后快进合并，再恢复累计改动；冲突仅为 package/lock 版本及生成 userscript，源码保留两边变更并重新构建。包含此前缓存压缩/启动恢复、Puzzle 待购总价改善和 Streamlined 总材料价值及库存识别修正；远程购买兼容、成交恢复与历史 Gallery 获得逻辑保留。
+
+合并后完整 verify 407 文件 / 4508 项、FC27 专项 86 文件 / 1480 项及全套离线 Chrome 通过，FSU 26.09.10 patch/release 一致。专项首次与完整测试并发发生 VM 比对和构建超时，单独重跑通过，未改断言或放宽测试。root/dist 27.0.18 为 1711175 bytes，SHA256 d9d174ca696eddb210169a920c888d8c49c8a02d1cfd0c9d43fcca25d433e272。最终构建未重新安装到专用浏览器，普通 Profile 恢复/Club ready 及当前账号业务仍待实机；旧安装证据不能代替最终 hash 核对。本次仅本地提交，无推送/tag/Release 或 EA 写操作。版本范围、恢复方法与剩余验收见 [27.0.18](releases/27.0.18.md)。
 
 ## 2026-10-09 27.0.17 Gallery 历史收集与购买状态分离
 

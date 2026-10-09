@@ -5,6 +5,7 @@ import { futggGalleryPool, futggTruncatedGalleryPool } from '../fixtures/fc27-ga
 import { summarizeGalleryScore } from '../../src/gallery/scoring.js';
 import { GalleryItemEntity, galleryEntityFromDto } from '../helpers/fc27-gallery-entity.js';
 import { createFc27GalleryNativeRenderer } from '../../src/adapters/ea/fc27-gallery-card.js';
+import { decodeGalleryCollectionCache } from '../../src/adapters/browser/fc27-gallery-cache-codec.js';
 
 afterEach(() => vi.useRealTimers());
 function fixture() {
@@ -238,9 +239,38 @@ it('persists the observed DTO alongside native rendering and reopens without ano
   expect(restored.runtimeCards.get(900001)).not.toBeInstanceOf(GalleryItemEntity);
   expect(f.calls).toHaveLength(1); next.dispose();
 });
+it('migrates a large legacy collection losslessly and restores it without an EA query', async () => {
+  vi.useFakeTimers(); const f = fixture(), original = f.reader();
+  await finish(original.load(f.pool)); original.dispose();
+  const key = [...f.store.keys()].find(key => key.includes('gallery-collection'));
+  const saved = f.store.get(key);
+  saved.concepts.push(...Array.from({ length: 1500 }, (_, index) => ({ definitionId: 1000001 + index,
+    isCollected: true, gradingScore: 90, collectedOwners: 1, readAt: Date.now(),
+    cardData: { resourceId: 1000001 + index, itemType: 'player', dream: true, rating: 80,
+      rareflag: 200, hyperCosmetics: { 1: 3 }, attributeArray: [80, 80, 80, 80, 80, 80],
+      lifetimeStats: Array(30).fill(100), statsList: Array(30).fill(100) } })));
+  const reader = f.reader(), projected = await reader.project(f.pool);
+  expect(projected.status).toBe('observed'); expect(f.calls).toHaveLength(1);
+  const packed = f.store.get(key);
+  expect(packed.schema).toBe(4);
+  expect(await decodeGalleryCollectionCache(packed)).toEqual(saved);
+  reader.dispose(); const restored = f.reader();
+  expect((await restored.project(f.pool)).progress).toEqual(projected.progress);
+  expect(f.calls).toHaveLength(1); restored.dispose();
+});
 it('shares exact version evidence across sets without another EA request', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader(); await finish(r.load(f.pool));
   expect((await r.load({ ...f.pool, setId: 31 })).progress.complete).toBe(true); expect(f.calls).toHaveLength(1);
+});
+it('waits for startup cache migration before reading or writing collection storage', async () => {
+  const f = fixture(); let release;
+  const cacheMigration = new Promise(resolve => { release = resolve; });
+  const get = vi.fn(f.options.gmGetValue), set = vi.fn(f.options.gmSetValue);
+  const reader = createFc27GalleryProgressReader(f.root, { ...f.options, gmGetValue: get, gmSetValue: set, cacheMigration });
+  const task = reader.project(f.pool);
+  await Promise.resolve(); await Promise.resolve();
+  expect(get).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled(); expect(f.calls).toHaveLength(0);
+  release(); await task; expect(get).toHaveBeenCalled(); reader.dispose();
 });
 it('leaves versions absent from a completed full sync unknown, including newly added pool cards', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader();

@@ -45,7 +45,7 @@ it('mounts one FCAT left-navigation entry and opens only for trusted clicks', ()
 
 it('keeps the navigation selector order stable for EA DOM rebuilds', () => {
   expect(NAV_SELECTORS[0]).toBe('.ut-tab-bar');
-  expect(NAV_SELECTORS).toEqual(['.ut-tab-bar']);
+  expect(NAV_SELECTORS).toEqual(['.ut-tab-bar', '.ut-navigation-container-view--content']);
 });
 
 it('prefers the visible EA tab bar over the currency header', () => {
@@ -65,6 +65,17 @@ it('appends FCAT after existing items, following Enhancer navigation order', () 
   expect(document.nav.children.map(item => item.id || item.className)).toEqual([
     'icon-settings', 'fcat-fc27-navigation-entry',
   ]);
+  dispose();
+});
+
+it('mounts into an Enhancer-wrapped visible navigation root when native tab bar is absent', () => {
+  const document = documentFixture();
+  document.nav.remove();
+  const sidebar = new Node('aside'); sidebar.className = 'ut-navigation-container-view--content';
+  document.body.append(sidebar);
+  const dispose = mountFc27WorkbenchNavigation({ document, onOpen: vi.fn(), observe: false });
+  expect(sidebar.querySelector('#fcat-fc27-navigation-entry')).toBeTruthy();
+  expect(document.body.querySelector('#fcat-fc27-navigation-entry')).toBeTruthy();
   dispose();
 });
 

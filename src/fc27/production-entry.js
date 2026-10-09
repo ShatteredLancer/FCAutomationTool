@@ -13,6 +13,7 @@
 // @grant        unsafeWindow
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_listValues
 // @grant        GM_xmlhttpRequest
 // @connect      www.futbin.org
 // @connect      www.fut.gg
@@ -31,6 +32,8 @@ import { readFc27MarketPlayerName } from '../adapters/ea/fc27-market-read.js';
 import { mountFc27WorkbenchNavigation } from '../adapters/browser/fc27-workbench-navigation.js';
 import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '../adapters/browser/fc27-gallery-catalog.js';
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
+import { compactGalleryCollectionCaches } from '../adapters/browser/fc27-gallery-cache-migration.js';
+import { compactGalleryPublicCaches } from '../adapters/browser/fc27-gallery-public-cache-migration.js';
 import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
 import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
 import { createFc27GalleryAccounting } from '../adapters/browser/fc27-gallery-accounting.js';
@@ -68,6 +71,17 @@ const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: 
   gmRequest: GM_xmlhttpRequest,
   lockManager: unsafeWindow.navigator.locks, liveEnabled: __FCAT_LIVE_ENABLED__ };
 const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: __FCAT_VERSION__ });
+const bootFailures = [];
+const safeBoot = (label, action, fallback = null) => {
+  try { return action(); } catch (error) {
+    const reason = /^[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_BOOT_OPTIONAL_FAILED';
+    bootFailures.push({ label, reason });
+    bootFailures.splice(0, Math.max(0, bootFailures.length - 20));
+    try { unsafeWindow.__FCAT_BOOT_FAILURES__ = bootFailures.map(row => ({ ...row })); } catch { /* Diagnostics only. */ }
+    try { Promise.resolve(diagnosticLog.record({ area: 'runtime', event: 'boot-failure', phase: label, reason })).catch(() => {}); } catch { /* Optional. */ }
+    return fallback;
+  }
+};
 // Gallery presentation may reuse EA's already loaded static image routes. It
 // uses the browser cache for league/club/nation emblems. Player cards are
 // rendered by the separate EA native view adapter below.
@@ -176,9 +190,26 @@ const galleryPrices = id => readCachedGalleryPrice(unsafeWindow, id);
 const galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
 const publicPrices = createFc27PublicPrices({ root: unsafeWindow, get: GM_getValue, set: GM_setValue, gmRequest: GM_xmlhttpRequest,
   transport: galleryTransport, diagnosticLog });
+const galleryCacheMigration = compactGalleryCollectionCaches({
+  list: typeof GM_listValues === 'function' ? GM_listValues : null, get: GM_getValue, set: GM_setValue,
+  locks: unsafeWindow.navigator.locks,
+  onProgress: report => { unsafeWindow.__FCAT_CACHE_MIGRATION__ = report; },
+}).then(report => {
+  try { console.info('[FCAT_CACHE_MIGRATION]', JSON.stringify(report)); } catch { /* Diagnostics only. */ }
+  return report;
+});
+const galleryPublicCacheMigration = compactGalleryPublicCaches({
+  list: typeof GM_listValues === 'function' ? GM_listValues : null, get: GM_getValue, set: GM_setValue,
+  locks: unsafeWindow.navigator.locks,
+}).then(report => {
+  unsafeWindow.__FCAT_PUBLIC_CACHE_MIGRATION__ = report;
+  try { console.info('[FCAT_PUBLIC_CACHE_MIGRATION]', JSON.stringify(report)); } catch { /* Diagnostics only. */ }
+  return report;
+});
 const publicGalleryCatalog = createFc27GalleryCatalogProvider({ http: galleryTransport,
-  gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
-const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog });
+  gmGetValue: GM_getValue, gmSetValue: GM_setValue, diagnosticLog, cacheMigration: galleryPublicCacheMigration });
+const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetValue: GM_getValue, gmSetValue: GM_setValue,
+  diagnosticLog, cacheMigration: galleryCacheMigration });
 const galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgress);
 const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog,
   gmGetValue: GM_getValue, gmSetValue: GM_setValue });
@@ -204,11 +235,15 @@ const galleryTradingPoll = startGalleryTradingPoll({ timers: unsafeWindow, listi
 unsafeWindow.addEventListener?.('beforeunload', () => galleryTradingPoll.dispose(), { once: true });
 // Schedule creation and execution still require a separate explicit save and
 // enable click in the Bulk List dialog; loading the page never arms a job.
-if (!galleryProgress.install()) {
-  const factoryReady = unsafeWindow.setInterval(() => {
-    if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
-  }, 1000);
-}
+safeBoot('gallery-progress-install', () => {
+  if (!galleryProgress.install()) {
+    const factoryReady = unsafeWindow.setInterval(() => {
+      try {
+        if (galleryProgress.install()) unsafeWindow.clearInterval(factoryReady);
+      } catch { unsafeWindow.clearInterval(factoryReady); }
+    }, 1000);
+  }
+});
 const galleryNativeRenderer = createFc27GalleryNativeRenderer(unsafeWindow, { document: unsafeWindow.document, diagnosticLog });
 let session;
 const current = () => session ??= createFc27AcceptanceSession({ ...dependencies, publicPrices, diagnosticLog });
@@ -264,7 +299,7 @@ const foregroundPurchaseProgress = {
     fallbackPurchaseProgress?.remove?.(); fallbackPurchaseProgress = null;
   },
 };
-const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.document,
+const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePanel({ document: unsafeWindow.document,
   hostId: 'fcat-fc27-production', title: `FC Automation Tool ${__FCAT_VERSION__}`, version: __FCAT_VERSION__,
   liveEnabled: dependencies.liveEnabled,
   galleryCatalog,
@@ -337,13 +372,13 @@ const acceptancePanel = mountFc27AcceptancePanel({ document: unsafeWindow.docume
   prepare: options => current().prepare(options), execute: approval => current().execute(approval),
   fillPuzzle: approval => current().fillPuzzle(approval),
   inspectRecovery: () => current().inspectRecovery(), resolveRecovery: approved => current().resolveRecovery(approved),
-});
-mountFc27WorkbenchNavigation({ document: unsafeWindow.document, runtime: unsafeWindow, onOpen: container => acceptancePanel?.open?.(container) });
-mountFc27PuzzleNativeButton({ document: unsafeWindow.document,
+}));
+safeBoot('workbench-navigation', () => mountFc27WorkbenchNavigation({ document: unsafeWindow.document, runtime: unsafeWindow, onOpen: container => acceptancePanel?.open?.(container) }));
+safeBoot('puzzle-fill-button', () => mountFc27PuzzleNativeButton({ document: unsafeWindow.document,
   onFill: (target, callbacks) => current().solveAndFillPuzzle(target, callbacks),
   readTarget: () => readFc27PuzzlePage(unsafeWindow),
-});
-mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
+}));
+safeBoot('puzzle-buy-button', () => mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
   readPlayerName: definitionId => readFc27MarketPlayerName(unsafeWindow, definitionId),
   readTarget: () => {
     const target = readFc27PuzzlePage(unsafeWindow);
@@ -355,7 +390,7 @@ mountFc27PuzzleBuyButton({ document: unsafeWindow.document,
   stop: () => current().stopPuzzlePurchases(),
   refreshPrices: (ids, options) => publicPrices.load(ids, options),
   foregroundProgress: foregroundPurchaseProgress,
-});
+}));
 const streamlinedSession = createFc27StreamlinedSession({
   inspect: () => { const page = locateFc27StreamlinedPage(unsafeWindow); if (!page) return null;
     const context = readFc27Context(unsafeWindow); return { context, challenge: projectFc27StreamlinedChallenge(page, context) }; },
@@ -367,8 +402,8 @@ const streamlinedSession = createFc27StreamlinedSession({
     get: GM_getValue, set: GM_setValue, prices: publicPrices, lockManager: unsafeWindow.navigator.locks,
     canWrite: () => __FCAT_LIVE_ENABLED__ }),
 });
-const streamlinedPanel = mountFc27StreamlinedPanel({ document: unsafeWindow.document,
-  readTarget: () => locateFc27StreamlinedPage(unsafeWindow), session: streamlinedSession, nativeRenderer: galleryNativeRenderer });
+const streamlinedPanel = safeBoot('streamlined-panel', () => mountFc27StreamlinedPanel({ document: unsafeWindow.document,
+  readTarget: () => locateFc27StreamlinedPage(unsafeWindow), session: streamlinedSession, nativeRenderer: galleryNativeRenderer }));
 // One attempt per account/session, only once the existing FSU cache is ready.
 // No pending journal means no EA request. Failed checks remain recoverable.
 const streamlinedRecoveryAccounts = new Set();

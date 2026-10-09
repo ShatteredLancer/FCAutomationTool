@@ -15,6 +15,16 @@ it('freezes exact items/batches and detects mutations including score/status', (
   }
 });
 
+it('preserves already-frozen legacy objectives and fingerprints after the new default changes', () => {
+  const previous = testPlan();
+  for (const objective of ['lowest-coins', 'fewest-cards']) {
+    const legacy = createStreamlinedPlan({ ...previous, result: previous, objective });
+    const serialized = JSON.stringify(legacy);
+    expect(assertStreamlinedPlan(JSON.parse(serialized)).objective).toBe(objective);
+    expect(JSON.stringify(legacy)).toBe(serialized);
+  }
+});
+
 it('does not accept internally inconsistent plans even with a recomputed fingerprint', () => {
   for (const mutate of [p => { p.items[1].id = p.items[0].id; }, p => { p.purchaseCost = 100; },
     p => { p.materialValue = 0; }, p => { p.status = 'partial'; }, p => { p.progress.total++; },

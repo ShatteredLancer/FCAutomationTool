@@ -5,6 +5,25 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.18] - 2026-10-09
+
+### Cache Compression And Planning
+
+- Merge remote 27.0.15-27.0.17 purchase compatibility, receipt recovery and
+  historical Gallery acquisition fixes before committing accumulated work.
+- Losslessly compress large Gallery collection, catalogue and per-set pool
+  caches; migrate existing account caches without login or clearing journals.
+- Update FSU Local to 26.09.10 with lossless dual-slot Club chunk compression,
+  verified writes and backward-compatible reads of existing raw cache values.
+- Add bounded startup diagnostics and isolate optional UI initialization errors.
+- Compare further Puzzle catalogue candidates within existing search budgets,
+  retaining only strictly cheaper total missing-card plans.
+- Default new Streamlined plans to lowest total material value, preserve explicit
+  cost/card objectives and frozen plans, and read native Club/Storage ownership
+  fields correctly. Do not silently replace failed mixed supply with inventory only.
+- Validate the merged build with full regression and offline Chrome checks;
+  ordinary-profile recovery and current-account EA transactions remain live checks.
+
 ## [27.0.17] - 2026-10-09
 
 ### Gallery Historical Acquisition

@@ -45,6 +45,69 @@ it('does not apply the FSU golden range as a hidden Streamlined rating ceiling',
   expect(input.policy.maxRating).toBe(99);
   expect(input.policy.goldRange).toEqual([75, 82]);
 });
+
+it('follows FSU Only Untradeable instead of forcing it on', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = false;
+  f.root.repositories.Item.club.items._collection[1].tradable = true;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.policy.onlyUntradeable).toBe(false);
+  expect(input.inventoryStats).toMatchObject({ count: 11, byPile: { club: 11, storage: 0 },
+    tradeability: { tradeable: 1, untradeable: 10, unknown: 0 }, transferSupported: false });
+  const filtered = input.inventory.filter(item => item.tradeable === true);
+  expect(filtered).toHaveLength(1);
+});
+
+it('keeps Only Untradeable protection when FSU enables it', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  f.root.repositories.Item.club.items._collection[1].tradable = true;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.policy.onlyUntradeable).toBe(true);
+});
+
+it('reads tradeability from the loaded static DTO when the entity omits it', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first._staticData = { tradable: false };
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.inventory.find(item => item.id === 1)?.tradeable).toBe(false);
+  expect(input.inventoryStats.tradeability.untradeable).toBe(11);
+});
+
+it('does not infer tradeability when all observed data layers omit it', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first._staticData = {};
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.inventory.find(item => item.id === 1)?.tradeable).toBeNull();
+  expect(input.inventoryStats.tradeability.unknown).toBe(1);
+});
+
+it('keeps native FC27 player entities when type is not an own field', () => {
+  const f = runtime();
+  const first = f.root.repositories.Item.club.items._collection[1];
+  first.type = null;
+  first.isPlayer = () => true;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.inventory.some(item => item.id === 1)).toBe(true);
+  expect(input.inventoryStats.rawByPile.club).toBe(11);
+  expect(input.inventoryStats.skippedNonPlayerByPile.club).toBe(0);
+});
+
+it('does not guess a non-player entity as a player when type is absent', () => {
+  const f = runtime();
+  const first = f.root.repositories.Item.club.items._collection[1];
+  first.type = null;
+  first.isPlayer = () => false;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.inventory.some(item => item.id === 1)).toBe(false);
+  expect(input.inventoryStats.skippedNonPlayerByPile.club).toBe(1);
+});
 it('projects the EA static card name before falling back to a version identifier', () => {
   const f = runtime();
   const first = f.root.repositories.Item.club.items._collection[1];

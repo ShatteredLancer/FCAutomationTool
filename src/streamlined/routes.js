@@ -2,9 +2,14 @@ import { filterStreamlinedItems } from './eligibility.js';
 import { integer, fail, deepFreeze } from './contract.js';
 import { streamlinedProgress } from './contract.js';
 import { splitStreamlinedBatches } from './planner.js';
+import { compareStreamlinedPlans, streamlinedResourceCost } from './scoring.js';
 
-const rank = (a, b) => a.purchaseCost - b.purchaseCost || a.unknownValue - b.unknownValue
-  || a.materialValue - b.materialValue || a.score - b.score || a.count - b.count;
+// Keep both cheaper material and fewer-card paths; owned cards do not become
+// economically free merely because purchaseCost is zero.
+const dominates = (a, b, rank) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue
+  && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count
+  && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue
+    || a.materialValue !== b.materialValue || a.count !== b.count || rank(a, b) <= 0);
 const empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
 const add = (state, group, index, count) => {
   const counts = state.counts.slice(); counts[index] = (counts[index] ?? 0) + count;
@@ -47,18 +52,19 @@ export function groupStreamlinedCandidates({ inventory = [], market = [], mode =
 
 export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxStates = 20000, maxMs = 4000,
   now = () => Date.now(), budget = null } = {}) {
-  const { challenge } = input;
+  const { challenge, objective = 'lowest-value' } = input;
   if (!integer(maxNodes, 1, 5000000) || !integer(maxStates, 1, 100000) || !integer(maxMs, 1, 60000)
-      || budget !== null && !integer(budget) || !integer(challenge?.selectionLimit, 1, 1000)) fail('ROUTE_INPUT_INVALID');
+      || budget !== null && !integer(budget) || !integer(challenge?.selectionLimit, 1, 1000)
+      || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective)) fail('ROUTE_INPUT_INVALID');
   const { groups, excluded } = groupStreamlinedCandidates(input);
+  const rank = (a, b) => compareStreamlinedPlans(a, b, objective);
   const target = challenge.remainingScore, started = now(), frontier = [];
   let nodes = 0, stopped = null, labels = 1;
   const remember = state => {
     if (state.score < target || budget !== null && state.purchaseCost > budget) return;
-    if (frontier.some(row => row.purchaseCost <= state.purchaseCost && row.count <= state.count
-      && (row.purchaseCost !== state.purchaseCost || row.count !== state.count || rank(row, state) <= 0))) return;
+    if (frontier.some(row => dominates(row, state, rank))) return;
     for (let i = frontier.length - 1; i >= 0; i--) {
-      if (state.purchaseCost <= frontier[i].purchaseCost && state.count <= frontier[i].count) frontier.splice(i, 1);
+      if (dominates(state, frontier[i], rank)) frontier.splice(i, 1);
     }
     frontier.push(state);
   };
@@ -77,7 +83,9 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   const stock = groups.map((g, i) => ({ g, i })).filter(v => v.g.source === 'inventory');
   const market = groups.map((g, i) => ({ g, i })).filter(v => v.g.source === 'market');
   const bases = [empty()];
-  for (const order of [stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
+  for (const order of [stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity)
+    || b.g.item.points - a.g.item.points),
+    stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
     stock.slice().sort((a, b) => b.g.item.points - a.g.item.points)]) {
     let state = empty();
     for (const { g, i } of order) {
@@ -118,10 +126,8 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
         if (candidate.score >= target) remember(candidate);
         else if (budget === null || candidate.purchaseCost <= budget) {
           const rows = states.get(candidate.score) ?? [];
-          const dominates = (a, b) => a.purchaseCost <= b.purchaseCost && a.count <= b.count
-            && (a.purchaseCost !== b.purchaseCost || a.count !== b.count || rank(a, b) <= 0);
-          if (!rows.some(row => dominates(row, candidate))) {
-            const retained = rows.filter(row => !dominates(candidate, row));
+          if (!rows.some(row => dominates(row, candidate, rank))) {
+            const retained = rows.filter(row => !dominates(candidate, row, rank));
             labels += retained.length + 1 - rows.length;
             states.set(candidate.score, [...retained, candidate]);
           }
@@ -134,6 +140,8 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   frontier.sort(rank);
   const routes = frontier.map((state, index) => ({ id: `route:${index}`, score: state.score, excess: state.score - target,
     count: state.count, purchaseCost: state.purchaseCost, materialValue: state.unknownValue ? null : state.materialValue,
+    totalValue: state.unknownValue ? null : streamlinedResourceCost(state),
+    unknownValueCount: state.unknownValue,
     inventoryCount: state.counts.reduce((sum, n, i) => sum + (groups[i].source === 'inventory' ? n : 0), 0),
     marketCount: state.counts.reduce((sum, n, i) => sum + (groups[i].source === 'market' ? n : 0), 0),
     minBatches: Math.ceil(state.count / challenge.selectionLimit),
@@ -144,11 +152,13 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   if (routes.length) {
     selected.add(routes[0]);
     for (const extra of [5, 10, 20, 30]) {
-      const cap = Math.floor(routes[0].purchaseCost * (1 + extra / 100));
-      const choice = routes.filter(r => r.purchaseCost <= cap).sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0];
+      const cost = r => objective === 'lowest-value' ? streamlinedResourceCost(r) : r.purchaseCost;
+      const cap = Math.floor(cost(routes[0]) * (1 + extra / 100));
+      const choice = routes.filter(r => cost(r) <= cap).sort((a, b) => a.count - b.count || rank(a, b))[0];
       if (choice) selected.add(choice);
     }
     selected.add(routes.slice().sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0]);
+    selected.add(routes.slice().sort((a, b) => compareStreamlinedPlans(a, b, 'lowest-coins'))[0]);
   }
   return deepFreeze({ status: stopped === 'cancelled' ? 'cancelled' : routes.length ? 'ready' : 'unavailable',
     reason: stopped ? `FC27_STREAMLINED_SEARCH_${stopped.toUpperCase()}` : 'FC27_STREAMLINED_ROUTES',

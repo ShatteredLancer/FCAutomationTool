@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { assertFc27BrowserInputs, assertFc27ProductionMetadata } from './fc27-build-policy.mjs';
+import { wrapFc27Boot } from './fcat-boot-probe.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export async function buildFc27Production() {
@@ -23,7 +24,11 @@ export async function buildFc27Production() {
       __FCAT_LIVE_ENABLED__: JSON.stringify(liveExecutionEnabled) } });
   const inputs = Object.keys(result.metafile.inputs).map(file => path.relative(root, path.resolve(file)).replaceAll('\\', '/')).sort();
   assertFc27BrowserInputs(inputs);
-  const script = `${metadata}\n\n${result.outputFiles[0].text}`;
+  // Keep a tiny, dependency-free marker before the bundled application. This
+  // is intentionally outside the ES module bundle: a module initialization
+  // failure must still leave enough evidence to distinguish injection/match
+  // problems from FCAT runtime failures in a user's normal browser profile.
+  const script = `${metadata}\n\n${wrapFc27Boot(result.outputFiles[0].text, version)}\n`;
   const manifest = { schema: 1, name: 'FC Automation Tool', namespace: 'https://github.com/ShatteredLancer/FCAutomationTool',
     version, targetSeason: '27', releaseScope: 'fc27', liveExecutionEnabled, releaseEligible: true,
     inputs, bytes: Buffer.byteLength(script),

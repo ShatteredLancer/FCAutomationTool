@@ -30,4 +30,11 @@ describe('verified userscript installation', () => {
       expect(installer.click).not.toHaveBeenCalled();
     }
   });
+  it('permits a separately named maintained script only with exact name and version', async () => {
+    const script = '// ==UserScript==\n// @name FSU Local\n// @version 26.09.10\n// ==/UserScript==\nconst source = true;';
+    await confirmVerifiedInstaller(installerFor(script), { source: script, allowNonLive: true,
+      expectedName: 'FSU Local', expectedVersion: '26.09.10' });
+    await expect(confirmVerifiedInstaller(installerFor(script), { source: script, allowNonLive: true,
+      expectedName: 'FSU Local', expectedVersion: '26.09.9' })).rejects.toThrow('INSTALLATION_SOURCE_UNSAFE');
+  });
 });

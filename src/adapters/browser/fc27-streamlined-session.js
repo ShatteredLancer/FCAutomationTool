@@ -70,6 +70,24 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             }
           } catch (error) { marketError = safeReason(error); market = []; }
         }
+        check();
+        // A mixed plan must never silently become inventory-only when its
+        // market lane was requested and could not be verified. The inventory
+        // mode remains the explicit escape hatch for users who accept that
+        // scope; otherwise a catalog/market failure is a hard planning stop.
+        const marketProvider = typeof readMarketCandidates === 'function';
+        if (config.mode === 'inventory-market' && marketProvider && (!market.length || marketError)) {
+          const reason = 'FC27_STREAMLINED_MARKET_UNAVAILABLE';
+          const unavailable = {
+            status: 'blocked', reason, marketError: marketError ?? 'FC27_STREAMLINED_MARKET_EMPTY',
+            marketAvailable: true, marketPending: true, plan: null, liveExecutionEnabled: false,
+            policy: input.policy, inventoryStats: input.inventoryStats ?? null,
+            quoteSource, quoteReadError,
+          };
+          log({ status: unavailable.status, reason, marketError: unavailable.marketError,
+            marketRequested: true, inventoryCount: input.inventoryStats?.count });
+          return unavailable;
+        }
         check(); const quoteAt = now();
         const inventory = input.inventory.map(item => {
           const q = references[item.definitionId]?.quotes?.[quoteSource];
@@ -81,7 +99,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           stopped: () => { unchanged(origin); input.assertCurrent(); return stopRequested; }, schedule };
         let result, routes = [];
         if (market.length) {
-          const output = await runStreamlinedRoutes({ ...input, inventory, market, mode: config.mode, quoteSource, quoteAt }, { ...options, now });
+          const output = await runStreamlinedRoutes({ ...input, inventory, market, mode: config.mode,
+            objective: config.objective, quoteSource, quoteAt }, { ...options, now });
           routes = output.routes;
           if (routes.length && output.status !== 'cancelled') {
             const selected = config.objective === 'fewest-cards' ? routes.reduce((a,b) => a.count <= b.count ? a : b) : routes[0];
@@ -103,9 +122,29 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         if (plan) preview = { origin, input, items: result.items, plan, execution };
         if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError, execution: plan.execution };
+        const inventoryStats = input.inventoryStats ?? {};
+        const excluded = result.excluded ?? {};
         log({ status: result.status, evaluations: result.nodes, currentScore: result.score, safeCandidates: result.candidateCount,
           count: result.batches?.length, estimatedCost: result.purchaseCost, unknownCount: result.unknownValueCount,
-          searchComplete: result.searchComplete, reason: result.reason });
+          objective: config.objective, priceSource: quoteSource, materialValue: result.materialValue,
+          totalValue: result.materialValue == null ? null : result.purchaseCost + result.materialValue,
+          onlyUntradeable: input.policy.onlyUntradeable,
+          searchComplete: result.searchComplete,
+          inventoryCount: inventoryStats.count, inventoryClubCount: inventoryStats.byPile?.club,
+          inventoryStorageCount: inventoryStats.byPile?.storage,
+          inventoryRawClubCount: inventoryStats.rawByPile?.club,
+          inventoryRawStorageCount: inventoryStats.rawByPile?.storage,
+          inventorySkippedNonPlayerCount: Object.values(inventoryStats.skippedNonPlayerByPile ?? {}).reduce((sum, count) => sum + count, 0),
+          inventoryTradeableCount: inventoryStats.tradeability?.tradeable,
+          inventoryUntradeableCount: inventoryStats.tradeability?.untradeable,
+          inventoryTradeabilityUnknown: inventoryStats.tradeability?.unknown,
+          acceptedInventoryCount: result.items?.filter(item => item.source === 'inventory').length,
+          excludedTradeCount: excluded.trade,
+          excludedPileCount: excluded.pile,
+          excludedEligibilityCount: Object.entries(excluded)
+            .filter(([key]) => key.startsWith('eligibility-'))
+            .reduce((sum, [, count]) => sum + count, 0),
+          reason: result.reason });
         if (executionReason) log({ event: 'execution-preflight', status: 'blocked', reason: executionReason,
           setId: executionRecovery?.setId, challengeId: executionRecovery?.challengeId, phase: executionRecovery?.phase });
         if (executionRecovery?.kind === 'puzzle-purchase') {
@@ -119,6 +158,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         return { ...result, plan, quoteSource, quoteReadError, marketError, marketAvailable: typeof readMarketCandidates === 'function',
           marketPending: config.mode !== 'inventory' && market.length === 0, policy: input.policy,
+          inventoryStats: input.inventoryStats ?? null,
           liveExecutionEnabled: !!execution, executionReason, executionRecovery };
       } catch (error) {
         const reason = /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_PLAN_UNAVAILABLE';

@@ -4,7 +4,8 @@ const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.mes
 export function streamlinedRouteSummary(route) {
   const cap = route.groups.filter(group => group.source === 'market')
     .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0);
-  return `${number(route.purchaseCost)} ◉ · 上限 ${number(cap)} · ${number(route.score)} 积分 · ${route.count} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${route.minBatches} 批`;
+  const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
+  return `总价值 ${number(total)} ◉ · 待购 ${number(route.purchaseCost)} · 上限 ${number(cap)} · ${number(route.score)} 积分 · ${route.count} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${route.minBatches} 批`;
 }
 
 export function streamlinedExecutionMessage(reason, recovery = null) {
@@ -70,7 +71,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
   </style><dialog aria-label="FCAT Streamlined SBC"><header><strong>FCAT 积分解题</strong><button data-close aria-label="关闭">×</button></header>
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
-    <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-coins">最低待购总额，材料估值次之</option><option value="fewest-cards">最少卡片</option></select></label>
+    <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-value">最低总材料价值（库存＋待购）</option><option value="lowest-coins">最低待购总额，材料估值次之</option><option value="fewest-cards">最少卡片</option></select></label>
     <label>材料范围<select data-mode><option value="inventory-market">库存＋补卡</option><option value="inventory">仅库存</option><option value="market">仅购买材料</option></select></label>
     <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待（秒）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label></div>
     <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
@@ -141,7 +142,16 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   });
   const renderResult = result => {
       clearRendered(); node('result').replaceChildren(); node('contribute').hidden = true; shown = null;
-      if (!result.plan) return;
+      if (!result.plan) {
+        const output = node('result');
+        if (result.reason === 'FC27_STREAMLINED_MARKET_UNAVAILABLE') {
+          add(output, 'div', '市场候选未验证，未生成“库存＋补卡”方案。请检查 FUT.GG 连接，或将材料范围切换为“仅库存”后重试。').className = 'result-summary';
+          if (result.marketError) add(output, 'small', `补卡候选读取失败：${result.marketError}`);
+        } else if (result.reason) {
+          add(output, 'div', `未生成方案：${result.reason}`).className = 'result-summary';
+        }
+        return;
+      }
       shown = result;
       const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
       node('contribute').textContent = marketRun ? '按方案购买并贡献' : '贡献所选批次';
@@ -161,7 +171,14 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         }
       }
       add(output, 'div', `${result.status === 'ready' ? '预计达标' : '部分方案'} · ${number(p.submitted)} 已提交 + ${number(p.added)} 本次 · 还差 ${number(p.remaining)} / 超额 ${number(p.excess)}`).className = 'result-summary';
-      add(output, 'small', `待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${result.items.length} 张 / ${result.batches.length} 批`);
+      const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
+      add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${result.items.length} 张 / ${result.batches.length} 批`);
+      if (result.policy) {
+        const stats = result.inventoryStats;
+        const pileText = stats?.byPile ? `Club ${number(stats.byPile.club)} / Storage ${number(stats.byPile.storage)}` : 'Club / Storage';
+        const raw = stats?.rawByPile ? ` · 原始 ${number(stats.rawByPile.club)} / ${number(stats.rawByPile.storage)}` : '';
+        add(output, 'small', `FSU Only Untradeable：${result.policy.onlyUntradeable ? '开启' : '关闭'} · 读取库存：${pileText}${raw} · Transfer List 暂不支持直接贡献`);
+      }
       if (!result.searchComplete) add(output, 'small', '搜索已达预算；显示最佳已知方案，不代表全局最优。');
       if (!result.poolComplete) add(output, 'small', '基于当前可读取库存；未确认全量库存。');
       if (result.marketPending) add(output, 'small', '当前未接入可验证的市场候选；此结果仅包含库存。');

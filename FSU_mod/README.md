@@ -1,4 +1,6 @@
-# FSU Local 26.09.9
+# FSU Local 26.09.10
+
+2026-10-09 当前维护版为 `26.09.10`：仅增加 GM Club chunk 无损压缩和全账号启动迁移，保持完整 EA payload、双缓冲和原 readiness 合同。安装保持原 FSU 名称/namespace，不能新增另一份身份。生成产物为 `dist/FSU-Local.user.js`；旧缓存无需清除，当前普通 Chrome 超限时先让新版 FSU 单独运行完成迁移，再开启 FCAT。以下 `26.09.9` 段落保留历史证据；当前验证与降级边界见 [缓存集成说明](FSU_CLUB_CACHE_INTEGRATION.md)。
 
 2026-09-18 FC27 对话框兼容修复：FC27 的 EA 对话框控制器改用 `continueOption`/`cancelOption`，导致原 FSU 一键填阵导入弹窗只有输入框而没有确认/取消按钮。Local 版本在保留 FC26 `dialogOptions` 的同时提供新字段，并为 FSU 的额外动作按钮保留标签与 Escape 取消语义；没有改动填阵选材、库存、保存或提交逻辑。
 

@@ -5,6 +5,7 @@ import { normalizeGalleryFirstOwnerHistory, toggleGalleryFirstOwnerHistory, remo
 import { GALLERY_TOP_CANDIDATE_LIMIT, normalizeGalleryPool } from '../../gallery/pool.js';
 import { fodderPoolQueries, matchesFodderPool, fodderPoolItem } from '../../gallery/fodder-pool.js';
 import { observeFc27ItemFactory } from './fc27-item-factory-observer.js';
+import { encodeGalleryCollectionCache, decodeGalleryCollectionCache } from '../browser/fc27-gallery-cache-codec.js';
 
 // Behavioral reference: Enhancer 27.0.0.4, b_/GAe/iFe/fy. Requests and
 // authentication belong to EA's service/DAO/queue, not to this adapter.
@@ -107,7 +108,7 @@ function readHeldSnapshot(root) {
   return [...new Map(result.map(row => [row.definitionId, row])).values()];
 }
 
-export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, diagnosticLog, now = () => Date.now(), ttlMs = 300000 } = {}) {
+export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, diagnosticLog, now = () => Date.now(), ttlMs = 300000, cacheMigration = null } = {}) {
   const states = new Map(), inFlight = new Map(), listeners = new Set(), rawByItem = new WeakMap(), nativePending = new Set();
   let tail = Promise.resolve(), running = null, disposed = false, factoryHook = null;
   const record = entry => {
@@ -138,8 +139,14 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     return changed;
   };
   const restore = state => state.reading ??= (async () => {
+    try { await cacheMigration; } catch { /* Native reads still work after a failed optional compaction. */ }
     let saved;
-    try { saved = await gmGetValue?.(state.key, null); } catch { /* Optional persistence. */ }
+    let legacy = false;
+    try {
+      saved = await gmGetValue?.(state.key, null);
+      legacy = saved?.schema === 3;
+      saved = await decodeGalleryCollectionCache(saved);
+    } catch { /* Optional persistence. */ }
     assert(state.context);
     if (saved?.schema !== 3 || !same(saved.context, state.context) || !Array.isArray(saved.concepts)
         || saved.concepts.length > 100000 || !Number.isSafeInteger(saved.fetchedAt) || saved.fetchedAt > now()) return;
@@ -159,6 +166,16 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
       }
       state.setSyncedAt = saved.setSyncedAt && typeof saved.setSyncedAt === 'object' ? { ...saved.setSyncedAt } : {};
       state.firstOwnerHistory = normalizeGalleryFirstOwnerHistory(saved.firstOwnerHistory);
+      // Run only after successful startup. Rewrite the same validated data
+      // losslessly so the following page load no longer sends a huge DTO.
+      if (legacy && typeof gmSetValue === 'function') {
+        const packed = await encodeGalleryCollectionCache(saved);
+        assert(state.context);
+        if (packed.schema === 4) {
+          await gmSetValue(state.key, packed);
+          record({ event: 'cache-compacted', phase: 'restore', status: 'observed', count: saved.concepts.length });
+        }
+      }
     } catch { /* Damaged cache is never authoritative. */ }
   })();
   const persist = (state, updateHistory = null) => {
@@ -170,7 +187,9 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
       setSyncedAt: { ...state.setSyncedAt }, firstOwnerHistory: normalizeGalleryFirstOwnerHistory(history) };
       try {
         if (typeof gmSetValue !== 'function') return false;
-        await gmSetValue(state.key, value);
+        const packed = await encodeGalleryCollectionCache(value);
+        assert(state.context);
+        await gmSetValue(state.key, packed);
         if (updateHistory) state.firstOwnerHistory = history;
         return true;
       } catch { return false; /* Existing observations remain usable. */ }

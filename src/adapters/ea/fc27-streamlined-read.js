@@ -1,5 +1,5 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
-import { readFc27Context, snapshotFc27ClubPlayer } from './fc27-local-read.js';
+import { readFc27Context, snapshotFc27ClubPlayer, isFc27PlayerItem } from './fc27-local-read.js';
 import { normalizeStreamlinedChallenge, normalizeStreamlinedItem, integer, fail, same } from '../../streamlined/contract.js';
 import { createStreamlinedEligibility } from '../../streamlined/eligibility.js';
 
@@ -107,17 +107,26 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
   const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
   const entities = new Map(), inventory = [];
   const sources = settings.sources ?? ['club', 'storage'];
+  const inventoryByPile = { club: 0, storage: 0 };
+  const rawByPile = { club: 0, storage: 0 };
+  const skippedNonPlayerByPile = { club: 0, storage: 0 };
+  const inventoryTradeability = { tradeable: 0, untradeable: 0, unknown: 0 };
   for (const pile of sources) {
     if (!['club', 'storage'].includes(pile)) fail('PILE_UNVERIFIED');
     const repo = at(root, `repositories.Item.${pile}`);
     if (!repo && pile === 'storage') continue;
     for (const item of values(ownData(repo, 'items') ?? repo, 20000)) {
-      if (ownData(item, 'type') !== 'player') continue;
+      rawByPile[pile]++;
+      if (!isFc27PlayerItem(item)) { skippedNonPlayerByPile[pile]++; continue; }
       if (entities.has(item.id)) fail('IDENTITY_CONFLICT');
       entities.set(item.id, item);
       const projected = projectFc27StreamlinedItem(item, root, pile);
       if (!projected) fail('IDENTITY_CONFLICT');
       inventory.push(projected);
+      inventoryByPile[pile]++;
+      if (projected.tradeable === true) inventoryTradeability.tradeable++;
+      else if (projected.tradeable === false) inventoryTradeability.untradeable++;
+      else inventoryTradeability.unknown++;
     }
   }
   const eligibility = createFc27StreamlinedMatcher(root, challenge, entities);
@@ -128,7 +137,10 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
         || !same(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99), policy)) fail('CONTEXT_CHANGED');
   };
   assertCurrent();
-  return { context, challenge, policy, inventory, eligibility, assertCurrent,
+  return { context, challenge, policy, inventory, inventoryStats: {
+      count: inventory.length, rawByPile, skippedNonPlayerByPile, byPile: inventoryByPile, tradeability: inventoryTradeability,
+      sources: [...sources], transferSupported: false,
+    }, eligibility, assertCurrent,
     registerMarketEntity(item, entity) {
       assertCurrent();
       if (item?.source !== 'market' || entity?.definitionId !== item.definitionId || entity.concept !== true) fail('MARKET_IDENTITY_INVALID');
@@ -163,7 +175,7 @@ export function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating 
   return { schema: 1, context, reviewed: true,
     // Market demand uses the explicit Streamlined ceiling. Keep the FSU
     // range separately so expanding procurement never exposes protected stock.
-    maxRating, ...(marketMaxRating !== undefined ? { marketMaxRating } : {}), onlyUntradeable: true,
+    maxRating, ...(marketMaxRating !== undefined ? { marketMaxRating } : {}), onlyUntradeable: flags[0],
     protectFsuLockedPlayers: false, protectActiveSquad: false,
     storageFirst: flags[3], goldRange: [75, goldenMax], excludedLeagueIds: flags[2] ? [...leagues] : [],
     // Snapshot relevant upstream settings even where FCAT is stricter.

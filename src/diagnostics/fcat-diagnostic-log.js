@@ -5,14 +5,18 @@ const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
 const MAX_STRING_LENGTH = 160;
 
-const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource']);
+const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
+  'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue',
+  'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
+  'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount',
+  'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount',
   'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
   'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
@@ -106,7 +110,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       // useful listing/market failure from the export. Keep a separate small
       // bounded stream for trade and purchase lifecycle events. It carries the
       // same allowlisted, redacted fields and never affects business control.
-      if (entry.area === 'pricing' || entry.area === 'puzzle' || entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
+      if (entry.area === 'pricing' || entry.area === 'puzzle' || entry.area === 'streamlined' || entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
           ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
         criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
       }

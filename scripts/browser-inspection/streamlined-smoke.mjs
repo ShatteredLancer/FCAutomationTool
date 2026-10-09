@@ -155,8 +155,50 @@ export async function exerciseStreamlined(context) {
     assert.doesNotMatch(blocked, /提交接口未接通/);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1, 'Pending purchase never spends materials');
     await exerciseStreamlinedMarket(page);
+    await exerciseStreamlinedValue(page);
     console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, market routes, frozen settings, partial progress, stop/recover, unavailable supply, completion, responsive dialog, no EA writes.');
   } finally { await page.close(); }
+}
+
+async function exerciseStreamlinedValue(page) {
+  await page.evaluate(() => {
+    globalThis.streamlinedMount.dispose();
+    const a = globalThis.StreamlinedSmoke, c = a.challenge({ scoreRequirement: 100 });
+    const evidence = { quotes: 0, market: 0 };
+    globalThis.valueSmoke = evidence;
+    const session = a.createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+      get: async () => null, set: async () => {}, now: () => 100,
+      readInputs: () => ({ context: c.context, challenge: c, policy: a.policy, eligibility: a.eligibility,
+        inventory: [a.safeItem({ points: 100 })], assertCurrent() {} }),
+      prices: { load: async () => { evidence.quotes++; return { policy: { source: 'futgg' }, references: {
+        2: { quotes: { futgg: { source: 'futgg', definitionId: 2, price: 30000, fetchedAt: 1, expiresAt: 1000 } } },
+      } }; } },
+      readMarketCandidates: async () => { evidence.market++; return { market: [a.safeItem({ source: 'market',
+        definitionId: 901, points: 25, price: 2000,
+        quote: { source: 'futgg', definitionId: 901, price: 2000, fetchedAt: 1, expiresAt: 1000 } })] }; },
+    });
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+      readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
+  });
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  assert.equal(await page.locator('[data-objective]').inputValue(), 'lowest-value');
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.locator('.route-list button').first().waitFor();
+  assert.match(await page.locator('.route-list button').first().innerText(), /总价值 8,000.*待购 8,000.*4 张/);
+  assert.match(await page.locator('[data-result]').innerText(), /总材料价值 8,000 金币/);
+  await page.locator('.route-list button').last().click();
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
+    .querySelector('.route-list button:last-child').getAttribute('aria-pressed') === 'true');
+  assert.match(await page.locator('[data-result]').innerText(), /总材料价值 30,000 金币 · 待购 0 金币/);
+  assert.deepEqual(await page.evaluate(() => globalThis.valueSmoke), { quotes: 1, market: 1 });
+  assert.equal(await page.locator('[data-contribute]').isDisabled(), true, 'Route selection never grants contribution authority');
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 700 });
+    const dimensions = await page.getByRole('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width,
+      scroll: node.scrollWidth, client: node.clientWidth }));
+    assert.ok(dimensions.width <= width && dimensions.scroll <= dimensions.client + 1, 'Cost summaries fit desktop and mobile');
+    await page.screenshot({ path: `artifacts/fc27-browser/streamlined-value-${width}.png` });
+  }
 }
 
 async function exerciseStreamlinedMarket(page) {

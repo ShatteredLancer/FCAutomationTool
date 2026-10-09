@@ -12,10 +12,40 @@ const policy = { maxRating: 90, goldRange: [75, 99], excludedLeagueIds: [], only
   protectFsuLockedPlayers: false, protectActiveSquad: false, storageFirst: false };
 
 describe('Streamlined local planner', () => {
+  it('uses total material value by default while preserving purchase-only and fewest-card objectives', () => {
+    const target = normalizeStreamlinedChallenge({ ...fixture.challenge, context: fixture.context, scoreRequirement: 100 });
+    const inventory = [safeItem({ points: 100, price: 30000 })];
+    const market = [safeItem({ source: 'market', definitionId: 901, points: 100, price: 8000,
+      quote: { definitionId: 901, source: 'futgg', price: 8000, fetchedAt: 1, expiresAt: 1000 } })];
+    const value = { challenge: target, inventory, market, policy, eligibility: eligible, quoteAt: 10 };
+    expect(planStreamlined(value)).toMatchObject({ purchaseCost: 8000, materialValue: 0 });
+    expect(planStreamlined({ ...value, objective: 'lowest-coins' })).toMatchObject({ purchaseCost: 0, materialValue: 30000 });
+    expect(planStreamlined({ ...value, objective: 'fewest-cards' })).toMatchObject({ purchaseCost: 0, materialValue: 30000 });
+    expect(planStreamlined({ ...value, inventory: [safeItem({ points: 100, price: null })] }))
+      .toMatchObject({ purchaseCost: 8000, materialValue: 0, unknownValueCount: 0 });
+  });
   it('keeps protected and unknown eligibility items out of the plan', () => {
     const result = filterStreamlinedItems([...items, { ...items[0], id: 999, key: 'item:999', locked: true }], { eligibility: eligible, policy: { ...policy, protectFsuLockedPlayers: true } });
     expect(result.status).toBe('observed');
     expect(result.excluded.locked).toBe(1);
+  });
+  it('uses compliant tradeable inventory when FSU Only Untradeable is disabled', () => {
+    const tradeable = safeItem({ id: 800, definitionId: 1800, points: 100, tradeable: true });
+    const result = filterStreamlinedItems([tradeable], { eligibility: eligible,
+      policy: { ...policy, onlyUntradeable: false } });
+    expect(result.items).toHaveLength(1);
+    expect(result.excluded.untradeable).toBeUndefined();
+    expect(filterStreamlinedItems([tradeable], { eligibility: eligible, policy }).excluded.untradeable).toBe(1);
+  });
+  it('can choose an allowed Club/Storage card instead of buying the same score', () => {
+    const inventory = [safeItem({ id: 801, definitionId: 1801, points: 100, price: 1200, tradeable: true, pile: 'club' })];
+    const market = [safeItem({ source: 'market', definitionId: 1802, points: 100, price: 2000,
+      quote: { source: 'futgg', definitionId: 1802, price: 2000, fetchedAt: 1, expiresAt: 1000 } })];
+    const result = planStreamlined({ challenge: normalizeStreamlinedChallenge({ ...fixture.challenge,
+      context: fixture.context, scoreRequirement: 100 }), inventory, market, eligibility: eligible,
+      policy: { ...policy, onlyUntradeable: false }, quoteAt: 10 });
+    expect(result).toMatchObject({ purchaseCost: 0, materialValue: 1200 });
+    expect(result.items[0].source).toBe('inventory');
   });
   it('uses inventory before market and separates market purchase cost', () => {
     const result = planStreamlined({ challenge, inventory: items.slice(0, 4), market: [items[4]], eligibility: eligible, policy, maxNodes: 1000, maxStates: 1000, maxMs: 1000, quoteAt: 200 });

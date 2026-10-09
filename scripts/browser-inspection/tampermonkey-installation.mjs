@@ -1,8 +1,15 @@
 export const TAMPERMONKEY_URL = 'chrome-extension://dhdgffkkebhmkfjojejmpbldmpobfkfo';
 
-export async function confirmVerifiedInstaller(installer, { source, allowDowngrade = false }) {
+export async function confirmVerifiedInstaller(installer, { source, allowDowngrade = false,
+  expectedName = null, expectedVersion = null, allowNonLive = false } = {}) {
   const normalize = value => value.replaceAll('\r\n', '\n').trimEnd();
-  if (!/liveEnabled:\s*(?:true|false)/.test(source) || !source.startsWith('// ==UserScript==')) throw new Error('INSTALLATION_SOURCE_UNSAFE');
+  const metadata = source.match(/^\/\/ ==UserScript==\n([\s\S]*?)^\/\/ ==\/UserScript==$/m)?.[1] ?? '';
+  const name = metadata.match(/^\/\/ @name\s+(.+)$/m)?.[1]?.trim();
+  const version = metadata.match(/^\/\/ @version\s+(\S+)\s*$/m)?.[1];
+  const ordinarySource = /liveEnabled:\s*(?:true|false)/.test(source);
+  const namedSource = allowNonLive && typeof expectedName === 'string' && typeof expectedVersion === 'string'
+    && name === expectedName && version === expectedVersion;
+  if (!source.startsWith('// ==UserScript==') || (!ordinarySource && !namedSource)) throw new Error('INSTALLATION_SOURCE_UNSAFE');
   await installer.waitForLoadState('domcontentloaded');
   if (await installer.locator('.CodeMirror').count() === 0) {
     await installer.getByText(/^(Source|Source code|\u6e90\u4ee3\u7801)$/).click();
@@ -22,7 +29,8 @@ export async function confirmVerifiedInstaller(installer, { source, allowDowngra
   }
 }
 
-export async function installVerifiedUserscript(context, { source, url, allowDowngrade = false }) {
+export async function installVerifiedUserscript(context, { source, url, allowDowngrade = false,
+  expectedName = null, expectedVersion = null, allowNonLive = false } = {}) {
   const manager = await context.newPage();
   await manager.goto(`${TAMPERMONKEY_URL}/options.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
   await manager.getByText(/^(Utilities|\u5b9e\u7528\u5de5\u5177)$/).click();
@@ -40,7 +48,7 @@ export async function installVerifiedUserscript(context, { source, url, allowDow
   if (!(await installer.locator('body').innerText()).includes('// ==UserScript==')) {
     await installer.getByText(/^(Source|Source code|\u6e90\u4ee3\u7801)$/).click();
   }
-  await confirmVerifiedInstaller(installer, { source, allowDowngrade });
+  await confirmVerifiedInstaller(installer, { source, allowDowngrade, expectedName, expectedVersion, allowNonLive });
   await manager.close();
 }
 

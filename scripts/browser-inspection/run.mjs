@@ -79,6 +79,8 @@ if (help) {
       await mkdir(out, { recursive: true });
       await writeFile(path.join(out, 'self-test.json'), JSON.stringify({ browserVersion: context.browser()?.version(), report, runtime }, null, 2));
       console.log('Offline browser probe passed; no EA page, account or mutation used.');
+      const { exerciseCacheCompression } = await import('./cache-compression-smoke.mjs');
+      await exerciseCacheCompression(context, out, root);
       const { exerciseFsuPanel } = await import('./fsu-panel-smoke.mjs');
       await exerciseFsuPanel(page, out);
       const { exerciseRunnerPanel } = await import('./runner-panel-smoke.mjs');

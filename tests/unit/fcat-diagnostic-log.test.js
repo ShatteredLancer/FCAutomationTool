@@ -37,14 +37,34 @@ it('exports bounded public-version price provenance but never account or transac
   expect(JSON.stringify(payload)).not.toMatch(/private|itemId|tradeId|accountScope/);
 });
 
+it('records Streamlined total material value separately from purchase cost without inventing unknown values', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'plan', objective: 'lowest-value', priceSource: 'futgg',
+    estimatedCost: 8000, materialValue: 200, totalValue: 8200, unknownCount: 0, inventory: [{ id: 123 }] });
+  await t.log.record({ area: 'streamlined', event: 'plan', objective: 'lowest-value', estimatedCost: 0,
+    materialValue: null, totalValue: null, unknownCount: 1 });
+  for (let count = 0; count < 310; count++) await t.log.record({ area: 'gallery', event: 'pool-request', count });
+  const payload = await t.log.exportPayload();
+  expect(payload.criticalEntries[0]).toMatchObject({ objective: 'lowest-value', estimatedCost: 8000,
+    priceSource: 'futgg', materialValue: 200, totalValue: 8200 });
+  expect(payload.criticalEntries[1]).not.toHaveProperty('totalValue');
+  expect(payload.criticalEntries[1]).toMatchObject({ unknownCount: 1 });
+  expect(JSON.stringify(payload)).not.toMatch(/inventory|itemId/);
+});
+
 it('retains the real Puzzle solver reason and candidate counts across Gallery sync floods', async () => {
   const t = harness({ maxEntries: 1 });
   await t.log.record({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN',
     localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, excludedUnavailable: 0, evaluations: 0,
+    initialEstimatedCost: 10000, estimatedCost: 200, refinementPasses: 1, optimizationBudgetExhausted: false,
     inventory: [{ id: 123 }], token: 'secret' });
   await t.log.record({ area: 'gallery', event: 'pool-request' });
   const payload = await t.log.exportPayload();
   expect(payload.criticalEntries[0]).toMatchObject({ localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, evaluations: 0 });
+  expect(payload.criticalEntries[0]).toMatchObject({ initialEstimatedCost: 10000, estimatedCost: 200,
+    refinementPasses: 1, optimizationBudgetExhausted: false });
+  const reloaded = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  expect((await reloaded.exportPayload()).criticalEntries[0]).toMatchObject({ initialEstimatedCost: 10000, refinementPasses: 1 });
   expect(JSON.stringify(payload)).not.toMatch(/inventory|secret/);
   await t.log.record({ area: 'puzzle', event: 'procurement-result', localReason: 'https://secret.example' });
   expect((await t.log.exportPayload()).criticalEntries[1]).not.toHaveProperty('localReason');
