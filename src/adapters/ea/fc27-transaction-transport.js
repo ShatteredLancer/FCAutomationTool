@@ -1,6 +1,6 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
-import { FC27_CLUB_READ_METHODS, FC27_CLUB_COMPATIBLE_HASHES } from './fc27-club-read.js';
+import { FC27_CLUB_READ_METHODS, isFc27ClubCompatibleHash } from './fc27-club-read.js';
 
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const fail = reason => { throw new Error(reason); };
@@ -28,7 +28,7 @@ export async function verifyFc27Methods(root, definitions, compatibleHashes = {}
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     const scopedHashes = ownData(compatibleHashes, path);
     const compatible = Array.isArray(scopedHashes) ? scopedHashes.includes(hash) : hash === scopedHashes;
-    if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path) && !compatible) {
+    if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && !compatible) {
       const error = new Error('FC27_TRANSACTION_METHOD_UNREVIEWED');
       error.methodPath = path; error.observedHash = hash; error.expectedHash = expected;
       throw error;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.15
+// @version      27.0.16
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -1039,18 +1039,43 @@
     ["UTItemEntityFactory.prototype.createItem", "fc0713a05642d8d4fcebac3d20ebee458edd59f6d44e4a8a3ed84ae237391491"]
   ]);
   var FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
-    UTHttpRequest: "2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925",
-    EAHttpRequest: "76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1",
-    "UTHttpRequest.prototype.setPath": "a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df",
-    "UTHttpRequest.prototype.send": "da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81",
-    "EAHttpRequest.prototype.send": "d19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452",
-    "EAHttpRequest.prototype.setRequestBody": "b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9",
-    "EAHttpRequest.prototype.abort": "a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419",
+    UTHttpRequest: Object.freeze([
+      "2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925",
+      "873b66b4afb50668ca88b99d5f8dc574a69d0746c2eee16ee24b28ec907670e3"
+    ]),
+    EAHttpRequest: Object.freeze([
+      "76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1",
+      "6462b03eecc934b5adbd080244d072f14472e2490d9c60e806287f9777b79d5f"
+    ]),
+    "UTHttpRequest.prototype.setPath": Object.freeze([
+      "a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df",
+      "1f500395395f7880a45b9fbd1e6061f6fe00033f60d38540e7d8740e2e5a42aa"
+    ]),
+    "UTHttpRequest.prototype.send": Object.freeze([
+      "da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81",
+      "003bd9ad5714a9d3a32ac0bbf410df551bad71bcda7aee6607cc2624e70de9fa"
+    ]),
+    "EAHttpRequest.prototype.send": Object.freeze([
+      "d19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452",
+      "bcc3449a7799dd39d8db095d841df121ee58d73ef8756270c3c4e853f36d1d3f"
+    ]),
+    "EAHttpRequest.prototype.setRequestBody": Object.freeze([
+      "b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9",
+      "45d2e19dd341543d9a3c304c8cd8760e768862cb8984256f46b4d456368c26c9"
+    ]),
+    "EAHttpRequest.prototype.abort": Object.freeze([
+      "a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419",
+      "18ccf8620ae03031d1e2d3305c9fb8446052f2155b50045c89c3bdf99e61f787"
+    ]),
     // FC27 runtime review 2026-10-02: observer notification dispatch was
     // obfuscated again while its decoded contract stayed unchanged. This is
     // a local synchronization method, not a request or write method.
     "EAObservable.prototype.notify": "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2"
   });
+  function isFc27ClubCompatibleHash(path, hash) {
+    const reviewed = ownData(FC27_CLUB_COMPATIBLE_HASHES, path);
+    return Array.isArray(reviewed) ? reviewed.includes(hash) : typeof reviewed === "string" && reviewed === hash;
+  }
   var at2 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
   var validId = (value) => Number.isSafeInteger(value) && value > 0;
   async function createFc27ClubReadTransport(root, { onEntity = null, nativeReauth = false } = {}) {
@@ -1067,9 +1092,12 @@
       const bytes = new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn));
       const digest = await root.crypto.subtle.digest("SHA-256", bytes);
       const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path)) {
+      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash)) {
         if (path !== "UTItemEntityFactory.prototype.createItem") {
-          throw new Error(`FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_${index}_CHANGED`);
+          const error2 = new Error(`FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_${index}_CHANGED`);
+          error2.methodPath = path;
+          error2.observedHash = hash;
+          throw error2;
         }
         factoryOutputValidated = true;
         reviewed.set(path, binding);
@@ -1231,7 +1259,7 @@
       const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
       const scopedHashes = ownData(compatibleHashes2, path);
       const compatible = Array.isArray(scopedHashes) ? scopedHashes.includes(hash) : hash === scopedHashes;
-      if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path) && !compatible) {
+      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && !compatible) {
         const error2 = new Error("FC27_TRANSACTION_METHOD_UNREVIEWED");
         error2.methodPath = path;
         error2.observedHash = hash;
@@ -5960,13 +5988,6 @@
     ["Identification.prototype.handleResponse", "cc4de06cc8696a4723f9539159c912c6d7cd4b7263ccaf7db9d7198b2f31ff01"]
   ]);
   var compatibleHashes = Object.freeze({
-    "UTHttpRequest": "2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925",
-    "EAHttpRequest": "76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1",
-    "UTHttpRequest.prototype.setPath": "a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df",
-    "UTHttpRequest.prototype.send": "da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81",
-    "EAHttpRequest.prototype.send": "d19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452",
-    "EAHttpRequest.prototype.setRequestBody": "b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9",
-    "EAHttpRequest.prototype.abort": "a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419",
     "UTItemDAO.prototype.searchConceptItems": "edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc",
     "UTItemDAO.prototype.searchTransferMarket": "dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111",
     "FCAuthenticationService.prototype.getIdentifier": "963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2",
@@ -6058,7 +6079,7 @@
       if (typeof fn !== "function") throw error(`METHOD_${index}_MISSING`);
       const digest = await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
       const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-      if (hash !== expected && hash !== ownData(compatibleHashes, path)) {
+      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path)) {
         if (path !== "UTItemEntityFactory.prototype.createItem") throw error(`METHOD_${index}_CHANGED`);
         factoryOutputValidated = true;
         reviewed.set(path, binding);
@@ -7622,6 +7643,7 @@
     collectionState = null,
     confirmCollection = null,
     playerDetails = null,
+    preflightReceiptRead = false,
     attempts = 5,
     onEvent = () => {
     },
@@ -7642,7 +7664,7 @@
     if (Object.values(functions).some((fn) => typeof fn !== "function") || root.ItemPile.CLUB !== 7 || root.ItemPile.PURCHASED !== 6 || root.GameCurrency.COINS !== "COINS") fail17("FC27_BUY_RUNTIME_UNVERIFIED");
     let provider;
     const legacyProvider = async () => provider ??= await createFc27PurchaseSquad(root, { canWrite, assertTarget });
-    let club;
+    let club = preflightReceiptRead === true ? await createFc27ClubReadTransport(root) : null;
     const auctions = /* @__PURE__ */ new Map();
     const auctionCaps = /* @__PURE__ */ new Map();
     const confirmedMoves = /* @__PURE__ */ new Set();
@@ -21436,6 +21458,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               return !stopped;
             } })).references[definitionId] : null,
             attempts: settings.queriesNumber,
+            preflightReceiptRead: true,
             canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope2),
             verifyCurrent: account,
             playerDetails: players,
@@ -21454,7 +21477,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }).catch(async (error2) => {
             try {
-              if (error2?.message === "FC27_TRANSACTION_METHOD_UNREVIEWED") {
+              if (error2?.message === "FC27_TRANSACTION_METHOD_UNREVIEWED" || /^FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_\d_CHANGED$/.test(error2?.message ?? "")) {
                 await diagnosticLog2?.record?.({
                   area: "gallery",
                   event: "purchase-method-check",
@@ -25832,7 +25855,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const at10 = now();
     if (!Number.isSafeInteger(at10) || at10 < 0) return null;
     const entry = { at: at10 };
-    if (["service.bid", "service.move"].includes(input.method)) entry.method = input.method;
+    if ([
+      "service.bid",
+      "service.move",
+      "UTHttpRequest",
+      "EAHttpRequest",
+      "UTHttpRequest.prototype.setPath",
+      "UTHttpRequest.prototype.send",
+      "EAHttpRequest.prototype.send",
+      "EAHttpRequest.prototype.setRequestBody",
+      "EAHttpRequest.prototype.abort"
+    ].includes(input.method)) entry.method = input.method;
     if (typeof input.observedHash === "string" && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
     for (const key of STRING_FIELDS) {
       const value = key === "reason" || key === "localReason" ? typeof input[key] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null : boundedString(input[key]);
@@ -30396,7 +30429,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.15" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.16" });
   var galleryAssets = Object.freeze({
     reward: (type) => {
       try {
@@ -30654,8 +30687,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.15"}`,
-    version: "27.0.15",
+    title: `FC Automation Tool ${"27.0.16"}`,
+    version: "27.0.16",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

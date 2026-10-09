@@ -52,6 +52,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   refreshReference = null, now = () => Date.now(), onSearch = () => {},
   verifyCurrent: verifyCurrentOverride = null, verifySquad: verifySquadOverride = null,
   collectionState = null, confirmCollection = null, playerDetails = null,
+  preflightReceiptRead = false,
   attempts = 5, onEvent = () => {}, wait = (min, max) => new Promise(resolve => setTimeout(resolve,
     Math.floor(Math.random() * (max * 1000 - min * 1000 + 1)) + min * 1000)) } = {}) {
   const context = readFc27Context(root); const service = root.services.Item;
@@ -64,7 +65,10 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       || root.ItemPile.PURCHASED !== 6 || root.GameCurrency.COINS !== 'COINS') fail('FC27_BUY_RUNTIME_UNVERIFIED');
   let provider;
   const legacyProvider = async () => provider ??= await createFc27PurchaseSquad(root, { canWrite, assertTarget });
-  let club;
+  // Gallery will locate each receipt, even when the destination is Unassigned.
+  // Check its entire read dependency before the first bid, not after spending.
+  // This constructs the guarded transport only; it performs no request.
+  let club = preflightReceiptRead === true ? await createFc27ClubReadTransport(root) : null;
   const auctions = new Map(); const auctionCaps = new Map(); const confirmedMoves = new Set();
   let closed = false; let currentRecord = null;
   const diagnostic = (stage, values = {}) => { onEvent({ stage, ...values }); };

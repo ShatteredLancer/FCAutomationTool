@@ -4,6 +4,7 @@ import { createFc27ClubReadTransport } from '../../src/adapters/ea/fc27-club-rea
 import { verifyFc27Methods } from '../../src/adapters/ea/fc27-transaction-transport.js';
 import { createFc27GalleryProgressReader } from '../../src/adapters/ea/fc27-gallery-progress.js';
 import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
+import october9 from '../fixtures/fc27-request-method-observation-2026-10-09.json';
 
 // Public runtime captured without login on 2026-10-02, independently of the
 // production allowlist. All thirteen decoded methods match the old structure.
@@ -83,10 +84,10 @@ function fixture(methodHashes = null) {
     const fn = path === 'factories.Item.generateItemsFromItemData'
       ? Object.getPrototypeOf(root.factories.Item).generateItemsFromItemData
       : path.split('.').reduce((v, key) => v[key], root);
-    return [Function.prototype.toString.call(fn), methodHashes?.[index] ?? hash];
+    return [Function.prototype.toString.call(fn).replace(/\r\n/g, '\n'), methodHashes?.[index] ?? hash];
   }));
   root.crypto = { subtle: { digest: vi.fn(async (_algo, bytes) => {
-    const hash = hashes.get(new TextDecoder().decode(bytes)) ?? '0'.repeat(64);
+    const hash = hashes.get(new TextDecoder().decode(bytes).replace(/\r\n/g, '\n')) ?? '0'.repeat(64);
     return Uint8Array.from(hash.match(/../g).map(pair => parseInt(pair, 16))).buffer;
   }) } };
   return { root, calls, cleanups, control, catalog, market, player, auction, user, forbidden, identified };
@@ -123,6 +124,19 @@ it('keeps unknown hashes blocked in Club and transaction verification', async ()
   f.root.UTHttpRequest = function unknownRequest() {};
   await expect(createFc27ClubReadTransport(f.root)).rejects.toThrow('METHOD_0_CHANGED');
   await expect(verifyFc27Methods(f.root, FC27_MARKET_READ_METHODS.slice(0, 7))).rejects.toThrow('FC27_TRANSACTION_METHOD_UNREVIEWED');
+  expect(f.calls).toEqual([]);
+});
+
+it('shares October 9 request primitive compatibility without loosening other Market methods', async () => {
+  const hashes = FC27_MARKET_READ_METHODS.map(([path], index) => october9.methods[path]?.sha256 ?? currentHashes[index]);
+  const f = fixture(hashes);
+  f.root.services.Club = { clubDao: { authDelegate: {} } };
+  f.root.HttpRequestMethod.POST = 'POST'; f.root.ItemType = { PLAYER: 'player' };
+  await expect(createFc27ClubReadTransport(f.root)).resolves.toBeTruthy();
+  await expect(verifyFc27Methods(f.root, FC27_MARKET_READ_METHODS.slice(0, 7))).resolves.toBeTypeOf('function');
+  await expect(createFc27MarketReadTransport(f.root)).resolves.toBeTruthy();
+  f.root.Identification.prototype.handleResponse = () => {};
+  await expect(createFc27MarketReadTransport(f.root)).rejects.toThrow('METHOD_13_CHANGED');
   expect(f.calls).toEqual([]);
 });
 

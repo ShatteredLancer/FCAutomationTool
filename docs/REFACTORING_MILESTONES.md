@@ -1585,6 +1585,20 @@ Gallery 规划器默认墙钟时间从 10 秒提高到 30 秒，并新增账号�
 
 用户要求从正式 Settings 移除“安装与多标签检查”整块。实施范围为工作台 markup、面板按钮绑定和生产入口：正式版不再注入 `checkInstallation`，不渲染两颗自检按钮；独立 Acceptance 验收构建仍显式启用原入口，存储、Web Lock、业务 Journal 与恢复逻辑不变。流程为移除入口、检查无按钮时的面板初始化、回归存储/互斥和导出、重建正式产物。离线生产页面 smoke 已确认两个按钮不存在且后续初始化/操作正常，原隔离 Acceptance 构建与跨标签存储 smoke 通过；完整 `npm run verify` 398 文件 / 4359 项、FC27 84 文件 / 1414 项及全部离线浏览器 smoke 通过，`git diff --check` 通过。当前版本仍为 27.0.13，根目录/dist 产物 SHA256 均为 `483afa4e79e2cf0d8da6ead5759f4002f202724cf1ccf3069421db456329b77e`；未升版、提交或执行 EA 写操作，本次没有重装专用浏览器或登录后真实 Settings 检查。更新正式 userscript 后该块即不显示，无需更改配置或清理记录。
 
+## 2026-10-09 27.0.16 Gallery 成交核对与恢复
+
+用户 27.0.15 新诊断与截图：Gallery 三张卡中两张 Not found、一张 bought，花费 1,100；反复 Check and continue 返回 `FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED`，完成核对始终 0。日志中的购买数量和花费未继续增加。上版买入方法适配不完整：修了 `bid/move`，漏了成交后 `locate()` 的 Club 请求依赖，Unassigned 去向也经过此路径。
+
+先新增真实调用链回归：Gallery Journal → 原生 buyer → Club owned request → Unassigned 精确回执。修复前 1 张/1,100 的场景稳定返回 recovery-required；13 项初始恢复/预检回归全部失败。修改后覆盖完整生产 Gallery 编排、三卡场景、旧 bought Journal 在 Club/Unassigned 的恢复、冻结去向、缺失/同版本另一副本/歧义回执、七个请求方法逐项未知指纹，以及买入后绑定漂移。已经成交的实体不会再 bid；不以同版本另一副本替代精确 itemId。
+
+匿名重新读取 [EA Web App](https://www.ea.com/ea-sports-fc/ultimate-team/web-app/) build 11414 的 [公开 ocompiled.js](https://www.ea.com/ea-sports-fc/ultimate-team/web-app/js/ocompiled.js?_=11414)，完整资产 SHA256 为 `90c120d41798623f756f1732010db21fd3c849e695abfce4e968700fd84fb9a2`，两次读取一致。仅运行公开字符串解码表和旋转初始化，用 AST 提取构造器/方法；不运行应用、登录、请求业务接口或获取凭据。
+
+完整七个当前请求函数与解码结果保存在 `tests/fixtures/fc27-request-method-observation-2026-10-09.json`：UT/EA 构造器、UT setPath/send、EA send/setRequestBody/abort。旧完整源码捕获不在本机，因此不声称这七个函数与旧版逐字解码等价。独立审查当前合同：UT 构造器依赖调用方认证代理，setPath 拼接原生 session URL；请求体确定性排序和 JSON 序列化；UT send 只转交基类，EA send 使用当前实例的 XHR、method/URL/body/headers/timeout/事件；abort 只取消本实例 XHR。捕获源码使用真实 SHA256 验证；解码合同在纯本地 XHR stub 中重放，无网络或账号状态。
+
+最小修复：保留原始/10 月 2 日指纹并新增七个精确方法指纹，Club/Market/通用请求验证使用同一兼容检查，未放宽其它 service/DAO 写函数。Gallery 在初始化时预检成交核对依赖，仅创建受保护 transport，不发 Club 请求、不提前买入。未知请求方法在花费前停止，并记录允许的方法名/实际 hash；现有 Journal、价限、冻结去向和成交价格保持不变。运行期间的绑定检查与精确响应/实体核对继续有效。
+
+新增 32 项回归，两个新文件也纳入 FC27 专项检查。完整 `npm run verify`：**401 文件通过，4364 项通过、39 项跳过（共 4403 项）**；FC27 专项：**86 文件通过，1412 项通过、34 项跳过（共 1446 项）**，全套离线浏览器 smoke 通过。root/dist 产物均为 **1,678,715 bytes**，SHA256 `40bb256ee3c3a47e92247d099f0c12290bf99d6df3825e4255a4f1676ef7cbbc`，FSU Local 保持 26.09.9。诊断没有账号页面的实际请求方法 hash，因此已证实的是当前公开原生实现可复现同类故障，不宣称排除了插件包装。没有代用户买卡或消费材料，不把离线通过表述为账号实买验收。按用户既有明确授权提交并推送 main；不创建 tag/GitHub Release。版本说明见 [27.0.16](releases/27.0.16.md)。
+
 ## 2026-10-09 27.0.15 购买方法指纹兼容与 Gallery 诊断
 
 补充验证：`node scripts/verify-fc27-prelaunch.mjs --browser` 完成，84 个测试文件通过，1382 项通过、34 项跳过（共 1416 项），完整离线浏览器 smoke 通过；没有访问用户 EA 账号或执行真实交易。

@@ -52,7 +52,7 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
         const adapter = await createFc27PuzzleBuyAdapter(root, { assertTarget: account, referencePrice, onSearch: callbacks.onSearch,
           refreshReference: publicPrices ? async (definitionId, policy) =>
             (await publicPrices.load([definitionId], { purpose: 'purchase', policy, isCurrent: () => { account(); return !stopped; } })).references[definitionId] : null,
-          attempts: settings.queriesNumber,
+          attempts: settings.queriesNumber, preflightReceiptRead: true,
           canWrite: () => liveEnabled === true && persistence.lock.hasExclusiveAccess(scope),
           verifyCurrent: account, playerDetails: players,
           collectionState: definitionId => rows.get(definitionId)?.isCollected,
@@ -67,7 +67,8 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
           // Method-check failures occur before search/bid and must survive
           // Gallery sync floods without exporting source or account data.
           try {
-            if (error?.message === 'FC27_TRANSACTION_METHOD_UNREVIEWED') {
+            if (error?.message === 'FC27_TRANSACTION_METHOD_UNREVIEWED'
+                || /^FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_\d_CHANGED$/.test(error?.message ?? '')) {
               await diagnosticLog?.record?.({ area: 'gallery', event: 'purchase-method-check', phase: 'prepare',
                 status: 'blocked', reason: error.message, method: error.methodPath, observedHash: error.observedHash });
             }

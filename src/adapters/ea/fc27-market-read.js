@@ -1,6 +1,6 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
-import { FC27_CLUB_READ_METHODS } from './fc27-club-read.js';
+import { FC27_CLUB_READ_METHODS, isFc27ClubCompatibleHash } from './fc27-club-read.js';
 import { unwrapFc27ItemFactory } from './fc27-item-factory-observer.js';
 import { MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
 
@@ -19,13 +19,6 @@ export const FC27_MARKET_READ_METHODS = Object.freeze([
 // obfuscator identifiers/string indexes changed. Scope these hashes to Market
 // reads, not Club or write transactions. Evidence: market-runtime-review.mjs.
 const compatibleHashes = Object.freeze({
-  'UTHttpRequest': '2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
-  'EAHttpRequest': '76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
-  'UTHttpRequest.prototype.setPath': 'a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
-  'UTHttpRequest.prototype.send': 'da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
-  'EAHttpRequest.prototype.send': 'd19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
-  'EAHttpRequest.prototype.setRequestBody': 'b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
-  'EAHttpRequest.prototype.abort': 'a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
   'UTItemDAO.prototype.searchConceptItems': 'edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc',
   'UTItemDAO.prototype.searchTransferMarket': 'dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111',
   'FCAuthenticationService.prototype.getIdentifier': '963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2',
@@ -117,7 +110,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     if (typeof fn !== 'function') throw error(`METHOD_${index}_MISSING`);
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected && hash !== ownData(compatibleHashes, path)) {
+    if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path)) {
       if (path !== 'UTItemEntityFactory.prototype.createItem') throw error(`METHOD_${index}_CHANGED`);
       // Gallery/Enhancer/FSU may decorate EA's pure entity factory. Keep the
       // live binding, then enforce exact output identity in materialize(); no

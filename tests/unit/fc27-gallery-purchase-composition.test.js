@@ -41,7 +41,7 @@ it('composes the original FSU buyer without any SBC target and uses explicit acc
   const f = fixture();
   expect(await f.purchase(f.input)).toMatchObject({ status: 'purchased', spent: 400, collection: { status: 'confirmed' } });
   expect(f.reads).toEqual([[10,11],[10,11]]);
-  expect(stub.adapters[0]).toMatchObject({ attempts: 3 });
+  expect(stub.adapters[0]).toMatchObject({ attempts: 3, preflightReceiptRead: true });
   expect(stub.calls).toEqual([['find',10,450],['buy',10],['move',10],['find',11,450],['buy',11],['move',11]]);
   expect((await f.purchase.inspect()).remaining).toBe(0);
 });
@@ -182,4 +182,21 @@ it.each(['throws', 'rejects'])('retains the original method rejection when Galle
   });
   expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', spent: 0 });
   expect(stub.calls).toEqual([]);
+});
+
+it.each(['UTHttpRequest', 'EAHttpRequest.prototype.abort'])('exports %s preflight evidence before purchasing', async method => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, structuredClone(value)) });
+  const f = fixture({ diagnosticLog });
+  stub.adapterError = Object.assign(Error('FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED'), {
+    methodPath: method, observedHash: '0'.repeat(64), sourceCode: 'private-source', account: 'private-account',
+  });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', purchased: 0, spent: 0,
+    reason: 'FC27_CLUB_RUNTIME_UNVERIFIED_METHOD_0_CHANGED' });
+  expect(stub.calls).toEqual([]);
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.criticalEntries).toContainEqual(expect.objectContaining({ event: 'purchase-method-check',
+    method, observedHash: '0'.repeat(64) }));
+  expect(JSON.stringify(payload)).not.toMatch(/private-|sourceCode|accountScope|operationId/);
 });

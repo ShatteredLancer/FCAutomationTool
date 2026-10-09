@@ -24,7 +24,9 @@ function sanitizeEntry(input, now) {
   const at = now();
   if (!Number.isSafeInteger(at) || at < 0) return null;
   const entry = { at };
-  if (['service.bid', 'service.move'].includes(input.method)) entry.method = input.method;
+  if (['service.bid', 'service.move', 'UTHttpRequest', 'EAHttpRequest', 'UTHttpRequest.prototype.setPath',
+    'UTHttpRequest.prototype.send', 'EAHttpRequest.prototype.send', 'EAHttpRequest.prototype.setRequestBody',
+    'EAHttpRequest.prototype.abort'].includes(input.method)) entry.method = input.method;
   if (typeof input.observedHash === 'string' && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
   for (const key of STRING_FIELDS) {
     const value = key === 'reason' || key === 'localReason'

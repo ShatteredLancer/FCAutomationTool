@@ -5,6 +5,20 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.16] - 2026-10-09
+
+### Purchase Receipt Recovery
+
+- Accept seven independently reviewed October 9 native HTTP request
+  fingerprints through one shared compatibility check; unknown methods and
+  service/DAO transaction fingerprints remain gated.
+- Preflight Gallery receipt-read dependencies before bidding, rather than
+  discovering incompatible request methods after spending coins.
+- Restore the pending bought-row recovery path without a second bid, moving
+  an Unassigned-destination item, changing price limits or clearing journals.
+- Export redacted request-method preflight evidence and add real-source plus
+  native Gallery purchase/receipt/resume regressions.
+
 ## [27.0.15] - 2026-10-09
 
 ### Purchase Compatibility
