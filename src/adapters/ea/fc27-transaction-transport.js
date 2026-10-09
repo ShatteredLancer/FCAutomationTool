@@ -26,8 +26,9 @@ export async function verifyFc27Methods(root, definitions, compatibleHashes = {}
     }
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(source));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path)
-        && hash !== ownData(compatibleHashes, path)) {
+    const scopedHashes = ownData(compatibleHashes, path);
+    const compatible = Array.isArray(scopedHashes) ? scopedHashes.includes(hash) : hash === scopedHashes;
+    if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path) && !compatible) {
       const error = new Error('FC27_TRANSACTION_METHOD_UNREVIEWED');
       error.methodPath = path; error.observedHash = hash; error.expectedHash = expected;
       throw error;

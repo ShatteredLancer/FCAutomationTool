@@ -290,12 +290,14 @@ it('exports procurement cost and selected public versions after a successful con
   expect(x.calls.some(call => call.kind === 'buy')).toBe(false);
 });
 
-it('buys with the independently reviewed October 3 bid/move fingerprints', async () => {
+it.each([
+  ['October 3', { bid: '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
+    move: '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef' }],
+  ['October 9', { bid: '36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2',
+    move: '92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93' }],
+])('buys with the independently reviewed %s bid/move fingerprints', async (_date, hashes) => {
   const x = await buyingFixture(3);
-  x.state.buyMethodHashes = {
-    bid: '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
-    move: '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef',
-  };
+  x.state.buyMethodHashes = hashes;
   expect(await x.buy()).toMatchObject({ purchased: 3, spent: 600 });
   expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(3);
   expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(3);

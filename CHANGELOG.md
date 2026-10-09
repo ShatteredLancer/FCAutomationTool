@@ -5,6 +5,18 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.15] - 2026-10-09
+
+### Purchase Compatibility
+
+- Accept the independently reviewed October 9 EA `bid`/`move` fingerprints.
+  Decoded bodies match the previous review; older reviewed versions remain
+  supported and unknown fingerprints still block before market search.
+- Include the failed method name and SHA256 in redacted Gallery purchase
+  diagnostics, without exporting account identifiers or method source.
+- Preserve pending purchase records across the update and add captured-source,
+  runtime-change, diagnostic-failure and batch-resume regressions.
+
 ## [27.0.12] - 2026-10-06
 
 ### Gallery Completion

@@ -63,6 +63,16 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
             return { status: result.status === 'observed' && confirmed.length === ids.length ? 'confirmed' : 'pending',
               confirmed: confirmed.length, total: ids.length, reason: result.reason ?? null };
           },
+        }).catch(async error => {
+          // Method-check failures occur before search/bid and must survive
+          // Gallery sync floods without exporting source or account data.
+          try {
+            if (error?.message === 'FC27_TRANSACTION_METHOD_UNREVIEWED') {
+              await diagnosticLog?.record?.({ area: 'gallery', event: 'purchase-method-check', phase: 'prepare',
+                status: 'blocked', reason: error.message, method: error.methodPath, observedHash: error.observedHash });
+            }
+          } catch { /* Diagnostics never replace the original purchase failure. */ }
+          throw error;
         });
         return Object.freeze({ ...adapter, find: (definitionId, cap = Infinity) => adapter.find(definitionId, Math.min(cap, settings.quoteCeiling ?? Infinity)) });
       },

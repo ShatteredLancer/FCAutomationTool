@@ -15,11 +15,18 @@ export const FC27_BUY_SERVICE_METHODS = Object.freeze([
   ['bid', '998a2fe52b55da1fd5a4e96263dcefb153769ced27d093117af1e9bfac1e820a'],
   ['move', '021d1826feb561a8e66721559bc223b69346f51287f2993b4eadbb0c3bf353f4'],
 ]);
-// Public EA runtime captured 2026-10-03. Decoded bodies are identical to the
-// baseline after renaming obfuscated identifiers; no buy/move behavior changed.
+// Public EA runtime captured 2026-10-03 and 2026-10-09 (build 11414).
+// Decoded bodies are identical to the baseline after renaming obfuscated
+// identifiers. Keep both reviewed revisions; never approve a hash at runtime.
 export const FC27_BUY_COMPATIBLE_HASHES = Object.freeze({
-  'service.bid': '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
-  'service.move': '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef',
+  'service.bid': Object.freeze([
+    '3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a',
+    '36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2',
+  ]),
+  'service.move': Object.freeze([
+    '5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef',
+    '92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93',
+  ]),
 });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const id = n => Number.isSafeInteger(n) && n > 0;

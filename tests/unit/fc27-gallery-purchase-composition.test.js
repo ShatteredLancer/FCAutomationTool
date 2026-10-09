@@ -3,10 +3,12 @@ import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { createFc27GalleryPurchase } from '../../src/adapters/browser/fc27-gallery-purchase.js';
 import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
+import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 
-const stub = vi.hoisted(() => ({ adapters: [], calls: [], unknown: false, location: 'club', settings: null }));
+const stub = vi.hoisted(() => ({ adapters: [], calls: [], unknown: false, location: 'club', settings: null, adapterError: null }));
 vi.mock('../../src/adapters/ea/fc27-puzzle-buy.js', () => ({ createFc27PuzzleBuyAdapter: async (_root, options) => {
   stub.adapters.push(options);
+  if (stub.adapterError) throw stub.adapterError;
   return { verifySquad: options.verifyCurrent, verifyCurrent: options.verifyCurrent,
     find: async (definitionId, ceiling) => {
       stub.calls.push(['find', definitionId, ceiling]);
@@ -20,7 +22,7 @@ vi.mock('../../src/adapters/ea/fc27-puzzle-buy.js', () => ({ createFc27PuzzleBuy
   };
 } }));
 function fixture(options = {}) {
-  stub.adapters = []; stub.calls = []; stub.unknown = false; stub.location = 'club';
+  stub.adapters = []; stub.calls = []; stub.unknown = false; stub.location = 'club'; stub.adapterError = null;
   const { root } = executionRuntime(), store = new Map(), reads = [], storageReads = [];
   root.crypto.randomUUID = () => 'gallery-test-operation';
   root.navigator = { locks: { request: async (name, _options, task) => task({ name, mode: 'exclusive' }) } };
@@ -144,4 +146,40 @@ it('reports a thrown storage write failure before any purchase', async () => {
 it('isolates diagnostic failures from completed purchases', async () => {
   const f = fixture({ diagnosticLog: { record: () => { throw Error('log offline'); } } });
   expect(await f.purchase(f.input)).toMatchObject({ status: 'purchased', purchased: 2 });
+});
+
+it.each(['bid', 'move'])('exports the blocked Gallery %s method and resumes the untouched batch after an update', async name => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, structuredClone(value)) });
+  const f = fixture({ diagnosticLog });
+  stub.adapterError = Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'), {
+    methodPath: `service.${name}`, observedHash: '0'.repeat(64), sourceCode: 'private-source', account: 'private-account',
+  });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', purchased: 0, spent: 0 });
+  expect(stub.calls).toEqual([]);
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ area: 'gallery', event: 'purchase-method-check', phase: 'prepare',
+    method: `service.${name}`, observedHash: '0'.repeat(64), status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED' }));
+  expect(payload.criticalEntries).toContainEqual(expect.objectContaining({ event: 'purchase-method-check', method: `service.${name}` }));
+  expect(payload.entries).toContainEqual(expect.objectContaining({ event: 'purchase-outcome', count: 0, spent: 0 }));
+  expect(JSON.stringify(payload)).not.toMatch(/private-|sourceCode|accountScope|operationId/);
+  const batch = await f.purchase.inspect();
+  expect(batch.remaining).toBe(2);
+  stub.adapterError = null;
+  expect(await f.purchase({ approved: true, resume: true, expectedOperationId: batch.operationId, isCurrent: () => true }))
+    .toMatchObject({ status: 'purchased', purchased: 2, spent: 400 });
+  expect(stub.calls.filter(([method]) => method === 'buy')).toHaveLength(2);
+});
+
+it.each(['throws', 'rejects'])('retains the original method rejection when Gallery diagnostics %s', async mode => {
+  const f = fixture({ diagnosticLog: { record: () => {
+    if (mode === 'throws') throw Error('diagnostics offline');
+    return Promise.reject(Error('diagnostics offline'));
+  } } });
+  stub.adapterError = Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'), {
+    methodPath: 'service.bid', observedHash: '0'.repeat(64),
+  });
+  expect(await f.purchase(f.input)).toMatchObject({ status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', spent: 0 });
+  expect(stub.calls).toEqual([]);
 });

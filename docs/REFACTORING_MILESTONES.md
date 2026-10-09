@@ -1584,3 +1584,24 @@ Gallery 规划器默认墙钟时间从 10 秒提高到 30 秒，并新增账号�
 ## 2026-10-08 Settings 移除安装自检入口
 
 用户要求从正式 Settings 移除“安装与多标签检查”整块。实施范围为工作台 markup、面板按钮绑定和生产入口：正式版不再注入 `checkInstallation`，不渲染两颗自检按钮；独立 Acceptance 验收构建仍显式启用原入口，存储、Web Lock、业务 Journal 与恢复逻辑不变。流程为移除入口、检查无按钮时的面板初始化、回归存储/互斥和导出、重建正式产物。离线生产页面 smoke 已确认两个按钮不存在且后续初始化/操作正常，原隔离 Acceptance 构建与跨标签存储 smoke 通过；完整 `npm run verify` 398 文件 / 4359 项、FC27 84 文件 / 1414 项及全部离线浏览器 smoke 通过，`git diff --check` 通过。当前版本仍为 27.0.13，根目录/dist 产物 SHA256 均为 `483afa4e79e2cf0d8da6ead5759f4002f202724cf1ccf3069421db456329b77e`；未升版、提交或执行 EA 写操作，本次没有重装专用浏览器或登录后真实 Settings 检查。更新正式 userscript 后该块即不显示，无需更改配置或清理记录。
+
+## 2026-10-09 27.0.15 购买方法指纹兼容与 Gallery 诊断
+
+补充验证：`node scripts/verify-fc27-prelaunch.mjs --browser` 完成，84 个测试文件通过，1382 项通过、34 项跳过（共 1416 项），完整离线浏览器 smoke 通过；没有访问用户 EA 账号或执行真实交易。
+
+用户 27.0.14 导出中，Gallery 购买初始化连续返回 `FC27_TRANSACTION_METHOD_UNREVIEWED`，买入/花费均为 0；结果页三张卡仍为 Pending。此前 Puzzle 会导出失败方法，Gallery 的 adapter 初始化异常只保留 outcome，具体方法和实际 hash 丢失。
+
+匿名下载 [EA 公开 ocompiled.js build 11414](https://www.ea.com/ea-sports-fc/ultimate-team/web-app/js/ocompiled.js?_=11414)，整份源码 SHA256 为 `90c120d41798623f756f1732010db21fd3c849e695abfce4e968700fd84fb9a2`。AST 抽取两个原生方法，仅在隔离 VM 中运行公开字符串解码器；未执行购买/移动方法、加载账号或调用认证接口。解码字符串并统一混淆变量名后，两个完整函数体都与 10 月 3 日审核版本一致：
+
+| 方法 | 10 月 9 日原始源码 SHA256 |
+| --- | --- |
+| `UTItemService.prototype.bid` | `36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2` |
+| `UTItemService.prototype.move` | `92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93` |
+
+完整公开函数源码、解码体、采集时间及来源 hash 保存在 `tests/fixtures/fc27-buy-method-observation-2026-10-09.json`。真实源码 fixture 重放证明旧 verifier 会拒绝当前原生方法；新增 Gallery 组合回归证明初始化失败漏日志。先运行失败测试得到 4 项失败，再修实现。
+
+影响面限定于共用购买 Adapter、方法 verifier 的按路径精确兼容列表，以及 Gallery adapter 初始化诊断。原始指纹和 10 月 3 日指纹继续可用；数组仅表达多个已人工审核的精确 SHA256，不做模糊匹配或运行时自动批准。未知/跨路径指纹、运行中替换、账号变化、价格上限、授权与成交不明保护不变。Gallery 的 `purchase-method-check` 进入既有脱敏/有界 critical stream；诊断异常不掩盖原错误，批次和 Pending 保留。
+
+新增 9 项回归覆盖公开源码 SHA256、完整解码等价、运行中方法替换、未知包装/错误路径拒绝、两种兼容版本的原生购买编排、Gallery 失败导出/继续原批，以及诊断同步/异步失败。完整 `npm run verify` 通过 **399 文件，4332 项通过、39 项跳过（共 4371 项）**；root/dist 27.0.15 产物均为 **1,677,848 bytes**，SHA256 `b9725fa61fae7fd0d1ccbb4b6a7344ab77fe391938d58e3519a564555e3ac939`，FSU Local 保持 26.09.9。
+
+用户旧导出没有实际 hash，所以本次确认的是最新原生 EA 代码可复现同类拦截，而非已读到该账号内所有插件包装。当前用户 Chrome 连接未取得页面，未重装或代用户买卡。更新 27.0.15 后刷新 Web App，核对版本，回到原购买结果点击 Continue pending；若仍阻断，新导出应包含 `purchase-method-check` 的方法与 hash，继续按准确证据处理，不清空 Journal。用户已明确批准提交并推送 main；本次不创建 tag/GitHub Release，不改变发布授权边界。

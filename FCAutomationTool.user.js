@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.14
+// @version      27.0.15
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -1229,7 +1229,9 @@
       }
       const digest = await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(source));
       const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path) && hash !== ownData(compatibleHashes2, path)) {
+      const scopedHashes = ownData(compatibleHashes2, path);
+      const compatible = Array.isArray(scopedHashes) ? scopedHashes.includes(hash) : hash === scopedHashes;
+      if (hash !== expected && hash !== ownData(FC27_CLUB_COMPATIBLE_HASHES, path) && !compatible) {
         const error2 = new Error("FC27_TRANSACTION_METHOD_UNREVIEWED");
         error2.methodPath = path;
         error2.observedHash = hash;
@@ -7568,8 +7570,14 @@
     ["move", "021d1826feb561a8e66721559bc223b69346f51287f2993b4eadbb0c3bf353f4"]
   ]);
   var FC27_BUY_COMPATIBLE_HASHES = Object.freeze({
-    "service.bid": "3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a",
-    "service.move": "5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef"
+    "service.bid": Object.freeze([
+      "3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a",
+      "36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2"
+    ]),
+    "service.move": Object.freeze([
+      "5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef",
+      "92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93"
+    ])
   });
   var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var id4 = (n) => Number.isSafeInteger(n) && n > 0;
@@ -21444,6 +21452,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 reason: result.reason ?? null
               };
             }
+          }).catch(async (error2) => {
+            try {
+              if (error2?.message === "FC27_TRANSACTION_METHOD_UNREVIEWED") {
+                await diagnosticLog2?.record?.({
+                  area: "gallery",
+                  event: "purchase-method-check",
+                  phase: "prepare",
+                  status: "blocked",
+                  reason: error2.message,
+                  method: error2.methodPath,
+                  observedHash: error2.observedHash
+                });
+              }
+            } catch {
+            }
+            throw error2;
           });
           return Object.freeze({ ...adapter, find: (definitionId, cap = Infinity) => adapter.find(definitionId, Math.min(cap, settings.quoteCeiling ?? Infinity)) });
         }
@@ -30372,7 +30396,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.14" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.15" });
   var galleryAssets = Object.freeze({
     reward: (type) => {
       try {
@@ -30630,8 +30654,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.14"}`,
-    version: "27.0.14",
+    title: `FC Automation Tool ${"27.0.15"}`,
+    version: "27.0.15",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
