@@ -5,6 +5,20 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.19] - 2026-10-12
+
+### Gallery Market Comparison Compatibility
+
+- Restore exact-version EA market comparison with five independently reviewed
+  native Market-query and identification fingerprints; keep older fingerprints
+  and unknown-method/runtime-replacement guards intact.
+- Capture public method bodies without login, verify real SHA256 and replay
+  the decoded read/authentication contract locally; no EA transactions.
+- Include only fixed method names and SHA256 in redacted comparison failures
+  to distinguish future EA changes from plugin wrappers.
+- Preserve existing scoring, planning, purchasing, price limits, listing,
+  cache compression and FSU Local 26.09.10 behavior.
+
 ## [27.0.18] - 2026-10-09
 
 ### Cache Compression And Planning

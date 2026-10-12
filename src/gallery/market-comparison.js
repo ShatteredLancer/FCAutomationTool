@@ -58,7 +58,8 @@ export function createGalleryMarketComparison({ createTransport, scope, now = ()
           const result = blocked(reason);
           cache.set(key, { result, expiresAt: now() + ttlMs });
           if (/HTTP_429$/.test(reason)) cooldownUntil = now() + ttlMs;
-          void diag({ event: 'market-compare', phase: 'response', status: 'blocked', reason });
+          void diag({ event: 'market-compare', phase: 'response', status: 'blocked', reason,
+            method: error?.method, observedHash: error?.observedHash });
           return result;
         }
       }).finally(() => pending.delete(key));

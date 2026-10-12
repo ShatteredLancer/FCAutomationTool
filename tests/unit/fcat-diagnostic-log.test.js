@@ -152,6 +152,19 @@ it('exports only known purchase method names and SHA256 evidence, never method s
   expect(JSON.stringify(exported)).not.toContain('private-');
 });
 
+it.each(['UTItemDAO.prototype.searchConceptItems', 'UTItemDAO.prototype.searchTransferMarket',
+  'FCAuthenticationService.prototype.getIdentifier', 'Identification.prototype.handleRequest', 'Identification.prototype.handleResponse'])
+('exports reviewed Market method names and digests for %s without leaking raw source or account data', async method => {
+  const t = harness({ maxEntries: 1 });
+  await t.log.record({ area: 'gallery', event: 'market-compare', phase: 'response', status: 'blocked',
+    reason: 'FC27_MARKET_METHOD_10_CHANGED', method, observedHash: 'a'.repeat(64),
+    sourceCode: 'private-source', account: 'private-account', token: 'private-token' });
+  for (let i = 0; i < 4; i++) await t.log.record({ area: 'gallery', event: 'pool-request', count: i });
+  const payload = await t.log.exportPayload();
+  expect(payload.criticalEntries).toEqual(expect.arrayContaining([expect.objectContaining({ method, observedHash: 'a'.repeat(64) })]));
+  expect(JSON.stringify(payload)).not.toContain('private-');
+});
+
 it('serializes writes during asynchronous restore and export waits for them', async () => {
   const store = new Map(); let restore;
   const log = createFcatDiagnosticLog({ gmGetValue: () => new Promise(resolve => { restore = resolve; }),
