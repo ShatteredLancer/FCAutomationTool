@@ -1,6 +1,13 @@
 import { expect, it, vi } from 'vitest';
 import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
 const quote = id => ({ status: 'observed', definitionId: id, executable: false, price: 250, listings: [] });
+it.each([null, undefined, 'private-error'])('keeps malformed transport errors bounded without leaking details (%s)', async failure => {
+  const events = [];
+  const service = createGalleryMarketComparison({ scope: () => 'a', createTransport: async () => { throw failure; },
+    diagnosticLog: { record: input => events.push(input) } });
+  expect(await service.compare(10)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_COMPARE_FAILED', executable: false });
+  expect(JSON.stringify(events)).not.toContain('private-error');
+});
 it('coalesces one exact-version read and reuses its account-scoped quote', async () => {
   let scope = 'a', time = 1000;
   const readQuotePage = vi.fn(async query => quote(query.definitionId));

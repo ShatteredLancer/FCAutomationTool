@@ -13,17 +13,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const requireTools = createRequire(path.join(root, 'tools/browser-inspection/package.json'));
 const puzzleReview = process.argv.includes('--puzzle');
 const buyReview = process.argv.includes('--buy');
+const argument = name => process.argv[process.argv.indexOf(name) + 1];
+const baselineDirectory = process.argv.includes('--baseline-dir') ? path.resolve(argument('--baseline-dir')) : null;
+const reportPath = process.argv.includes('--report') ? path.resolve(argument('--report')) : null;
+const currentOnly = process.argv.includes('--current-only');
 const definitions = buyReview ? FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [`UTItemService.prototype.${name}`, hash])
   : puzzleReview ? [...FC27_MARKET_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS,
   ...FC27_SBC_CACHE_METHODS.filter(([name]) => !name.startsWith('events.')), ...FC27_PUZZLE_SYNC_METHODS,
   ['UTSquadEntity.prototype.setPlayers']] : FC27_MARKET_READ_METHODS;
 const { chromium } = requireTools('playwright-core');
 const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  headless: true, proxy: { server: 'http://127.0.0.1:1080' },
+  headless: true, ...(process.argv.includes('--direct') ? {} : { proxy: { server: 'http://127.0.0.1:1080' } }),
   env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'FCAT_LLM_API_KEY')) });
 const report = { schema: 1, observedAt: new Date().toISOString(), authenticated: false, requests: [], versions: {} };
 try {
-  for (const version of ['baseline', 'current']) {
+  for (const version of currentOnly ? ['current'] : ['baseline', 'current']) {
     const context = await browser.newContext();
     // No persistent profile, extensions, login, or authenticated EA API calls.
     await context.route('**/*', async route => {
@@ -31,7 +35,9 @@ try {
       if (url.pathname.startsWith('/ut/')) return route.abort();
       const match = url.pathname.match(/^\/ea-sports-fc\/ultimate-team\/web-app\/js\/(ocompiled|compiled_[1-4])\.js$/);
       if (version === 'baseline' && match) {
-        return route.fulfill({ contentType: 'text/javascript', body: await readFile(path.join(root, `artifacts/fc27-browser/ea-${match[1]}.js`)) });
+        const asset = baselineDirectory ? path.join(baselineDirectory, `${match[1]}.js`)
+          : path.join(root, `artifacts/fc27-browser/ea-${match[1]}.js`);
+        return route.fulfill({ contentType: 'text/javascript', body: await readFile(asset) });
       }
       return route.continue();
     });
@@ -85,7 +91,7 @@ try {
     }
     await context.close();
   }
-  if (buyReview) {
+  if (buyReview && !currentOnly) {
     const normalize = source => {
       const names = new Map();
       return source.replace(/(?:_0x|a0_0x)[0-9a-f]+/g, name => {
@@ -96,7 +102,7 @@ try {
     report.comparison = report.versions.current.map((method, index) => ({ path: method.path,
       decodedEquivalent: normalize(method.decoded) === normalize(report.versions.baseline[index].decoded) }));
   }
-  const destination = path.join(root, `artifacts/fc27-browser/${buyReview ? 'buy' : puzzleReview ? 'puzzle' : 'market'}-runtime-review-${buyReview ? '2026-10-03' : '2026-10-02'}.json`);
+  const destination = reportPath ?? path.join(root, `artifacts/fc27-browser/${buyReview ? 'buy' : puzzleReview ? 'puzzle' : 'market'}-runtime-review-${buyReview ? '2026-10-03' : '2026-10-02'}.json`);
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ saved: destination, methods: report.versions.current.map(method => ({ path: method.path, sha256: method.sha256, missing: method.missing })) }));

@@ -5,6 +5,7 @@ import { verifyFc27Methods } from '../../src/adapters/ea/fc27-transaction-transp
 import { createFc27GalleryProgressReader } from '../../src/adapters/ea/fc27-gallery-progress.js';
 import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
 import october9 from '../fixtures/fc27-request-method-observation-2026-10-09.json';
+import october12 from '../fixtures/fc27-market-method-observation-2026-10-12.json';
 
 // Public runtime captured without login on 2026-10-02, independently of the
 // production allowlist. All thirteen decoded methods match the old structure.
@@ -94,6 +95,56 @@ function fixture(methodHashes = null) {
 }
 const catalogQuery = { start: 0, count: 20, level: 'silver' };
 const quoteQuery = { definitionId: 101, start: 0, count: 20, maxBuy: 2000 };
+const october12Hashes = FC27_MARKET_READ_METHODS.map(([path]) => october12.methods[path].sha256);
+
+it('reads an exact Gallery comparison with the October 12 native query and authentication fingerprints', async () => {
+  const f = fixture(october12Hashes);
+  const comparison = createGalleryMarketComparison({ scope: () => 'fixture-account',
+    createTransport: options => createFc27MarketReadTransport(f.root, options) });
+  expect(await comparison.compare(101)).toMatchObject({ status: 'observed', definitionId: 101, price: 450, executable: false });
+  expect(f.calls).toHaveLength(1);
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it('keeps catalog reads compatible with the independently reviewed October 12 concept query', async () => {
+  const f = fixture(october12Hashes);
+  const transport = await createFc27MarketReadTransport(f.root);
+  expect((await transport.readCatalogPage(catalogQuery)).entries).toHaveLength(1);
+  expect(f.calls).toHaveLength(1);
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it.each(FC27_MARKET_READ_METHODS.slice(9).map(([path], offset) => [path, offset + 9]))
+('keeps an unknown replacement of the October 12 %s blocked with method evidence', async (path, index) => {
+  const hashes = [...october12Hashes]; hashes[index] = '0'.repeat(64);
+  const f = fixture(hashes);
+  await expect(createFc27MarketReadTransport(f.root)).rejects.toMatchObject({
+    message: `FC27_MARKET_METHOD_${index}_CHANGED`, method: path, observedHash: '0'.repeat(64),
+  });
+  expect(f.calls).toEqual([]);
+});
+
+it('does not approve Market-only native fingerprints for another method or a write transaction', async () => {
+  const hashes = [...october12Hashes]; hashes[10] = hashes[11];
+  const f = fixture(hashes);
+  await expect(createFc27MarketReadTransport(f.root, { quotesOnly: true })).rejects.toThrow('METHOD_10_CHANGED');
+  const g = fixture(october12Hashes);
+  await expect(verifyFc27Methods(g.root, [['UTItemDAO.prototype.searchTransferMarket', FC27_MARKET_READ_METHODS[10][1]]]))
+    .rejects.toThrow('FC27_TRANSACTION_METHOD_UNREVIEWED');
+  expect(f.calls).toEqual([]); expect(g.calls).toEqual([]);
+});
+
+it('carries an unknown Market method and digest through the real Gallery comparison into redacted diagnostics', async () => {
+  const hashes = [...october12Hashes]; hashes[10] = 'f'.repeat(64);
+  const f = fixture(hashes), events = [];
+  const comparison = createGalleryMarketComparison({ scope: () => 'fixture-account',
+    createTransport: options => createFc27MarketReadTransport(f.root, options),
+    diagnosticLog: { record: input => events.push(input) } });
+  expect(await comparison.compare(101)).toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_METHOD_10_CHANGED' });
+  expect(events.at(-1)).toMatchObject({ event: 'market-compare', reason: 'FC27_MARKET_METHOD_10_CHANGED',
+    method: 'UTItemDAO.prototype.searchTransferMarket', observedHash: 'f'.repeat(64) });
+  expect(f.calls).toEqual([]);
+});
 
 it('accepts the independently captured current public runtime for one exact-version read', async () => {
   const f = fixture(currentHashes);

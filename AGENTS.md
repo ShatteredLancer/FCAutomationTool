@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-12 Gallery 市场比价兼容修正：`FC27_MARKET_METHOD_10_CHANGED` 先用当前匿名公开原生源码复现，再独立审查查询、精确版本/价格过滤和原生 identification 请求/响应合同。Market-only 新指纹按精确方法登记，旧指纹保留，不传播到写事务许可；未知替换和运行中 binding 变化仍停止。方法失败诊断仅导出固定方法名和 SHA256，不包含源码、账号、header/challenge 值或凭据。此修复不改变 ad 原计分/选队/采购/挂牌或缓存压缩主逻辑，FSU 保持 26.09.10。匿名公开源码验证和离线回归不替代账号内实际比价验收；工程证据见 27.0.19 说明。
+
 2026-10-09 Gallery 历史收集语义修正（覆盖旧“Unassigned 精确持有后才完成”的规则）：画廊记录曾经获得的精确卡版本，取得方式不限，售出或 SBC 消耗不撤销收集资格；实际分数仍只读 EA `isCollected/gradingScore`，不可用当前库存代替。Gallery 已确认买入与购后去向、计分同步分开：明确匹配的成交回执使 Unassigned 购买完成，不再查卡是否仍持有；Club 仍执行原入库路径。旧已确认 Club 买入实体确实不在两处可入库位置时，保留 `acquired` 历史并显示去向未确认，不假报 Club、不重买。未知成交/未知移动、歧义或不完整读取保持原恢复保护；计分 pending 不再作为已完成购买的全局 Pending。原计分公式、选队、价格、挂牌条件和其他购买/SBC 主流程不得顺手改变；共享 Adapter 的 absent 返回仅在 Gallery 对已确认成交显式 opt-in 时启用。设置只作用于新批次，原批次冻结去向不变。
 
 2026-10-07 Gallery 交易风格与去向：用户要求 Enhancer/Fodder 两套独立 UI，Fodder 必须使用独立组件和限定选择器，不能通过修改原 Enhancer 组件/CSS 实现。默认 Enhancer + Club；Settings 的 Club/Unassigned 只影响新购买批次，恢复沿用已冻结去向。用户明确批准 Fodder 本批价格区间/尝试次数、Market/Bought for、累加价格调整与“仅发送 Transfer List”操作，公共报价选源、冻结购买上限及 EA 相邻价档继续有效。Unassigned 成交、当前持有位置和 EA 收集计分必须独立核对；只移入 Transfer List 不能发挂牌请求，普通挂牌按参考直接 Item.list。旧 Enhancer 行为须回归，真实交易仍由用户点击；实施证据及待验收项见 [Gallery 交易风格计划](docs/FC27_GALLERY_TRADE_STYLES_ZH.md)。

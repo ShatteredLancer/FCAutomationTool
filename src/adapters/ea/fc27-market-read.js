@@ -25,6 +25,17 @@ const compatibleHashes = Object.freeze({
   'Identification.prototype.handleRequest': 'b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949',
   'Identification.prototype.handleResponse': '2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4',
 });
+// Public build 11414 inspected without login on 2026-10-12; the captured
+// October 9 assets expose the same bodies. Independently reviewed query paths,
+// exact version/price filters and native identification request/response flow.
+// These fingerprints apply only to Market reads, never to write transports.
+const october12Hashes = Object.freeze({
+  'UTItemDAO.prototype.searchConceptItems': 'a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1',
+  'UTItemDAO.prototype.searchTransferMarket': '115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2',
+  'FCAuthenticationService.prototype.getIdentifier': 'b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339',
+  'Identification.prototype.handleRequest': 'b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291',
+  'Identification.prototype.handleResponse': '0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f',
+});
 const at = (root, path) => path.split('.').reduce((v, key) => ownData(v, key), root);
 const valid = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
 const num = (v, min = 1, max = 1e9) => valid(v, min, max) ? v : null;
@@ -110,8 +121,11 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     if (typeof fn !== 'function') throw error(`METHOD_${index}_MISSING`);
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path)) {
-      if (path !== 'UTItemEntityFactory.prototype.createItem') throw error(`METHOD_${index}_CHANGED`);
+    if (hash !== expected && !isFc27ClubCompatibleHash(path, hash)
+        && hash !== ownData(compatibleHashes, path) && hash !== ownData(october12Hashes, path)) {
+      if (path !== 'UTItemEntityFactory.prototype.createItem') {
+        throw Object.assign(error(`METHOD_${index}_CHANGED`), { method: path, observedHash: hash });
+      }
       // Gallery/Enhancer/FSU may decorate EA's pure entity factory. Keep the
       // live binding, then enforce exact output identity in materialize(); no
       // request or write method is accepted by this fallback.

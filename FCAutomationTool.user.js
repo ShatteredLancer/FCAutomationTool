@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.18
+// @version      27.0.19
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.18", at: Date.now(), status: 'started',
+    state = { version: "27.0.19", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6147,6 +6147,13 @@
     "Identification.prototype.handleRequest": "b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949",
     "Identification.prototype.handleResponse": "2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4"
   });
+  var october12Hashes = Object.freeze({
+    "UTItemDAO.prototype.searchConceptItems": "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1",
+    "UTItemDAO.prototype.searchTransferMarket": "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2",
+    "FCAuthenticationService.prototype.getIdentifier": "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339",
+    "Identification.prototype.handleRequest": "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291",
+    "Identification.prototype.handleResponse": "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f"
+  });
   var at5 = (root, path) => path.split(".").reduce((v, key) => ownData(v, key), root);
   var valid = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
   var num = (v, min = 1, max = 1e9) => valid(v, min, max) ? v : null;
@@ -6232,8 +6239,10 @@
       if (typeof fn !== "function") throw error(`METHOD_${index}_MISSING`);
       const digest = await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
       const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path)) {
-        if (path !== "UTItemEntityFactory.prototype.createItem") throw error(`METHOD_${index}_CHANGED`);
+      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path) && hash !== ownData(october12Hashes, path)) {
+        if (path !== "UTItemEntityFactory.prototype.createItem") {
+          throw Object.assign(error(`METHOD_${index}_CHANGED`), { method: path, observedHash: hash });
+        }
         factoryOutputValidated = true;
         reviewed.set(path, binding);
       } else reviewed.set(path, fn);
@@ -26110,7 +26119,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const result = blocked11(reason);
             cache.set(key, { result, expiresAt: now() + ttlMs });
             if (/HTTP_429$/.test(reason)) cooldownUntil = now() + ttlMs;
-            void diag({ event: "market-compare", phase: "response", status: "blocked", reason });
+            void diag({
+              event: "market-compare",
+              phase: "response",
+              status: "blocked",
+              reason,
+              method: error2?.method,
+              observedHash: error2?.observedHash
+            });
             return result;
           }
         }).finally(() => pending2.delete(key));
@@ -26320,7 +26336,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "UTHttpRequest.prototype.send",
       "EAHttpRequest.prototype.send",
       "EAHttpRequest.prototype.setRequestBody",
-      "EAHttpRequest.prototype.abort"
+      "EAHttpRequest.prototype.abort",
+      "UTItemDAO.prototype.searchConceptItems",
+      "UTItemDAO.prototype.searchTransferMarket",
+      "FCAuthenticationService.prototype.getIdentifier",
+      "Identification.prototype.handleRequest",
+      "Identification.prototype.handleResponse",
+      "factories.Item.generateItemsFromItemData",
+      "UTItemEntityFactory.prototype.createItem"
     ].includes(input.method)) entry.method = input.method;
     if (typeof input.observedHash === "string" && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
     for (const key of STRING_FIELDS) {
@@ -30996,7 +31019,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.18" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.19" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -31314,8 +31337,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.18"}`,
-    version: "27.0.18",
+    title: `FC Automation Tool ${"27.0.19"}`,
+    version: "27.0.19",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -30,7 +30,9 @@ function sanitizeEntry(input, now) {
   const entry = { at };
   if (['service.bid', 'service.move', 'UTHttpRequest', 'EAHttpRequest', 'UTHttpRequest.prototype.setPath',
     'UTHttpRequest.prototype.send', 'EAHttpRequest.prototype.send', 'EAHttpRequest.prototype.setRequestBody',
-    'EAHttpRequest.prototype.abort'].includes(input.method)) entry.method = input.method;
+    'EAHttpRequest.prototype.abort', 'UTItemDAO.prototype.searchConceptItems', 'UTItemDAO.prototype.searchTransferMarket',
+    'FCAuthenticationService.prototype.getIdentifier', 'Identification.prototype.handleRequest', 'Identification.prototype.handleResponse',
+    'factories.Item.generateItemsFromItemData', 'UTItemEntityFactory.prototype.createItem'].includes(input.method)) entry.method = input.method;
   if (typeof input.observedHash === 'string' && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
   for (const key of STRING_FIELDS) {
     const value = key === 'reason' || key === 'localReason'
