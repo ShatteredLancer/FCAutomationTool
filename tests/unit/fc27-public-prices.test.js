@@ -12,16 +12,115 @@ function fixture() {
   const player = { definitionId: 71494, rating: 80, nationId: 95, leagueId: 2221, teamId: 116308, preferredPosition: 12 };
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
+it('quotes a cold 482-version inventory in rating pages and reuses pages across the 250-version boundary', async () => {
+  const f = fixture(); await f.service.saveSettings({ readSources: 'futbin' });
+  const rows = Array.from({ length: 482 }, (_, i) => ({ ...f.player, definitionId: 1000 + i, rating: 75 + i % 10 }));
+  const requests = [];
+  f.gm.mockImplementation(options => {
+    const url = new URL(options.url); requests.push(url);
+    const rating = Number(url.searchParams.get('rating')?.split('-')[0]), page = Number(url.searchParams.get('page'));
+    const all = rows.filter(row => row.rating === rating);
+    options.onload({ status: 200, responseText: JSON.stringify({ errorcode: '200', data: all.slice((page - 1) * 32, page * 32)
+      .map(row => ({ resource_id: row.definitionId, rating, pc_LCPrice: 1000, ps_LCPrice: 2000 })) }) });
+  });
+  const first = await f.service.load(rows.slice(0, 250).map(row => row.definitionId), { purpose: 'puzzle', rows, futbinBatch: true });
+  const second = await f.service.load(rows.slice(250).map(row => row.definitionId), { purpose: 'puzzle', rows, futbinBatch: true });
+  expect(Object.keys({ ...first.prices, ...second.prices })).toHaveLength(482);
+  expect(requests).toHaveLength(20);
+  expect(requests.every(url => !url.searchParams.has('club') && !url.searchParams.has('ID'))).toBe(true);
+  await f.service.load(rows.slice(0, 250).map(row => row.definitionId), { purpose: 'puzzle', rows, futbinBatch: true });
+  expect(requests).toHaveLength(20);
+  expect(f.transport.getPrices).not.toHaveBeenCalled();
+});
+
+it('stops batch page requests on an account source switch without launching individual fallback', async () => {
+  const f = fixture(); await f.service.saveSettings({ readSources: 'futbin' });
+  const rows = Array.from({ length: 12 }, (_, i) => ({ ...f.player, definitionId: 1000 + i })), pending = [];
+  f.gm.mockImplementation(options => pending.push(options));
+  const result = f.service.load(rows.map(row => row.definitionId), { purpose: 'puzzle', rows, futbinBatch: true });
+  await vi.waitFor(() => expect(pending).toHaveLength(1));
+  await f.service.saveSettings({ readSources: 'futgg' });
+  pending[0].onload({ status: 200, responseText: JSON.stringify({ errorcode: '200', data: [] }) });
+  const snapshot = await result;
+  expect(f.gm).toHaveBeenCalledTimes(1);
+  expect(snapshot.references[1000].quotes.futbin.error).toBe('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+});
+it('keeps slow optional diagnostic persistence outside FUTBIN quote workers', async () => {
+  const f = fixture(), writes = [];
+  const service = createFc27PublicPrices({ root: f.root, gmRequest: f.gm, transport: f.transport,
+    diagnosticLog: { record: entry => { writes.push(entry); return new Promise(() => {}); } },
+    get: async (key, fallback) => f.data.get(key) ?? fallback,
+    set: async (key, value) => f.data.set(key, structuredClone(value)) });
+  await service.saveSettings({ readSources: 'futbin' });
+  let result;
+  service.load([f.player.definitionId], { rows: [f.player] }).then(value => { result = value; });
+  await vi.waitFor(() => expect(result?.prices[71494]).toBe(700), { timeout: 300 });
+  expect(writes.some(row => row.event === 'futbin-quote-result')).toBe(true);
+});
+
+it('merges concurrent FUTBIN filter mappings without losing unrelated or newly learned versions', async () => {
+  const f = fixture(), pending = new Map();
+  f.data.set('fcat-futbin-ids:27', { 99: 999 });
+  await f.service.saveSettings({ readSources: 'futbin' });
+  f.gm.mockImplementation(options => pending.set(Number(new URL(options.url).searchParams.get('club')), options));
+  const ids = [1, 2, 3], rows = ids.map(id => ({ ...f.player, definitionId: id, teamId: id }));
+  const result = f.service.load(ids, { rows });
+  await vi.waitFor(() => expect(pending.size).toBe(3));
+  for (const id of [3, 1, 2]) pending.get(id).onload({ status: 200,
+    responseText: JSON.stringify({ data: [{ resource_id: id, ID: id + 100, pc_LCPrice: 250 }] }) });
+  expect((await result).prices).toEqual({ 1: 250, 2: 250, 3: 250 });
+  expect(f.data.get('fcat-futbin-ids:27')).toEqual({ 99: 999, 1: 101, 2: 102, 3: 103 });
+});
+it('does not erase a mapping learned by another in-flight filter when rebuilding a stale minimal ID', async () => {
+  const f = fixture(), pending = new Map();
+  f.data.set('fcat-futbin-ids:27', { 1: 101, 99: 999 });
+  await f.service.saveSettings({ readSources: 'futbin' });
+  f.gm.mockImplementation(options => {
+    const url = new URL(options.url);
+    pending.set(url.searchParams.has('ID') ? 'minimal' : Number(url.searchParams.get('club')), options);
+  });
+  const rows = [1, 2, 3].map(id => ({ ...f.player, definitionId: id, teamId: id }));
+  const result = f.service.load([1, 2, 3], { rows });
+  await vi.waitFor(() => expect(pending.size).toBe(3));
+  pending.get(2).onload({ status: 200, responseText: JSON.stringify({ data: [
+    { resource_id: 2, ID: 102, pc_LCPrice: 250 }, { resource_id: 1, ID: 201, pc_LCPrice: 300 },
+  ] }) });
+  await vi.waitFor(() => expect(f.data.get('fcat-futbin-ids:27')[1]).toBe(201));
+  pending.get('minimal').onload({ status: 200,
+    responseText: JSON.stringify({ data: [{ Player_Resource: 90, pc_LCPrice: 999 }] }) });
+  await vi.waitFor(() => expect(pending.has(1)).toBe(true));
+  expect(f.data.get('fcat-futbin-ids:27')).toEqual({ 1: 201, 2: 102, 99: 999 });
+  for (const id of [1, 3]) pending.get(id).onload({ status: 200,
+    responseText: JSON.stringify({ data: [{ resource_id: id, ID: id + 200, pc_LCPrice: 300 + id * 50 }] }) });
+  expect((await result).prices).toEqual({ 1: 350, 2: 250, 3: 450 });
+  expect(f.data.get('fcat-futbin-ids:27')).toEqual({ 1: 201, 2: 102, 3: 203, 99: 999 });
+});
 it('reuses FSU ID/filter routes, retains both prices and never obtains EA market prices', async () => {
   const f = fixture();
   expect(await f.service.quote(f.player)).toMatchObject({ estimate: 650, maxBuy: 650, futbin: 700 });
-  expect(f.gm.mock.calls[0][0]).toMatchObject({ anonymous: true, method: 'GET', timeout: 15000 });
+  expect(f.gm.mock.calls[0][0]).toMatchObject({ method: 'GET', timeout: 15000 });
+  expect(f.gm.mock.calls[0][0].anonymous).toBeUndefined();
   expect(f.gm.mock.calls[0][0].url).toContain('position=RM');
   await f.service.quote(f.player); expect(f.gm).toHaveBeenCalledTimes(1);
   f.advance(); await f.service.quote(f.player);
   expect(f.gm.mock.calls[1][0].url).toContain('fetchPlayerInformationMinimal?ID=994&platform=PC');
   await f.service.saveSettings({ source: 'futbin', premium: 50 });
   expect(await f.service.quote(f.player)).toMatchObject({ estimate: 700, maxBuy: 750 });
+});
+
+it('records the FUTBIN route and exact-version result without changing the quote', async () => {
+  const events = [];
+  const f = fixture();
+  const service = createFc27PublicPrices({ root: f.root, gmRequest: f.gm, transport: f.transport,
+    diagnosticLog: { record: async entry => events.push(entry) }, now: () => Date.parse('2026-10-04T03:42:02Z'),
+    get: async (key, fallback) => f.data.get(key) ?? fallback,
+    set: async (key, value) => f.data.set(key, structuredClone(value)) });
+  await service.saveSettings({ readSources: 'futbin', source: 'futbin', listingSource: 'futbin' });
+  expect((await service.load([f.player.definitionId], { sources: ['futbin'], rows: [f.player] })).prices[71494]).toBe(700);
+  expect(events).toEqual(expect.arrayContaining([
+    expect.objectContaining({ event: 'transport-request', source: 'futbin', endpoint: 'filtered', status: 'received', httpStatus: 200 }),
+    expect.objectContaining({ event: 'futbin-quote-result', definitionId: 71494, status: 'success', exactVersion: true }),
+  ]));
 });
 it('does not keep an omitted FUTBIN version as a new price', async () => {
   const f = fixture(); await f.service.quote(f.player); f.advance();
@@ -158,17 +257,20 @@ it('honours the account read switch even for forced refresh and stale plan polic
 });
 
 it('stops subsequent FUTBIN requests when disabled during a queued read and permits re-enabling', async () => {
-  const f = fixture(); let first = true;
-  f.gm.mockImplementation(options => {
-    if (!first) { options.onload({ status: 200, responseText: JSON.stringify(futbinFiltered) }); return; }
-    first = false;
-    void f.service.saveSettings({ futbinEnabled: false }).then(() =>
-      options.onload({ status: 200, responseText: JSON.stringify(futbinFiltered) }));
-  });
-  const result = await f.service.load([71494, 73562], { rows: [f.player, { ...f.player, definitionId: 73562 }] });
-  expect(f.gm).toHaveBeenCalledTimes(1);
-  expect(result.references[73562].quotes.futbin.error).toBe('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+  const f = fixture(), pending = [];
+  f.gm.mockImplementation(options => pending.push(options));
+  const ids = [71494, 73562, 73563, 73564, 73565];
+  const result = f.service.load(ids, { sources: ['futbin'], rows: ids.map(definitionId => ({ ...f.player, definitionId })) });
+  await vi.waitFor(() => expect(pending).toHaveLength(3));
+  await f.service.saveSettings({ futbinEnabled: false });
+  for (const [index, options] of pending.entries()) options.onload({ status: 200,
+    responseText: JSON.stringify({ data: [{ resource_id: ids[index], ID: index + 100, pc_LCPrice: 250 }] }) });
+  const snapshot = await result;
+  expect(f.gm).toHaveBeenCalledTimes(3);
+  for (const id of ids.slice(3)) expect(snapshot.references[id].quotes.futbin.error).toBe('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
   await f.service.saveSettings({ futbinEnabled: true });
-  await f.service.load([73562], { sources: ['futbin'], rows: [{ ...f.player, definitionId: 73562 }] });
-  expect(f.gm).toHaveBeenCalledTimes(2);
+  f.gm.mockImplementation(options => options.onload({ status: 200,
+    responseText: JSON.stringify({ data: [{ resource_id: 73564, ID: 104, pc_LCPrice: 300 }] }) }));
+  expect((await f.service.load([73564], { sources: ['futbin'], rows: [{ ...f.player, definitionId: 73564 }] })).references[73564].futbin).toBe(300);
+  expect(f.gm).toHaveBeenCalledTimes(4);
 });

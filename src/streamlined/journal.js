@@ -12,6 +12,8 @@ export const isUnsentStreamlinedJournal = record => record?.batches?.length > 0
   && record.batches.every(batch => batch.state === 'waiting' && batch.startingScore === undefined
     && batch.receipt === undefined && batch.progressChanged !== true);
 const states = ['waiting', 'pending', 'confirmed', 'rejected', 'unknown'];
+const refOf = item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile,
+  ...(item.executionPile ? { executionPile: item.executionPile } : {}) });
 export function streamlinedJournalKey(context) { return contextKey(context, 'streamlined-contribution'); }
 export function validateStreamlinedJournal(record, context) {
   if (record?.schema !== 1 || !same(record.context, createSeasonContext(context)) || !integer(record.revision, 1)
@@ -19,8 +21,8 @@ export function validateStreamlinedJournal(record, context) {
       || !Array.isArray(record.batches) || !integer(record.plan?.challenge?.selectionLimit, 1, 1000)) fail('JOURNAL_INVALID');
   assertStreamlinedPlan(record.plan);
   if (!same(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length
-      || record.batches.some((batch, i) => !states.includes(batch.state) || batch.index !== i
-        || !same(batch.refs, record.plan.batches[i].map(item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile }))))
+        || record.batches.some((batch, i) => !states.includes(batch.state) || batch.index !== i
+        || !same(batch.refs, record.plan.batches[i].map(refOf)))
       || record.batches.filter(b => ['pending', 'unknown'].includes(b.state)).length > 1) fail('JOURNAL_INVALID');
   let previousScore = record.plan.challenge.submittedScore;
   for (const batch of record.batches) {
@@ -68,6 +70,6 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now() } = 
         && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state))) fail('RECOVERY_REQUIRED');
     return write(plan.context, { schema: 1, context: plan.context, plan, submittedScore: plan.challenge.submittedScore,
       rewardState: 'unknown', batches: plan.batches.map((batch, index) => ({ index, state: 'waiting',
-        refs: batch.map(item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile })) })) }, prior?.revision ?? 0);
+      refs: batch.map(refOf) })) }, prior?.revision ?? 0);
   } });
 }

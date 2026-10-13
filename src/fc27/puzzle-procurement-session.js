@@ -81,7 +81,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       truncated: null, catalogAttempts: 0, quoteAttempts: 0,
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
       failurePhase: null, excludedUnavailable: 0, replans: 0, searchComplete: null,
-      optimalWithinPool: null, estimatedCost: null, priceSource: null,
+      optimalWithinPool: null, estimatedCost: null, priceSource: null, search: null,
       initialEstimatedCost: null, refinementPasses: 0, optimizationBudgetExhausted: false };
     let quoteCompleted = 0; let quoteTotal = 0;
     const reportProgress = value => {
@@ -237,9 +237,13 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             if (incumbent) return finishIncumbent();
             diagnostics.localReason = 'FC27_PUZZLE_SEARCH_LIMIT'; break;
           }
-          // Preserve the original feasibility budget. Once a solution exists,
-          // share the remaining optimization budget with later catalog pages.
-          const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / (incumbent ? 4 - usedQueries.length : 1)));
+          // Preserve a slice for the remaining bounded catalog lanes. Without
+          // an incumbent the old route gave page one the entire budget, so a
+          // chemistry-heavy joint search could stop at 50k nodes before the
+          // league/nation lanes were ever read. Every unresolved lane receives
+          // a deterministic share; the final lane gets the remainder.
+          const remainingLanes = Math.max(1, 4 - usedQueries.length);
+          const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / remainingLanes));
           const searchOptions = loadPublicPrices ? { costCeiling: incumbent?.[0].estimatedCost ?? null,
             ...(seed.status === 'ready' ? { maxChecks: passBudget } : { maxNodes: passBudget }) } : {};
           const refining = incumbent !== null;
@@ -257,6 +261,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.localReason = suggestion.reason ?? null;
           diagnostics.checks = suggestion.checks ?? null;
           diagnostics.nodes = suggestion.nodes ?? null;
+          if (suggestion.search) {
+            diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+            for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += suggestion.search[key] ?? 0;
+          }
           if (loadPublicPrices) {
             searchSpent += suggestion.nodes ?? suggestion.checks ?? 0;
             diagnostics.nodes = searchSpent;

@@ -1,6 +1,7 @@
 import { submitSbcAttempt } from '../sbc/submit-attempt.js';
 import { traditionalJournalScope } from './traditional-journal.js';
 import { prepareFc27PuzzleFillPlan, validateFc27PuzzleFillPlan } from './puzzle-fill-plan.js';
+import { transactionMethodEvidence } from './transaction-method-evidence.js';
 
 const blocked = reason => ({ status: 'blocked', reason, saved: false, submitted: false });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -145,7 +146,7 @@ export function createFc27PuzzleFillTransaction({ enabled = false, adapter, jour
             setId: record.setId, challengeId: record.challengeId, selectedCount: plan.selected.length };
         }) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
       } catch (error) {
-        return { ...blocked(safeReason(error)), status: boundary ? 'recovery-required' : 'blocked',
+        return { ...blocked(safeReason(error)), ...transactionMethodEvidence(error), status: boundary ? 'recovery-required' : 'blocked',
           saved: dispatched ? null : false };
       } finally { busy = false; }
     },

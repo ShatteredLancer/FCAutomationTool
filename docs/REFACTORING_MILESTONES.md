@@ -10,6 +10,95 @@
 
 提交前按最新 main 整体复查：计分公式、选队、采购/成交状态机、限价、挂牌、缓存压缩、选材/SBC/Runtime/Streamlined 主逻辑无修改；只读兼容层被共同调用，但请求合同、过滤、节奏与限额未改。用户明确批准提交并推送 main，不创建 tag/GitHub Release。真实账号内比价待用户更新后主动验证；没有实买、挂牌或提交材料。版本与更新入口见 [27.0.19](releases/27.0.19.md)。
 
+## 2026-10-13 Streamlined FUTBIN 批量报价与完整阶段计时
+
+14-58-39 日志证实三 worker 已生效，但逐版本 GET 仍是主瓶颈；公开只读请求确认
+原 FUTBIN filtered 接口按评分分页每页 32 条可返回精确版本/平台价格。仅 Streamlined
+新规划显式启用同评分至少 12 个未缓存版本的批量查询，每组最多 8 页，未命中继续
+原单卡读取；缓存原时间、三并发、来源许可、失败/取消及交易合同不变。新增紧凑
+内存页缓存及独立最多 40 条脱敏性能汇总。库存累计计时不再随 250 版本分批重置。
+完整 verify **411 文件 / 4647 项**通过，全套离线 Chrome 包括 482 版本模拟冷缓存
+20 次请求、再次生成零额外请求及零交易写入；模拟不是真实账号性能证明。
+27.0.18 root/dist/专用安装精确源码 SHA256 `a1550b53…688a3991`一致。
+真实 EA 页面运行时和账号冷缓存耗时待复验；本轮未消费/升版/提交/推送。
+证据及恢复点见[本轮计划](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-13-全库存逐卡报价瓶颈离线完成)。
+
+## 2026-10-13 Streamlined 报价写盘等待与重复版本备选
+
+14-31-49 日志市场阶段 69.6 秒、本地搜索约 4 秒；代码/失败测试确认 FUTBIN 结果
+等待可选诊断持久化会占用报价 worker，现取消业务等待，保留三并发和日志串行持久化。
+新增 HTTP 独立耗时和 quote-batch 请求/缓存汇总。保留最低总价值默认，另按已有
+5/10/20/30% 成本区间有界生成同配方低重复市场版本备选，报价/上限/库存/预算不变；
+数量仍为需求，不保证供给，不把重复买入当成一次贡献。
+最终 verify **410/4634**及全套离线 Chrome 通过；最终 27.0.18 root/dist/专用安装
+源码 hash `820c0827…005f59b`一致。真实 EA 运行时/实网提速未复测，无真实交易/贡献。
+fixture、实施步骤、限制与恢复点见[本轮计划](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-13-报价诊断等待与重复版本路线离线完成)。
+
+## 2026-10-13 FUTBIN 读取有界并发（离线完成）
+
+按用户性能优化要求，公共报价FUTBIN读取最多3并发，跨调用共享队列和精确版本去重
+保留；取消等待在途结算、来源失败冷却禁止新联网。映射更新串行合并delta，避免并发
+过滤回执覆盖整表。先失败后修复的模拟74×544ms从40256ms到13600ms，非实网证据。
+FUT.GG、TTL、来源、保护、候选覆盖和交易执行不改；完整verify **410文件/4629项**、
+FC27专项 **86文件/1492项**及最终全套离线Chrome通过。27.0.18 root/dist与专用安装源码
+SHA256 `14481db2…198164b`一致；未取得真实EA运行时或本轮实网性能，未登录/消费/提交。
+场景及恢复点见[本轮计划](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-13-futbin-报价读取性能优化离线完成)。
+
+## 2026-10-13 Streamlined 报价刷新交错过期
+
+新日志中保留的75条报价/74个HTTP200回执成功，103290ms后刷新51/51仍失败；没有最终过期
+版本，不能套用前一日志的完整候选数。新增失败回归证明“51条已到期＋第52条刷新中到期”
+会突破上一版恢复范围。市场适配器现在按本次报价初读实际耗时纳入临期报价，只对风险ID
+与当前来源做一次强制刷新，仍保留最终有效期检查，不延TTL/换源/加价/改变交易。
+注入可选有界身份/时间诊断，公共缓存代码及旧计划/Journal不变。完整verify **410/4622**、
+FC27专项 **86/1492**、生产Adapter/报价服务的窗口点击回放通过，包含缓存再次生成及零写入；
+全套离线浏览器通过。27.0.18 root/dist及专用安装源码hash`5dfcfd5d…7d66518`一致，
+真实账号未复验，未消费、升版或提交。计划gap、网络变慢边界和恢复见
+[本轮记录](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-13-futbin-刷新期间交错过期修复)。
+
+## 2026-10-12 Streamlined FUTBIN 报价过期恢复
+
+用户日志的517库存/166市场候选在103秒补卡读取结束后报`QUOTES_EXPIRED`，保留的传输均200。
+市场适配器现在在候选读取后一次性定向刷新已到期的已定价版本，再按新报价重建材料和上限；
+不延长旧价、不强刷有效价、不改源/保护/交易。界面分别标明实际报价源、候选目录和刷新进度。
+新增166/251候选、跨批、价格变化、失败/429、取消、设置变化、缺价及Session→Plan回归和脱敏
+fixture；完整verify **410/4618**与全套离线Chrome通过。27.0.18 root/dist及专用安装源码hash
+`63e40972…36f3021`一致，真实EA重新规划未复验，未消费、升版或提交。
+完整证据、日志缺口和恢复点见[本轮记录](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-12-futbin-混合方案报价过期恢复)。
+
+## 2026-10-11 Streamlined 外部库存物化
+
+Streamlined planning may explicitly include `unassigned` and idle `transfer`
+items. They are not submitted from those piles: before validation, each exact
+item is moved to Club, the EA response and a fresh Club readback are required,
+and a durable materialization journal permits recovery after an interrupted
+move. Active trades and duplicate signals whose Club twin still exists fail
+closed. The legacy default remains Club plus SBC Storage; external piles are
+opt-in in Settings. The materializer, journal, provider, execution and session
+wiring is now in the production build and covered by the full **410 test files /
+4602 tests** run. This remains offline-tested wiring only; real EA movement and
+contribution remain a user-operated acceptance scenario.
+
+This entry supersedes earlier same-day notes that said Transfer was not yet
+connected. Those notes remain historical evidence for the pre-materializer
+state; they must not be used as the current capability description.
+
+## 2026-10-11 Streamlined 后续配方库存漏替代
+
+用户最新03-13-05日志证明Only Untradeable关闭、FSU金卡上限97、479库存/454合规、37张普通84的最低价800；默认仍重复购买8张800金币84。失败回归定位为只有快速种子替代库存，后续双桶/DP达标路线漏掉替代。现将同积分且库存估值不高于市场的替代统一放在每个达标候选的最终剪枝前，不增网络/预算、不改保护或旧计划。增加输入倒序、1/2/8/10张数量/身份、Session/Plan和浏览器预览回归；完整verify **409/4564**及全套离线Chrome通过，根目录/dist 27.0.18已重建。实机仍需最新hash安装激活，未提交或消费。恢复点和不能扩大解释的证据见[本轮修复](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-11-后续搜索配方漏掉库存替代)。
+
+## 2026-10-11 Streamlined TOTW 尾卡、库存替代与重复版本
+
+用户日志库存472/合规448，不能把全市场规划归因为未读库存。公开FUT.GG PC rates遗漏83但全局routeGroups包含83，现合并有界描述符并保持当前平台报价/EA资格；低价主体与全部尾卡方向优先种子、同分同价库存替代在预算截断前执行，不提高搜索上限。复用市场返回的同源同版本更晚有效报价到库存，不新增请求或续期。重复市场需求展开为不同采购波次，汇总显示重复量及考虑不同版本数的最低批次；已有精确物理副本与传统阵容去重分开。纯市场prepare允许空库存refs，实际贡献仍拒绝空批次并保持精确回执/消耗核对。新增有界脱敏候选桶及配方日志。完整verify **409/4555**、FC27 **86/1490**及离线Chrome通过，根目录/dist仍27.0.18并已重建，专用Tampermonkey已精确安装且源码hash一致；本轮未取得EA页面运行时/账号预览证据，未提交、买卡或贡献。真实库存排除逐卡原因、当前报价和跨批消费仍待登录后核验，Transfer移入Club尚未接入。证据/hash/恢复点见[Streamlined本轮修复](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-11-totw-尾卡库存替代与重复版本修复)。
+
+## 2026-10-10 Set 36 / Challenge 66、67 Puzzle 回归收口
+
+修复采购目录漏掉铜卡化学候选、分配搜索预算导致后续目录路线未运行，以及 EA `EAObservable.prototype.notify` 混淆变化引起的精确指纹阻断。Set 36 / Challenge 66 当前专用浏览器只读报告取得 6 张库存＋5 张概念卡、化学 15（要求 14）；没有真实填阵或保存。Challenge 67 新旧方法公开源码和解码行为回放通过，只新增限定路径的精确兼容 hash，未知方法仍 fail-closed。最终完整 verify 为 409 文件 / 4534 项，FC27 专项 86 文件 / 1488 项，离线浏览器检查通过。27.0.18 root/dist SHA256 为 `249e952e4c79a6ff0b1eed63581cf62bbb739fa5b4974f26e25e3b49192a5e2e`，与已安装源码核对一致；运行中版本未在交接后的页面会话重新读取。真实 Puzzle 填阵保存和当前报价仍待用户主动验证，无买卡/提交/清空阵容；证据及恢复步骤见 [Puzzle 稳定性收口](FC27_PUZZLE_STABILITY_ZH.md#2026-10-10-set-36-challenge-66-67-失败定位与修复)。
+
+## 2026-10-09 Streamlined 昂贵路线与报价等待
+
+用户 27.0.15 日志的 TOTW 12000 分方案为123000，并伴随 FUTBIN 超时及搜索时间耗尽；报价未转发逐版本进度造成“库存报价0/448”长期不变。限定 Streamlined 新规划：源错误不再降级缺价后挑剩余昂贵缓存；等待显示来源/耗时、及时停止并隔离旧回调；市场种子先查低价主体和尾卡、跳过等分昂贵种子的重复枚举，不提高预算。完整报价 fixture 可得14张84＋1张83/13650；旧算法在完整样本也可得该结果，不能将日志高价全归因于算法。完整verify **408文件/4518项**、FC27 **86/1480**及离线Chrome全部通过，包含报价等待心跳/停止/失败提示与零写入。根目录27.0.18已重建，未安装、提交或消费；真实账号报价覆盖与额外CPU冻结仍待实机。Hash、差距和恢复顺序见[本轮恢复点](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-09-totw-昂贵路线与报价等待修复计划)。
+
 ## 2026-10-08 Streamlined 高价值库存被优先消耗修复
 
 用户截图反映的是 Streamlined，不是 Puzzle。已用失败 fixture 证实原支配剪枝仅看待购价和卡数，误删多卡低库存价值路线；现对同分中间路径和最终路线同时保留价值/卡数权衡。用户明确批准默认最低总材料价值（库存估值＋待购总价），保留待购优先与最少卡选项。旧冻结计划/交易 Journal 不改，读取旧默认设置迁移到新目标。补充低单价种子，不提高节点、状态或时间预算；汇总和脱敏日志分别显示总材料价值、库存估值和待购额。完整 verify **400 文件 / 4398 项**、FC27 **84 / 1436**与最终完整离线浏览器复验全部通过，包括 Streamlined 桌面/手机与真实点击。前一轮 Puzzle 待购成本修复保留，本轮不升版、提交、安装或消费。产物 hash 与恢复点见 [Streamlined 路线修复](FC27_STREAMLINED_MARKET_ROUTES_ZH.md#2026-10-08-高价库存选材修复)。

@@ -8,8 +8,8 @@ export function normalizeStreamlinedSettings(value = {}) {
   if (!integer(result.maxRating, 1, 99) || !integer(result.marketMaxRating, 1, 99) || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(result.objective)
       || !['inventory', 'inventory-market', 'market'].includes(result.mode)
       || !integer(result.partialWaitMs, 0, 3600000)
-      || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 2
-      || result.sources.some(s => !['club', 'storage'].includes(s)) || new Set(result.sources).size !== result.sources.length) fail('SETTINGS_INVALID');
+      || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4
+      || result.sources.some(s => !['club', 'storage', 'unassigned', 'transfer'].includes(s)) || new Set(result.sources).size !== result.sources.length) fail('SETTINGS_INVALID');
   return deepFreeze(structuredClone(result));
 }
 

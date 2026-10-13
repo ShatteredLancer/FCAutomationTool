@@ -41,7 +41,12 @@ export const FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
   // FC27 runtime review 2026-10-02: observer notification dispatch was
   // obfuscated again while its decoded contract stayed unchanged. This is
   // a local synchronization method, not a request or write method.
-  'EAObservable.prototype.notify': '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
+  // October 9 public source has the same decoded async owner-first dispatch.
+  // Exact source and behavior replay: fc27-notify-observation-2026-10-09.json.
+  'EAObservable.prototype.notify': Object.freeze([
+    '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
+    'e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1',
+  ]),
 });
 
 export function isFc27ClubCompatibleHash(path, hash) {

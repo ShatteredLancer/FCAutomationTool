@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "source": "diagnostics-2026-10-13T14-31-49-028Z",
+  "redacted": true,
+  "remainingScore": 12000,
+  "marketReadMs": 69564,
+  "initialQuoteMs": 49613,
+  "quoteWithRefreshMs": 60765,
+  "marketVersions": 166,
+  "refreshedVersions": 26,
+  "selected": {
+    "score": 12060,
+    "inventoryCount": 4,
+    "marketCount": 9,
+    "purchaseCost": 9000,
+    "materialValue": 5700,
+    "totalValue": 14700,
+    "minBatches": 9,
+    "repeatPurchaseCount": 8
+  },
+  "inventory": [
+    { "rating": 85, "points": 2100, "price": 2700, "quantity": 1 },
+    { "rating": 84, "points": 830, "price": 1000, "quantity": 3 }
+  ],
+  "market": { "rating": 84, "points": 830, "minimumPrice": 1000, "maximumPrice": 1300, "versions": 30 }
+}

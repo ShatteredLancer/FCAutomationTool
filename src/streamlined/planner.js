@@ -4,7 +4,21 @@ import { integer, streamlinedProgress } from './contract.js';
 
 export function splitStreamlinedBatches(items, limit) {
   if (!integer(limit, 1, 1000)) throw Error('FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN');
-  return Array.from({ length: Math.ceil(items.length / limit) }, (_, index) => items.slice(index * limit, (index + 1) * limit));
+  // External copies need an empty Club version slot. Put Club copies first
+  // and never materialize two copies of that version in the same batch.
+  const ordered = items.slice().sort((a, b) => Number(['unassigned', 'transfer'].includes(a.pile))
+    - Number(['unassigned', 'transfer'].includes(b.pile)));
+  const batches = [], nextVersion = new Map();
+  let open = 0;
+  for (const item of ordered) {
+    let index = ['unassigned', 'transfer'].includes(item.pile)
+      ? Math.max(open, nextVersion.get(item.definitionId) ?? 0) : open;
+    while (batches[index]?.length >= limit) index++;
+    (batches[index] ??= []).push(item);
+    nextVersion.set(item.definitionId, index + 1);
+    while (batches[open]?.length >= limit) open++;
+  }
+  return batches.filter(Boolean);
 }
 
 // Sparse 0/1 integer cover. Immutable back-links avoid copying complete card
@@ -76,10 +90,11 @@ export function* planStreamlinedSteps({ challenge, inventory = [], market = [], 
   const chosen = best ?? partial, items = [];
   for (let state = chosen; state.item; state = state.prev) items.push(state.item);
   items.reverse();
+  const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
   const reached = !!best, searchComplete = budget === null;
   return { status: budget === 'cancelled' ? 'cancelled' : reached ? 'ready' : allowPartial && items.length ? 'partial' : 'unavailable',
     reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? 'FC27_STREAMLINED_LOCAL_PLAN' : 'FC27_STREAMLINED_POOL_SHORTAGE',
-    items, batches: splitStreamlinedBatches(items, challenge.selectionLimit), score: chosen.score,
+    items: batches.flat(), batches, score: chosen.score,
     purchaseCost: chosen.purchaseCost, materialValue: chosen.unknownValue ? null : chosen.materialValue,
     unknownValueCount: chosen.unknownValue, progress: streamlinedProgress(challenge, chosen.score),
     nodes, maxNodes, elapsedMs: now() - started, searchComplete, optimalWithinPricedPool: searchComplete && !chosen.unknownValue,

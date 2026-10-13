@@ -60,7 +60,7 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
   }));
   const methods = await page.evaluate(readStreamlinedMethodSources);
   const preview = report.status === 'observed' && typeof page.context === 'function'
-    ? await inspectStreamlinedPreview(page, { recover, keepOpen: true }) : null;
+    ? await inspectStreamlinedPreview(page, { recover, keepOpen: false }) : null;
   // Latest installed preview must be verified before fresh read acceptance.
   const fresh = preview?.status === 'observed'
     ? await page.evaluate(`(async () => { ${result.outputFiles[0].text}

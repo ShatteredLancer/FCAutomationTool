@@ -240,3 +240,48 @@ it('closes an 18/30 wave with visible ready progress, then pauses on zero supply
   expect(progress).toContainEqual(expect.objectContaining({ phase: 'partial-ready', readyCount: 18, readyPoints: 360, selectionLimit: 30 }));
   expect(adapter.waitForPartial.mock.calls[0][0]).toBeLessThanOrEqual(1234);
 });
+
+it('uses a Club copy before an external copy of the same definition', async () => {
+  const club = { ...item(11, 101, 20), pile: 'club' };
+  const unassigned = { ...item(12, 101, 20), pile: 'unassigned', executionPile: 'club' };
+  const plan = planFor({ inventory: [club, unassigned], targetScore: 40 });
+  const { journal } = setup();
+  let score = 0;
+  const progress = [];
+  const adapter = baseAdapter([club, unassigned], {
+    materialize: vi.fn(async entries => entries.map(entry => ({ groupIndex: entry.groupIndex,
+      item: [club, unassigned].find(row => row.id === entry.itemId) }))),
+    contribute: vi.fn(async (batch, callbacks) => {
+      const external = batch.material.find(row => row.item.pile === 'unassigned');
+      if (external) callbacks.onProgress({ phase: 'materialize', stage: 'confirmed', completed: 1,
+        materialTotal: 1, id: external.item.id, submittedScore: score });
+      return { confirmed: true, submittedScore: score += batch.material.length * 20 };
+    }),
+  });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' })
+    .execute(plan, approval(plan), { onProgress: event => progress.push(event) });
+  expect(result.status).toBe('completed');
+  expect(result.record.consumedIds).toEqual([11, 12]);
+  expect(adapter.contribute.mock.calls.map(([batch]) => batch.material.map(row => row.item.id))).toEqual([[11], [12]]);
+  expect(progress).toContainEqual(expect.objectContaining({ phase: 'materialize', stage: 'confirmed',
+    completed: 1, materialTotal: 1, id: 12, submittedScore: 20, batchNumber: 2 }));
+  expect(adapter.find).not.toHaveBeenCalled();
+});
+
+it('does not contribute two external copies of one definition in one batch', async () => {
+  const first = { ...item(21, 201, 20), pile: 'unassigned', executionPile: 'club' };
+  const second = { ...item(22, 201, 20), pile: 'transfer', executionPile: 'club' };
+  const plan = planFor({ inventory: [first, second], targetScore: 40 });
+  const { journal } = setup();
+  let score = 0;
+  const adapter = baseAdapter([first, second], {
+    materialize: vi.fn(async entries => entries.map(entry => ({ groupIndex: entry.groupIndex,
+      item: [first, second].find(row => row.id === entry.itemId) }))),
+    contribute: vi.fn(async batch => ({ confirmed: true, submittedScore: score += batch.material.length * 20 })),
+  });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' })
+    .execute(plan, approval(plan));
+  expect(result.status).toBe('completed');
+  expect(result.record.consumedIds).toEqual([21, 22]);
+  expect(adapter.contribute.mock.calls.map(([batch]) => batch.material.map(row => row.item.id))).toEqual([[21], [22]]);
+});

@@ -3,20 +3,25 @@ import { createGalleryPlanReplay } from '../gallery/plan-replay.js';
 const DEFAULT_MAX_ENTRIES = 300;
 const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
+const MAX_PERFORMANCE_ENTRIES = 40;
+const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', 'futbin-batch-result'].includes(entry.event)
+  || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 
-const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective']);
+const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'retryAt', 'durationMs', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
-  'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount',
-  'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount',
+  'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',
+  'routeInventoryCount', 'routeMarketCount', 'routeMaterialValue', 'rating', 'unitScore', 'minBatches', 'repeatPurchaseCount',
+  'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount', 'excludedGoldRangeCount', 'fsuGoldMax', 'fsuGoldMin', 'inventoryMaxRating',
   'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
-  'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount',
+  'combinationNodes', 'placementNodes', 'evaluationNodes', 'boundNodes', 'strategyAttempts',
+  'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
@@ -32,8 +37,13 @@ function sanitizeEntry(input, now) {
     'UTHttpRequest.prototype.send', 'EAHttpRequest.prototype.send', 'EAHttpRequest.prototype.setRequestBody',
     'EAHttpRequest.prototype.abort', 'UTItemDAO.prototype.searchConceptItems', 'UTItemDAO.prototype.searchTransferMarket',
     'FCAuthenticationService.prototype.getIdentifier', 'Identification.prototype.handleRequest', 'Identification.prototype.handleResponse',
-    'factories.Item.generateItemsFromItemData', 'UTItemEntityFactory.prototype.createItem'].includes(input.method)) entry.method = input.method;
-  if (typeof input.observedHash === 'string' && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
+    'factories.Item.generateItemsFromItemData', 'UTItemEntityFactory.prototype.createItem',
+    'dao.submitPlayers', 'dao.initiateOneClickChallenge'].includes(input.method)) entry.method = input.method;
+  if (typeof input.methodPath === 'string' && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath)
+      || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath)
+      || ['events.markClubCacheDirty', 'call.squad.setPlayers'].includes(input.methodPath))) entry.methodPath = input.methodPath;
+  if (typeof input.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === 'oversized')) entry.observedHash = input.observedHash;
+  if (typeof input.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
   for (const key of STRING_FIELDS) {
     const value = key === 'reason' || key === 'localReason'
       ? typeof input[key] === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null
@@ -69,6 +79,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   let entries = [];
   let criticalEntries = [];
   let transactionResults = [];
+  let performanceEntries = [];
   let planning = [];
   let loaded = false;
   let loading = null;
@@ -83,6 +94,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
           .slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
         transactionResults = (Array.isArray(saved.transactionResults) ? saved.transactionResults : [])
           .slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
+        performanceEntries = (Array.isArray(saved.performanceEntries) ? saved.performanceEntries : [])
+          .slice(-MAX_PERFORMANCE_ENTRIES).map(validSavedEntry).filter(performanceEntry);
         planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map(row => {
           const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
           return event && replay ? { event, replay } : null;
@@ -95,6 +108,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     const payload = { schema: 1, product: 'FC Automation Tool', season: '27', version: version ?? null,
       entries: entries.map(entry => ({ ...entry })), criticalEntries: criticalEntries.map(entry => ({ ...entry })),
       transactionResults: transactionResults.map(entry => ({ ...entry })),
+      performanceEntries: performanceEntries.map(entry => ({ ...entry })),
       planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
@@ -116,9 +130,11 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
           ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
         criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
       }
-      if (entry.area === 'gallery' && ['purchase-result', 'listing-result'].includes(entry.event)) {
+      if (entry.area === 'gallery' && ['purchase-result', 'listing-result'].includes(entry.event)
+          || entry.area === 'puzzle' && entry.event === 'solve-result') {
         transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
       }
+      if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
       if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
       await persist();
     }).catch(() => undefined);
@@ -136,9 +152,10 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     season: '27',
     version: version ?? null,
     exportedAt: now(),
-    redaction: 'Bounded events, critical Gallery trade events and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.',
+    redaction: 'Bounded events, critical trade events, planning performance summaries and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.',
     entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })),
     transactionResults: transactionResults.map(entry => ({ ...entry })), planning: structuredClone(planning),
+    performanceEntries: performanceEntries.map(entry => ({ ...entry })),
   }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

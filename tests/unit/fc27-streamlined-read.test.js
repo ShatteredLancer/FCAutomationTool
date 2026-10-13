@@ -66,6 +66,22 @@ it('keeps Only Untradeable protection when FSU enables it', () => {
   expect(input.policy.onlyUntradeable).toBe(true);
 });
 
+it('reads external piles only when explicitly enabled and reports their capabilities', () => {
+  const f = runtime();
+  const external = { ...f.root.repositories.Item.club.items._collection[1], id: 901, definitionId: 1901, sbsScore: 20 };
+  f.root.repositories.Item.getUnassignedItems = () => [external];
+  f.root.repositories.Item.getTransferItems = () => [];
+  const input = readFc27StreamlinedInputs(f.root, { sources: ['club', 'storage', 'unassigned', 'transfer'] });
+  expect(input.inventoryStats).toMatchObject({ byPile: { unassigned: 1, transfer: 0 }, unassignedSupported: true, transferSupported: true });
+  expect(input.inventory.find(item => item.id === 901)).toMatchObject({ pile: 'unassigned', executionPile: 'club' });
+  expect(() => readFc27StreamlinedInputs(f.root, { sources: ['unassigned'] })).not.toThrow();
+});
+
+it('fails closed when an explicitly enabled external pile has no EA getter', () => {
+  const f = runtime();
+  expect(() => readFc27StreamlinedInputs(f.root, { sources: ['transfer'] })).toThrow('FC27_STREAMLINED_PILE_UNAVAILABLE');
+});
+
 it('reads tradeability from the loaded static DTO when the entity omits it', () => {
   const f = runtime();
   f.root.info.build.untradeable = true;

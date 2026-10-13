@@ -62,7 +62,9 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         // verify must check exact current entities, guards, native rules, account,
         // expiry and progress after every batch. No save-squad operation exists.
         report('validation', index);
-        if (await adapter.verify(plan, batch, record.submittedScore) !== true) fail('MATERIAL_CHANGED');
+        if (await adapter.verify(plan, batch, record.submittedScore, {
+          stopped: () => stopping, onProgress: row => { try { onProgress({ ...row, index, total: approval.batchIndices.length }); } catch { /* display only */ } },
+        }) !== true) fail('MATERIAL_CHANGED');
         if (stopping) break;
         record.batches[index].state = 'pending';
         record.batches[index].startingScore = record.submittedScore;

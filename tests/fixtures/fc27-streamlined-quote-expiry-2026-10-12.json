@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "source": "futbin",
+  "version": "27.0.18",
+  "marketCandidateCount": 166,
+  "marketReadDurationMs": 103334,
+  "quoteTtlMs": 300000,
+  "cachedRemainingMs": 10000,
+  "observedFailure": "FC27_STREAMLINED_QUOTES_EXPIRED",
+  "retainedTransportStatus": 200,
+  "note": "Redacted timing regression. Candidate identities and prices in replay are synthetic; the log does not retain the expired quote identity."
+}

@@ -8,7 +8,7 @@ const timestamp = value => Number.isSafeInteger(value) && value >= 0;
 const reasonOf = error => /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_PUBLIC_PRICE_UNAVAILABLE';
 const keyOf = (source, options, id) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id}`;
 
-export function createGalleryReferencePrices({ readFutgg, readFutbin, get = async (_key, fallback) => fallback,
+export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbinBatch = null, get = async (_key, fallback) => fallback,
   set = async () => {}, now = () => Date.now(), ttlMs = 300000, failureTtlMs = 30000, diagnosticLog = null }) {
   const cache = new Map(), pending = new Map(), cooldowns = new Map();
   let queue = Promise.resolve();
@@ -22,12 +22,13 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
   // Reproject successful cache entries per caller without extending a frozen
   // snapshot or changing the original fetch time. Error cooldowns are separate.
   const lifetime = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
-  const ensure = (source, ids, options, byId, current, force, progress, duration) => {
+  const ensure = (source, ids, options, byId, current, force, progress, duration, futbinBatch) => {
     // Reserve exact per-version promises synchronously, before storage awaits,
     // so overlapping Gallery/Puzzle reads share the same in-flight request.
     const freshIds = ids.filter(id => !pending.has(keyOf(source, options, id)));
     if (freshIds.length) {
       const task = queue.catch(() => {}).then(async () => {
+        const startedAt = now(); let requests = 0;
         current();
         const missing = [];
         for (const id of freshIds) {
@@ -45,17 +46,39 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
         progress({ source, index: completed, total: ids.length });
         current();
         const batchSize = source === 'futgg' ? 50 : 1;
-        for (let start = 0; start < missing.length; start += batchSize) {
+        const jobs = [], fallbackJobs = [], grouped = new Map();
+        if (source === 'futbin' && futbinBatch && typeof readFutbinBatch === 'function') {
+          for (const id of missing) {
+            const rating = byId.get(id)?.rating;
+            const group = grouped.get(rating) ?? []; group.push(id); grouped.set(rating, group);
+          }
+        }
+        const bulkIds = new Set();
+        for (const [rating, batch] of grouped) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99 && batch.length >= 12) {
+          jobs.push({ ids: batch, bulk: true }); for (const id of batch) bulkIds.add(id);
+        }
+        const singles = missing.filter(id => !bulkIds.has(id));
+        for (let offset = 0; offset < singles.length; offset += batchSize) jobs.push({ ids: singles.slice(offset, offset + batchSize), bulk: false });
+        let next = 0, sourceFailure = null;
+        const readBatch = async () => {
           current();
-          const batch = missing.slice(start, start + batchSize), cooldownKey = `${source}:${options.season}:${options.platform}`;
+          const job = jobs[next++], batch = job.ids, cooldownKey = `${source}:${options.season}:${options.platform}`;
           let rows = [], error = null, retryAt = null;
-          const cooldown = cooldowns.get(cooldownKey);
+          const cooldown = sourceFailure ?? cooldowns.get(cooldownKey);
           try {
-            if (cooldown?.retryAt > now()) { retryAt = cooldown.retryAt; throw Error(cooldown.reason); }
-            rows = source === 'futgg' ? await readFutgg(batch, options)
+            if (sourceFailure || cooldown?.retryAt > now()) {
+              retryAt = Math.max(cooldown.retryAt, now() + 1); throw Error(cooldown.reason);
+            }
+            requests++;
+            if (job.bulk) {
+              const result = await readFutbinBatch(batch, batch.map(id => byId.get(id)), { ...options, check: current, force, quoteTtlMs: duration });
+              if (!Number.isSafeInteger(result?.requests) || result.requests < 0 || result.requests > 8) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
+              requests += result.requests - 1; rows = result.rows;
+            } else rows = source === 'futgg' ? await readFutgg(batch, options)
               : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
             if (!Array.isArray(rows) || rows.some(row => !batch.includes(row?.definitionId)
                 || row.price !== null && !validPrice(row.price)
+                || job.bulk && (!timestamp(row.fetchedAt) || row.fetchedAt > now())
                 || row.sourceUpdatedAt != null && (!timestamp(row.sourceUpdatedAt) || row.sourceUpdatedAt > now()))
                 || new Set(rows.map(row => row.definitionId)).size !== rows.length) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
           } catch (failure) {
@@ -63,11 +86,16 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
             retryAt ??= Math.max(now() + failureTtlMs, timestamp(failure?.retryAt) ? failure.retryAt : 0);
             // Bad/missing player metadata is local to that version, not an
             // outage. Network/payload failures stop request storms per source.
-            if (!['FC27_PUBLIC_PRICE_PLAYER_INVALID', 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', 'FC27_PUBLIC_PRICE_FUTGG_DISABLED'].includes(error)) cooldowns.set(cooldownKey, { retryAt, reason: error });
+            if (!['FC27_PUBLIC_PRICE_PLAYER_INVALID', 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', 'FC27_PUBLIC_PRICE_FUTGG_DISABLED'].includes(error)) {
+              sourceFailure ??= { retryAt, reason: error };
+              cooldowns.set(cooldownKey, { retryAt, reason: error });
+            }
           }
-          const fetchedAt = now(), expiresAt = error ? retryAt : fetchedAt + duration;
-          for (const id of batch) {
+          const completedIds = job.bulk && !error ? batch.filter(id => rows.some(row => row.definitionId === id)) : batch;
+          if (job.bulk && !error) for (const id of batch) if (!completedIds.includes(id)) fallbackJobs.push({ ids: [id], bulk: false });
+          for (const id of completedIds) {
             const value = rows.find(row => row.definitionId === id);
+            const fetchedAt = job.bulk && !error ? value.fetchedAt : now(), expiresAt = error ? retryAt : fetchedAt + duration;
             const entry = { schema: 2, source, ...options, definitionId: id, price: value?.price ?? null,
               fetchedAt, sourceUpdatedAt: value?.sourceUpdatedAt ?? null, expiresAt, error };
             const key = keyOf(source, options, id); cache.set(key, entry);
@@ -75,8 +103,24 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
             record({ source, status: error ? 'failed' : entry.price === null ? 'missing' : 'success', reason: error,
               definitionId: id, referencePrice: entry.price, fetchedAt, sourceUpdatedAt: entry.sourceUpdatedAt, expiresAt });
           }
-          completed += batch.length; progress({ source, index: completed, total: ids.length });
+          completed += completedIds.length; progress({ source, index: completed, total: ids.length });
+        };
+        // Keep the shared queue held until every worker settles, including
+        // cancellation. A later caller must not overlap abandoned requests.
+        const workers = source === 'futbin' ? 3 : 1;
+        const drain = () => Promise.allSettled(Array.from({ length: Math.min(workers, jobs.length) }, async () => {
+          while (next < jobs.length) await readBatch();
+        }));
+        const settled = await drain();
+        if (!settled.some(result => result.status === 'rejected') && fallbackJobs.length) {
+          jobs.splice(0, jobs.length, ...fallbackJobs); next = 0;
+          settled.push(...await drain());
         }
+        const failed = settled.find(result => result.status === 'rejected');
+        record({ source, event: 'quote-batch', phase: 'complete', status: failed ? 'failed' : sourceFailure ? 'failed' : 'success',
+          requestedCount: freshIds.length, cached: missing.length === 0, count: missing.length,
+          requests, batchSize: workers, durationMs: Math.max(0, now() - startedAt) });
+        if (failed) throw failed.reason;
       });
       queue = task.catch(() => {});
       for (const id of freshIds) {
@@ -90,13 +134,13 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
   return Object.freeze({
     async load(ids, { season = '27', platform, rows = [], policy = {}, force = false,
       sources = ['futgg', 'futbin'], forceSources = [], purpose = 'gallery',
-      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs } = {}) {
+      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = false } = {}) {
       policy = normalizeGalleryPricePolicy(policy);
       if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 1800000
           || season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
           || ids.length > 250 || ids.some(id => !positive(id))
           || !Array.isArray(sources) || !sources.length || sources.some(source => !['futgg', 'futbin'].includes(source))
-          || new Set(sources).size !== sources.length || !Array.isArray(forceSources)
+          || typeof futbinBatch !== 'boolean' || new Set(sources).size !== sources.length || !Array.isArray(forceSources)
           || forceSources.some(source => !['futgg', 'futbin'].includes(source))) throw Error('FC27_PUBLIC_PRICE_INPUT_INVALID');
       const current = () => { if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED'); };
       const progress = value => { try { onProgress(value); } catch { /* UI cannot alter price reads. */ } };
@@ -112,7 +156,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, get = asyn
       const quotes = {}, options = { season, platform };
       for (const source of requested) {
         progress({ source, index: 0, total: unique.length });
-        quotes[source] = (await ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs))
+        quotes[source] = (await ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs, futbinBatch))
           .map(row => lifetime(row, quoteTtlMs)); current();
         progress({ source, index: unique.length, total: unique.length });
       }

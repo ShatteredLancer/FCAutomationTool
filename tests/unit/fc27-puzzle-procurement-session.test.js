@@ -2,6 +2,8 @@ import { expect, it, vi } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
 import * as procurement from '../../src/fc27/puzzle-procurement.js';
+import clubAffinity from '../fixtures/fc27-puzzle-club-affinity-2026-10-09.json';
+import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
 
 function fixture() {
   const input = puzzleFillFixture(); input.challenge.rawRequirements[1].pairs[0].values = [33];
@@ -28,6 +30,45 @@ function publicPrices(x, priceOf) {
         fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null,
       }])) }])) }));
 }
+
+it('replays the linked-club 10-bronze/1-silver shortage through public pricing and cache reuse', async () => {
+  const x = fixture();
+  x.input.challenge.rawRequirements = structuredClone(clubAffinity.requirements);
+  x.input.challenge.formation = structuredClone(clubAffinity.formation);
+  Object.assign(x.input.policy, clubAffinity.policy);
+  const template = x.input.inventory.items[0];
+  x.input.inventory.items = clubAffinity.owned.map((row, index) => ({ ...template, ...row,
+    id: index + 1, definitionId: index + 101 }));
+  x.input.clubLinks = structuredClone(clubAffinity.clubLinks);
+  x.input.chemistry = { parameters: clubAffinity.parameters, links: x.input.clubLinks,
+    maxChemistryPerPlayer: 3, profilesEnabled: true,
+    profiles: { complete: true, entries: [clubAffinity.baseProfile] },
+    identities: clubAffinity.identities, superChemRarityIds: [], rating: { floatCalculationEnabled: true } };
+  const facts = squad => ({ squad, formation: x.input.challenge.formation,
+    chemistry: x.input.chemistry, rating: x.input.chemistry.rating });
+  x.input.evaluateSquad = squad => evaluateFc27PuzzleSquad(facts(squad));
+  x.input.boundSquad = squad => boundFc27PuzzleChemistry(facts(squad));
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27',
+    source: 'ea-defid', query, observedAt: x.now, entries: clubAffinity.catalog.map((row, index) => ({ ...row,
+      definitionId: index + 901, groups: [], special: false, evolution: false, cosmetic: false })) }));
+  const loadPublicPrices = publicPrices(x, () => 200);
+  const session = createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices });
+  const result = await session.plan(x.input);
+  expect(result).toMatchObject({ status: 'suggested', requests: 1, diagnostics: { route: 'joint' } });
+  expect(x.transport.readCatalogPage.mock.calls[0][0]).toEqual({ start: 0, count: 20, level: 'bronze', nation: 34 });
+  const plan = result.plans[0];
+  expect(plan.estimatedCost).toBeLessThanOrEqual(1000);
+  expect(plan.teamFacts.chemistry).toBeGreaterThanOrEqual(14);
+  expect(plan.purchases.every(row => row.rating < 65 && !row.id)).toBe(true);
+  expect(plan.selectedOwned.some(row => row.definitionId === 113)).toBe(true);
+  expect(plan.selectedOwned.length + plan.purchaseCount).toBe(11);
+  expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  const reused = await session.plan(x.input);
+  expect(reused.status).toBe('suggested');
+  expect(x.transport.readCatalogPage).toHaveBeenCalledOnce();
+  expect(x.input.policy.onlyUntradeable).toBe(true);
+});
 
 function refinementFixture(joint = false) {
   const x = fixture();
@@ -457,18 +498,20 @@ it('retains the improved total cost when a third lane produces no cheaper result
   } });
 });
 
-it.each([false, true])('uses the last remaining search unit and retains the incumbent at exhaustion (joint=%s)', async joint => {
+it.each([false, true])('shares all three search slices and retains the incumbent at exhaustion (joint=%s)', async joint => {
   const x = refinementFixture(joint);
   const budget = joint ? 50000 : 20000;
   const method = joint ? 'suggestFc27PuzzleJointPurchasesCooperatively' : 'suggestFc27PuzzlePurchasesCooperatively';
-  const original = procurement[method]; let pass = 0;
+  const original = procurement[method]; let pass = 0; let spent = 0;
   const spy = vi.spyOn(procurement, method).mockImplementation(async (...args) => {
     const options = args.at(-1);
-    expect(options[joint ? 'maxNodes' : 'maxChecks']).toBe(pass ? 1 : budget);
+    const slice = options[joint ? 'maxNodes' : 'maxChecks'];
+    expect(slice).toBe(Math.floor((budget - spent) / (3 - pass)));
+    spent += slice;
     if (pass++) return { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', plans: [], truncated: true,
-      ...(joint ? { nodes: 1 } : { checks: 1 }) };
+      ...(joint ? { nodes: slice } : { checks: slice }) };
     const result = await original(...args);
-    return { ...result, ...(joint ? { nodes: budget - 1 } : { checks: budget - 1 }) };
+    return { ...result, ...(joint ? { nodes: slice } : { checks: slice }) };
   });
   try {
     const result = await createFc27PuzzleProcurementSession({ ...x.options,
@@ -477,7 +520,27 @@ it.each([false, true])('uses the last remaining search unit and retains the incu
       initialEstimatedCost: 10000, nodes: budget, optimizationBudgetExhausted: true,
       searchComplete: false, optimalWithinPool: false,
     } });
-    expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
+    expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(3);
+  } finally { spy.mockRestore(); }
+});
+
+it('reserves joint search budget for later catalog lanes when page one has no plan', async () => {
+  const x = refinementFixture(true);
+  const original = procurement.suggestFc27PuzzleJointPurchasesCooperatively;
+  const budgets = [];
+  const spy = vi.spyOn(procurement, 'suggestFc27PuzzleJointPurchasesCooperatively').mockImplementation(async (...args) => {
+    const options = args.at(-1); budgets.push(options.maxNodes);
+    if (budgets.length === 1) return { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT',
+      nodes: options.maxNodes, truncated: true, searchComplete: false, plans: [] };
+    return original(...args);
+  });
+  try {
+    const result = await createFc27PuzzleProcurementSession({ ...x.options,
+      loadPublicPrices: publicPrices(x, () => 200) }).plan(x.input);
+    expect(result.status).toBe('suggested');
+    expect(budgets[0]).toBe(16666);
+    expect(x.transport.readCatalogPage.mock.calls.length).toBeGreaterThan(1);
+    expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
   } finally { spy.mockRestore(); }
 });
 

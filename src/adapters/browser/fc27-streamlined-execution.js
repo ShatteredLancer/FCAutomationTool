@@ -12,6 +12,8 @@ import { assertGalleryRelistSettled } from '../../gallery/relist-recovery.js';
 import { createStreamlinedPurchaseJournal, verifyStreamlinedPurchasedItem } from '../../streamlined/purchase-journal.js';
 import { createFc27StreamlinedPurchaseAdapter } from '../ea/fc27-streamlined-purchase.js';
 import { createStreamlinedProcurement } from '../../streamlined/procurement.js';
+import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streamlined-materialize.js';
+import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
   const scope = traditionalJournalScope(context), raw = await get(scope, null);
@@ -29,6 +31,17 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   if (!same(readFc27Context(root), context)) fail('CONTEXT_CHANGED');
   const persistence = createFc27StreamlinedPersistence({ context, get, set, lockManager,
     readContext: () => readFc27Context(root), now });
+  const materializationStorage = { get, set: async (key, value) => {
+    persistence.assertHeld();
+    await set(key, value);
+    persistence.assertHeld();
+  } };
+  const materializationJournal = createStreamlinedMaterializationJournal({ context, ...materializationStorage,
+    assertCurrent: () => { if (!same(readFc27Context(root), context)) fail('CONTEXT_CHANGED'); } });
+  const checkOtherTransactions = async () => {
+    await assertStreamlinedOtherTransactions(get, context);
+    await materializationJournal.assertSettled();
+  };
   const maintenance = await createMaintenance(root, { now });
   const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
   const purchaseVerifier = async (item, proof, currentPlan = plan) => verifyStreamlinedPurchasedItem(get, context,
@@ -37,14 +50,26 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   let marketPurchase = null;
   let activeProcurement = null;
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
-    checkOtherTransactions: () => assertStreamlinedOtherTransactions(get, context), purchaseVerifier });
+    materializationStorage,
+    checkOtherTransactions, purchaseVerifier });
   const transaction = createStreamlinedTransaction({ adapter, ...persistence, now });
   const createMarket = async plan => {
     if (!plan?.route?.groups?.some(group => group.source === 'market')) return null;
+    await materializationJournal.assertSettled();
     const contribution = { adapter, journal: persistence.journal };
     return createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
+    async recoverMaterialization() {
+      const release = await persistence.lock.acquire(context);
+      if (typeof release !== 'function') return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
+      try {
+        const recovery = await createFc27StreamlinedMaterializationRecovery(root, {
+          context, ...materializationStorage, assertCurrent: persistence.assertHeld,
+        });
+        return await recovery.recover();
+      } finally { await release(); }
+    },
     async recoverPurchase(challenge) {
       const saved = await marketJournal.read(context);
       if (!saved) return { status: 'absent' };
@@ -87,7 +112,9 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
       if (!persistence.inspect().supported) fail('EXCLUSIVE_ACCESS_REQUIRED');
       if (plan.challenge.status !== 'IN_PROGRESS') fail('INITIATION_UNVERIFIED');
-      if (plan.items.some(item => item.source === 'inventory' && !['club', 'storage'].includes(item.pile))) fail('PILE_UNVERIFIED');
+      if (plan.items.some(item => item.source === 'inventory'
+          && (!['club', 'storage', 'unassigned', 'transfer'].includes(item.pile)
+            || ['unassigned', 'transfer'].includes(item.pile) && item.executionPile !== 'club'))) fail('PILE_UNVERIFIED');
       if (plan.items.some(item => item.source === 'market') && !plan.route?.groups?.some(group => group.source === 'market')) fail('PURCHASE_ROUTE_UNVERIFIED');
       maintenance.prepare(plan.items.filter(item => item.source === 'inventory'));
       return true;

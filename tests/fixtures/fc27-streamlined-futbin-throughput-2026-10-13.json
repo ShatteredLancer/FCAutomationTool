@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "source": "diagnostics-2026-10-13T14-58-39-588Z",
+  "redacted": true,
+  "inventoryVersions": 482,
+  "screenshotCompleted": 440,
+  "screenshotWaitSeconds": 97,
+  "retainedHttpResponses": 66,
+  "retainedMeanRequestMs": 1183,
+  "retainedP95RequestMs": 1746,
+  "marketVersions": 138,
+  "marketNetworkVersions": 85,
+  "marketQuoteBatchMs": 34935,
+  "marketReadMs": 44991,
+  "refreshedVersions": 1,
+  "localSearchMs": 4029,
+  "inventoryStageTotalMs": null,
+  "publicProbe": {
+    "date": "2026-10-13",
+    "platform": "PC",
+    "rating": 84,
+    "endpoint": "getFilteredPlayers",
+    "page1Rows": 32,
+    "page2Rows": 32,
+    "businessCode": "200",
+    "sample": [
+      { "resource_id": 20801, "rating": 84, "pc_LCPrice": 1100, "ps_LCPrice": 1100 },
+      { "resource_id": 78012, "rating": 84, "pc_LCPrice": 7400, "ps_LCPrice": 10250 }
+    ]
+  }
+}

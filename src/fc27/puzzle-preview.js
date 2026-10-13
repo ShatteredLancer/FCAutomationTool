@@ -359,6 +359,19 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   }
   const forced = new Set(scarce.filter(entry => new Set(entry.matching.map(item => item.definitionId)).size === entry.minimum)
     .flatMap(entry => entry.matching));
+  const mixedClubRequirements = materialRules.filter(rule => rule.count > 0).length > 1
+    && parsed.rules.some(rule => rule.kind === 'from-clubs' && rule.mode !== 'max' && rule.count > 0);
+  const compulsoryScores = new Map(candidates.map(item => [item, 0]));
+  if (mixedClubRequirements && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {
+    // Small mandatory subsets must be visited before unrestricted fillers.
+    // Otherwise separate club/gold obligations can be individually reachable
+    // but jointly impossible in the last slot, wasting the whole node budget.
+    for (const entry of scarce.filter(entry => entry.minimum < required)) {
+      const size = new Set(entry.matching.map(item => item.definitionId)).size;
+      if (!size) continue;
+      for (const item of entry.matching) compulsoryScores.set(item, compulsoryScores.get(item) + 1 / size);
+    }
+  }
   // Only propagate an upper bound when the compulsory definitions each have
   // one physical candidate. Alternate copies remain choices, not extra slots.
   const definitionCounts = new Map();
@@ -369,8 +382,10 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     if (used === rule.count) candidates = candidates.filter(item => forced.has(item)
       || matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) !== true);
   }
-  if (forced.size && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {
-    candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)));
+  if ((forced.size || mixedClubRequirements) && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {
+    candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
+      || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || compulsoryScores.get(b) - compulsoryScores.get(a));
   }
   const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
   let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
@@ -387,6 +402,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       && hintGroup(searchHint, item, resolveClub) === searchHint.groupId;
     candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
       || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
       || quoted.get(a) - quoted.get(b)
@@ -504,12 +520,18 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
           }
           if (bound.maxChemistry < minimumChemistry) return;
         }
-        // Share the finite budget across combinations. A difficult arrangement
-        // must not consume every node before later candidate groups are tried.
-        // Skipped permutations mean search-limit, never proof of no solution.
+        // Share the finite budget across combinations. The old fixed 256-node
+        // cap made chemistry-heavy challenges with only a few candidates stop
+        // before a legal arrangement could be evaluated. Keep a per-combination
+        // guard, but scale it with the remaining global budget and candidate
+        // fan-out; the global `maxNodes` remains the final hard limit.
         let placementNodes = 0;
+        const remainingBudget = Math.max(0, maxNodes - nodes);
+        const branchFanout = Math.max(1, candidates.length - chosen.length + 1);
+        const placementCap = Math.max(256, Math.min(4096,
+          Math.floor(remainingBudget / branchFanout) || 256));
         const placementNode = kind => {
-          if (placementNodes >= 256) { deferredPlacements = true; return false; }
+          if (placementNodes >= placementCap) { deferredPlacements = true; return false; }
           placementNodes++; return takeNode(kind);
         };
         const result = evaluatePlacement({ chosen, slots,

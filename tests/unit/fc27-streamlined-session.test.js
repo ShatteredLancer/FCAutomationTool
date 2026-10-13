@@ -4,6 +4,26 @@ import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined
 import { assertStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { normalizeStreamlinedSettings } from '../../src/streamlined/settings.js';
 
+it('reports total inventory quote elapsed time across both 250-version chunks and retains a stage summary', async () => {
+  const c = challenge({ scoreRequirement: 100 }), diagnosticLog = { record: vi.fn() }, progress = [];
+  const inventory = Array.from({ length: 251 }, (_, i) => safeItem({ id: i + 1, definitionId: i + 1, points: 100 }));
+  let time = 100; const prices = { load: vi.fn(async (ids, options) => {
+    time += prices.load.mock.calls.length === 1 ? 5000 : 7000;
+    options.onProgress({ source: 'futbin', index: ids.length, total: ids.length });
+    return { policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+      { quotes: { futbin: { source: 'futbin', definitionId, price: 1000, fetchedAt: time, expiresAt: time + 300000 } } }])) };
+  }) };
+  const session = createFc27StreamlinedSession({ diagnosticLog, prices, now: () => time,
+    inspect: () => ({ context: c.context, challenge: c }), get: async () => null, set: async () => {},
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory,
+      priceRows: inventory, assertCurrent() {} }) });
+  expect((await session.plan({ mode: 'inventory' }, { onProgress: row => progress.push(row) })).status).toBe('ready');
+  expect(progress.filter(row => row.phase === 'quotes' && row.elapsedMs != null).at(-1).elapsedMs).toBe(12000);
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'planning-read', phase: 'inventory-quotes',
+    durationMs: 12000, requestedCount: 251, count: 251, source: 'futbin' }));
+  expect(prices.load.mock.calls.every(([_ids, options]) => options.futbinBatch === true)).toBe(true);
+});
+
 it('migrates settings without relaxing stock protection and validates the separate market ceiling', () => {
   expect(normalizeStreamlinedSettings({ maxRating: 82 })).toMatchObject({ maxRating: 82, marketMaxRating: 99 });
   expect(normalizeStreamlinedSettings({ maxRating: 82, marketMaxRating: 85 })).toMatchObject({ maxRating: 82, marketMaxRating: 85 });
@@ -58,6 +78,117 @@ it('selects the cheaper total-value market route while allowing zero-purchase st
   expect(await session.plan({ objective: 'lowest-coins' })).toMatchObject({ purchaseCost: 0, materialValue: 30000 });
 });
 
+it('logs bounded score and price buckets and selected repeats without account or physical item identities', async () => {
+  const c = challenge({ scoreRequirement: 12000 }), diagnosticLog = { record: vi.fn() };
+  const quotes = price => ({ source: 'futgg', definitionId: 101, price, fetchedAt: 1, expiresAt: 1000 });
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }), diagnosticLog,
+    get: async () => null, set: async () => {}, now: () => 100,
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, assertCurrent() {},
+      inventory: [safeItem({ id: 123456789, definitionId: 101, points: 830, rating: 84 })] }),
+    prices: { load: async () => ({ policy: { source: 'futgg' }, references: { 101: { quotes: { futgg: quotes(2000) } } } }) },
+    readMarketCandidates: async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+      points: 830, rating: 84, price: 700, quote: { ...quotes(700), definitionId: 901 } })] }) });
+  const result = await session.plan({});
+  expect(result.route).toMatchObject({ marketCount: 15, minBatches: 15, repeatPurchaseCount: 14 });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'candidate-bucket', source: 'inventory',
+    phase: 'club', rating: 84, unitScore: 830, count: 1, quotedCount: 1, cheapestPrice: 2000, bestPrice: 2000 }));
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'route-group', source: 'market',
+    rating: 84, unitScore: 830, count: 15, referencePrice: 700, requestedCount: 1 }));
+  expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toContain('123456789');
+});
+
+it('keeps owned entities in the final TOTW preview and frozen plan without extra price reads', async () => {
+  const c = challenge({ scoreRequirement: 12000 }), diagnosticLog = { record: vi.fn() };
+  const inventory = Array.from({ length: 8 }, (_, i) => safeItem({ id: 100 + i, definitionId: 100 + i,
+    points: 830, rating: 84, pile: i < 3 ? 'storage' : 'club' }));
+  const quote = (definitionId, price) => ({ definitionId, source: 'futgg', price, fetchedAt: 1, expiresAt: 1000 });
+  const prices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(id => [id, { quotes: { futgg: quote(id, 800) } }])) })) };
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }), diagnosticLog,
+    get: async () => null, set: async () => {}, now: () => 100, schedule: async () => {}, prices,
+    readInputs: () => ({ context: c.context, challenge: c, inventory, eligibility, assertCurrent() {},
+      policy: { ...policy, maxRating: 99, goldRange: [75, 97], onlyUntradeable: false } }),
+    readMarketCandidates: async () => ({ market: [[901, 830, 800, 84], [902, 5500, 5200, 87]]
+      .map(([definitionId, points, price, rating]) => safeItem({ source: 'market', definitionId,
+        points, price, rating, quote: quote(definitionId, price) })) }) });
+  const result = await session.plan({ mode: 'inventory-market' });
+  expect(result.route).toMatchObject({ totalValue: 11600, materialValue: 6400, purchaseCost: 5200,
+    inventoryCount: 8, marketCount: 1, score: 12140 });
+  expect(result.items.filter(item => item.source === 'inventory').map(item => item.id).sort((a,b) => a-b))
+    .toEqual(inventory.map(item => item.id));
+  expect(assertStreamlinedPlan(result.plan)).toBe(result.plan);
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan',
+    routeInventoryCount: 8, routeMarketCount: 1, estimatedCost: 5200, totalValue: 11600 }));
+  const selected = await session.selectRoute(result.route.id);
+  expect(selected.items).toEqual(result.items);
+  expect(prices.load).toHaveBeenCalledOnce();
+});
+
+it.each([83, 85])('explains inventory protection with FSU max %s without extra quote reads', async goldenMax => {
+  const c = challenge({ scoreRequirement: 1240 }), diagnosticLog = { record: vi.fn() };
+  const stock = [safeItem({ id: 123456781, definitionId: 101, rating: 84, points: 830 }),
+    safeItem({ id: 123456782, definitionId: 102, rating: 83, points: 410, pile: 'storage' }),
+    safeItem({ id: 123456783, definitionId: 103, rating: 85, points: 2100, pile: 'storage' }),
+    safeItem({ id: 123456784, definitionId: 104, rating: 83, points: 410, tradeable: true })];
+  const quote = (definitionId, price) => ({ source: 'futgg', definitionId, price, fetchedAt: 1, expiresAt: 1000 });
+  const prices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(id =>
+    [id, { quotes: { futgg: quote(id, id === 103 ? 5000 : 700) } }])) })) };
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }), diagnosticLog,
+    get: async () => null, set: async () => {}, now: () => 100, prices,
+    readInputs: () => ({ context: c.context, challenge: c, policy: { ...policy, goldRange: [75, goldenMax] },
+      eligibility, assertCurrent() {}, inventory: stock }),
+    readMarketCandidates: async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+      rating: 84, points: 830, price: 700, quote: quote(901, 700) })] }) });
+  const result = await session.plan({});
+  expect(result.inventorySelection).toMatchObject({ readCount: 4, eligibleCount: goldenMax === 83 ? 1 : 3,
+    excluded: goldenMax === 83 ? { 'fsu-gold-range': 2, untradeable: 1 } : { untradeable: 1 } });
+  if (goldenMax === 83) {
+    expect(result.inventorySelection.buckets).toEqual(expect.arrayContaining([
+      { reason: 'fsu-gold-range', pile: 'club', rating: 84, count: 1 },
+      { reason: 'fsu-gold-range', pile: 'storage', rating: 85, count: 1 }]));
+    expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'inventory-exclusion',
+      phase: 'fsu-gold-range', source: 'club', rating: 84, count: 1, fsuGoldMax: 83 }));
+    expect(result.route).toMatchObject({ inventoryCount: 1, marketCount: 1 });
+    expect(prices.load.mock.calls[0][0]).toEqual([102]);
+  } else {
+    expect(result.route).toMatchObject({ inventoryCount: 2, marketCount: 0 });
+    expect(prices.load.mock.calls[0][0]).toEqual([101, 102, 103]);
+  }
+  expect(result.items.every(item => item.source !== 'inventory' || item.tradeable === false)).toBe(true);
+  expect(prices.load).toHaveBeenCalledOnce();
+  expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toMatch(/12345678/);
+  const alternative = result.routes.find(route => route.id !== result.route.id);
+  const next = await session.selectRoute(alternative?.id ?? result.route.id);
+  expect(next.inventorySelection).toEqual(result.inventorySelection);
+  expect(next.policy).toEqual(result.policy);
+});
+
+it.each([
+  ['newer selected-source quote', { source: 'futgg', fetchedAt: 20, expiresAt: 1000 }, 1],
+  ['older quote', { source: 'futgg', fetchedAt: 0, expiresAt: 1000 }, 0],
+  ['other-source quote', { source: 'futbin', fetchedAt: 20, expiresAt: 1000 }, 0],
+  ['expired quote', { source: 'futgg', fetchedAt: 20, expiresAt: 50 }, 0],
+  ['wrong-version quote', { source: 'futgg', definitionId: 999, fetchedAt: 20, expiresAt: 1000 }, 0],
+])('reconciles stock valuation with %s without another quote request', async (_label, fields, inventoryCount) => {
+  const c = challenge({ scoreRequirement: 100 });
+  const old = { source: 'futgg', definitionId: 101, price: 900, fetchedAt: 1, expiresAt: 1000 };
+  const current = { ...old, price: 700, fetchedAt: 20 };
+  const prices = { load: vi.fn(async () => ({ policy: { source: 'futgg' },
+    references: { 101: { quotes: { futgg: old } } } })) };
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+    get: async () => null, set: async () => {}, now: () => 100, prices,
+    readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, assertCurrent() {},
+      inventory: [safeItem({ id: 11, definitionId: 101, points: 100 })] }),
+    readMarketCandidates: async () => ({ pricePolicy: { source: 'futgg' },
+      market: [safeItem({ source: 'market', definitionId: 101, points: 100, price: 700, quote: current })],
+      references: { 101: { quotes: { futgg: { ...current, ...fields } } } } }) });
+  const result = await session.plan({});
+  expect(result.route.inventoryCount).toBe(inventoryCount);
+  if (inventoryCount) expect(result.items[0].quote).toEqual(current);
+  else expect(result.routes.find(route => route.marketCount === 0).materialValue).toBe(900);
+  expect(prices.load).toHaveBeenCalledOnce();
+});
+
 function setup(overrides = {}) {
   const c = challenge({ scoreRequirement: 40 }), context = c.context, store = new Map();
   const input = { context, challenge: c, policy, eligibility, inventory: [safeItem({ points: 40 })], assertCurrent: vi.fn(), priceRows: [] };
@@ -68,6 +199,90 @@ function setup(overrides = {}) {
     get: async (key, fallback) => store.get(key) ?? fallback, set: async (key, value) => store.set(key, structuredClone(value)), ...overrides });
   return { session, input, prices, inspect, store };
 }
+it('forwards per-version inventory quote progress instead of remaining at zero until the batch finishes', async () => {
+  const f = setup(), progress = [];
+  f.prices.load.mockImplementation(async (_ids, options) => {
+    options.onProgress({ source: 'futbin', index: 1, total: 1 });
+    return { policy: { source: 'futbin' }, references: {} };
+  });
+  await f.session.plan({ mode: 'inventory' }, { onProgress: row => progress.push(row) });
+  expect(progress).toContainEqual(expect.objectContaining({ phase: 'quotes', source: 'futbin', completed: 1, total: 1 }));
+});
+
+it('does not produce an expensive mixed route after a selected-source timeout', async () => {
+  const market = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+    points: 4100, price: 41000, quote: { source: 'futbin', definitionId: 901, price: 41000, fetchedAt: 1, expiresAt: 1000 } })] }));
+  const f = setup({ readMarketCandidates: market });
+  f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
+    2: { quotes: { futbin: { source: 'futbin', definitionId: 2, price: null, error: 'FC27_BUY_REFERENCE_TIMEOUT' } } },
+  } });
+  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', liveExecutionEnabled: false });
+  expect(market).not.toHaveBeenCalled();
+});
+
+it('shows elapsed waiting and stops promptly during an unresolved shared quote read', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = setup({ now: () => Date.now() }), progress = [];
+    let finish;
+    f.prices.load.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const pending = f.session.plan({}, { onProgress: row => progress.push(row) });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(progress).toContainEqual(expect.objectContaining({ phase: 'quotes', completed: 0, elapsedMs: 1000 }));
+    f.session.stop();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(await pending).toMatchObject({ status: 'cancelled', reason: 'FC27_STREAMLINED_CANCELLED' });
+    finish({ policy: { source: 'futbin' }, references: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
+it('keeps normal missing inventory value explicit when market quotes are healthy', async () => {
+  const readMarketCandidates = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+    points: 40, price: 200, quote: { source: 'futbin', definitionId: 901, price: 200, fetchedAt: 1, expiresAt: 1000 } })],
+    pricePolicy: { source: 'futbin' } }));
+  const f = setup({ readMarketCandidates });
+  f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
+    2: { quotes: { futbin: { definitionId: 2, source: 'futbin', price: null, error: null } } },
+  } });
+  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'ready', purchaseCost: 200,
+    materialValue: 0, quoteReadError: null });
+  expect(await f.session.plan({ mode: 'inventory' })).toMatchObject({ status: 'ready', unknownValueCount: 1, materialValue: null });
+});
+
+it('does not renew an expired inventory quote or block healthy market routes after a long stock read', async () => {
+  const readMarketCandidates = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+    points: 40, price: 200, quote: { source: 'futbin', definitionId: 901, price: 200, fetchedAt: 10, expiresAt: 1000 } })],
+    pricePolicy: { source: 'futbin' } }));
+  const f = setup({ readMarketCandidates });
+  f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
+    2: { quotes: { futbin: { definitionId: 2, source: 'futbin', price: 150, fetchedAt: 1, expiresAt: 20 } } },
+  } });
+  const result = await f.session.plan({ mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'ready', purchaseCost: 200, materialValue: 0 });
+  expect(result.routes.find(r => r.purchaseCost === 0)).toMatchObject({ materialValue: null, unknownValueCount: 1 });
+});
+
+it('stops a stalled market read and prevents the old callback from re-entering a new plan', async () => {
+  vi.useFakeTimers();
+  try {
+    let firstCheck, finish;
+    const readMarketCandidates = vi.fn().mockImplementationOnce(({ check }) => {
+      firstCheck = check; return new Promise(resolve => { finish = resolve; });
+    }).mockResolvedValue({ market: [] });
+    const f = setup({ readMarketCandidates });
+    const pending = f.session.plan({ mode: 'market' });
+    await vi.advanceTimersByTimeAsync(250);
+    f.session.stop(); await vi.advanceTimersByTimeAsync(250);
+    expect(await pending).toMatchObject({ status: 'cancelled' });
+    expect(await f.session.plan({ mode: 'market' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE' });
+    expect(firstCheck).toThrow('FC27_STREAMLINED_CANCELLED');
+    finish({ market: [] }); await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
 it('loads only the shared selected source and displays a frozen inventory preview', async () => {
   const f = setup(), result = await f.session.plan({});
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 0, materialValue: 300, quoteSource: 'futbin', marketPending: true, liveExecutionEnabled: false });
@@ -128,6 +343,18 @@ it('keeps recovery target and reason on preview and records the failed preflight
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'purchase-recovery-state', phase: 'club', count: 3 }));
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'purchase-recovery-state', phase: 'buy-pending', count: 1 }));
 });
+
+it('records the exact unreviewed method evidence needed for a safe runtime review', async () => {
+  const diagnosticLog = { record: vi.fn() };
+  const error = Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'), {
+    methodPath: 'dao.submitPlayers', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
+  });
+  const f = setup({ diagnosticLog, createExecution: async () => { throw error; } });
+  await f.session.plan({});
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'execution-preflight',
+    reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', methodPath: 'dao.submitPlayers',
+    observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64) }));
+});
 it('does not invent market capabilities, re-enable disabled sources or hide missing quotes', async () => {
   const f = setup();
   f.prices.load.mockRejectedValue(Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED'));
@@ -183,6 +410,23 @@ function recoverySetup() {
   const f = setup({ diagnosticLog, createExecution: async () => ({ prepare, transaction }) });
   return { ...f, transaction, prepare, diagnosticLog };
 }
+
+it('checks old material moves before purchase/contribution recovery and never turns them into a preview', async () => {
+  const recoverMaterialization = vi.fn(async () => ({ status: 'recovery-required',
+    reason: 'FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED',
+    recovery: { kind: 'streamlined-materialization', setId: 99, challengeId: 199, pendingCount: 1 } }));
+  const recoverPurchase = vi.fn(async () => ({ status: 'absent' }));
+  const transaction = { recover: vi.fn(async () => ({ status: 'absent' })), execute: vi.fn() };
+  const f = setup({ createExecution: async () => ({ prepare() {}, transaction, recoverPurchase, recoverMaterialization }) });
+  const planned = await f.session.plan({});
+  expect(await f.session.recover()).toMatchObject({ status: 'recovery-required', recovery: { setId: 99, challengeId: 199 } });
+  expect(recoverPurchase).not.toHaveBeenCalled(); expect(transaction.recover).not.toHaveBeenCalled();
+  expect((await f.session.contribute({ fingerprint: planned.plan.fingerprint })).status).toBe('blocked');
+  recoverMaterialization.mockResolvedValue({ status: 'recovered', confirmed: 1 });
+  expect(await f.session.recover()).toMatchObject({ status: 'recovered', materializationRecovery: { confirmed: 1 } });
+  expect(recoverPurchase).toHaveBeenCalledOnce(); expect(transaction.recover).toHaveBeenCalledOnce();
+  expect(transaction.execute).not.toHaveBeenCalled();
+});
 
 it('restores the market run rather than displaying its last contribution as the whole plan', async () => {
   const recoverPurchase = vi.fn(), transaction = { recover: vi.fn(), execute: vi.fn() }, prepare = vi.fn();

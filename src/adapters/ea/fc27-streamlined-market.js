@@ -2,11 +2,16 @@ import { readFc27Context, isFc27PlayerItem } from './fc27-local-read.js';
 import { normalizeStreamlinedItem, integer, same, fail } from '../../streamlined/contract.js';
 import { filterStreamlinedItems } from '../../streamlined/eligibility.js';
 import { galleryReferenceQuote } from '../../gallery/public-price-policy.js';
+import { streamlinedQuoteFailure } from '../../streamlined/quotes.js';
 
 // The exact-id concept read follows the already observed Gallery native
 // searchConceptItems contract. Entities remain in memory; no owned-item claim.
-export function createFc27StreamlinedMarket(root, { catalog, prices, now = () => Date.now() }) {
+export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticLog = null, now = () => Date.now() }) {
   const cache = new Map(); let busy = false;
+  const record = fields => {
+    try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'market-quote-window', ...fields })).catch(() => {}); }
+    catch { /* Diagnostics cannot alter planning. */ }
+  };
   const request = criteria => new Promise((resolve, reject) => {
     const owner = {}; let observable, done = false;
     const finish = (error, value) => {
@@ -71,30 +76,85 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, now = () =>
       }
       const filtered = filterStreamlinedItems(projected, input);
       if (filtered.status !== 'observed') throw Error(filtered.reason);
-      const market = [], references = {}; let pricePolicy = null;
+      const references = {}, quotesStartedAt = now(); let pricePolicy = null;
       for (let start = 0; start < filtered.items.length; start += 250) {
         assert(); onProgress({ phase: 'market-quotes', completed: start, total: filtered.items.length });
         const batch = filtered.items.slice(start, start + 250);
-        const snapshot = await prices.load(batch.map(row => row.definitionId), { purpose: 'puzzle',
+        const snapshot = await prices.load(batch.map(row => row.definitionId), { purpose: 'puzzle', futbinBatch: true,
+          onProgress: p => onProgress({ phase: 'market-quotes', source: p.source,
+            completed: start + p.index, total: filtered.items.length }),
           rows: batch.map(item => { const raw = entities.get(item.definitionId); return { definitionId: item.definitionId,
             rating: item.rating, nationId: raw.nationId, leagueId: raw.leagueId, teamId: raw.teamId, preferredPosition: raw.preferredPosition }; }),
           isCurrent: () => { assert(); return true; } });
         assert();
         if (pricePolicy && !same(pricePolicy, snapshot.policy)) fail('PRICE_POLICY_CHANGED');
         pricePolicy = snapshot.policy; Object.assign(references, snapshot.references);
-        for (const item of batch) {
-          const quote = snapshot.references[item.definitionId]?.quotes?.[pricePolicy.source];
-          if (!quote?.error && integer(quote?.price, 150, 15000000) && quote.fetchedAt <= now() && quote.expiresAt > now()) {
-            const values = { [pricePolicy.source]: quote.price };
-            const authority = galleryReferenceQuote(values, pricePolicy);
-            if (!integer(authority.maxBuy, 150, 15000000)) continue;
-            const raw = entities.get(item.definitionId);
-            market.push({ ...item, price: quote.price, purchaseMaxBuy: authority.maxBuy, quote,
-              priceReference: snapshot.references[item.definitionId], pricePolicy,
-              nationId: raw.nationId, teamId: raw.teamId, preferredPosition: raw.preferredPosition });
-          }
+        // A cached quote can be valid when this batch starts and expire while
+        // the remaining FUTBIN versions are fetched. Source errors still stop
+        // immediately; expiration is handled by the bounded refresh below.
+        const quoteError = streamlinedQuoteFailure(snapshot.references, pricePolicy.source,
+          batch.map(row => row.definitionId), now(), { requireFresh: false });
+        if (quoteError) throw Error(quoteError);
+      }
+
+      const ids = filtered.items.map(row => row.definitionId), checkedAt = now();
+      // Cover another read-sized wait, not only quotes already expired. A
+      // second cache cohort can otherwise expire during the refresh itself.
+      // This is a refresh threshold, never an extension of quote validity.
+      const refreshWindowMs = Math.max(0, checkedAt - quotesStartedAt);
+      const staleIds = ids.filter(id => {
+        const quote = references[id]?.quotes?.[pricePolicy?.source];
+        return quote?.price != null && Number.isSafeInteger(quote.expiresAt) && quote.expiresAt <= checkedAt + refreshWindowMs;
+      });
+      if (staleIds.length) record({ source: pricePolicy.source, phase: 'refresh', status: 'started',
+        requestedCount: ids.length, count: staleIds.length, durationMs: refreshWindowMs });
+      for (let start = 0; start < staleIds.length; start += 250) {
+        assert();
+        const batch = staleIds.slice(start, start + 250);
+        onProgress({ phase: 'market-quotes', source: pricePolicy.source, completed: start,
+          total: staleIds.length, refresh: true });
+        const refresh = await prices.load(batch, { purpose: 'puzzle', futbinBatch: true, forceSources: [pricePolicy.source],
+          rows: batch.map(id => {
+            const raw = entities.get(id);
+            return { definitionId: id, rating: raw?._rating, nationId: raw?.nationId,
+              leagueId: raw?.leagueId, teamId: raw?.teamId, preferredPosition: raw?.preferredPosition };
+          }),
+          onProgress: p => onProgress({ phase: 'market-quotes', source: p.source,
+            completed: start + p.index, total: staleIds.length, refresh: true }),
+          isCurrent: () => { assert(); return true; } });
+        assert();
+        if (!same(pricePolicy, refresh.policy)) fail('PRICE_POLICY_CHANGED');
+        Object.assign(references, refresh.references);
+        const refreshError = streamlinedQuoteFailure(refresh.references, pricePolicy.source, batch, now(), { requireFresh: false });
+        if (refreshError) throw Error(refreshError);
+      }
+      const quoteAt = now();
+      const quoteError = streamlinedQuoteFailure(references, pricePolicy?.source, ids, quoteAt);
+      if (quoteError) {
+        const invalidIds = ids.filter(id => streamlinedQuoteFailure(references, pricePolicy?.source, [id], quoteAt));
+        for (const id of invalidIds.slice(0, 3)) {
+          const quote = references[id]?.quotes?.[pricePolicy?.source];
+          record({ source: pricePolicy?.source, phase: 'validate', status: 'failed', reason: quoteError,
+            requestedCount: ids.length, count: invalidIds.length, definitionId: id, fetchedAt: quote?.fetchedAt,
+            expiresAt: quote?.expiresAt, durationMs: Math.max(0, quoteAt - quotesStartedAt) });
+        }
+        throw Error(quoteError);
+      }
+      record({ source: pricePolicy?.source, phase: 'validate', status: 'success', requestedCount: ids.length,
+        count: staleIds.length, durationMs: Math.max(0, quoteAt - quotesStartedAt) });
+      const market = [];
+      for (const item of filtered.items) {
+        const quote = references[item.definitionId]?.quotes?.[pricePolicy.source];
+        if (!quote?.error && integer(quote?.price, 150, 15000000) && quote.fetchedAt <= quoteAt && quote.expiresAt > quoteAt) {
+          const authority = galleryReferenceQuote({ [pricePolicy.source]: quote.price }, pricePolicy);
+          if (!integer(authority.maxBuy, 150, 15000000)) continue;
+          const raw = entities.get(item.definitionId);
+          market.push({ ...item, price: quote.price, purchaseMaxBuy: authority.maxBuy, quote,
+            priceReference: references[item.definitionId], pricePolicy,
+            nationId: raw.nationId, teamId: raw.teamId, preferredPosition: raw.preferredPosition });
         }
       }
+      onProgress({ phase: 'market-quotes', source: pricePolicy?.source, completed: filtered.items.length, total: filtered.items.length });
       return { market, references, pricePolicy, complete: false, candidateCount: projected.length };
     } finally { busy = false; }
   };

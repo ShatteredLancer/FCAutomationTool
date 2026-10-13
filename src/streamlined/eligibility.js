@@ -37,7 +37,7 @@ export function filterStreamlinedItems(items, { eligibility, policy } = {}) {
       ['league', integer(item.leagueId, 1) && !policy.excludedLeagueIds.includes(item.leagueId)],
     ];
     if (item.source === 'inventory') checks.push(
-      ['pile', ['club', 'storage'].includes(item.pile)], ['concept', item.concept === false],
+      ['pile', ['club', 'storage', 'unassigned', 'transfer'].includes(item.pile)], ['concept', item.concept === false],
       ['trade', item.activeTrade === false], ['loan', item.limitedUse === false && item.loans === -1],
       ['untradeable', typeof item.tradeable === 'boolean' && (!policy.onlyUntradeable || item.tradeable === false)],
       ['locked', !policy.protectFsuLockedPlayers || item.locked === false],

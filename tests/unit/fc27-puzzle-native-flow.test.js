@@ -142,6 +142,21 @@ it.each(['throw', 'reject'])('keeps native fill behavior when optional diagnosti
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
 });
 
+it('exports the exact failed traditional fill method without source or account data', async () => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value) });
+  const x = fixture({ diagnosticLog });
+  x.root.events.markClubCacheDirty = function unreviewedDirty() { throw Error('must not run'); };
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath: 'events.markClubCacheDirty', observedHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  expect(x.calls).toHaveLength(0);
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ area: 'puzzle', event: 'solve-result',
+    methodPath: 'events.markClubCacheDirty', expectedHash: expect.stringMatching(/^[a-f0-9]{64}$/) }));
+  expect(JSON.stringify(payload)).not.toMatch(/unreviewedDirty|must not run|accountScope|sourceCode/);
+});
+
 async function missingFixture(missing = 1, options = {}) {
   const x = fixture(options);
   for (let i = 0; i < missing; i++) {
@@ -602,11 +617,18 @@ it('uses the verified original setPlayers without invoking the FSU history wrapp
 });
 
 it('keeps pending recovery when the retained player-update method is unknown', async () => {
-  const x = await missingFixture(); x.state.skipSquadUpdate = true;
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value) });
+  const x = await missingFixture(1, { diagnosticLog }); x.state.skipSquadUpdate = true;
   const unknown = vi.fn(); x.root.call = { squad: { setPlayers: unknown } };
-  expect(await x.fill()).toMatchObject({ status: 'recovery-required', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED' });
+  expect(await x.fill()).toMatchObject({ status: 'recovery-required', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath: 'call.squad.setPlayers' });
   expect(unknown).not.toHaveBeenCalled();
   expect(x.challenge.squad._players.slice(0, 11).every(slot => slot._item.id === 0)).toBe(true);
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ event: 'solve-result',
+    methodPath: 'call.squad.setPlayers', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED' }));
 });
 
 it('synchronizes the separate native squad after saving and blocks a second click without new requests or pending state', async () => {

@@ -189,6 +189,31 @@ it('does not sample silver or gold when minimum bronze policy forbids their use'
   expect(planFc27PuzzleShortageQueries(input).queries.every(query => query.level === 'bronze')).toBe(true);
 });
 
+it('expands bronze chemistry fillers rather than spending all pages on silver when the linked club silver is owned', () => {
+  const { input } = fixture(); input.policy.maxRating = 82;
+  input.clubLinks.links = [[116021, 112172]];
+  input.challenge.rawRequirements = [marketRow(12, 112172, 1), marketRow(9, 4),
+    marketRow(17, 2, 1), marketRow(3, 1), marketRow(35, 14)];
+  Object.assign(input.inventory.items[0], { rating: 71, teamId: 116021, nationId: 34, leagueId: 2215 });
+  const route = planFc27PuzzleShortageQueries(input);
+  expect(route.queries[0]).toEqual({ start: 0, count: 20, level: 'bronze', nation: 34 });
+  expect(route.queries.every(query => query.level === 'bronze')).toBe(true);
+  const next = planFc27PuzzleShortageQueries(input, [{ definitionId: 901, rating: 60, rarity: 0,
+    teamId: 99, nationId: 34, leagueId: 80, positions: [5], groups: [],
+    special: false, evolution: false, cosmetic: false }]);
+  expect(next.queries).toContainEqual({ start: 0, count: 20, level: 'bronze', league: 80 });
+  expect(input.policy.onlyUntradeable).toBe(true);
+});
+
+it('reserves a club identity lane and bronze fillers when the compulsory silver is missing', () => {
+  const { input } = fixture(); input.policy.maxRating = 82;
+  input.challenge.rawRequirements = [marketRow(12, 112172, 1), marketRow(17, 2, 1), marketRow(3, 1), marketRow(35, 14)];
+  const route = planFc27PuzzleShortageQueries(input);
+  expect(route.queries).toHaveLength(3);
+  expect(route.queries[0]).toMatchObject({ level: 'silver', team: 112172 });
+  expect(route.queries.filter(query => query.level === 'bronze').length).toBe(2);
+});
+
 it('reserves a query for a missing required tier when only filler clubs are owned', () => {
   const { input } = fixture(); input.policy.maxRating = 82;
   input.challenge.rawRequirements = [marketRow(3, 2), marketRow(17, 3, 2), marketRow(9, 4, -1, 1)];

@@ -55,11 +55,11 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     }
     return output;
   };
-  const contribute = async (batchPlan) => {
+  const contribute = async (batchPlan, callbacks = {}) => {
     if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail('WRITE_CONTRACT_UNVERIFIED');
     const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
       lock: { acquire: async () => () => {} }, now }).execute(batchPlan,
-      { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true });
+      { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }, callbacks);
     return result.status === 'completed' || result.status === 'partial' ? { confirmed: true, submittedScore: result.record.submittedScore }
       : { confirmed: false, reason: result.reason };
   };
@@ -113,7 +113,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
           purchaseCost: 0, materialValue: items.every(item => integer(item.price, 1, 15000000))
             ? items.reduce((sum, item) => sum + item.price, 0) : null, searchComplete: true } });
     },
-    async contribute(batchPlan) { return contribute(batchPlan); },
+    async contribute(batchPlan, callbacks) { return contribute(batchPlan, callbacks); },
     async recoverContribution(saved) {
       assertTarget();
       const previous = await contributionAdapter.journal.read(origin);

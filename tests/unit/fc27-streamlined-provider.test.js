@@ -61,6 +61,25 @@ it('keeps writes disabled by default and does not treat a preview as an approval
   expect(f.calls).toHaveLength(0);
 });
 
+it('materializes explicitly selected Unassigned/Transfer refs before validation', async () => {
+  const f = await setup();
+  const external = { ...f.plan.items[0], pile: 'unassigned', executionPile: 'club' };
+  const plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy: f.plan.policy,
+    result: { ...f.plan, items: [external, ...f.plan.items.slice(1)], batches: [[external, ...f.plan.items.slice(1)]],
+      score: f.plan.score, progress: f.plan.progress, purchaseCost: 0, materialValue: null, searchComplete: true } });
+  const progress = [];
+  const materialize = vi.fn(async (_root, options) => ({ prepare: vi.fn(async refs => {
+    expect(refs[0].pile).toBe('unassigned'); options.onProgress?.({ phase: 'materialize', completed: 1, total: 1 });
+  }) }));
+  const provider = createFc27StreamlinedProvider(f.root, { journal: f.journal, canWrite: () => true,
+    createMaterializer: materialize, createTransport: async () => ({ request: f.request }) });
+  const batch = { index: 0, refs: plan.batches[0].map(item => ({ id: item.id, definitionId: item.definitionId,
+    points: item.points, pile: item.pile, ...(item.executionPile ? { executionPile: item.executionPile } : {}) })) };
+  expect(await provider.verify(plan, batch, 0, { onProgress: event => progress.push(event) })).toBe(true);
+  expect(progress).toContainEqual(expect.objectContaining({ phase: 'materialize', completed: 1, total: 1, submittedScore: 0 }));
+  expect(materialize).toHaveBeenCalledTimes(1);
+});
+
 it('executes and reconciles two batches with real read adapters while the page and repository stay stale', async () => {
   const f = streamlinedRuntime(), selected = f.input.inventory.slice(0, 10);
   const plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge,

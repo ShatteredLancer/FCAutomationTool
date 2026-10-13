@@ -15,15 +15,31 @@ export const FC27_MARKET_READ_METHODS = Object.freeze([
   ['Identification.prototype.handleRequest', '74627d97570009ea15aea10dd2ff26d4ac85c8eeaea55f53253b6d3f9bb0eb09'],
   ['Identification.prototype.handleResponse', 'cc4de06cc8696a4723f9539159c912c6d7cd4b7263ccaf7db9d7198b2f31ff01'],
 ]);
-// Public runtime reviewed 2026-10-02: decoded bodies are unchanged; only EA's
-// obfuscator identifiers/string indexes changed. Scope these hashes to Market
-// reads, not Club or write transactions. Evidence: market-runtime-review.mjs.
+// Public runtimes reviewed 2026-10-02 and 2026-10-09: decoded bodies are
+// unchanged; only EA's obfuscator identifiers/string indexes changed. Scope
+// these hashes to Market reads, not Club or write transactions. Evidence:
+// artifacts/fc27-browser/puzzle-runtime-review-2026-10-09.json.
 const compatibleHashes = Object.freeze({
-  'UTItemDAO.prototype.searchConceptItems': 'edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc',
-  'UTItemDAO.prototype.searchTransferMarket': 'dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111',
-  'FCAuthenticationService.prototype.getIdentifier': '963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2',
-  'Identification.prototype.handleRequest': 'b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949',
-  'Identification.prototype.handleResponse': '2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4',
+  'UTItemDAO.prototype.searchConceptItems': [
+    'edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc',
+    'a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1',
+  ],
+  'UTItemDAO.prototype.searchTransferMarket': [
+    'dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111',
+    '115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2',
+  ],
+  'FCAuthenticationService.prototype.getIdentifier': [
+    '963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2',
+    'b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339',
+  ],
+  'Identification.prototype.handleRequest': [
+    'b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949',
+    'b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291',
+  ],
+  'Identification.prototype.handleResponse': [
+    '2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4',
+    '0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f',
+  ],
 });
 // Public build 11414 inspected without login on 2026-10-12; the captured
 // October 9 assets expose the same bodies. Independently reviewed query paths,
@@ -121,8 +137,10 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     if (typeof fn !== 'function') throw error(`METHOD_${index}_MISSING`);
     const digest = await root.crypto.subtle.digest('SHA-256', new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const compatible = ownData(compatibleHashes, path);
     if (hash !== expected && !isFc27ClubCompatibleHash(path, hash)
-        && hash !== ownData(compatibleHashes, path) && hash !== ownData(october12Hashes, path)) {
+        && !(Array.isArray(compatible) ? compatible.includes(hash) : hash === compatible)
+        && hash !== ownData(october12Hashes, path)) {
       if (path !== 'UTItemEntityFactory.prototype.createItem') {
         throw Object.assign(error(`METHOD_${index}_CHANGED`), { method: path, observedHash: hash });
       }

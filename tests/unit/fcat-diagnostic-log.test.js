@@ -10,6 +10,42 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains bounded planning performance summaries across quote floods and reloads', async () => {
+  const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
+  await t.log.record({ area: 'streamlined', event: 'planning-read', phase: 'quotes', durationMs: 100000,
+    requestedCount: 482, count: 482, account: 'secret', raw: [{ id: 123 }] });
+  for (let count = 0; count < 301; count++) await t.log.record({ area: 'pricing', event: 'public-quote', count });
+  const restored = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await restored.exportPayload();
+  expect(payload.performanceEntries).toContainEqual(expect.objectContaining({ phase: 'quotes', durationMs: 100000, requestedCount: 482 }));
+  expect(JSON.stringify(payload.performanceEntries)).not.toMatch(/secret|raw|itemId/);
+  for (let count = 0; count < 70; count++) await t.log.record({ area: 'pricing', event: 'quote-batch', durationMs: count });
+  expect((await t.log.exportPayload()).performanceEntries).toHaveLength(40);
+});
+
+it('retains Streamlined bucket and repeated-wave arithmetic while redacting physical inventory identities', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'candidate-bucket', source: 'inventory', phase: 'storage',
+    rating: 84, unitScore: 830, count: 11, referencePrice: 700, minBatches: 14, repeatPurchaseCount: 13,
+    raw: [{ id: 123 }], account: 'secret' });
+  expect((await t.log.exportPayload()).criticalEntries[0]).toMatchObject({ rating: 84, unitScore: 830,
+    minBatches: 14, repeatPurchaseCount: 13 });
+  expect(JSON.stringify((await t.log.exportPayload()).criticalEntries)).not.toMatch(/secret|raw|itemId/);
+});
+
+it('retains anonymous FSU exclusion evidence across reloads without inventing price fields', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'inventory-exclusion', source: 'club', phase: 'fsu-gold-range',
+    rating: 84, count: 11, fsuGoldMin: 75, fsuGoldMax: 83, inventoryMaxRating: 99, onlyUntradeable: true,
+    itemId: 123, raw: [{ id: 123 }] });
+  const reloaded = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await reloaded.exportPayload();
+  expect(payload.criticalEntries[0]).toMatchObject({ phase: 'fsu-gold-range', source: 'club', rating: 84, count: 11,
+    fsuGoldMin: 75, fsuGoldMax: 83, inventoryMaxRating: 99, onlyUntradeable: true });
+  expect(JSON.stringify(payload.criticalEntries)).not.toMatch(/raw|itemId/);
+  expect(payload.criticalEntries[0]).not.toHaveProperty('maxBuy');
+});
+
 it('keeps bounded transaction summaries across public quote floods and reloads without exposing identities', async () => {
   const t = harness({ maxEntries: 1, maxCriticalEntries: 2 });
   for (let count = 0; count < 45; count++) await t.log.record({ area: 'gallery', event: 'listing-result',
@@ -163,6 +199,33 @@ it.each(['UTItemDAO.prototype.searchConceptItems', 'UTItemDAO.prototype.searchTr
   const payload = await t.log.exportPayload();
   expect(payload.criticalEntries).toEqual(expect.arrayContaining([expect.objectContaining({ method, observedHash: 'a'.repeat(64) })]));
   expect(JSON.stringify(payload)).not.toContain('private-');
+});
+
+it('retains Puzzle failures and method evidence after a public quote flood', async () => {
+  const t = harness({ maxEntries: 2, maxCriticalEntries: 2 });
+  await t.log.record({ area: 'puzzle', event: 'solve-result', setId: 19, challengeId: 43,
+    status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath: 'EAObservable.prototype.notify', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
+    sourceCode: 'private-source', accountScope: 'private-account' });
+  for (let count = 0; count < 150; count++) await t.log.record({ area: 'pricing', event: 'public-quote', count });
+  const restored = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await restored.exportPayload();
+  expect(payload.transactionResults).toContainEqual(expect.objectContaining({ area: 'puzzle', event: 'solve-result',
+    methodPath: 'EAObservable.prototype.notify', observedHash: 'a'.repeat(64) }));
+  expect(JSON.stringify(payload)).not.toContain('private-');
+});
+
+it('retains reviewed-transaction evidence without exporting method source or identities', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'execution-preflight', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath: 'dao.submitPlayers', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
+    sourceCode: 'private-source', account: 'private-account' });
+  await t.log.record({ area: 'streamlined', event: 'execution-preflight', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath: 'evil.prototype.secret', observedHash: 'private-hash' });
+  const exported = await t.log.exportPayload();
+  expect(exported.entries[0]).toMatchObject({ methodPath: 'dao.submitPlayers', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64) });
+  expect(exported.entries[1]).not.toHaveProperty('methodPath');
+  expect(JSON.stringify(exported)).not.toContain('private-');
 });
 
 it('serializes writes during asynchronous restore and export waits for them', async () => {

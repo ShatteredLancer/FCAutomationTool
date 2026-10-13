@@ -29,6 +29,7 @@ import { galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
 import { assertNoGalleryListingPending } from '../../gallery/bulk-list-session.js';
 import { purchaseAttemptResults, purchaseRetryContext, validatePurchaseAttempts } from '../../fc27/purchase-attempts.js';
 import { validatePurchasePriceApproval } from '../../fc27/purchase-price-approval.js';
+import { transactionMethodEvidence } from '../../fc27/transaction-method-evidence.js';
 
 const blocked = reason => ({ status: 'blocked', reason });
 const safeReason = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message) ? error.message : 'FC27_ACCEPTANCE_UNCONFIRMED';
@@ -795,16 +796,31 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
               maxRating: preparedPuzzle.plan.policy.maxRating });
           }
         }
-      } catch (error) { result = blocked(safeReason(error)); }
+      } catch (error) {
+        const evidence = transactionMethodEvidence(error);
+        result = { ...blocked(safeReason(error)), ...evidence };
+        Object.assign(log, evidence);
+      }
       finally { invalidate(); }
       log.result = result; log.finishedAt = Date.now(); await persistLog();
       // Export only aggregate evidence from this attempt. Never reread EA or
       // copy the private journal, raw inventory, account scope or credentials.
       try {
+        const searchEvidence = log.preview ?? {};
+        const search = searchEvidence.search ?? {};
         await diagnosticLog?.record?.({ area: 'puzzle', event: 'solve-result', setId: target.setId, challengeId: target.challengeId,
           status: result?.status, reason: result?.reason, source: log.catalogSource,
+          methodPath: result?.methodPath ?? log.methodPath,
+          observedHash: result?.observedHash ?? log.observedHash,
+          expectedHash: result?.expectedHash ?? log.expectedHash,
           mismatch: result?.mismatch,
-          safeCandidates: result?.plan?.safeCandidates, evaluations: result?.plan?.nodes,
+          safeCandidates: result?.plan?.safeCandidates ?? result?.safeCandidates ?? searchEvidence.safeCandidates,
+          evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
+          combinationNodes: search.combinationNodes, placementNodes: search.placementNodes,
+          evaluationNodes: search.evaluations, boundNodes: search.bounds,
+          strategyAttempts: searchEvidence.strategyAttempts,
+          searchComplete: searchEvidence.searchComplete,
+          optimalWithinPool: searchEvidence.optimalWithinPool,
           durationMs: log.finishedAt - log.startedAt });
         const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
         if (purchase) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-result',
@@ -812,6 +828,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           source: d?.failureSource, phase: d?.stage, transportPhase: d?.failurePhase, route: d?.route, httpStatus: d?.httpStatus,
           requests: purchase.requests, catalogAttempts: d?.catalogAttempts, quoteAttempts: d?.quoteAttempts,
           count: d?.catalogCandidates, evaluations: d?.nodes, localReason: d?.localReason,
+          combinationNodes: d?.search?.combinationNodes, placementNodes: d?.search?.placementNodes,
+          evaluationNodes: d?.search?.evaluations, boundNodes: d?.search?.bounds,
           usableCandidates: d?.usableCandidates, excludedUnavailable: d?.excludedUnavailable,
           estimatedCost: purchase.estimatedCost ?? d?.estimatedCost, purchaseCount: purchase.purchaseCount,
           ownedCount: purchase.ownedCount, priceSource: d?.priceSource,

@@ -9,6 +9,26 @@ import { WEB_APP_URL } from '../../scripts/browser-inspection/automatic.mjs';
 import { observeRuntime } from '../../scripts/browser-inspection/runtime-observation.mjs';
 import * as navigation from '../../scripts/browser-inspection/navigation.mjs';
 
+it.each([false, true])('reads public-price settings without allowing a logged-out probe, login=%s', async login => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'fcat-price-command-'));
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const page = new EventEmitter(); page.url = () => WEB_APP_URL;
+  page.evaluate = async (fn, args) => vm.runInNewContext(`(${fn.toString()})(argument)`, { argument: args, APP_YEAR_SHORT: 27 });
+  const context = new EventEmitter(); context.pages = () => [page]; context.browser = () => ({ version: () => 'synthetic' });
+  const verifyPublicPrices = vi.fn(async () => ({ status: 'blocked', reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED',
+    settings: { readSources: 'futgg', source: 'futgg' } }));
+  const commands = ['price-check Arsenal', 'q'];
+  try {
+    await runAgentSession({ context, root, withExtensions: true, terminal: { question: async () => commands.shift() },
+      loadHelpers: async () => ({ observeRuntime, observePageUi: async () => ({ login, modal: false, loading: false }), verifyPublicPrices }) });
+    expect(verifyPublicPrices).toHaveBeenCalledTimes(login ? 0 : 1);
+    const directory = path.join(root, 'artifacts/fc27-browser'), [name] = await readdir(directory);
+    const report = JSON.parse(await readFile(path.join(directory, name), 'utf8'));
+    expect(report.action).toBe(login ? 'PUBLIC_PRICE_SESSION_NOT_CONFIRMED' : 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+    expect(report.liveExecutionEnabled).toBe(false);
+  } finally { log.mockRestore(); await rm(root, { recursive: true, force: true }); }
+});
+
 it.each([
   [{ login: false, modal: false, loading: false }, 27, true],
   [{ login: true, modal: false, loading: false }, 27, false],

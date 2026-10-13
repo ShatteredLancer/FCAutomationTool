@@ -9,6 +9,15 @@ export const FC27_STREAMLINED_PAGE_METHODS = Object.freeze([
   ['methods.hub', '81e6a860e8929e73fc8cc62db59442b9b45eb8aae900562ac808bd362cc83e80'],
   ['methods.notify', '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2'],
 ]);
+// The October 9 EAObservable source is the reviewed notify implementation
+// under the alias used by this page adapter. Keep this scope-specific: an
+// unknown notify function at another path remains rejected.
+export const FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES = Object.freeze({
+  'methods.notify': Object.freeze([
+    '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
+    'e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1',
+  ]),
+});
 const setFields = ['totalSubmittedScore', 'challengesCompletedCount', 'timesCompleted'];
 
 // Copy authoritative progress into existing native entities, rather than replay
@@ -20,7 +29,8 @@ export async function createFc27StreamlinedPageMaintenance(root, { now = () => D
   if (!page) fail('PAGE_UNAVAILABLE');
   const dao = root.services?.SBC?.sbcDAO;
   const methods = { hub: dao?.getHub, notify: root.EAObservable?.prototype?.notify };
-  const checked = await verifyFc27Methods({ methods, crypto: root.crypto }, FC27_STREAMLINED_PAGE_METHODS);
+  const checked = await verifyFc27Methods({ methods, crypto: root.crypto }, FC27_STREAMLINED_PAGE_METHODS,
+    FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES);
   const cache = await createCache(root, { now });
   const assert = () => {
     checked(); cache.assert();

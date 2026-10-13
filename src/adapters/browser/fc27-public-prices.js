@@ -3,6 +3,7 @@ import { createPublicPricePolicyStore, publicPriceSourceEnabled } from '../../ga
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { parsePublicFutbinPrice, parsePublicFutggPrices } from '../../fc27/public-price-responses.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
+import { readFutbinBatchPrices } from '../../fc27/futbin-batch-prices.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { traditionalJournalScope } from '../../fc27/traditional-journal.js';
 import { createPurchasePriceApproval } from '../../fc27/purchase-price-approval.js';
@@ -10,6 +11,24 @@ import { createPurchasePriceApproval } from '../../fc27/purchase-price-approval.
 const positions = ['GK','SW','RWB','RB','RCB','CB','LCB','LB','LWB','RDM','CDM','LDM','RM','RCM','CM','LCM','LM','RAM','CAM','LAM','RF','CF','LF','RW','RS','ST','LS','LW'];
 export function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog = null, now = () => Date.now() }) {
   const rows = new Map();
+  const futbinPages = new Map();
+  const record = fields => {
+    try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', ...fields })).catch(() => {}); }
+    catch { /* Optional diagnostics must not occupy quote workers. */ }
+  };
+  let mappingQueue = Promise.resolve();
+  const updateIds = (key, learned, removed = {}) => {
+    // Fresh per-version readers can finish together. Merge only their delta,
+    // and remove a stale ID only if it has not already been replaced.
+    const task = mappingQueue.catch(() => {}).then(async () => {
+      const ids = { ...await get(key, {}) };
+      for (const [id, previous] of Object.entries(removed)) if (ids[id] === previous) delete ids[id];
+      Object.assign(ids, learned);
+      await set(key, ids);
+    });
+    mappingQueue = task.catch(() => {});
+    return task;
+  };
   const policyStore = createPublicPricePolicyStore({ get, set });
   const capture = () => {
     const context = readFc27Context(root), scope = traditionalJournalScope(context);
@@ -19,8 +38,24 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     return { context, scope, platform, assert };
   };
   const readSettings = async () => { const captured = capture(); const policy = await policyStore.read(captured.scope); captured.assert(); return policy; };
-  const request = createFc27FutbinHttp(gmRequest);
+  const request = createFc27FutbinHttp(gmRequest, {
+    onEvent: fields => {
+      try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', event: 'transport-request', ...fields })).catch(() => undefined); }
+      catch { /* Diagnostics are optional. */ }
+    },
+  });
   const service = createGalleryReferencePrices({ get, set, now, diagnosticLog,
+    readFutbinBatch: async (ids, players, options) => {
+      const captured = capture();
+      const result = await readFutbinBatchPrices(ids, players, { ...options, request, now, cache: futbinPages, check: async () => {
+        options.check(); captured.assert();
+        const policy = await policyStore.read(captured.scope); captured.assert(); options.check();
+        if (!publicPriceSourceEnabled(policy, 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+      } });
+      record({ event: 'futbin-batch-result', status: 'success', requestedCount: ids.length,
+        count: result.rows.length, requests: result.requests });
+      return result;
+    },
     readFutgg: async (ids, { platform }) => {
       if (!publicPriceSourceEnabled(await readSettings(), 'futgg')) throw Error('FC27_PUBLIC_PRICE_FUTGG_DISABLED');
       const reply = await transport.getPrices(ids, { platform });
@@ -40,7 +75,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       let result;
       // Retain FSU's exact ID/filter route and ID mapping. Create a fresh
       // reader for this response so an omitted version cannot refresh old data.
-      const reader = createFsuReferencePrice({ season, platform: platform === 'pc' ? 'pc' : 'ps', get, set,
+      const reader = createFsuReferencePrice({ season, platform: platform === 'pc' ? 'pc' : 'ps', get, set, updateIds,
         request: async url => {
           const currentPolicy = await policyStore.read(captured.scope); captured.assert();
           if (!publicPriceSourceEnabled(currentPolicy, 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
@@ -51,8 +86,19 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
           result = parsePublicFutbinPrice(response, definitionId, platform, minimal);
           return response;
         } });
-      await reader(player);
-      return result;
+      try {
+        await reader(player);
+        const quote = result ?? { definitionId, price: null, sourceUpdatedAt: null };
+        record({ event: 'futbin-quote-result', definitionId,
+          status: quote.price === null ? 'missing' : 'success', price: quote.price,
+          exactVersion: quote.price !== null, endpoint: 'fc27-public-price' });
+        return quote;
+      } catch (error) {
+        record({ event: 'futbin-quote-result', definitionId,
+          status: 'failed', reason: /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_PUBLIC_PRICE_UNAVAILABLE',
+          exactVersion: false, endpoint: 'fc27-public-price' });
+        throw error;
+      }
     },
   });
   const load = async (ids, options = {}) => {

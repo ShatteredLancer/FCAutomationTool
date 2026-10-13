@@ -1,6 +1,58 @@
 import { it, expect, vi } from 'vitest';
 import { normalizeGalleryPricePolicy, galleryReferenceQuote, createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
+it('batches opt-in same-rating FUTBIN misses, individually resolves omitted versions and preserves page fetch times', async () => {
+  let time = 1000;
+  const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1050 }));
+  const readFutbinBatch = vi.fn(async ids => {
+    time = 1300;
+    return { requests: 2, rows: ids.slice(0, -1).map(definitionId => ({ definitionId, price: 1000, fetchedAt: 1100 })) };
+  });
+  const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch, now: () => time });
+  const ids = Array.from({ length: 12 }, (_, i) => i + 1), rows = ids.map(definitionId => ({ definitionId, rating: 84 }));
+  const options = { platform: 'pc', policy: { source: 'futbin' }, sources: ['futbin'], rows, futbinBatch: true };
+  const result = await service.load(ids, options);
+  expect(readFutbinBatch).toHaveBeenCalledTimes(1);
+  expect(readFutbin).toHaveBeenCalledExactlyOnceWith(12, expect.any(Object), expect.any(Object));
+  expect(result.references[1].quotes.futbin).toMatchObject({ fetchedAt: 1100, expiresAt: 301100, price: 1000 });
+  expect(result.prices[12]).toBe(1050);
+  await service.load(ids, options);
+  expect(readFutbinBatch).toHaveBeenCalledTimes(1);
+  expect(readFutbin).toHaveBeenCalledTimes(1);
+});
+
+it('does not enable FUTBIN batches for legacy callers or a disabled source', async () => {
+  const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1000 })), readFutbinBatch = vi.fn();
+  const ids = Array.from({ length: 12 }, (_, i) => i + 1), rows = ids.map(definitionId => ({ definitionId, rating: 84 }));
+  const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch,
+    readFutgg: async ids => ids.map(definitionId => ({ definitionId, price: 1000 })) });
+  await service.load(ids, { platform: 'pc', sources: ['futbin'], rows });
+  expect(readFutbin).toHaveBeenCalledTimes(12);
+  await service.load(ids, { platform: 'pc', rows, futbinBatch: true, policy: { readSources: 'futgg' } });
+  expect(readFutbinBatch).not.toHaveBeenCalled();
+});
+
+it('never falls back after bulk 429 and drains a cancelled bulk before another caller runs', async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => i + 1), rows = ids.map(definitionId => ({ definitionId, rating: 84 }));
+  const options = { platform: 'pc', policy: { source: 'futbin' }, sources: ['futbin'], rows, futbinBatch: true };
+  const readFutbin = vi.fn(), readFutbinBatch = vi.fn(async () => { throw Error('FC27_BUY_REFERENCE_HTTP_429'); });
+  const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch });
+  const failed = await service.load(ids, options);
+  expect(failed.references[1].quotes.futbin.error).toBe('FC27_BUY_REFERENCE_HTTP_429');
+  expect(readFutbin).not.toHaveBeenCalled();
+  let complete, active = true;
+  const secondReader = vi.fn(() => new Promise(resolve => { complete = resolve; }));
+  const second = createGalleryReferencePrices({ readFutbin: async definitionId => ({ definitionId, price: 1000 }), readFutbinBatch: secondReader });
+  const pending = second.load(ids, { ...options, isCurrent: () => active });
+  const rejected = expect(pending).rejects.toThrow('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+  const next = second.load([99], { ...options, rows: [] });
+  await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+  active = false;
+  complete({ requests: 1, rows: ids.map(definitionId => ({ definitionId, price: 1000, fetchedAt: Date.now() })) });
+  await rejected;
+  expect((await next).prices[99]).toBe(1000);
+});
+
 it('projects each requested TTL from original fetch time without mutating prior snapshots or failure cooldowns', async () => {
   let time = 1000;
   const readFutgg = vi.fn(async ids => ids.map(definitionId => ({ definitionId, price: 200 })));
@@ -89,8 +141,10 @@ it('never renews an old price after a missing version, respects failure cooldown
   const expired = await service.load([1, 2], options);
   expect(expired.freshPrices).toEqual({});
   expect(expired.references[1]).toMatchObject({ futgg: null, futbin: null, estimate: null });
-  expect(readFutbin).toHaveBeenCalledTimes(2);
-  await service.load([1], { ...options, force: true }); expect(readFutbin).toHaveBeenCalledTimes(2);
+  // Both versions started before either 429 was observed; forced reads still
+  // respect the resulting shared source cooldown.
+  expect(readFutbin).toHaveBeenCalledTimes(3);
+  await service.load([1], { ...options, force: true }); expect(readFutbin).toHaveBeenCalledTimes(3);
   expect(expired.references[1].quotes.futbin.expiresAt).toBe(9000);
   const bad = createGalleryReferencePrices({ readFutgg, readFutbin, now: () => time,
     get: async () => ({ schema: 2, source: 'futgg', season: '27', platform: 'console', definitionId: 1,
@@ -115,17 +169,115 @@ it('treats conflicting versions, duplicate rows and future timestamps as invalid
   }
 });
 
-it('reports serial FUTBIN progress while reading and keeps caller edits out of the cache', async () => {
-  const progress = [], readFutbin = vi.fn(async definitionId => {
-    if (definitionId === 3) expect(progress).toContainEqual({ source: 'futbin', index: 2, total: 3 });
-    return { definitionId, price: 250 };
-  });
+it('reports completed FUTBIN progress monotonically and keeps caller edits out of the cache', async () => {
+  const progress = [], readFutbin = vi.fn(async definitionId => ({ definitionId, price: 250 }));
   const service = createGalleryReferencePrices({ readFutbin,
     readFutgg: async ids => ids.map(definitionId => ({ definitionId, price: 200 })) });
   const first = await service.load([1,2,3], { platform: 'pc', onProgress: row => progress.push(row) });
   first.references[1].quotes.futgg.price = 999;
   expect((await service.load([1], { platform: 'pc' })).references[1].futgg).toBe(200);
   expect(readFutbin).toHaveBeenCalledTimes(3);
+  expect(progress.filter(row => row.source === 'futbin').map(row => row.index)).toEqual([0, 0, 1, 2, 3, 3]);
+});
+
+it('bounds FUTBIN reads at three, preserves out-of-order identity and deduplicates overlapping requests', async () => {
+  const pending = new Map(), calls = [], progress = [];
+  const readFutbin = vi.fn(id => { calls.push(id); return new Promise(resolve => pending.set(id, resolve)); });
+  const service = createGalleryReferencePrices({ readFutbin });
+  const options = { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } };
+  const first = service.load([1, 2, 3, 4], { ...options, onProgress: row => progress.push(row.index) });
+  const overlap = service.load([2, 4, 5], options);
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3]));
+  pending.get(3)({ definitionId: 3, price: 350 });
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3, 4]));
+  pending.get(4)({ definitionId: 4, price: 400 });
+  pending.get(2)({ definitionId: 2, price: 300 });
+  pending.get(1)({ definitionId: 1, price: 250 });
+  expect((await first).prices).toEqual({ 1: 250, 2: 300, 3: 350, 4: 400 });
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3, 4, 5]));
+  pending.get(5)({ definitionId: 5, price: 450 });
+  expect((await overlap).prices).toEqual({ 2: 300, 4: 400, 5: 450 });
+  expect(progress).toEqual([0, 0, 1, 2, 3, 4, 4]);
+});
+
+it('stops launching reads on cancellation and drains in-flight work before releasing the queue', async () => {
+  const pending = new Map(), calls = []; let active = true;
+  const service = createGalleryReferencePrices({ readFutbin: id => {
+    calls.push(id); return new Promise(resolve => pending.set(id, resolve));
+  } });
+  const options = { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } };
+  const first = service.load([1, 2, 3, 4], { ...options, isCurrent: () => active });
+  const rejected = expect(first).rejects.toThrow('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+  const next = service.load([5], options);
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3]));
+  active = false;
+  pending.get(1)({ definitionId: 1, price: 250 });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(calls).toEqual([1, 2, 3]);
+  pending.get(2)({ definitionId: 2, price: 300 });
+  pending.get(3)({ definitionId: 3, price: 350 });
+  await rejected;
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3, 5]));
+  pending.get(5)({ definitionId: 5, price: 450 });
+  expect((await next).prices).toEqual({ 5: 450 });
+});
+
+it('stops new network reads after a source failure while settling at most two already in flight', async () => {
+  const pending = new Map(), calls = [];
+  const service = createGalleryReferencePrices({ readFutbin: id => {
+    calls.push(id); return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  } });
+  const result = service.load([1, 2, 3, 4, 5], { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } });
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3]));
+  pending.get(1).reject(Error('FC27_PUBLIC_PRICE_HTTP_429'));
+  pending.get(2).resolve({ definitionId: 2, price: 250 });
+  pending.get(3).resolve({ definitionId: 3, price: 300 });
+  const snapshot = await result;
+  expect(calls).toEqual([1, 2, 3]);
+  for (const id of [1, 4, 5]) expect(snapshot.references[id].quotes.futbin.error).toBe('FC27_PUBLIC_PRICE_HTTP_429');
+  await service.load([6], { platform: 'pc', sources: ['futbin'] });
+  expect(calls).toEqual([1, 2, 3]);
+});
+
+it('reads a synthetic 74-version 544ms batch in 25 bounded waves and reuses all cached quotes', async () => {
+  vi.useFakeTimers();
+  try {
+    let active = 0, maximum = 0;
+    const readFutbin = vi.fn(async definitionId => {
+      maximum = Math.max(maximum, ++active);
+      await new Promise(resolve => setTimeout(resolve, 544));
+      active--; return { definitionId, price: 250 };
+    });
+    const service = createGalleryReferencePrices({ readFutbin });
+    const ids = Array.from({ length: 74 }, (_, i) => i + 1);
+    const options = { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } };
+    const start = Date.now(), result = service.load(ids, options);
+    await vi.runAllTimersAsync();
+    expect(Object.keys((await result).prices)).toHaveLength(74);
+    expect(Date.now() - start).toBe(13600);
+    expect(maximum).toBe(3);
+    await service.load(ids, options);
+    expect(readFutbin).toHaveBeenCalledTimes(74);
+  } finally { vi.useRealTimers(); }
+});
+
+it('does not resume the same failed batch when its cooldown elapses while in-flight reads settle', async () => {
+  let time = 1000, finishFailureWrite; const pending = new Map(), calls = [];
+  const service = createGalleryReferencePrices({ now: () => time, failureTtlMs: 100,
+    set: async (_key, row) => { if (row.definitionId === 1) await new Promise(resolve => { finishFailureWrite = resolve; }); },
+    readFutbin: id => { calls.push(id); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); } });
+  const result = service.load([1, 2, 3, 4, 5], { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } });
+  await vi.waitFor(() => expect(calls).toEqual([1, 2, 3]));
+  pending.get(1).reject(Error('FC27_PUBLIC_PRICE_HTTP_429'));
+  await vi.waitFor(() => expect(finishFailureWrite).toBeTypeOf('function'));
+  time = 2000;
+  for (const id of [2, 3]) pending.get(id).resolve({ definitionId: id, price: 250 });
+  finishFailureWrite();
+  const snapshot = await result;
+  expect(calls).toEqual([1, 2, 3]);
+  for (const id of [4, 5]) expect(snapshot.references[id].quotes.futbin).toMatchObject({
+    error: 'FC27_PUBLIC_PRICE_HTTP_429', fetchedAt: 2000, expiresAt: 2001,
+  });
 });
 
 it('ignores legacy forced FUTBIN preference, reuses cache and still permits explicit refresh', async () => {

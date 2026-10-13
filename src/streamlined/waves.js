@@ -13,19 +13,47 @@ export function nextStreamlinedWave(route, { limit, submittedScore, targetScore,
   const material = [], purchases = [], blocked = new Set([...heldDefinitions, ...blockedDefinitions]);
   let points = submittedScore, capacity = freeSlots;
   const append = row => { material.push(row); points += row.item.points; };
-  for (const row of ready) {
+  const consumed = new Set(consumedIds);
+  const selectedIds = new Set();
+  const preferredByDefinition = new Map();
+  for (const group of route.groups) {
+    if (group.source !== 'inventory') continue;
+    for (const item of group.items ?? []) {
+      if (!integer(item?.id, 1) || consumed.has(item.id)) continue;
+      if (!['club', 'storage'].includes(item.pile)) continue;
+      const rows = preferredByDefinition.get(item.definitionId) ?? [];
+      rows.push(item); preferredByDefinition.set(item.definitionId, rows);
+    }
+  }
+  // A same-version Club/Storage copy is immediately usable. An Unassigned or
+  // Transfer copy must wait until every preferred copy is consumed, because it
+  // requires an irreversible move into Club before contribution.
+  const orderedReady = ready.slice().sort((a, b) =>
+    Number(['unassigned', 'transfer'].includes(a.item?.pile))
+      - Number(['unassigned', 'transfer'].includes(b.item?.pile)));
+  for (const row of orderedReady) {
     const group = route.groups[row.groupIndex];
     if (!group || !integer(row.item?.id, 1) || !integer(row.item.points, 1) || row.item.points !== group.item.points
         || !group.items.some(item => item.definitionId === row.item.definitionId)) fail('WAVE_RECEIPT_INVALID');
+    if (selectedIds.has(row.item.id)) continue;
+    const external = ['unassigned', 'transfer'].includes(row.item.pile);
+    const preferred = preferredByDefinition.get(row.item.definitionId) ?? [];
+    if (external && (preferred.some(item => !consumed.has(item.id) && !selectedIds.has(item.id)) ||
+        material.some(existing => existing.item.definitionId === row.item.definitionId && ['club', 'storage'].includes(existing.item.pile)))) continue;
     append(row); blocked.add(row.item.definitionId);
+    selectedIds.add(row.item.id);
   }
   // Existing inventory first. A full Club can still make progress by consuming
   // an approved stock batch before buying: do not require freeSlots >= 1 here.
-  for (let i = 0; i < route.groups.length && material.length < limit && points < targetScore; i++) {
+  for (let i = 0; ready.length === 0 && i < route.groups.length && material.length < limit && points < targetScore; i++) {
     const group = route.groups[i];
     if (group.source !== 'inventory') continue;
     for (const item of group.items.slice(0, group.quantity)) {
       if (consumedIds.includes(item.id) || material.some(row => row.item.id === item.id)) continue;
+      if (['unassigned', 'transfer'].includes(item.pile)) {
+        const preferred = preferredByDefinition.get(item.definitionId) ?? [];
+        if (preferred.some(candidate => !consumed.has(candidate.id) && candidate.id !== item.id)) continue;
+      }
       append({ groupIndex: i, item });
       if (material.length >= limit || points >= targetScore) break;
     }

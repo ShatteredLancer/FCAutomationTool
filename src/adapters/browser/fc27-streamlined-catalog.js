@@ -42,8 +42,19 @@ export function createFc27StreamlinedCatalog({ gmRequest, now = () => Date.now()
     // Inventory protection and market discovery have separate ceilings. The
     // stock limit must never hide a cheaper 84/85/86 market route.
     const marketMaxRating = policy.marketMaxRating ?? policy.maxRating;
-    const rates = solution.rates.filter(row => integer(row.overall, 1, marketMaxRating)
-      && integer(row.rarityEaId, 0, 10000) && integer(row.score, 1)).sort((a,b) => a.overall - b.overall);
+    const routeGroups = data.routeGroups ?? [];
+    if (!Array.isArray(routeGroups) || routeGroups.length > 100
+        || routeGroups.some(row => !integer(row?.overall, 1, 99) || !integer(row?.rarityEaId, 0, 10000))) fail('CATALOG_RULES_CHANGED');
+    // Recommended platform rates can omit a cheap tail bucket. These public
+    // descriptors discover versions only; native EA points and selected-source
+    // quotes remain authoritative, and every group is read for this platform.
+    const descriptors = [...solution.rates.filter(row => integer(row?.score, 1)), ...routeGroups];
+    const byGroup = new Map();
+    for (const row of descriptors) if (integer(row?.overall, 1, marketMaxRating) && integer(row?.rarityEaId, 0, 10000)) {
+      byGroup.set(`${row.overall}:${row.rarityEaId}`, row);
+    }
+    if (byGroup.size > 100) fail('CATALOG_RULES_CHANGED');
+    const rates = [...byGroup.values()].sort((a,b) => a.overall - b.overall || a.rarityEaId - b.rarityEaId);
     const ids = new Set(); let completed = 0;
     for (const rate of rates) {
       check(); onProgress({ phase: 'catalog', completed, total: rates.length });

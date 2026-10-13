@@ -4,6 +4,7 @@ import { runStreamlinedPlan } from '../../streamlined/planner.js';
 import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { same, fail } from '../../streamlined/contract.js';
 import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/routes.js';
+import { streamlinedQuoteFailure } from '../../streamlined/quotes.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -11,9 +12,29 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/
 export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCandidates = null, get, set, prices, diagnosticLog = null,
   now = () => Date.now(), schedule, createExecution = null } = {}) {
   const settings = createStreamlinedSettings({ get, set });
-  let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null;
+  let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
   const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_EXECUTION_UNAVAILABLE';
+  const executionEvidence = error => {
+    if (!error || typeof error !== 'object') return {};
+    const evidence = {};
+    if (typeof error.methodPath === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error.methodPath)) evidence.methodPath = error.methodPath;
+    if (typeof error.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(error.observedHash) || error.observedHash === 'oversized')) evidence.observedHash = error.observedHash;
+    if (typeof error.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(error.expectedHash)) evidence.expectedHash = error.expectedHash;
+    return evidence;
+  };
   const log = row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'plan', ...row })).catch(() => {}); } catch { /* diagnostic only */ } };
+  const logRoute = (route, phase = 'selected') => {
+    if (!route) return;
+    log({ event: 'route-summary', phase, currentScore: route.score, count: route.count,
+      estimatedCost: route.purchaseCost, materialValue: route.materialValue, totalValue: route.totalValue,
+      routeInventoryCount: route.inventoryCount, routeMarketCount: route.marketCount,
+      minBatches: route.minBatches, repeatPurchaseCount: route.repeatPurchaseCount });
+    if (phase !== 'selected') return;
+    for (const group of route.groups.slice(0, 16)) log({ event: 'route-group', source: group.source,
+      phase: group.item.pile ?? 'market', definitionId: group.item.definitionId, rating: group.item.rating,
+      unitScore: group.item.points, count: group.quantity, requestedCount: group.items.length,
+      referencePrice: group.item.price, maxBuy: group.item.purchaseMaxBuy });
+  };
   const capture = () => { const value = inspect(); if (!value?.context || !value.challenge) fail('PAGE_UNAVAILABLE'); return value; };
   const unchanged = origin => { const current = capture(); if (!same(current, origin)) fail('CONTEXT_CHANGED'); };
   return Object.freeze({
@@ -35,38 +56,114 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     async plan(value, { onProgress = () => {} } = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       busy = true; stopRequested = false; preview = null; routePreview = null;
+      const run = ++planningRun;
       const progress = row => { try { onProgress(row); } catch { /* display only */ } };
       try {
         const config = normalizeStreamlinedSettings(value), origin = capture();
         const input = readInputs(config); input.assertCurrent();
-        const check = () => { unchanged(origin); input.assertCurrent(); if (stopRequested) fail('CANCELLED'); };
+        const check = () => { unchanged(origin); input.assertCurrent(); if (stopRequested || run !== planningRun) fail('CANCELLED'); };
+        // Wait locally: shared quote requests remain owned by the price service.
+        // A stopped/closed preview must not wait for hundreds of queued reads.
+        const waitRead = async (read, initial, progressStartedAt = null) => {
+          const started = now(); let last = initial, active = true;
+          const report = row => { if (active) { last = row; progress({ ...row, elapsedMs: now() - (progressStartedAt ?? started) }); } };
+          report(initial);
+          let timer, outcome = 'success', reason = null;
+          try {
+            return await Promise.race([
+              Promise.resolve().then(() => read(report)),
+              new Promise((_resolve, reject) => {
+                timer = setInterval(() => {
+                  try { check(); report(last); } catch (error) { reject(error); }
+                }, 250);
+              }),
+            ]);
+          } catch (error) { outcome = 'failed'; reason = safeReason(error); throw error; }
+          finally {
+            active = false; clearInterval(timer);
+            log({ event: 'planning-read', phase: last.phase, source: last.source, status: outcome, reason,
+              durationMs: Math.max(0, now() - started), count: last.completed, requestedCount: last.total });
+          }
+        };
         const filtered = filterStreamlinedItems(input.inventory, input);
         if (filtered.status !== 'observed') return filtered;
+        // Explain exclusions without retaining physical or account identities.
+        const inventoryByKey = new Map(input.inventory.map(item => [item.key, item]));
+        const exclusionBuckets = new Map();
+        for (const row of filtered.excludedRows ?? []) {
+          const item = inventoryByKey.get(row.key);
+          const key = JSON.stringify([row.reason, item?.pile ?? 'unknown', item?.rating ?? null]);
+          const bucket = exclusionBuckets.get(key) ?? { reason: row.reason, pile: item?.pile ?? 'unknown', rating: item?.rating ?? null, count: 0 };
+          bucket.count++;
+          exclusionBuckets.set(key, bucket);
+        }
+        const inventorySelection = { readCount: input.inventory.length, eligibleCount: filtered.items.length,
+          excluded: { ...filtered.excluded }, buckets: [...exclusionBuckets.values()]
+            .sort((a, b) => b.count - a.count || String(a.reason).localeCompare(String(b.reason))).slice(0, 24) };
+        for (const bucket of inventorySelection.buckets) {
+          log({ event: 'inventory-exclusion', phase: bucket.reason, source: bucket.pile,
+            rating: bucket.rating ?? undefined, count: bucket.count,
+            inventoryMaxRating: input.policy.maxRating, fsuGoldMin: input.policy.goldRange[0],
+            fsuGoldMax: input.policy.goldRange[1], onlyUntradeable: input.policy.onlyUntradeable });
+        }
         const ids = [...new Set(filtered.items.map(i => i.definitionId))];
         const references = {}; let quoteSource = 'futgg', quoteReadError = null, purchaseAttempts = 3;
         if (prices && config.mode !== 'market') {
+          const inventoryQuotesStartedAt = now();
           for (let offset = 0; offset < ids.length; offset += 250) {
-            check(); progress({ phase: 'quotes', completed: offset, total: ids.length });
+            check();
             try {
-              const snapshot = await prices.load(ids.slice(offset, offset + 250), { purpose: 'puzzle', rows: input.priceRows,
-                isCurrent: () => { check(); return true; } });
+              const batch = ids.slice(offset, offset + 250);
+              const snapshot = await waitRead(report => prices.load(batch, { purpose: 'puzzle', rows: input.priceRows, futbinBatch: true,
+                onProgress: p => report({ phase: 'quotes', source: p.source, completed: offset + p.index, total: ids.length }),
+                isCurrent: () => { check(); return true; } }), { phase: 'quotes', completed: offset, total: ids.length }, inventoryQuotesStartedAt);
               if (offset && snapshot.policy.source !== quoteSource) fail('PRICE_POLICY_CHANGED');
               quoteSource = snapshot.policy.source; purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
               Object.assign(references, snapshot.references);
+              quoteReadError = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+              progress({ phase: 'quotes', source: quoteSource, completed: offset + batch.length, total: ids.length });
+              log({ event: 'planning-read', phase: 'quotes', status: quoteReadError ? 'failed' : 'success',
+                source: quoteSource, reason: quoteReadError, count: offset + batch.length, requestedCount: ids.length });
+              if (quoteReadError) break;
             } catch (error) { quoteReadError = /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_QUOTES_UNAVAILABLE'; break; }
           }
+          log({ event: 'planning-read', phase: 'inventory-quotes', status: quoteReadError ? 'failed' : 'success',
+            source: quoteSource, reason: quoteReadError, durationMs: Math.max(0, now() - inventoryQuotesStartedAt),
+            count: Object.keys(references).length, requestedCount: ids.length });
         }
         check();
+        if (quoteReadError && config.mode === 'inventory-market' && typeof readMarketCandidates === 'function') {
+          log({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', localReason: quoteReadError,
+            source: quoteSource, requestedCount: ids.length });
+          return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError,
+            quoteSource, plan: null, liveExecutionEnabled: false };
+        }
         let market = [], marketError = null;
         if (config.mode !== 'inventory' && typeof readMarketCandidates === 'function') {
           try {
-            check(); const data = await readMarketCandidates({ input, ids, quoteSource, references, check, onProgress: progress });
+            check(); const data = await waitRead(report => readMarketCandidates({ input, ids, quoteSource, references, check,
+              onProgress: report }), { phase: 'catalog', completed: 0, total: 0 });
             market = Array.isArray(data) ? data : data.market;
             if (!Array.isArray(market)) fail('MARKET_CANDIDATES_UNVERIFIED');
             if (data.pricePolicy) {
               if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail('PRICE_POLICY_CHANGED');
               quoteSource = data.pricePolicy.source;
               purchaseAttempts = data.pricePolicy.purchaseAttempts ?? 3;
+            }
+            // Reuse newer exact-version quotes already read by the market
+            // provider, so a stock copy and its concept share one valuation.
+            // Preserve the provider timestamp; this is not a cache renewal.
+            const at = now();
+            for (const id of ids) {
+              const q = data.references?.[id]?.quotes?.[quoteSource];
+              const old = references[id]?.quotes?.[quoteSource];
+              if (q?.source === quoteSource && q.definitionId === id && !q.error
+                  && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15000000
+                  && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at
+                  && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at
+                  && (!old || q.fetchedAt > old.fetchedAt)) {
+                references[id] = { ...references[id], quotes: { ...references[id]?.quotes, [quoteSource]: q } };
+              }
             }
           } catch (error) { marketError = safeReason(error); market = []; }
         }
@@ -76,7 +173,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         // mode remains the explicit escape hatch for users who accept that
         // scope; otherwise a catalog/market failure is a hard planning stop.
         const marketProvider = typeof readMarketCandidates === 'function';
-        if (config.mode === 'inventory-market' && marketProvider && (!market.length || marketError)) {
+        if (config.mode !== 'inventory' && marketProvider && (!market.length || marketError)) {
           const reason = 'FC27_STREAMLINED_MARKET_UNAVAILABLE';
           const unavailable = {
             status: 'blocked', reason, marketError: marketError ?? 'FC27_STREAMLINED_MARKET_EMPTY',
@@ -84,17 +181,43 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             policy: input.policy, inventoryStats: input.inventoryStats ?? null,
             quoteSource, quoteReadError,
           };
-          log({ status: unavailable.status, reason, marketError: unavailable.marketError,
+          log({ status: unavailable.status, reason, localReason: unavailable.marketError,
             marketRequested: true, inventoryCount: input.inventoryStats?.count });
           return unavailable;
         }
         check(); const quoteAt = now();
+        quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids, quoteAt, { requireFresh: false });
+        if (quoteReadError && config.mode === 'inventory-market' && marketProvider) {
+          log({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', localReason: quoteReadError, source: quoteSource });
+          return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError,
+            quoteSource, plan: null, liveExecutionEnabled: false };
+        }
         const inventory = input.inventory.map(item => {
           const q = references[item.definitionId]?.quotes?.[quoteSource];
           const valid = q?.definitionId === item.definitionId && q?.source === quoteSource && !q.error
             && Number.isSafeInteger(q.price) && q.price > 0 && q.fetchedAt <= quoteAt && q.expiresAt > quoteAt;
           return { ...item, price: valid ? q.price : null, quote: valid ? q : null };
         });
+        const eligibleKeys = new Set(filtered.items.map(item => item.key)), buckets = new Map();
+        for (const item of [...inventory.filter(item => eligibleKeys.has(item.key)), ...market]) {
+          const key = JSON.stringify([item.source, item.pile, item.rating, item.points]);
+          let bucket = buckets.get(key);
+          if (!bucket) {
+            bucket = { event: 'candidate-bucket', source: item.source, phase: item.pile ?? 'market',
+              rating: item.rating, unitScore: item.points, count: 0, quotedCount: 0,
+              cheapestPrice: null, bestPrice: null };
+            buckets.set(key, bucket);
+          }
+          bucket.count++;
+          if (item.price != null) {
+            bucket.quotedCount++;
+            bucket.cheapestPrice = Math.min(bucket.cheapestPrice ?? Infinity, item.price);
+            bucket.bestPrice = Math.max(bucket.bestPrice ?? 0, item.price);
+          }
+        }
+        // Aggregate values only: never raw inventory, account IDs or item IDs.
+        for (const source of ['inventory', 'market']) for (const bucket of [...buckets.values()]
+          .filter(row => row.source === source).sort((a, b) => b.count - a.count || b.unitScore - a.unitScore).slice(0, 16)) log(bucket);
         const options = { onProgress: p => { check(); progress(p); },
           stopped: () => { unchanged(origin); input.assertCurrent(); return stopRequested; }, schedule };
         let result, routes = [];
@@ -112,18 +235,21 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const plan = ['ready', 'partial'].includes(result.status)
           ? createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy, result, objective: config.objective,
             execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs } }) : null;
-        let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null;
+        let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null, executionError = null;
         if (plan && typeof createExecution === 'function') {
           try {
             execution = await createExecution(origin.context, plan); check();
             execution.prepare(plan); executionReason = null;
-          } catch (error) { execution = null; executionReason = safeReason(error); executionRecovery = error?.recovery ?? null; }
+          } catch (error) { execution = null; executionError = error; executionReason = safeReason(error); executionRecovery = error?.recovery ?? null; }
           check();
         }
         if (plan) preview = { origin, input, items: result.items, plan, execution };
-        if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError, execution: plan.execution };
+        if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError,
+          inventorySelection, execution: plan.execution };
         const inventoryStats = input.inventoryStats ?? {};
         const excluded = result.excluded ?? {};
+        const filteredInventoryCount = Object.values(filtered.excluded ?? {})
+          .reduce((sum, count) => sum + (Number.isSafeInteger(count) ? count : 0), 0);
         log({ status: result.status, evaluations: result.nodes, currentScore: result.score, safeCandidates: result.candidateCount,
           count: result.batches?.length, estimatedCost: result.purchaseCost, unknownCount: result.unknownValueCount,
           objective: config.objective, priceSource: quoteSource, materialValue: result.materialValue,
@@ -138,15 +264,25 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           inventoryTradeableCount: inventoryStats.tradeability?.tradeable,
           inventoryUntradeableCount: inventoryStats.tradeability?.untradeable,
           inventoryTradeabilityUnknown: inventoryStats.tradeability?.unknown,
+          eligibleInventoryCount: filtered.items.length,
+          filteredInventoryCount,
           acceptedInventoryCount: result.items?.filter(item => item.source === 'inventory').length,
+          routeInventoryCount: result.items?.filter(item => item.source === 'inventory').length,
+          routeMarketCount: result.items?.filter(item => item.source === 'market').length,
+          routeMaterialValue: result.materialValue,
           excludedTradeCount: excluded.trade,
           excludedPileCount: excluded.pile,
           excludedEligibilityCount: Object.entries(excluded)
             .filter(([key]) => key.startsWith('eligibility-'))
             .reduce((sum, [, count]) => sum + count, 0),
+          excludedGoldRangeCount: filtered.excluded?.['fsu-gold-range'],
+          fsuGoldMax: input.policy.goldRange?.[1],
           reason: result.reason });
+        logRoute(result.route);
+        for (const route of routes.filter(row => row.id !== result.route?.id).slice(0, 12)) logRoute(route, 'alternative');
         if (executionReason) log({ event: 'execution-preflight', status: 'blocked', reason: executionReason,
-          setId: executionRecovery?.setId, challengeId: executionRecovery?.challengeId, phase: executionRecovery?.phase });
+          ...executionEvidence(executionError), setId: executionRecovery?.setId, challengeId: executionRecovery?.challengeId,
+          phase: executionRecovery?.phase });
         if (executionRecovery?.kind === 'puzzle-purchase') {
           for (const [phase, count] of Object.entries(executionRecovery.states ?? {})) {
             if (['waiting', 'buy-pending', 'bought', 'move-pending', 'move-rejected', 'club'].includes(phase)
@@ -159,6 +295,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         return { ...result, plan, quoteSource, quoteReadError, marketError, marketAvailable: typeof readMarketCandidates === 'function',
           marketPending: config.mode !== 'inventory' && market.length === 0, policy: input.policy,
           inventoryStats: input.inventoryStats ?? null,
+          inventorySelection,
           liveExecutionEnabled: !!execution, executionReason, executionRecovery };
       } catch (error) {
         const reason = /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_PLAN_UNAVAILABLE';
@@ -176,14 +313,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const plan = createStreamlinedPlan({ context: saved.input.context, challenge: saved.input.challenge,
           policy: saved.input.policy, result, objective: saved.config.objective,
           execution: saved.execution });
-        let execution = null, executionReason = 'FC27_STREAMLINED_PURCHASE_PENDING';
+        let execution = null, executionReason = 'FC27_STREAMLINED_PURCHASE_PENDING', executionError = null;
         if (typeof createExecution === 'function') {
           try { execution = await createExecution(saved.origin.context, plan); unchanged(saved.origin); execution.prepare(plan); executionReason = null; }
-          catch (error) { execution = null; executionReason = safeReason(error); }
+          catch (error) { execution = null; executionError = error; executionReason = safeReason(error); }
         }
         unchanged(saved.origin); preview = { origin: saved.origin, input: saved.input, items: result.items, plan, execution };
+        logRoute(route);
+        if (executionReason) log({ event: 'execution-preflight', status: 'blocked', reason: executionReason,
+          ...executionEvidence(executionError) });
         return { ...saved.result, ...result, plan, routes: saved.routes, selectedRoute: routeId, quoteSource: saved.quoteSource,
-          marketAvailable: true, marketPending: false, marketError: saved.marketError, executionReason, liveExecutionEnabled: !!execution };
+          marketAvailable: true, marketPending: false, marketError: saved.marketError, executionReason, liveExecutionEnabled: !!execution,
+          policy: saved.input.policy, inventoryStats: saved.input.inventoryStats ?? null, inventorySelection: saved.inventorySelection };
       } catch (error) { preview = null; return { status: 'blocked', reason: safeReason(error) }; }
       finally { busy = false; }
     },
@@ -218,6 +359,12 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       busy = true;
       try {
         const origin = capture(); activeExecution = await createExecution(origin.context); unchanged(origin);
+        const materialization = typeof activeExecution.recoverMaterialization === 'function'
+          ? await activeExecution.recoverMaterialization(origin.context) : { status: 'absent' };
+        if (['recovery-required', 'blocked', 'replan-required'].includes(materialization.status)) {
+          log({ event: 'recovery', status: materialization.status, reason: materialization.reason });
+          return materialization;
+        }
         const purchase = typeof activeExecution.recoverPurchase === 'function'
           ? await activeExecution.recoverPurchase(origin.challenge) : { status: 'absent' };
         if (['recovery-required', 'blocked', 'replan-required'].includes(purchase.status)) {
@@ -226,8 +373,14 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         const contribution = await activeExecution.transaction.recover(origin.context,
           { setId: origin.challenge.setId, challengeId: origin.challenge.id });
-        const result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
+        let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
           ? contribution : { ...purchase, contributionRecovery: contribution };
+        if (materialization.status !== 'absent') {
+          result = { ...result, materializationRecovery: materialization };
+          if (result.status === 'absent' && materialization.status === 'recovered') {
+            result = { ...materialization, ...result, status: 'recovered', materializationRecovery: materialization };
+          }
+        }
         const current = capture();
         if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
             || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');

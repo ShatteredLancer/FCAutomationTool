@@ -1111,7 +1111,12 @@
     // FC27 runtime review 2026-10-02: observer notification dispatch was
     // obfuscated again while its decoded contract stayed unchanged. This is
     // a local synchronization method, not a request or write method.
-    "EAObservable.prototype.notify": "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2"
+    // October 9 public source has the same decoded async owner-first dispatch.
+    // Exact source and behavior replay: fc27-notify-observation-2026-10-09.json.
+    "EAObservable.prototype.notify": Object.freeze([
+      "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2",
+      "e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1"
+    ])
   });
   function isFc27ClubCompatibleHash(path, hash) {
     const reviewed = ownData(FC27_CLUB_COMPATIBLE_HASHES, path);
@@ -3796,6 +3801,15 @@
       scarce.push({ minimum: rule.value, matching: candidates.filter((item2) => (groups.get(relationValue(rule, item2, resolveClub))?.size ?? 0) >= rule.value) });
     }
     const forced = new Set(scarce.filter((entry) => new Set(entry.matching.map((item2) => item2.definitionId)).size === entry.minimum).flatMap((entry) => entry.matching));
+    const mixedClubRequirements = materialRules.filter((rule) => rule.count > 0).length > 1 && parsed.rules.some((rule) => rule.kind === "from-clubs" && rule.mode !== "max" && rule.count > 0);
+    const compulsoryScores = new Map(candidates.map((item2) => [item2, 0]));
+    if (mixedClubRequirements && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
+      for (const entry of scarce.filter((entry2) => entry2.minimum < required2)) {
+        const size = new Set(entry.matching.map((item2) => item2.definitionId)).size;
+        if (!size) continue;
+        for (const item2 of entry.matching) compulsoryScores.set(item2, compulsoryScores.get(item2) + 1 / size);
+      }
+    }
     const definitionCounts = /* @__PURE__ */ new Map();
     for (const item2 of candidates) definitionCounts.set(item2.definitionId, (definitionCounts.get(item2.definitionId) ?? 0) + 1);
     const certain = [...forced].filter((item2) => definitionCounts.get(item2.definitionId) === 1);
@@ -3803,8 +3817,8 @@
       const used = certain.filter((item2) => matchFc27SbcItemRule(rule, item2, groupMatcher, resolveClub) === true).length;
       if (used === rule.count) candidates = candidates.filter((item2) => forced.has(item2) || matchFc27SbcItemRule(rule, item2, groupMatcher, resolveClub) !== true);
     }
-    if (forced.size && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)));
+    if ((forced.size || mixedClubRequirements) && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a));
     }
     const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
     let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
@@ -3813,7 +3827,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -3956,8 +3970,14 @@
             if (bound.maxChemistry < minimumChemistry) return;
           }
           let placementNodes = 0;
+          const remainingBudget = Math.max(0, maxNodes - nodes);
+          const branchFanout = Math.max(1, candidates.length - chosen.length + 1);
+          const placementCap = Math.max(256, Math.min(
+            4096,
+            Math.floor(remainingBudget / branchFanout) || 256
+          ));
           const placementNode = (kind) => {
-            if (placementNodes >= 256) {
+            if (placementNodes >= placementCap) {
               deferredPlacements = true;
               return false;
             }
@@ -4873,6 +4893,19 @@
     return Object.freeze({ scope: scope2, nativeScope, exclusive, journal, inspect: () => ({ active: held(scope2) }) });
   }
 
+  // src/fc27/transaction-method-evidence.js
+  function transactionMethodEvidence(error2) {
+    const result = {};
+    if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,240}$/.test(error2.methodPath)) {
+      result.methodPath = error2.methodPath;
+    }
+    if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) {
+      result.observedHash = error2.observedHash;
+    }
+    if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) result.expectedHash = error2.expectedHash;
+    return result;
+  }
+
   // src/fc27/puzzle-fill-transaction.js
   var blocked4 = (reason) => ({ status: "blocked", reason, saved: false, submitted: false });
   var same6 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -5051,6 +5084,7 @@
         } catch (error2) {
           return {
             ...blocked4(safeReason2(error2)),
+            ...transactionMethodEvidence(error2),
             status: boundary ? "recovery-required" : "blocked",
             saved: dispatched ? null : false
           };
@@ -5344,6 +5378,39 @@
     const cappedClubs = parsed.rules.some((rule) => rule.kind === "distinct-clubs" && rule.mode !== "min" && rule.value < required(input));
     const chemistryNeeded = parsed.rules.some((rule) => rule.kind === "min-chemistry" && rule.value > 0);
     const nations = parsed.rules.filter((rule) => rule.kind === "from-nations" && rule.mode === "min" && rule.count > 0).flatMap((rule) => rule.ids);
+    const clubs = parsed.rules.filter((rule) => rule.kind === "from-clubs" && rule.mode === "min" && rule.count > 0);
+    if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && clubs.length) {
+      const resolveClub = createFc27ClubResolver(input.clubLinks);
+      if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
+      const candidates = [...pool.candidates, ...marketCandidates(input, entries2)].filter((item2) => tiers2.includes(levelOf(quality(item2.rating))));
+      const filler = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count)[0];
+      const level = levelOf(filler.qualities[0]);
+      const anchors = [];
+      for (const rule of clubs) {
+        const ids = new Set(rule.ids.map(resolveClub));
+        const matching = candidates.filter((item2) => ids.has(resolveClub(item2.teamId)));
+        anchors.push(...matching);
+        if (new Set(matching.map((item2) => item2.definitionId)).size < rule.count) {
+          const identityLevel = generic.queries.find((query) => rule.ids.includes(query.team))?.level ?? tiers2[0];
+          if (queries.length < 2) add2({ start: 0, count: 20, level: identityLevel, team: rule.ids[0] });
+        }
+      }
+      const counts = /* @__PURE__ */ new Map();
+      for (const item2 of anchors.length ? anchors : candidates.filter((item3) => levelOf(quality(item3.rating)) === level)) {
+        counts.set(item2.nationId, (counts.get(item2.nationId) ?? 0) + 1);
+      }
+      const nation = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+      if (positive7(nation)) add2({ start: 0, count: 20, level, nation });
+      const leagues2 = /* @__PURE__ */ new Map();
+      for (const item2 of candidates.filter((item3) => levelOf(quality(item3.rating)) === level && item3.nationId === nation)) {
+        leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
+      }
+      for (const [league] of [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
+        add2({ start: 0, count: 20, level, league });
+      }
+      add2({ start: 0, count: 20, level });
+      return { status: "ready", executable: false, queries, complete: false };
+    }
     if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && nations.length) {
       const ranked = [...new Set(nations)].map((nation) => ({
         nation,
@@ -5781,6 +5848,7 @@
         optimalWithinPool: null,
         estimatedCost: null,
         priceSource: null,
+        search: null,
         initialEstimatedCost: null,
         refinementPasses: 0,
         optimizationBudgetExhausted: false
@@ -6004,7 +6072,8 @@
               diagnostics.localReason = "FC27_PUZZLE_SEARCH_LIMIT";
               break;
             }
-            const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / (incumbent ? 4 - usedQueries.length : 1)));
+            const remainingLanes = Math.max(1, 4 - usedQueries.length);
+            const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / remainingLanes));
             const searchOptions = loadPublicPrices ? {
               costCeiling: incumbent?.[0].estimatedCost ?? null,
               ...seed.status === "ready" ? { maxChecks: passBudget } : { maxNodes: passBudget }
@@ -6034,6 +6103,10 @@
             diagnostics.localReason = suggestion.reason ?? null;
             diagnostics.checks = suggestion.checks ?? null;
             diagnostics.nodes = suggestion.nodes ?? null;
+            if (suggestion.search) {
+              diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+              for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += suggestion.search[key] ?? 0;
+            }
             if (loadPublicPrices) {
               searchSpent += suggestion.nodes ?? suggestion.checks ?? 0;
               diagnostics.nodes = searchSpent;
@@ -6141,11 +6214,26 @@
     ["Identification.prototype.handleResponse", "cc4de06cc8696a4723f9539159c912c6d7cd4b7263ccaf7db9d7198b2f31ff01"]
   ]);
   var compatibleHashes = Object.freeze({
-    "UTItemDAO.prototype.searchConceptItems": "edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc",
-    "UTItemDAO.prototype.searchTransferMarket": "dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111",
-    "FCAuthenticationService.prototype.getIdentifier": "963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2",
-    "Identification.prototype.handleRequest": "b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949",
-    "Identification.prototype.handleResponse": "2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4"
+    "UTItemDAO.prototype.searchConceptItems": [
+      "edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc",
+      "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1"
+    ],
+    "UTItemDAO.prototype.searchTransferMarket": [
+      "dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111",
+      "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2"
+    ],
+    "FCAuthenticationService.prototype.getIdentifier": [
+      "963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2",
+      "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339"
+    ],
+    "Identification.prototype.handleRequest": [
+      "b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949",
+      "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291"
+    ],
+    "Identification.prototype.handleResponse": [
+      "2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4",
+      "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f"
+    ]
   });
   var october12Hashes = Object.freeze({
     "UTItemDAO.prototype.searchConceptItems": "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1",
@@ -6239,7 +6327,8 @@
       if (typeof fn !== "function") throw error(`METHOD_${index}_MISSING`);
       const digest = await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(Function.prototype.toString.call(fn)));
       const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && hash !== ownData(compatibleHashes, path) && hash !== ownData(october12Hashes, path)) {
+      const compatible = ownData(compatibleHashes, path);
+      if (hash !== expected && !isFc27ClubCompatibleHash(path, hash) && !(Array.isArray(compatible) ? compatible.includes(hash) : hash === compatible) && hash !== ownData(october12Hashes, path)) {
         if (path !== "UTItemEntityFactory.prototype.createItem") {
           throw Object.assign(error(`METHOD_${index}_CHANGED`), { method: path, observedHash: hash });
         }
@@ -6778,6 +6867,7 @@
           const detail = mismatch(error2?.mismatch);
           return {
             ...blocked7(reasonOf(error2)),
+            ...transactionMethodEvidence(error2),
             ...detail ? { mismatch: detail } : {},
             status: boundary ? "recovery-required" : "blocked",
             saved: boundary ? null : false
@@ -6818,7 +6908,7 @@
           });
           return result?.status === "absent" ? null : result ?? blocked7("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         } catch (error2) {
-          return blocked7(reasonOf(error2));
+          return { ...blocked7(reasonOf(error2)), ...transactionMethodEvidence(error2) };
         } finally {
           provider?.cancel();
         }
@@ -8079,59 +8169,130 @@
 
   // src/fc27/fsu-reference-price.js
   var positions = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
-  function createFsuReferencePrice({ season, platform, request, get, set }) {
+  function createFsuReferencePrice({ season, platform, request, get, set, updateIds = null }) {
     platform = platform.split(":")[0].toLowerCase();
     const apiPlatform = platform === "pc" ? "PC" : "PS";
     const prefix = platform === "pc" ? "pc_" : "ps_";
     const key = `fcat-futbin-ids:${season}`;
     const prices = /* @__PURE__ */ new Map();
     return async (player) => {
-      const ids = await get(key, {});
+      const ids = { ...await get(key, {}) };
       const recordPrice = (data2, definitionId) => {
         prices.set(Number(definitionId), data2.LCPrice ?? data2[`${prefix}LCPrice`] ?? data2.price ?? 0);
       };
       const base = `https://www.futbin.org/futbin/api/${season}/`;
       let url;
-      if (Object.hasOwn(ids, player.definitionId)) {
-        url = `${base}fetchPlayerInformationMinimal?ID=${ids[player.definitionId]}&platform=${apiPlatform}`;
+      const cachedId = Object.hasOwn(ids, player.definitionId) ? ids[player.definitionId] : null;
+      if (cachedId) {
+        url = `${base}fetchPlayerInformationMinimal?ID=${cachedId}&platform=${apiPlatform}`;
       } else {
         const position = positions[player.preferredPosition];
         url = `${base}getFilteredPlayers?platform=${apiPlatform}&nation=${player.nationId}&league=${player.leagueId}&rating=${player.rating}-${player.rating}&club=${player.teamId}&sort=rating&position=${position}&order=desc&page=1`;
       }
-      const response = await request(url);
+      let response;
+      try {
+        response = await request(url);
+        if (cachedId) {
+          let matches2 = false;
+          try {
+            const payload = typeof response === "string" ? JSON.parse(response) : response;
+            matches2 = Object.values(payload?.data ?? {}).some((row) => Number(row?.Player_Resource) === Number(player.definitionId));
+          } catch {
+          }
+          if (!matches2) {
+            delete ids[player.definitionId];
+            if (updateIds) await updateIds(key, {}, { [player.definitionId]: cachedId });
+            else await set(key, ids);
+            const position = positions[player.preferredPosition];
+            url = `${base}getFilteredPlayers?platform=${apiPlatform}&nation=${player.nationId}&league=${player.leagueId}&rating=${player.rating}-${player.rating}&club=${player.teamId}&sort=rating&position=${position}&order=desc&page=1`;
+            response = await request(url);
+          }
+        }
+      } catch (error2) {
+        if (!cachedId || !String(error2?.message ?? "").endsWith("_HTTP_404")) throw error2;
+        delete ids[player.definitionId];
+        if (updateIds) await updateIds(key, {}, { [player.definitionId]: cachedId });
+        else await set(key, ids);
+        const position = positions[player.preferredPosition];
+        url = `${base}getFilteredPlayers?platform=${apiPlatform}&nation=${player.nationId}&league=${player.leagueId}&rating=${player.rating}-${player.rating}&club=${player.teamId}&sort=rating&position=${position}&order=desc&page=1`;
+        response = await request(url);
+      }
       const data = JSON.parse(response);
+      const learned = {};
       for (const row of Object.values(data.data ?? {})) {
         if (url.includes("getFilteredPlayers?")) {
           recordPrice(row, row.resource_id);
           ids[row.resource_id] = row.ID;
+          learned[row.resource_id] = row.ID;
         } else recordPrice(row, row.Player_Resource);
       }
-      if (url.includes("getFilteredPlayers?")) await set(key, ids);
+      if (url.includes("getFilteredPlayers?")) {
+        if (updateIds) await updateIds(key, learned);
+        else await set(key, ids);
+      }
       return prices.get(player.definitionId) ?? 0;
     };
   }
 
   // src/adapters/browser/fc27-futbin-http.js
-  function createFc27FutbinHttp(gmRequest) {
+  function createFc27FutbinHttp(gmRequest, { userAgent = null, onEvent = null, now = () => Date.now() } = {}) {
+    const agent = userAgent ?? (typeof globalThis.navigator === "object" && typeof globalThis.navigator.userAgent === "string" ? globalThis.navigator.userAgent : null);
+    const record = (fields4) => {
+      try {
+        onEvent?.({ source: "futbin", phase: "price-read", route: "direct", ...fields4 });
+      } catch {
+      }
+    };
     return (url) => new Promise((resolve, reject) => {
+      const startedAt = now();
+      const completed = (fields4) => record({ ...fields4, durationMs: Math.max(0, now() - startedAt) });
       const parsed = new URL(url);
+      const endpoint = parsed.pathname.endsWith("fetchPlayerInformationMinimal") ? "minimal" : parsed.pathname.endsWith("getFilteredPlayers") ? "filtered" : "unknown";
       if (parsed.origin !== "https://www.futbin.org" || !/^\/futbin\/api\/27\/(getFilteredPlayers|fetchPlayerInformationMinimal)$/.test(parsed.pathname) || parsed.username || parsed.password || typeof gmRequest !== "function") {
+        record({ endpoint, status: "failed", reason: "FC27_BUY_REFERENCE_PRICE_UNAVAILABLE" });
         reject(Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE"));
         return;
       }
+      const headers = { "Content-Type": "application/json" };
+      if (agent) headers["User-Agent"] = agent;
+      record({ endpoint, status: "started" });
       gmRequest({
         method: "GET",
         url,
-        anonymous: true,
         timeout: 15e3,
-        headers: { "Content-Type": "application/json" },
+        headers,
         onload: (response) => {
-          if (response.finalUrl && response.finalUrl !== url) reject(Error("FC27_BUY_REFERENCE_REDIRECT"));
-          else if (![200, 201].includes(response.status)) reject(Error(`FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`));
-          else resolve(response.responseText);
+          if (response.finalUrl && response.finalUrl !== url) {
+            completed({ endpoint, status: "failed", reason: "FC27_BUY_REFERENCE_REDIRECT" });
+            reject(Error("FC27_BUY_REFERENCE_REDIRECT"));
+          } else if (![200, 201].includes(response.status)) {
+            const reason = `FC27_BUY_REFERENCE_HTTP_${Number(response.status) || 0}`;
+            completed({
+              endpoint,
+              status: "received",
+              httpStatus: Number(response.status) || 0,
+              responseBytes: typeof response.responseText === "string" ? response.responseText.length : null,
+              reason
+            });
+            reject(Error(reason));
+          } else {
+            completed({
+              endpoint,
+              status: "received",
+              httpStatus: Number(response.status) || 0,
+              responseBytes: typeof response.responseText === "string" ? response.responseText.length : null
+            });
+            resolve(response.responseText);
+          }
         },
-        onerror: () => reject(Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE")),
-        ontimeout: () => reject(Error("FC27_BUY_REFERENCE_TIMEOUT"))
+        onerror: () => {
+          completed({ endpoint, status: "failed", reason: "FC27_BUY_REFERENCE_PRICE_UNAVAILABLE" });
+          reject(Error("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE"));
+        },
+        ontimeout: () => {
+          completed({ endpoint, status: "failed", reason: "FC27_BUY_REFERENCE_TIMEOUT" });
+          reject(Error("FC27_BUY_REFERENCE_TIMEOUT"));
+        }
       });
     });
   }
@@ -10348,7 +10509,9 @@
             }
           }
         } catch (error2) {
-          result = blocked9(safeReason7(error2));
+          const evidence = transactionMethodEvidence(error2);
+          result = { ...blocked9(safeReason7(error2)), ...evidence };
+          Object.assign(log, evidence);
         } finally {
           invalidate();
         }
@@ -10356,6 +10519,8 @@
         log.finishedAt = Date.now();
         await persistLog();
         try {
+          const searchEvidence = log.preview ?? {};
+          const search = searchEvidence.search ?? {};
           await diagnosticLog2?.record?.({
             area: "puzzle",
             event: "solve-result",
@@ -10364,9 +10529,19 @@
             status: result?.status,
             reason: result?.reason,
             source: log.catalogSource,
+            methodPath: result?.methodPath ?? log.methodPath,
+            observedHash: result?.observedHash ?? log.observedHash,
+            expectedHash: result?.expectedHash ?? log.expectedHash,
             mismatch: result?.mismatch,
-            safeCandidates: result?.plan?.safeCandidates,
-            evaluations: result?.plan?.nodes,
+            safeCandidates: result?.plan?.safeCandidates ?? result?.safeCandidates ?? searchEvidence.safeCandidates,
+            evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
+            combinationNodes: search.combinationNodes,
+            placementNodes: search.placementNodes,
+            evaluationNodes: search.evaluations,
+            boundNodes: search.bounds,
+            strategyAttempts: searchEvidence.strategyAttempts,
+            searchComplete: searchEvidence.searchComplete,
+            optimalWithinPool: searchEvidence.optimalWithinPool,
             durationMs: log.finishedAt - log.startedAt
           });
           const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
@@ -10388,6 +10563,10 @@
             count: d?.catalogCandidates,
             evaluations: d?.nodes,
             localReason: d?.localReason,
+            combinationNodes: d?.search?.combinationNodes,
+            placementNodes: d?.search?.placementNodes,
+            evaluationNodes: d?.search?.evaluations,
+            boundNodes: d?.search?.bounds,
             usableCandidates: d?.usableCandidates,
             excludedUnavailable: d?.excludedUnavailable,
             estimatedCost: purchase.estimatedCost ?? d?.estimatedCost,
@@ -21852,7 +22031,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         platform: context.platform,
         get: gmGetValue,
         set: gmSetValue,
-        request: createFc27FutbinHttp(gmRequest)
+        request: createFc27FutbinHttp(gmRequest, {
+          onEvent: (fields4) => {
+            try {
+              Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "transport-request", ...fields4 })).catch(() => void 0);
+            } catch {
+            }
+          }
+        })
       });
       const buyer = createGalleryPurchaseSession({
         scope: scope2,
@@ -26243,8 +26429,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var DEFAULT_MAX_ENTRIES = 300;
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
   var MAX_TRANSACTION_RESULTS = 40;
+  var MAX_PERFORMANCE_ENTRIES = 40;
+  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "batchSize",
@@ -26288,9 +26476,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "inventoryUntradeableCount",
     "inventoryTradeabilityUnknown",
     "acceptedInventoryCount",
+    "eligibleInventoryCount",
+    "filteredInventoryCount",
+    "routeInventoryCount",
+    "routeMarketCount",
+    "routeMaterialValue",
+    "rating",
+    "unitScore",
+    "minBatches",
+    "repeatPurchaseCount",
     "excludedTradeCount",
     "excludedPileCount",
     "excludedEligibilityCount",
+    "excludedGoldRangeCount",
+    "fsuGoldMax",
+    "fsuGoldMin",
+    "inventoryMaxRating",
     "requestedCount",
     "responseCount",
     "acceptedCount",
@@ -26302,12 +26503,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "foreignCount",
     "offset",
     "evaluations",
+    "combinationNodes",
+    "placementNodes",
+    "evaluationNodes",
+    "boundNodes",
+    "strategyAttempts",
     "targetScore",
     "currentScore",
     "requiredSlots",
     "quotedCount",
     "eaScoreCount",
     "catalogScoreCount",
+    "responseBytes",
     "cheapestPrice",
     "cheapestScore",
     "bestPrice",
@@ -26317,7 +26524,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "beamWidth",
     "maxEvaluations"
   ]);
-  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable"]);
+  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion"]);
   var boundedString = (value, max = MAX_STRING_LENGTH) => {
     if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
     return value.slice(0, max);
@@ -26343,9 +26550,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "Identification.prototype.handleRequest",
       "Identification.prototype.handleResponse",
       "factories.Item.generateItemsFromItemData",
-      "UTItemEntityFactory.prototype.createItem"
+      "UTItemEntityFactory.prototype.createItem",
+      "dao.submitPlayers",
+      "dao.initiateOneClickChallenge"
     ].includes(input.method)) entry.method = input.method;
-    if (typeof input.observedHash === "string" && /^[a-f0-9]{64}$/.test(input.observedHash)) entry.observedHash = input.observedHash;
+    if (typeof input.methodPath === "string" && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath) || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath) || ["events.markClubCacheDirty", "call.squad.setPlayers"].includes(input.methodPath))) entry.methodPath = input.methodPath;
+    if (typeof input.observedHash === "string" && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === "oversized")) entry.observedHash = input.observedHash;
+    if (typeof input.expectedHash === "string" && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
     for (const key of STRING_FIELDS) {
       const value = key === "reason" || key === "localReason" ? typeof input[key] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null : boundedString(input[key]);
       if (value !== null) entry[key] = value;
@@ -26382,6 +26593,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let entries2 = [];
     let criticalEntries = [];
     let transactionResults = [];
+    let performanceEntries = [];
     let planning = [];
     let loaded = false;
     let loading = null;
@@ -26394,6 +26606,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           entries2 = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
           criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : []).slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
           transactionResults = (Array.isArray(saved.transactionResults) ? saved.transactionResults : []).slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
+          performanceEntries = (Array.isArray(saved.performanceEntries) ? saved.performanceEntries : []).slice(-MAX_PERFORMANCE_ENTRIES).map(validSavedEntry).filter(performanceEntry);
           planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map((row) => {
             const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
             return event && replay ? { event, replay } : null;
@@ -26414,6 +26627,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         entries: entries2.map((entry) => ({ ...entry })),
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
         transactionResults: transactionResults.map((entry) => ({ ...entry })),
+        performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
         planning: structuredClone(planning)
       };
       return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => void 0);
@@ -26433,9 +26647,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "streamlined" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
         }
-        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event)) {
+        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result") {
           transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
+        if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
         if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
         await persist();
       }).catch(() => void 0);
@@ -26454,11 +26669,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         season: "27",
         version: version ?? null,
         exportedAt: now(),
-        redaction: "Bounded events, critical Gallery trade events and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.",
+        redaction: "Bounded events, critical trade events, planning performance summaries and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.",
         entries: exportedEntries,
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
         transactionResults: transactionResults.map((entry) => ({ ...entry })),
-        planning: structuredClone(planning)
+        planning: structuredClone(planning),
+        performanceEntries: performanceEntries.map((entry) => ({ ...entry }))
       };
     };
     return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key });
@@ -26488,6 +26704,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function createGalleryReferencePrices({
     readFutgg,
     readFutbin,
+    readFutbinBatch = null,
     get = async (_key, fallback) => fallback,
     set = async () => {
     },
@@ -26507,11 +26724,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const lifetime2 = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
-    const ensure = (source, ids, options, byId, current2, force, progress, duration) => {
+    const ensure = (source, ids, options, byId, current2, force, progress, duration, futbinBatch) => {
       const freshIds = ids.filter((id12) => !pending2.has(keyOf4(source, options, id12)));
       if (freshIds.length) {
         const task = queue.catch(() => {
         }).then(async () => {
+          const startedAt = now();
+          let requests = 0;
           current2();
           const missing = [];
           for (const id12 of freshIds) {
@@ -26533,27 +26752,57 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           progress({ source, index: completed, total: ids.length });
           current2();
           const batchSize = source === "futgg" ? 50 : 1;
-          for (let start = 0; start < missing.length; start += batchSize) {
+          const jobs = [], fallbackJobs = [], grouped2 = /* @__PURE__ */ new Map();
+          if (source === "futbin" && futbinBatch && typeof readFutbinBatch === "function") {
+            for (const id12 of missing) {
+              const rating = byId.get(id12)?.rating;
+              const group = grouped2.get(rating) ?? [];
+              group.push(id12);
+              grouped2.set(rating, group);
+            }
+          }
+          const bulkIds = /* @__PURE__ */ new Set();
+          for (const [rating, batch] of grouped2) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99 && batch.length >= 12) {
+            jobs.push({ ids: batch, bulk: true });
+            for (const id12 of batch) bulkIds.add(id12);
+          }
+          const singles = missing.filter((id12) => !bulkIds.has(id12));
+          for (let offset = 0; offset < singles.length; offset += batchSize) jobs.push({ ids: singles.slice(offset, offset + batchSize), bulk: false });
+          let next = 0, sourceFailure = null;
+          const readBatch = async () => {
             current2();
-            const batch = missing.slice(start, start + batchSize), cooldownKey = `${source}:${options.season}:${options.platform}`;
+            const job = jobs[next++], batch = job.ids, cooldownKey = `${source}:${options.season}:${options.platform}`;
             let rows = [], error2 = null, retryAt = null;
-            const cooldown = cooldowns.get(cooldownKey);
+            const cooldown = sourceFailure ?? cooldowns.get(cooldownKey);
             try {
-              if (cooldown?.retryAt > now()) {
-                retryAt = cooldown.retryAt;
+              if (sourceFailure || cooldown?.retryAt > now()) {
+                retryAt = Math.max(cooldown.retryAt, now() + 1);
                 throw Error(cooldown.reason);
               }
-              rows = source === "futgg" ? await readFutgg(batch, options) : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
-              if (!Array.isArray(rows) || rows.some((row) => !batch.includes(row?.definitionId) || row.price !== null && !validPublicPrice(row.price) || row.sourceUpdatedAt != null && (!timestamp(row.sourceUpdatedAt) || row.sourceUpdatedAt > now())) || new Set(rows.map((row) => row.definitionId)).size !== rows.length) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+              requests++;
+              if (job.bulk) {
+                const result = await readFutbinBatch(batch, batch.map((id12) => byId.get(id12)), { ...options, check: current2, force, quoteTtlMs: duration });
+                if (!Number.isSafeInteger(result?.requests) || result.requests < 0 || result.requests > 8) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+                requests += result.requests - 1;
+                rows = result.rows;
+              } else rows = source === "futgg" ? await readFutgg(batch, options) : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
+              if (!Array.isArray(rows) || rows.some((row) => !batch.includes(row?.definitionId) || row.price !== null && !validPublicPrice(row.price) || job.bulk && (!timestamp(row.fetchedAt) || row.fetchedAt > now()) || row.sourceUpdatedAt != null && (!timestamp(row.sourceUpdatedAt) || row.sourceUpdatedAt > now())) || new Set(rows.map((row) => row.definitionId)).size !== rows.length) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
             } catch (failure) {
               error2 = reasonOf2(failure);
               rows = [];
               retryAt ??= Math.max(now() + failureTtlMs, timestamp(failure?.retryAt) ? failure.retryAt : 0);
-              if (!["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(error2)) cooldowns.set(cooldownKey, { retryAt, reason: error2 });
+              if (!["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(error2)) {
+                sourceFailure ??= { retryAt, reason: error2 };
+                cooldowns.set(cooldownKey, { retryAt, reason: error2 });
+              }
             }
-            const fetchedAt = now(), expiresAt = error2 ? retryAt : fetchedAt + duration;
-            for (const id12 of batch) {
+            const completedIds = job.bulk && !error2 ? batch.filter((id12) => rows.some((row) => row.definitionId === id12)) : batch;
+            if (job.bulk && !error2) {
+              for (const id12 of batch) if (!completedIds.includes(id12)) fallbackJobs.push({ ids: [id12], bulk: false });
+            }
+            for (const id12 of completedIds) {
               const value = rows.find((row) => row.definitionId === id12);
+              const fetchedAt = job.bulk && !error2 ? value.fetchedAt : now(), expiresAt = error2 ? retryAt : fetchedAt + duration;
               const entry = {
                 schema: 2,
                 source,
@@ -26582,9 +26831,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 expiresAt
               });
             }
-            completed += batch.length;
+            completed += completedIds.length;
             progress({ source, index: completed, total: ids.length });
+          };
+          const workers = source === "futbin" ? 3 : 1;
+          const drain = () => Promise.allSettled(Array.from({ length: Math.min(workers, jobs.length) }, async () => {
+            while (next < jobs.length) await readBatch();
+          }));
+          const settled2 = await drain();
+          if (!settled2.some((result) => result.status === "rejected") && fallbackJobs.length) {
+            jobs.splice(0, jobs.length, ...fallbackJobs);
+            next = 0;
+            settled2.push(...await drain());
           }
+          const failed2 = settled2.find((result) => result.status === "rejected");
+          record({
+            source,
+            event: "quote-batch",
+            phase: "complete",
+            status: failed2 ? "failed" : sourceFailure ? "failed" : "success",
+            requestedCount: freshIds.length,
+            cached: missing.length === 0,
+            count: missing.length,
+            requests,
+            batchSize: workers,
+            durationMs: Math.max(0, now() - startedAt)
+          });
+          if (failed2) throw failed2.reason;
         });
         queue = task.catch(() => {
         });
@@ -26609,10 +26882,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         isCurrent = () => true,
         onProgress = () => {
         },
-        quoteTtlMs = ttlMs
+        quoteTtlMs = ttlMs,
+        futbinBatch = false
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids) || ids.length > 250 || ids.some((id12) => !positive10(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids) || ids.length > 250 || ids.some((id12) => !positive10(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const current2 = () => {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         };
@@ -26630,7 +26904,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const quotes = {}, options = { season, platform };
         for (const source of requested) {
           progress({ source, index: 0, total: unique2.length });
-          quotes[source] = (await ensure(source, unique2, options, byId, current2, forced.has(source), progress, quoteTtlMs)).map((row) => lifetime2(row, quoteTtlMs));
+          quotes[source] = (await ensure(source, unique2, options, byId, current2, forced.has(source), progress, quoteTtlMs, futbinBatch)).map((row) => lifetime2(row, quoteTtlMs));
           current2();
           progress({ source, index: unique2.length, total: unique2.length });
         }
@@ -26711,10 +26985,94 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { definitionId, price: validPublicPrice(value) ? value : null, sourceUpdatedAt: null };
   }
 
+  // src/fc27/futbin-batch-prices.js
+  async function readFutbinBatchPrices(ids, players, {
+    season = "27",
+    platform,
+    request,
+    check = async () => {
+    },
+    now = () => Date.now(),
+    cache = null,
+    quoteTtlMs = 3e5,
+    force = false
+  } = {}) {
+    const rating = players.find((row) => ids.includes(row?.definitionId ?? row?.eaId))?.rating;
+    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids.length || ids.length > 250 || ids.some((id12) => !Number.isSafeInteger(id12) || id12 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id12 && row.rating === rating))) {
+      throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
+    }
+    const found = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
+    let requests = 0;
+    for (let page = 1; page <= 8 && found.size < ids.length; page++) {
+      await check();
+      const key = `${season}:${platform}:${rating}:${page}`, saved = cache?.get(key);
+      const cached = !force && Number.isSafeInteger(saved?.fetchedAt) && saved.fetchedAt <= now() && saved.fetchedAt + quoteTtlMs > now();
+      let payload, fetchedAt;
+      if (cached) {
+        payload = { data: saved.rows };
+        fetchedAt = saved.fetchedAt;
+      } else {
+        const response = await request(`https://www.futbin.org/futbin/api/${season}/getFilteredPlayers?platform=${platform === "pc" ? "PC" : "PS"}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`);
+        requests++;
+        await check();
+        try {
+          payload = typeof response === "string" ? JSON.parse(response) : response;
+        } catch {
+          throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+        }
+        fetchedAt = now();
+      }
+      if (!payload?.data || typeof payload.data !== "object" || payload.errorcode != null && String(payload.errorcode) !== "200") throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      const rows = Object.values(payload.data), pageIds = /* @__PURE__ */ new Set();
+      if (rows.length > 100) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      for (const row of rows) {
+        if (!Number.isSafeInteger(row?.resource_id) || row.resource_id <= 0 || row.rating !== rating || pageIds.has(row.resource_id)) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+        pageIds.add(row.resource_id);
+        if (ids.includes(row.resource_id) && !found.has(row.resource_id)) {
+          found.set(row.resource_id, { ...parsePublicFutbinPrice(payload, row.resource_id, platform, false), fetchedAt });
+        }
+      }
+      if (!cached && cache) {
+        cache.set(key, { fetchedAt, rows: rows.map((row) => ({
+          resource_id: row.resource_id,
+          rating: row.rating,
+          pc_LCPrice: parsePublicFutbinPrice(payload, row.resource_id, "pc", false).price,
+          ps_LCPrice: parsePublicFutbinPrice(payload, row.resource_id, "console", false).price
+        })) });
+        while (cache.size > 256) cache.delete(cache.keys().next().value);
+      }
+      const newCount = [...pageIds].filter((id12) => !seen.has(id12)).length;
+      for (const id12 of pageIds) seen.add(id12);
+      if (!newCount || rows.length < 32) break;
+    }
+    return { rows: [...found.values()], requests };
+  }
+
   // src/adapters/browser/fc27-public-prices.js
   var positions2 = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
   function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog: diagnosticLog2 = null, now = () => Date.now() }) {
     const rows = /* @__PURE__ */ new Map();
+    const futbinPages = /* @__PURE__ */ new Map();
+    const record = (fields4) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", ...fields4 })).catch(() => {
+        });
+      } catch {
+      }
+    };
+    let mappingQueue = Promise.resolve();
+    const updateIds = (key, learned, removed = {}) => {
+      const task = mappingQueue.catch(() => {
+      }).then(async () => {
+        const ids = { ...await get(key, {}) };
+        for (const [id12, previous] of Object.entries(removed)) if (ids[id12] === previous) delete ids[id12];
+        Object.assign(ids, learned);
+        await set(key, ids);
+      });
+      mappingQueue = task.catch(() => {
+      });
+      return task;
+    };
     const policyStore = createPublicPricePolicyStore({ get, set });
     const capture = () => {
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
@@ -26731,12 +27089,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       captured.assert();
       return policy;
     };
-    const request = createFc27FutbinHttp(gmRequest);
+    const request = createFc27FutbinHttp(gmRequest, {
+      onEvent: (fields4) => {
+        try {
+          Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "transport-request", ...fields4 })).catch(() => void 0);
+        } catch {
+        }
+      }
+    });
     const service = createGalleryReferencePrices({
       get,
       set,
       now,
       diagnosticLog: diagnosticLog2,
+      readFutbinBatch: async (ids, players, options) => {
+        const captured = capture();
+        const result = await readFutbinBatchPrices(ids, players, { ...options, request, now, cache: futbinPages, check: async () => {
+          options.check();
+          captured.assert();
+          const policy = await policyStore.read(captured.scope);
+          captured.assert();
+          options.check();
+          if (!publicPriceSourceEnabled(policy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+        } });
+        record({
+          event: "futbin-batch-result",
+          status: "success",
+          requestedCount: ids.length,
+          count: result.rows.length,
+          requests: result.requests
+        });
+        return result;
+      },
       readFutgg: async (ids, { platform }) => {
         if (!publicPriceSourceEnabled(await readSettings(), "futgg")) throw Error("FC27_PUBLIC_PRICE_FUTGG_DISABLED");
         const reply = await transport.getPrices(ids, { platform });
@@ -26764,6 +27148,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           platform: platform === "pc" ? "pc" : "ps",
           get,
           set,
+          updateIds,
           request: async (url) => {
             const currentPolicy = await policyStore.read(captured.scope);
             captured.assert();
@@ -26775,8 +27160,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             return response;
           }
         });
-        await reader(player);
-        return result;
+        try {
+          await reader(player);
+          const quote2 = result ?? { definitionId, price: null, sourceUpdatedAt: null };
+          record({
+            event: "futbin-quote-result",
+            definitionId,
+            status: quote2.price === null ? "missing" : "success",
+            price: quote2.price,
+            exactVersion: quote2.price !== null,
+            endpoint: "fc27-public-price"
+          });
+          return quote2;
+        } catch (error2) {
+          record({
+            event: "futbin-quote-result",
+            definitionId,
+            status: "failed",
+            reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE",
+            exactVersion: false,
+            endpoint: "fc27-public-price"
+          });
+          throw error2;
+        }
       }
     });
     const load = async (ids, options = {}) => {
@@ -26826,11 +27232,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       },
       load,
-      async preparePurchase(record, options = {}) {
+      async preparePurchase(record2, options = {}) {
         const captured = capture();
-        if (record.scope !== captured.scope) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
-        const ids = record.entries.filter((entry) => entry.state === "waiting").map((entry) => entry.definitionId);
-        const planned2 = record.plan?.filter((item2) => ids.includes(item2.definitionId)) ?? [];
+        if (record2.scope !== captured.scope) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+        const ids = record2.entries.filter((entry) => entry.state === "waiting").map((entry) => entry.definitionId);
+        const planned2 = record2.plan?.filter((item2) => ids.includes(item2.definitionId)) ?? [];
         if (planned2.some((item2) => item2.priceReference)) {
           if (planned2.length !== ids.length || planned2.some((item2) => !item2.priceReference || !item2.pricePolicy || JSON.stringify(item2.pricePolicy) !== JSON.stringify(planned2[0].pricePolicy))) throw Error("FC27_BUY_PRICE_APPROVAL_INVALID");
           return createPurchasePriceApproval({
@@ -26844,7 +27250,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
         }
         const policy = await policyStore.read(captured.scope), references = {};
-        const players = options.rows ?? record.base?.purchases ?? ids.map((id12) => rows.get(id12)).filter(Boolean);
+        const players = options.rows ?? record2.base?.purchases ?? ids.map((id12) => rows.get(id12)).filter(Boolean);
         for (let start = 0; start < ids.length; start += 250) {
           const snapshot = await load(ids.slice(start, start + 250), { ...options, purpose: "purchase", rows: players, policy });
           Object.assign(references, snapshot.references);
@@ -26870,10 +27276,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-streamlined-panel.js
   var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString() : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
+  function streamlinedMarketMessage(result) {
+    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
+    if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
+      return `${source} \u8865\u5361\u62A5\u4EF7\u5728\u7B49\u5F85\u4E2D\u5230\u671F\uFF0C\u5237\u65B0\u540E\u4ECD\u672A\u53D6\u5F97\u5B8C\u6574\u6709\u6548\u62A5\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u4E0D\u4F1A\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u6216\u81EA\u52A8\u5207\u6362\u6765\u6E90\u3002`;
+    }
+    if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ""))) {
+      return `${source} \u8865\u5361\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u8BE5\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002`;
+    }
+    return "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u8865\u5361\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u5019\u9009\u76EE\u5F55\u8FDE\u63A5\uFF08FUT.GG\uFF09\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002";
+  }
   function streamlinedRouteSummary(route) {
     const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
     const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-    return `\u603B\u4EF7\u503C ${number2(total)} \u25C9 \xB7 \u5F85\u8D2D ${number2(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u79EF\u5206 \xB7 ${route.count} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${route.minBatches} \u6279`;
+    return `\u603B\u4EF7\u503C ${number2(total)} \u25C9 \xB7 \u5F85\u8D2D ${number2(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u79EF\u5206 \xB7 ${route.count} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${route.minBatches} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
   }
   function streamlinedExecutionMessage(reason, recovery = null) {
     if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
@@ -26913,6 +27329,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_RECOVERY_REQUIRED: "\u4E0A\u6B21\u8D21\u732E\u5DF2\u53D1\u51FA\uFF0C\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u518D\u6B21\u6295\u5165\u3002",
       FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
+      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
       FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
       FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
     };
@@ -26958,7 +27375,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
     <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58\uFF0B\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u6700\u4F4E\u5F85\u8D2D\u603B\u989D\uFF0C\u6750\u6599\u4F30\u503C\u6B21\u4E4B</option><option value="fewest-cards">\u6700\u5C11\u5361\u7247</option></select></label>
     <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58\uFF0B\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u8D2D\u4E70\u6750\u6599</option></select></label>
-    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label></div>
+    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
     <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
     <output data-status aria-live="polite"></output><progress hidden></progress><section data-result></section>
     <footer><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></footer></dialog>`;
@@ -27016,7 +27433,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       node("rating").value = String(s.maxRating);
       node("market-rating").value = String(s.marketMaxRating ?? 99);
       node("wait").value = String(s.partialWaitMs / 1e3);
-      for (const key of ["club", "storage"]) node(key).checked = s.sources.includes(key);
+      for (const key of ["club", "storage", "unassigned", "transfer"]) node(key).checked = s.sources.includes(key);
     };
     const selectScope = (value) => {
       global = value;
@@ -27045,7 +27462,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       maxRating: Number(node("rating").value),
       marketMaxRating: Number(node("market-rating").value),
       partialWaitMs: Number(node("wait").value) * 1e3,
-      sources: ["club", "storage"].filter((key) => node(key).checked)
+      sources: ["club", "storage", "unassigned", "transfer"].filter((key) => node(key).checked)
     });
     const on = (key, handler) => node(key).addEventListener("click", (event) => {
       if (event.isTrusted) void handler();
@@ -27103,8 +27520,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       shown = null;
       if (!result.plan) {
         const output2 = node("result");
-        if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
-          add2(output2, "div", "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u201C\u5E93\u5B58\uFF0B\u8865\u5361\u201D\u65B9\u6848\u3002\u8BF7\u68C0\u67E5 FUT.GG \u8FDE\u63A5\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002").className = "result-summary";
+        if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
+          add2(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
+          add2(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
+        } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
+          add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
           if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
         } else if (result.reason) {
           add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason}`).className = "result-summary";
@@ -27147,9 +27567,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number2(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${result.items.length} \u5F20 / ${result.batches.length} \u6279`);
       if (result.policy) {
         const stats = result.inventoryStats;
-        const pileText = stats?.byPile ? `Club ${number2(stats.byPile.club)} / Storage ${number2(stats.byPile.storage)}` : "Club / Storage";
+        const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pile} ${number2(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / Storage";
         const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number2(stats.rawByPile.club)} / ${number2(stats.rawByPile.storage)}` : "";
-        add2(output, "small", `FSU Only Untradeable\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw} \xB7 Transfer List \u6682\u4E0D\u652F\u6301\u76F4\u63A5\u8D21\u732E`);
+        add2(output, "small", `FSU Only Untradeable\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
       }
       if (!result.searchComplete) add2(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
       if (!result.poolComplete) add2(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
@@ -27213,7 +27633,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             text5.className = "player-text";
             add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
             add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} \u5206`);
-            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC Storage \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC Storage \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "Unassigned \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "Transfer List \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
             const points = add2(row, "span", `${number2(item2.points)} \u5206`);
             points.className = "player-points";
             const price2 = add2(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number2(item2.price)} \u91D1\u5E01`);
@@ -27263,6 +27683,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add2(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
         add2(details, "small", skipped);
       }
+      if (result.policy?.goldRange?.[1] < 99) {
+        add2(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number2(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
+      }
+      const exclusionBuckets = result.inventorySelection?.buckets;
+      if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
+        const details = add2(output, "details");
+        add2(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number2(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
+        const labels = {
+          "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
+          untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
+          pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
+          "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
+          "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
+        };
+        add2(details, "small", exclusionBuckets.map(
+          (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number2(bucket.rating)}\u7EA7`} \xD7${number2(bucket.count)}`
+        ).join("\uFF1B"));
+      }
       add2(output, "small", result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
       node("contribute").hidden = false;
     };
@@ -27279,10 +27717,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const result = await session2.plan(config(), { onProgress: (p) => {
           if (serial !== opened) return;
           const bar = shadow.querySelector("progress");
-          const stage = { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
+          const stage = p.phase === "market-quotes" && p.refresh ? "\u5237\u65B0\u8FC7\u671F\u8865\u5361\u62A5\u4EF7" : { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
           bar.max = stage ? p.total || 1 : p.maxNodes || 1;
           bar.value = stage ? p.completed : p.nodes;
-          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
+          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
         node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.reason ?? result.status;
@@ -27316,13 +27754,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const outcome = await session2.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === "partial" }, {
           onProgress: (p) => {
             if (serial !== opened) return;
+            const materializeLabel = {
+              "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
+              "checking-club": "\u6838\u5BF9 Club",
+              "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
+              "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
+              "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
+              "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
+              confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
+            }[p.stage];
             if (marketRun) {
-              const label2 = {
+              const label2 = p.phase === "materialize" ? materializeLabel ?? "\u79FB\u5165 Club" : {
                 search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
                 buying: "\u4E70\u5165\u4E2D",
                 moving: "\u79FB\u5165 Club",
                 "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
+                validation: "\u590D\u6838\u6750\u6599",
                 contribution: "\u8D21\u732E\u4E2D",
+                reconciliation: "\u6838\u5BF9\u56DE\u6267",
                 confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4"
               }[p.phase] ?? p.phase;
               node("status").textContent = `\u7B2C ${number2(p.batchNumber)} \u6279 \xB7 ${label2}
@@ -27330,12 +27779,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 \u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
               if (p.readyCount !== void 0) node("status").textContent += `
 \u672C\u6279\u5C31\u7EEA ${number2(p.readyCount)} / ${number2(p.selectionLimit)} \u5F20 \xB7 ${number2(p.readyPoints)} \u5206`;
+              if (p.phase === "materialize") node("status").textContent += `
+\u5916\u90E8\u5361 ${number2(p.completed)} / ${number2(p.materialTotal)} \u5F20`;
               const bar2 = shadow.querySelector("progress");
               bar2.max = p.targetScore || 1;
               bar2.value = p.submittedScore;
               return;
             }
-            const label = { validation: "\u590D\u6838\u6750\u6599", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
+            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "\u590D\u6838\u6750\u6599", materialize: "\u79FB\u5165 Club", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
             node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} \u5206`;
             const bar = shadow.querySelector("progress");
             bar.max = indices.length;
@@ -27448,7 +27899,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       points: integer15(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
       scoreVerified: value.scoreVerified === true,
       rating: integer15(value.rating, 1, 99) ? value.rating : null,
-      pile: ["club", "storage"].includes(value.pile) ? value.pile : null,
+      // Streamlined planning may see cards outside Club/Storage, but those
+      // cards are only executable after the EA move-to-Club materialization
+      // transaction has been confirmed.
+      pile: ["club", "storage", "unassigned", "transfer"].includes(value.pile) ? value.pile : null,
+      duplicateId: integer15(value.duplicateId, 1) ? value.duplicateId : null,
       name: typeof value.name === "string" ? value.name.slice(0, 160) : null,
       leagueId: integer15(value.leagueId, 1) ? value.leagueId : null,
       loans: integer15(value.loans, -1) ? value.loans : null,
@@ -27469,6 +27924,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "protected",
       "eligible"
     ]) item2[key] = typeof value[key] === "boolean" ? value[key] : null;
+    if (["unassigned", "transfer"].includes(item2.pile)) item2.executionPile = "club";
     return deepFreeze(item2);
   }
   function streamlinedProgress(challenge, added = 0) {
@@ -27530,7 +27986,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       sources: value.sources ?? ["club", "storage"],
       partialWaitMs: value.partialWaitMs ?? 6e4
     };
-    if (!integer15(result.maxRating, 1, 99) || !integer15(result.marketMaxRating, 1, 99) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer15(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 2 || result.sources.some((s) => !["club", "storage"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
+    if (!integer15(result.maxRating, 1, 99) || !integer15(result.marketMaxRating, 1, 99) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer15(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
     return deepFreeze(structuredClone(result));
   }
   function createStreamlinedSettings({ get, set }) {
@@ -27599,7 +28055,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         ["league", integer15(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
       ];
       if (item2.source === "inventory") checks.push(
-        ["pile", ["club", "storage"].includes(item2.pile)],
+        ["pile", ["club", "storage", "unassigned", "transfer"].includes(item2.pile)],
         ["concept", item2.concept === false],
         ["trade", item2.activeTrade === false],
         ["loan", item2.limitedUse === false && item2.loans === -1],
@@ -27643,7 +28099,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/streamlined/planner.js
   function splitStreamlinedBatches(items, limit) {
     if (!integer15(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
-    return Array.from({ length: Math.ceil(items.length / limit) }, (_, index) => items.slice(index * limit, (index + 1) * limit));
+    const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
+    const batches = [], nextVersion = /* @__PURE__ */ new Map();
+    let open = 0;
+    for (const item2 of ordered) {
+      let index = ["unassigned", "transfer"].includes(item2.pile) ? Math.max(open, nextVersion.get(item2.definitionId) ?? 0) : open;
+      while (batches[index]?.length >= limit) index++;
+      (batches[index] ??= []).push(item2);
+      nextVersion.set(item2.definitionId, index + 1);
+      while (batches[open]?.length >= limit) open++;
+    }
+    return batches.filter(Boolean);
   }
   function* planStreamlinedSteps({
     challenge,
@@ -27750,12 +28216,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const chosen = best ?? partial, items = [];
     for (let state = chosen; state.item; state = state.prev) items.push(state.item);
     items.reverse();
+    const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
     const reached = !!best, searchComplete = budget === null;
     return {
       status: budget === "cancelled" ? "cancelled" : reached ? "ready" : allowPartial && items.length ? "partial" : "unavailable",
       reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE",
-      items,
-      batches: splitStreamlinedBatches(items, challenge.selectionLimit),
+      items: batches.flat(),
+      batches,
       score: chosen.score,
       purchaseCost: chosen.purchaseCost,
       materialValue: chosen.unknownValue ? null : chosen.materialValue,
@@ -27800,7 +28267,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const { challenge, items, batches } = plan;
     if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
     if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
-    if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage"].includes(i.pile) : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
+    if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
     const inventory = items.filter((i) => i.source === "inventory");
     const value = inventory.some((i) => !integer15(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
@@ -27912,17 +28379,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const { groups, excluded } = groupStreamlinedCandidates(input);
     const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
     const target = challenge.remainingScore, started = now(), frontier2 = [];
+    const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
+    const marketEntries = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
+    const stockByScore = /* @__PURE__ */ new Map();
+    for (const entry of stock) {
+      const rows = stockByScore.get(entry.g.item.points) ?? [];
+      rows.push(entry);
+      stockByScore.set(entry.g.item.points, rows);
+    }
+    for (const rows of stockByScore.values()) rows.sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || Number(b.g.item.pile === "storage" && input.policy.storageFirst) - Number(a.g.item.pile === "storage" && input.policy.storageFirst));
     let nodes = 0, stopped = null, labels = 1;
     const remember = (state) => {
-      if (state.score < target || budget !== null && state.purchaseCost > budget) return;
+      if (state.score < target) return;
+      if (state.purchaseCost && stock.length) for (const { g, i } of marketEntries) {
+        let pending2 = state.counts[i] ?? 0;
+        if (!pending2) continue;
+        for (const entry of stockByScore.get(g.item.points) ?? []) {
+          if (!pending2 || entry.g.item.price == null || entry.g.item.price > g.item.price) break;
+          const count2 = Math.min(pending2, entry.g.quantity - (state.counts[entry.i] ?? 0));
+          if (count2 <= 0) continue;
+          state = add(add(state, g, i, -count2), entry.g, entry.i, count2);
+          pending2 -= count2;
+        }
+      }
+      if (budget !== null && state.purchaseCost > budget) return;
       if (frontier2.some((row) => dominates(row, state, rank3))) return;
       for (let i = frontier2.length - 1; i >= 0; i--) {
         if (dominates(state, frontier2[i], rank3)) frontier2.splice(i, 1);
       }
       frontier2.push(state);
     };
-    function* checkpoint() {
-      if (nodes % 128 === 0) {
+    function* checkpoint(force = false) {
+      if (force || nodes % 128 === 0) {
         const cancelled = yield {
           phase: "routes",
           nodes,
@@ -27938,8 +28426,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (nodes >= maxNodes) stopped ??= "nodes";
       return !!stopped;
     }
-    const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
-    const market = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
+    const cheapest = /* @__PURE__ */ new Map();
+    for (const [i, g] of groups.entries()) if (g.source === "market") {
+      const old = cheapest.get(g.item.points);
+      if (!old || g.item.price < old.g.item.price) cheapest.set(g.item.points, { g, i });
+    }
+    const market = [...cheapest.values()].sort((a, b) => a.g.item.price / a.g.item.points - b.g.item.price / b.g.item.points || b.g.item.points - a.g.item.points);
     const bases = [empty()];
     for (const order2 of [
       stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points),
@@ -27957,13 +28449,52 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const base of bases) for (const { g, i } of market) {
       if (base.score < target) remember(add(base, g, i, Math.ceil((target - base.score) / g.item.points)));
     }
+    fast: for (const left of market) {
+      remember(add(empty(), left.g, left.i, Math.ceil(target / left.g.item.points)));
+      const bulk = add(empty(), left.g, left.i, Math.floor(target / left.g.item.points));
+      for (const right of market) {
+        remember(bulk.score >= target ? bulk : add(
+          bulk,
+          right.g,
+          right.i,
+          Math.ceil((target - bulk.score) / right.g.item.points)
+        ));
+        nodes++;
+      }
+      if (yield* checkpoint(true)) break fast;
+    }
+    mixed: for (const order2 of [
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points || b.g.item.points - a.g.item.points),
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points)
+    ]) {
+      if (stopped) break;
+      let base = empty();
+      for (const { g, i } of order2) {
+        for (let n = 0; n < g.quantity && base.score < target; n++) {
+          base = add(base, g, i, 1);
+          if (base.score >= target) {
+            remember(base);
+            break;
+          }
+          for (const version of market) {
+            remember(add(base, version.g, version.i, Math.ceil((target - base.score) / version.g.item.points)));
+            nodes++;
+            if (yield* checkpoint()) break mixed;
+          }
+        }
+        if (base.score >= target) break;
+      }
+    }
     seed: for (const base of bases) {
+      if (stopped) break;
       if (base.score >= target) continue;
       for (let a = 0; a < market.length; a++) {
         const left = market[a];
         remember(add(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
         for (let b = a + 1; b < market.length; b++) {
           const right = market[b], count2 = Math.ceil((target - base.score) / left.g.item.points);
+          const bulk = add(base, left.g, left.i, Math.floor((target - base.score) / left.g.item.points));
+          remember(bulk.score >= target ? bulk : add(bulk, right.g, right.i, Math.ceil((target - bulk.score) / right.g.item.points)));
           for (let n = 0; n <= count2; n++) {
             let state = add(base, left.g, left.i, n);
             if (state.score < target) state = add(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
@@ -28000,33 +28531,109 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     }
     frontier2.sort(rank3);
-    const routes = frontier2.map((state, index) => ({
-      id: `route:${index}`,
-      score: state.score,
-      excess: state.score - target,
-      count: state.count,
-      purchaseCost: state.purchaseCost,
-      materialValue: state.unknownValue ? null : state.materialValue,
-      totalValue: state.unknownValue ? null : streamlinedResourceCost(state),
-      unknownValueCount: state.unknownValue,
-      inventoryCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "inventory" ? n : 0), 0),
-      marketCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "market" ? n : 0), 0),
-      minBatches: Math.ceil(state.count / challenge.selectionLimit),
-      groups: state.counts.flatMap((count2, i) => count2 ? [{ ...groups[i], quantity: count2 }] : []),
-      searchComplete: stopped === null,
-      supplyVerified: false
-    }));
+    const diversified = [];
+    const familyKey = (g) => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
+    const families = /* @__PURE__ */ new Map();
+    for (const entry of marketEntries) {
+      const key = familyKey(entry.g), family = families.get(key) ?? [];
+      family.push(entry);
+      families.set(key, family);
+    }
+    for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
+    for (const base of frontier2.slice(0, 8)) {
+      if (!base.purchaseCost || base.unknownValue) continue;
+      const demands = /* @__PURE__ */ new Map();
+      let upper = 1;
+      let owned2 = base;
+      for (const { g, i } of marketEntries) {
+        const count2 = base.counts[i] ?? 0;
+        if (!count2) continue;
+        demands.set(familyKey(g), (demands.get(familyKey(g)) ?? 0) + count2);
+        upper = Math.max(upper, Math.ceil(count2 / g.items.length));
+        owned2 = add(owned2, g, i, -count2);
+      }
+      if (upper <= 1) continue;
+      let lower = Math.ceil(base.count / challenge.selectionLimit);
+      for (const [key, count2] of demands) lower = Math.max(
+        lower,
+        Math.ceil(count2 / families.get(key).reduce((sum2, entry) => sum2 + entry.g.items.length, 0))
+      );
+      const cover = (waves) => {
+        let state = owned2;
+        for (const [key, count2] of demands) {
+          let remaining = count2;
+          for (const { g, i } of families.get(key)) {
+            const quantity = Math.min(remaining, waves * g.items.length);
+            if (quantity) state = add(state, g, i, quantity);
+            remaining -= quantity;
+            if (!remaining) break;
+          }
+          if (remaining) return null;
+        }
+        return state;
+      };
+      const cost = (state) => objective === "lowest-value" ? streamlinedResourceCost(state) : state.purchaseCost;
+      for (const premium of [5, 10, 20, 30]) {
+        const cap = Math.floor(cost(base) * (1 + premium / 100));
+        const within = (state) => state && cost(state) <= cap && (budget === null || state.purchaseCost <= budget);
+        let lo = lower, hi = upper - 1, choice = null;
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2), state = cover(mid);
+          if (within(state)) {
+            choice = state;
+            hi = mid - 1;
+          } else lo = mid + 1;
+        }
+        if (choice && !diversified.some((row) => JSON.stringify(row.counts) === JSON.stringify(choice.counts))) diversified.push(choice);
+      }
+    }
+    const routeStates = [...frontier2, ...diversified].sort(rank3);
+    const routes = routeStates.map((state, index) => {
+      const selectedGroups = state.counts.flatMap((count2, i) => count2 ? [{ ...groups[i], quantity: count2 }] : []);
+      const marketGroups = selectedGroups.filter((g) => g.source === "market");
+      const repeatPurchaseCount = marketGroups.reduce((sum2, g) => sum2 + Math.max(0, g.quantity - g.items.length), 0);
+      return {
+        id: `route:${index}`,
+        score: state.score,
+        excess: state.score - target,
+        count: state.count,
+        purchaseCost: state.purchaseCost,
+        materialValue: state.unknownValue ? null : state.materialValue,
+        totalValue: state.unknownValue ? null : streamlinedResourceCost(state),
+        unknownValueCount: state.unknownValue,
+        inventoryCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "inventory" ? n : 0), 0),
+        marketCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "market" ? n : 0), 0),
+        minBatches: Math.max(
+          Math.ceil(state.count / challenge.selectionLimit),
+          ...marketGroups.map((g) => Math.ceil(g.quantity / g.items.length))
+        ),
+        repeatPurchaseCount,
+        groups: selectedGroups,
+        searchComplete: stopped === null,
+        supplyVerified: false
+      };
+    });
     const selected = /* @__PURE__ */ new Set();
     if (routes.length) {
       selected.add(routes[0]);
       for (const extra of [5, 10, 20, 30]) {
         const cost = (r) => objective === "lowest-value" ? streamlinedResourceCost(r) : r.purchaseCost;
         const cap = Math.floor(cost(routes[0]) * (1 + extra / 100));
-        const choice = routes.filter((r) => cost(r) <= cap).sort((a, b) => a.count - b.count || rank3(a, b))[0];
+        const choice = routes.filter((r) => cost(r) <= cap).sort((a, b) => a.minBatches - b.minBatches || a.count - b.count || rank3(a, b))[0];
         if (choice) selected.add(choice);
       }
       selected.add(routes.slice().sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0]);
       selected.add(routes.slice().sort((a, b) => compareStreamlinedPlans(a, b, "lowest-coins"))[0]);
+      const addLane = (predicate2) => {
+        const lane = routes.filter(predicate2).sort(rank3)[0];
+        if (lane) selected.add(lane);
+      };
+      addLane((route) => route.inventoryCount === 0 && route.marketCount > 0);
+      addLane((route) => route.inventoryCount > 0 && route.marketCount === 0);
+      addLane((route) => route.inventoryCount > 0 && route.marketCount > 0);
+      const practicalStates = new Set(diversified);
+      const practical = routes.filter((_route, index) => practicalStates.has(routeStates[index])).sort((a, b) => a.minBatches - b.minBatches || rank3(a, b))[0];
+      if (practical) selected.add(practical);
     }
     return deepFreeze({
       status: stopped === "cancelled" ? "cancelled" : routes.length ? "ready" : "unavailable",
@@ -28067,7 +28674,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function expandStreamlinedRoute(route, challenge) {
     if (!route || !integer15(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail28("ROUTE_INVALID");
     const items = [], copies = /* @__PURE__ */ new Map();
-    for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market"))) {
+    for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(["unassigned", "transfer"].includes(a.item.pile)) - Number(["unassigned", "transfer"].includes(b.item.pile)))) {
       if (!integer15(group.quantity, 1, 2e4) || !group.items?.length) fail28("ROUTE_INVALID");
       for (let n = 0; n < group.quantity; n++) {
         if (group.source === "inventory") {
@@ -28081,10 +28688,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     }
     if (items.length !== route.count) fail28("ROUTE_INVALID");
+    const batches = [], nextByDefinition = /* @__PURE__ */ new Map();
+    let firstOpen = 0;
+    for (const item2 of items) {
+      let index = item2.source === "market" || ["unassigned", "transfer"].includes(item2.pile) ? Math.max(firstOpen, nextByDefinition.get(item2.definitionId) ?? 0) : firstOpen;
+      while (batches[index]?.length >= challenge.selectionLimit) index++;
+      (batches[index] ??= []).push(item2);
+      nextByDefinition.set(item2.definitionId, index + 1);
+      while (batches[firstOpen]?.length >= challenge.selectionLimit) firstOpen++;
+    }
     return {
       status: "ready",
-      items,
-      batches: splitStreamlinedBatches(items, challenge.selectionLimit),
+      items: batches.flat(),
+      batches,
       score: route.score,
       purchaseCost: route.purchaseCost,
       materialValue: route.materialValue,
@@ -28093,6 +28709,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
       poolComplete: false
     };
+  }
+
+  // src/streamlined/quotes.js
+  function streamlinedQuoteFailure(references, source, ids, at10, { requireFresh = true } = {}) {
+    for (const id12 of ids) {
+      const quote2 = references[id12]?.quotes?.[source];
+      if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") return quote2.error;
+      if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at10 || quote2.expiresAt <= at10)) return "FC27_STREAMLINED_QUOTES_EXPIRED";
+    }
+    return null;
   }
 
   // src/adapters/browser/fc27-streamlined-session.js
@@ -28109,14 +28735,51 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     createExecution = null
   } = {}) {
     const settings = createStreamlinedSettings({ get, set });
-    let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null;
+    let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
     const safeReason10 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_EXECUTION_UNAVAILABLE";
+    const executionEvidence = (error2) => {
+      if (!error2 || typeof error2 !== "object") return {};
+      const evidence = {};
+      if (typeof error2.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) evidence.methodPath = error2.methodPath;
+      if (typeof error2.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) evidence.observedHash = error2.observedHash;
+      if (typeof error2.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) evidence.expectedHash = error2.expectedHash;
+      return evidence;
+    };
     const log = (row) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "streamlined", event: "plan", ...row })).catch(() => {
         });
       } catch {
       }
+    };
+    const logRoute = (route, phase = "selected") => {
+      if (!route) return;
+      log({
+        event: "route-summary",
+        phase,
+        currentScore: route.score,
+        count: route.count,
+        estimatedCost: route.purchaseCost,
+        materialValue: route.materialValue,
+        totalValue: route.totalValue,
+        routeInventoryCount: route.inventoryCount,
+        routeMarketCount: route.marketCount,
+        minBatches: route.minBatches,
+        repeatPurchaseCount: route.repeatPurchaseCount
+      });
+      if (phase !== "selected") return;
+      for (const group of route.groups.slice(0, 16)) log({
+        event: "route-group",
+        source: group.source,
+        phase: group.item.pile ?? "market",
+        definitionId: group.item.definitionId,
+        rating: group.item.rating,
+        unitScore: group.item.points,
+        count: group.quantity,
+        requestedCount: group.items.length,
+        referencePrice: group.item.price,
+        maxBuy: group.item.purchaseMaxBuy
+      });
     };
     const capture = () => {
       const value = inspect();
@@ -28166,6 +28829,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stopRequested = false;
         preview = null;
         routePreview = null;
+        const run = ++planningRun;
         const progress = (row) => {
           try {
             onProgress(row);
@@ -28179,48 +28843,177 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const check = () => {
             unchanged(origin);
             input.assertCurrent();
-            if (stopRequested) fail28("CANCELLED");
+            if (stopRequested || run !== planningRun) fail28("CANCELLED");
+          };
+          const waitRead = async (read, initial, progressStartedAt = null) => {
+            const started = now();
+            let last = initial, active = true;
+            const report = (row) => {
+              if (active) {
+                last = row;
+                progress({ ...row, elapsedMs: now() - (progressStartedAt ?? started) });
+              }
+            };
+            report(initial);
+            let timer, outcome = "success", reason = null;
+            try {
+              return await Promise.race([
+                Promise.resolve().then(() => read(report)),
+                new Promise((_resolve, reject) => {
+                  timer = setInterval(() => {
+                    try {
+                      check();
+                      report(last);
+                    } catch (error2) {
+                      reject(error2);
+                    }
+                  }, 250);
+                })
+              ]);
+            } catch (error2) {
+              outcome = "failed";
+              reason = safeReason10(error2);
+              throw error2;
+            } finally {
+              active = false;
+              clearInterval(timer);
+              log({
+                event: "planning-read",
+                phase: last.phase,
+                source: last.source,
+                status: outcome,
+                reason,
+                durationMs: Math.max(0, now() - started),
+                count: last.completed,
+                requestedCount: last.total
+              });
+            }
           };
           const filtered = filterStreamlinedItems(input.inventory, input);
           if (filtered.status !== "observed") return filtered;
+          const inventoryByKey = new Map(input.inventory.map((item2) => [item2.key, item2]));
+          const exclusionBuckets = /* @__PURE__ */ new Map();
+          for (const row of filtered.excludedRows ?? []) {
+            const item2 = inventoryByKey.get(row.key);
+            const key = JSON.stringify([row.reason, item2?.pile ?? "unknown", item2?.rating ?? null]);
+            const bucket = exclusionBuckets.get(key) ?? { reason: row.reason, pile: item2?.pile ?? "unknown", rating: item2?.rating ?? null, count: 0 };
+            bucket.count++;
+            exclusionBuckets.set(key, bucket);
+          }
+          const inventorySelection = {
+            readCount: input.inventory.length,
+            eligibleCount: filtered.items.length,
+            excluded: { ...filtered.excluded },
+            buckets: [...exclusionBuckets.values()].sort((a, b) => b.count - a.count || String(a.reason).localeCompare(String(b.reason))).slice(0, 24)
+          };
+          for (const bucket of inventorySelection.buckets) {
+            log({
+              event: "inventory-exclusion",
+              phase: bucket.reason,
+              source: bucket.pile,
+              rating: bucket.rating ?? void 0,
+              count: bucket.count,
+              inventoryMaxRating: input.policy.maxRating,
+              fsuGoldMin: input.policy.goldRange[0],
+              fsuGoldMax: input.policy.goldRange[1],
+              onlyUntradeable: input.policy.onlyUntradeable
+            });
+          }
           const ids = [...new Set(filtered.items.map((i) => i.definitionId))];
           const references = {};
           let quoteSource = "futgg", quoteReadError = null, purchaseAttempts = 3;
           if (prices && config.mode !== "market") {
+            const inventoryQuotesStartedAt = now();
             for (let offset = 0; offset < ids.length; offset += 250) {
               check();
-              progress({ phase: "quotes", completed: offset, total: ids.length });
               try {
-                const snapshot = await prices.load(ids.slice(offset, offset + 250), {
+                const batch = ids.slice(offset, offset + 250);
+                const snapshot = await waitRead((report) => prices.load(batch, {
                   purpose: "puzzle",
                   rows: input.priceRows,
+                  futbinBatch: true,
+                  onProgress: (p) => report({ phase: "quotes", source: p.source, completed: offset + p.index, total: ids.length }),
                   isCurrent: () => {
                     check();
                     return true;
                   }
-                });
+                }), { phase: "quotes", completed: offset, total: ids.length }, inventoryQuotesStartedAt);
                 if (offset && snapshot.policy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
                 quoteSource = snapshot.policy.source;
                 purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
                 Object.assign(references, snapshot.references);
+                quoteReadError = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+                progress({ phase: "quotes", source: quoteSource, completed: offset + batch.length, total: ids.length });
+                log({
+                  event: "planning-read",
+                  phase: "quotes",
+                  status: quoteReadError ? "failed" : "success",
+                  source: quoteSource,
+                  reason: quoteReadError,
+                  count: offset + batch.length,
+                  requestedCount: ids.length
+                });
+                if (quoteReadError) break;
               } catch (error2) {
                 quoteReadError = /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_QUOTES_UNAVAILABLE";
                 break;
               }
             }
+            log({
+              event: "planning-read",
+              phase: "inventory-quotes",
+              status: quoteReadError ? "failed" : "success",
+              source: quoteSource,
+              reason: quoteReadError,
+              durationMs: Math.max(0, now() - inventoryQuotesStartedAt),
+              count: Object.keys(references).length,
+              requestedCount: ids.length
+            });
           }
           check();
+          if (quoteReadError && config.mode === "inventory-market" && typeof readMarketCandidates === "function") {
+            log({
+              status: "blocked",
+              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
+              localReason: quoteReadError,
+              source: quoteSource,
+              requestedCount: ids.length
+            });
+            return {
+              status: "blocked",
+              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
+              quoteReadError,
+              quoteSource,
+              plan: null,
+              liveExecutionEnabled: false
+            };
+          }
           let market = [], marketError = null;
           if (config.mode !== "inventory" && typeof readMarketCandidates === "function") {
             try {
               check();
-              const data = await readMarketCandidates({ input, ids, quoteSource, references, check, onProgress: progress });
+              const data = await waitRead((report) => readMarketCandidates({
+                input,
+                ids,
+                quoteSource,
+                references,
+                check,
+                onProgress: report
+              }), { phase: "catalog", completed: 0, total: 0 });
               market = Array.isArray(data) ? data : data.market;
               if (!Array.isArray(market)) fail28("MARKET_CANDIDATES_UNVERIFIED");
               if (data.pricePolicy) {
                 if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
                 quoteSource = data.pricePolicy.source;
                 purchaseAttempts = data.pricePolicy.purchaseAttempts ?? 3;
+              }
+              const at10 = now();
+              for (const id12 of ids) {
+                const q = data.references?.[id12]?.quotes?.[quoteSource];
+                const old = references[id12]?.quotes?.[quoteSource];
+                if (q?.source === quoteSource && q.definitionId === id12 && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at10 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at10 && (!old || q.fetchedAt > old.fetchedAt)) {
+                  references[id12] = { ...references[id12], quotes: { ...references[id12]?.quotes, [quoteSource]: q } };
+                }
               }
             } catch (error2) {
               marketError = safeReason10(error2);
@@ -28229,7 +29022,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           check();
           const marketProvider = typeof readMarketCandidates === "function";
-          if (config.mode === "inventory-market" && marketProvider && (!market.length || marketError)) {
+          if (config.mode !== "inventory" && marketProvider && (!market.length || marketError)) {
             const reason = "FC27_STREAMLINED_MARKET_UNAVAILABLE";
             const unavailable = {
               status: "blocked",
@@ -28247,7 +29040,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             log({
               status: unavailable.status,
               reason,
-              marketError: unavailable.marketError,
+              localReason: unavailable.marketError,
               marketRequested: true,
               inventoryCount: input.inventoryStats?.count
             });
@@ -28255,11 +29048,49 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           check();
           const quoteAt = now();
+          quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids, quoteAt, { requireFresh: false });
+          if (quoteReadError && config.mode === "inventory-market" && marketProvider) {
+            log({ status: "blocked", reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE", localReason: quoteReadError, source: quoteSource });
+            return {
+              status: "blocked",
+              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
+              quoteReadError,
+              quoteSource,
+              plan: null,
+              liveExecutionEnabled: false
+            };
+          }
           const inventory = input.inventory.map((item2) => {
             const q = references[item2.definitionId]?.quotes?.[quoteSource];
             const valid3 = q?.definitionId === item2.definitionId && q?.source === quoteSource && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.fetchedAt <= quoteAt && q.expiresAt > quoteAt;
             return { ...item2, price: valid3 ? q.price : null, quote: valid3 ? q : null };
           });
+          const eligibleKeys = new Set(filtered.items.map((item2) => item2.key)), buckets = /* @__PURE__ */ new Map();
+          for (const item2 of [...inventory.filter((item3) => eligibleKeys.has(item3.key)), ...market]) {
+            const key = JSON.stringify([item2.source, item2.pile, item2.rating, item2.points]);
+            let bucket = buckets.get(key);
+            if (!bucket) {
+              bucket = {
+                event: "candidate-bucket",
+                source: item2.source,
+                phase: item2.pile ?? "market",
+                rating: item2.rating,
+                unitScore: item2.points,
+                count: 0,
+                quotedCount: 0,
+                cheapestPrice: null,
+                bestPrice: null
+              };
+              buckets.set(key, bucket);
+            }
+            bucket.count++;
+            if (item2.price != null) {
+              bucket.quotedCount++;
+              bucket.cheapestPrice = Math.min(bucket.cheapestPrice ?? Infinity, item2.price);
+              bucket.bestPrice = Math.max(bucket.bestPrice ?? 0, item2.price);
+            }
+          }
+          for (const source of ["inventory", "market"]) for (const bucket of [...buckets.values()].filter((row) => row.source === source).sort((a, b) => b.count - a.count || b.unitScore - a.unitScore).slice(0, 16)) log(bucket);
           const options = {
             onProgress: (p) => {
               check();
@@ -28307,7 +29138,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             objective: config.objective,
             execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs }
           }) : null;
-          let execution = null, executionReason = "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED", executionRecovery = null;
+          let execution = null, executionReason = "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED", executionRecovery = null, executionError = null;
           if (plan && typeof createExecution === "function") {
             try {
               execution = await createExecution(origin.context, plan);
@@ -28316,15 +29147,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               executionReason = null;
             } catch (error2) {
               execution = null;
+              executionError = error2;
               executionReason = safeReason10(error2);
               executionRecovery = error2?.recovery ?? null;
             }
             check();
           }
           if (plan) preview = { origin, input, items: result.items, plan, execution };
-          if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError, execution: plan.execution };
+          if (plan && routes.length) routePreview = {
+            origin,
+            input,
+            config,
+            routes,
+            result,
+            quoteSource,
+            marketError,
+            inventorySelection,
+            execution: plan.execution
+          };
           const inventoryStats = input.inventoryStats ?? {};
           const excluded = result.excluded ?? {};
+          const filteredInventoryCount = Object.values(filtered.excluded ?? {}).reduce((sum2, count2) => sum2 + (Number.isSafeInteger(count2) ? count2 : 0), 0);
           log({
             status: result.status,
             evaluations: result.nodes,
@@ -28348,16 +29191,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             inventoryTradeableCount: inventoryStats.tradeability?.tradeable,
             inventoryUntradeableCount: inventoryStats.tradeability?.untradeable,
             inventoryTradeabilityUnknown: inventoryStats.tradeability?.unknown,
+            eligibleInventoryCount: filtered.items.length,
+            filteredInventoryCount,
             acceptedInventoryCount: result.items?.filter((item2) => item2.source === "inventory").length,
+            routeInventoryCount: result.items?.filter((item2) => item2.source === "inventory").length,
+            routeMarketCount: result.items?.filter((item2) => item2.source === "market").length,
+            routeMaterialValue: result.materialValue,
             excludedTradeCount: excluded.trade,
             excludedPileCount: excluded.pile,
             excludedEligibilityCount: Object.entries(excluded).filter(([key]) => key.startsWith("eligibility-")).reduce((sum2, [, count2]) => sum2 + count2, 0),
+            excludedGoldRangeCount: filtered.excluded?.["fsu-gold-range"],
+            fsuGoldMax: input.policy.goldRange?.[1],
             reason: result.reason
           });
+          logRoute(result.route);
+          for (const route of routes.filter((row) => row.id !== result.route?.id).slice(0, 12)) logRoute(route, "alternative");
           if (executionReason) log({
             event: "execution-preflight",
             status: "blocked",
             reason: executionReason,
+            ...executionEvidence(executionError),
             setId: executionRecovery?.setId,
             challengeId: executionRecovery?.challengeId,
             phase: executionRecovery?.phase
@@ -28385,6 +29238,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             marketPending: config.mode !== "inventory" && market.length === 0,
             policy: input.policy,
             inventoryStats: input.inventoryStats ?? null,
+            inventorySelection,
             liveExecutionEnabled: !!execution,
             executionReason,
             executionRecovery
@@ -28415,7 +29269,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             objective: saved.config.objective,
             execution: saved.execution
           });
-          let execution = null, executionReason = "FC27_STREAMLINED_PURCHASE_PENDING";
+          let execution = null, executionReason = "FC27_STREAMLINED_PURCHASE_PENDING", executionError = null;
           if (typeof createExecution === "function") {
             try {
               execution = await createExecution(saved.origin.context, plan);
@@ -28424,11 +29278,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               executionReason = null;
             } catch (error2) {
               execution = null;
+              executionError = error2;
               executionReason = safeReason10(error2);
             }
           }
           unchanged(saved.origin);
           preview = { origin: saved.origin, input: saved.input, items: result.items, plan, execution };
+          logRoute(route);
+          if (executionReason) log({
+            event: "execution-preflight",
+            status: "blocked",
+            reason: executionReason,
+            ...executionEvidence(executionError)
+          });
           return {
             ...saved.result,
             ...result,
@@ -28440,7 +29302,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             marketPending: false,
             marketError: saved.marketError,
             executionReason,
-            liveExecutionEnabled: !!execution
+            liveExecutionEnabled: !!execution,
+            policy: saved.input.policy,
+            inventoryStats: saved.input.inventoryStats ?? null,
+            inventorySelection: saved.inventorySelection
           };
         } catch (error2) {
           preview = null;
@@ -28487,6 +29352,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const origin = capture();
           activeExecution = await createExecution(origin.context);
           unchanged(origin);
+          const materialization = typeof activeExecution.recoverMaterialization === "function" ? await activeExecution.recoverMaterialization(origin.context) : { status: "absent" };
+          if (["recovery-required", "blocked", "replan-required"].includes(materialization.status)) {
+            log({ event: "recovery", status: materialization.status, reason: materialization.reason });
+            return materialization;
+          }
           const purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
           if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
             log({ event: "recovery", status: purchase.status, reason: purchase.reason });
@@ -28496,7 +29366,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             origin.context,
             { setId: origin.challenge.setId, challengeId: origin.challenge.id }
           );
-          const result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
+          let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
+          if (materialization.status !== "absent") {
+            result = { ...result, materializationRecovery: materialization };
+            if (result.status === "absent" && materialization.status === "recovered") {
+              result = { ...materialization, ...result, status: "recovered", materializationRecovery: materialization };
+            }
+          }
           const current2 = capture();
           if (!same25(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
           log({
@@ -28592,7 +29468,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const solution = target?.[platform];
       if (data.setEaId !== challenge.setId || target?.scoreRequirement !== challenge.targetScore || !Array.isArray(solution?.rates) || solution.rates.length > 100) fail28("CATALOG_RULES_CHANGED");
       const marketMaxRating = policy.marketMaxRating ?? policy.maxRating;
-      const rates = solution.rates.filter((row) => integer15(row.overall, 1, marketMaxRating) && integer15(row.rarityEaId, 0, 1e4) && integer15(row.score, 1)).sort((a, b) => a.overall - b.overall);
+      const routeGroups = data.routeGroups ?? [];
+      if (!Array.isArray(routeGroups) || routeGroups.length > 100 || routeGroups.some((row) => !integer15(row?.overall, 1, 99) || !integer15(row?.rarityEaId, 0, 1e4))) fail28("CATALOG_RULES_CHANGED");
+      const descriptors = [...solution.rates.filter((row) => integer15(row?.score, 1)), ...routeGroups];
+      const byGroup = /* @__PURE__ */ new Map();
+      for (const row of descriptors) if (integer15(row?.overall, 1, marketMaxRating) && integer15(row?.rarityEaId, 0, 1e4)) {
+        byGroup.set(`${row.overall}:${row.rarityEaId}`, row);
+      }
+      if (byGroup.size > 100) fail28("CATALOG_RULES_CHANGED");
+      const rates = [...byGroup.values()].sort((a, b) => a.overall - b.overall || a.rarityEaId - b.rarityEaId);
       const ids = /* @__PURE__ */ new Set();
       let completed = 0;
       for (const rate of rates) {
@@ -28613,9 +29497,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/ea/fc27-streamlined-market.js
-  function createFc27StreamlinedMarket(root, { catalog, prices, now = () => Date.now() }) {
+  function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticLog: diagnosticLog2 = null, now = () => Date.now() }) {
     const cache = /* @__PURE__ */ new Map();
     let busy = false;
+    const record = (fields4) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({ area: "streamlined", event: "market-quote-window", ...fields4 })).catch(() => {
+        });
+      } catch {
+      }
+    };
     const request = (criteria) => new Promise((resolve, reject) => {
       const owner = {};
       let observable, done = false;
@@ -28710,7 +29601,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         const filtered = filterStreamlinedItems(projected2, input);
         if (filtered.status !== "observed") throw Error(filtered.reason);
-        const market = [], references = {};
+        const references = {}, quotesStartedAt = now();
         let pricePolicy = null;
         for (let start = 0; start < filtered.items.length; start += 250) {
           assert();
@@ -28718,6 +29609,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const batch = filtered.items.slice(start, start + 250);
           const snapshot = await prices.load(batch.map((row) => row.definitionId), {
             purpose: "puzzle",
+            futbinBatch: true,
+            onProgress: (p) => onProgress({
+              phase: "market-quotes",
+              source: p.source,
+              completed: start + p.index,
+              total: filtered.items.length
+            }),
             rows: batch.map((item2) => {
               const raw = entities.get(item2.definitionId);
               return {
@@ -28738,27 +29636,122 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (pricePolicy && !same25(pricePolicy, snapshot.policy)) fail28("PRICE_POLICY_CHANGED");
           pricePolicy = snapshot.policy;
           Object.assign(references, snapshot.references);
-          for (const item2 of batch) {
-            const quote2 = snapshot.references[item2.definitionId]?.quotes?.[pricePolicy.source];
-            if (!quote2?.error && integer15(quote2?.price, 150, 15e6) && quote2.fetchedAt <= now() && quote2.expiresAt > now()) {
-              const values7 = { [pricePolicy.source]: quote2.price };
-              const authority = galleryReferenceQuote(values7, pricePolicy);
-              if (!integer15(authority.maxBuy, 150, 15e6)) continue;
-              const raw = entities.get(item2.definitionId);
-              market.push({
-                ...item2,
-                price: quote2.price,
-                purchaseMaxBuy: authority.maxBuy,
-                quote: quote2,
-                priceReference: snapshot.references[item2.definitionId],
-                pricePolicy,
-                nationId: raw.nationId,
-                teamId: raw.teamId,
-                preferredPosition: raw.preferredPosition
-              });
+          const quoteError2 = streamlinedQuoteFailure(
+            snapshot.references,
+            pricePolicy.source,
+            batch.map((row) => row.definitionId),
+            now(),
+            { requireFresh: false }
+          );
+          if (quoteError2) throw Error(quoteError2);
+        }
+        const ids = filtered.items.map((row) => row.definitionId), checkedAt = now();
+        const refreshWindowMs = Math.max(0, checkedAt - quotesStartedAt);
+        const staleIds = ids.filter((id12) => {
+          const quote2 = references[id12]?.quotes?.[pricePolicy?.source];
+          return quote2?.price != null && Number.isSafeInteger(quote2.expiresAt) && quote2.expiresAt <= checkedAt + refreshWindowMs;
+        });
+        if (staleIds.length) record({
+          source: pricePolicy.source,
+          phase: "refresh",
+          status: "started",
+          requestedCount: ids.length,
+          count: staleIds.length,
+          durationMs: refreshWindowMs
+        });
+        for (let start = 0; start < staleIds.length; start += 250) {
+          assert();
+          const batch = staleIds.slice(start, start + 250);
+          onProgress({
+            phase: "market-quotes",
+            source: pricePolicy.source,
+            completed: start,
+            total: staleIds.length,
+            refresh: true
+          });
+          const refresh = await prices.load(batch, {
+            purpose: "puzzle",
+            futbinBatch: true,
+            forceSources: [pricePolicy.source],
+            rows: batch.map((id12) => {
+              const raw = entities.get(id12);
+              return {
+                definitionId: id12,
+                rating: raw?._rating,
+                nationId: raw?.nationId,
+                leagueId: raw?.leagueId,
+                teamId: raw?.teamId,
+                preferredPosition: raw?.preferredPosition
+              };
+            }),
+            onProgress: (p) => onProgress({
+              phase: "market-quotes",
+              source: p.source,
+              completed: start + p.index,
+              total: staleIds.length,
+              refresh: true
+            }),
+            isCurrent: () => {
+              assert();
+              return true;
             }
+          });
+          assert();
+          if (!same25(pricePolicy, refresh.policy)) fail28("PRICE_POLICY_CHANGED");
+          Object.assign(references, refresh.references);
+          const refreshError = streamlinedQuoteFailure(refresh.references, pricePolicy.source, batch, now(), { requireFresh: false });
+          if (refreshError) throw Error(refreshError);
+        }
+        const quoteAt = now();
+        const quoteError = streamlinedQuoteFailure(references, pricePolicy?.source, ids, quoteAt);
+        if (quoteError) {
+          const invalidIds = ids.filter((id12) => streamlinedQuoteFailure(references, pricePolicy?.source, [id12], quoteAt));
+          for (const id12 of invalidIds.slice(0, 3)) {
+            const quote2 = references[id12]?.quotes?.[pricePolicy?.source];
+            record({
+              source: pricePolicy?.source,
+              phase: "validate",
+              status: "failed",
+              reason: quoteError,
+              requestedCount: ids.length,
+              count: invalidIds.length,
+              definitionId: id12,
+              fetchedAt: quote2?.fetchedAt,
+              expiresAt: quote2?.expiresAt,
+              durationMs: Math.max(0, quoteAt - quotesStartedAt)
+            });
+          }
+          throw Error(quoteError);
+        }
+        record({
+          source: pricePolicy?.source,
+          phase: "validate",
+          status: "success",
+          requestedCount: ids.length,
+          count: staleIds.length,
+          durationMs: Math.max(0, quoteAt - quotesStartedAt)
+        });
+        const market = [];
+        for (const item2 of filtered.items) {
+          const quote2 = references[item2.definitionId]?.quotes?.[pricePolicy.source];
+          if (!quote2?.error && integer15(quote2?.price, 150, 15e6) && quote2.fetchedAt <= quoteAt && quote2.expiresAt > quoteAt) {
+            const authority = galleryReferenceQuote({ [pricePolicy.source]: quote2.price }, pricePolicy);
+            if (!integer15(authority.maxBuy, 150, 15e6)) continue;
+            const raw = entities.get(item2.definitionId);
+            market.push({
+              ...item2,
+              price: quote2.price,
+              purchaseMaxBuy: authority.maxBuy,
+              quote: quote2,
+              priceReference: references[item2.definitionId],
+              pricePolicy,
+              nationId: raw.nationId,
+              teamId: raw.teamId,
+              preferredPosition: raw.preferredPosition
+            });
           }
         }
+        onProgress({ phase: "market-quotes", source: pricePolicy?.source, completed: filtered.items.length, total: filtered.items.length });
         return { market, references, pricePolicy, complete: false, candidateCount: projected2.length };
       } finally {
         busy = false;
@@ -28826,13 +29819,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/streamlined/journal.js
   var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
   var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
+  var refOf = (item2) => ({
+    id: item2.id,
+    definitionId: item2.definitionId,
+    points: item2.points,
+    pile: item2.pile,
+    ...item2.executionPile ? { executionPile: item2.executionPile } : {}
+  });
   function streamlinedJournalKey(context) {
     return contextKey(context, "streamlined-contribution");
   }
   function validateStreamlinedJournal(record, context) {
     if (record?.schema !== 1 || !same25(record.context, createSeasonContext(context)) || !integer15(record.revision, 1) || !integer15(record.updatedAt) || !integer15(record.submittedScore) || !Array.isArray(record.batches) || !integer15(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail28("JOURNAL_INVALID");
     assertStreamlinedPlan(record.plan);
-    if (!same25(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same25(batch.refs, record.plan.batches[i].map((item2) => ({ id: item2.id, definitionId: item2.definitionId, points: item2.points, pile: item2.pile })))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail28("JOURNAL_INVALID");
+    if (!same25(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same25(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail28("JOURNAL_INVALID");
     let previousScore = record.plan.challenge.submittedScore;
     for (const batch of record.batches) {
       if (batch.startingScore !== void 0 && (!integer15(
@@ -28898,7 +29898,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         batches: plan.batches.map((batch, index) => ({
           index,
           state: "waiting",
-          refs: batch.map((item2) => ({ id: item2.id, definitionId: item2.definitionId, points: item2.points, pile: item2.pile }))
+          refs: batch.map(refOf)
         }))
       }, prior?.revision ?? 0);
     } });
@@ -29189,6 +30189,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       points,
       scoreVerified: integer15(points, 1),
       protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
+      duplicateId: ownData(item2, "duplicateId"),
       name,
       price: null,
       source: "inventory"
@@ -29202,15 +30203,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
     const entities = /* @__PURE__ */ new Map(), inventory = [];
     const sources3 = settings.sources ?? ["club", "storage"];
-    const inventoryByPile = { club: 0, storage: 0 };
-    const rawByPile = { club: 0, storage: 0 };
-    const skippedNonPlayerByPile = { club: 0, storage: 0 };
+    const allowedPiles = ["club", "storage", "unassigned", "transfer"];
+    const inventoryByPile = Object.fromEntries(allowedPiles.map((pile) => [pile, 0]));
+    const rawByPile = Object.fromEntries(allowedPiles.map((pile) => [pile, 0]));
+    const skippedNonPlayerByPile = Object.fromEntries(allowedPiles.map((pile) => [pile, 0]));
     const inventoryTradeability = { tradeable: 0, untradeable: 0, unknown: 0 };
     for (const pile of sources3) {
-      if (!["club", "storage"].includes(pile)) fail28("PILE_UNVERIFIED");
+      if (!allowedPiles.includes(pile)) fail28("PILE_UNVERIFIED");
+      const repository = at8(root, "repositories.Item");
       const repo = at8(root, `repositories.Item.${pile}`);
-      if (!repo && pile === "storage") continue;
-      for (const item2 of values6(ownData(repo, "items") ?? repo, 2e4)) {
+      let raw;
+      try {
+        const getter = pile === "unassigned" ? repository?.getUnassignedItems : pile === "transfer" ? repository?.getTransferItems : null;
+        raw = typeof getter === "function" ? getter.call(repository) : ownData(repo, "items") ?? repo;
+      } catch {
+        fail28("PILE_UNAVAILABLE");
+      }
+      if (raw == null) {
+        if (pile === "storage") continue;
+        fail28("PILE_UNAVAILABLE");
+      }
+      for (const item2 of values6(raw, 2e4)) {
         rawByPile[pile]++;
         if (!isFc27PlayerItem(item2)) {
           skippedNonPlayerByPile[pile]++;
@@ -29245,7 +30258,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         byPile: inventoryByPile,
         tradeability: inventoryTradeability,
         sources: [...sources3],
-        transferSupported: false
+        transferSupported: sources3.includes("transfer"),
+        unassignedSupported: sources3.includes("unassigned")
       },
       eligibility,
       assertCurrent,
@@ -29321,7 +30335,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       busy = true;
       try {
         assertStreamlinedPlan(plan);
-        const expected = plan.batches[batch?.index]?.map((item2) => ({ id: item2.id, definitionId: item2.definitionId, points: item2.points, pile: item2.pile }));
+        const expected = plan.batches[batch?.index]?.map((item2) => ({
+          id: item2.id,
+          definitionId: item2.definitionId,
+          points: item2.points,
+          pile: item2.pile,
+          ...item2.executionPile ? { executionPile: item2.executionPile } : {}
+        }));
         if (!expected || !same25(expected, batch.refs) || !integer15(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail28("PLAN_CHANGED");
         const page = locateFc27StreamlinedPage(root);
         const expectedChallenge = {
@@ -29355,7 +30375,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (entities.has(entity.id)) fail28("IDENTITY_CONFLICT");
           entities.set(entity.id, entity);
         };
-        const clubRefs = batch.refs.filter((ref) => ref.pile === "club");
+        const effectivePile = (ref) => ref.executionPile ?? ref.pile;
+        const clubRefs = batch.refs.filter((ref) => effectivePile(ref) === "club");
         const transport = clubRefs.length ? await createTransport(root, { nativeReauth, onEntity }) : null;
         const ids = [...new Set(clubRefs.map((ref) => ref.definitionId))];
         let requests = 0;
@@ -29388,14 +30409,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
         requests += transport?.getRequestCount() ?? 0;
-        const storageRefs = batch.refs.filter((ref) => ref.pile === "storage");
+        const storageRefs = batch.refs.filter((ref) => effectivePile(ref) === "storage");
         if (storageRefs.length) {
           check();
           const storage = await createStorage(root, { nativeReauth, onEntity });
           check();
           const rows = await storage.read();
           check();
-          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || ref.pile !== "storage")))) fail28("FRESH_ENTITY_UNVERIFIED");
+          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== "storage")))) fail28("FRESH_ENTITY_UNVERIFIED");
           if (storageRefs.some((ref) => !rows.some((row) => row.id === ref.id && row.definitionId === ref.definitionId))) fail28("MATERIAL_MISSING");
           requests += storage.getRequestCount();
           try {
@@ -29695,7 +30716,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (requirePage && (!page || !current3 || current3.controller !== page.controller || current3.setId !== expected.setId || current3.challengeId !== expected.id) || !same25(readFc27Context(root), record.context)) fail28("CONTEXT_CHANGED");
         };
         assert();
-        const clubRefs = batch.refs.filter((ref) => ref.pile === "club");
+        const effectivePile = (ref) => ref.executionPile ?? ref.pile;
+        const clubRefs = batch.refs.filter((ref) => effectivePile(ref) === "club");
         const transport = clubRefs.length ? await createTransport(root, { nativeReauth }) : null;
         const ids = [...new Set(clubRefs.map((ref) => ref.definitionId))], seen = /* @__PURE__ */ new Set();
         let requests = 0;
@@ -29716,7 +30738,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
         requests += transport?.getRequestCount() ?? 0;
-        if (batch.refs.some((ref) => ref.pile === "storage")) {
+        if (batch.refs.some((ref) => effectivePile(ref) === "storage")) {
           const storage = await createStorage(root, { nativeReauth });
           assert();
           const rows = await storage.read();
@@ -29759,6 +30781,305 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } });
   }
 
+  // src/streamlined/materialization-journal.js
+  function streamlinedMaterializationRecovery(record) {
+    const pending2 = record.entries.filter((entry) => entry.state === "pending");
+    const targets = [];
+    for (const entry of pending2) {
+      let target = targets.find((row) => row.setId === entry.setId && row.challengeId === entry.challengeId);
+      if (!target) {
+        target = { setId: entry.setId, challengeId: entry.challengeId, pendingCount: 0 };
+        targets.push(target);
+      }
+      target.pendingCount++;
+    }
+    return { kind: "streamlined-materialization", ...targets[0], pendingCount: pending2.length, targets };
+  }
+  function createStreamlinedMaterializationJournal({ context, get, set, assertCurrent = () => {
+  } }) {
+    if (typeof get !== "function" || typeof set !== "function") fail28("MATERIALIZE_JOURNAL_UNAVAILABLE");
+    const key = contextKey(context, "streamlined-materialization");
+    const read = async () => {
+      assertCurrent();
+      let record;
+      try {
+        record = await get(key, null);
+      } catch {
+        fail28("MATERIALIZE_JOURNAL_READ_FAILED");
+      }
+      assertCurrent();
+      if (record === null) return { schema: 1, entries: [] };
+      if (record?.schema !== 1 || !Array.isArray(record.entries) || record.entries.length > 2e4 || new Set(record.entries.map((entry) => entry?.id)).size !== record.entries.length || record.entries.some((entry) => !integer15(entry?.id, 1) || !integer15(entry?.definitionId, 1) || !["unassigned", "transfer"].includes(entry.pile) || !["pending", "confirmed", "rejected"].includes(entry.state) || !integer15(entry.setId, 1) || !integer15(entry.challengeId, 1))) fail28("MATERIALIZE_JOURNAL_INVALID");
+      return structuredClone(record);
+    };
+    const save = async (record) => {
+      assertCurrent();
+      try {
+        await set(key, record);
+        assertCurrent();
+        if (!same25(await get(key, null), record)) fail28("MATERIALIZE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("MATERIALIZE_JOURNAL_WRITE_FAILED");
+      }
+      assertCurrent();
+    };
+    return Object.freeze({ read, save, async assertSettled() {
+      const record = await read();
+      if (record.entries.some((entry) => entry.state === "pending")) {
+        throw Object.assign(Error("FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED"), {
+          recovery: streamlinedMaterializationRecovery(record)
+        });
+      }
+    } });
+  }
+
+  // src/adapters/ea/fc27-streamlined-materialize.js
+  async function readMaterializationClub(root, ref, createTransport, assert) {
+    assert();
+    const transport = await createTransport(root, { nativeReauth: true });
+    const matches2 = [];
+    for (let start = 0; start < 2e4; start += 250) {
+      assert();
+      const rows = await transport.readPage({ start, count: 250, definitionIds: [ref.definitionId] });
+      assert();
+      if (!Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer15(row?.id, 1) || !integer15(row.definitionId, 1) || row.pile !== "club" || row.id === ref.id && row.definitionId !== ref.definitionId) || new Set([...matches2, ...rows].map((row) => row.id)).size !== matches2.length + rows.length) fail28("MATERIALIZE_READBACK_UNCONFIRMED");
+      matches2.push(...rows);
+      if (rows.length < 250) return matches2.filter((row) => row.definitionId === ref.definitionId);
+    }
+    fail28("INVENTORY_LIMIT");
+  }
+  async function createFc27StreamlinedMaterializationRecovery(root, {
+    context,
+    get,
+    set,
+    createTransport = createFc27ClubReadTransport,
+    assertCurrent = () => {
+    },
+    onProgress = () => {
+    }
+  } = {}) {
+    const assert = () => {
+      if (!same25(readFc27Context(root), context)) fail28("MATERIALIZE_CONTEXT_CHANGED");
+      assertCurrent();
+    };
+    const journal = createStreamlinedMaterializationJournal({ context, get, set, assertCurrent: assert });
+    let busy = false;
+    return Object.freeze({ async recover() {
+      if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_MATERIALIZE_BUSY" };
+      busy = true;
+      let record, confirmed = 0, original;
+      try {
+        record = await journal.read();
+        const pending2 = record.entries.filter((entry) => entry.state === "pending");
+        if (!pending2.length) return { status: "absent" };
+        original = streamlinedMaterializationRecovery(record);
+        for (const [index, entry] of pending2.entries()) {
+          try {
+            onProgress({ phase: "materialize", stage: "recovery-check", completed: index, total: pending2.length });
+          } catch {
+          }
+          const rows = await readMaterializationClub(root, entry, createTransport, assert);
+          if (!rows.some((row) => row.id === entry.id)) continue;
+          assert();
+          entry.state = "confirmed";
+          try {
+            await journal.save(record);
+          } catch (error2) {
+            entry.state = "pending";
+            throw error2;
+          }
+          confirmed++;
+          try {
+            onProgress({ phase: "materialize", stage: "recovery-confirmed", completed: index + 1, total: pending2.length });
+          } catch {
+          }
+        }
+        const recovery = streamlinedMaterializationRecovery(record);
+        return recovery.pendingCount ? { status: "recovery-required", reason: "FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED", confirmed, recovery } : { status: "recovered", confirmed, recovery: { ...original, pendingCount: 0, targets: [] } };
+      } catch (error2) {
+        return {
+          status: "recovery-required",
+          reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_MATERIALIZE_READBACK_UNCONFIRMED",
+          confirmed,
+          ...record ? { recovery: streamlinedMaterializationRecovery(record) } : {}
+        };
+      } finally {
+        busy = false;
+      }
+    } });
+  }
+  async function createFc27StreamlinedMaterializer(root, {
+    canWrite = () => false,
+    plan,
+    get,
+    set,
+    createTransport = createFc27ClubReadTransport,
+    assertCurrent = () => {
+    },
+    onProgress = () => {
+    }
+  } = {}) {
+    const service = root.services?.Item, proto = service && Object.getPrototypeOf(service);
+    if (!service || !proto) fail28("MATERIALIZE_RUNTIME_UNVERIFIED");
+    const runtime = await verifyFc27Methods(
+      { service: proto, crypto: root.crypto },
+      FC27_BUY_SERVICE_METHODS.filter(([name]) => name === "move").map(([name, hash]) => [`service.${name}`, hash]),
+      FC27_BUY_COMPATIBLE_HASHES
+    );
+    const context = readFc27Context(root), adapter = createEaInventoryAdapter(root);
+    const move = service.move;
+    if (typeof move !== "function" || root.ItemPile?.CLUB !== 7) fail28("MATERIALIZE_RUNTIME_UNVERIFIED");
+    if (!same25(plan?.context, context) || typeof get !== "function" || typeof set !== "function") fail28("MATERIALIZE_JOURNAL_UNAVAILABLE");
+    let busy = false;
+    const report = (stage, index, total, id12) => {
+      try {
+        onProgress({
+          phase: "materialize",
+          stage,
+          index,
+          completed: stage === "confirmed" ? index + 1 : index,
+          total,
+          materialTotal: total,
+          id: id12
+        });
+      } catch {
+      }
+    };
+    const assert = () => {
+      runtime();
+      if (canWrite() !== true || !same25(readFc27Context(root), context) || root.services?.Item !== service || Object.getPrototypeOf(service) !== proto || service.move !== move) {
+        fail28("MATERIALIZE_CONTEXT_CHANGED");
+      }
+      assertCurrent();
+    };
+    const { read, save } = createStreamlinedMaterializationJournal({ context, get, set, assertCurrent: assert });
+    const observe = (operation) => new Promise((resolve, reject) => {
+      let observable, done = false;
+      const owner = {}, finish = (error2, value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try {
+          observable?.unobserve(owner);
+        } catch {
+        }
+        if (error2) reject(error2);
+        else resolve(value);
+      };
+      const timer = setTimeout(() => finish(Error("FC27_STREAMLINED_MATERIALIZE_UNCONFIRMED")), 16e3);
+      try {
+        observable = operation();
+        if (!observable || typeof observable.observe !== "function") return finish(Error("FC27_STREAMLINED_MATERIALIZE_UNCONFIRMED"));
+        observable.observe(owner, (_sender, reply) => finish(null, reply));
+      } catch (error2) {
+        finish(error2);
+      }
+    });
+    const freshClub = (ref) => readMaterializationClub(root, ref, createTransport, assert);
+    const checkSource = (ref, source) => {
+      const selected = plan.items.find((item2) => item2.id === ref.id && item2.definitionId === ref.definitionId && item2.pile === ref.pile);
+      const projected2 = projectFc27StreamlinedItem(source, root, ref.pile);
+      const eligibility = createFc27StreamlinedMatcher(root, plan.challenge, /* @__PURE__ */ new Map([[ref.id, source]]));
+      const checked = filterStreamlinedItems([projected2], { policy: plan.policy, eligibility });
+      const fields4 = [
+        "id",
+        "definitionId",
+        "points",
+        "rating",
+        "leagueId",
+        "loans",
+        "tradeable",
+        "special",
+        "concept",
+        "evolution",
+        "cosmetic",
+        "academyEnrolled",
+        "activeTrade",
+        "limitedUse",
+        "protected"
+      ];
+      if (!selected || checked.status !== "observed" || checked.items.length !== 1 || fields4.some((field) => !same25(projected2?.[field], selected[field]))) fail28("MATERIALIZE_MATERIAL_CHANGED");
+    };
+    return Object.freeze({
+      async prepare(refs3 = []) {
+        if (busy) fail28("MATERIALIZE_BUSY");
+        if (!Array.isArray(refs3) || refs3.some((ref) => !integer15(ref?.id, 1) || !integer15(ref?.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref?.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length) fail28("MATERIALIZE_INPUT_INVALID");
+        busy = true;
+        const external = refs3.filter((ref) => ["unassigned", "transfer"].includes(ref.pile));
+        try {
+          assert();
+          const record = await read();
+          assert();
+          if (record.entries.some((e) => e.state === "pending" && (e.setId !== plan.challenge.setId || e.challengeId !== plan.challenge.id || !external.some((ref) => ref.id === e.id && ref.definitionId === e.definitionId && ref.pile === e.pile)))) {
+            throw Object.assign(Error("FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED"), {
+              recovery: streamlinedMaterializationRecovery(record)
+            });
+          }
+          record.entries = record.entries.filter((e) => e.state === "pending" || e.setId === plan.challenge.setId && e.challengeId === plan.challenge.id);
+          for (let index = 0; index < external.length; index++) {
+            const ref = external[index];
+            report("checking-source", index, external.length, ref.id);
+            let entry = record.entries.find((e) => e.id === ref.id);
+            if (entry && (entry.definitionId !== ref.definitionId || entry.pile !== ref.pile || entry.setId !== plan.challenge.setId || entry.challengeId !== plan.challenge.id)) fail28("MATERIALIZE_IDENTITY_CHANGED");
+            report("checking-club", index, external.length, ref.id);
+            const before = await freshClub(ref);
+            if (before.some((row) => row.id === ref.id)) {
+              if (!entry || !["pending", "confirmed"].includes(entry.state)) fail28("MATERIALIZE_IDENTITY_CHANGED");
+              entry.state = "confirmed";
+              await save(record);
+              assert();
+              report("confirmed", index, external.length, ref.id);
+              continue;
+            }
+            if (entry && entry.state !== "rejected") throw Object.assign(Error("FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED"), {
+              recovery: streamlinedMaterializationRecovery(record)
+            });
+            const source = adapter.readPile(ref.pile).find((item2) => Number(item2?.id) === ref.id && Number(item2?.definitionId) === ref.definitionId);
+            if (!source) fail28("MATERIALIZE_SOURCE_MISSING");
+            const snapshot = adapter.snapshotItem(source, ref.pile);
+            if (snapshot.activeTrade === true) fail28("MATERIALIZE_ACTIVE_TRADE");
+            if (before.length) fail28("MATERIALIZE_DUPLICATE_BLOCKED");
+            checkSource(ref, source);
+            entry ??= {
+              id: ref.id,
+              definitionId: ref.definitionId,
+              pile: ref.pile,
+              setId: plan.challenge.setId,
+              challengeId: plan.challenge.id
+            };
+            if (!record.entries.includes(entry)) {
+              if (record.entries.length >= 2e4) fail28("MATERIALIZE_JOURNAL_LIMIT");
+              record.entries.push(entry);
+            }
+            entry.state = "pending";
+            report("journal-pending", index, external.length, ref.id);
+            await save(record);
+            assert();
+            report("move-request", index, external.length, ref.id);
+            const reply = await observe(() => service.move(source, root.ItemPile.CLUB));
+            assert();
+            if (reply?.success === false) {
+              entry.state = "rejected";
+              await save(record);
+              fail28("MATERIALIZE_MOVE_REJECTED");
+            }
+            if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.map(Number).includes(ref.id)) fail28("MATERIALIZE_UNCONFIRMED");
+            report("move-acknowledged", index, external.length, ref.id);
+            report("club-readback", index, external.length, ref.id);
+            if (!(await freshClub(ref)).some((row) => row.id === ref.id)) fail28("MATERIALIZE_READBACK_UNCONFIRMED");
+            entry.state = "confirmed";
+            await save(record);
+            assert();
+            report("confirmed", index, external.length, ref.id);
+          }
+          return { status: "materialized", moved: external.map((ref) => ref.id) };
+        } finally {
+          busy = false;
+        }
+      }
+    });
+  }
+
   // src/adapters/ea/fc27-streamlined-provider.js
   function createFc27StreamlinedProvider(root, {
     journal,
@@ -29768,6 +31089,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     createProgress = createFc27StreamlinedProgressReader,
     createTransport = createFc27StreamlinedContributionTransport,
     createReconciler = createFc27StreamlinedReconciler,
+    createMaterializer = createFc27StreamlinedMaterializer,
+    materializationStorage = {},
     maintenance = null,
     checkOtherTransactions = async () => {
     },
@@ -29793,7 +31116,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       capabilities: Object.freeze({ get contributionVerified() {
         return canWrite() === true;
       } }),
-      async verify(plan, batch, submittedScore) {
+      async verify(plan, batch, submittedScore, { onProgress = () => {
+      }, stopped = () => false } = {}) {
         if (busy) fail28("BUSY");
         busy = true;
         lease = null;
@@ -29804,7 +31128,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await checkOtherTransactions();
           unchanged(origin, plan);
           await maintenance?.prepare?.(batch.refs);
-          const evidence = await validator2.verify(plan, batch, submittedScore);
+          if (batch.refs.some((ref) => ["unassigned", "transfer"].includes(ref.pile))) {
+            if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+            const materializer = await createMaterializer(root, {
+              canWrite,
+              plan,
+              ...materializationStorage,
+              assertCurrent: () => {
+                unchanged(origin, plan);
+                if (stopped()) fail28("CANCELLED");
+              },
+              onProgress: (progressEvent) => {
+                try {
+                  onProgress({ ...progressEvent, submittedScore });
+                } catch {
+                }
+              }
+            });
+            await materializer.prepare(batch.refs);
+            unchanged(origin, plan);
+          }
+          const evidence = await validator2.verify(plan, batch, submittedScore, { onProgress, stopped });
           unchanged(origin, plan);
           if (evidence?.fresh !== true || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail28("MATERIAL_CHANGED");
           lease = {
@@ -29904,11 +31248,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (repo && !collection && !storage) fail28("CACHE_UNVERIFIED");
       return ownData(collection ?? storage, String(id12));
     };
-    const validateRefs = (refs3) => {
-      if (!Array.isArray(refs3) || !refs3.length || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer15(ref.id, 1) || !integer15(ref.definitionId, 1) || !["club", "storage"].includes(ref.pile))) fail28("CACHE_UNVERIFIED");
+    const validateRefs = (refs3, { preMaterialize = false } = {}) => {
+      if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer15(ref.id, 1) || !integer15(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail28("CACHE_UNVERIFIED");
+      if (!refs3.length) return;
       for (const ref of refs3) {
-        const cached = item2(ref.pile, ref.id);
-        if (cached && (ownData(cached, "id") !== ref.id || ownData(cached, "definitionId") !== ref.definitionId) || item2(ref.pile === "club" ? "storage" : "club", ref.id)) fail28("CACHE_IDENTITY_CHANGED");
+        const pile = ref.executionPile ?? ref.pile;
+        if (preMaterialize && ["unassigned", "transfer"].includes(ref.pile)) continue;
+        const cached = item2(pile, ref.id);
+        if (cached && (ownData(cached, "id") !== ref.id || ownData(cached, "definitionId") !== ref.definitionId) || item2(pile === "club" ? "storage" : "club", ref.id)) fail28("CACHE_IDENTITY_CHANGED");
       }
     };
     const dirty = () => {
@@ -29920,7 +31267,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       assert,
       prepare(refs3) {
         assert();
-        validateRefs(refs3);
+        validateRefs(refs3, { preMaterialize: true });
       },
       dirty,
       apply(record, batch, evidence) {
@@ -29942,6 +31289,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     ["methods.hub", "81e6a860e8929e73fc8cc62db59442b9b45eb8aae900562ac808bd362cc83e80"],
     ["methods.notify", "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2"]
   ]);
+  var FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES = Object.freeze({
+    "methods.notify": Object.freeze([
+      "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2",
+      "e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1"
+    ])
+  });
   var setFields = ["totalSubmittedScore", "challengesCompletedCount", "timesCompleted"];
   async function createFc27StreamlinedPageMaintenance(root, {
     now = () => Date.now(),
@@ -29951,7 +31304,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!page) fail28("PAGE_UNAVAILABLE");
     const dao = root.services?.SBC?.sbcDAO;
     const methods = { hub: dao?.getHub, notify: root.EAObservable?.prototype?.notify };
-    const checked = await verifyFc27Methods({ methods, crypto: root.crypto }, FC27_STREAMLINED_PAGE_METHODS);
+    const checked = await verifyFc27Methods(
+      { methods, crypto: root.crypto },
+      FC27_STREAMLINED_PAGE_METHODS,
+      FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES
+    );
     const cache = await createCache(root, { now });
     const assert = () => {
       checked();
@@ -30092,7 +31449,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (batch.state !== "waiting") fail28("REPLAN_REQUIRED");
           if (stopping || record.submittedScore >= plan.challenge.targetScore) break;
           report("validation", index);
-          if (await adapter.verify(plan, batch, record.submittedScore) !== true) fail28("MATERIAL_CHANGED");
+          if (await adapter.verify(plan, batch, record.submittedScore, {
+            stopped: () => stopping,
+            onProgress: (row) => {
+              try {
+                onProgress({ ...row, index, total: approval.batchIndices.length });
+              } catch {
+              }
+            }
+          }) !== true) fail28("MATERIAL_CHANGED");
           if (stopping) break;
           record.batches[index].state = "pending";
           record.batches[index].startingScore = record.submittedScore;
@@ -30349,7 +31714,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       return output;
     };
-    const contribute = async (batchPlan) => {
+    const contribute = async (batchPlan, callbacks = {}) => {
       if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail28("WRITE_CONTRACT_UNVERIFIED");
       const result = await createStreamlinedTransaction({
         adapter: contributionAdapter.adapter,
@@ -30359,7 +31724,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         now
       }).execute(
         batchPlan,
-        { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }
+        { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
+        callbacks
       );
       return result.status === "completed" || result.status === "partial" ? { confirmed: true, submittedScore: result.record.submittedScore } : { confirmed: false, reason: result.reason };
     };
@@ -30458,8 +31824,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         });
       },
-      async contribute(batchPlan) {
-        return contribute(batchPlan);
+      async contribute(batchPlan, callbacks) {
+        return contribute(batchPlan, callbacks);
       },
       async recoverContribution(saved) {
         assertTarget();
@@ -30508,17 +31874,40 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       material.push(row);
       points += row.item.points;
     };
-    for (const row of ready) {
+    const consumed = new Set(consumedIds);
+    const selectedIds = /* @__PURE__ */ new Set();
+    const preferredByDefinition = /* @__PURE__ */ new Map();
+    for (const group of route.groups) {
+      if (group.source !== "inventory") continue;
+      for (const item2 of group.items ?? []) {
+        if (!integer15(item2?.id, 1) || consumed.has(item2.id)) continue;
+        if (!["club", "storage"].includes(item2.pile)) continue;
+        const rows = preferredByDefinition.get(item2.definitionId) ?? [];
+        rows.push(item2);
+        preferredByDefinition.set(item2.definitionId, rows);
+      }
+    }
+    const orderedReady = ready.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.item?.pile)) - Number(["unassigned", "transfer"].includes(b.item?.pile)));
+    for (const row of orderedReady) {
       const group = route.groups[row.groupIndex];
       if (!group || !integer15(row.item?.id, 1) || !integer15(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail28("WAVE_RECEIPT_INVALID");
+      if (selectedIds.has(row.item.id)) continue;
+      const external = ["unassigned", "transfer"].includes(row.item.pile);
+      const preferred = preferredByDefinition.get(row.item.definitionId) ?? [];
+      if (external && (preferred.some((item2) => !consumed.has(item2.id) && !selectedIds.has(item2.id)) || material.some((existing) => existing.item.definitionId === row.item.definitionId && ["club", "storage"].includes(existing.item.pile)))) continue;
       append(row);
       blocked11.add(row.item.definitionId);
+      selectedIds.add(row.item.id);
     }
-    for (let i = 0; i < route.groups.length && material.length < limit && points < targetScore; i++) {
+    for (let i = 0; ready.length === 0 && i < route.groups.length && material.length < limit && points < targetScore; i++) {
       const group = route.groups[i];
       if (group.source !== "inventory") continue;
       for (const item2 of group.items.slice(0, group.quantity)) {
         if (consumedIds.includes(item2.id) || material.some((row) => row.item.id === item2.id)) continue;
+        if (["unassigned", "transfer"].includes(item2.pile)) {
+          const preferred = preferredByDefinition.get(item2.definitionId) ?? [];
+          if (preferred.some((candidate) => !consumed.has(candidate.id) && candidate.id !== item2.id)) continue;
+        }
         append({ groupIndex: i, item: item2 });
         if (material.length >= limit || points >= targetScore) break;
       }
@@ -30611,6 +32000,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             groupIndex,
             definitionId: item2.definitionId,
             itemId: item2.id,
+            pile: item2.pile,
+            executionPile: item2.executionPile,
             price: null,
             cap: null,
             tradeId: null,
@@ -30692,7 +32083,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const state = await adapter.readState(record);
           await check();
           if (state.submittedScore !== record.submittedScore) fail28("PROGRESS_CHANGED");
-          const readyEntries = record.entries.filter((e) => ["ready", "club"].includes(e.state)).slice(0, record.challenge.selectionLimit);
+          const available = record.entries.filter((e) => ["ready", "club"].includes(e.state));
+          const preferredDefinitions = new Set(available.filter((e) => ["club", "storage"].includes(e.pile)).map((e) => e.definitionId));
+          const selectedDefinitions = /* @__PURE__ */ new Set();
+          const readyEntries = available.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile))).filter((entry) => {
+            const external = ["unassigned", "transfer"].includes(entry.pile);
+            if (external && preferredDefinitions.has(entry.definitionId)) return false;
+            if (selectedDefinitions.has(entry.definitionId)) return false;
+            selectedDefinitions.add(entry.definitionId);
+            return true;
+          }).slice(0, record.challenge.selectionLimit);
           const materialized = await adapter.materialize(readyEntries, record);
           if (!Array.isArray(materialized)) fail28("PURCHASE_MATERIAL_UNKNOWN");
           const ready = materialized.map((row, index) => row?.item ? row : {
@@ -30799,7 +32199,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await save();
           report("contribution");
           await check();
-          const result = await adapter.contribute(batchPlan);
+          const result = await adapter.contribute(batchPlan, {
+            onProgress: (progress) => report(progress?.phase ?? "contribution", progress)
+          });
           if (!result?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
           await settleContribution(result);
         }
@@ -30884,6 +32286,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       readContext: () => readFc27Context(root),
       now
     });
+    const materializationStorage = { get, set: async (key, value) => {
+      persistence.assertHeld();
+      await set(key, value);
+      persistence.assertHeld();
+    } };
+    const materializationJournal = createStreamlinedMaterializationJournal({
+      context,
+      ...materializationStorage,
+      assertCurrent: () => {
+        if (!same25(readFc27Context(root), context)) fail28("CONTEXT_CHANGED");
+      }
+    });
+    const checkOtherTransactions = async () => {
+      await assertStreamlinedOtherTransactions(get, context);
+      await materializationJournal.assertSettled();
+    };
     const maintenance = await createMaintenance(root, { now });
     const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
     const purchaseVerifier = async (item2, proof, currentPlan = plan) => verifyStreamlinedPurchasedItem(
@@ -30899,18 +32317,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       canWrite,
       now,
       maintenance,
-      checkOtherTransactions: () => assertStreamlinedOtherTransactions(get, context),
+      materializationStorage,
+      checkOtherTransactions,
       purchaseVerifier
     });
     const transaction = createStreamlinedTransaction({ adapter, ...persistence, now });
     const createMarket = async (plan2) => {
       if (!plan2?.route?.groups?.some((group) => group.source === "market")) return null;
+      await materializationJournal.assertSettled();
       const contribution = { adapter, journal: persistence.journal };
       return createPurchaseAdapter(root, { plan: plan2, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution });
     };
     return Object.freeze({
       transaction,
       journal: persistence.journal,
+      async recoverMaterialization() {
+        const release = await persistence.lock.acquire(context);
+        if (typeof release !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
+        try {
+          const recovery = await createFc27StreamlinedMaterializationRecovery(root, {
+            context,
+            ...materializationStorage,
+            assertCurrent: persistence.assertHeld
+          });
+          return await recovery.recover();
+        } finally {
+          await release();
+        }
+      },
       async recoverPurchase(challenge) {
         const saved = await marketJournal.read(context);
         if (!saved) return { status: "absent" };
@@ -30963,7 +32397,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
         if (!persistence.inspect().supported) fail28("EXCLUSIVE_ACCESS_REQUIRED");
         if (plan2.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
-        if (plan2.items.some((item2) => item2.source === "inventory" && !["club", "storage"].includes(item2.pile))) fail28("PILE_UNVERIFIED");
+        if (plan2.items.some((item2) => item2.source === "inventory" && (!["club", "storage", "unassigned", "transfer"].includes(item2.pile) || ["unassigned", "transfer"].includes(item2.pile) && item2.executionPile !== "club"))) fail28("PILE_UNVERIFIED");
         if (plan2.items.some((item2) => item2.source === "market") && !plan2.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
         maintenance.prepare(plan2.items.filter((item2) => item2.source === "inventory"));
         return true;
@@ -31443,7 +32877,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     readInputs: (settings) => readFc27StreamlinedInputs(unsafeWindow, settings),
     readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
       catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }),
-      prices: publicPrices
+      prices: publicPrices,
+      diagnosticLog
     }),
     get: GM_getValue,
     set: GM_setValue,

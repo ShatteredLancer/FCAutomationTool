@@ -17,7 +17,8 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
     busy = true;
     try {
       assertStreamlinedPlan(plan);
-      const expected = plan.batches[batch?.index]?.map(item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile }));
+      const expected = plan.batches[batch?.index]?.map(item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile,
+        ...(item.executionPile ? { executionPile: item.executionPile } : {}) }));
       if (!expected || !same(expected, batch.refs) || !integer(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail('PLAN_CHANGED');
       const page = locateFc27StreamlinedPage(root);
       const expectedChallenge = { ...plan.challenge, submittedScore,
@@ -50,7 +51,8 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         if (entities.has(entity.id)) fail('IDENTITY_CONFLICT');
         entities.set(entity.id, entity);
       };
-      const clubRefs = batch.refs.filter(ref => ref.pile === 'club');
+      const effectivePile = ref => ref.executionPile ?? ref.pile;
+      const clubRefs = batch.refs.filter(ref => effectivePile(ref) === 'club');
       const transport = clubRefs.length ? await createTransport(root, { nativeReauth, onEntity }) : null;
       const ids = [...new Set(clubRefs.map(ref => ref.definitionId))];
       let requests = 0;
@@ -82,7 +84,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         try { onProgress({ phase: 'validation', completed: Math.min(offset + 50, ids.length), total: ids.length }); } catch { /* UI only. */ }
       }
       requests += transport?.getRequestCount() ?? 0;
-      const storageRefs = batch.refs.filter(ref => ref.pile === 'storage');
+      const storageRefs = batch.refs.filter(ref => effectivePile(ref) === 'storage');
       if (storageRefs.length) {
         check();
         const storage = await createStorage(root, { nativeReauth, onEntity });
@@ -92,7 +94,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         if (!Array.isArray(rows) || rows.length > 20000 || new Set(rows.map(row => row?.id)).size !== rows.length
             || rows.some(row => !row || !integer(row.id, 1) || !integer(row.definitionId, 1) || row.pile !== 'storage'
               || entities.get(row.id)?.definitionId !== row.definitionId
-              || batch.refs.some(ref => ref.id === row.id && (ref.definitionId !== row.definitionId || ref.pile !== 'storage')))) fail('FRESH_ENTITY_UNVERIFIED');
+              || batch.refs.some(ref => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== 'storage')))) fail('FRESH_ENTITY_UNVERIFIED');
         if (storageRefs.some(ref => !rows.some(row => row.id === ref.id && row.definitionId === ref.definitionId))) fail('MATERIAL_MISSING');
         requests += storage.getRequestCount();
         try { onProgress({ phase: 'validation', completed: batch.refs.length, total: batch.refs.length }); } catch { /* UI only. */ }

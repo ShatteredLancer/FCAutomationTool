@@ -27,7 +27,8 @@ export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
             || current.challengeId !== expected.id) || !same(readFc27Context(root), record.context)) fail('CONTEXT_CHANGED');
       };
       assert();
-      const clubRefs = batch.refs.filter(ref => ref.pile === 'club');
+      const effectivePile = ref => ref.executionPile ?? ref.pile;
+      const clubRefs = batch.refs.filter(ref => effectivePile(ref) === 'club');
       const transport = clubRefs.length ? await createTransport(root, { nativeReauth }) : null;
       const ids = [...new Set(clubRefs.map(ref => ref.definitionId))], seen = new Set();
       let requests = 0;
@@ -49,7 +50,7 @@ export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
         }
       }
       requests += transport?.getRequestCount() ?? 0;
-      if (batch.refs.some(ref => ref.pile === 'storage')) {
+      if (batch.refs.some(ref => effectivePile(ref) === 'storage')) {
         const storage = await createStorage(root, { nativeReauth });
         assert();
         const rows = await storage.read();

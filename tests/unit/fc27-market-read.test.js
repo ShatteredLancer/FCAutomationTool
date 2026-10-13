@@ -155,6 +155,20 @@ it('accepts the independently captured current public runtime for one exact-vers
   expect(f.forbidden).not.toHaveBeenCalled();
 });
 
+it('accepts the independently captured 2026-10-09 public market runtime', async () => {
+  const hashes = [...currentHashes];
+  hashes[9] = 'a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1';
+  hashes[10] = '115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2';
+  hashes[11] = 'b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339';
+  hashes[12] = 'b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291';
+  hashes[13] = '0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f';
+  const f = fixture(hashes);
+  const result = await (await createFc27MarketReadTransport(f.root)).readQuotePage(quoteQuery);
+  expect(result).toMatchObject({ definitionId: 101, price: 450, eligible: 1 });
+  expect(f.calls).toHaveLength(1);
+  expect(f.identified.map(row => row[0])).toEqual(['request', 'response']);
+});
+
 it.each(FC27_MARKET_READ_METHODS.map(([path], index) => [path, index]).filter(([, index]) => index !== 7))
 ('rejects a new unreviewed hash for %s before sending', async (_path, index) => {
   const hashes = [...currentHashes]; hashes[index] = '0'.repeat(64);

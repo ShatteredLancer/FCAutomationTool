@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
-import { planStreamlinedRoutesSteps, runStreamlinedRoutes } from '../../src/streamlined/routes.js';
+import { expandStreamlinedRoute, planStreamlinedRoutesSteps, runStreamlinedRoutes } from '../../src/streamlined/routes.js';
 import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined.js';
+import repeatedDemand from '../fixtures/fc27-streamlined-repeated-demand-2026-10-13.json';
 
 const market = (id, points, price, rating = 84) => safeItem({ source: 'market', definitionId: id, points, rating, price,
   quote: { definitionId: id, source: 'futgg', price, fetchedAt: 1, expiresAt: 1000 } });
@@ -9,14 +10,56 @@ const input = (target, versions, inventory = []) => ({ challenge: challenge({ sc
 const solve = (value, options) => { const iterator = planStreamlinedRoutesSteps(value, options); let step;
   do { step = iterator.next(); } while (!step.done); return step.value; };
 
-it('keeps thousand-card demand compressed and reproduces public cheapest / 87 route arithmetic', () => {
+it('keeps cheapest repeated demand and offers a near-price distinct-version cover without changing stock', () => {
+  let identity = 900;
+  const stock = repeatedDemand.inventory.flatMap(row => Array.from({ length: row.quantity }, () =>
+    safeItem({ id: ++identity, definitionId: identity, rating: row.rating, points: row.points, price: row.price })));
+  // 1050-price alternatives are synthetic, not recovered individual quotes.
+  const versions = [market(101, 830, 1000),
+    ...Array.from({ length: 8 }, (_, i) => market(102 + i, 830, 1050)),
+    ...Array.from({ length: 3 }, (_, i) => market(201 + i, 4100, 5000, 86))];
+  const result = solve(input(repeatedDemand.remainingScore, versions, stock), { maxNodes: 1 });
+  expect(result.routes[0]).toMatchObject(repeatedDemand.selected);
+  const practical = result.routes.find(row => row.minBatches === 1 && row.inventoryCount === 4);
+  expect(practical).toMatchObject({ totalValue: 15100, purchaseCost: 9400, count: 13, score: 12060, repeatPurchaseCount: 0 });
+  const expanded = expandStreamlinedRoute(practical, challenge({ scoreRequirement: 12000 }));
+  expect(expanded.batches).toHaveLength(1);
+  expect(new Set(expanded.items.filter(row => row.source === 'market').map(row => row.definitionId)).size).toBe(9);
+  const reversed = solve(input(repeatedDemand.remainingScore, versions.slice().reverse(), stock.slice().reverse()), { maxNodes: 1 });
+  expect(reversed.routes.find(row => row.minBatches === 1 && row.inventoryCount === 4)?.purchaseCost).toBe(9400);
+});
+
+it('does not silently diversify into costly versions or change a lowest-coins objective', () => {
+  const versions = [market(101, 830, 1000), market(102, 830, 50000)];
+  const result = solve({ ...input(2490, versions), objective: 'lowest-coins' }, { maxNodes: 1 });
+  expect(result.routes[0]).toMatchObject({ purchaseCost: 3000, minBatches: 3 });
+  expect(result.routes.every(row => row.purchaseCost === 3000)).toBe(true);
+});
+
+it('never increases an approved budget or reuses missing/stale versions for a diversified cover', () => {
+  const versions = [market(101, 830, 1000), market(102, 830, 1050),
+    market(103, 830, 1050), { ...market(104, 830, 1050), quote: null }];
+  const result = solve(input(2490, versions), { maxNodes: 1, budget: 3050 });
+  expect(result.routes[0]).toMatchObject({ purchaseCost: 3000, minBatches: 3 });
+  expect(result.routes.some(row => row.purchaseCost === 3050 && row.minBatches === 2)).toBe(true);
+  expect(result.routes.every(row => row.purchaseCost <= 3050 && row.groups.every(g => g.items.every(i => i.definitionId !== 104)))).toBe(true);
+});
+
+it('keeps thousand-card demand compressed without assuming thirty distinct quoted versions', () => {
   const result = solve(input(1125000, [market(1, 410, 760, 83), market(2, 830, 985),
     market(3, 4100, 5190, 86), market(4, 5500, 7160, 87)]), { maxNodes: 100000, maxMs: 60000 });
-  expect(result.routes[0]).toMatchObject({ count: 1356, score: 1125060, purchaseCost: 1335435, minBatches: 46 });
+  expect(result.routes[0]).toMatchObject({ count: 1356, score: 1125060, purchaseCost: 1335435, minBatches: 1355 });
   expect(result.routes.find(r => r.count === 205)).toMatchObject({ score: 1126100, purchaseCost: 1465830 });
   expect(result.routes[0].groups).toHaveLength(2);
   expect(result.routes[0].groups.flatMap(g => g.items)).toHaveLength(2);
   expect(result.routes.every(r => r.supplyVerified === false)).toBe(true);
+});
+
+it('can project a thirty-version price bucket into the public recipe capacity bound', () => {
+  const versions = Array.from({ length: 30 }, (_, i) => market(100 + i, 830, 985));
+  const result = solve(input(1125000, [...versions, market(1, 410, 760, 83)]), { maxMs: 60000 });
+  expect(result.routes[0]).toMatchObject({ minBatches: 46, count: 1356, purchaseCost: 1335435 });
+  expect(expandStreamlinedRoute(result.routes[0], challenge({ scoreRequirement: 1125000 })).batches).toHaveLength(46);
 });
 
 it('prefers a cheaper higher-score route over a large 82-rated fallback', () => {
@@ -27,6 +70,96 @@ it('prefers a cheaper higher-score route over a large 82-rated fallback', () => 
   expect(result.routes[0].purchaseCost).toBeLessThan(250 * 700);
   expect(result.routes[0].groups.some(group => group.item.definitionId === 22)).toBe(true);
   expect(result.routes[0].count).toBeLessThan(250);
+});
+
+it('seeds a cheap TOTW cover before exhausting a tiny budget on costly same-score price buckets', () => {
+  const versions = [market(1, 4100, 41000, 86),
+    ...Array.from({ length: 40 }, (_, i) => market(100 + i, 830, 2000 + i * 100, 84)),
+    market(200, 830, 925, 84), market(201, 410, 700, 83)];
+  for (const order of [versions, versions.slice().reverse()]) {
+    const result = solve(input(12000, order), { maxNodes: 1 });
+    expect(result.routes[0]).toMatchObject({ purchaseCost: 13650, score: 12030, count: 15 });
+    expect(result.searchComplete).toBe(false);
+  }
+});
+
+it('seeds the cheaper 83 tail before unrelated stock prefixes exhaust the time budget', () => {
+  const stock = Array.from({ length: 300 }, (_, i) => safeItem({ id: 1000 + i,
+    definitionId: 1000 + i, points: 10, price: 200 }));
+  let clock = 0;
+  const result = solve(input(12000, [market(84, 830, 700), market(83, 410, 500, 83)], stock),
+    { now: () => ++clock, maxMs: 2 });
+  expect(result.searchComplete).toBe(false);
+  expect(result.routes[0]).toMatchObject({ purchaseCost: 10300, score: 12030, count: 15 });
+});
+
+it('yields after a fast bulk-tail sweep even when its bucket count does not divide 128', () => {
+  const iterator = planStreamlinedRoutesSteps(input(12000, [market(84, 830, 700),
+    market(83, 410, 500, 83), market(85, 2100, 2000, 85)]));
+  const progress = iterator.next();
+  expect(progress.done).toBe(false);
+  expect(progress.value.nodes).toBe(3);
+  const cancelled = iterator.next(true);
+  expect(cancelled.done).toBe(true);
+  expect(cancelled.value).toMatchObject({ status: 'cancelled', nodes: 3 });
+});
+
+it('reuses equally valued stock in a cheap market recipe before bounded exact search', () => {
+  const stock = [safeItem({ id: 101, definitionId: 101, points: 830, rating: 84, price: 700 }),
+    safeItem({ id: 102, definitionId: 102, points: 410, rating: 83, price: 500 }),
+    ...Array.from({ length: 200 }, (_, i) => safeItem({ id: 1000 + i, definitionId: 1000 + i, points: 10, price: 200 }))];
+  const result = solve(input(12000, [market(84, 830, 700), market(83, 410, 500, 83)], stock), { maxNodes: 1 });
+  expect(result.routes[0]).toMatchObject({ totalValue: 10300, materialValue: 1200,
+    purchaseCost: 9100, inventoryCount: 2, marketCount: 13, score: 12030 });
+});
+
+it('reuses equal-value owned cards in the later winning TOTW pair recipe before search truncation', () => {
+  // Oct 11 log: owned 84 minimum 800; selected 8x84 at 800 + 1x87 at 5200.
+  // Counts/identities below are synthetic; only score/price buckets are replayed.
+  const stock = [safeItem({ id: 101, definitionId: 101, points: 830, rating: 84, price: 800 }),
+    ...Array.from({ length: 300 }, (_, i) => safeItem({ id: 1000 + i,
+      definitionId: 1000 + i, points: 160, rating: 79, price: 650 }))];
+  for (const inventory of [stock, stock.slice().reverse()]) {
+    const result = solve(input(12000, [market(84, 830, 800), market(87, 5500, 5200, 87)], inventory),
+      { maxStates: 1 });
+    expect(result.searchComplete).toBe(false);
+    expect(result.routes[0]).toMatchObject({ totalValue: 11600, materialValue: 800,
+      purchaseCost: 10800, inventoryCount: 1, marketCount: 8, count: 9, score: 12140 });
+  }
+});
+
+it.each([1, 2, 8, 10])('reuses at most the needed copies from %s equal-value stock cards', copies => {
+  const stock = Array.from({ length: copies }, (_, i) => safeItem({ id: 100 + i,
+    definitionId: 100 + i, points: 830, rating: 84, price: 800, pile: 'storage' }));
+  const result = solve(input(12000, [market(84, 830, 800), market(87, 5500, 5200, 87)], stock),
+    { maxStates: 1 });
+  const used = Math.min(copies, 8);
+  expect(result.routes[0]).toMatchObject({ score: 12140, totalValue: 11600, inventoryCount: used,
+    marketCount: 9 - used, purchaseCost: 11600 - 800 * used, materialValue: 800 * used });
+  const expanded = expandStreamlinedRoute(result.routes[0], challenge({ scoreRequirement: 12000 }));
+  const refs = expanded.items.filter(item => item.source === 'inventory');
+  expect(new Set(refs.map(item => item.id)).size).toBe(used);
+  expect(refs.every(item => stock.some(row => row.id === item.id))).toBe(true);
+});
+
+it('projects repeated market demand into distinct-version purchase batches', () => {
+  const c = challenge({ scoreRequirement: 12000 });
+  const result = solve(input(12000, [market(84, 830, 700), market(83, 410, 500, 83)]));
+  const route = result.routes[0];
+  expect(route.minBatches).toBe(14);
+  const expanded = expandStreamlinedRoute(route, c);
+  expect(expanded.batches).toHaveLength(14);
+  expect(expanded.items).toEqual(expanded.batches.flat());
+  for (const batch of expanded.batches) expect(new Set(batch.map(i => i.definitionId)).size).toBe(batch.length);
+});
+
+it('keeps multiple existing physical copies but never projects buying their version in the same batch', () => {
+  const stock = [101, 102].map(id => safeItem({ id, definitionId: 84, points: 830, price: 700 }));
+  const result = solve(input(2400, [market(84, 830, 700)], stock));
+  const expanded = expandStreamlinedRoute(result.routes[0], challenge({ scoreRequirement: 2400 }));
+  expect(expanded.batches).toHaveLength(2);
+  expect(expanded.batches[0].map(i => i.source)).toEqual(['inventory', 'inventory']);
+  expect(expanded.batches[1].map(i => i.source)).toEqual(['market']);
 });
 
 it('uses inventory without counting its value as purchase cost; market-only never consumes it', () => {
@@ -42,6 +175,47 @@ it('defaults to 8000 in new purchases instead of consuming 30000 of stock, with 
   expect(solve({ ...value, objective: 'lowest-coins' }).routes[0]).toMatchObject({ purchaseCost: 0, materialValue: 30000 });
   expect(solve({ ...value, objective: 'fewest-cards' }).routes[0]).toMatchObject({ count: 1, materialValue: 30000 });
   expect(result.routes.some(r => r.count === 1 && r.purchaseCost === 0)).toBe(true);
+});
+
+it('keeps pure inventory and mixed lanes visible when the cheapest default is market-only', () => {
+  const inventory = [101, 102, 103].map(id => safeItem({ id, definitionId: id, points: 40, price: 20000 }));
+  const result = solve(input(100, [market(10, 25, 1000)], inventory));
+  expect(result.routes[0]).toMatchObject({ inventoryCount: 0, marketCount: 4, purchaseCost: 4000 });
+  expect(result.routes.some(route => route.inventoryCount > 0 && route.marketCount === 0)).toBe(true);
+  expect(result.routes.some(route => route.inventoryCount > 0 && route.marketCount > 0)).toBe(true);
+});
+
+it('keeps partial-stock covers when the exact search mixes inventory and market groups', () => {
+  const stock = [safeItem({ id: 101, definitionId: 101, points: 4100, price: 2900, rating: 85 }),
+    safeItem({ id: 102, definitionId: 102, points: 4100, price: 2900, rating: 85 }),
+    safeItem({ id: 103, definitionId: 103, points: 4100, price: 5000, rating: 85 })];
+  for (const inventory of [stock, stock.slice().reverse()]) {
+    const value = input(12000, [market(901, 4100, 3000, 85)], inventory);
+    const result = solve(value);
+    expect(result.searchComplete).toBe(true);
+    expect(result.routes[0]).toMatchObject({ totalValue: 8800, materialValue: 5800,
+      purchaseCost: 3000, inventoryCount: 2, marketCount: 1, score: 12300 });
+    expect(solve({ ...value, objective: 'lowest-coins' }).routes[0])
+      .toMatchObject({ purchaseCost: 0, inventoryCount: 3 });
+    expect(solve({ ...value, mode: 'market' }).routes[0])
+      .toMatchObject({ totalValue: 9000, inventoryCount: 0, marketCount: 3 });
+  }
+});
+
+it('seeds partial stock before a state limit prevents exact mixed search', () => {
+  const inventory = [101, 102].map(id => safeItem({ id, definitionId: id, points: 4100, price: 2900 }));
+  inventory.push(safeItem({ id: 103, definitionId: 103, points: 4100, price: 5000 }));
+  for (const stock of [inventory, inventory.slice().reverse()]) {
+    const value = input(12000, [market(901, 4100, 3000)], stock);
+    const result = solve(value, { maxStates: 1 });
+    expect(result.searchComplete).toBe(false);
+    expect(result.routes[0]).toMatchObject({ totalValue: 8800, materialValue: 5800,
+      purchaseCost: 3000, inventoryCount: 2, marketCount: 1, score: 12300 });
+    expect(solve({ ...value, objective: 'lowest-coins' }, { maxStates: 1 }).routes[0])
+      .toMatchObject({ purchaseCost: 0, inventoryCount: 3 });
+    expect(solve({ ...value, mode: 'market' }, { maxStates: 1 }).routes[0])
+      .toMatchObject({ totalValue: 9000, inventoryCount: 0, marketCount: 3 });
+  }
 });
 
 it('prefers known market cost over unknown stock value without inventing an estimate', () => {

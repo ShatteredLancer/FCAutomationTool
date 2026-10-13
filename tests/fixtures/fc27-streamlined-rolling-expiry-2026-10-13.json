@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "source": "futbin",
+  "version": "27.0.18",
+  "inventoryCount": 517,
+  "marketReadDurationMs": 103290,
+  "lastRefreshCount": 51,
+  "retainedQuoteCount": 75,
+  "retainedTransportCount": 74,
+  "retainedTransportStatus": 200,
+  "quoteTtlMs": 300000,
+  "observedFailure": "FC27_STREAMLINED_QUOTES_EXPIRED",
+  "replay": {
+    "candidateCount": 166,
+    "expiredCacheCount": 51,
+    "nearExpiryCacheCount": 1,
+    "perReadMs": 626
+  },
+  "note": "Log 2026-10-12T23-01-05-838Z retains final progress 51/51 and successful transport/quotes, but not the expired identity or full initial pool. Replay identities, prices and cache ages are synthetic. Its old 114 initial reads plus 51 refresh reads reproduce the observed 103290ms failure; candidate count is not asserted as an observed fact in this log."
+}

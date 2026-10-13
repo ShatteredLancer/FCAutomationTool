@@ -12,6 +12,20 @@ async function fixture(targetScore = 200) {
   return { ...f, ...p, maintenance, evidence };
 }
 
+it('allows a market-only preview to prepare no owned refs without weakening actual cache consumption', async () => {
+  const f = await fixture();
+  expect(() => f.maintenance.prepare([])).not.toThrow();
+  expect(f.calls).toHaveLength(0);
+  expect(f.root.repositories.Item.club.items._collection[1]).toBeDefined();
+  expect(() => f.maintenance.prepare(null)).toThrow();
+  expect(() => f.maintenance.prepare([{ id: null, definitionId: 100, pile: 'club' }])).toThrow();
+  const record = structuredClone(f.record);
+  record.batches[0].refs = [];
+  await expect(f.maintenance.apply(record, record.batches[0], { ...f.evidence, absent: [] })).rejects.toThrow();
+  expect(f.calls).toHaveLength(0);
+  expect(f.root.repositories.Item.club.items._collection[1]).toBeDefined();
+});
+
 it('updates partial progress and native caches once without reading the hub or creating rewards', async () => {
   const f = await fixture();
   f.maintenance.prepare(f.batch.refs);

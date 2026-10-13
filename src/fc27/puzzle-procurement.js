@@ -213,6 +213,42 @@ export function planFc27PuzzleShortageQueries(input, entries = []) {
   const chemistryNeeded = parsed.rules.some(rule => rule.kind === 'min-chemistry' && rule.value > 0);
   const nations = parsed.rules.filter(rule => rule.kind === 'from-nations' && rule.mode === 'min' && rule.count > 0)
     .flatMap(rule => rule.ids);
+  const clubs = parsed.rules.filter(rule => rule.kind === 'from-clubs' && rule.mode === 'min' && rule.count > 0);
+  if (!cappedClubs && chemistryNeeded && tiers.length > 1 && clubs.length) {
+    const resolveClub = createFc27ClubResolver(input.clubLinks);
+    if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
+    const candidates = [...pool.candidates, ...marketCandidates(input, entries)]
+      .filter(item => tiers.includes(levelOf(quality(item.rating))));
+    const filler = material.filter(rule => rule.count > 0).sort((a, b) => b.count - a.count)[0];
+    const level = levelOf(filler.qualities[0]);
+    const anchors = [];
+    for (const rule of clubs) {
+      const ids = new Set(rule.ids.map(resolveClub));
+      const matching = candidates.filter(item => ids.has(resolveClub(item.teamId)));
+      anchors.push(...matching);
+      if (new Set(matching.map(item => item.definitionId)).size < rule.count) {
+        const identityLevel = generic.queries.find(query => rule.ids.includes(query.team))?.level ?? tiers[0];
+        // Leave a page for the dominant filler tier even when several club
+        // alternatives could otherwise consume all three identity queries.
+        if (queries.length < 2) add({ start: 0, count: 20, level: identityLevel, team: rule.ids[0] });
+      }
+    }
+    const counts = new Map();
+    for (const item of anchors.length ? anchors : candidates.filter(item => levelOf(quality(item.rating)) === level)) {
+      counts.set(item.nationId, (counts.get(item.nationId) ?? 0) + 1);
+    }
+    const nation = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+    if (positive(nation)) add({ start: 0, count: 20, level, nation });
+    const leagues = new Map();
+    for (const item of candidates.filter(item => levelOf(quality(item.rating)) === level && item.nationId === nation)) {
+      leagues.set(item.leagueId, (leagues.get(item.leagueId) ?? 0) + 1);
+    }
+    for (const [league] of [...leagues].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
+      add({ start: 0, count: 20, level, league });
+    }
+    add({ start: 0, count: 20, level });
+    return { status: 'ready', executable: false, queries, complete: false };
+  }
   if (!cappedClubs && chemistryNeeded && tiers.length > 1 && nations.length) {
     // All three old pages could be silver although eight bronze fillers were
     // mandatory. Cover the required tiers around one existing national link,

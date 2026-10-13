@@ -7,6 +7,41 @@ import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { puzzleBuyPendingKey, puzzleBuyKey } from '../../src/fc27/puzzle-buy-session.js';
 import { galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js';
 import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.js';
+import { contextKey } from '../../src/fc27/prelaunch-contract.js';
+
+it('blocks Club-only contribution before any EA request when another target has an unknown move', async () => {
+  const f = streamlinedRuntime(), key = contextKey(f.plan.context, 'streamlined-materialization');
+  const memory = new Map([[key, { schema: 1, entries: [{ id: 901, definitionId: 1901,
+    pile: 'unassigned', setId: 99, challengeId: 199, state: 'pending' }] }]]);
+  const execution = await createFc27StreamlinedExecution(f.root, { context: f.plan.context,
+    get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) } });
+  expect(await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint,
+    batchIndices: [0], allowPartial: true })).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED' });
+  expect(f.calls).toHaveLength(0);
+  expect(memory.get(key).entries[0].state).toBe('pending');
+});
+
+it('confirms an old exact move under the shared lock without EA mutations', async () => {
+  const f = streamlinedRuntime(), key = contextKey(f.plan.context, 'streamlined-materialization');
+  const memory = new Map([[key, { schema: 1, entries: [{ id: 1, definitionId: 101,
+    pile: 'transfer', setId: 99, challengeId: 199, state: 'pending' }] }]]);
+  let held = false;
+  const set = vi.fn(async (key, value) => { expect(held).toBe(true); memory.set(key, structuredClone(value)); });
+  const execution = await createFc27StreamlinedExecution(f.root, { context: f.plan.context,
+    get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback), set,
+    lockManager: { request: async (name, options, task) => {
+      held = true; try { return await task({ name, mode: options.mode }); } finally { held = false; }
+    } } });
+  expect(await execution.recoverMaterialization()).toMatchObject({ status: 'recovered', confirmed: 1 });
+  expect(memory.get(key).entries[0].state).toBe('confirmed');
+  expect(set).toHaveBeenCalledOnce(); expect(held).toBe(false);
+  expect(f.calls).toHaveLength(1);
+  expect(f.calls[0]).toMatchObject({ kind: 'request', method: 'POST', body: { defId: '101' } });
+  expect(f.calls[0].url).toMatch(/\/club$/);
+});
 
 it('keeps unresolved purchases and malformed traditional records visible before any contribution', async () => {
   const f = streamlinedRuntime(), scope = traditionalJournalScope(f.plan.context);
@@ -14,6 +49,20 @@ it('keeps unresolved purchases and malformed traditional records visible before 
     await expect(assertStreamlinedOtherTransactions(async (candidate, fallback) => candidate === key ? {} : fallback, f.plan.context)).rejects.toThrow();
   }
   await expect(assertStreamlinedOtherTransactions(async (_key, fallback) => fallback, f.plan.context)).resolves.toBeUndefined();
+});
+
+it('prepares a real market-only plan without owned cache refs, writes or EA requests', async () => {
+  const f = streamlinedRuntime(), market = f.plan.items.map((item, index) => ({ ...item,
+    source: 'market', id: null, key: `market:${item.definitionId}:${index}`, price: 200 }));
+  const plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy: f.plan.policy,
+    result: { ...f.plan, items: market, batches: [market], materialValue: 0, purchaseCost: market.length * 200,
+      route: { groups: [{ source: 'market', quantity: market.length, items: market }] } } });
+  const get = async (_key, fallback) => fallback, set = vi.fn();
+  const execution = await createFc27StreamlinedExecution(f.root, { context: plan.context, get, set,
+    canWrite: () => true, lockManager: { request: vi.fn() } });
+  expect(execution.prepare(plan)).toBe(true);
+  expect(set).not.toHaveBeenCalled(); expect(f.calls).toHaveLength(0);
+  expect(Object.keys(f.root.repositories.Item.club.items._collection)).toHaveLength(11);
 });
 
 it('does not let a valid Puzzle purchase marker block an unrelated contribution', async () => {

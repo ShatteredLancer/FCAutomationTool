@@ -3,8 +3,40 @@ import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements } from '../../src/fc27/sbc-requirements.js';
 import { build } from 'esbuild';
 import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
+import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
+import { suggestFc27PuzzleJointPurchases } from '../../src/fc27/puzzle-procurement.js';
 
 const row = (key, value, count = -1, scope = 0) => ({ count, scope, pairs: [{ key, values: [value] }] });
+
+it.each([false, true])('reaches separate mandatory club/gold subsets before silver fillers (procurement=%s)', procurement => {
+  const input = puzzleFillFixture(); input.policy.maxRating = 82;
+  input.challenge.rawRequirements = [row(12, 500, 1), row(10, 2, 2), row(8, 4, -1, 1),
+    row(17, 3, 1), row(3, 2), row(35, 18)];
+  const template = input.inventory.items[0];
+  input.inventory.items = Array.from({ length: 209 }, (_, index) => ({ ...template,
+    id: index + 1, definitionId: index + 101, rating: index < 200 ? 65 : 75,
+    nationId: index < 180 ? 2 : index < 200 ? 3 : 1, leagueId: index < 180 || index >= 200 ? 1 : 2,
+    teamId: index >= 180 && index < 200 ? 500 : 1000 + index, positions: [5],
+  }));
+  const before = structuredClone(input.inventory);
+  const catalog = procurement ? input.inventory.items.splice(180).map(item => ({ ...item, id: undefined })) : [];
+  const prices = new Map(catalog.map(item => [item.definitionId, item.rating >= 75 ? 200 : 400]));
+  const result = procurement ? suggestFc27PuzzleJointPurchases(input, catalog, { prices, priceSource: 'futgg' })
+    : previewFc27PuzzleSquad(input);
+  expect(result.status, JSON.stringify({ reason: result.reason, search: result.search })).toBe(procurement ? 'suggested' : 'preview');
+  const selected = procurement ? [...result.plans[0].selectedOwned, ...result.plans[0].purchases] : result.selected;
+  expect(selected.filter(item => item.rating >= 75)).toHaveLength(1);
+  expect((procurement ? result.plans[0] : result).teamFacts.chemistry).toBeGreaterThanOrEqual(18);
+  if (procurement) {
+    expect(result.estimatedCost).toBe(600);
+    expect(result.plans[0].purchaseCount).toBe(2);
+    expect(result.plans[0].selectedOwned).toHaveLength(9);
+    expect(input.policy.onlyUntradeable).toBe(true);
+  }
+  expect(result.search.evaluations).toBeGreaterThan(0);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(input.inventory).toEqual(procurement ? { ...before, items: before.items.slice(0, 180) } : before);
+});
 
 it.each([[7, 'nationId'], [8, 'leagueId'], [9, 'teamId']])(
   'prunes insufficient remaining group capacity for key %i without exhausting the budget', (key, field) => {
@@ -193,6 +225,20 @@ it('passes all eleven slots including trailing bricks and searches legal positio
   }
   expect(result.search.placementNodes).toBeGreaterThan(0);
   expect(result.nodes).toBe(Object.values(result.search).reduce((sum, count) => sum + count, 0));
+});
+
+it('does not stop a small chemistry pool at the former fixed 256 placement nodes', () => {
+  const input = fixture(); input.challenge.slotCount = 11; input.challenge.brickIndices = [];
+  input.challenge.formation = { id: 1, positions: Array(11).fill(0), slotCount: 11 };
+  input.challenge.rawRequirements = [row(35, 1)];
+  input.inventory.items = Array.from({ length: 14 }, (_, index) => ({ ...input.inventory.items[0],
+    id: index + 1, definitionId: 1000 + index, positions: [0] }));
+  let evaluations = 0;
+  const result = previewFc27PuzzleSquad({ ...input,
+    evaluateSquad: () => ({ chemistry: ++evaluations > 300 ? 33 : 0 }) });
+  expect(result.status).toBe('preview');
+  expect(evaluations).toBeGreaterThan(256);
+  expect(result.reason).not.toBe('FC27_PUZZLE_SEARCH_LIMIT');
 });
 
 it('does not call a market shortage proven when only a search limit was reached', () => {

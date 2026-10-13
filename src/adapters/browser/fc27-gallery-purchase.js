@@ -18,7 +18,12 @@ export function createFc27GalleryPurchase({ root, gmGetValue, gmSetValue, gmRequ
       if (JSON.stringify(context) !== JSON.stringify(readFc27Context(root)) || !isCurrent()) throw new Error('FC27_GALLERY_CONTEXT_CHANGED');
     };
     const referencePrice = createFsuReferencePrice({ season: context.season, platform: context.platform,
-      get: gmGetValue, set: gmSetValue, request: createFc27FutbinHttp(gmRequest) });
+      get: gmGetValue, set: gmSetValue, request: createFc27FutbinHttp(gmRequest, {
+        onEvent: fields => {
+          try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', event: 'transport-request', ...fields })).catch(() => undefined); }
+          catch { /* Diagnostics are optional. */ }
+        },
+      }) });
     const buyer = createGalleryPurchaseSession({ scope, context, get: gmGetValue, set: gmSetValue,
       exclusive: persistence.exclusive, assertCurrent: account, onProgress,
       readDestination: async () => tradePreferences ? (await tradePreferences.read()).destination : 'club',

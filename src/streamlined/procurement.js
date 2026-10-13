@@ -41,7 +41,8 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         const inventoryEntries = plan.route.groups.flatMap((group, groupIndex) => group.source === 'inventory'
           ? group.items.slice(0, group.quantity).map((item, index) => ({
             key: `inventory:${item.id}:${index}`, source: 'inventory', groupIndex, definitionId: item.definitionId,
-            itemId: item.id, price: null, cap: null, tradeId: null, state: 'ready' })) : []);
+            itemId: item.id, pile: item.pile, executionPile: item.executionPile, price: null, cap: null,
+            tradeId: null, state: 'ready' })) : []);
         record = await journal.write({ schema: 1, context: plan.context, operationId: operationId(), revision: record?.revision ?? 0,
           fingerprint: approval.fingerprint, plan, challenge: plan.challenge, policy: plan.policy, route: plan.route,
           budget: approval.budget, spent: 0, submittedScore: plan.challenge.submittedScore,
@@ -94,7 +95,19 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         }
         const state = await adapter.readState(record); await check();
         if (state.submittedScore !== record.submittedScore) fail('PROGRESS_CHANGED');
-        const readyEntries = record.entries.filter(e => ['ready', 'club'].includes(e.state)).slice(0, record.challenge.selectionLimit);
+        const available = record.entries.filter(e => ['ready', 'club'].includes(e.state));
+        const preferredDefinitions = new Set(available.filter(e => ['club', 'storage'].includes(e.pile)).map(e => e.definitionId));
+        const selectedDefinitions = new Set();
+        const readyEntries = available
+          .slice().sort((a, b) => Number(['unassigned', 'transfer'].includes(a.pile))
+            - Number(['unassigned', 'transfer'].includes(b.pile)))
+          .filter(entry => {
+            const external = ['unassigned', 'transfer'].includes(entry.pile);
+            if (external && preferredDefinitions.has(entry.definitionId)) return false;
+            if (selectedDefinitions.has(entry.definitionId)) return false;
+            selectedDefinitions.add(entry.definitionId);
+            return true;
+          }).slice(0, record.challenge.selectionLimit);
         const materialized = await adapter.materialize(readyEntries, record);
         if (!Array.isArray(materialized)) fail('PURCHASE_MATERIAL_UNKNOWN');
         const ready = materialized.map((row, index) => row?.item ? row : ({
@@ -173,7 +186,9 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         await check();
         record.contribution = { batchPlan, material, dispatched: true }; await save(); report('contribution');
         await check();
-        const result = await adapter.contribute(batchPlan);
+        const result = await adapter.contribute(batchPlan, {
+          onProgress: progress => report(progress?.phase ?? 'contribution', progress),
+        });
         if (!result?.confirmed) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
         await settleContribution(result);
       }

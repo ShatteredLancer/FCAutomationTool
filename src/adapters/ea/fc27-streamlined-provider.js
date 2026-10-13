@@ -7,6 +7,7 @@ import { readFc27Context } from './fc27-local-read.js';
 import { normalizeStreamlinedContributionReply } from '../../streamlined/contribution.js';
 import { validateStreamlinedJournal } from '../../streamlined/journal.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
+import { createFc27StreamlinedMaterializer } from './fc27-streamlined-materialize.js';
 
 // Production composition for the transaction driver.
 // Callers cannot dispatch by supplying a plan alone: a fresh validation lease,
@@ -15,7 +16,8 @@ import { integer, same, fail } from '../../streamlined/contract.js';
 export function createFc27StreamlinedProvider(root, { journal, canWrite = () => false, now = () => Date.now(),
   createValidator = createFc27StreamlinedValidator, createProgress = createFc27StreamlinedProgressReader,
   createTransport = createFc27StreamlinedContributionTransport, createReconciler = createFc27StreamlinedReconciler,
-  maintenance = null, checkOtherTransactions = async () => {}, purchaseVerifier = null } = {}) {
+  createMaterializer = createFc27StreamlinedMaterializer, materializationStorage = {}, maintenance = null,
+  checkOtherTransactions = async () => {}, purchaseVerifier = null } = {}) {
   let lease = null, busy = false;
   const progress = createProgress(root, { now });
   const validator = createValidator(root, { now, readProgress: expected => progress.read(expected), nativeReauth: true, purchaseVerifier });
@@ -35,7 +37,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
   };
   return Object.freeze({
     capabilities: Object.freeze({ get contributionVerified() { return canWrite() === true; } }),
-    async verify(plan, batch, submittedScore) {
+    async verify(plan, batch, submittedScore, { onProgress = () => {}, stopped = () => false } = {}) {
       if (busy) fail('BUSY');
       busy = true; lease = null;
       try {
@@ -43,7 +45,21 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
         const origin = binding(); unchanged(origin, plan);
         await checkOtherTransactions(); unchanged(origin, plan);
         await maintenance?.prepare?.(batch.refs);
-        const evidence = await validator.verify(plan, batch, submittedScore);
+        if (batch.refs.some(ref => ['unassigned', 'transfer'].includes(ref.pile))) {
+          if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
+          const materializer = await createMaterializer(root, { canWrite, plan, ...materializationStorage,
+            assertCurrent: () => { unchanged(origin, plan); if (stopped()) fail('CANCELLED'); },
+            onProgress: progressEvent => {
+              // Keep the materialization phase visible to the same transaction
+              // progress stream as validation/contribution. The score is the
+              // score before this batch, since moving a card cannot award SBC
+              // points by itself.
+              try { onProgress({ ...progressEvent, submittedScore }); } catch { /* display only */ }
+            } });
+          await materializer.prepare(batch.refs);
+          unchanged(origin, plan);
+        }
+        const evidence = await validator.verify(plan, batch, submittedScore, { onProgress, stopped });
         unchanged(origin, plan);
         if (evidence?.fresh !== true || !integer(evidence.observedAt) || now() < evidence.observedAt
             || now() - evidence.observedAt > 15000 || evidence.count !== batch.refs.length

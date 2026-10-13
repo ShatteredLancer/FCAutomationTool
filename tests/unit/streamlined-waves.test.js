@@ -31,6 +31,33 @@ it('reserves already bought material and stops purchasing when its points suffic
   const wave = nextStreamlinedWave({ groups: [g] }, { ...state, targetScore: 800, ready: [{ groupIndex: 0, item }] });
   expect(wave.material).toHaveLength(1); expect(wave.purchases).toHaveLength(0);
 });
+it('uses the Club copy first and defers its Unassigned duplicate until a later wave', () => {
+  const club = safeItem({ id: 1, definitionId: 101, points: 20, pile: 'club' });
+  const external = safeItem({ id: 2, definitionId: 101, points: 20, pile: 'unassigned', executionPile: 'club' });
+  const route = { groups: [
+    { source: 'inventory', quantity: 1, item: club, items: [club] },
+    { source: 'inventory', quantity: 1, item: external, items: [external] },
+  ] };
+  const first = nextStreamlinedWave(route, { ...state, targetScore: 40, heldDefinitions: [101],
+    ready: [{ groupIndex: 0, item: club }, { groupIndex: 1, item: external }] });
+  expect(first.material.map(row => row.item.id)).toEqual([1]);
+
+  const second = nextStreamlinedWave(route, { ...state, submittedScore: 20, targetScore: 40, consumedIds: [1],
+    ready: [{ groupIndex: 1, item: external }] });
+  expect(second.material.map(row => row.item.id)).toEqual([2]);
+});
+it('does not materialize an external duplicate while its exact Club version remains unconsumed', () => {
+  const club = safeItem({ id: 1, definitionId: 101, points: 20, pile: 'club' });
+  const external = safeItem({ id: 2, definitionId: 101, points: 20, pile: 'transfer', executionPile: 'club' });
+  const route = { groups: [
+    { source: 'inventory', quantity: 1, item: club, items: [club] },
+    { source: 'inventory', quantity: 1, item: external, items: [external] },
+  ] };
+  const wave = nextStreamlinedWave(route, { ...state, targetScore: 40, heldDefinitions: [101],
+    ready: [{ groupIndex: 1, item: external }] });
+  expect(wave.material).toEqual([]);
+  expect(wave.status).toBe('waiting');
+});
 it('contributes 18 after bounded scarcity, never zero, and never after Stop/unknown outcome', () => {
   const base = { readyCount: 18, readyPoints: 180, remainingScore: 1000, limit: 30, searchedAll: true, noProgressMs: 60000 };
   expect(streamlinedWaveDisposition(base)).toBe('contribute');

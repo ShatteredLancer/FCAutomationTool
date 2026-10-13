@@ -17,6 +17,7 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
   const source = `
     export { inspectFc27PuzzlePlan } from './src/adapters/ea/fc27-puzzle-read.js';
     export { createFc27MarketReadTransport, marketReadReason } from './src/adapters/ea/fc27-market-read.js';
+    export { collectSafeTraditionalCandidates } from './src/fc27/traditional-preview.js';
     export { planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively } from './src/fc27/puzzle-procurement.js';`;
   const bundle = await build({ absWorkingDir: root,
     stdin: { contents: source, resolveDir: root, sourcefile: 'puzzle-market-live.js' },
@@ -44,12 +45,23 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
         for (const query of route.queries) pages.push(await transport.readCatalogPage(query));
         const entries = [...new Map(pages.flatMap(page => page.entries).map(item => [item.definitionId, item])).values()];
         const suggestion = await MarketRoute.suggestFc27PuzzleJointPurchasesCooperatively(inputs, entries);
+        const pool = MarketRoute.collectSafeTraditionalCandidates({ ...inputs, challenge: { ...inputs.challenge,
+          mechanism: 'traditional', requirements: [{ kind: 'player-count', count: 11 - inputs.challenge.brickIndices.length }] } });
+        const context = { season: '27', accountScope: 'synthetic-puzzle-replay', platform: 'pc' };
+        const replay = { context, challenge: { ...inputs.challenge, context }, policy: { ...inputs.policy, context },
+          inventory: { schema: 1, context, kind: 'normalized-inventory', status: 'provisional',
+            items: (pool.candidates ?? []).map((item, index) => Object.fromEntries([
+              ['id', index + 1], ...['definitionId', 'type', 'pile', 'rating', 'rarity', 'special',
+                'evolution', 'cosmetic', 'concept', 'academyEnrolled', 'tradeable', 'loans', 'limitedUse',
+                'leagueId', 'nationId', 'teamId', 'positions', 'groups', 'state', 'activeTrade',
+                'locked', 'activeSquad', 'protected'].map(key => [key, item[key]])])) },
+          clubLinks: inputs.clubLinks, chemistry: inputs.chemistry };
         const selected = { definitionIds: suggestion.plans?.[0]?.purchases.map(item => item.definitionId) ?? [] };
         // Catalog/solver inspection stops before quotes: no unused versions are
         // quoted. The production session quotes only complete valid plans.
         const quotes = [];
         return { status: 'blocked', reason: 'FC27_MARKET_ROUTE_OBSERVED', safeCandidates: 0,
-          nodes: 0, marketRoute: { queries: route.queries, pages, selected, quotes,
+          nodes: 0, marketRoute: { queries: route.queries, pages, selected, quotes, replay,
             suggestion: { status: suggestion.status, reason: suggestion.reason, nodes: suggestion.nodes,
               marketCandidates: suggestion.marketCandidates, plans: (suggestion.plans ?? []).map(plan => ({
                 purchaseCount: plan.purchaseCount, teamFacts: plan.teamFacts,

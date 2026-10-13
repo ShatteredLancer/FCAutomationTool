@@ -1,5 +1,24 @@
 import { expect, it } from 'vitest';
-import { streamlinedExecutionMessage, streamlinedRouteSummary } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+
+it('distinguishes FUTBIN quote expiration from a FUT.GG candidate catalog connection failure', () => {
+  const message = streamlinedMarketMessage({ quoteSource: 'futbin', marketError: 'FC27_STREAMLINED_QUOTES_EXPIRED' });
+  expect(message).toContain('FUTBIN');
+  expect(message).toContain('到期');
+  expect(message).toContain('重新生成');
+  expect(message).not.toContain('FUT.GG');
+  expect(streamlinedMarketMessage({ quoteSource: 'futbin', marketError: 'FC27_BUY_REFERENCE_TIMEOUT' })).toContain('FUTBIN');
+  expect(streamlinedMarketMessage({ quoteSource: 'futbin', marketError: 'FC27_STREAMLINED_CATALOG_HTTP_403' })).toContain('目录连接（FUT.GG）');
+});
+
+it('explains old material moves and read-only recovery without requiring the old SBC page', () => {
+  const text = streamlinedExecutionMessage('FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED', {
+    kind: 'streamlined-materialization', setId: 99, challengeId: 199, pendingCount: 2 });
+  expect(text).toContain('Set 99 / Challenge 199');
+  expect(text).toContain('2 张');
+  expect(text).toContain('核对并恢复');
+  expect(text).toContain('不会重复移动、购买或贡献');
+});
 
 it('summarizes a route without expanding its per-card groups', () => {
   const text = streamlinedRouteSummary({

@@ -35,15 +35,21 @@ export async function createFc27StreamlinedCache(root, { now = () => Date.now() 
     if (repo && !collection && !storage) fail('CACHE_UNVERIFIED');
     return ownData(collection ?? storage, String(id));
   };
-  const validateRefs = refs => {
-    if (!Array.isArray(refs) || !refs.length || new Set(refs.map(ref => ref.id)).size !== refs.length
-        || refs.some(ref => !integer(ref.id, 1) || !integer(ref.definitionId, 1) || !['club', 'storage'].includes(ref.pile))) fail('CACHE_UNVERIFIED');
+  const validateRefs = (refs, { preMaterialize = false } = {}) => {
+    if (!Array.isArray(refs) || new Set(refs.map(ref => ref.id)).size !== refs.length
+        || refs.some(ref => !integer(ref.id, 1) || !integer(ref.definitionId, 1)
+          || !['club', 'storage', 'unassigned', 'transfer'].includes(ref.pile)
+          || ['unassigned', 'transfer'].includes(ref.pile) && ref.executionPile !== 'club'
+          || ['club', 'storage'].includes(ref.pile) && ref.executionPile !== undefined)) fail('CACHE_UNVERIFIED');
+    if (!refs.length) return;
     // Inspect every identity before the first removal. Same-version other
     // copies remain untouched; a reused ID or unexpected pile stops cleanup.
     for (const ref of refs) {
-      const cached = item(ref.pile, ref.id);
+      const pile = ref.executionPile ?? ref.pile;
+      if (preMaterialize && ['unassigned', 'transfer'].includes(ref.pile)) continue;
+      const cached = item(pile, ref.id);
       if (cached && (ownData(cached, 'id') !== ref.id || ownData(cached, 'definitionId') !== ref.definitionId)
-          || item(ref.pile === 'club' ? 'storage' : 'club', ref.id)) fail('CACHE_IDENTITY_CHANGED');
+          || item(pile === 'club' ? 'storage' : 'club', ref.id)) fail('CACHE_IDENTITY_CHANGED');
     }
   };
   const dirty = () => {
@@ -51,7 +57,7 @@ export async function createFc27StreamlinedCache(root, { now = () => Date.now() 
     if (ownData(ownData(ownData(root.info, 'base'), 'clubCache'), 'localDirty') !== true) fail('CACHE_UNVERIFIED');
   };
   return Object.freeze({ assert,
-    prepare(refs) { assert(); validateRefs(refs); },
+    prepare(refs) { assert(); validateRefs(refs, { preMaterialize: true }); },
     dirty,
     apply(record, batch, evidence) {
       assert(); validateStreamlinedJournal(record, context);

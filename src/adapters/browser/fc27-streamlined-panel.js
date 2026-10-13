@@ -1,11 +1,22 @@
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString() : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
 
+export function streamlinedMarketMessage(result) {
+  const source = { futbin: 'FUTBIN', futgg: 'FUT.GG' }[result.quoteSource] ?? '所选来源';
+  if (result.marketError === 'FC27_STREAMLINED_QUOTES_EXPIRED') {
+    return `${source} 补卡报价在等待中到期，刷新后仍未取得完整有效报价。请重新生成方案；不会使用过期报价或自动切换来源。`;
+  }
+  if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ''))) {
+    return `${source} 补卡报价读取失败，未生成方案。请检查该报价来源连接后重新生成。`;
+  }
+  return '市场候选未验证，未生成补卡方案。请检查候选目录连接（FUT.GG），或将材料范围切换为“仅库存”后重试。';
+}
+
 export function streamlinedRouteSummary(route) {
   const cap = route.groups.filter(group => group.source === 'market')
     .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0);
   const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-  return `总价值 ${number(total)} ◉ · 待购 ${number(route.purchaseCost)} · 上限 ${number(cap)} · ${number(route.score)} 积分 · ${route.count} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${route.minBatches} 批`;
+  return `总价值 ${number(total)} ◉ · 待购 ${number(route.purchaseCost)} · 上限 ${number(cap)} · ${number(route.score)} 积分 · ${route.count} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${route.minBatches} 批${route.repeatPurchaseCount ? ` · 重复购卡 ${route.repeatPurchaseCount}` : ''}`;
 }
 
 export function streamlinedExecutionMessage(reason, recovery = null) {
@@ -41,6 +52,7 @@ export function streamlinedExecutionMessage(reason, recovery = null) {
     FC27_STREAMLINED_RECOVERY_REQUIRED: '上次贡献已发出，结果尚待核对；请点击“核对并恢复”，不要再次投入。',
     FC27_STREAMLINED_CONTEXT_CHANGED: '账号、SBC 或积分状态已变化，请重新打开当前 SBC 并生成方案。',
     FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未结清的贡献记录，未在当前 SBC 恢复或重复投入。`,
+    FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未核对的外部卡移动记录（${recovery?.pendingCount ?? '?'} 张）。请先点击“核对并恢复”；这里只检查是否已进入 Club，不会重复移动、购买或贡献。`,
     FC27_STREAMLINED_COMPLETED: '所选目标已达成，无需再次贡献。',
     FC27_STREAMLINED_PURCHASE_PENDING: '此路线含待购材料；先完成购买并核对真实实体，才能贡献。',
   };
@@ -73,7 +85,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
     <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-value">最低总材料价值（库存＋待购）</option><option value="lowest-coins">最低待购总额，材料估值次之</option><option value="fewest-cards">最少卡片</option></select></label>
     <label>材料范围<select data-mode><option value="inventory-market">库存＋补卡</option><option value="inventory">仅库存</option><option value="market">仅购买材料</option></select></label>
-    <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待（秒）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label></div>
+    <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待（秒）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
     <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
     <output data-status aria-live="polite"></output><progress hidden></progress><section data-result></section>
     <footer><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></footer></dialog>`;
@@ -106,7 +118,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     node('objective').value = s.objective; node('mode').value = s.mode; node('rating').value = String(s.maxRating);
     node('market-rating').value = String(s.marketMaxRating ?? 99);
     node('wait').value = String(s.partialWaitMs / 1000);
-    for (const key of ['club', 'storage']) node(key).checked = s.sources.includes(key);
+    for (const key of ['club', 'storage', 'unassigned', 'transfer']) node(key).checked = s.sources.includes(key);
   };
   const selectScope = value => { global = value; node('local').setAttribute('aria-pressed', String(!value)); node('global').setAttribute('aria-pressed', String(value)); };
   const loadScope = async value => {
@@ -117,7 +129,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   };
   const config = () => ({ objective: node('objective').value, mode: node('mode').value,
     maxRating: Number(node('rating').value), marketMaxRating: Number(node('market-rating').value), partialWaitMs: Number(node('wait').value) * 1000,
-    sources: ['club', 'storage'].filter(key => node(key).checked) });
+    sources: ['club', 'storage', 'unassigned', 'transfer'].filter(key => node(key).checked) });
   const on = (key, handler) => node(key).addEventListener('click', event => { if (event.isTrusted) void handler(); });
   on('close', close); dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
   on('local', () => loadScope(false)); on('global', () => loadScope(true)); on('stop', () => session.stop());
@@ -144,8 +156,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       clearRendered(); node('result').replaceChildren(); node('contribute').hidden = true; shown = null;
       if (!result.plan) {
         const output = node('result');
-        if (result.reason === 'FC27_STREAMLINED_MARKET_UNAVAILABLE') {
-          add(output, 'div', '市场候选未验证，未生成“库存＋补卡”方案。请检查 FUT.GG 连接，或将材料范围切换为“仅库存”后重试。').className = 'result-summary';
+        if (result.reason === 'FC27_STREAMLINED_QUOTES_UNAVAILABLE') {
+          add(output, 'div', '报价读取失败或已过期，未生成方案。请检查所选报价来源连接后重新生成。').className = 'result-summary';
+          add(output, 'small', `${String(result.quoteSource).toUpperCase()} · ${result.quoteReadError}`);
+        } else if (result.reason === 'FC27_STREAMLINED_MARKET_UNAVAILABLE') {
+          add(output, 'div', streamlinedMarketMessage(result)).className = 'result-summary';
           if (result.marketError) add(output, 'small', `补卡候选读取失败：${result.marketError}`);
         } else if (result.reason) {
           add(output, 'div', `未生成方案：${result.reason}`).className = 'result-summary';
@@ -175,9 +190,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${result.items.length} 张 / ${result.batches.length} 批`);
       if (result.policy) {
         const stats = result.inventoryStats;
-        const pileText = stats?.byPile ? `Club ${number(stats.byPile.club)} / Storage ${number(stats.byPile.storage)}` : 'Club / Storage';
+        const pileText = stats?.byPile ? ['club', 'storage', 'unassigned', 'transfer'].map(pile => `${pile} ${number(stats.byPile[pile] ?? 0)}`).join(' / ') : 'Club / Storage';
         const raw = stats?.rawByPile ? ` · 原始 ${number(stats.rawByPile.club)} / ${number(stats.rawByPile.storage)}` : '';
-        add(output, 'small', `FSU Only Untradeable：${result.policy.onlyUntradeable ? '开启' : '关闭'} · 读取库存：${pileText}${raw} · Transfer List 暂不支持直接贡献`);
+        add(output, 'small', `FSU Only Untradeable：${result.policy.onlyUntradeable ? '开启' : '关闭'} · 读取库存：${pileText}${raw}`);
       }
       if (!result.searchComplete) add(output, 'small', '搜索已达预算；显示最佳已知方案，不代表全局最优。');
       if (!result.poolComplete) add(output, 'small', '基于当前可读取库存；未确认全量库存。');
@@ -230,7 +245,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
             add(text, 'span', `${number(item.rating)} OVR · ${number(item.points)} 分`);
             add(text, 'span', item.source === 'market'
               ? '待购 · 市场概念卡'
-              : item.pile === 'storage' ? 'SBC Storage · 已有' : 'Club · 已有');
+              : item.pile === 'storage' ? 'SBC Storage · 已有'
+                : item.pile === 'unassigned' ? 'Unassigned → Club · 已有'
+                  : item.pile === 'transfer' ? 'Transfer List → Club · 已有' : 'Club · 已有');
             const points = add(row, 'span', `${number(item.points)} 分`); points.className = 'player-points';
             const price = add(row, 'span', item.price == null ? '估值未知' : `${number(item.price)} 金币`);
             price.className = 'player-price'; price.title = item.source === 'market' ? '待购估价' : '库存材料估值';
@@ -254,6 +271,24 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       });
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count]) => `${key}: ${count}`).join(' · ');
       if (skipped) { const details = add(output, 'details'); add(details, 'summary', '材料排除原因'); add(details, 'small', skipped); }
+      if (result.policy?.goldRange?.[1] < 99) {
+        add(output, 'small', `FSU 金卡上限 ${number(result.policy.goldRange[1])}：高于该上限的库存卡受保护，不会自动投入；市场补卡仍按独立市场上限。`);
+      }
+      const exclusionBuckets = result.inventorySelection?.buckets;
+      if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
+        const details = add(output, 'details');
+        add(details, 'summary', `未采用库存 ${number(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} 张`);
+        const labels = {
+          'fsu-gold-range': '不在 FSU 金卡评分范围',
+          untradeable: 'Only Untradeable 不满足',
+          pile: '不支持的库存位置',
+          'eligibility-ineligible': '不符合 SBC 条件',
+          'eligibility-unknown': 'SBC 资格未确认',
+        };
+        add(details, 'small', exclusionBuckets.map(bucket =>
+          `${labels[bucket.reason] ?? bucket.reason} · ${bucket.pile === 'storage' ? 'Storage' : bucket.pile === 'club' ? 'Club' : bucket.pile} · ${bucket.rating == null ? '评分未知' : `${number(bucket.rating)}级`} ×${number(bucket.count)}`
+        ).join('；'));
+      }
       add(output, 'small', result.liveExecutionEnabled ? (marketRun
         ? '点击后按当前路线逐批搜卡、买断、入 Club 并贡献；实际成交不超过每张卡的冻结上限。'
         : '点击贡献将永久消耗所选批次的卡片；可以分批贡献，停止会等待当前批次核对完成。')
@@ -266,10 +301,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const result = await session.plan(config(), { onProgress: p => {
         if (serial !== opened) return;
         const bar = shadow.querySelector('progress');
-        const stage = { quotes: '库存报价', catalog: '候选分组', 'market-validation': '核对候选积分', 'market-quotes': '补卡报价' }[p.phase];
+        const stage = p.phase === 'market-quotes' && p.refresh ? '刷新过期补卡报价'
+          : { quotes: '库存报价', catalog: '候选分组', 'market-validation': '核对候选积分', 'market-quotes': '补卡报价' }[p.phase];
         bar.max = stage ? p.total || 1 : p.maxNodes || 1;
         bar.value = stage ? p.completed : p.nodes;
-        node('status').textContent = stage ? `${stage} ${number(p.completed)} / ${number(p.total)}`
+        node('status').textContent = stage ? `${stage} ${number(p.completed)} / ${number(p.total)}${p.source ? ` · ${String(p.source).toUpperCase()}` : ''}${Number.isFinite(p.elapsedMs) ? ` · 已等待 ${Math.floor(p.elapsedMs / 1000)} 秒` : ''}`
           : `搜索节点 ${number(p.nodes)} / ${number(p.maxNodes)} · 候选 ${number(p.candidates)} · ${number(p.elapsedMs)} ms`;
       } });
       if (serial !== opened) return;
@@ -295,15 +331,21 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const outcome = await session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === 'partial' }, {
         onProgress: p => {
           if (serial !== opened) return;
+          const materializeLabel = { 'checking-source': '检查外部卡', 'checking-club': '核对 Club',
+            'journal-pending': '写入恢复记录', 'move-request': '请求移入 Club',
+            'move-acknowledged': '移动回执已确认', 'club-readback': '核对 Club 回读', confirmed: '移入 Club 已确认' }[p.stage];
           if (marketRun) {
-            const label = { search: '搜索限价内挂牌', buying: '买入中', moving: '移入 Club', 'partial-ready': '等待部分批次收批',
-              contribution: '贡献中', confirmed: '贡献已确认' }[p.phase] ?? p.phase;
+            const label = p.phase === 'materialize' ? materializeLabel ?? '移入 Club'
+              : { search: '搜索限价内挂牌', buying: '买入中', moving: '移入 Club', 'partial-ready': '等待部分批次收批',
+                validation: '复核材料', contribution: '贡献中', reconciliation: '核对回执', confirmed: '贡献已确认' }[p.phase] ?? p.phase;
             node('status').textContent = `第 ${number(p.batchNumber)} 批 · ${label}\n已购 ${number(p.purchased)} / ${number(p.purchaseTarget)} 张 · 已花费 ${number(p.spent)} / ${number(p.budget)} 金币\n已贡献 ${number(p.contributed)} 张 · 已确认 ${number(p.submittedScore)} / ${number(p.targetScore)} 分`;
             if (p.readyCount !== undefined) node('status').textContent += `\n本批就绪 ${number(p.readyCount)} / ${number(p.selectionLimit)} 张 · ${number(p.readyPoints)} 分`;
+            if (p.phase === 'materialize') node('status').textContent += `\n外部卡 ${number(p.completed)} / ${number(p.materialTotal)} 张`;
             const bar = shadow.querySelector('progress'); bar.max = p.targetScore || 1; bar.value = p.submittedScore;
             return;
           }
-          const label = { validation: '复核材料', contribution: '贡献中', reconciliation: '核对回执', confirmed: '已确认' }[p.phase];
+          const label = p.phase === 'materialize' && materializeLabel ? materializeLabel
+            : { validation: '复核材料', materialize: '移入 Club', contribution: '贡献中', reconciliation: '核对回执', confirmed: '已确认' }[p.phase];
           node('status').textContent = `第 ${p.index + 1} 批 · ${label} · 已确认 ${number(p.submittedScore)} 分`;
           const bar = shadow.querySelector('progress'); bar.max = indices.length;
           bar.value = indices.indexOf(p.index) + (p.phase === 'confirmed' ? 1 : 0);

@@ -45,23 +45,50 @@ it('does not fall back to a budget after a reference-price failure', async () =>
     request: async () => { throw Error('FC27_BUY_REFERENCE_HTTP_403'); } });
   await expect(price({ definitionId: 901 })).rejects.toThrow('FC27_BUY_REFERENCE_HTTP_403');
 });
+it('rebuilds a stale season-scoped FUTBIN id after a 404', async () => {
+  const storage = new Map([['fcat-futbin-ids:27', { 901: 11 }]]);
+  const request = vi.fn()
+    .mockRejectedValueOnce(Error('FC27_BUY_REFERENCE_HTTP_404'))
+    .mockResolvedValueOnce(JSON.stringify({ data: [{ resource_id: 901, ID: 22, LCPrice: 240 }] }));
+  const price = createFsuReferencePrice({ season: '27', platform: 'pc', request,
+    get: async (key, fallback) => storage.get(key) ?? fallback, set: async (key, value) => storage.set(key, structuredClone(value)) });
+  expect(await price({ definitionId: 901, rating: 70, nationId: 1, teamId: 2, leagueId: 3, preferredPosition: 25 })).toBe(240);
+  expect(request.mock.calls.map(([url]) => url)).toEqual([
+    'https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=11&platform=PC',
+    'https://www.futbin.org/futbin/api/27/getFilteredPlayers?platform=PC&nation=1&league=3&rating=70-70&club=2&sort=rating&position=ST&order=desc&page=1',
+  ]);
+  expect(storage.get('fcat-futbin-ids:27')).toEqual({ 901: 22 });
+});
+it('rebuilds a stale FUTBIN id when a 200 response contains another version', async () => {
+  const storage = new Map([['fcat-futbin-ids:27', { 901: 11 }]]);
+  const request = vi.fn()
+    .mockResolvedValueOnce(JSON.stringify({ data: [{ Player_Resource: 902, LCPrice: 999 }] }))
+    .mockResolvedValueOnce(JSON.stringify({ data: [{ resource_id: 901, ID: 22, LCPrice: 240 }] }));
+  const price = createFsuReferencePrice({ season: '27', platform: 'pc', request,
+    get: async (key, fallback) => storage.get(key) ?? fallback, set: async (key, value) => storage.set(key, structuredClone(value)) });
+  expect(await price({ definitionId: 901, rating: 70, nationId: 1, teamId: 2, leagueId: 3, preferredPosition: 25 })).toBe(240);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(storage.get('fcat-futbin-ids:27')).toEqual({ 901: 22 });
+});
 it('retains the original roster price when a later successful response omits that version', async () => {
   const storage = new Map(); const request = vi.fn()
     .mockResolvedValueOnce(JSON.stringify({ data: [{ resource_id: 901, ID: 11, LCPrice: 200 }] }))
+    .mockResolvedValueOnce(JSON.stringify({ data: [] }))
     .mockResolvedValueOnce(JSON.stringify({ data: [] }));
   const price = createFsuReferencePrice({ season: '27', platform: 'pc', request,
     get: async (key, fallback) => storage.get(key) ?? fallback, set: async (key, value) => storage.set(key, value) });
   expect(await price({ definitionId: 901 })).toBe(200);
   expect(await price({ definitionId: 901 })).toBe(200);
-  expect(request).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenCalledTimes(3);
 });
-it('uses an anonymous FUTBIN GET with no EA headers and accepts the original 200/201 responses', async () => {
+it('matches FSU FUTBIN GET headers and accepts the original 200/201 responses', async () => {
   for (const status of [200, 201]) {
     const gm = vi.fn(options => options.onload({ status, responseText: 'public price' }));
     const url = 'https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=11&platform=PC';
-    expect(await createFc27FutbinHttp(gm)(url)).toBe('public price');
-    expect(gm.mock.calls[0][0]).toMatchObject({ url, method: 'GET', anonymous: true, headers: { 'Content-Type': 'application/json' } });
-    expect(Object.keys(gm.mock.calls[0][0]).sort()).toEqual(['anonymous', 'headers', 'method', 'onerror', 'onload', 'ontimeout', 'timeout', 'url']);
+    expect(await createFc27FutbinHttp(gm, { userAgent: 'FCAT-Test-UA' })(url)).toBe('public price');
+    expect(gm.mock.calls[0][0]).toMatchObject({ url, method: 'GET', headers: { 'Content-Type': 'application/json', 'User-Agent': 'FCAT-Test-UA' } });
+    expect(gm.mock.calls[0][0].anonymous).toBeUndefined();
+    expect(Object.keys(gm.mock.calls[0][0]).sort()).toEqual(['headers', 'method', 'onerror', 'onload', 'ontimeout', 'timeout', 'url']);
   }
 });
 it('ends timed-out public requests and refuses redirects without printing the URL', async () => {
@@ -70,6 +97,18 @@ it('ends timed-out public requests and refuses redirects without printing the UR
     .rejects.toThrow('FC27_BUY_REFERENCE_TIMEOUT');
   await expect(createFc27FutbinHttp(options => options.onload({ status: 200, finalUrl: 'https://example.com/private', responseText: '{}' }))(url))
     .rejects.toThrow('FC27_BUY_REFERENCE_REDIRECT');
+});
+it('records independent HTTP durations for out-of-order concurrent responses without URLs', async () => {
+  const pending = [], events = []; let time = 1000;
+  const request = createFc27FutbinHttp(options => pending.push(options), { now: () => time, onEvent: row => events.push(row) });
+  const base = 'https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?platform=PC&ID=';
+  const first = request(`${base}1`);
+  time = 1100; const second = request(`${base}2`);
+  time = 1300; pending[1].onload({ status: 200, responseText: '{}' });
+  time = 1500; pending[0].onload({ status: 200, responseText: '{}' });
+  await Promise.all([first, second]);
+  expect(events.filter(row => row.status === 'received').map(row => row.durationMs)).toEqual([200, 500]);
+  expect(events.every(row => !Object.hasOwn(row, 'url'))).toBe(true);
 });
 it.each(['https://example.com/futbin/api/27/getFilteredPlayers', 'https://www.futbin.org/futbin/api/26/getFilteredPlayers',
   'https://www.futbin.org/account', 'https://secret@www.futbin.org/futbin/api/27/getFilteredPlayers'])

@@ -226,6 +226,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     ...await import(`./gallery-reward-probe.mjs?revision=${revision}`),
     ...await import(`./gallery-verification.mjs?revision=${revision}`),
     ...await import(`./streamlined-inspection.mjs?revision=${revision}`),
+    ...await import(`./public-price-verification.mjs?revision=${revision}`),
   }) }) {
   const network = createNetworkCollector(context);
   const directory = path.join(root, 'artifacts/fc27-browser');
@@ -242,11 +243,12 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     console.log(`Agent session ready. Local report: ${reportFile}`);
     console.log('Streamlined: streamlined-open [exact title] navigates only; streamlined-read inspects the current native One Click page without selecting, contributing, buying or claiming.');
     console.log('install-current installs and verifies current production source in this session. Before acceptance, including same-version source changes, also check root/dist SHA256 and refresh to verify the runtime version.');
+    console.log('price-check [set-name] reads saved quote sources and Gallery public prices only; it never saves settings or trades.');
     console.log('Login/2FA manually if requested. The current production version and hash must be installed before acceptance. Commands: inspect, tabs, home, navigation-probe, provider, club, market-probe, streamlined-open, streamlined-read, streamlined-recover, diagnostics-export, sbc, set <id>, squad <set-id> <challenge-id>, panel-catalog [set-id], gallery-read [set-name], gallery-verify [set-name], gallery-sync, gallery-reward-probe, puzzle <set-id> <challenge-id>, puzzle-market <set-id> <challenge-id>, puzzle-market-live <set-id> <challenge-id>, ai-test, puzzle-ai <set-id> <challenge-id>, puzzle-market-ai <set-id> <challenge-id>, q.');
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|install-current|tabs|home|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
+      if (!/^(inspect|install-current|tabs|home|price-check(?: [^\s]{1,80})?|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
       if (command === 'install-current') {
         if (!withExtensions) { console.log('Installation requires --with-extensions.'); continue; }
         try {
@@ -342,6 +344,16 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
             extensionMode: withExtensions ? 'existing-extensions' : 'disabled-native-baseline' },
           report, runtime, ui: await observePageUi(target), action, squadRead, squadReads, clubReads, nativeProvider,
           network: network.snapshot(), liveExecutionEnabled: false };
+        if (command === 'price-check' || command.startsWith('price-check ')) {
+          if (report.season !== '27' || observation.ui?.login !== false || observation.ui.modal !== false || observation.ui.loading !== false) {
+            observation.action = 'PUBLIC_PRICE_SESSION_NOT_CONFIRMED';
+          } else {
+            const { verifyPublicPrices } = await loadHelpers(revision);
+            observation.publicPrices = await verifyPublicPrices(context, target, command.split(' ')[1] || 'Arsenal',
+              { readGallery: readProductionGallery });
+            observation.action = observation.publicPrices.status === 'observed' ? 'PUBLIC_PRICES_READ_ONLY_INSPECTED' : observation.publicPrices.reason;
+          }
+        }
         if (command.startsWith('panel-catalog')) {
           const requested = command.split(' ')[1];
           observation.panel = await readProductionPanel(context, target, requested ? Number(requested) : null);

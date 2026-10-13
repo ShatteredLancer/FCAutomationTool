@@ -396,7 +396,7 @@ const streamlinedSession = createFc27StreamlinedSession({
     const context = readFc27Context(unsafeWindow); return { context, challenge: projectFc27StreamlinedChallenge(page, context) }; },
   readInputs: settings => readFc27StreamlinedInputs(unsafeWindow, settings),
   readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
-    catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }), prices: publicPrices }),
+    catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }), prices: publicPrices, diagnosticLog }),
   get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog,
   createExecution: (context, plan) => createFc27StreamlinedExecution(unsafeWindow, { context, plan,
     get: GM_getValue, set: GM_setValue, prices: publicPrices, lockManager: unsafeWindow.navigator.locks,

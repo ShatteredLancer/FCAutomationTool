@@ -12,7 +12,9 @@ function validPlanContents(plan) {
       || !Array.isArray(batches) || batches.some(b => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit)
       || !same(batches.flat(), items) || new Set(items.map(i => i?.key)).size !== items.length) return false;
   if (items.some(i => !integer(i?.definitionId, 1) || !integer(i.points, 1) || i.scoreVerified !== true
-      || (i.source === 'inventory' ? !integer(i.id, 1) || i.key !== `item:${i.id}` || !['club', 'storage'].includes(i.pile)
+      || (i.source === 'inventory' ? !integer(i.id, 1) || i.key !== `item:${i.id}` || !['club', 'storage', 'unassigned', 'transfer'].includes(i.pile)
+        || ['unassigned', 'transfer'].includes(i.pile) && i.executionPile !== 'club'
+        || ['club', 'storage'].includes(i.pile) && i.executionPile !== undefined
         : i.source !== 'market' || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key)
           || !integer(i.price, 1, 15000000)))) return false;
   const score = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score);

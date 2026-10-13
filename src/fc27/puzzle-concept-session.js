@@ -1,4 +1,5 @@
 import { prepareFc27PuzzleConceptDraft, validateFc27PuzzleConceptDraft } from './puzzle-concept-draft.js';
+import { transactionMethodEvidence } from './transaction-method-evidence.js';
 
 const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -158,7 +159,7 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
         }) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
       } catch (error) {
         const detail = mismatch(error?.mismatch);
-        return { ...blocked(reasonOf(error)), ...(detail ? { mismatch: detail } : {}),
+        return { ...blocked(reasonOf(error)), ...transactionMethodEvidence(error), ...(detail ? { mismatch: detail } : {}),
           status: boundary ? 'recovery-required' : 'blocked', saved: boundary ? null : false };
       }
       finally { provider?.cancel(); }
@@ -201,7 +202,7 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
           }
         });
         return result?.status === 'absent' ? null : result ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
-      } catch (error) { return blocked(reasonOf(error)); }
+      } catch (error) { return { ...blocked(reasonOf(error)), ...transactionMethodEvidence(error) }; }
       finally { provider?.cancel(); }
     },
   });

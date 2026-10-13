@@ -123,6 +123,20 @@ it('never saves when the journal boundary cannot be persisted', async () => {
   expect(x.events).not.toContain('save');
 });
 
+it('preserves only bounded method evidence when saved-squad synchronization fails', async () => {
+  const x = fixture();
+  x.adapter.syncSavedSquad.mockRejectedValue(Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'), {
+    methodPath: 'UTSquadEntity.prototype.update', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
+    sourceCode: 'private-code', account: 'private-account',
+  }));
+  const result = await x.engine.execute(x.approve().permit);
+  expect(result).toMatchObject({ status: 'recovery-required', saved: null,
+    methodPath: 'UTSquadEntity.prototype.update', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64) });
+  expect(JSON.stringify(result)).not.toContain('private-');
+  expect(x.record().phase).toBe('save-pending');
+  expect(x.adapter.save).toHaveBeenCalledOnce();
+});
+
 it('continues saved reread after stop or TTL expiry during an accepted save', async () => {
   const x = fixture(); const save = x.adapter.save.getMockImplementation();
   x.adapter.save.mockImplementation(async (...args) => { const result = await save(...args); x.stop(); x.advance(61000); return result; });

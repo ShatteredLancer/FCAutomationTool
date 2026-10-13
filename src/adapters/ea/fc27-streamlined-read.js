@@ -94,7 +94,7 @@ export function projectFc27StreamlinedItem(item, root, pile) {
   let points = null; try { points = item.sbsScore; } catch { /* Unknown remains null. */ }
   return normalizeStreamlinedItem({ ...base, pile, points, scoreVerified: integer(points, 1),
     protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
-    name, price: null, source: 'inventory' });
+    duplicateId: ownData(item, 'duplicateId'), name, price: null, source: 'inventory' });
 }
 
 export function readFc27StreamlinedInputs(root, settings = {}) {
@@ -107,15 +107,23 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
   const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
   const entities = new Map(), inventory = [];
   const sources = settings.sources ?? ['club', 'storage'];
-  const inventoryByPile = { club: 0, storage: 0 };
-  const rawByPile = { club: 0, storage: 0 };
-  const skippedNonPlayerByPile = { club: 0, storage: 0 };
+  const allowedPiles = ['club', 'storage', 'unassigned', 'transfer'];
+  const inventoryByPile = Object.fromEntries(allowedPiles.map(pile => [pile, 0]));
+  const rawByPile = Object.fromEntries(allowedPiles.map(pile => [pile, 0]));
+  const skippedNonPlayerByPile = Object.fromEntries(allowedPiles.map(pile => [pile, 0]));
   const inventoryTradeability = { tradeable: 0, untradeable: 0, unknown: 0 };
   for (const pile of sources) {
-    if (!['club', 'storage'].includes(pile)) fail('PILE_UNVERIFIED');
+    if (!allowedPiles.includes(pile)) fail('PILE_UNVERIFIED');
+    const repository = at(root, 'repositories.Item');
     const repo = at(root, `repositories.Item.${pile}`);
-    if (!repo && pile === 'storage') continue;
-    for (const item of values(ownData(repo, 'items') ?? repo, 20000)) {
+    let raw;
+    try {
+      const getter = pile === 'unassigned' ? repository?.getUnassignedItems
+        : pile === 'transfer' ? repository?.getTransferItems : null;
+      raw = typeof getter === 'function' ? getter.call(repository) : ownData(repo, 'items') ?? repo;
+    } catch { fail('PILE_UNAVAILABLE'); }
+    if (raw == null) { if (pile === 'storage') continue; fail('PILE_UNAVAILABLE'); }
+    for (const item of values(raw, 20000)) {
       rawByPile[pile]++;
       if (!isFc27PlayerItem(item)) { skippedNonPlayerByPile[pile]++; continue; }
       if (entities.has(item.id)) fail('IDENTITY_CONFLICT');
@@ -139,7 +147,7 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
   assertCurrent();
   return { context, challenge, policy, inventory, inventoryStats: {
       count: inventory.length, rawByPile, skippedNonPlayerByPile, byPile: inventoryByPile, tradeability: inventoryTradeability,
-      sources: [...sources], transferSupported: false,
+      sources: [...sources], transferSupported: sources.includes('transfer'), unassignedSupported: sources.includes('unassigned'),
     }, eligibility, assertCurrent,
     registerMarketEntity(item, entity) {
       assertCurrent();

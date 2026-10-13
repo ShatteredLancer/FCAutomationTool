@@ -48,7 +48,11 @@ export function normalizeStreamlinedItem(value = {}) {
     key: source === 'inventory' ? `item:${value.id}` : `market:${value.definitionId}:${value.copy ?? 0}`,
     points: integer(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
     scoreVerified: value.scoreVerified === true, rating: integer(value.rating, 1, 99) ? value.rating : null,
-    pile: ['club', 'storage'].includes(value.pile) ? value.pile : null,
+    // Streamlined planning may see cards outside Club/Storage, but those
+    // cards are only executable after the EA move-to-Club materialization
+    // transaction has been confirmed.
+    pile: ['club', 'storage', 'unassigned', 'transfer'].includes(value.pile) ? value.pile : null,
+    duplicateId: integer(value.duplicateId, 1) ? value.duplicateId : null,
     name: typeof value.name === 'string' ? value.name.slice(0, 160) : null,
     leagueId: integer(value.leagueId, 1) ? value.leagueId : null,
     loans: integer(value.loans, -1) ? value.loans : null,
@@ -56,6 +60,7 @@ export function normalizeStreamlinedItem(value = {}) {
     quote: value.quote ? structuredClone(value.quote) : null };
   for (const key of ['tradeable', 'special', 'concept', 'evolution', 'cosmetic', 'academyEnrolled', 'activeTrade',
     'limitedUse', 'locked', 'activeSquad', 'protected', 'eligible']) item[key] = typeof value[key] === 'boolean' ? value[key] : null;
+  if (['unassigned', 'transfer'].includes(item.pile)) item.executionPile = 'club';
   return deepFreeze(item);
 }
 
