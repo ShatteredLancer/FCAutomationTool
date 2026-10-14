@@ -5,6 +5,14 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.21] - 2026-10-14
+
+- Explain Streamlined protection failures in the planning result and action footer instead of displaying
+  only the aggregate error code; retain the code and fixed stage for support.
+- Retain bounded protection-stage/type/count evidence in diagnostics, without account/card identities.
+- Keep all 27.0.20 lock, active-squad and unknown-state guards unchanged; the reported live failure's
+  exact input remains pending new diagnostics. No new EA requests or changes to procurement rules.
+
 ## [27.0.20] - 2026-10-14
 
 - Streamlined progress remains visible beside the action buttons, with immediate preparation feedback,

@@ -177,8 +177,42 @@ export async function exerciseStreamlined(context) {
     await exerciseStreamlinedQuoteExpiry(page);
     await exerciseStreamlinedRollingExpiry(page);
     await exerciseStreamlinedBatchedInventory(page);
+    await exerciseStreamlinedProtectionBlocked(page);
     console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, market routes, frozen settings, partial progress, stop/recover, unavailable supply, completion, responsive dialog, no EA writes.');
   } finally { await page.close(); }
+}
+
+async function exerciseStreamlinedProtectionBlocked(page) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    globalThis.streamlinedMount.dispose();
+    const a = globalThis.StreamlinedSmoke, c = a.challenge();
+    const evidence = { writes: 0, quoteReads: 0, execution: 0, logs: [], phase: 'protection-lock-list' };
+    globalThis.protectionSmoke = evidence;
+    const session = a.createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+      readInputs: () => {
+        const error = Error('FC27_STREAMLINED_PROTECTION_UNVERIFIED');
+        error.evidence = { phase: evidence.phase, count: 11, requiredSlots: 23, mismatch: 'length' };
+        throw error;
+      }, get: async () => null, set: async () => { evidence.writes++; },
+      prices: { load: async () => { evidence.quoteReads++; } },
+      createExecution: async () => { evidence.execution++; }, diagnosticLog: { record: row => evidence.logs.push(row) } });
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+      readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
+  });
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  for (const [phase, message] of [['protection-lock-list', 'FSU 锁卡名单'], ['protection-slot-list', '11 / 23']]) {
+    await page.evaluate(value => { globalThis.protectionSmoke.phase = value; }, phase);
+    await page.getByRole('button', { name: '生成方案', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
+    assert.ok((await page.locator('[data-result]').innerText()).includes(message));
+    assert.ok((await page.locator('[data-status]').innerText()).includes(message), 'The footer explains the protection failure too');
+    assert.equal(await page.locator('[data-contribute]').isVisible(), false);
+  }
+  assert.deepEqual(await page.evaluate(() => {
+    const e = globalThis.protectionSmoke; return { writes: e.writes, quoteReads: e.quoteReads, execution: e.execution, phases: e.logs.map(row => row.phase) };
+  }), { writes: 0, quoteReads: 0, execution: 0, phases: ['protection-lock-list', 'protection-slot-list'] });
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-protection-blocked.png' });
 }
 
 async function exerciseStreamlinedBatchedInventory(page) {

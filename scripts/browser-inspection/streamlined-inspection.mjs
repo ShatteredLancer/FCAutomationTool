@@ -30,7 +30,7 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js',
     'src/adapters/ea/fc27-club-read.js', 'src/fc27/prelaunch-contract.js',
     'src/domain/player-rarity.js',
-    'src/streamlined/contract.js', 'src/streamlined/eligibility.js',
+    'src/streamlined/contract.js', 'src/streamlined/eligibility.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-streamlined-inspection.js', 'src/adapters/ea/fc27-streamlined-progress.js',
     'src/adapters/ea/fc27-streamlined-validation.js', 'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-streamlined-storage-read.js', 'src/adapters/ea/fc27-transaction-transport.js',

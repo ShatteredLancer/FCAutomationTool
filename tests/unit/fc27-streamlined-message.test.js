@@ -2,6 +2,14 @@ import { expect, it } from 'vitest';
 import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage,
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
+it('explains which protection input failed instead of only showing the aggregate error code', () => {
+  const reason = 'FC27_STREAMLINED_PROTECTION_UNVERIFIED';
+  expect(streamlinedExecutionMessage(reason, null, { phase: 'protection-lock-list' })).toContain('FSU 锁卡名单');
+  expect(streamlinedExecutionMessage(reason, null, { phase: 'protection-slot-list', count: 11, requiredSlots: 23 })).toContain('11 / 23');
+  expect(streamlinedExecutionMessage(reason, null, { phase: 'protection-cache', cached: false })).toContain('原生主阵容缓存');
+  expect(streamlinedExecutionMessage(reason, null, { phase: 'secret-payload', itemId: 123456 })).not.toContain('secret-payload');
+});
+
 it('shows verified purchase/contribution counters and the current search without inventing success', () => {
   const text = streamlinedExecutionProgress({ phase: 'search', batchNumber: 2, purchased: 3, purchaseTarget: 40,
     spent: 3300, budget: 44000, contributed: 1, submittedScore: 830, targetScore: 34000,

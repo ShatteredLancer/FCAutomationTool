@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.20
+// @version      27.0.21
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.20", at: Date.now(), status: 'started',
+    state = { version: "27.0.21", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -16886,7 +16886,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         retry: (retry) => runPurchase({ resume: true, expectedOperationId: retry.operationId, retry }),
         resume: () => runPurchase({ resume: true, expectedOperationId: purchaseSummary?.operationId })
       });
-      const phases = {
+      const phases2 = {
         search: "\u67E5\u4EF7",
         buying: "\u4E70\u5165",
         bought: "\u5DF2\u4E70\u5165",
@@ -16905,7 +16905,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (disposed || !active || identity5 !== scope2()) return;
             purchaseResults?.show(progress, { running: true });
             updatePurchaseDialogProgress(dialog, progress);
-            output.textContent = `${phases[progress.phase] ?? "\u5904\u7406\u4E2D"} ${progress.index}/${progress.total} \xB7 \u5DF2\u8D2D\u4E70 ${progress.purchased} \u5F20 \xB7 ${count2(progress.spent)} \u91D1\u5E01`;
+            output.textContent = `${phases2[progress.phase] ?? "\u5904\u7406\u4E2D"} ${progress.index}/${progress.total} \xB7 \u5DF2\u8D2D\u4E70 ${progress.purchased} \u5F20 \xB7 ${count2(progress.spent)} \u91D1\u5E01`;
           }
         });
         if (disposed || !active || identity5 !== scope2()) return;
@@ -27273,6 +27273,47 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
 
+  // src/streamlined/protection.js
+  var phases = /* @__PURE__ */ new Set([
+    "protection-lock-list",
+    "protection-active-id",
+    "protection-native-id",
+    "protection-layout",
+    "protection-slot-list",
+    "protection-slot-id",
+    "protection-fsu-roster",
+    "protection-cache"
+  ]);
+  var mismatches = /* @__PURE__ */ new Set([
+    "undefined",
+    "null",
+    "boolean",
+    "number",
+    "string",
+    "object",
+    "function",
+    "symbol",
+    "bigint",
+    "non-array",
+    "length",
+    "binding",
+    "id-mismatch",
+    "layout"
+  ]);
+  function normalizeStreamlinedProtectionFailure(value) {
+    const phase = ownData(value, "phase");
+    if (!phases.has(phase)) return null;
+    const result = { phase };
+    for (const key of ["count", "requiredSlots", "unknownCount", "offset"]) {
+      const number3 = ownData(value, key);
+      if (Number.isSafeInteger(number3) && number3 >= 0 && number3 <= 2e4) result[key] = number3;
+    }
+    const mismatch2 = ownData(value, "mismatch"), cached = ownData(value, "cached");
+    if (mismatches.has(mismatch2)) result.mismatch = mismatch2;
+    if (typeof cached === "boolean") result.cached = cached;
+    return Object.freeze(result);
+  }
+
   // src/adapters/browser/fc27-streamlined-panel.js
   var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString() : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
@@ -27345,7 +27386,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     return text5;
   }
-  function streamlinedExecutionMessage(reason, recovery = null) {
+  function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+    if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
+      const evidence = normalizeStreamlinedProtectionFailure(protection);
+      const labels = {
+        "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
+        "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
+        "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
+        "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002"
+      };
+      return `${labels[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
+    }
     if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
       const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? `\uFF08Set ${recovery.setId} / Challenge ${recovery.challengeId}\uFF09` : "";
       const phase = { "save-pending": "\u9635\u5BB9\u66FF\u6362\u4FDD\u5B58\u5C1A\u672A\u6838\u5BF9", ready: "\u8D2D\u4E70\u6216\u5165\u5E93\u5C1A\u672A\u6838\u5BF9", saved: "\u8D2D\u4E70\u6062\u590D\u6807\u8BB0\u5C1A\u672A\u7ED3\u6E05" }[recovery?.phase];
@@ -27638,7 +27693,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
           if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
         } else if (result.reason) {
-          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason}`).className = "result-summary";
+          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          if (result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
         }
         return;
       }
@@ -27883,7 +27939,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.reason ?? result.status;
+        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
         renderResult(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -29408,8 +29464,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           };
         } catch (error2) {
           const reason = /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_PLAN_UNAVAILABLE";
-          log({ status: "blocked", reason });
-          return { status: stopRequested ? "cancelled" : "blocked", reason, liveExecutionEnabled: false };
+          const protectionFailure = reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? normalizeStreamlinedProtectionFailure(error2.evidence) : null;
+          log({ status: "blocked", reason, ...protectionFailure });
+          return {
+            status: stopRequested ? "cancelled" : "blocked",
+            reason,
+            liveExecutionEnabled: false,
+            ...protectionFailure ? { protectionFailure } : {}
+          };
         } finally {
           busy = false;
         }
@@ -30266,16 +30328,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return keys2.map((key) => ownData(input, key));
   }
   var verifiedActiveSquads = /* @__PURE__ */ new WeakMap();
-  var ids = (value, max = 2e4) => {
-    if (!Array.isArray(value) || value.length > max) fail28("PROTECTION_UNVERIFIED");
+  var protectionFail = (phase, details = {}) => {
+    const error2 = Error("FC27_STREAMLINED_PROTECTION_UNVERIFIED");
+    error2.evidence = normalizeStreamlinedProtectionFailure({ phase, ...details });
+    throw error2;
+  };
+  var ids = (value, max = 2e4, phase = "protection-lock-list") => {
+    if (!Array.isArray(value) || value.length > max) protectionFail(
+      phase,
+      {
+        mismatch: Array.isArray(value) ? "length" : value === null ? "null" : typeof value,
+        count: Array.isArray(value) ? value.length : void 0
+      }
+    );
     const numbers3 = Array.from({ length: value.length }, (_, index) => ownData(value, String(index)));
-    if (numbers3.some((id12) => !integer15(id12))) fail28("PROTECTION_UNVERIFIED");
+    const badIndex = numbers3.findIndex((id12) => !integer15(id12));
+    if (badIndex >= 0) protectionFail(phase, {
+      count: value.length,
+      offset: badIndex,
+      unknownCount: numbers3.filter((id12) => !integer15(id12)).length,
+      mismatch: numbers3[badIndex] === null ? "null" : typeof numbers3[badIndex]
+    });
     return [...new Set(numbers3.filter((id12) => id12 > 0))].sort((a, b) => a - b);
   };
   function readFc27StreamlinedProtection(root) {
     const context = readFc27Context(root), lockedItemIds = ids(at8(root, "info.lock"));
     const activeSquadId = at8(root, "services.Squad.activeSquad");
-    if (!integer15(activeSquadId, 1)) fail28("PROTECTION_UNVERIFIED");
+    if (!integer15(activeSquadId, 1)) protectionFail("protection-active-id", { mismatch: typeof activeSquadId });
     const userId = at8(root, "services.User.currentUserId");
     const personaId = at8(root, `services.User.repository._collection.${userId}.selectedPersona`);
     const squad = at8(root, `repositories.Squad.squads._collection.${personaId}._collection.${activeSquadId}`);
@@ -30283,14 +30362,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const fsuRoster = at8(root, "info.squad");
     let activeSquadItemIds;
     if (squad !== void 0) {
-      if (ownData(squad, "_id") !== activeSquadId || !integer15(total, 11, 100) || !Array.isArray(slots) || slots.length !== total) fail28("PROTECTION_UNVERIFIED");
-      activeSquadItemIds = ids(Array.from({ length: slots.length }, (_, index) => ownData(ownData(ownData(slots, String(index)), "_item"), "id")), 100);
-      const fsuIds = fsuRoster === void 0 ? [] : ids(fsuRoster, 100);
+      if (ownData(squad, "_id") !== activeSquadId) protectionFail("protection-native-id", { mismatch: "id-mismatch" });
+      if (!integer15(total, 11, 100)) protectionFail("protection-layout", { mismatch: typeof total });
+      if (!Array.isArray(slots) || slots.length !== total) protectionFail(
+        "protection-slot-list",
+        { mismatch: Array.isArray(slots) ? "length" : "non-array", count: Array.isArray(slots) ? slots.length : void 0, requiredSlots: total }
+      );
+      activeSquadItemIds = ids(Array.from({ length: slots.length }, (_, index) => ownData(ownData(ownData(slots, String(index)), "_item"), "id")), 100, "protection-slot-id");
+      const fsuIds = fsuRoster === void 0 ? [] : ids(fsuRoster, 100, "protection-fsu-roster");
       verifiedActiveSquads.set(root, { context, activeSquadId, activeSquadItemIds, fsuIds });
       activeSquadItemIds = [.../* @__PURE__ */ new Set([...activeSquadItemIds, ...fsuIds])].sort((a, b) => a - b);
     } else {
-      const previous = verifiedActiveSquads.get(root), fsuIds = ids(fsuRoster, 100);
-      if (!previous || !same25(previous.context, context) || previous.activeSquadId !== activeSquadId || !same25(previous.fsuIds, fsuIds)) fail28("PROTECTION_UNVERIFIED");
+      const previous = verifiedActiveSquads.get(root), fsuIds = ids(fsuRoster, 100, "protection-fsu-roster");
+      if (!previous || !same25(previous.context, context) || previous.activeSquadId !== activeSquadId || !same25(previous.fsuIds, fsuIds)) protectionFail("protection-cache", { cached: !!previous, mismatch: "binding" });
       activeSquadItemIds = [.../* @__PURE__ */ new Set([...previous.activeSquadItemIds, ...fsuIds])].sort((a, b) => a - b);
     }
     return { lockedItemIds, activeSquadId, activeSquadItemIds };
@@ -32676,7 +32760,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.20" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.21" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -32994,8 +33078,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.20"}`,
-    version: "27.0.20",
+    title: `FC Automation Tool ${"27.0.21"}`,
+    version: "27.0.21",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

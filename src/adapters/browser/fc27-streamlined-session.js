@@ -5,6 +5,7 @@ import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { same, fail } from '../../streamlined/contract.js';
 import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/routes.js';
 import { streamlinedQuoteFailure } from '../../streamlined/quotes.js';
+import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -299,8 +300,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           liveExecutionEnabled: !!execution, executionReason, executionRecovery };
       } catch (error) {
         const reason = /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_PLAN_UNAVAILABLE';
-        log({ status: 'blocked', reason });
-        return { status: stopRequested ? 'cancelled' : 'blocked', reason, liveExecutionEnabled: false };
+        const protectionFailure = reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+          ? normalizeStreamlinedProtectionFailure(error.evidence) : null;
+        log({ status: 'blocked', reason, ...protectionFailure });
+        return { status: stopRequested ? 'cancelled' : 'blocked', reason, liveExecutionEnabled: false,
+          ...(protectionFailure ? { protectionFailure } : {}) };
       } finally { busy = false; }
     },
     async selectRoute(routeId) {

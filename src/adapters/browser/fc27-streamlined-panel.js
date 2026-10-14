@@ -1,3 +1,5 @@
+import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
+
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString() : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
 
@@ -57,7 +59,21 @@ export function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, 
   return text;
 }
 
-export function streamlinedExecutionMessage(reason, recovery = null) {
+export function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+  if (reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') {
+    const evidence = normalizeStreamlinedProtectionFailure(protection);
+    const labels = {
+      'protection-lock-list': 'FSU 锁卡名单未读到或格式异常。请确认 FSU Local 已启用并初始化完成，再刷新页面；不要解除锁卡。',
+      'protection-active-id': 'EA 当前主阵容标识尚未核验。请在 Squads 打开当前主阵容，再返回生成方案。',
+      'protection-native-id': '原生缓存中的主阵容标识与当前主阵容不一致。请导出诊断排查。',
+      'protection-layout': '原生主阵容卡位数量定义未通过核验。请导出诊断排查。',
+      'protection-slot-list': `原生主阵容卡位未完整核验（${number(evidence?.count)} / ${number(evidence?.requiredSlots)}）。请导出诊断排查。`,
+      'protection-slot-id': '原生主阵容卡位中的物品标识未通过核验。请导出诊断排查。',
+      'protection-fsu-roster': 'FSU 主阵容快照未读到或格式异常。请导出诊断排查。',
+      'protection-cache': '原生主阵容缓存缺失，且没有当前账号/主阵容的有效已核验快照。请导出诊断排查。',
+    };
+    return `${labels[evidence?.phase] ?? '锁卡或当前主阵容信息尚未核验。请先打开 EA 主阵容，再返回生成方案；若仍报错，请导出诊断。'} 本次未投入新材料。`;
+  }
   if (reason === 'FC27_BUY_RECOVERY_REQUIRED') {
     const target = recovery?.kind === 'puzzle-purchase' && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId)
       ? `（Set ${recovery.setId} / Challenge ${recovery.challengeId}）` : '';
@@ -241,7 +257,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           add(output, 'div', streamlinedMarketMessage(result)).className = 'result-summary';
           if (result.marketError) add(output, 'small', `补卡候选读取失败：${result.marketError}`);
         } else if (result.reason) {
-          add(output, 'div', `未生成方案：${result.reason}`).className = 'result-summary';
+          add(output, 'div', `未生成方案：${result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+            ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = 'result-summary';
+          if (result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') add(output, 'small', `${result.reason}${result.protectionFailure?.phase ? ` · ${result.protectionFailure.phase}` : ''}`);
         }
         return;
       }
@@ -424,7 +442,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           : `搜索节点 ${number(p.nodes)} / ${number(p.maxNodes)} · 候选 ${number(p.candidates)} · ${number(p.elapsedMs)} ms`;
       } });
       if (serial !== opened) return;
-      node('status').textContent = result.status === 'cancelled' ? '已停止。' : result.reason ?? result.status;
+      node('status').textContent = result.status === 'cancelled' ? '已停止。'
+        : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+          ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
       renderResult(result);
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }
     finally { setBusy(false); }

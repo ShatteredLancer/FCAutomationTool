@@ -4,6 +4,21 @@ import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined
 import { assertStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { normalizeStreamlinedSettings } from '../../src/streamlined/settings.js';
 
+it('retains only bounded protection evidence at the planning failure seam and performs no further reads or writes', async () => {
+  const c = challenge(), diagnosticLog = { record: vi.fn() }, prices = { load: vi.fn() }, createExecution = vi.fn(), set = vi.fn();
+  const error = Error('FC27_STREAMLINED_PROTECTION_UNVERIFIED');
+  error.evidence = { phase: 'protection-slot-list', count: 11, requiredSlots: 23, mismatch: 'length',
+    itemId: 123456, account: 'private-account', token: 'private-token' };
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+    readInputs: () => { throw error; }, diagnosticLog, prices, createExecution, get: async () => null, set });
+  const result = await session.plan({});
+  expect(result).toMatchObject({ status: 'blocked', reason: error.message, liveExecutionEnabled: false,
+    protectionFailure: { phase: 'protection-slot-list', count: 11, requiredSlots: 23, mismatch: 'length' } });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ phase: 'protection-slot-list', count: 11, requiredSlots: 23 }));
+  expect(JSON.stringify([result, diagnosticLog.record.mock.calls])).not.toMatch(/private-|itemId|123456|token/);
+  expect(prices.load).not.toHaveBeenCalled(); expect(createExecution).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled();
+});
+
 it('reports total inventory quote elapsed time across both 250-version chunks and retains a stage summary', async () => {
   const c = challenge({ scoreRequirement: 100 }), diagnosticLog = { record: vi.fn() }, progress = [];
   const inventory = Array.from({ length: 251 }, (_, i) => safeItem({ id: i + 1, definitionId: i + 1, points: 100 }));

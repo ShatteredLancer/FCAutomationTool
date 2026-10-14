@@ -25,6 +25,26 @@ function runtime() {
   return { ...f, challenge, set, controller, anchor };
 }
 
+it('identifies the failed protection stage without exporting account or card identities', () => {
+  for (const [phase, change] of [
+    ['protection-lock-list', f => { delete f.root.info.lock; }],
+    ['protection-active-id', f => { f.root.services.Squad.activeSquad = '7'; }],
+    ['protection-native-id', f => { f.root.repositories.Squad.squads._collection[902]._collection[7]._id = 8; }],
+    ['protection-layout', f => { delete f.root.UTSquadEntity.TOTAL_PLAYERS; }],
+    ['protection-slot-list', f => { f.root.repositories.Squad.squads._collection[902]._collection[7]._players.pop(); }],
+    ['protection-slot-id', f => { delete f.root.repositories.Squad.squads._collection[902]._collection[7]._players[22]._item.id; }],
+    ['protection-fsu-roster', f => { f.root.info.squad[22] = null; }],
+    ['protection-cache', f => { f.root.repositories.Squad.squads._collection = {}; }],
+  ]) {
+    const f = runtime(); change(f);
+    let error; try { readFc27StreamlinedProtection(f.root); } catch (e) { error = e; }
+    expect(error?.message).toBe('FC27_STREAMLINED_PROTECTION_UNVERIFIED');
+    expect(error?.evidence?.phase).toBe(phase);
+    expect(JSON.stringify(error.evidence)).not.toMatch(/account|itemId|persona|lockedItemIds|903|902/);
+    expect(f.calls).toEqual([]);
+  }
+});
+
 it('excludes FSU-locked and current-squad players including substitutes and reserves', () => {
   const f = runtime(), slots = f.root.repositories.Squad.squads._collection[902]._collection[7]._players;
   f.root.info.lock = [1];
