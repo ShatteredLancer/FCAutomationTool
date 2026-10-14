@@ -32,6 +32,48 @@ const baseAdapter = (rows, overrides = {}) => ({
 const approval = plan => ({ approved: true, fingerprint: plan.fingerprint ?? JSON.stringify(plan), budget: 5000, attempts: 2, expiresAt: Date.now() + 60000 });
 const lock = { acquire: vi.fn(async () => () => {}) };
 
+it.each([
+  ['capacity', { freeSlots: 0 }, 'FC27_STREAMLINED_PURCHASE_CAPACITY_FULL'],
+  ['held version', { heldDefinitions: [201] }, 'FC27_STREAMLINED_PURCHASE_VERSION_HELD'],
+])('reports %s without pretending a market search found no supply', async (_label, state, reason) => {
+  const plan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal } = setup();
+  const adapter = baseAdapter([], { readState: vi.fn(async r => ({ submittedScore: r.submittedScore,
+    freeSlots: 30, heldDefinitions: [], ...state })) });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'paused', reason });
+  expect(adapter.find).not.toHaveBeenCalled(); expect(adapter.buy).not.toHaveBeenCalled();
+});
+
+it('retains a known search rejection rather than reporting no affordable supply', async () => {
+  const plan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal } = setup();
+  const adapter = baseAdapter([], { find: vi.fn(async () => ({ unavailable: true, reason: 'FC27_BUY_SEARCH_FAILED', code: 521 })) });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_BUY_SEARCH_FAILED' });
+  expect(adapter.buy).not.toHaveBeenCalled();
+});
+
+it('accepts an explicitly approved replacement plan when the previous run has zero effects', async () => {
+  const plan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal } = setup();
+  const adapter = baseAdapter([], { find: vi.fn(async () => null) });
+  const driver = createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' });
+  expect((await driver.execute(plan, approval(plan))).status).toBe('paused');
+  const next = planFor({ market: [item(0, 202, 20, 'market')] });
+  expect((await driver.execute(next, approval(next))).status).toBe('paused');
+  expect(adapter.find.mock.calls.map(([card]) => card.definitionId)).toEqual([201, 202]);
+  expect(adapter.buy).not.toHaveBeenCalled();
+});
+
+it('searches within the remaining budget instead of skipping a cheaper offer because the original per-card cap is higher', async () => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market] }), { journal } = setup();
+  const adapter = baseAdapter([], { find: vi.fn(async () => ({ definitionId: 201, itemId: 401, tradeId: '501', price: 200 })),
+    buy: vi.fn(async entry => ({ ...entry, status: 'bought' })), materialize: vi.fn(async () => [{ ...market, id: 401 }]) });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' })
+    .execute(plan, { ...approval(plan), budget: 200 });
+  expect(result).toMatchObject({ status: 'completed', record: { spent: 200, budget: 200 } });
+  expect(adapter.find).toHaveBeenCalledWith(market, 200, expect.any(Object));
+  expect(result.record.entries[0].cap).toBe(200); expect(market.purchaseMaxBuy).toBe(250);
+});
+
 it('contributes approved inventory and persists exact consumed identity', async () => {
   const inv = item(11, 101), plan = planFor({ inventory: [inv] }), { journal } = setup();
   const adapter = baseAdapter([inv]);

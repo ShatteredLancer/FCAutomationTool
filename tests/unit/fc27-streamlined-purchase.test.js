@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedPurchaseAdapter } from '../../src/adapters/ea/fc27-streamlined-purchase.js';
+import { createStreamlinedPurchaseScope } from '../../src/streamlined/purchase-scope.js';
 
 async function setup() {
   const f = streamlinedRuntime(), candidate = { ...f.plan.items[0], source: 'market', quote: {
@@ -37,4 +38,27 @@ it('prepares an inventory-only first wave with its actual known material value',
   const { f, adapter } = await setup();
   const material = f.plan.items.map(item => ({ groupIndex: 0, item: { ...item, price: 200 } }));
   expect(await adapter.prepareContribution(material, { submittedScore: 0 })).toMatchObject({ purchaseCost: 0, materialValue: 1000 });
+});
+
+it('uses exact owned Club reads for the approved pool instead of stale cache membership, and wires native diagnostics', async () => {
+  const { f, candidate } = await setup();
+  const market = [candidate.definitionId, 999].map(definitionId => ({ ...candidate, definitionId, id: null,
+    key: `market:${definitionId}:0`, price: 200, purchaseMaxBuy: 250,
+    quote: { ...candidate.quote, definitionId } }));
+  const scope = createStreamlinedPurchaseScope({ market, challenge: f.input.challenge, policy: f.input.policy,
+    eligibility: { known: true, matches: () => ({ status: 'eligible' }) }, quoteSource: 'futgg', quoteAt: 1000 });
+  expect(scope).not.toBeNull();
+  const plan = { ...f.plan, execution: { purchaseScope: scope }, route: { groups: [{ ...scope.groups[0], quantity: 1 }] } };
+  f.root.MAX_NEW_ITEMS = 100; f.root.repositories.Item.numItemsInCache = () => 0;
+  const readPage = vi.fn(async () => [{ id: 9001, definitionId: 999, pile: 'club' }]);
+  let options; const onEvent = vi.fn();
+  const adapter = await createFc27StreamlinedPurchaseAdapter(f.root, { plan, persistence: {}, canWrite: () => false,
+    now: () => 1000, onEvent, createBuyer: async (_root, value) => { options = value; return { verifySquad() {} }; },
+    createClubRead: async () => ({ readPage }) });
+  expect(await adapter.readState({})).toMatchObject({ heldDefinitions: [999], freeSlots: 100 });
+  expect(readPage).toHaveBeenCalledWith({ start: 0, count: 250, definitionIds: [candidate.definitionId, 999] });
+  expect(options.playerDetails.has(999)).toBe(true); options.onEvent({ stage: 'search', definitionId: 999, count: 0 });
+  expect(onEvent).toHaveBeenCalledWith({ stage: 'search', definitionId: 999, count: 0 });
+  readPage.mockResolvedValue([{ id: 9001, definitionId: 888, pile: 'club' }]);
+  await expect(adapter.readState({})).rejects.toThrow('PURCHASE_HOLDINGS_UNVERIFIED');
 });

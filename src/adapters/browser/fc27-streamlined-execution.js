@@ -24,7 +24,7 @@ export async function assertStreamlinedOtherTransactions(get, context) {
 }
 
 export async function createFc27StreamlinedExecution(root, { context, plan = null, get, set, lockManager, prices = null,
-  canWrite = () => false, now = () => Date.now(), createMaintenance = createFc27StreamlinedPageMaintenance,
+  canWrite = () => false, diagnosticLog = null, now = () => Date.now(), createMaintenance = createFc27StreamlinedPageMaintenance,
   createProvider = createFc27StreamlinedProvider, createPurchaseAdapter = createFc27StreamlinedPurchaseAdapter } = {}) {
   await maintainFc27PuzzlePurchases(root, { get, set });
   await assertStreamlinedOtherTransactions(get, context);
@@ -57,7 +57,13 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     if (!plan?.route?.groups?.some(group => group.source === 'market')) return null;
     await materializationJournal.assertSettled();
     const contribution = { adapter, journal: persistence.journal };
-    return createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution });
+    return createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution,
+      onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'purchase-native',
+        phase: row.stage, definitionId: row.definitionId, maxBuy: row.maxBuy,
+        referencePrice: row.stage === 'reference' ? row.price : undefined,
+        actualPrice: row.stage === 'bid' ? row.price : undefined,
+        localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined,
+        httpStatus: row.httpStatus, count: row.count })).catch(() => {}); } catch { /* diagnostic only */ } } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
     async recoverMaterialization() {

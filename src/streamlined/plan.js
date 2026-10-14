@@ -1,9 +1,13 @@
 import { streamlinedPlanFingerprint, streamlinedProgress, same, deepFreeze, integer, fail } from './contract.js';
 import { scoreStreamlinedItems } from './scoring.js';
+import { validStreamlinedPurchaseScope } from './purchase-scope.js';
 
 function validPlanContents(plan) {
   const { challenge, items, batches } = plan;
   if (plan.execution && (!integer(plan.execution.purchaseAttempts, 1)
+      || plan.execution.purchaseScope !== undefined && !validStreamlinedPurchaseScope(plan.execution.purchaseScope)
+      || plan.execution.scarcityRetries !== undefined && !integer(plan.execution.scarcityRetries, 0, 3)
+      || plan.execution.retryWaitMs !== undefined && !integer(plan.execution.retryWaitMs, 1000, 60000)
       || plan.execution.quoteLimited !== undefined && typeof plan.execution.quoteLimited !== 'boolean'
       || !integer(plan.execution.partialWaitMs, 0, 3600000))) return false;
   if (!challenge || challenge.mechanism !== 'streamlined' || !integer(challenge.targetScore, 1)

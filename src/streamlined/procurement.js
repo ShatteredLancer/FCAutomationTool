@@ -1,5 +1,7 @@
 import { integer, same, fail } from './contract.js';
 import { nextStreamlinedWave } from './waves.js';
+import { streamlinedPurchaseNeedsRecovery } from './purchase-journal.js';
+import { approvedStreamlinedPurchaseRoute, initialStreamlinedPurchaseDemand, streamlinedDemandRoute, replanStreamlinedPurchaseDemand } from './purchase-scope.js';
 
 // One explicitly approved target. Injected adapters own native read/buy/move/
 // contribution contracts. Durable intent precedes every irreversible request.
@@ -16,8 +18,8 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       purchasedWaitingMove: record?.entries.filter(e => e.source === 'market' && ['bought', 'move-pending'].includes(e.state)).length ?? 0,
       ownedUnconsumed: (record?.entries.filter(e => e.source === 'inventory' && e.state === 'ready').length ?? 0)
         + (record?.entries.filter(e => e.source === 'market' && e.state === 'club').length ?? 0),
-      purchaseTarget: record?.route.groups.filter(g => g.source === 'market').reduce((n, g) => n + g.quantity, 0),
-      remainingQuantity: record?.route.groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0)
+      purchaseTarget: record && streamlinedDemandRoute(record).groups.filter(g => g.source === 'market').reduce((n, g) => n + g.quantity, 0),
+      remainingQuantity: record && streamlinedDemandRoute(record).groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0)
         - record.entries.filter(e => e.groupIndex === i && ['ready', 'bought', 'move-pending', 'club'].includes(e.state)).length), 0),
       batchNumber: (record?.confirmedBatches ?? 0) + (phase === 'confirmed' ? 0 : 1),
       contributed: record?.consumedIds.length ?? 0,
@@ -31,22 +33,30 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       record = await journal.read(plan.context);
       const fingerprint = plan.fingerprint ?? JSON.stringify(plan);
       if (reconcileOnly && !record) return { status: 'absent' };
-      if (record && (reconcileOnly || !record.completed) && record.fingerprint !== fingerprint) fail('PURCHASE_RECOVERY_REQUIRED');
+      let replace = false;
+      if (record && record.fingerprint !== fingerprint) {
+        if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record)) fail('PURCHASE_RECOVERY_REQUIRED');
+        // A plan with no dispatched writes is not an unresolved trade. Archive
+        // it durably before replacing it under a new explicit approval.
+        await journal.archive(record); replace = true;
+      }
       if (record?.completed && record.fingerprint === fingerprint) return { status: 'completed', record };
       const hasPending = record?.entries?.some(entry => ['buy-pending', 'bought', 'move-pending'].includes(entry.state))
         || !!record?.contribution;
       if (!reconcileOnly && now() >= approval.expiresAt && !hasPending) fail('PURCHASE_APPROVAL_EXPIRED');
-      if (!record || record.completed) {
+      if (!record || record.completed || replace) {
         if (now() >= approval.expiresAt) fail('PURCHASE_APPROVAL_EXPIRED');
-        const inventoryEntries = plan.route.groups.flatMap((group, groupIndex) => group.source === 'inventory'
+        const route = approvedStreamlinedPurchaseRoute(plan);
+        const inventoryEntries = route.groups.flatMap((group, groupIndex) => group.source === 'inventory'
           ? group.items.slice(0, group.quantity).map((item, index) => ({
             key: `inventory:${item.id}:${index}`, source: 'inventory', groupIndex, definitionId: item.definitionId,
             itemId: item.id, pile: item.pile, executionPile: item.executionPile, price: null, cap: null,
             tradeId: null, state: 'ready' })) : []);
-        record = await journal.write({ schema: 1, context: plan.context, operationId: operationId(), revision: record?.revision ?? 0,
-          fingerprint: approval.fingerprint, plan, challenge: plan.challenge, policy: plan.policy, route: plan.route,
+        record = await journal.write({ schema: plan.execution?.purchaseScope ? 2 : 1, context: plan.context, operationId: operationId(), revision: record?.revision ?? 0,
+          fingerprint: approval.fingerprint, plan, challenge: plan.challenge, policy: plan.policy, route,
+          ...(plan.execution?.purchaseScope ? { demand: initialStreamlinedPurchaseDemand(plan, route) } : {}),
           budget: approval.budget, spent: 0, submittedScore: plan.challenge.submittedScore,
-          consumedIds: [], fulfilled: plan.route.groups.map(() => 0), contribution: null, completed: false,
+          consumedIds: [], fulfilled: route.groups.map(() => 0), contribution: null, completed: false,
           entries: inventoryEntries }, record?.revision ?? 0);
       }
       if (!reconcileOnly && record.budget !== approval.budget) fail('PURCHASE_APPROVAL_CHANGED');
@@ -75,6 +85,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       }
       if (reconcileOnly) return { status: record.completed ? 'completed' : 'recovered', record };
       if (now() >= approval.expiresAt) return { status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED', record };
+      let scarcityRound = 0;
       while (!stopped && record.submittedScore < record.challenge.targetScore) {
         await check();
         for (let i = 0; i < record.entries.length; i++) {
@@ -114,34 +125,62 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         const ready = materialized.map((row, index) => row?.item ? row : ({
           groupIndex: readyEntries[index]?.groupIndex, item: row,
         })).filter(row => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
-        const wave = nextStreamlinedWave(record.route, { ...state, ready, limit: record.challenge.selectionLimit,
+        if (!ready.length && record.plan.execution?.purchaseScope && record.confirmedBatches > 0) {
+          // Availability can change after a settled batch. Reconsider the
+          // cheaper approved recipe instead of sticking to a premium fallback
+          // selected earlier when the original version had no supply.
+          const demand = await replanStreamlinedPurchaseDemand(record, { ...state, now, stopped: () => stopped });
+          await check();
+          if (demand && !same(demand, record.demand)) { report('replanning'); record.demand = demand; await save(); }
+        }
+        const wave = nextStreamlinedWave(streamlinedDemandRoute(record), { ...state, ready, limit: record.challenge.selectionLimit,
           submittedScore: record.submittedScore, targetScore: record.challenge.targetScore,
           consumedIds: record.consumedIds, fulfilled: record.fulfilled });
-        if (wave.status === 'waiting') return { status: 'paused', reason: 'FC27_STREAMLINED_NO_AFFORDABLE_CARDS', record };
         const material = [...wave.material], attempted = new Set(state.blockedDefinitions ?? []);
+        let searchFailure = null, budgetBlocked = false, replans = 0;
         let lastBought = now(), boughtThisWave = 0;
         while (!stopped) {
           // Reallocate after every version attempt using actual material, not
           // projected purchases. This allows approved alternatives without
           // overbuying the remaining group quantity or target points.
-          const next = nextStreamlinedWave(record.route, { ...state, ready: material,
+          const next = nextStreamlinedWave(streamlinedDemandRoute(record), { ...state, ready: material,
             freeSlots: Math.max(0, state.freeSlots - boughtThisWave),
             blockedDefinitions: [...attempted], limit: record.challenge.selectionLimit,
             submittedScore: record.submittedScore, targetScore: record.challenge.targetScore,
             consumedIds: record.consumedIds, fulfilled: record.fulfilled });
           const slot = next.purchases[0];
-          if (!slot) break;
+          if (!slot) {
+            // Consume an already acquired cheap version before repeating it;
+            // do not pay a premium just to fill this batch more quickly.
+            if (material.length || state.freeSlots === 0 || !record.plan.execution?.purchaseScope
+                || replans >= record.route.groups.length) break;
+            report('replanning');
+            const demand = await replanStreamlinedPurchaseDemand(record, { ...state,
+              blockedDefinitions: [...attempted], now, stopped: () => stopped });
+            await check();
+            if (!demand || same(demand, record.demand)) break;
+            record.demand = demand; await save(); replans++;
+            continue;
+          }
           const candidate = slot.item;
           attempted.add(candidate.definitionId);
           if (stopped) break; await check();
-          const cap = candidate.purchaseMaxBuy;
-          if (!integer(cap, 150, 15000000)) fail('PURCHASE_PRICE_UNVERIFIED');
-          if (record.spent + cap > record.budget) continue;
+          if (!integer(candidate.purchaseMaxBuy, 150, 15000000)) fail('PURCHASE_PRICE_UNVERIFIED');
+          // A cap is an upper bound, not the amount we must spend. Lower the
+          // search cap to the remaining budget instead of skipping offers that
+          // could be cheaper; never raise the frozen per-version authority.
+          const cap = Math.min(candidate.purchaseMaxBuy, record.budget - record.spent);
+          if (cap < 150) { budgetBlocked = true; continue; }
           for (let attempt = 0; attempt < approval.attempts && !stopped; attempt++) {
             report('search', { playerName: candidate.name, rating: candidate.rating, maxBuy: cap,
               attempt: attempt + 1, attemptLimit: approval.attempts });
             const offer = await adapter.find(candidate, cap, record); await check();
-            if (!offer || offer.unavailable) break;
+            if (!offer || offer.unavailable) {
+              if (offer?.unavailable && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
+              report('search-result', { definitionId: candidate.definitionId,
+                reason: offer?.reason ?? 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', count: 0 });
+              break;
+            }
             if (record.entries.some(e => e.state === 'rejected' && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
             if (offer.definitionId !== candidate.definitionId || !integer(offer.price, 150, cap)
                 || !integer(offer.itemId, 1) || record.entries.some(e => e.itemId === offer.itemId || e.tradeId === offer.tradeId)) fail('PURCHASE_OFFER_CHANGED');
@@ -152,7 +191,11 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
               record.entries.splice(index, 1); await save(); await check();
             }
             const receipt = await adapter.buy(record.entries[index]);
-            if (receipt?.status === 'rejected') { record.entries[index].state = 'rejected'; await save(); continue; }
+            if (receipt?.status === 'rejected') {
+              record.entries[index].state = 'rejected'; await save();
+              searchFailure = /^FC27_[A-Z0-9_]+$/.test(receipt.reason) ? receipt.reason : 'FC27_STREAMLINED_PURCHASE_REJECTED';
+              report('purchase-rejected', { reason: searchFailure }); continue;
+            }
             if (receipt?.status !== 'bought' || !same([receipt.itemId, receipt.definitionId, receipt.tradeId, receipt.price],
               [offer.itemId, offer.definitionId, offer.tradeId, offer.price])) fail('PURCHASE_RECOVERY_REQUIRED');
             record.entries[index].state = 'bought'; record.spent += receipt.price; await save();
@@ -175,8 +218,28 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
           }
         }
         if (stopped) break;
-        if (!material.length) return { status: 'paused', reason: 'FC27_STREAMLINED_NO_AFFORDABLE_CARDS', record };
-        if (wave.purchases.length && material.length < record.challenge.selectionLimit
+        if (!material.length) {
+          const held = state.heldDefinitions ?? [];
+          const remainingGroups = streamlinedDemandRoute(record).groups.filter((group, i) =>
+            group.source === 'market' && group.quantity > record.fulfilled[i]);
+          const pauseReason = state.freeSlots === 0 ? 'FC27_STREAMLINED_PURCHASE_CAPACITY_FULL'
+            : budgetBlocked ? 'FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT'
+              : remainingGroups.length && remainingGroups.every(group => group.items.every(item => held.includes(item.definitionId)))
+                ? 'FC27_STREAMLINED_PURCHASE_VERSION_HELD'
+                : searchFailure ?? 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY';
+          const retries = record.plan.execution?.scarcityRetries ?? 0;
+          if (pauseReason === 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY' && scarcityRound < retries && adapter.waitForPartial) {
+            const waitMs = record.plan.execution.retryWaitMs ?? 15000;
+            report('waiting-supply', { waitMs, attempt: ++scarcityRound, attemptLimit: retries });
+            await adapter.waitForPartial(waitMs, () => stopped); await check();
+            // Re-open the original cheapest recipe on each bounded retry.
+            record.demand = initialStreamlinedPurchaseDemand(record.plan, record.route).map((n, i) => Math.max(n, record.fulfilled[i]));
+            await save(); continue;
+          }
+          return { status: 'paused', reason: pauseReason, record };
+        }
+        scarcityRound = 0;
+        if ((wave.purchases.length || boughtThisWave > 0) && material.length < record.challenge.selectionLimit
             && material.reduce((sum,r) => sum+r.item.points, record.submittedScore) < record.challenge.targetScore) {
           const waitMs = Math.max(0, (approval.idleMs ?? 60000) - (now() - lastBought));
           report('partial-ready', { readyCount: material.length, waitMs,
@@ -219,6 +282,11 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
     } catch (error) {
       if (error?.stopped || error?.message === 'FC27_STREAMLINED_STOPPED') {
         return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record };
+      }
+      if (['FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED', 'FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED',
+        'FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED'].includes(error?.message)
+          && !record?.contribution && !record?.entries.some(entry => ['buy-pending', 'move-pending'].includes(entry.state))) {
+        return { status: 'paused', reason: reason(error), record };
       }
       return { status: 'recovery-required', reason: reason(error), record };
     }

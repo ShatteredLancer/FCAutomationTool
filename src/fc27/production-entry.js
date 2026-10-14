@@ -399,7 +399,7 @@ const streamlinedSession = createFc27StreamlinedSession({
     catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }), prices: publicPrices, diagnosticLog }),
   get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog,
   createExecution: (context, plan) => createFc27StreamlinedExecution(unsafeWindow, { context, plan,
-    get: GM_getValue, set: GM_setValue, prices: publicPrices, lockManager: unsafeWindow.navigator.locks,
+    get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog, lockManager: unsafeWindow.navigator.locks,
     canWrite: () => __FCAT_LIVE_ENABLED__ }),
 });
 const streamlinedPanel = safeBoot('streamlined-panel', () => mountFc27StreamlinedPanel({ document: unsafeWindow.document,

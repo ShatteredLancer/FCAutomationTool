@@ -71,48 +71,48 @@ export async function exerciseStreamlined(context) {
           return node;
         } } });
     });
-    await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-    await page.getByRole('button', { name: '生成方案', exact: true }).click();
-    await page.getByText('第 3 批', { exact: false }).waitFor();
+    await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+    await page.getByText('Batch 3', { exact: false }).waitFor();
     const text = await page.getByRole('dialog').innerText();
-    assert.match(text, /80 张 \/ 3 批/);
-    assert.match(text, /第 1 批 · 30 张（库存 30 \/ 待购 0）· 1,050 分/);
+    assert.match(text, /80 cards \/ 3 batches/);
+    assert.match(text, /Batch 1 · 30 cards \(Inventory 30 \/ To buy 0\) · 1,050 points/);
     assert.match(text, /Fixture 1/);
     assert.match(text, /55 OVR/);
-    assert.match(text, /Club · 已有/);
-    assert.match(text, /FSU 金卡上限 83/);
-    assert.match(text, /未采用库存 1 张/);
-    await page.getByText('未采用库存 1 张', { exact: true }).click();
-    assert.match(await page.getByRole('dialog').innerText(), /不在 FSU 金卡评分范围 · Club · 84级 ×1/);
+    assert.match(text, /Club · owned/);
+    assert.match(text, /FSU gold rating cap 83/);
+    assert.match(text, /Excluded inventory 1 card/);
+    await page.getByText('Excluded inventory 1 card', { exact: true }).click();
+    assert.match(await page.getByRole('dialog').innerText(), /Outside the FSU gold rating range · Club · 84 OVR ×1/);
     assert.equal(await page.locator('[data-market-rating]').inputValue(), '99');
     assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 100, 'Readable desktop card');
-    assert.match(text, /待购 0 金币/);
-    assert.equal(await page.getByRole('button', { name: '贡献所选批次' }).isDisabled(), true);
+    assert.match(text, /To buy 0 coins/);
+    assert.equal(await page.getByRole('button', { name: 'Contribute selected batches' }).isDisabled(), true);
     assert.equal(await page.locator('[data-inventory-review]').evaluate(node => node.open), true);
     assert.equal(await page.locator('.inventory-row').count(), 50, 'Inventory review is bounded and paginated');
-    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
     assert.equal(await page.locator('.inventory-row').count(), 30);
     assert.ok((await page.evaluate(() => globalThis.streamlinedEvidence.progress)).length > 0);
     assert.equal(await page.locator('.player-row').count(), 30, 'Only the expanded batch renders');
     assert.ok(await page.locator('.gallery-native-card').count() > 0);
-    await page.getByRole('checkbox', { name: '选择第 1 批' }).uncheck();
+    await page.getByRole('checkbox', { name: 'Select batch 1' }).uncheck();
     assert.equal(await page.locator('.inventory-row').count(), 50);
-    assert.match(await page.locator('[data-inventory-review] summary').innerText(), /50 张/);
-    assert.match(await page.locator('[data-selection]').innerText(), /已选 2 批 · 50 张 · 1,450 分 · 还差 1,050/);
-    await page.getByText('第 2 批 ·', { exact: false }).click();
+    assert.match(await page.locator('[data-inventory-review] summary').innerText(), /50 cards/);
+    assert.match(await page.locator('[data-selection]').innerText(), /Selected 2 batches · 50 cards · 1,450 points · Remaining 1,050/);
+    await page.getByText('Batch 2 ·', { exact: false }).click();
     await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelectorAll('.player-row').length === 60);
     assert.equal(await page.locator('.player-row').count(), 60);
     await page.setViewportSize({ width: 390, height: 600 });
     assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 88, 'Readable mobile card');
     const metrics = await page.getByRole('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }));
     assert.ok(metrics.width <= 390 && metrics.scrollWidth <= metrics.clientWidth + 1, 'No horizontal overflow on mobile');
-    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     assert.equal(await page.locator('.gallery-native-card').count(), 0, 'Close deallocates every native card');
     const cleanup = await page.evaluate(() => globalThis.streamlinedEvidence);
     assert.equal(cleanup.rendered, cleanup.disposed);
-    await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-    await page.getByRole('button', { name: '生成方案', exact: true }).click();
-    await page.getByText('第 3 批', { exact: false }).waitFor();
+    await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+    await page.getByText('Batch 3', { exact: false }).waitFor();
     await page.evaluate(() => { globalThis.streamlinedEvidence.current = false; });
     await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-entry'));
     assert.equal(await page.locator('.gallery-native-card').count(), 0, 'Navigation also clears cards');
@@ -120,10 +120,10 @@ export async function exerciseStreamlined(context) {
     // The enabled variant uses only an explicit synthetic execution adapter.
     // Exercise actual trusted UI clicks, selected-batch approval and redraw.
     await page.evaluate(() => { globalThis.streamlinedEvidence.current = true; globalThis.streamlinedEvidence.executionEnabled = true; });
-    await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-    await page.getByRole('button', { name: '生成方案', exact: true }).click();
-    await page.getByText('第 3 批', { exact: false }).waitFor();
-    const contribute = page.getByRole('button', { name: '贡献所选批次', exact: true });
+    await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+    await page.getByText('Batch 3', { exact: false }).waitFor();
+    const contribute = page.getByRole('button', { name: 'Contribute selected batches', exact: true });
     assert.equal(await contribute.isEnabled(), true);
     // Screenshot regression: recovery errors/other-target history must not
     // leave an old generated plan and active contribution button underneath.
@@ -134,40 +134,40 @@ export async function exerciseStreamlined(context) {
           ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery: { setId: 48, challengeId: 85 } }
           : { status: 'absent' };
       }, scenario);
-      await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+      await page.getByRole('button', { name: 'Check & recover', exact: true }).click();
       await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
       assert.equal(await contribute.isVisible(), false);
       assert.equal(await page.locator('[data-contribute]').isDisabled(), true);
       assert.equal(await page.locator('.player-row').count(), 0);
       assert.equal(await page.locator('.gallery-native-card').count(), 0);
       const message = await page.locator('[data-status]').innerText();
-      assert.match(message, scenario === 'absent' ? /当前 SBC 没有待恢复/ : scenario === 'other-target' ? /Set 48 \/ Challenge 85/ : /账号、SBC 或积分状态已变化/);
+      assert.match(message, scenario === 'absent' ? /This SBC has no contribution record/ : scenario === 'other-target' ? /Set 48 \/ Challenge 85/ : /The account, SBC or points changed/);
       assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 0);
-      await page.getByRole('button', { name: '生成方案', exact: true }).click();
-      await page.getByText('第 3 批', { exact: false }).waitFor();
+      await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+      await page.getByText('Batch 3', { exact: false }).waitFor();
       assert.equal(await contribute.isEnabled(), true, 'A new valid plan is independently usable');
     }
-    await page.getByRole('checkbox', { name: '选择第 1 批' }).uncheck();
-    await page.getByRole('checkbox', { name: '选择第 3 批' }).uncheck();
+    await page.getByRole('checkbox', { name: 'Select batch 1' }).uncheck();
+    await page.getByRole('checkbox', { name: 'Select batch 3' }).uncheck();
     await contribute.evaluate(button => button.click());
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 0, 'Untrusted clicks never contribute');
     await contribute.click();
-    await page.getByText('本次贡献已确认，可继续剩余批次。', { exact: true }).waitFor();
+    await page.getByText('Contribution confirmed. Remaining batches can continue.', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => globalThis.streamlinedEvidence.approval.batchIndices), [1]);
-    assert.equal(await page.getByRole('checkbox', { name: '选择第 2 批' }).isDisabled(), true);
-    assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isEnabled(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Select batch 2' }).isDisabled(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Select batch 1' }).isEnabled(), true);
     // A purchase marker can appear between planning and execution. Preserve
     // the actual failure after redraw instead of saying the writer is absent.
     await page.evaluate(() => { globalThis.streamlinedEvidence.purchasePending = true; });
-    await page.getByRole('button', { name: '生成方案', exact: true }).click();
-    await page.getByText('第 3 批', { exact: false }).waitFor();
+    await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+    await page.getByText('Batch 3', { exact: false }).waitFor();
     await contribute.click();
     await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
-      .querySelector('[data-status]').textContent.includes('Puzzle 购卡记录'));
+      .querySelector('[data-status]').textContent.includes('Puzzle purchase record'));
     assert.equal(await contribute.isDisabled(), true);
     const blocked = await page.getByRole('dialog').innerText();
-    assert.match(blocked, /当前不能贡献：当前账号有待核对的 Puzzle 购卡记录/);
-    assert.doesNotMatch(blocked, /提交接口未接通/);
+    assert.match(blocked, /Execution unavailable: This account has an unresolved Puzzle purchase record/);
+    assert.doesNotMatch(blocked, /contribution interface unavailable/);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1, 'Pending purchase never spends materials');
     await exerciseStreamlinedMarket(page);
     await exerciseStreamlinedValue(page);
@@ -200,11 +200,11 @@ async function exerciseStreamlinedProtectionBlocked(page) {
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  for (const [phase, message] of [['protection-lock-list', 'FSU 锁卡名单'], ['protection-slot-list', '11 / 23'],
-    ['protection-active-state', '启用状态尚未核验']]) {
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  for (const [phase, message] of [['protection-lock-list', 'FSU lock list'], ['protection-slot-list', '11 / 23'],
+    ['protection-active-state', 'active squad status could not be verified']]) {
     await page.evaluate(value => { globalThis.protectionSmoke.phase = value; }, phase);
-    await page.getByRole('button', { name: '生成方案', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
     await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
     assert.ok((await page.locator('[data-result]').innerText()).includes(message));
     assert.ok((await page.locator('[data-status]').innerText()).includes(message), 'The footer explains the protection failure too');
@@ -248,13 +248,13 @@ async function exerciseStreamlinedBatchedInventory(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
   await page.locator('[data-mode]').selectOption('inventory');
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.getByText(/库存报价 \d+ \/ 482 · FUTBIN/, { exact: false }).waitFor();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.getByText(/Inventory quotes \d+ \/ 482 · FUTBIN/, { exact: false }).waitFor();
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-batched-inventory-progress.png' });
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
-    .querySelector('[data-result]').textContent.includes('总材料价值'));
+    .querySelector('[data-result]').textContent.includes('Total card value'));
   const evidence = await page.evaluate(() => globalThis.batchedInventorySmoke);
   assert.equal(evidence.requests, 20, 'Synthetic 482-version inventory reads twenty public pages, not 482 single versions');
   assert.equal(evidence.maxActive, 3);
@@ -262,9 +262,9 @@ async function exerciseStreamlinedBatchedInventory(page) {
   assert.equal(evidence.writes, 0);
   assert.match(await page.locator('[data-result]').innerText(), /FUTBIN/);
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true);
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
-    .querySelector('[data-result]').textContent.includes('总材料价值'));
+    .querySelector('[data-result]').textContent.includes('Total card value'));
   assert.equal(await page.evaluate(() => globalThis.batchedInventorySmoke.requests), 20, 'A second solve reuses exact quote cache');
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-batched-inventory-result.png' });
 }
@@ -320,24 +320,24 @@ async function exerciseStreamlinedRollingExpiry(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.getByText(/刷新过期补卡报价 \d+ \/ 52 · FUTBIN · 已等待 \d+ 秒/, { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.getByText(/Refreshing expired market quotes \d+ \/ 52 · FUTBIN · Waiting \d+ s/, { exact: true }).waitFor();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('[data-result]').innerText(), /待购 3,750 金币/);
+  assert.match(await page.locator('[data-result]').innerText(), /To buy 3,750 coins/);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 144, 'One quote round stops launching reads at its shared 90-second deadline');
-  assert.match(await page.locator('[data-result]').innerText(), /补卡版本报价：有效 144 \/ 166/);
-  assert.equal(await page.locator('[data-quote-confirm]').isChecked(), false);
+  assert.match(await page.locator('[data-result]').innerText(), /Market quote coverage: valid 144 \/ 166/);
+  assert.equal(await page.locator('[data-quote-confirm]').count(), 0, 'Quote coverage is accepted by the trusted execution action, not an extra checkbox');
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.maximum), 3);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.active), 0);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.writes), 0);
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true);
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-futbin-rolling-expiry.png' });
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166, 'Regeneration reads only the remaining 22 unresolved versions');
   assert.equal(await page.locator('[data-quote-confirm]').count(), 0, 'Complete fresh coverage removes the partial-quote confirmation requirement');
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166, 'A complete recovered cache is reused without new network reads');
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.writes), 0);
@@ -363,16 +363,16 @@ async function exerciseStreamlinedOwnedRecipe(page) {
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('.route-list button').first().innerText(), /总价值 11,600.*待购 5,200.*库存 8 \/ 待购 1/);
-  assert.match(await page.locator('[data-result]').innerText(), /已有材料估值 6,400/);
+  assert.match(await page.locator('.route-list button').first().innerText(), /Total value 11,600.*To buy 5,200.*Inventory 8 \/ To buy 1/);
+  assert.match(await page.locator('[data-result]').innerText(), /Inventory value 6,400/);
   assert.equal(await page.locator('.player-row').count(), 9);
   assert.equal(await page.locator('.inventory-row').count(), 8);
   assert.match(await page.locator('[data-inventory-review]').innerText(), /Owned 84 1/);
   assert.match(await page.locator('[data-inventory-review]').innerText(), /SBC Storage/);
-  assert.match(await page.locator('[data-result]').innerText(), /锁卡保护：开启.*当前主阵容保护：开启/);
+  assert.match(await page.locator('[data-result]').innerText(), /Card locks: enabled.*Active squad protection: enabled/);
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true, 'Preview cannot spend or contribute');
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 700 });
@@ -405,16 +405,16 @@ async function exerciseStreamlinedDistinctRecipe(page) {
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('.route-list button').first().innerText(), /总价值 14,700.*至少 9 批/);
-  const alternative = page.locator('.route-list button').filter({ hasText: '待购 9,400' });
+  assert.match(await page.locator('.route-list button').first().innerText(), /Total value 14,700.*at least 9 batches/);
+  const alternative = page.locator('.route-list button').filter({ hasText: 'To buy 9,400' });
   assert.equal(await alternative.count(), 1);
   await alternative.click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
-    .querySelector('[data-result]').textContent.includes('待购 9,400'));
-  assert.match(await alternative.innerText(), /库存 4 \/ 待购 9.*至少 1 批/);
+    .querySelector('[data-result]').textContent.includes('To buy 9,400'));
+  assert.match(await alternative.innerText(), /Inventory 4 \/ To buy 9.*at least 1 batch/);
   assert.equal(await page.locator('.player-row').count(), 13);
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true);
   assert.equal(await page.evaluate(() => globalThis.distinctRecipeSmoke.writes), 0);
@@ -449,20 +449,20 @@ async function exerciseStreamlinedQuoteWait(page) {
     globalThis.quoteWaitSmoke.timer = setInterval(() => { globalThis.quoteWaitSmoke.heartbeats++; }, 50);
   });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.getByText('库存报价 0 / 1 · FUTBIN · 已等待 1 秒', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.getByText('Inventory quotes 0 / 1 · FUTBIN · Waiting 1 s', { exact: true }).waitFor();
   assert.ok(await page.evaluate(() => globalThis.quoteWaitSmoke.heartbeats >= 10), 'Read wait does not block the UI thread');
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-quote-wait-desktop.png' });
   await page.setViewportSize({ width: 390, height: 600 });
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-quote-wait-mobile.png' });
-  assert.ok((await page.getByRole('button', { name: '停止', exact: true }).boundingBox()).y < 600, 'Stop remains visible');
-  await page.getByRole('button', { name: '停止', exact: true }).click();
-  await page.getByText('已停止。', { exact: true }).waitFor({ timeout: 1500 });
-  assert.equal(await page.getByRole('button', { name: '生成方案', exact: true }).isEnabled(), true);
+  assert.ok((await page.getByRole('button', { name: 'Stop', exact: true }).boundingBox()).y < 600, 'Stop remains visible');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.getByText('Stopped.', { exact: true }).waitFor({ timeout: 1500 });
+  assert.equal(await page.getByRole('button', { name: 'Generate plan', exact: true }).isEnabled(), true);
   await page.evaluate(() => { globalThis.quoteWaitSmoke.resolve(); globalThis.quoteWaitSmoke.fail = true; });
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.getByText('报价读取失败或已过期，未生成方案。请检查所选报价来源连接后重新生成。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.getByText('Quotes are unavailable or expired. No plan was generated. Check the selected price source and try again.', { exact: true }).waitFor();
   assert.match(await page.getByRole('dialog').innerText(), /FUTBIN · FC27_BUY_REFERENCE_TIMEOUT/);
   assert.equal(await page.locator('.route-list button').count(), 0, 'An outage cannot approve costly cached routes');
   assert.equal(await page.evaluate(() => globalThis.quoteWaitSmoke.writes), 0);
@@ -494,15 +494,15 @@ async function exerciseStreamlinedQuoteExpiry(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.getByText('刷新过期补卡报价 0 / 1 · FUTBIN · 已等待 0 秒', { exact: true }).waitFor();
-  await page.getByText('FUTBIN 补卡报价在等待中到期，刷新后仍未取得完整有效报价。请重新生成方案；不会使用过期报价或自动切换来源。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.getByText('Refreshing expired market quotes 0 / 1 · FUTBIN · Waiting 0 s', { exact: true }).waitFor();
+  await page.getByText('FUTBIN market quotes expired while waiting and could not be refreshed. Generate a new plan. Expired quotes and other price sources are not used.', { exact: true }).waitFor();
   assert.equal((await page.locator('[data-result]').innerText()).includes('FUT.GG'), false);
   assert.equal(await page.locator('[data-contribute]').isVisible(), false);
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-futbin-expiry.png' });
   await page.evaluate(() => { globalThis.quoteExpirySmoke.fail = false; });
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.match(await page.locator('[data-result]').innerText(), /FUTBIN/);
   assert.equal(await page.evaluate(() => globalThis.quoteExpirySmoke.writes), 0);
@@ -528,16 +528,16 @@ async function exerciseStreamlinedValue(page) {
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
   assert.equal(await page.locator('[data-objective]').inputValue(), 'lowest-value');
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('.route-list button').first().innerText(), /总价值 8,000.*待购 8,000.*4 张/);
-  assert.match(await page.locator('[data-result]').innerText(), /总材料价值 8,000 金币/);
+  assert.match(await page.locator('.route-list button').first().innerText(), /Total value 8,000.*To buy 8,000.*4 cards/);
+  assert.match(await page.locator('[data-result]').innerText(), /Total card value 8,000 coins/);
   await page.locator('.route-list button').last().click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
     .querySelector('.route-list button:last-child').getAttribute('aria-pressed') === 'true');
-  assert.match(await page.locator('[data-result]').innerText(), /总材料价值 30,000 金币 · 待购 0 金币/);
+  assert.match(await page.locator('[data-result]').innerText(), /Total card value 30,000 coins · To buy 0 coins/);
   assert.deepEqual(await page.evaluate(() => globalThis.valueSmoke), { quotes: 1, market: 1 });
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true, 'Route selection never grants contribution authority');
   for (const width of [1280, 390]) {
@@ -569,7 +569,8 @@ async function exerciseStreamlinedMarket(page) {
       async purchase(plan, approval, { onProgress }) {
         evidence.calls++; evidence.execution = plan.execution;
         if (evidence.holdPreflight) await new Promise(resolve => { evidence.preflight = resolve; });
-        evidence.record = { context: c.context, plan, submittedScore: 0, spent: 300, budget: 1500,
+        evidence.approval = approval;
+        evidence.record = { context: c.context, plan, submittedScore: 0, spent: 300, budget: approval.budget,
           completed: false, consumedIds: [], entries: [{ state: 'club' }, { state: 'club' }] };
         if (evidence.mode === 'stopped') {
           await new Promise(resolve => {
@@ -581,8 +582,8 @@ async function exerciseStreamlinedMarket(page) {
           finish = null;
           return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record: evidence.record };
         }
-        if (evidence.mode === 'no-supply') return { status: 'blocked',
-          reason: 'FC27_STREAMLINED_NO_AFFORDABLE_CARDS', record: evidence.record };
+        if (evidence.mode === 'no-supply') return { status: 'paused',
+          reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: evidence.record };
         evidence.record = { ...evidence.record, completed: true, submittedScore: 100 };
         return { status: 'completed', record: evidence.record };
       },
@@ -596,63 +597,65 @@ async function exerciseStreamlinedMarket(page) {
       readMarketCandidates: async () => ({ pricePolicy: { source: 'futgg', purchaseAttempts: 7 },
         ...(evidence.quoteLimited ? { quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT',
           quoteCoverage: { requested: 3, valid: 2, failed: 1, missing: 0 } } : {}),
-        market: [[101, 10, 150], [102, 100, 2000]].map(([definitionId, points, price]) => a.safeItem({
+        market: [[101, 10, 150], [102, 100, 2000]].map(([definitionId, points, price]) => ({ ...a.safeItem({
           source: 'market', definitionId, points, price,
           quote: { definitionId, source: 'futgg', price, fetchedAt: 1, expiresAt: 1000 },
-        })) }),
+        }), purchaseMaxBuy: price })) }),
       createExecution: async () => execution,
     });
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session, now: () => evidence.now,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
   assert.equal(await page.locator('[data-wait]').inputValue(), '60');
   await page.locator('[data-wait]').fill('12');
   await page.locator('[data-mode]').selectOption('market');
-  await page.getByRole('button', { name: '保存设置', exact: true }).click();
-  await page.getByText('当前 SBC 设置已保存。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByText('Settings saved for this SBC.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.saved[0].settings.partialWaitMs), 12000);
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'FCAT Points Solver', exact: true }).click();
   assert.equal(await page.locator('[data-wait]').inputValue(), '12');
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.equal(await page.locator('.route-list button').count(), 2);
-  assert.match(await page.locator('.route-list').innerText(), /1,500.*100 积分.*10 张/);
+  assert.match(await page.locator('.route-list').innerText(), /1,500.*100 points.*10 cards/);
   const routeLabels = await page.locator('.route-list button').allTextContents();
-  assert.match(routeLabels[0], /至少 10 批.*重复购卡 9/,
+  assert.match(routeLabels[0], /at least 10 batches.*Repeat purchases 9/,
     'Repeated market versions require separate purchase waves in the compact route summary');
-  assert.equal(routeLabels.some(label => /OVR|版本|待购估价|库存材料估值/.test(label)), false,
+  assert.equal(routeLabels.some(label => /OVR|Version|Purchase estimate|Inventory value/.test(label)), false,
     'Route choices stay compact and do not repeat per-card details');
   assert.equal(routeLabels.some(label => /82|83|84/.test(label)), false,
     'Route choices do not expose individual ratings');
   await page.locator('.route-list button').last().click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
     .querySelector('.route-list button:last-child').getAttribute('aria-pressed') === 'true');
-  assert.match(await page.locator('[data-result]').innerText(), /2,000 金币/);
-  assert.match(await page.locator('[data-result]').innerText(), /第 1 批/);
-  assert.match(await page.locator('[data-result]').innerText(), /市场概念卡/);
+  assert.match(await page.locator('[data-result]').innerText(), /2,000 coins/);
+  assert.match(await page.locator('[data-result]').innerText(), /Batch 1/);
+  assert.match(await page.locator('[data-result]').innerText(), /Market concept card/);
   await page.locator('.route-list button').first().click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
     .querySelector('.route-list button').getAttribute('aria-pressed') === 'true');
-  assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).count(), 0);
-  assert.match(await page.locator('[data-selection]').innerText(), /市场路线已冻结/);
-  assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待 12 秒/);
-  const run = page.getByRole('button', { name: '按方案购买并贡献', exact: true });
+  assert.equal(await page.getByRole('checkbox', { name: 'Select batch 1' }).count(), 0);
+  assert.match(await page.locator('[data-selection]').innerText(), /execution button approves this scope/);
+  assert.equal(await page.locator('[data-purchase-budget]').inputValue(), '1500');
+  assert.match(await page.locator('[data-result]').innerText(), /Approved market substitution pool: 2 versions/);
+  assert.match(await page.locator('[data-result]').innerText(), /Attempts per card: 7 · Partial batch wait: 12 s/);
+  const run = page.getByRole('button', { name: 'Buy & contribute', exact: true });
   assert.equal(await run.isEnabled(), true);
   assert.equal(await page.locator('[data-status]').evaluate(node => !!node.closest('footer')), true,
     'Execution progress stays beside the action buttons, not above a long result list');
   await run.evaluate(button => button.click());
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 0);
   await run.click();
-  await page.getByText('准备执行：核对方案与恢复记录', { exact: false }).waitFor();
+  await page.getByText('Preparing execution: checking the plan and records', { exact: false }).waitFor();
   await page.evaluate(() => { globalThis.marketSmoke.now += 2300; });
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
-    .querySelector('[data-clock]').textContent.includes('本次耗时 2 秒'));
+    .querySelector('[data-clock]').textContent.includes('Elapsed 2 s'));
   await page.evaluate(() => { globalThis.marketSmoke.holdPreflight = false; globalThis.marketSmoke.preflight(); });
-  await page.getByText('本批就绪 2 / 30 张 · 20 分', { exact: false }).waitFor();
-  assert.match(await page.locator('[data-status]').innerText(), /已购 2 \/ 10 张/);
-  assert.match(await page.locator('[data-clock]').innerText(), /预计收批等待剩余/);
+  await page.getByText('Ready in this batch 2 / 30 cards · 20 points', { exact: false }).waitFor();
+  assert.match(await page.locator('[data-status]').innerText(), /Purchased 2 \/ 10 cards/);
+  assert.match(await page.locator('[data-clock]').innerText(), /Estimated batch wait remaining/);
   await page.locator('.panel-body').evaluate(node => { node.scrollTop = node.scrollHeight; });
   const bounds = await page.locator('[data-status]').evaluate(node => {
     const rect = node.getBoundingClientRect(), dialog = node.closest('dialog').getBoundingClientRect();
@@ -666,42 +669,40 @@ async function exerciseStreamlinedMarket(page) {
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-execution-progress-mobile.png' });
   await page.setViewportSize({ width: 1280, height: 800 });
   assert.equal(await page.locator('[data-mode]').isDisabled(), true);
-  await page.getByRole('button', { name: '停止', exact: true }).click();
-  await page.getByText('已停止；已确认成交保留，可核对并恢复。', { exact: true }).waitFor();
-  assert.match(await page.locator('[data-selection]').innerText(), /已就绪 2 张/);
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.getByText('Stopped. Confirmed purchases are retained. Resume with the execution button; unresolved receipts are checked first.', { exact: true }).waitFor();
+  assert.match(await page.locator('[data-selection]').innerText(), /Ready 2 cards/);
   const stoppedTime = await page.locator('[data-clock]').innerText();
   await page.evaluate(() => { globalThis.marketSmoke.now += 5000; });
   assert.equal(await page.locator('[data-clock]').innerText(), stoppedTime, 'Elapsed time freezes after stopping');
-  assert.deepEqual(await page.evaluate(() => globalThis.marketSmoke.execution), { purchaseAttempts: 7, partialWaitMs: 12000 });
-  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.purchaseAttempts), 7);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.partialWaitMs), 12000);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.purchaseScope.groups.length), 2);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.approval.budget), 1500);
+  await page.getByRole('button', { name: 'Check & recover', exact: true }).click();
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
   assert.equal(await run.isEnabled(), true);
   await page.evaluate(() => { globalThis.marketSmoke.mode = 'no-supply'; });
   await run.click();
-  await page.getByText('当前没有可购买的限价内候选，已暂停。已购材料保留，核对并恢复后可重试。', { exact: true }).waitFor();
-  assert.equal(await run.isDisabled(), true);
-  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
-  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+  await page.getByText('Paused after bounded retries: no approved candidate was available within the frozen price caps. Purchases are retained. Retry later or generate a new plan; no receipt recovery is needed for a normal shortage.', { exact: true }).waitFor();
+  assert.equal(await run.isEnabled(), true, 'Normal scarcity can be retried without a recovery click');
   await page.evaluate(() => { globalThis.marketSmoke.mode = 'completed'; });
   await run.click();
-  await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
+  await page.getByText('Target reached. Check the reward status separately.', { exact: true }).waitFor();
   assert.equal(await run.isDisabled(), true);
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3);
   await page.evaluate(() => { globalThis.marketSmoke.quoteLimited = true; });
-  await page.getByRole('button', { name: '生成方案', exact: true }).click();
-  await page.locator('[data-quote-confirm]').waitFor();
-  assert.match(await page.locator('[data-result]').innerText(), /待确认方案.*不保证全库存\/全市场最低价/);
-  assert.match(await page.locator('[data-result]').innerText(), /补卡版本报价：有效 2 \/ 3 · 失败 1/);
-  assert.equal(await run.isDisabled(), true);
-  await page.locator('[data-quote-confirm]').evaluate(input => { input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); });
-  assert.equal(await run.isDisabled(), true, 'Synthetic acknowledgement cannot enable execution');
-  await page.locator('[data-quote-confirm]').uncheck();
-  await page.locator('[data-quote-confirm]').check();
+  await page.getByRole('button', { name: 'Generate plan', exact: true }).click();
+  await page.locator('[data-result] section.inventory-warning').waitFor();
+  assert.match(await page.locator('[data-result]').innerText(), /Quote coverage is incomplete.*cheapest/);
+  assert.match(await page.locator('[data-result]').innerText(), /Market quote coverage: valid 2 \/ 3 · failed 1/);
+  assert.equal(await page.locator('[data-quote-confirm]').count(), 0);
+  await run.evaluate(button => button.click());
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3, 'Only a trusted execution click approves quote coverage');
   assert.equal(await run.isEnabled(), true);
   await page.locator('.route-list button').last().click();
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
-  assert.equal(await page.locator('[data-quote-confirm]').isChecked(), false, 'Changing route resets acknowledgement');
-  assert.equal(await run.isDisabled(), true);
+  assert.equal(await run.isEnabled(), true, 'Changed route requires a new trusted execution click, not another checkbox');
   await page.locator('[data-result] section.inventory-warning').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-quote-coverage-desktop.png' });
   await page.setViewportSize({ width: 390, height: 700 });
@@ -711,9 +712,8 @@ async function exerciseStreamlinedMarket(page) {
   assert.ok(coverageBounds.scroll <= coverageBounds.width + 1, 'Quote coverage warning has no narrow-screen horizontal overflow');
   await page.setViewportSize({ width: 1280, height: 800 });
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3, 'Quote-limited previews have not executed');
-  await page.locator('[data-quote-confirm]').check();
   await run.click();
-  await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
+  await page.getByText('Target reached. Check the reward status separately.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 4);
   assert.equal(requests, 0, 'The synthetic market UI must never make network requests');
 }

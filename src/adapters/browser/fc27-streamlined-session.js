@@ -6,6 +6,7 @@ import { same, fail } from '../../streamlined/contract.js';
 import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/routes.js';
 import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuote, fatalStreamlinedQuoteFailure, STREAMLINED_QUOTE_BUDGET_MS } from '../../streamlined/quotes.js';
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
+import { createStreamlinedPurchaseScope } from '../../streamlined/purchase-scope.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -237,9 +238,14 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           return { ...result, status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteSource, quoteReadError,
             quoteCoverage, plan: null, liveExecutionEnabled: false };
         }
+        const purchaseScope = market.length && config.mode !== 'inventory'
+          ? createStreamlinedPurchaseScope({ ...input, market, quoteSource, quoteAt }) : null;
         const plan = ['ready', 'partial'].includes(result.status)
           ? createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy, result, objective: config.objective,
-            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs, ...(quoteCoverage.limited ? { quoteLimited: true } : {}) } }) : null;
+            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs,
+              ...(purchaseScope ? { purchaseScope,
+                scarcityRetries: 2, retryWaitMs: 15000 } : {}),
+              ...(quoteCoverage.limited ? { quoteLimited: true } : {}) } }) : null;
         let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null, executionError = null;
         if (plan && typeof createExecution === 'function') {
           try {
@@ -337,7 +343,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       } catch (error) { preview = null; return { status: 'blocked', reason: safeReason(error) }; }
       finally { busy = false; }
     },
-    async contribute({ fingerprint, batchIndices, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
+    async contribute({ fingerprint, batchIndices, budget, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: 'blocked', reason: 'FC27_STREAMLINED_PLAN_CHANGED' };
       if (preview.plan.execution?.quoteLimited === true && acknowledgeQuoteCoverage !== true) {
@@ -348,7 +354,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       try {
         unchanged(selected.origin); activeExecution = selected.execution;
         const result = selected.plan.route?.groups?.some(group => group.source === 'market') && typeof activeExecution.purchase === 'function'
-          ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial }, callbacks)
+          ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...(budget !== undefined ? { budget } : {}) }, callbacks)
           : await activeExecution.transaction.execute(selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial }, callbacks);
         if (preview === selected) {

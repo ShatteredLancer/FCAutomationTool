@@ -1,16 +1,21 @@
 import { contextKey } from '../fc27/prelaunch-contract.js';
 import { integer, same, fail } from './contract.js';
 import { assertStreamlinedPlan } from './plan.js';
+import { approvedStreamlinedPurchaseRoute } from './purchase-scope.js';
+
+export const streamlinedPurchaseNeedsRecovery = record => !!record?.contribution
+  || record?.entries?.some(entry => ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state));
 
 export const streamlinedPurchaseKey = context => contextKey(context, 'streamlined-market-run');
 export function validateStreamlinedPurchase(record, context) {
   if (record?.plan?.schema === 1) {
     assertStreamlinedPlan(record.plan);
     if (record.plan.fingerprint !== record.fingerprint || !same(record.plan.context, context)
-        || !same(record.plan.route, record.route) || !same(record.plan.challenge, record.challenge)
+        || !same(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same(record.plan.challenge, record.challenge)
         || !same(record.plan.policy, record.policy)) fail('PURCHASE_JOURNAL_INVALID');
   }
-  if (!record || record.schema !== 1 || !same(record.context, context) || typeof record.operationId !== 'string'
+  if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope
+      || !same(record.context, context) || typeof record.operationId !== 'string'
       || !record.operationId || !integer(record.revision, 1) || !record.route?.groups?.length
       || typeof record.fingerprint !== 'string' || !record.fingerprint
       || !integer(record.budget) || !integer(record.spent) || record.spent > record.budget
@@ -22,6 +27,8 @@ export function validateStreamlinedPurchase(record, context) {
       || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled)
       || record.fulfilled.length !== record.route.groups.length
       || record.fulfilled.some((n,i) => !integer(n, 0, record.route.groups[i]?.quantity ?? -1))
+      || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length
+        || record.demand.some((n, i) => !integer(n, record.fulfilled[i], record.route.groups[i].quantity)))
       || new Set(record.consumedIds).size !== record.consumedIds.length
       || record.consumedIds.some(id => !integer(id, 1))) fail('PURCHASE_JOURNAL_INVALID');
   for (const group of record.route.groups) {
@@ -88,7 +95,17 @@ export function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => 
     } catch { fail('PURCHASE_JOURNAL_WRITE_FAILED'); }
     return structuredClone(next);
   };
-  return Object.freeze({ read, write });
+  const archive = async record => {
+    assertHeld(); validateStreamlinedPurchase(record, record.context);
+    if (streamlinedPurchaseNeedsRecovery(record)) fail('PURCHASE_RECOVERY_REQUIRED');
+    if (!same(record, await read(record.context))) fail('PURCHASE_JOURNAL_CHANGED');
+    const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+    try {
+      assertHeld(); await set(key, structuredClone(record)); assertHeld();
+      if (!same(record, await get(key, null))) fail('PURCHASE_JOURNAL_WRITE_FAILED');
+    } catch { fail('PURCHASE_JOURNAL_WRITE_FAILED'); }
+  };
+  return Object.freeze({ read, write, archive });
 }
 
 export async function verifyStreamlinedPurchasedItem(get, context, item, challenge = null) {

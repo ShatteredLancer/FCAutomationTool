@@ -34,7 +34,10 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
     'src/adapters/ea/fc27-streamlined-inspection.js', 'src/adapters/ea/fc27-streamlined-progress.js',
     'src/adapters/ea/fc27-streamlined-validation.js', 'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-streamlined-storage-read.js', 'src/adapters/ea/fc27-transaction-transport.js',
-    'src/streamlined/planner.js', 'src/streamlined/scoring.js', 'src/streamlined/plan.js']);
+    'src/streamlined/planner.js', 'src/streamlined/scoring.js', 'src/streamlined/plan.js',
+    // Plan scope validation adds only pure recipe/data helpers, no adapters,
+    // journals or mutation drivers. The inspector remains read-only.
+    'src/streamlined/purchase-scope.js', 'src/streamlined/routes.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) {
     throw new Error('Unreviewed Streamlined inspection dependency');
   }

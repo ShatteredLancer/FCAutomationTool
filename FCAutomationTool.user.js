@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.23
+// @version      27.0.24
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.23", at: Date.now(), status: 'started',
+    state = { version: "27.0.24", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13074,9 +13074,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       reward.value,
       reward.untradeable ?? null
     ]);
-    const quantity = token ? reward.count * reward.value : reward.count;
-    if (!Number.isSafeInteger(quantity)) return null;
-    return { key, quantity, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
+    const quantity2 = token ? reward.count * reward.value : reward.count;
+    if (!Number.isSafeInteger(quantity2)) return null;
+    return { key, quantity: quantity2, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
   }
   function galleryRewardOptions(targets) {
     const options = /* @__PURE__ */ new Map();
@@ -27361,22 +27361,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-streamlined-panel.js
-  var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString() : "\u672A\u77E5";
+  var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "Unknown";
+  var quantity = (value, noun, plural = `${noun}s`) => `${number2(value)} ${value === 1 ? noun : plural}`;
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
   function streamlinedMarketMessage(result) {
-    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
+    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "Selected source";
     if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
-      return `${source} \u8865\u5361\u62A5\u4EF7\u5728\u7B49\u5F85\u4E2D\u5230\u671F\uFF0C\u5237\u65B0\u540E\u4ECD\u672A\u53D6\u5F97\u5B8C\u6574\u6709\u6548\u62A5\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u4E0D\u4F1A\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u6216\u81EA\u52A8\u5207\u6362\u6765\u6E90\u3002`;
+      return `${source} market quotes expired while waiting and could not be refreshed. Generate a new plan. Expired quotes and other price sources are not used.`;
     }
     if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ""))) {
-      return `${source} \u8865\u5361\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u8BE5\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002`;
+      return `${source} market quotes could not be loaded. No plan was generated. Check the price source connection and try again.`;
     }
-    return "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u8865\u5361\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u5019\u9009\u76EE\u5F55\u8FDE\u63A5\uFF08FUT.GG\uFF09\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002";
+    return "Market candidates could not be verified. No purchase plan was generated. Check the FUT.GG catalog connection or choose Inventory only.";
   }
   function streamlinedRouteSummary(route) {
     const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
     const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-    return `\u603B\u4EF7\u503C ${number2(total)} \u25C9 \xB7 \u5F85\u8D2D ${number2(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u79EF\u5206 \xB7 ${route.count} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${route.minBatches} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
+    return `Total value ${number2(total)} \u25C9 \xB7 To buy ${number2(route.purchaseCost)} \xB7 Cap ${number2(cap)} \xB7 ${number2(route.score)} points \xB7 ${quantity(route.count, "card")} (Inventory ${route.inventoryCount} / To buy ${route.marketCount}) \xB7 at least ${quantity(route.minBatches, "batch", "batches")}${route.repeatPurchaseCount ? ` \xB7 Repeat purchases ${route.repeatPurchaseCount}` : ""}`;
   }
   function streamlinedInventoryPreview(plan, indices = null, record = null) {
     const market = plan?.route?.groups?.some((group) => group.source === "market");
@@ -27389,46 +27390,55 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function streamlinedExecutionProgress(p = {}) {
     const stages = {
-      "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
-      "checking-club": "\u6838\u5BF9 Club",
-      "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
-      "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
-      "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
-      "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
-      confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
+      "checking-source": "Checking external cards",
+      "checking-club": "Checking Club",
+      "journal-pending": "Saving recovery record",
+      "move-request": "Moving to Club",
+      "move-acknowledged": "Move receipt confirmed",
+      "club-readback": "Verifying Club delivery",
+      confirmed: "Club delivery confirmed"
     };
-    const label = p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
-      preflight: "\u51C6\u5907\u6267\u884C\uFF1A\u6838\u5BF9\u65B9\u6848\u4E0E\u6062\u590D\u8BB0\u5F55",
-      "checking-state": "\u6838\u5BF9\u5E93\u5B58\u4E0E\u5269\u4F59\u5BB9\u91CF",
-      search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
-      buying: "\u4E70\u5165\u4E2D",
-      moving: "\u79FB\u5165 Club",
-      "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
-      validation: "\u590D\u6838\u6750\u6599",
-      contribution: "\u8D21\u732E\u4E2D",
-      reconciliation: "\u6838\u5BF9\u56DE\u6267",
-      confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4",
-      recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55"
-    }[p.phase] ?? "\u6267\u884C\u4E2D";
-    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number2(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
+    const label = p.phase === "materialize" ? stages[p.stage] ?? "Moving to Club" : {
+      preflight: "Preparing execution: checking the plan and records",
+      "checking-state": "Checking inventory and capacity",
+      search: "Searching within the price cap",
+      buying: "Buying",
+      moving: "Moving to Club",
+      "partial-ready": "Waiting to close the partial batch",
+      validation: "Checking cards",
+      contribution: "Contributing",
+      reconciliation: "Reconciling receipts",
+      confirmed: "Contribution confirmed",
+      recovery: "Reconciling previous records",
+      replanning: "Selecting the lowest-cost approved alternative",
+      "waiting-supply": "Waiting to retry available supply",
+      "search-result": "Search finished",
+      "purchase-rejected": "Purchase rejected by EA"
+    }[p.phase] ?? "Running";
+    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `Batch ${number2(p.batchNumber)} \xB7 ` : ""}${label}`;
     if (p.playerName || Number.isSafeInteger(p.rating)) text5 += `
-\u5F53\u524D\u5019\u9009\uFF1A${p.playerName ?? "\u59D3\u540D\u672A\u53D6\u5F97"} \xB7 ${number2(p.rating)} OVR \xB7 \u4E0A\u9650 ${number2(p.maxBuy)} \u91D1\u5E01 \xB7 \u5C1D\u8BD5 ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
+Current candidate: ${p.playerName ?? "Name unavailable"} \xB7 ${number2(p.rating)} OVR \xB7 Cap ${number2(p.maxBuy)} coins \xB7 Attempt ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     if (p.purchaseTarget !== void 0) text5 += `
-\u5DF2\u8D2D ${number2(p.purchased)} / ${number2(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number2(p.spent)} / ${number2(p.budget)} \u91D1\u5E01`;
+Purchased ${number2(p.purchased)} / ${number2(p.purchaseTarget)} cards \xB7 Spent ${number2(p.spent)} / ${number2(p.budget)} coins`;
     text5 += `
-\u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
+Contributed ${number2(p.contributed)} cards \xB7 Confirmed ${number2(p.submittedScore)} / ${number2(p.targetScore)} points`;
     if (p.readyCount !== void 0) text5 += `
-\u672C\u6279\u5C31\u7EEA ${number2(p.readyCount)} / ${number2(p.selectionLimit)} \u5F20 \xB7 ${number2(p.readyPoints)} \u5206`;
+Ready in this batch ${number2(p.readyCount)} / ${number2(p.selectionLimit)} cards \xB7 ${number2(p.readyPoints)} points`;
     if (p.phase === "materialize") text5 += `
-\u5916\u90E8\u5361 ${number2(p.completed)} / ${number2(p.materialTotal)} \u5F20`;
+External cards ${number2(p.completed)} / ${number2(p.materialTotal)} cards`;
+    if (p.phase === "waiting-supply") text5 += `
+Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     return text5;
   }
   function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
     const seconds = (ms) => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1e3);
-    let text5 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
-    if (active) text5 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
+    let text5 = `Elapsed ${seconds(elapsedMs)} s`;
+    if (active) text5 += ` \xB7 Current step ${seconds(phaseElapsedMs)} s`;
     if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+      text5 += ` \xB7 Estimated batch wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} s`;
+    }
+    if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
+      text5 += ` \xB7 Supply retry wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} s`;
     }
     return text5;
   }
@@ -27436,63 +27446,73 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
       const evidence = normalizeStreamlinedProtectionFailure(protection);
       const labels = {
-        "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
-        "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
-        "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
-        "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
-        "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002"
+        "protection-lock-list": "The FSU lock list is unavailable or invalid. Ensure FSU Local is enabled and initialized, then refresh. Keep your cards locked.",
+        "protection-active-id": "The active squad ID could not be verified. Open your active squad in Squads, then return to generate a plan.",
+        "protection-active-state": "The active squad status could not be verified. Confirm the squad is active in Squads. Export diagnostics if the issue persists.",
+        "protection-native-id": "The cached squad ID does not match the active squad. Export diagnostics.",
+        "protection-layout": "The native squad slot layout could not be verified. Export diagnostics.",
+        "protection-slot-list": `The native squad slot list is incomplete (${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}). Export diagnostics.`,
+        "protection-slot-id": "An item ID in the active squad could not be verified. Export diagnostics.",
+        "protection-fsu-roster": "The FSU active squad snapshot is unavailable or invalid. Export diagnostics.",
+        "protection-cache": "The active squad cache is missing and no verified snapshot matches this account and squad. Export diagnostics."
       };
-      return `${labels[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
+      return `${labels[evidence?.phase] ?? "Card locks or the active squad could not be verified. Open your active EA squad and try again. Export diagnostics if the issue persists."} No new cards were contributed.`;
     }
     if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
-      const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? `\uFF08Set ${recovery.setId} / Challenge ${recovery.challengeId}\uFF09` : "";
-      const phase = { "save-pending": "\u9635\u5BB9\u66FF\u6362\u4FDD\u5B58\u5C1A\u672A\u6838\u5BF9", ready: "\u8D2D\u4E70\u6216\u5165\u5E93\u5C1A\u672A\u6838\u5BF9", saved: "\u8D2D\u4E70\u6062\u590D\u6807\u8BB0\u5C1A\u672A\u7ED3\u6E05" }[recovery?.phase];
+      const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? ` (Set ${recovery.setId} / Challenge ${recovery.challengeId})` : "";
+      const phase = { "save-pending": "Squad replacement has not been reconciled", ready: "Purchase or Club delivery has not been reconciled", saved: "The purchase recovery marker is unresolved" }[recovery?.phase];
       const labels = {
-        waiting: "\u672A\u8D2D\u4E70",
-        "buy-pending": "\u6210\u4EA4\u5F85\u6838\u5BF9",
-        bought: "\u5DF2\u8D2D\u5F85\u5165\u5E93",
-        "move-pending": "\u5165\u5E93\u5F85\u6838\u5BF9",
-        "move-rejected": "\u5165\u5E93\u88AB\u62D2",
-        club: "\u5DF2\u5165\u5E93"
+        waiting: "Not purchased",
+        "buy-pending": "Purchase unconfirmed",
+        bought: "Purchased, awaiting delivery",
+        "move-pending": "Delivery unconfirmed",
+        "move-rejected": "Delivery rejected",
+        club: "In Club"
       };
       const counts = Object.entries(labels).flatMap(([state, label]) => {
         const count2 = recovery?.states?.[state];
         return Number.isSafeInteger(count2) && count2 > 0 && count2 <= 32 ? [`${label} ${count2}`] : [];
       });
-      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`\u5DF2\u786E\u8BA4\u66FF\u6362 ${recovery.applied}`);
-      return `\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Puzzle \u8D2D\u5361\u8BB0\u5F55${target}${phase ? `\uFF1A${phase}` : ""}\u3002${counts.length ? `\u8BB0\u5F55\u72B6\u6001\uFF1A${counts.join("\u3001")}\u3002` : ""}\u8BF7\u5148\u56DE\u5BF9\u5E94 SBC \u7684\u6279\u91CF\u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u82E5\u8BE5 SBC \u5DF2\u4E0B\u67B6\uFF0C\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002\u672C\u6B21\u672A\u6295\u5165\u6750\u6599\u3002`;
+      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`Confirmed replacements ${recovery.applied}`);
+      return `This account has an unresolved Puzzle purchase record${target}${phase ? `: ${phase}` : ""}. ${counts.length ? `Record states: ${counts.join(", ")}. ` : ""} Open that SBC's bulk purchase window to reconcile the record. If the SBC has expired, keep the record and export diagnostics. No cards were contributed.`;
     }
     const messages2 = {
-      FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u6CA1\u6709\u53EF\u8D2D\u4E70\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u6838\u5BF9\u5E76\u6062\u590D\u540E\u53EF\u91CD\u8BD5\u3002",
-      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u91CD\u8BD5\u3002",
-      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
-      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\uFF0C\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u672A\u6295\u5165\u65B0\u6750\u6599\u3002",
-      FC27_STREAMLINED_POLICY_CHANGED: "\u6750\u6599\u4FDD\u62A4\u6216\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u65E7\u6267\u884C\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
-      FC27_STREAMLINED_MATERIAL_CHANGED: "\u9009\u4E2D\u6750\u6599\u5DF2\u53D8\u5316\u6216\u53D7\u5230\u9501\u5361/\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u6838\u5BF9\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
-      FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
-      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
-      FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
-      FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
-      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
-      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
-      FC27_STREAMLINED_RECOVERY_REQUIRED: "\u4E0A\u6B21\u8D21\u732E\u5DF2\u53D1\u51FA\uFF0C\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u518D\u6B21\u6295\u5165\u3002",
-      FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
-      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
-      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
-      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
-      FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
+      FC27_STREAMLINED_STOPPED: "Stopped. Confirmed purchases are retained. Resume with the execution button; unresolved receipts are checked first.",
+      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "Paused: no executable purchase candidate for the current plan. Confirmed purchases have been retained.",
+      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "Paused after bounded retries: no approved candidate was available within the frozen price caps. Purchases are retained. Retry later or generate a new plan; no receipt recovery is needed for a normal shortage.",
+      FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "Unassigned capacity is full. Clear space manually, then retry. No market search or automatic disposal was performed.",
+      FC27_STREAMLINED_PURCHASE_VERSION_HELD: "The remaining versions are already held in Club and are not approved inventory materials. Choose another route or explicitly approve those stock cards; they will not be consumed automatically.",
+      FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "The remaining approved budget cannot cover this purchase. No cap was raised. Generate a new plan to approve a different budget.",
+      FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: "A purchase price could not be verified. No purchase was authorized from that quote. Refresh the plan or export diagnostics.",
+      FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: "Current Club holdings could not be verified. No missing cache entry was treated as permission to buy or consume a card. Retry or export diagnostics.",
+      FC27_BUY_SEARCH_FAILED: "EA rejected the market search. No purchase was sent for that search. Retry later; export diagnostics if this persists.",
+      FC27_STREAMLINED_PURCHASE_REJECTED: "EA rejected the purchase attempts. Confirmed purchases are retained. This is not an unknown receipt or proof that the market has no supply.",
+      FC27_BUY_NATIVE_REJECTED: "EA rejected the purchase attempts. Confirmed purchases are retained. Retry later or export diagnostics.",
+      FC27_BUY_INSUFFICIENT_COINS: "EA reported insufficient coins for the purchase. Confirmed purchases are retained. No approved price cap or budget was increased.",
+      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "The execution approval has expired. Confirmed transactions are retained. Click the execution button to approve another run; unresolved receipts will be checked first.",
+      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "Public quotes expired and could not be refreshed. Purchased cards are retained. Generate a fresh plan; no cap was raised.",
+      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "A purchase, delivery or previous plan needs reconciliation. Reconcile before continuing; purchases will not be repeated.",
+      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "This contribution has not been confirmed. Reconcile before continuing; it will not be submitted again.",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "The purchase record could not be read. Retry reconciliation or export diagnostics.",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "The purchase record could not be saved. Reconcile before continuing.",
+      FC27_STREAMLINED_PROGRESS_CHANGED: "The current points no longer match the plan. Execution stopped. Reconcile before continuing.",
+      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "Card locks or the active squad could not be verified. Open your active EA squad and try again. No new cards were contributed.",
+      FC27_STREAMLINED_POLICY_CHANGED: "Card protection or settings changed. Reconcile the previous run, then generate a new plan.",
+      FC27_STREAMLINED_MATERIAL_CHANGED: "Selected cards changed or are protected by locks or the active squad. Execution stopped. Reconcile, then generate a new plan.",
+      FC27_BUY_JOURNAL_READ_FAILED: "The Puzzle purchase record could not be read. Retry or export diagnostics. No record was cleared and no cards were contributed.",
+      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "This account has an unresolved Gallery purchase. Reconcile it in the Gallery purchase window.",
+      FC27_RECOVERY_REQUIRED: "This account has an unresolved standard SBC submission. Reconcile that submission first.",
+      FC27_STREAMLINED_INITIATION_UNVERIFIED: "Start this SBC in the native EA interface, then generate a plan.",
+      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "Contribution is not enabled in this build.",
+      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "This contribution needs reconciliation. Click Check & recover; do not submit it again.",
+      FC27_STREAMLINED_RECOVERY_REQUIRED: "The previous contribution was dispatched but is not confirmed. Click Check & recover; do not submit it again.",
+      FC27_STREAMLINED_CONTEXT_CHANGED: "The account, SBC or points changed. Reopen the current SBC and generate a new plan.",
+      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}) has an unresolved contribution. Nothing was resumed or submitted again in this SBC.`,
+      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}) has an unresolved external card move (${recovery?.pendingCount ?? "?"} cards). Click Check & recover. This only checks Club delivery; it does not repeat moves, purchases or contributions.`,
+      FC27_STREAMLINED_COMPLETED: "The selected target is complete. No further contribution is needed.",
+      FC27_STREAMLINED_PURCHASE_PENDING: "This route needs market cards. Purchases and delivery must be confirmed before contribution."
     };
-    return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
+    return messages2[reason] ?? reason ?? "Generate a new plan or reconcile the previous run.";
   }
   function mountFc27StreamlinedPanel({
     document,
@@ -27513,7 +27533,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const entry = document.createElement("button");
     entry.id = "fcat-streamlined-entry";
     entry.type = "button";
-    entry.textContent = "FCAT \u79EF\u5206\u89E3\u9898";
+    entry.textContent = "FCAT Points Solver";
     entry.className = "btn-standard call-to-action";
     entry.style.cssText = "margin:8px;min-height:38px";
     const host = document.createElement("div");
@@ -27524,7 +27544,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     *{box-sizing:border-box} [hidden]{display:none!important}
     dialog{width:min(720px,94vw);max-width:94vw;max-height:88vh;overflow:hidden;background:#17232c;color:#ecf2f5;border:1px solid #53636d;border-radius:10px;padding:16px;font:14px/1.5 Arial,sans-serif}
     dialog::backdrop{background:#000a}header,footer,.tabs{display:flex;gap:10px;align-items:center}header{margin-bottom:12px}header strong{flex:1}footer{position:sticky;bottom:-16px;background:#17232c;padding:12px 0;justify-content:flex-end;border-top:1px solid #46545d}
-    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:12px;min-height:92px;padding:8px 0;border-top:1px solid #364956}.player-card{flex:0 0 64px;position:relative;width:64px;height:88px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.4444444);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 76px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 82px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:8px}.player-card{flex-basis:54px;width:54px;height:74px}.player-card slot{transform:scale(.375)}.player-points{flex-basis:62px}.player-price{flex-basis:68px}dialog{padding:12px}}
+    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;flex-wrap:wrap;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:12px;min-height:92px;padding:8px 0;border-top:1px solid #364956}.player-card{flex:0 0 64px;position:relative;width:64px;height:88px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.4444444);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 76px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 82px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:8px}.player-card{flex-basis:54px;width:54px;height:74px}.player-card slot{transform:scale(.375)}.player-points{flex-basis:62px}.player-price{flex-basis:68px}dialog{padding:12px}}
     .player-row{display:grid;grid-template-columns:104px minmax(0,1fr) 90px 112px;min-height:156px}
     .player-card{width:104px;height:145px}.player-card slot{transform:scale(.7222222)}
     .player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75);transform-origin:top left}
@@ -27536,20 +27556,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
     .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
-  </style><dialog aria-label="FCAT Streamlined SBC"><div class="panel-body"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
-    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
-    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58\uFF0B\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u6700\u4F4E\u5F85\u8D2D\u603B\u989D\uFF0C\u6750\u6599\u4F30\u503C\u6B21\u4E4B</option><option value="fewest-cards">\u6700\u5C11\u5361\u7247</option></select></label>
-    <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58\uFF0B\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u8D2D\u4E70\u6750\u6599</option></select></label>
-    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
-    <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
+  </style><dialog aria-label="FCAT Streamlined SBC"><div class="panel-body"><header><strong>FCAT Points Solver</strong><button data-close aria-label="Close">\xD7</button></header>
+    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">Current SBC</button><button data-global aria-pressed="false">Global settings</button></div>
+    <section data-settings><div class="fields"><label>Planning objective<select data-objective><option value="lowest-value">Lowest total card value (inventory + purchases)</option><option value="lowest-coins">Lowest purchase cost, then inventory value</option><option value="fewest-cards">Fewest cards</option></select></label>
+    <label>Card sources<select data-mode><option value="inventory-market">Inventory + market</option><option value="inventory">Inventory only</option><option value="market">Market only</option></select></label>
+    <label>Maximum inventory rating<input data-rating type="number" min="1" max="99" step="1"></label><label>Maximum market rating<input data-market-rating type="number" min="1" max="99" step="1"></label><label>Partial batch wait (seconds)<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
+    <small>Inventory follows FSU card protection. Purchases use the selected price source. Estimates do not guarantee market availability. Selecting a route does not buy or contribute cards.</small><button data-save>Save settings</button></section>
     <section data-result></section></div>
-    <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <div class="actions"><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u6E05\u5355</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
+    <footer><output data-status aria-live="polite"></output><progress aria-label="Execution progress" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
+      <div class="actions"><button data-review-stock hidden>View inventory cards</button><button data-stop hidden>Stop</button><button data-recover>Check & recover</button><button data-solve class="primary">Generate plan</button><button data-contribute disabled hidden>Contribute selected batches</button></div></footer></dialog>`;
     const node = (key) => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector("dialog");
     let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
     const rendered = /* @__PURE__ */ new Set();
     let renderGeneration = 0;
-    let shown = null, selected = /* @__PURE__ */ new Set(), quoteCoverageAcknowledged = false;
+    let shown = null, selected = /* @__PURE__ */ new Set();
     let executionProgress = null;
     const resetProgress = () => {
       executionProgress = null;
@@ -27587,7 +27607,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       executionProgress.progress = p;
       refreshClock();
     };
-    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.execution?.quoteLimited !== true || quoteCoverageAcknowledged) && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
+    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
     const clearRendered = () => {
       renderGeneration++;
       for (const node2 of rendered) {
@@ -27694,7 +27714,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       origin = target;
       const serial = ++opened;
       dialog.showModal();
-      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u9700\u6C42\u2026";
+      node("status").textContent = "Loading requirements\u2026";
       node("result").replaceChildren();
       node("contribute").hidden = true;
       clearRendered();
@@ -27703,9 +27723,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const result = await session2.readSettings();
         if (serial !== opened) return;
         const c = result.challenge, s = result.settings;
-        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number2(c.submittedScore)} / ${number2(c.targetScore)} \xB7 \u5269\u4F59 ${number2(c.remainingScore)}`;
+        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number2(c.submittedScore)} / ${number2(c.targetScore)} \xB7 Remaining ${number2(c.remainingScore)}`;
         applySettings(s);
-        node("status").textContent = "\u89C4\u5212\u4E0D\u4F1A\u9009\u5361\u6216\u63D0\u4EA4\u3002";
+        node("status").textContent = "Planning does not select or submit cards.";
         selectScope(false);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -27718,7 +27738,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       setBusy(true);
       try {
         await session2.saveSettings(config(), global);
-        node("status").textContent = global ? "\u5168\u5C40\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002\u5F53\u524D SBC \u72EC\u7ACB\u8BBE\u7F6E\u4F18\u5148\u3002" : "\u5F53\u524D SBC \u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002";
+        node("status").textContent = global ? "Global defaults saved. Settings for the current SBC take priority." : "Settings saved for this SBC.";
       } catch (error2) {
         node("status").textContent = safeReason9(error2);
       } finally {
@@ -27726,7 +27746,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const renderResult = (result) => {
-      quoteCoverageAcknowledged = false;
       clearRendered();
       node("result").replaceChildren();
       node("contribute").hidden = true;
@@ -27735,39 +27754,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!result.plan) {
         const output2 = node("result");
         if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
-          add2(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
+          add2(output2, "div", "Quotes are unavailable or expired. No plan was generated. Check the selected price source and try again.").className = "result-summary";
           add2(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
         } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
           add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
-          if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
+          if (result.marketError) add2(output2, "small", `Market candidates unavailable: ${result.marketError}`);
         } else if (result.reason) {
-          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          add2(output2, "div", `No plan generated: ${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
           if (result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
         }
         return;
       }
       shown = result;
       const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
-      node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
+      node("contribute").textContent = marketRun ? "Buy & contribute" : "Contribute selected batches";
       const output = node("result"), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add2(output, "section");
         warning.className = "inventory-warning";
-        add2(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
-        for (const [key, label2] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
+        add2(warning, "strong", "Quote coverage is incomplete. Review this plan; it may not be the cheapest across all inventory and market cards.");
+        for (const [key, label] of [["inventory", "Inventory"], ["market", "Market"]]) {
           const coverage = result.quoteCoverage?.[key];
-          if (coverage) add2(warning, "small", `${label2}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number2(coverage.valid)} / ${number2(coverage.requested)} \xB7 \u5931\u8D25 ${number2(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number2(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
+          if (coverage) add2(warning, "small", `${label} quote coverage: valid ${number2(coverage.valid)} / ${number2(coverage.requested)} \xB7 failed ${number2(coverage.failed)} \xB7 missing/expired ${number2(coverage.missing)}; cards without valid quotes are excluded.`);
         }
-        const label = add2(warning, "label"), confirm = add2(label, "input");
-        label.style.cssText = "display:flex;align-items:flex-start;gap:8px;margin:10px 0";
-        confirm.type = "checkbox";
-        confirm.dataset.quoteConfirm = "";
-        label.append(document.createTextNode("\u6211\u5DF2\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u63A5\u53D7\u4EC5\u7528\u6709\u6548\u62A5\u4EF7\u7684\u672C\u65B9\u6848\u3002"));
-        confirm.addEventListener("change", (event) => {
-          if (!event.isTrusted || busy) return;
-          quoteCoverageAcknowledged = confirm.checked;
-          node("contribute").disabled = !contributionReady();
-        });
+        add2(warning, "small", "Clicking the execution button accepts this displayed quote coverage, inventory list and purchase scope. No additional coverage checkbox is required.");
       }
       const inventoryReview = add2(output, "details");
       inventoryReview.className = "inventory-review";
@@ -27779,15 +27789,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         inventoryList.replaceChildren();
         const rows = streamlinedInventoryPreview(result.plan, [...selected], result.record);
         const remaining = rows.filter((item2) => !item2.consumed).length, consumed = rows.length - remaining;
-        inventorySummary.textContent = `\u672C\u65B9\u6848\u5C06\u6D88\u8017\u7684\u73B0\u6709\u5E93\u5B58\u5361\uFF1A${remaining} \u5F20${consumed ? ` \xB7 \u5DF2\u6D88\u8017 ${consumed} \u5F20` : ""}`;
-        node("review-stock").textContent = `\u5E93\u5B58 ${remaining} \u5F20\uFF08\u67E5\u770B\uFF09`;
+        inventorySummary.textContent = `Inventory cards this plan will consume: ${quantity(remaining, "card")}${consumed ? ` \xB7 Consumed ${quantity(consumed, "card")}` : ""}`;
+        node("review-stock").textContent = `Inventory ${quantity(remaining, "card")} (view)`;
         node("review-stock").hidden = false;
         if (!rows.length) {
-          add2(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
+          add2(inventoryList, "small", "This route or batch selection uses no existing inventory cards.");
           return;
         }
         if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
-          add2(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
+          add2(inventoryList, "small", "This saved plan has old protection flags. Current card locks and the active squad will be checked before execution. Review the inventory list.").className = "inventory-warning";
         }
         inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
         for (const item2 of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
@@ -27795,13 +27805,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
           add2(row, "strong", number2(item2.rating));
           const text5 = add2(row, "div");
-          add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
-          const pile = { club: "Club", storage: "SBC Storage", unassigned: "Unassigned \u2192 Club", transfer: "Transfer List \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
-          add2(text5, "small", `${pile} \xB7 ${number2(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number2(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
+          add2(text5, "strong", item2.name ?? `Version ${item2.definitionId} (name unavailable)`);
+          const pile = { club: "Club", storage: "SBC Storage", unassigned: "Unassigned \u2192 Club", transfer: "Transfer List \u2192 Club" }[item2.pile] ?? "Source unverified";
+          add2(text5, "small", `${pile} \xB7 ${number2(item2.points)} points \xB7 ${item2.price == null ? "Value unknown" : `Value ${number2(item2.price)} coins`} \xB7 ${item2.consumed ? "Consumed" : "Will consume"}`);
         }
         if (rows.length > 50) {
-          add2(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
-          for (const [label, delta] of [["\u4E0A\u4E00\u9875", -1], ["\u4E0B\u4E00\u9875", 1]]) {
+          add2(inventoryList, "small", `Showing ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} cards`);
+          for (const [label, delta] of [["Previous", -1], ["Next", 1]]) {
             const button = add2(inventoryList, "button", label);
             button.type = "button";
             button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
@@ -27812,7 +27822,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
       };
-      if (marketRun) add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85 ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2 \xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+      if (marketRun) {
+        const label = add2(output, "label", "Total purchase budget (coins)"), budget = add2(label, "input");
+        budget.type = "number";
+        budget.min = "0";
+        budget.step = "1";
+        budget.dataset.purchaseBudget = "";
+        budget.value = String(result.record?.budget ?? result.plan.route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0));
+        if (result.record) {
+          budget.dataset.settled = "true";
+          budget.disabled = true;
+        }
+        add2(output, "small", `Attempts per card: ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \xB7 Partial batch wait: ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} s \xB7 Each click approves up to 10 minutes of execution. Progress is retained on expiry.`);
+        const scope2 = result.plan.execution?.purchaseScope;
+        if (scope2) {
+          const pool = add2(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
+          add2(pool, "summary", `Approved market substitution pool: ${quantity(rows.length, "version")}`);
+          add2(pool, "small", "Execution may select a lower-cost feasible recipe from these versions within the total budget and each frozen cap. Existing inventory is limited to the displayed selected stock IDs. Estimated prices are not supply guarantees.");
+          for (const item2 of rows) add2(pool, "small", `${item2.name ?? `Version ${item2.definitionId}`} \xB7 OVR ${item2.rating} \xB7 ${number2(item2.points)} points \xB7 Estimate ${number2(item2.price)} \xB7 Cap ${number2(item2.purchaseMaxBuy)} coins`);
+        }
+      }
       if (result.routes?.length) {
         const routes = add2(output, "div");
         routes.className = "route-list";
@@ -27829,7 +27858,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const next = await session2.selectRoute(route.id);
               if (serial === opened) {
                 renderResult(next);
-                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u8BF7\u91CD\u65B0\u6838\u5BF9\u5E76\u52FE\u9009\u786E\u8BA4\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002" : next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
+                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "Quote coverage is incomplete. Review and confirm the selected route. No purchase or contribution has started." : next.reason ?? "Route selected. No purchase or contribution has started.";
               }
             } catch (error2) {
               node("status").textContent = safeReason9(error2);
@@ -27839,22 +27868,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
         }
       }
-      add2(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number2(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number2(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number2(p.remaining)} / \u8D85\u989D ${number2(p.excess)}`).className = "result-summary";
+      add2(output, "div", `${result.status === "ready" ? "Target covered" : "Partial plan"} \xB7 ${number2(p.submitted)} submitted + ${number2(p.added)} this plan \xB7 Remaining ${number2(p.remaining)} / Excess ${number2(p.excess)}`).className = "result-summary";
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number2(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${result.items.length} \u5F20 / ${result.batches.length} \u6279`);
+      add2(output, "small", `Total card value ${number2(total)} coins \xB7 To buy ${number2(result.purchaseCost)} coins \xB7 Inventory value ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${quantity(result.items.length, "card")} / ${quantity(result.batches.length, "batch", "batches")}`);
       if (result.policy) {
         const stats = result.inventoryStats;
         const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pile} ${number2(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / Storage";
-        const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number2(stats.rawByPile.club)} / ${number2(stats.rawByPile.storage)}` : "";
-        add2(output, "small", `FSU Only Untradeable\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
-        add2(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
+        const raw = stats?.rawByPile ? ` \xB7 raw ${number2(stats.rawByPile.club)} / ${number2(stats.rawByPile.storage)}` : "";
+        add2(output, "small", `FSU Only Untradeable: ${result.policy.onlyUntradeable ? "enabled" : "disabled"} \xB7 Read inventory: ${pileText}${raw}`);
+        add2(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "Card locks: enabled \xB7 Active squad protection: enabled (starters, substitutes and reserves)" : "Saved plan: current card locks and active squad protection will be checked before execution.");
       }
-      if (!result.searchComplete) add2(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
-      if (!result.poolComplete) add2(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
-      if (result.marketPending) add2(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
-      if (result.quoteReadError) add2(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
-      if (result.marketError) add2(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
-      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
+      if (!result.searchComplete) add2(output, "small", "Search budget reached. Showing the best plan found, not a guaranteed global optimum.");
+      if (!result.poolComplete) add2(output, "small", "Based on currently readable inventory; full inventory coverage is not confirmed.");
+      if (result.marketPending) add2(output, "small", "Verified market candidates are unavailable. This result contains inventory only.");
+      if (result.quoteReadError) add2(output, "small", `Quote reads incomplete: ${result.quoteReadError}`);
+      if (result.marketError) add2(output, "small", `Market candidates incomplete: ${result.marketError}`);
+      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} cards have unknown value. They are not treated as free.`);
       const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
       selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
       const selection = add2(output, "output");
@@ -27862,12 +27891,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const updateSelection = () => {
         const items = [...selected].flatMap((index) => result.batches[index]);
         const points = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-        selection.textContent = marketRun ? "\u5E02\u573A\u8DEF\u7EBF\u5DF2\u51BB\u7ED3\uFF1A\u6309\u5269\u4F59\u76EE\u6807\u9010\u6279\u6267\u884C\uFF1B\u4E0B\u65B9\u6279\u6B21\u4EC5\u4E3A\u9884\u4F30\u3002" : `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number2(points)} \u5206 \xB7 \u8FD8\u5DEE ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        selection.textContent = marketRun ? "Review the target, total budget, market pool and inventory below. The execution button approves this scope. Batches are estimates." : `Selected ${selected.size} batches \xB7 ${items.length} cards \xB7 ${number2(points)} points \xB7 Remaining ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
         if (marketRun && result.record) {
           const r = result.record, rows = r.entries ?? [];
           selection.textContent += `
-\u5DF2\u786E\u8BA4 ${number2(r.submittedScore)} / ${number2(p.target)} \u5206 \xB7 \u5DF2\u82B1\u8D39 ${number2(r.spent)} / ${number2(r.budget)} \u91D1\u5E01
-\u5DF2\u8D2D\u5F85\u5165\u5E93 ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u5C31\u7EEA ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u8D21\u732E ${r.consumedIds?.length ?? 0} \u5F20`;
+Confirmed ${number2(r.submittedScore)} / ${number2(p.target)} points \xB7 Spent ${number2(r.spent)} / ${number2(r.budget)} coins
+Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} cards \xB7 Ready ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} cards \xB7 Contributed ${r.consumedIds?.length ?? 0} cards`;
         }
         node("contribute").disabled = busy || !contributionReady();
         updateInventoryReview();
@@ -27883,7 +27912,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (marketRun) choice.hidden = true;
         choice.dataset.settled = String(settled2(index));
         choice.disabled = busy || settled2(index);
-        choice.setAttribute("aria-label", `\u9009\u62E9\u7B2C ${index + 1} \u6279`);
+        choice.setAttribute("aria-label", `Select batch ${index + 1}`);
         choice.addEventListener("click", (event) => event.stopPropagation());
         choice.addEventListener("change", () => {
           if (marketRun) return;
@@ -27892,7 +27921,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           updateSelection();
         });
         const pending2 = batch.filter((item2) => item2.source === "market");
-        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${batch.length} \u5F20\uFF08\u5E93\u5B58 ${batch.length - pending2.length} / \u5F85\u8D2D ${pending2.length}\uFF09\xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206 \xB7 \u5F85\u8D2D ${number2(pending2.reduce((sum2, item2) => sum2 + item2.price, 0))} \u91D1\u5E01`));
+        summary3.append(document.createTextNode(` Batch ${index + 1} \xB7 ${quantity(batch.length, "card")} (Inventory ${batch.length - pending2.length} / To buy ${pending2.length}) \xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} points \xB7 To buy ${number2(pending2.reduce((sum2, item2) => sum2 + item2.price, 0))} coins`));
         let populated = false;
         const populate = () => {
           if (populated || !details.open || generation !== renderGeneration || disposed) return;
@@ -27905,20 +27934,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const card = add2(row, "div");
             card.className = "player-card";
             const fallback = add2(card, "span", number2(item2.rating));
-            fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
+            fallback.title = "Card image unavailable";
             const slot = add2(card, "slot");
             slot.name = `streamlined-card-${generation}-${item2.key}`;
             const text5 = add2(row, "div");
             text5.className = "player-text";
-            add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
-            add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} \u5206`);
-            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC Storage \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "Unassigned \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "Transfer List \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
-            const points = add2(row, "span", `${number2(item2.points)} \u5206`);
+            add2(text5, "strong", item2.name ?? `Version ${item2.definitionId}`);
+            add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} points`);
+            add2(text5, "span", item2.source === "market" ? "To buy \xB7 Market concept card" : item2.pile === "storage" ? "SBC Storage \xB7 owned" : item2.pile === "unassigned" ? "Unassigned \u2192 Club \xB7 owned" : item2.pile === "transfer" ? "Transfer List \u2192 Club \xB7 owned" : "Club \xB7 owned");
+            const points = add2(row, "span", `${number2(item2.points)} points`);
             points.className = "player-points";
-            const price2 = add2(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number2(item2.price)} \u91D1\u5E01`);
+            const price2 = add2(row, "span", item2.price == null ? "Value unknown" : `${number2(item2.price)} coins`);
             price2.className = "player-price";
-            price2.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
-            if (item2.source === "market") add2(price2, "small", `\u4E0A\u9650 ${number2(item2.purchaseMaxBuy)}`);
+            price2.title = item2.source === "market" ? "Purchase estimate" : "Inventory value";
+            if (item2.source === "market") add2(price2, "small", `Cap ${number2(item2.purchaseMaxBuy)}`);
             let native = null, failed2 = false;
             const unavailable = () => {
               failed2 = true;
@@ -27941,7 +27970,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 parent: host,
                 raw,
                 slot: slot.name,
-                label: item2.name ?? `\u7248\u672C ${item2.definitionId}`,
+                label: item2.name ?? `Version ${item2.definitionId}`,
                 onUnavailable: unavailable
               });
             } catch {
@@ -27959,30 +27988,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count2]) => `${key}: ${count2}`).join(" \xB7 ");
       if (skipped) {
         const details = add2(output, "details");
-        add2(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
+        add2(details, "summary", "Card exclusion reasons");
         add2(details, "small", skipped);
       }
       if (result.policy?.goldRange?.[1] < 99) {
-        add2(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number2(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
+        add2(output, "small", `FSU gold rating cap ${number2(result.policy.goldRange[1])}: inventory above this rating is protected. Market purchases use their separate rating limit.`);
       }
       const exclusionBuckets = result.inventorySelection?.buckets;
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
         const details = add2(output, "details");
-        add2(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number2(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
+        add2(details, "summary", `Excluded inventory ${quantity(result.inventorySelection.readCount - result.inventorySelection.eligibleCount, "card")}`);
         const labels = {
-          "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
-          untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
-          pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
-          locked: "FSU \u624B\u52A8\u9501\u5361\u4FDD\u62A4",
-          "active-squad": "\u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4",
-          "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
-          "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
+          "fsu-gold-range": "Outside the FSU gold rating range",
+          untradeable: "Excluded by Only Untradeable",
+          pile: "Unsupported inventory pile",
+          locked: "FSU manual card lock",
+          "active-squad": "Active squad protection",
+          "eligibility-ineligible": "Does not meet SBC requirements",
+          "eligibility-unknown": "SBC eligibility unverified"
         };
         add2(details, "small", exclusionBuckets.map(
-          (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number2(bucket.rating)}\u7EA7`} \xD7${number2(bucket.count)}`
-        ).join("\uFF1B"));
+          (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "Rating unknown" : `${number2(bucket.rating)} OVR`} \xD7${number2(bucket.count)}`
+        ).join("; "));
       }
-      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
+      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "Click to search, buy, deliver to Club and contribute in batches. Purchases stay within each approved card price cap." : "Contributing permanently consumes selected cards. You can contribute in batches. Stop waits for the current batch to be reconciled." : `Execution unavailable: ${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
       node("contribute").hidden = false;
     };
     on("solve", async () => {
@@ -27995,18 +28024,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       clearRendered();
       node("result").replaceChildren();
       node("contribute").hidden = true;
-      node("status").textContent = "\u6B63\u5728\u51C6\u5907\u5019\u9009\u2026";
+      node("status").textContent = "Preparing candidates\u2026";
       try {
         const result = await session2.plan(config(), { onProgress: (p) => {
           if (serial !== opened) return;
           const bar = shadow.querySelector("progress");
-          const stage = p.phase === "market-quotes" && p.refresh ? "\u5237\u65B0\u8FC7\u671F\u8865\u5361\u62A5\u4EF7" : { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
+          const stage = p.phase === "market-quotes" && p.refresh ? "Refreshing expired market quotes" : { quotes: "Inventory quotes", catalog: "Candidate groups", "market-validation": "Verifying candidate points", "market-quotes": "Market quotes" }[p.phase];
           bar.max = stage ? p.total || 1 : p.maxNodes || 1;
           bar.value = stage ? p.completed : p.nodes;
-          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
+          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 Waiting ${Math.floor(p.elapsedMs / 1e3)} s` : ""}` : `Search nodes ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 Candidates ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
+        node("status").textContent = result.status === "cancelled" ? "Stopped." : result.plan?.execution?.quoteLimited === true ? "Some quotes are unavailable. Review the inventory cards and prices before confirming execution." : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
         renderResult(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -28021,8 +28050,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         refreshClock();
         const record = result.record;
         if (record) {
-          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number2(record.spent)} / ${number2(record.budget)} \u91D1\u5E01` : "";
-          node("final-progress").textContent = `\u5DF2\u786E\u8BA4 ${number2(record.submittedScore)} / ${number2(record.plan?.challenge.targetScore)} \u5206${spent}`;
+          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 Spent ${number2(record.spent)} / ${number2(record.budget)} coins` : "";
+          node("final-progress").textContent = `Confirmed ${number2(record.submittedScore)} / ${number2(record.plan?.challenge.targetScore)} points${spent}`;
           node("final-progress").hidden = false;
           const bar = shadow.querySelector("progress");
           bar.max = record.plan?.challenge.targetScore || 1;
@@ -28031,16 +28060,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       const labels = {
-        completed: "\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u5956\u52B1\u72B6\u6001\u9700\u53E6\u884C\u6838\u5BF9\u3002",
-        partial: "\u672C\u6B21\u8D21\u732E\u5DF2\u786E\u8BA4\uFF0C\u53EF\u7EE7\u7EED\u5269\u4F59\u6279\u6B21\u3002",
-        stopped: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u7684\u6210\u4EA4\u548C\u8D21\u732E\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-        recovered: "\u5DF2\u6062\u590D\u8BB0\u5F55\uFF0C\u672A\u91CD\u590D\u8D21\u732E\u3002",
-        observed: "\u5DF2\u8BFB\u53D6\u4E0A\u6B21\u8BB0\u5F55\u3002",
-        absent: "\u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002",
-        "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
-        rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
+        completed: "Target reached. Check the reward status separately.",
+        partial: "Contribution confirmed. Remaining batches can continue.",
+        stopped: "Stopped. Confirmed purchases and contributions are retained. Resume with the execution button; unresolved receipts are checked first.",
+        recovered: "Record reconciled. No contribution was repeated.",
+        observed: "Previous record loaded.",
+        absent: "No contribution record needs reconciliation.",
+        "recovery-required": "The result is unconfirmed. Reconcile before continuing; contributions will not be repeated.",
+        rejected: "EA rejected this contribution. Generate a new plan."
       };
-      node("status").textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels[result.status] ?? result.status;
+      node("status").textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "This SBC has no contribution record to reconcile. Click Generate plan." : labels[result.status] ?? result.status;
       if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(result.record.submittedScore)} / ${number2(result.record.plan.challenge.targetScore)}`;
     };
     on("contribute", async () => {
@@ -28054,19 +28083,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           fingerprint: result.plan.fingerprint,
           batchIndices: indices,
           allowPartial: result.plan.status === "partial",
-          acknowledgeQuoteCoverage: quoteCoverageAcknowledged
+          ...marketRun ? { budget: Number(shadow.querySelector("[data-purchase-budget]").value) } : {},
+          acknowledgeQuoteCoverage: true
         }, {
           onProgress: (p) => {
             if (serial !== opened) return;
             executionStep(p);
             const materializeLabel = {
-              "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
-              "checking-club": "\u6838\u5BF9 Club",
-              "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
-              "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
-              "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
-              "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
-              confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
+              "checking-source": "Checking external cards",
+              "checking-club": "Checking Club",
+              "journal-pending": "Saving recovery record",
+              "move-request": "Moving to Club",
+              "move-acknowledged": "Move receipt confirmed",
+              "club-readback": "Verifying Club delivery",
+              confirmed: "Club delivery confirmed"
             }[p.stage];
             if (marketRun) {
               node("status").textContent = streamlinedExecutionProgress(p);
@@ -28075,8 +28105,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               bar2.value = p.submittedScore;
               return;
             }
-            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "\u590D\u6838\u6750\u6599", materialize: "\u79FB\u5165 Club", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
-            node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} \u5206`;
+            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "Checking cards", materialize: "Moving to Club", contribution: "Contributing", reconciliation: "Reconciling receipts", confirmed: "Confirmed" }[p.phase];
+            node("status").textContent = `Batch ${p.index + 1} \xB7 ${label} \xB7 Confirmed ${number2(p.submittedScore)} points`;
             const bar = shadow.querySelector("progress");
             bar.max = indices.length;
             bar.value = indices.indexOf(p.index) + (p.phase === "confirmed" ? 1 : 0);
@@ -28087,7 +28117,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           ...result,
           record: outcome.record,
           executionReason: outcome.reason ?? (outcome.status === "completed" ? "FC27_STREAMLINED_COMPLETED" : result.executionReason),
-          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped"].includes(outcome.status)
+          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status)
         });
         showOutcome(outcome);
       } catch (error2) {
@@ -28553,63 +28583,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
   }
 
-  // src/streamlined/plan.js
-  function validPlanContents(plan) {
-    const { challenge, items, batches } = plan;
-    if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
-    if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
-    if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
-    const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
-    const inventory = items.filter((i) => i.source === "inventory");
-    const value = inventory.some((i) => !integer15(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
-    return plan.score === score2 && same25(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
-  }
-  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
-    if (!same25(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer15(challenge.selectionLimit, 1, 1e3)) fail28("PLAN_UNCONFIRMED");
-    const items = structuredClone(result.items), batches = structuredClone(result.batches);
-    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail28("PLAN_UNCONFIRMED");
-    const route = result.route ? structuredClone(result.route) : null;
-    const fingerprint = streamlinedPlanFingerprint({
-      context,
-      challenge,
-      policy,
-      objective,
-      execution,
-      status: result.status,
-      score: result.score,
-      progress: result.progress,
-      purchaseCost: result.purchaseCost,
-      materialValue: result.materialValue,
-      searchComplete: result.searchComplete === true,
-      items,
-      batches,
-      route
-    });
-    return deepFreeze({
-      schema: 1,
-      context,
-      challenge,
-      policy,
-      objective,
-      status: result.status,
-      score: result.score,
-      progress: result.progress,
-      purchaseCost: result.purchaseCost,
-      materialValue: result.materialValue,
-      items,
-      batches,
-      ...route ? { route } : {},
-      ...execution ? { execution: structuredClone(execution) } : {},
-      fingerprint,
-      searchComplete: result.searchComplete === true,
-      liveExecutionEnabled: false
-    });
-  }
-  function assertStreamlinedPlan(plan) {
-    if (plan?.schema !== 1 || !same25(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail28("PLAN_CHANGED");
-    return plan;
-  }
-
   // src/streamlined/routes.js
   var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
   var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
@@ -28854,9 +28827,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         for (const [key, count2] of demands) {
           let remaining = count2;
           for (const { g, i } of families.get(key)) {
-            const quantity = Math.min(remaining, waves * g.items.length);
-            if (quantity) state = add(state, g, i, quantity);
-            remaining -= quantity;
+            const quantity2 = Math.min(remaining, waves * g.items.length);
+            if (quantity2) state = add(state, g, i, quantity2);
+            remaining -= quantity2;
             if (!remaining) break;
           }
           if (remaining) return null;
@@ -29000,6 +28973,127 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
       poolComplete: false
     };
+  }
+
+  // src/streamlined/purchase-scope.js
+  function createStreamlinedPurchaseScope(input) {
+    const { groups } = groupStreamlinedCandidates({ ...input, inventory: [], mode: "market" });
+    const scope2 = { schema: 1, quotedAt: input.quoteAt, groups };
+    return validStreamlinedPurchaseScope(scope2) ? deepFreeze(scope2) : null;
+  }
+  function validStreamlinedPurchaseScope(scope2) {
+    if (!scope2 || scope2.schema !== 1 || !integer15(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
+    const ids2 = /* @__PURE__ */ new Set(), keys2 = /* @__PURE__ */ new Set();
+    return scope2.groups.every((group) => group.source === "market" && integer15(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same25(group.item, group.items[0]) && group.items.every((item2) => {
+      const q = item2.quote;
+      if (ids2.has(item2.definitionId) || !integer15(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer15(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer15(item2.price, 150, 15e6) || !integer15(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer15(q.fetchedAt, 0, scope2.quotedAt) || !integer15(q.expiresAt, scope2.quotedAt + 1)) return false;
+      ids2.add(item2.definitionId);
+      return true;
+    })) && ids2.size <= 2e3;
+  }
+  function approvedStreamlinedPurchaseRoute(plan) {
+    const scope2 = plan.execution?.purchaseScope;
+    if (!scope2) return plan.route;
+    if (!validStreamlinedPurchaseScope(scope2)) fail28("PURCHASE_SCOPE_INVALID");
+    const stock = plan.route.groups.filter((group) => group.source === "inventory");
+    for (const group of plan.route.groups.filter((group2) => group2.source === "market")) {
+      if (!group.items.every((item2) => scope2.groups.some((allowed) => allowed.items.some((row) => same25(row, item2))))) fail28("PURCHASE_SCOPE_INVALID");
+    }
+    return { ...plan.route, groups: structuredClone([...stock, ...scope2.groups]) };
+  }
+  function initialStreamlinedPurchaseDemand(plan, route) {
+    return route.groups.map((group) => plan.route.groups.find((selected) => selected.key === group.key)?.quantity ?? 0);
+  }
+  function streamlinedDemandRoute(record) {
+    return record.demand ? { ...record.route, groups: record.route.groups.map((group, index) => ({ ...group, quantity: record.demand[index] })) } : record.route;
+  }
+  async function replanStreamlinedPurchaseDemand(record, { heldDefinitions = [], blockedDefinitions = [], now, stopped } = {}) {
+    const scope2 = record.plan.execution?.purchaseScope;
+    if (!scope2) return null;
+    const blocked11 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
+    const ready = record.entries.filter((entry) => ["ready", "club"].includes(entry.state));
+    const credit = ready.reduce((sum2, entry) => sum2 + record.route.groups[entry.groupIndex].item.points, 0);
+    const remainingScore = Math.max(0, record.challenge.targetScore - record.submittedScore - credit);
+    if (!remainingScore) return null;
+    const market = scope2.groups.flatMap((group) => group.items).filter((item2) => !blocked11.has(item2.definitionId));
+    if (!market.length) return null;
+    const allowed = new Set(market.map((item2) => item2.definitionId));
+    const result = await runStreamlinedRoutes(
+      {
+        challenge: { ...record.challenge, remainingScore },
+        policy: record.policy,
+        eligibility: { known: true, matches: (item2) => ({ status: allowed.has(item2.definitionId) ? "eligible" : "ineligible" }) },
+        inventory: [],
+        market,
+        mode: "market",
+        objective: record.plan.objective,
+        // Frozen valuations are not renewed here. find() refreshes the selected
+        // version's actual quote before any search/bid and never raises its cap.
+        quoteSource: market[0].quote.source,
+        quoteAt: scope2.quotedAt
+      },
+      { budget: record.budget - record.spent, now, stopped, maxMs: 1e3 }
+    );
+    const selected = result.routes?.[0];
+    if (!selected || stopped?.()) return null;
+    return record.route.groups.map((group, index) => (record.fulfilled[index] ?? 0) + ready.filter((entry) => entry.groupIndex === index).length + (selected.groups.find((candidate) => candidate.key === group.key)?.quantity ?? 0));
+  }
+
+  // src/streamlined/plan.js
+  function validPlanContents(plan) {
+    const { challenge, items, batches } = plan;
+    if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer15(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer15(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
+    if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
+    if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
+    const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
+    const inventory = items.filter((i) => i.source === "inventory");
+    const value = inventory.some((i) => !integer15(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
+    return plan.score === score2 && same25(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
+  }
+  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
+    if (!same25(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer15(challenge.selectionLimit, 1, 1e3)) fail28("PLAN_UNCONFIRMED");
+    const items = structuredClone(result.items), batches = structuredClone(result.batches);
+    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail28("PLAN_UNCONFIRMED");
+    const route = result.route ? structuredClone(result.route) : null;
+    const fingerprint = streamlinedPlanFingerprint({
+      context,
+      challenge,
+      policy,
+      objective,
+      execution,
+      status: result.status,
+      score: result.score,
+      progress: result.progress,
+      purchaseCost: result.purchaseCost,
+      materialValue: result.materialValue,
+      searchComplete: result.searchComplete === true,
+      items,
+      batches,
+      route
+    });
+    return deepFreeze({
+      schema: 1,
+      context,
+      challenge,
+      policy,
+      objective,
+      status: result.status,
+      score: result.score,
+      progress: result.progress,
+      purchaseCost: result.purchaseCost,
+      materialValue: result.materialValue,
+      items,
+      batches,
+      ...route ? { route } : {},
+      ...execution ? { execution: structuredClone(execution) } : {},
+      fingerprint,
+      searchComplete: result.searchComplete === true,
+      liveExecutionEnabled: false
+    });
+  }
+  function assertStreamlinedPlan(plan) {
+    if (plan?.schema !== 1 || !same25(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail28("PLAN_CHANGED");
+    return plan;
   }
 
   // src/streamlined/quotes.js
@@ -29432,13 +29526,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               liveExecutionEnabled: false
             };
           }
+          const purchaseScope = market.length && config.mode !== "inventory" ? createStreamlinedPurchaseScope({ ...input, market, quoteSource, quoteAt }) : null;
           const plan = ["ready", "partial"].includes(result.status) ? createStreamlinedPlan({
             context: input.context,
             challenge: input.challenge,
             policy: input.policy,
             result,
             objective: config.objective,
-            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs, ...quoteCoverage.limited ? { quoteLimited: true } : {} }
+            execution: {
+              purchaseAttempts,
+              partialWaitMs: config.partialWaitMs,
+              ...purchaseScope ? {
+                purchaseScope,
+                scarcityRetries: 2,
+                retryWaitMs: 15e3
+              } : {},
+              ...quoteCoverage.limited ? { quoteLimited: true } : {}
+            }
           }) : null;
           let execution = null, executionReason = "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED", executionRecovery = null, executionError = null;
           if (plan && typeof createExecution === "function") {
@@ -29627,7 +29731,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           busy = false;
         }
       },
-      async contribute({ fingerprint, batchIndices, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
+      async contribute({ fingerprint, batchIndices, budget, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: "blocked", reason: "FC27_STREAMLINED_PLAN_CHANGED" };
         if (preview.plan.execution?.quoteLimited === true && acknowledgeQuoteCoverage !== true) {
@@ -29639,7 +29743,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         try {
           unchanged(selected.origin);
           activeExecution = selected.execution;
-          const result = selected.plan.route?.groups?.some((group) => group.source === "market") && typeof activeExecution.purchase === "function" ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial }, callbacks) : await activeExecution.transaction.execute(
+          const result = selected.plan.route?.groups?.some((group) => group.source === "market") && typeof activeExecution.purchase === "function" ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...budget !== void 0 ? { budget } : {} }, callbacks) : await activeExecution.transaction.execute(
             selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial },
             callbacks
@@ -31971,13 +32075,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/streamlined/purchase-journal.js
+  var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
   var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
   function validateStreamlinedPurchase(record, context) {
     if (record?.plan?.schema === 1) {
       assertStreamlinedPlan(record.plan);
-      if (record.plan.fingerprint !== record.fingerprint || !same25(record.plan.context, context) || !same25(record.plan.route, record.route) || !same25(record.plan.challenge, record.challenge) || !same25(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
+      if (record.plan.fingerprint !== record.fingerprint || !same25(record.plan.context, context) || !same25(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same25(record.plan.challenge, record.challenge) || !same25(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
     }
-    if (!record || record.schema !== 1 || !same25(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer15(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer15(record.budget) || !integer15(record.spent) || record.spent > record.budget || !integer15(record.submittedScore) || !integer15(record.challenge?.id, 1) || !integer15(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer15(record.confirmedBatches) || !integer15(record.challenge?.targetScore, 1) || !integer15(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer15(n, 0, record.route.groups[i]?.quantity ?? -1)) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer15(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same25(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer15(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer15(record.budget) || !integer15(record.spent) || record.spent > record.budget || !integer15(record.submittedScore) || !integer15(record.challenge?.id, 1) || !integer15(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer15(record.confirmedBatches) || !integer15(record.challenge?.targetScore, 1) || !integer15(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer15(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer15(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer15(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
     for (const group of record.route.groups) {
       if (!["inventory", "market"].includes(group.source) || !integer15(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer15(group.item?.points, 1) || group.items.some((item2) => !integer15(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer15(item2.price, 150, 15e6) || !integer15(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer15(item2.id, 1))) fail28("PURCHASE_JOURNAL_INVALID");
     }
@@ -32033,7 +32138,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       return structuredClone(next);
     };
-    return Object.freeze({ read, write });
+    const archive = async (record) => {
+      assertHeld();
+      validateStreamlinedPurchase(record, record.context);
+      if (streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+      if (!same25(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
+      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      try {
+        assertHeld();
+        await set(key, structuredClone(record));
+        assertHeld();
+        if (!same25(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+    };
+    return Object.freeze({ read, write, archive });
   }
   async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
     const proof = item2?.purchaseReceipt;
@@ -32055,10 +32175,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     now = () => Date.now(),
     contributionAdapter = null,
     createBuyer = createFc27PuzzleBuyAdapter,
-    prices = null
+    createClubRead = createFc27ClubReadTransport,
+    prices = null,
+    onEvent = () => {
+    }
   } = {}) {
     if (!plan?.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
-    const origin = readFc27Context(root), marketItems = plan.route.groups.flatMap((group) => group.source === "market" ? group.items : []);
+    const origin = readFc27Context(root), marketItems = approvedStreamlinedPurchaseRoute(plan).groups.flatMap((group) => group.source === "market" ? group.items : []);
     const players = new Map(marketItems.map((item2) => [item2.definitionId, {
       _rating: item2.rating,
       nationId: item2.nationId,
@@ -32082,6 +32205,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       attempts: searchAttempts,
       playerDetails: players,
       referencePrice: ({ definitionId }) => references.get(definitionId),
+      onEvent,
       verifyCurrent: () => assertTarget(),
       verifySquad: async () => assertTarget()
     });
@@ -32145,10 +32269,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const capacity = Number.isSafeInteger(root.MAX_NEW_ITEMS) && root.MAX_NEW_ITEMS >= purchased ? root.MAX_NEW_ITEMS : null;
         if (capacity === null) throw new Error("FC27_BUY_CAPACITY_UNVERIFIED");
         const heldDefinitions = [];
-        const clubItems = root.repositories?.Item?.club?.items?._collection ?? {};
-        for (const value of Object.values(clubItems)) {
-          const definitionId = value?.definitionId ?? value?.resourceId;
-          if (Number.isSafeInteger(definitionId) && definitionId > 0) heldDefinitions.push(definitionId);
+        if (plan.execution?.purchaseScope) {
+          const ids2 = [...new Set(marketItems.map((item2) => item2.definitionId))];
+          const transport = await createClubRead(root, { nativeReauth: true });
+          for (let start = 0; start < ids2.length; start += 50) {
+            const batch = ids2.slice(start, start + 50);
+            const rows = await transport.readPage({ start: 0, count: 250, definitionIds: batch });
+            assertTarget();
+            if (!Array.isArray(rows) || rows.some((row) => !integer15(row.id, 1) || !batch.includes(row.definitionId) || row.pile !== "club")) fail28("PURCHASE_HOLDINGS_UNVERIFIED");
+            heldDefinitions.push(...rows.map((row) => row.definitionId));
+          }
+        } else {
+          const clubItems = root.repositories?.Item?.club?.items?._collection ?? {};
+          for (const value of Object.values(clubItems)) {
+            const definitionId = value?.definitionId ?? value?.resourceId;
+            if (Number.isSafeInteger(definitionId) && definitionId > 0) heldDefinitions.push(definitionId);
+          }
         }
         return {
           submittedScore: challenge.submittedScore,
@@ -32371,8 +32507,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             purchased: record?.entries.filter((e) => e.source === "market" && ["bought", "move-pending", "club", "consumed"].includes(e.state)).length ?? 0,
             purchasedWaitingMove: record?.entries.filter((e) => e.source === "market" && ["bought", "move-pending"].includes(e.state)).length ?? 0,
             ownedUnconsumed: (record?.entries.filter((e) => e.source === "inventory" && e.state === "ready").length ?? 0) + (record?.entries.filter((e) => e.source === "market" && e.state === "club").length ?? 0),
-            purchaseTarget: record?.route.groups.filter((g) => g.source === "market").reduce((n, g) => n + g.quantity, 0),
-            remainingQuantity: record?.route.groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0) - record.entries.filter((e) => e.groupIndex === i && ["ready", "bought", "move-pending", "club"].includes(e.state)).length), 0),
+            purchaseTarget: record && streamlinedDemandRoute(record).groups.filter((g) => g.source === "market").reduce((n, g) => n + g.quantity, 0),
+            remainingQuantity: record && streamlinedDemandRoute(record).groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0) - record.entries.filter((e) => e.groupIndex === i && ["ready", "bought", "move-pending", "club"].includes(e.state)).length), 0),
             batchNumber: (record?.confirmedBatches ?? 0) + (phase === "confirmed" ? 0 : 1),
             contributed: record?.consumedIds.length ?? 0,
             remainingScore: Math.max(0, (record?.challenge.targetScore ?? 0) - (record?.submittedScore ?? 0)),
@@ -32391,13 +32527,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         record = await journal.read(plan.context);
         const fingerprint = plan.fingerprint ?? JSON.stringify(plan);
         if (reconcileOnly && !record) return { status: "absent" };
-        if (record && (reconcileOnly || !record.completed) && record.fingerprint !== fingerprint) fail28("PURCHASE_RECOVERY_REQUIRED");
+        let replace = false;
+        if (record && record.fingerprint !== fingerprint) {
+          if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+          await journal.archive(record);
+          replace = true;
+        }
         if (record?.completed && record.fingerprint === fingerprint) return { status: "completed", record };
         const hasPending = record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending"].includes(entry.state)) || !!record?.contribution;
         if (!reconcileOnly && now() >= approval.expiresAt && !hasPending) fail28("PURCHASE_APPROVAL_EXPIRED");
-        if (!record || record.completed) {
+        if (!record || record.completed || replace) {
           if (now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
-          const inventoryEntries = plan.route.groups.flatMap((group, groupIndex) => group.source === "inventory" ? group.items.slice(0, group.quantity).map((item2, index) => ({
+          const route = approvedStreamlinedPurchaseRoute(plan);
+          const inventoryEntries = route.groups.flatMap((group, groupIndex) => group.source === "inventory" ? group.items.slice(0, group.quantity).map((item2, index) => ({
             key: `inventory:${item2.id}:${index}`,
             source: "inventory",
             groupIndex,
@@ -32411,7 +32553,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             state: "ready"
           })) : []);
           record = await journal.write({
-            schema: 1,
+            schema: plan.execution?.purchaseScope ? 2 : 1,
             context: plan.context,
             operationId: operationId(),
             revision: record?.revision ?? 0,
@@ -32419,12 +32561,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             plan,
             challenge: plan.challenge,
             policy: plan.policy,
-            route: plan.route,
+            route,
+            ...plan.execution?.purchaseScope ? { demand: initialStreamlinedPurchaseDemand(plan, route) } : {},
             budget: approval.budget,
             spent: 0,
             submittedScore: plan.challenge.submittedScore,
             consumedIds: [],
-            fulfilled: plan.route.groups.map(() => 0),
+            fulfilled: route.groups.map(() => 0),
             contribution: null,
             completed: false,
             entries: inventoryEntries
@@ -32462,6 +32605,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (reconcileOnly) return { status: record.completed ? "completed" : "recovered", record };
         if (now() >= approval.expiresAt) return { status: "paused", reason: "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED", record };
+        let scarcityRound = 0;
         while (!stopped && record.submittedScore < record.challenge.targetScore) {
           await check();
           for (let i = 0; i < record.entries.length; i++) {
@@ -32503,7 +32647,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             groupIndex: readyEntries[index]?.groupIndex,
             item: row
           }).filter((row) => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
-          const wave = nextStreamlinedWave(record.route, {
+          if (!ready.length && record.plan.execution?.purchaseScope && record.confirmedBatches > 0) {
+            const demand = await replanStreamlinedPurchaseDemand(record, { ...state, now, stopped: () => stopped });
+            await check();
+            if (demand && !same25(demand, record.demand)) {
+              report("replanning");
+              record.demand = demand;
+              await save();
+            }
+          }
+          const wave = nextStreamlinedWave(streamlinedDemandRoute(record), {
             ...state,
             ready,
             limit: record.challenge.selectionLimit,
@@ -32512,11 +32665,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             consumedIds: record.consumedIds,
             fulfilled: record.fulfilled
           });
-          if (wave.status === "waiting") return { status: "paused", reason: "FC27_STREAMLINED_NO_AFFORDABLE_CARDS", record };
           const material = [...wave.material], attempted = new Set(state.blockedDefinitions ?? []);
+          let searchFailure = null, budgetBlocked = false, replans = 0;
           let lastBought = now(), boughtThisWave = 0;
           while (!stopped) {
-            const next = nextStreamlinedWave(record.route, {
+            const next = nextStreamlinedWave(streamlinedDemandRoute(record), {
               ...state,
               ready: material,
               freeSlots: Math.max(0, state.freeSlots - boughtThisWave),
@@ -32528,14 +32681,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               fulfilled: record.fulfilled
             });
             const slot = next.purchases[0];
-            if (!slot) break;
+            if (!slot) {
+              if (material.length || state.freeSlots === 0 || !record.plan.execution?.purchaseScope || replans >= record.route.groups.length) break;
+              report("replanning");
+              const demand = await replanStreamlinedPurchaseDemand(record, {
+                ...state,
+                blockedDefinitions: [...attempted],
+                now,
+                stopped: () => stopped
+              });
+              await check();
+              if (!demand || same25(demand, record.demand)) break;
+              record.demand = demand;
+              await save();
+              replans++;
+              continue;
+            }
             const candidate = slot.item;
             attempted.add(candidate.definitionId);
             if (stopped) break;
             await check();
-            const cap = candidate.purchaseMaxBuy;
-            if (!integer15(cap, 150, 15e6)) fail28("PURCHASE_PRICE_UNVERIFIED");
-            if (record.spent + cap > record.budget) continue;
+            if (!integer15(candidate.purchaseMaxBuy, 150, 15e6)) fail28("PURCHASE_PRICE_UNVERIFIED");
+            const cap = Math.min(candidate.purchaseMaxBuy, record.budget - record.spent);
+            if (cap < 150) {
+              budgetBlocked = true;
+              continue;
+            }
             for (let attempt = 0; attempt < approval.attempts && !stopped; attempt++) {
               report("search", {
                 playerName: candidate.name,
@@ -32546,7 +32717,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               });
               const offer = await adapter.find(candidate, cap, record);
               await check();
-              if (!offer || offer.unavailable) break;
+              if (!offer || offer.unavailable) {
+                if (offer?.unavailable && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
+                report("search-result", {
+                  definitionId: candidate.definitionId,
+                  reason: offer?.reason ?? "FC27_STREAMLINED_PURCHASE_NO_SUPPLY",
+                  count: 0
+                });
+                break;
+              }
               if (record.entries.some((e) => e.state === "rejected" && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
               if (offer.definitionId !== candidate.definitionId || !integer15(offer.price, 150, cap) || !integer15(offer.itemId, 1) || record.entries.some((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId)) fail28("PURCHASE_OFFER_CHANGED");
               const index = record.entries.length;
@@ -32562,6 +32741,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               if (receipt?.status === "rejected") {
                 record.entries[index].state = "rejected";
                 await save();
+                searchFailure = /^FC27_[A-Z0-9_]+$/.test(receipt.reason) ? receipt.reason : "FC27_STREAMLINED_PURCHASE_REJECTED";
+                report("purchase-rejected", { reason: searchFailure });
                 continue;
               }
               if (receipt?.status !== "bought" || !same25(
@@ -32591,8 +32772,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }
           if (stopped) break;
-          if (!material.length) return { status: "paused", reason: "FC27_STREAMLINED_NO_AFFORDABLE_CARDS", record };
-          if (wave.purchases.length && material.length < record.challenge.selectionLimit && material.reduce((sum2, r) => sum2 + r.item.points, record.submittedScore) < record.challenge.targetScore) {
+          if (!material.length) {
+            const held = state.heldDefinitions ?? [];
+            const remainingGroups = streamlinedDemandRoute(record).groups.filter((group, i) => group.source === "market" && group.quantity > record.fulfilled[i]);
+            const pauseReason = state.freeSlots === 0 ? "FC27_STREAMLINED_PURCHASE_CAPACITY_FULL" : budgetBlocked ? "FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT" : remainingGroups.length && remainingGroups.every((group) => group.items.every((item2) => held.includes(item2.definitionId))) ? "FC27_STREAMLINED_PURCHASE_VERSION_HELD" : searchFailure ?? "FC27_STREAMLINED_PURCHASE_NO_SUPPLY";
+            const retries = record.plan.execution?.scarcityRetries ?? 0;
+            if (pauseReason === "FC27_STREAMLINED_PURCHASE_NO_SUPPLY" && scarcityRound < retries && adapter.waitForPartial) {
+              const waitMs = record.plan.execution.retryWaitMs ?? 15e3;
+              report("waiting-supply", { waitMs, attempt: ++scarcityRound, attemptLimit: retries });
+              await adapter.waitForPartial(waitMs, () => stopped);
+              await check();
+              record.demand = initialStreamlinedPurchaseDemand(record.plan, record.route).map((n, i) => Math.max(n, record.fulfilled[i]));
+              await save();
+              continue;
+            }
+            return { status: "paused", reason: pauseReason, record };
+          }
+          scarcityRound = 0;
+          if ((wave.purchases.length || boughtThisWave > 0) && material.length < record.challenge.selectionLimit && material.reduce((sum2, r) => sum2 + r.item.points, record.submittedScore) < record.challenge.targetScore) {
             const waitMs = Math.max(0, (approval.idleMs ?? 6e4) - (now() - lastBought));
             report("partial-ready", {
               readyCount: material.length,
@@ -32648,6 +32845,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (error2?.stopped || error2?.message === "FC27_STREAMLINED_STOPPED") {
           return { status: "stopped", reason: "FC27_STREAMLINED_STOPPED", record };
         }
+        if ([
+          "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED",
+          "FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED",
+          "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED"
+        ].includes(error2?.message) && !record?.contribution && !record?.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) {
+          return { status: "paused", reason: reason(error2), record };
+        }
         return { status: "recovery-required", reason: reason(error2), record };
       } finally {
         try {
@@ -32682,6 +32886,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager,
     prices = null,
     canWrite = () => false,
+    diagnosticLog: diagnosticLog2 = null,
     now = () => Date.now(),
     createMaintenance = createFc27StreamlinedPageMaintenance,
     createProvider = createFc27StreamlinedProvider,
@@ -32738,7 +32943,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!plan2?.route?.groups?.some((group) => group.source === "market")) return null;
       await materializationJournal.assertSettled();
       const contribution = { adapter, journal: persistence.journal };
-      return createPurchaseAdapter(root, { plan: plan2, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution });
+      return createPurchaseAdapter(root, {
+        plan: plan2,
+        persistence,
+        canWrite,
+        get,
+        set,
+        now,
+        prices,
+        contributionAdapter: contribution,
+        onEvent: (row) => {
+          try {
+            Promise.resolve(diagnosticLog2?.record?.({
+              area: "streamlined",
+              event: "purchase-native",
+              phase: row.stage,
+              definitionId: row.definitionId,
+              maxBuy: row.maxBuy,
+              referencePrice: row.stage === "reference" ? row.price : void 0,
+              actualPrice: row.stage === "bid" ? row.price : void 0,
+              localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : void 0,
+              httpStatus: row.httpStatus,
+              count: row.count
+            })).catch(() => {
+            });
+          } catch {
+          }
+        }
+      });
     };
     return Object.freeze({
       transaction,
@@ -32865,7 +33097,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.23" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.24" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33183,8 +33415,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.23"}`,
-    version: "27.0.23",
+    title: `FC Automation Tool ${"27.0.24"}`,
+    version: "27.0.24",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -33302,6 +33534,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       get: GM_getValue,
       set: GM_setValue,
       prices: publicPrices,
+      diagnosticLog,
       lockManager: unsafeWindow.navigator.locks,
       canWrite: () => true
     })

@@ -6,14 +6,16 @@ import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { createStreamlinedTransaction } from '../../streamlined/transaction.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
 import { galleryReferenceQuote, purchasePriceCap } from '../../gallery/public-price-policy.js';
+import { approvedStreamlinedPurchaseRoute } from '../../streamlined/purchase-scope.js';
 
 // Streamlined market execution is isolated from Gallery/Puzzle records. It
 // reuses the reviewed native search/bid/move adapter and sends contribution
 // only through the existing One Click validator supplied by the caller.
 export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persistence, canWrite, searchAttempts = 5, now = () => Date.now(),
-  contributionAdapter = null, createBuyer = createFc27PuzzleBuyAdapter, prices = null } = {}) {
+  contributionAdapter = null, createBuyer = createFc27PuzzleBuyAdapter, createClubRead = createFc27ClubReadTransport,
+  prices = null, onEvent = () => {} } = {}) {
   if (!plan?.route?.groups?.some(group => group.source === 'market')) fail('PURCHASE_ROUTE_UNVERIFIED');
-  const origin = readFc27Context(root), marketItems = plan.route.groups.flatMap(group => group.source === 'market' ? group.items : []);
+  const origin = readFc27Context(root), marketItems = approvedStreamlinedPurchaseRoute(plan).groups.flatMap(group => group.source === 'market' ? group.items : []);
   const players = new Map(marketItems.map(item => [item.definitionId, { _rating: item.rating, nationId: item.nationId,
     teamId: item.teamId, leagueId: item.leagueId, preferredPosition: item.preferredPosition }]));
   const references = new Map(marketItems.map(item => [item.definitionId, item.price]));
@@ -30,6 +32,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     canWrite: () => canWrite() === true && persistence.inspect().active === true,
     assertTarget, attempts: searchAttempts, playerDetails: players,
     referencePrice: ({ definitionId }) => references.get(definitionId),
+    onEvent,
     verifyCurrent: () => assertTarget(), verifySquad: async () => assertTarget(),
   });
   const materialize = async (entries, currentRecord) => {
@@ -74,10 +77,25 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
         ? root.MAX_NEW_ITEMS : null;
       if (capacity === null) throw new Error('FC27_BUY_CAPACITY_UNVERIFIED');
       const heldDefinitions = [];
-      const clubItems = root.repositories?.Item?.club?.items?._collection ?? {};
-      for (const value of Object.values(clubItems)) {
-        const definitionId = value?.definitionId ?? value?.resourceId;
-        if (Number.isSafeInteger(definitionId) && definitionId > 0) heldDefinitions.push(definitionId);
+      if (plan.execution?.purchaseScope) {
+        // Club caches are partial and may retain consumed entities. Verify only
+        // the approved pool through the existing owned native read transport;
+        // a held copy is a blocker, never authorization to consume that copy.
+        const ids = [...new Set(marketItems.map(item => item.definitionId))];
+        const transport = await createClubRead(root, { nativeReauth: true });
+        for (let start = 0; start < ids.length; start += 50) {
+          const batch = ids.slice(start, start + 50);
+          const rows = await transport.readPage({ start: 0, count: 250, definitionIds: batch });
+          assertTarget();
+          if (!Array.isArray(rows) || rows.some(row => !integer(row.id, 1) || !batch.includes(row.definitionId) || row.pile !== 'club')) fail('PURCHASE_HOLDINGS_UNVERIFIED');
+          heldDefinitions.push(...rows.map(row => row.definitionId));
+        }
+      } else {
+        const clubItems = root.repositories?.Item?.club?.items?._collection ?? {};
+        for (const value of Object.values(clubItems)) {
+          const definitionId = value?.definitionId ?? value?.resourceId;
+          if (Number.isSafeInteger(definitionId) && definitionId > 0) heldDefinitions.push(definitionId);
+        }
       }
       return { submittedScore: challenge.submittedScore, freeSlots: Math.max(0, capacity - purchased),
         heldDefinitions: [...new Set(heldDefinitions)], blockedDefinitions: [] };

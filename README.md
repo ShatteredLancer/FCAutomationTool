@@ -2,7 +2,7 @@
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前本地构建为 `27.0.12`：Gallery 本阶段功能已收尾，用户确认交易及未知收集状态修复验收通过。支持分类/收集/计分、单集合与联合补卡规划、各档费用及累计奖励预估、批量购买/挂牌、净成本账本；定时挂牌及有限自动重挂须单独启用。Gallery 与 Puzzle 共用公共报价策略、购买窗口和失败卡重试。奖励必须进入游戏领取，FCAT 的目录预估不表示已领取。专项实机覆盖及版本范围见 [27.0.12 说明](docs/releases/27.0.12.md)。
+Current main build: **27.0.24**. Points Solver now uses an explicitly approved market substitution pool and total budget, keeps lowest material cost as the default, distinguishes normal shortages from unknown transactions, and provides English UI. Real-account purchase/contribution acceptance remains pending. See [27.0.24 notes](docs/releases/27.0.24.md). Existing Gallery capabilities and their acceptance history are documented in [27.0.12 notes](docs/releases/27.0.12.md).
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -34,7 +34,7 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-本地构建使用仓库根目录 `FCAutomationTool.user.js`，当前版本为 `27.0.12`，沿用 `27.0.0` 的新安装身份及 GM 存储；不迁移 FC26 Runner 或 Acceptance 的配置、Journal 和授权。安装前禁用旧 Runner、Preview、Acceptance 和 Hot Reload；保留原身份的 FSU Local `26.09.9`。受控安装验证命令见 [开发说明](docs/DEVELOPMENT.md)。FSU 是独立插件，其手动功能不受 Runner 的执行门禁控制。本次仅做本地提交，不创建新的公开 Release。
+For current main, install [FCAutomationTool 27.0.24](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/main/FCAutomationTool.user.js?v=27.0.24). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
