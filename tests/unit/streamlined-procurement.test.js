@@ -145,6 +145,7 @@ it('tries approved alternative versions before pausing and does not buy beyond r
 });
 
 it('contributes partial supply, then repeats a version only after confirmed consumption', async () => {
+  const progress = [];
   const market = [201, 202].map(id => item(0, id, 20, 'market')), plan = planFor({ market, targetScore: 40 }), { journal } = setup();
   let nextId = 400, score = 0;
   const adapter = baseAdapter([], {
@@ -155,10 +156,14 @@ it('contributes partial supply, then repeats a version only after confirmed cons
     contribute: vi.fn(async batch => ({ confirmed: true, submittedScore: score += batch.material.length * 20 })),
     waitForPartial: vi.fn(),
   });
-  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' })
+    .execute(plan, approval(plan), { onProgress: p => progress.push(p) });
   expect(result.status).toBe('completed'); expect(result.record.consumedIds).toEqual([401, 402]);
   expect(adapter.contribute.mock.calls.map(([p]) => p.material.length)).toEqual([1, 1]);
   expect(adapter.contribute.mock.invocationCallOrder[0]).toBeLessThan(adapter.buy.mock.invocationCallOrder[1]);
+  expect(progress.some(p => p.phase === 'checking-state')).toBe(true);
+  expect(progress.find(p => p.phase === 'search')).toMatchObject({ maxBuy: 250, attempt: 1, attemptLimit: 2 });
+  expect(progress.find(p => p.phase === 'partial-ready').waitMs).toBe(adapter.waitForPartial.mock.calls[0][0]);
 });
 
 it('a lost receipt checkpoint stops and later reconciles without sending a second bid', async () => {

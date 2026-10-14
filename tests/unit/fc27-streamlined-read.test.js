@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
-import { locateFc27StreamlinedPage, readFc27StreamlinedInputs, inspectFc27Streamlined, createFc27StreamlinedMatcher } from '../../src/adapters/ea/fc27-streamlined-read.js';
+import { locateFc27StreamlinedPage, readFc27StreamlinedInputs, inspectFc27Streamlined, createFc27StreamlinedMatcher,
+  readFc27StreamlinedProtection, assertFc27StreamlinedPolicy } from '../../src/adapters/ea/fc27-streamlined-read.js';
 import { challenge as fixtureChallenge } from '../helpers/streamlined.js';
 import { inspectStreamlined } from '../../scripts/browser-inspection/streamlined-inspection.mjs';
 import { runInNewContext } from 'node:vm';
+import { filterStreamlinedItems } from '../../src/streamlined/eligibility.js';
 
 function runtime() {
   const f = executionRuntime(), { root } = f;
@@ -22,6 +24,70 @@ function runtime() {
   for (const item of Object.values(root.repositories.Item.club.items._collection)) item.sbsScore = 20;
   return { ...f, challenge, set, controller, anchor };
 }
+
+it('excludes FSU-locked and current-squad players including substitutes and reserves', () => {
+  const f = runtime(), slots = f.root.repositories.Squad.squads._collection[902]._collection[7]._players;
+  f.root.info.lock = [1];
+  for (const [index, id] of [[0, 2], [12, 3], [22, 4]]) slots[index]._item.id = f.root.info.squad[index] = id;
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(input.policy).toMatchObject({ protectFsuLockedPlayers: true, protectActiveSquad: true });
+  const selected = filterStreamlinedItems(input.inventory, input).items;
+  expect(selected.some(item => [1, 2, 3, 4].includes(item.id))).toBe(false);
+  expect(input.inventory.find(item => item.id === 1).locked).toBe(true);
+  expect(input.inventory.find(item => item.id === 4).activeSquad).toBe(true);
+  expect(f.calls).toEqual([]);
+});
+
+it('invalidates a preview after lock/roster changes and never accepts missing protection as false', () => {
+  for (const change of ['lock', 'roster', 'missing-lock', 'missing-squad', 'partial-roster']) {
+    const f = runtime(), input = readFc27StreamlinedInputs(f.root);
+    if (change === 'lock') f.root.info.lock.push(1);
+    if (change === 'roster') f.root.repositories.Squad.squads._collection[902]._collection[7]._players[22]._item.id = 1;
+    if (change === 'missing-lock') delete f.root.info.lock;
+    if (change === 'missing-squad') f.root.services.Squad.activeSquad = 8;
+    if (change === 'partial-roster') f.root.repositories.Squad.squads._collection[902]._collection[7]._players.pop();
+    expect(input.assertCurrent).toThrow();
+    expect(f.calls).toEqual([]);
+  }
+});
+
+it('survives a bound native cache eviction but not a new account/squad or unknown first read', () => {
+  const f = runtime();
+  const slots = f.root.repositories.Squad.squads._collection[902]._collection[7]._players;
+  slots[12]._item.id = f.root.info.squad[12] = 3;
+  const before = readFc27StreamlinedProtection(f.root);
+  f.root.repositories.Squad.squads._collection = {};
+  expect(readFc27StreamlinedProtection(f.root)).toEqual(before);
+  f.root.info.squad[12] = 4;
+  expect(() => readFc27StreamlinedProtection(f.root)).toThrow('PROTECTION_UNVERIFIED');
+  const g = runtime(); g.root.repositories.Squad.squads._collection = {};
+  expect(() => readFc27StreamlinedProtection(g.root)).toThrow('PROTECTION_UNVERIFIED');
+  for (const change of ['account', 'squad']) {
+    const h = runtime();
+    readFc27StreamlinedProtection(h.root);
+    h.root.repositories.Squad.squads._collection = {};
+    if (change === 'squad') h.root.services.Squad.activeSquad = 8;
+    else {
+      h.root.services.User.currentUserId = 903;
+      h.root.services.User.repository._collection[903] = {
+        ...h.root.services.User.repository._collection[901], id: 903,
+      };
+    }
+    expect(() => readFc27StreamlinedProtection(h.root)).toThrow('PROTECTION_UNVERIFIED');
+    expect(h.calls).toEqual([]);
+  }
+});
+
+it('adds protection to frozen legacy policies without rewriting them or relaxing unrelated settings', () => {
+  const f = runtime(), current = readFc27StreamlinedInputs(f.root).policy;
+  const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current;
+  const legacy = { ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, before = structuredClone(legacy);
+  expect(assertFc27StreamlinedPolicy(f.root, legacy).protectFsuLockedPlayers).toBe(true);
+  f.root.info.lock = [1];
+  expect(() => assertFc27StreamlinedPolicy(f.root, legacy, [{ id: 1, source: 'inventory' }])).toThrow('MATERIAL_CHANGED');
+  expect(legacy).toEqual(before);
+  expect(() => assertFc27StreamlinedPolicy(f.root, { ...legacy, onlyUntradeable: false })).toThrow('POLICY_CHANGED');
+});
 it('reads exact native score, scope and source without a network request or Puzzle ceiling', () => {
   const f = runtime();
   f.root.info.set.goldenrange = 90;

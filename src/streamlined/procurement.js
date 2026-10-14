@@ -93,6 +93,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
           if (!result?.confirmed) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
           await settleContribution(result); continue;
         }
+        report('checking-state');
         const state = await adapter.readState(record); await check();
         if (state.submittedScore !== record.submittedScore) fail('PROGRESS_CHANGED');
         const available = record.entries.filter(e => ['ready', 'club'].includes(e.state));
@@ -137,7 +138,9 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
           if (!integer(cap, 150, 15000000)) fail('PURCHASE_PRICE_UNVERIFIED');
           if (record.spent + cap > record.budget) continue;
           for (let attempt = 0; attempt < approval.attempts && !stopped; attempt++) {
-            report('search'); const offer = await adapter.find(candidate, cap, record); await check();
+            report('search', { playerName: candidate.name, rating: candidate.rating, maxBuy: cap,
+              attempt: attempt + 1, attemptLimit: approval.attempts });
+            const offer = await adapter.find(candidate, cap, record); await check();
             if (!offer || offer.unavailable) break;
             if (record.entries.some(e => e.state === 'rejected' && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
             if (offer.definitionId !== candidate.definitionId || !integer(offer.price, 150, cap)
@@ -175,10 +178,11 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         if (!material.length) return { status: 'paused', reason: 'FC27_STREAMLINED_NO_AFFORDABLE_CARDS', record };
         if (wave.purchases.length && material.length < record.challenge.selectionLimit
             && material.reduce((sum,r) => sum+r.item.points, record.submittedScore) < record.challenge.targetScore) {
-          report('partial-ready', { readyCount: material.length,
+          const waitMs = Math.max(0, (approval.idleMs ?? 60000) - (now() - lastBought));
+          report('partial-ready', { readyCount: material.length, waitMs,
             readyPoints: material.reduce((sum, row) => sum + row.item.points, 0), selectionLimit: record.challenge.selectionLimit,
             nextBatch: (record.confirmedBatches ?? 0) + 1 });
-          await adapter.waitForPartial?.(Math.max(0, (approval.idleMs ?? 60000) - (now() - lastBought)), () => stopped);
+          await adapter.waitForPartial?.(waitMs, () => stopped);
         }
         if (stopped) break;
         await check();

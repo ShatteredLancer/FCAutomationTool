@@ -20,6 +20,7 @@ export function executionRuntime() {
   }
   class UTSquadEntity {
     static FIELD_PLAYERS = 11;
+    static TOTAL_PLAYERS = 23;
     update(squad) {
       if (state.skipSquadUpdate) return;
       this._players = squad._players;
@@ -98,9 +99,11 @@ export function executionRuntime() {
     UTHttpRequest, EAHttpRequest, EAObservable, UTItemEntityFactory, UTItemRepository, UTClubRepository, UTSquadBuildingChallengeDAO, UTSquadEntity,
     factories: { Item: itemFactory }, services: { User: { currentUserId: 901, repository: { _collection: { 901: user } } },
       SBC: { sbcDAO: new UTSquadBuildingChallengeDAO(), repository: { sets: { _collection: { 4: { ...set, challenges: [challenge] } } } } },
-      Club: { clubDao: { authDelegate: {} } } },
-    repositories: { Item: { club: new UTClubRepository() } },
-    info: { base: { initialized: true, year: 27, state: false, clubCache: { status: 'trusted-provisional' } },
+      Club: { clubDao: { authDelegate: {} } }, Squad: { activeSquad: 7 } },
+    repositories: { Item: { club: new UTClubRepository() }, Squad: { squads: { _collection: { 902: {
+      _collection: { 7: { _id: 7, _players: Array.from({ length: 23 }, () => ({ _item: { id: 0 } })) } },
+    } } } } },
+    info: { lock: [], squad: Array(23).fill(0), base: { initialized: true, year: 27, state: false, clubCache: { status: 'trusted-provisional' } },
       build: { untradeable: true, academy: true, league: true, firststorage: true }, set: { goldenrange: 83, shield_league: [20] } },
     events: { validateClubPlayers() {}, markClubCacheDirty() { root.info.base.clubCache.localDirty = true; } },
     SBCChallengeStatus: { IN_PROGRESS: 'IN_PROGRESS' },

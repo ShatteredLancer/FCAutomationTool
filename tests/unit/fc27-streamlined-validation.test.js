@@ -49,6 +49,32 @@ function transportFor(f, mutate = () => {}) {
   });
 }
 
+it('rejects new locks and current-squad membership before issuing a material request', async () => {
+  for (const change of ['lock', 'squad', 'unknown']) {
+    const f = setup(), transport = vi.fn(transportFor(f));
+    if (change === 'lock') f.root.info.lock = [1];
+    if (change === 'squad') f.root.repositories.Squad.squads._collection[902]._collection[7]._players[22]._item.id = 1;
+    if (change === 'unknown') delete f.root.info.lock;
+    await expect(createFc27StreamlinedValidator(f.root, { createTransport: transport }).verify(f.plan, f.batch, 0)).rejects.toThrow();
+    expect(transport).not.toHaveBeenCalled();
+  }
+});
+
+it('revalidates legacy null protection against current evidence instead of inheriting false/false permission', async () => {
+  for (const locked of [false, true]) {
+    const f = setup(), { lockedItemIds: _l, activeSquadId: _s, activeSquadItemIds: _m, ...base } = f.plan.policy;
+    const items = f.plan.items.map(item => ({ ...item, locked: null, activeSquad: null }));
+    const policy = { ...base, protectFsuLockedPlayers: false, protectActiveSquad: false };
+    const plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy,
+      result: { ...f.plan, items, batches: [items] } });
+    if (locked) f.root.info.lock = [1];
+    const verify = createFc27StreamlinedValidator(f.root, { createTransport: transportFor(f) }).verify(plan, f.batch, 0);
+    if (locked) await expect(verify).rejects.toThrow('MATERIAL_CHANGED');
+    else await expect(verify).resolves.toMatchObject({ fresh: true, count: 5 });
+    expect(plan.policy.protectFsuLockedPlayers).toBe(false);
+  }
+});
+
 function purchasedSetup({ receipt = true, maxRating = 82, marketMaxRating = 99 } = {}) {
   const f = setup();
   f.root.info.set.goldenrange = 82;

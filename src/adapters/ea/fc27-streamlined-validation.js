@@ -1,7 +1,7 @@
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27StreamlinedStorageReader } from './fc27-streamlined-storage-read.js';
 import { readFc27Context } from './fc27-local-read.js';
-import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, readFc27StreamlinedPolicy,
+import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, assertFc27StreamlinedPolicy,
   projectFc27StreamlinedItem, createFc27StreamlinedMatcher } from './fc27-streamlined-read.js';
 import { filterStreamlinedItems } from '../../streamlined/eligibility.js';
 import { assertStreamlinedPlan } from '../../streamlined/plan.js';
@@ -43,7 +43,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         if (!same(challenge, fresh ? pageChallenge : expectedChallenge)
             || fresh && now() - fresh.observedAt > 15000) fail('PROGRESS_CHANGED');
         if (challenge.endTime > 0 && challenge.endTime * 1000 <= now()) fail('CHALLENGE_EXPIRED');
-        if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail('POLICY_CHANGED');
+        assertFc27StreamlinedPolicy(root, plan.policy, batch.refs.map(ref => ({ ...ref, source: 'inventory' })));
       };
       check();
       const entities = new Map();
@@ -103,7 +103,8 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
       const items = batch.refs.map(ref => projectFc27StreamlinedItem(entities.get(ref.id), root, ref.pile));
       const eligibility = createFc27StreamlinedMatcher(root, plan.challenge, entities);
       // Check identity across the entire batch before any receipt-scoped exception.
-      const filtered = filterStreamlinedItems(items, { policy: plan.policy, eligibility });
+      const currentPolicy = assertFc27StreamlinedPolicy(root, plan.policy, items);
+      const filtered = filterStreamlinedItems(items, { policy: currentPolicy, eligibility });
       if (filtered.status !== 'observed') fail('MATERIAL_CHANGED');
       const accepted = new Set(filtered.items.map(item => item.key));
       for (let index = 0; index < items.length; index++) {
@@ -114,7 +115,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         // Only this exact verified purchase bypasses stock range/untradeable
         // restrictions. Preserve real rating and every other material fact.
         const checked = filterStreamlinedItems([items[index]], {
-          policy: { ...plan.policy, maxRating: plan.policy.marketMaxRating ?? plan.policy.maxRating,
+          policy: { ...currentPolicy, maxRating: plan.policy.marketMaxRating ?? plan.policy.maxRating,
             goldRange: [75, 99], onlyUntradeable: false }, eligibility });
         if (checked.status !== 'observed' || checked.items.length !== 1) fail('MATERIAL_CHANGED');
         accepted.add(items[index].key);
@@ -124,8 +125,14 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
       const facts = item => Object.fromEntries(['id', 'definitionId', 'points', 'scoreVerified', 'pile',
         'rating', 'leagueId', 'loans', 'tradeable', 'special', 'concept', 'evolution', 'cosmetic',
         'academyEnrolled', 'activeTrade', 'limitedUse', 'locked', 'activeSquad', 'protected'].map(key => [key, item[key]]));
+      const plannedFacts = (item, index) => {
+        const expected = facts(plan.batches[batch.index][index]);
+        if (plan.policy.protectFsuLockedPlayers === false && expected.locked === null && item.locked === false) expected.locked = false;
+        if (plan.policy.protectActiveSquad === false && expected.activeSquad === null && item.activeSquad === false) expected.activeSquad = false;
+        return expected;
+      };
       if (accepted.size !== items.length
-          || items.some((item, index) => !same(facts(item), facts(plan.batches[batch.index][index])))) fail('MATERIAL_CHANGED');
+          || items.some((item, index) => !same(facts(item), plannedFacts(item, index)))) fail('MATERIAL_CHANGED');
       check();
       return { fresh: true, observedAt: now(), count: items.length, points: items.reduce((sum, item) => sum + item.points, 0),
         requests, contributionReady: false,

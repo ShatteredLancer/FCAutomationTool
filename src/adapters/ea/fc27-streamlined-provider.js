@@ -2,7 +2,7 @@ import { createFc27StreamlinedValidator } from './fc27-streamlined-validation.js
 import { createFc27StreamlinedProgressReader } from './fc27-streamlined-progress.js';
 import { createFc27StreamlinedContributionTransport } from './fc27-streamlined-contribution.js';
 import { createFc27StreamlinedReconciler } from './fc27-streamlined-reconciliation.js';
-import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, readFc27StreamlinedPolicy } from './fc27-streamlined-read.js';
+import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, assertFc27StreamlinedPolicy } from './fc27-streamlined-read.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { normalizeStreamlinedContributionReply } from '../../streamlined/contribution.js';
 import { validateStreamlinedJournal } from '../../streamlined/journal.js';
@@ -32,7 +32,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
     const current = binding();
     if (current.controller !== origin.controller || !same(current.context, plan.context)
         || !same(current.challenge, origin.challenge)) fail('CONTEXT_CHANGED');
-    if (!same(readFc27StreamlinedPolicy(root, plan.policy.maxRating, plan.policy.marketMaxRating), plan.policy)) fail('POLICY_CHANGED');
+    assertFc27StreamlinedPolicy(root, plan.policy, plan.items);
     if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1000 <= now()) fail('CHALLENGE_EXPIRED');
   };
   return Object.freeze({

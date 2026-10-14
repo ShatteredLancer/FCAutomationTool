@@ -1,6 +1,6 @@
 import { createFc27PuzzleBuyAdapter } from './fc27-puzzle-buy.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
-import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, projectFc27StreamlinedItem } from './fc27-streamlined-read.js';
+import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, projectFc27StreamlinedItem, assertFc27StreamlinedPolicy } from './fc27-streamlined-read.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { createStreamlinedTransaction } from '../../streamlined/transaction.js';
@@ -33,6 +33,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     verifyCurrent: () => assertTarget(), verifySquad: async () => assertTarget(),
   });
   const materialize = async (entries, currentRecord) => {
+    assertFc27StreamlinedPolicy(root, plan.policy, entries.map(entry => ({ id: entry.itemId, source: 'inventory' })));
     const output = [];
     for (const entry of entries) {
       const group = currentRecord.route.groups[entry.groupIndex];

@@ -12,6 +12,62 @@ function values(input, limit) {
   return keys.map(key => ownData(input, key));
 }
 
+const verifiedActiveSquads = new WeakMap();
+const ids = (value, max = 20000) => {
+  if (!Array.isArray(value) || value.length > max) fail('PROTECTION_UNVERIFIED');
+  const numbers = Array.from({ length: value.length }, (_, index) => ownData(value, String(index)));
+  if (numbers.some(id => !integer(id))) fail('PROTECTION_UNVERIFIED');
+  return [...new Set(numbers.filter(id => id > 0))].sort((a, b) => a - b);
+};
+
+// FSU Local lock.save uses exact item IDs. The native active squad supplies
+// all 23 slots, not just the starting XI. Never infer "unprotected" from an
+// absent list. A native SBC cache eviction may reuse only a previously bound
+// roster with the same account/squad and matching FSU roster, never a guess.
+export function readFc27StreamlinedProtection(root) {
+  const context = readFc27Context(root), lockedItemIds = ids(at(root, 'info.lock'));
+  const activeSquadId = at(root, 'services.Squad.activeSquad');
+  if (!integer(activeSquadId, 1)) fail('PROTECTION_UNVERIFIED');
+  const userId = at(root, 'services.User.currentUserId');
+  const personaId = at(root, `services.User.repository._collection.${userId}.selectedPersona`);
+  const squad = at(root, `repositories.Squad.squads._collection.${personaId}._collection.${activeSquadId}`);
+  const slots = ownData(squad, '_players'), total = ownData(ownData(root, 'UTSquadEntity'), 'TOTAL_PLAYERS');
+  const fsuRoster = at(root, 'info.squad');
+  let activeSquadItemIds;
+  if (squad !== undefined) {
+    if (ownData(squad, '_id') !== activeSquadId || !integer(total, 11, 100)
+        || !Array.isArray(slots) || slots.length !== total) fail('PROTECTION_UNVERIFIED');
+    activeSquadItemIds = ids(Array.from({ length: slots.length }, (_, index) =>
+      ownData(ownData(ownData(slots, String(index)), '_item'), 'id')), 100);
+    // Keep FSU's last known members protected too if the native cache has
+    // just updated; a stale protection list may overprotect, never expose.
+    const fsuIds = fsuRoster === undefined ? [] : ids(fsuRoster, 100);
+    verifiedActiveSquads.set(root, { context, activeSquadId, activeSquadItemIds, fsuIds });
+    activeSquadItemIds = [...new Set([...activeSquadItemIds, ...fsuIds])].sort((a, b) => a - b);
+  } else {
+    const previous = verifiedActiveSquads.get(root), fsuIds = ids(fsuRoster, 100);
+    if (!previous || !same(previous.context, context) || previous.activeSquadId !== activeSquadId
+        || !same(previous.fsuIds, fsuIds)) fail('PROTECTION_UNVERIFIED');
+    activeSquadItemIds = [...new Set([...previous.activeSquadItemIds, ...fsuIds])].sort((a, b) => a - b);
+  }
+  return { lockedItemIds, activeSquadId, activeSquadItemIds };
+}
+
+export function assertFc27StreamlinedPolicy(root, expected, items = []) {
+  const current = readFc27StreamlinedPolicy(root, expected.maxRating, expected.marketMaxRating);
+  if (!same(current, expected)) {
+    // Old journals remain frozen and readback stays available. The sole
+    // migration exception adds current protection to old false/false plans;
+    // it never restores their old permission to consume protected items.
+    const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current;
+    if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false
+        || !same({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, expected)) fail('POLICY_CHANGED');
+  }
+  const locked = new Set(current.lockedItemIds), active = new Set(current.activeSquadItemIds);
+  if (items.some(item => item.source === 'inventory' && (locked.has(item.id) || active.has(item.id)))) fail('MATERIAL_CHANGED');
+  return current;
+}
+
 // Observed One Click controller chain, independent of FSU/Futto hooks.
 // No service method, navigation, selection or network call is made here.
 export function locateFc27StreamlinedPage(root) {
@@ -72,7 +128,7 @@ export function createFc27StreamlinedMatcher(root, contract, entities) {
   } });
 }
 
-export function projectFc27StreamlinedItem(item, root, pile) {
+export function projectFc27StreamlinedItem(item, root, pile, protection = readFc27StreamlinedProtection(root)) {
   const base = snapshotFc27ClubPlayer(item, root);
   const staticData = ownData(item, '_staticData');
   const ownString = (object, key) => {
@@ -93,6 +149,7 @@ export function projectFc27StreamlinedItem(item, root, pile) {
   // sbsScore is the native preview accessor, intentionally read (no rating formula).
   let points = null; try { points = item.sbsScore; } catch { /* Unknown remains null. */ }
   return normalizeStreamlinedItem({ ...base, pile, points, scoreVerified: integer(points, 1),
+    locked: protection.lockedItemIds.includes(base.id), activeSquad: protection.activeSquadItemIds.includes(base.id),
     protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
     duplicateId: ownData(item, 'duplicateId'), name, price: null, source: 'inventory' });
 }
@@ -128,7 +185,7 @@ export function readFc27StreamlinedInputs(root, settings = {}) {
       if (!isFc27PlayerItem(item)) { skippedNonPlayerByPile[pile]++; continue; }
       if (entities.has(item.id)) fail('IDENTITY_CONFLICT');
       entities.set(item.id, item);
-      const projected = projectFc27StreamlinedItem(item, root, pile);
+      const projected = projectFc27StreamlinedItem(item, root, pile, policy);
       if (!projected) fail('IDENTITY_CONFLICT');
       inventory.push(projected);
       inventoryByPile[pile]++;
@@ -184,10 +241,10 @@ export function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating 
     // Market demand uses the explicit Streamlined ceiling. Keep the FSU
     // range separately so expanding procurement never exposes protected stock.
     maxRating, ...(marketMaxRating !== undefined ? { marketMaxRating } : {}), onlyUntradeable: flags[0],
-    protectFsuLockedPlayers: false, protectActiveSquad: false,
+    protectFsuLockedPlayers: true, protectActiveSquad: true,
     storageFirst: flags[3], goldRange: [75, goldenMax], excludedLeagueIds: flags[2] ? [...leagues] : [],
     // Snapshot relevant upstream settings even where FCAT is stricter.
-    fsuOnlyUntradeable: flags[0], fsuExcludeEvolution: flags[1] };
+    fsuOnlyUntradeable: flags[0], fsuExcludeEvolution: flags[1], ...readFc27StreamlinedProtection(root) };
 }
 
 export function inspectFc27Streamlined(root) {

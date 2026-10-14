@@ -1,5 +1,49 @@
 import { expect, it } from 'vitest';
-import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage,
+  streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+
+it('shows verified purchase/contribution counters and the current search without inventing success', () => {
+  const text = streamlinedExecutionProgress({ phase: 'search', batchNumber: 2, purchased: 3, purchaseTarget: 40,
+    spent: 3300, budget: 44000, contributed: 1, submittedScore: 830, targetScore: 34000,
+    playerName: 'Fixture player', rating: 84, maxBuy: 1100, attempt: 1, attemptLimit: 3 });
+  expect(text).toContain('搜索限价内挂牌');
+  expect(text).toContain('Fixture player · 84 OVR · 上限 1,100 金币 · 尝试 1 / 3');
+  expect(text).toContain('已购 3 / 40 张');
+  expect(text).toContain('已确认 830 / 34,000 分');
+  expect(text).not.toContain('达标');
+  expect(streamlinedExecutionProgress({ phase: 'preflight' })).toContain('未知');
+  expect(streamlinedExecutionProgress({ phase: 'checking-state' })).toContain('核对库存与剩余容量');
+  expect(streamlinedExecutionProgress({ phase: 'materialize', stage: 'club-readback', completed: 1, materialTotal: 2 }))
+    .toContain('核对 Club 回读');
+});
+
+it('counts elapsed/waiting time without claiming that a timer confirms a transaction', () => {
+  expect(streamlinedExecutionClock({ phase: 'partial-ready', waitMs: 12000 }, 22000, 2300))
+    .toBe('本次耗时 22 秒 · 当前步骤等待 2 秒 · 预计收批等待剩余 10 秒');
+  expect(streamlinedExecutionClock({ phase: 'partial-ready', waitMs: 12000 }, 60000, 20000))
+    .toContain('剩余 0 秒');
+  expect(streamlinedExecutionClock({ phase: 'search' }, 5000, 3000, false)).toBe('本次耗时 5 秒');
+  expect(streamlinedExecutionClock({}, NaN, -3000)).toContain('0 秒');
+});
+
+it('lists each physical stock copy, binds market previews to the frozen route and preserves the plan', () => {
+  const stock = { source: 'inventory', id: 11, definitionId: 101, name: 'Owned fixture', pile: 'club', points: 830 };
+  const second = { ...stock, id: 12, pile: 'storage' }, market = { source: 'market', definitionId: 101, id: null };
+  const plan = { items: [stock, second, market], batches: [[stock], [second, market]], route: { groups: [{ source: 'market' }] } };
+  const before = structuredClone(plan);
+  expect(streamlinedInventoryPreview(plan, [])).toEqual([{ ...stock, consumed: false }, { ...second, consumed: false }]);
+  expect(streamlinedInventoryPreview(plan, [], { consumedIds: [11] }).map(item => item.consumed)).toEqual([true, false]);
+  expect(plan).toEqual(before);
+});
+
+it('updates inventory-only previews with selected batches and shows confirmed consumption separately', () => {
+  const first = { source: 'inventory', id: 1, definitionId: 101 }, second = { ...first, id: 2, definitionId: 102 };
+  const plan = { items: [first, second], batches: [[first], [second]] };
+  expect(streamlinedInventoryPreview(plan, [1])).toEqual([{ ...second, consumed: false }]);
+  expect(streamlinedInventoryPreview(plan, [])).toEqual([]);
+  expect(streamlinedInventoryPreview(plan, [1], { batches: [{ state: 'confirmed' }, { state: 'waiting' }] }))
+    .toEqual([{ ...first, consumed: true }, { ...second, consumed: false }]);
+});
 
 it('distinguishes FUTBIN quote expiration from a FUT.GG candidate catalog connection failure', () => {
   const message = streamlinedMarketMessage({ quoteSource: 'futbin', marketError: 'FC27_STREAMLINED_QUOTES_EXPIRED' });

@@ -5,6 +5,14 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
 
+it('rechecks locks after validation and before an irreversible contribution', async () => {
+  const f = await setup();
+  await f.provider.verify(f.plan, f.batch, 0);
+  f.root.info.lock = [f.selected[0].id];
+  await expect(f.provider.contribute(f.plan, f.batch)).resolves.toMatchObject({ status: 'rejected', reason: 'FC27_STREAMLINED_POLICY_CHANGED' });
+  expect(f.dispatched).not.toHaveBeenCalled();
+});
+
 async function setup({ legacyPolicy = false } = {}) {
   const f = streamlinedRuntime(), pending = await pendingContribution(f);
   if (legacyPolicy) {

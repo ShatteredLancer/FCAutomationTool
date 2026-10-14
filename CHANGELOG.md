@@ -5,6 +5,17 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.20] - 2026-10-14
+
+- Streamlined progress remains visible beside the action buttons, with immediate preparation feedback,
+  elapsed/waiting time, search attempts, purchase/spend counters and confirmed contribution scores.
+- Show an expanded, paginated list of existing inventory cards selected for consumption; keep selected
+  batches and frozen market routes separate, and distinguish planned from confirmed consumption.
+- Enable explicitly approved FSU manual-lock/current-active-squad protections at planning and before
+  contribution. Unknown protection blocks; safe legacy journals remain frozen and are revalidated.
+- Preserve ad's market quotes, route optimization, budgets, transaction/recovery contracts and FSU build.
+  Full offline verification passed; current-account installation and live acceptance remain pending.
+
 ## [27.0.19] - 2026-10-12
 
 ### Gallery Market Comparison Compatibility

@@ -58,7 +58,7 @@ export function streamlinedRuntime({ targetScore = 200, mixedStorage = false } =
       }, unobserve };
     }
   }
-  root.services.Squad = { resetSquadsCache() { f.calls.push({ kind: 'resetSquads' }); } };
+  root.services.Squad = { ...root.services.Squad, resetSquadsCache() { f.calls.push({ kind: 'resetSquads' }); } };
   root.services.SBC.removeItemsById = function(ids) { f.calls.push({ kind: 'removeSbcItems', ids }); };
   root.services.SBC._evictSubmittedItems = function(ids) {
     ids.forEach(id => {

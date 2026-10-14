@@ -88,10 +88,16 @@ export async function exerciseStreamlined(context) {
     assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 100, 'Readable desktop card');
     assert.match(text, /待购 0 金币/);
     assert.equal(await page.getByRole('button', { name: '贡献所选批次' }).isDisabled(), true);
+    assert.equal(await page.locator('[data-inventory-review]').evaluate(node => node.open), true);
+    assert.equal(await page.locator('.inventory-row').count(), 50, 'Inventory review is bounded and paginated');
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    assert.equal(await page.locator('.inventory-row').count(), 30);
     assert.ok((await page.evaluate(() => globalThis.streamlinedEvidence.progress)).length > 0);
     assert.equal(await page.locator('.player-row').count(), 30, 'Only the expanded batch renders');
     assert.ok(await page.locator('.gallery-native-card').count() > 0);
     await page.getByRole('checkbox', { name: '选择第 1 批' }).uncheck();
+    assert.equal(await page.locator('.inventory-row').count(), 50);
+    assert.match(await page.locator('[data-inventory-review] summary').innerText(), /50 张/);
     assert.match(await page.locator('[data-selection]').innerText(), /已选 2 批 · 50 张 · 1,450 分 · 还差 1,050/);
     await page.getByText('第 2 批 ·', { exact: false }).click();
     await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelectorAll('.player-row').length === 60);
@@ -306,7 +312,8 @@ async function exerciseStreamlinedOwnedRecipe(page) {
     const session = a.createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
       get: async () => null, set: async () => {}, now: () => 100,
       readInputs: () => ({ context: c.context, challenge: c, inventory, eligibility: a.eligibility, assertCurrent() {},
-        policy: { ...a.policy, maxRating: 99, goldRange: [75, 97], onlyUntradeable: false } }),
+        policy: { ...a.policy, maxRating: 99, goldRange: [75, 97], onlyUntradeable: false,
+          protectFsuLockedPlayers: true, protectActiveSquad: true } }),
       prices: { load: async ids => ({ policy: { source: 'futgg' },
         references: Object.fromEntries(ids.map(id => [id, { quotes: { futgg: quote(id, 800) } }])) }) },
       readMarketCandidates: async () => ({ market: [[901, 830, 800, 84], [902, 5500, 5200, 87]]
@@ -321,11 +328,16 @@ async function exerciseStreamlinedOwnedRecipe(page) {
   assert.match(await page.locator('.route-list button').first().innerText(), /总价值 11,600.*待购 5,200.*库存 8 \/ 待购 1/);
   assert.match(await page.locator('[data-result]').innerText(), /已有材料估值 6,400/);
   assert.equal(await page.locator('.player-row').count(), 9);
+  assert.equal(await page.locator('.inventory-row').count(), 8);
+  assert.match(await page.locator('[data-inventory-review]').innerText(), /Owned 84 1/);
+  assert.match(await page.locator('[data-inventory-review]').innerText(), /SBC Storage/);
+  assert.match(await page.locator('[data-result]').innerText(), /锁卡保护：开启.*当前主阵容保护：开启/);
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true, 'Preview cannot spend or contribute');
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 700 });
     const size = await page.getByRole('dialog').evaluate(dialog => ({ scroll: dialog.scrollWidth, client: dialog.clientWidth }));
     assert.ok(size.scroll <= size.client + 1);
+    await page.locator('[data-review-stock]').click();
     await page.screenshot({ path: `artifacts/fc27-browser/streamlined-owned-recipe-${width}.png` });
   }
 }
@@ -496,6 +508,7 @@ async function exerciseStreamlinedValue(page) {
 }
 
 async function exerciseStreamlinedMarket(page) {
+  await page.setViewportSize({ width: 1280, height: 800 });
   // This is a separate synthetic session. Trusted clicks exercise the real
   // panel/session, while every execution effect stays in this fixture.
   let requests = 0;
@@ -503,7 +516,7 @@ async function exerciseStreamlinedMarket(page) {
   await page.evaluate(() => {
     globalThis.streamlinedMount.dispose();
     const a = globalThis.StreamlinedSmoke, c = a.challenge({ scoreRequirement: 100 });
-    const saved = new Map(), evidence = { calls: 0, mode: 'stopped', saved: [], record: null };
+    const saved = new Map(), evidence = { calls: 0, mode: 'stopped', saved: [], record: null, now: 1000, holdPreflight: true };
     globalThis.marketSmoke = evidence;
     let finish;
     const transaction = { recover: async () => ({ status: 'absent' }) };
@@ -513,6 +526,7 @@ async function exerciseStreamlinedMarket(page) {
       recoverPurchase: async () => ({ status: 'recovered', record: evidence.record }),
       async purchase(plan, approval, { onProgress }) {
         evidence.calls++; evidence.execution = plan.execution;
+        if (evidence.holdPreflight) await new Promise(resolve => { evidence.preflight = resolve; });
         evidence.record = { context: c.context, plan, submittedScore: 0, spent: 300, budget: 1500,
           completed: false, consumedIds: [], entries: [{ state: 'club' }, { state: 'club' }] };
         if (evidence.mode === 'stopped') {
@@ -520,7 +534,7 @@ async function exerciseStreamlinedMarket(page) {
             finish = resolve;
             onProgress({ phase: 'partial-ready', batchNumber: 1, purchased: 2, purchaseTarget: 10,
               spent: 300, budget: 1500, contributed: 0, submittedScore: 0, targetScore: 100,
-              readyCount: 2, selectionLimit: 30, readyPoints: 20 });
+              readyCount: 2, selectionLimit: 30, readyPoints: 20, waitMs: 12000 });
           });
           finish = null;
           return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record: evidence.record };
@@ -544,7 +558,7 @@ async function exerciseStreamlinedMarket(page) {
         })) }),
       createExecution: async () => execution,
     });
-    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session, now: () => evidence.now,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
@@ -582,15 +596,38 @@ async function exerciseStreamlinedMarket(page) {
   assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待 12 秒/);
   const run = page.getByRole('button', { name: '按方案购买并贡献', exact: true });
   assert.equal(await run.isEnabled(), true);
+  assert.equal(await page.locator('[data-status]').evaluate(node => !!node.closest('footer')), true,
+    'Execution progress stays beside the action buttons, not above a long result list');
   await run.evaluate(button => button.click());
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 0);
   await run.click();
+  await page.getByText('准备执行：核对方案与恢复记录', { exact: false }).waitFor();
+  await page.evaluate(() => { globalThis.marketSmoke.now += 2300; });
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
+    .querySelector('[data-clock]').textContent.includes('本次耗时 2 秒'));
+  await page.evaluate(() => { globalThis.marketSmoke.holdPreflight = false; globalThis.marketSmoke.preflight(); });
   await page.getByText('本批就绪 2 / 30 张 · 20 分', { exact: false }).waitFor();
   assert.match(await page.locator('[data-status]').innerText(), /已购 2 \/ 10 张/);
+  assert.match(await page.locator('[data-clock]').innerText(), /预计收批等待剩余/);
+  await page.locator('.panel-body').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  const bounds = await page.locator('[data-status]').evaluate(node => {
+    const rect = node.getBoundingClientRect(), dialog = node.closest('dialog').getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, dialogTop: dialog.top, dialogBottom: dialog.bottom };
+  });
+  assert.ok(bounds.top >= bounds.dialogTop && bounds.bottom <= bounds.dialogBottom, 'Progress remains in view after scrolling to the buttons');
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-execution-progress-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 700 });
+  const narrow = await page.getByRole('dialog').evaluate(node => ({ width: node.clientWidth, scroll: node.scrollWidth }));
+  assert.ok(narrow.scroll <= narrow.width + 1, 'Execution footer has no narrow-screen horizontal overflow');
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-execution-progress-mobile.png' });
+  await page.setViewportSize({ width: 1280, height: 800 });
   assert.equal(await page.locator('[data-mode]').isDisabled(), true);
   await page.getByRole('button', { name: '停止', exact: true }).click();
   await page.getByText('已停止；已确认成交保留，可核对并恢复。', { exact: true }).waitFor();
   assert.match(await page.locator('[data-selection]').innerText(), /已就绪 2 张/);
+  const stoppedTime = await page.locator('[data-clock]').innerText();
+  await page.evaluate(() => { globalThis.marketSmoke.now += 5000; });
+  assert.equal(await page.locator('[data-clock]').innerText(), stoppedTime, 'Elapsed time freezes after stopping');
   assert.deepEqual(await page.evaluate(() => globalThis.marketSmoke.execution), { purchaseAttempts: 7, partialWaitMs: 12000 });
   await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
