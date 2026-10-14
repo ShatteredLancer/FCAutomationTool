@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.27
+// @version      27.0.28
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.27", at: Date.now(), status: 'started',
+    state = { version: "27.0.28", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26453,6 +26453,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "remainingBudget",
     "retryAt",
     "durationMs",
+    "processingMs",
+    "schedulingMs",
+    "pendingWriteCount",
+    "unconsumedPurchaseCount",
+    "contributedCount",
+    "confirmedBatches",
+    "initialScore",
+    "plannedScore",
     "setId",
     "challengeId",
     "requests",
@@ -26537,7 +26545,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "beamWidth",
     "maxEvaluations"
   ]);
-  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion"]);
+  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion", "purchasesSettled"]);
   var boundedString = (value, max = MAX_STRING_LENGTH) => {
     if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
     return value.slice(0, max);
@@ -28441,6 +28449,76 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0) || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
   }
 
+  // src/streamlined/scheduling.js
+  function yieldStreamlinedTask(host = globalThis) {
+    if (typeof host.scheduler?.yield === "function") return host.scheduler.yield();
+    if (typeof host.MessageChannel === "function") return new Promise((resolve, reject) => {
+      const channel = new host.MessageChannel();
+      const close = () => {
+        channel.port1.close();
+        channel.port2.close();
+      };
+      channel.port1.onmessage = () => {
+        close();
+        resolve();
+      };
+      try {
+        channel.port2.postMessage(null);
+      } catch (error2) {
+        close();
+        reject(error2);
+      }
+    });
+    return new Promise((resolve) => host.setTimeout(resolve, 0));
+  }
+  async function runStreamlinedSteps(iterator, {
+    onProgress = () => {
+    },
+    stopped = () => false,
+    schedule = yieldStreamlinedTask,
+    metricsNow = () => Date.now()
+  } = {}) {
+    let metricsValid = true;
+    const sample = () => {
+      try {
+        const value = metricsNow();
+        if (Number.isFinite(value) && value >= 0) return value;
+      } catch {
+      }
+      metricsValid = false;
+      return 0;
+    };
+    const started = sample();
+    let processingMs = 0, schedulingMs = 0;
+    const next = (cancelled) => {
+      const before = sample(), step = iterator.next(cancelled);
+      processingMs += Math.max(0, sample() - before);
+      return step;
+    };
+    try {
+      let step = next();
+      while (!step.done) {
+        try {
+          onProgress(step.value);
+        } catch {
+        }
+        const before = sample();
+        await schedule();
+        schedulingMs += Math.max(0, sample() - before);
+        step = next(stopped());
+      }
+      const wallElapsedMs = Math.max(0, sample() - started);
+      return {
+        ...step.value,
+        processingMs: metricsValid ? processingMs : void 0,
+        schedulingMs: metricsValid ? schedulingMs : void 0,
+        wallElapsedMs: metricsValid ? wallElapsedMs : void 0
+      };
+    } finally {
+      iterator.return();
+    }
+  }
+
   // src/streamlined/planner.js
   function splitStreamlinedBatches(items, limit) {
     if (!integer15(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
@@ -28588,23 +28666,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     onProgress = () => {
     },
     stopped = () => false,
-    schedule = () => new Promise((resolve) => setTimeout(resolve, 0))
+    schedule,
+    metricsNow
   } = {}) {
-    const iterator = planStreamlinedSteps(input);
-    try {
-      let step = iterator.next();
-      while (!step.done) {
-        try {
-          onProgress(step.value);
-        } catch {
-        }
-        await schedule();
-        step = iterator.next(stopped());
-      }
-      return step.value;
-    } finally {
-      iterator.return();
-    }
+    return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
   }
 
   // src/streamlined/routes.js
@@ -28940,24 +29005,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     onProgress = () => {
     },
     stopped = () => false,
-    schedule = () => new Promise((resolve) => setTimeout(resolve, 0)),
+    schedule,
+    metricsNow,
     ...options
   } = {}) {
-    const iterator = planStreamlinedRoutesSteps(input, options);
-    try {
-      let step = iterator.next();
-      while (!step.done) {
-        try {
-          onProgress(step.value);
-        } catch {
-        }
-        await schedule();
-        step = iterator.next(stopped());
-      }
-      return step.value;
-    } finally {
-      iterator.return();
-    }
+    return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
   }
   function expandStreamlinedRoute(route, challenge) {
     if (!route || !integer15(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail28("ROUTE_INVALID");
@@ -29146,6 +29198,110 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at10 || quote2.expiresAt <= at10)) failure ??= "FC27_STREAMLINED_QUOTES_EXPIRED";
     }
     return failure;
+  }
+
+  // src/streamlined/purchase-journal.js
+  var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
+  var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
+  function streamlinedPurchaseAudit(record) {
+    if (!Array.isArray(record?.entries) || !Array.isArray(record.consumedIds) || record.entries.some((entry) => !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry?.state))) return {};
+    const pendingWriteCount = Number(!!record.contribution) + record.entries.filter((entry) => ["buy-pending", "move-pending"].includes(entry.state)).length;
+    const unconsumedPurchaseCount = record.entries.filter((entry) => entry.source === "market" && ["buy-pending", "bought", "move-pending", "club"].includes(entry.state)).length;
+    return {
+      pendingWriteCount,
+      unconsumedPurchaseCount,
+      contributedCount: record.consumedIds.length,
+      confirmedBatches: record.confirmedBatches,
+      purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0
+    };
+  }
+  function validateStreamlinedPurchase(record, context) {
+    if (record?.plan?.schema === 1) {
+      assertStreamlinedPlan(record.plan);
+      if (record.plan.fingerprint !== record.fingerprint || !same25(record.plan.context, context) || !same25(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same25(record.plan.challenge, record.challenge) || !same25(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same25(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer15(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer15(record.budget) || !integer15(record.spent) || record.spent > record.budget || !integer15(record.submittedScore) || !integer15(record.challenge?.id, 1) || !integer15(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer15(record.confirmedBatches) || !integer15(record.challenge?.targetScore, 1) || !integer15(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer15(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer15(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer15(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    for (const group of record.route.groups) {
+      if (!["inventory", "market"].includes(group.source) || !integer15(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer15(group.item?.points, 1) || group.items.some((item2) => !integer15(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer15(item2.price, 150, 15e6) || !integer15(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer15(item2.id, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
+    let spent = 0;
+    for (const entry of record.entries) {
+      const group = record.route.groups[entry.groupIndex];
+      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer15(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer15(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail28("PURCHASE_JOURNAL_INVALID");
+      keys2.add(entry.key);
+      if (entry.source === "inventory") {
+        if (!integer15(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        continue;
+      }
+      if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
+        if (!integer15(entry.itemId, 1) || !integer15(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer15(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
+      } else if (entry.cap !== null && !integer15(entry.cap, 150, 15e6)) fail28("PURCHASE_JOURNAL_INVALID");
+      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    if (spent !== record.spent) fail28("PURCHASE_JOURNAL_INVALID");
+    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail28("PURCHASE_JOURNAL_INVALID");
+    if (record.contribution) {
+      const material = record.contribution.material;
+      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail28("PURCHASE_JOURNAL_INVALID");
+    }
+    return record;
+  }
+  function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
+  } }) {
+    const read = async (context) => {
+      let record;
+      try {
+        record = await get(streamlinedPurchaseKey(context), null);
+      } catch {
+        fail28("PURCHASE_JOURNAL_READ_FAILED");
+      }
+      return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
+    };
+    const write = async (record, previousRevision = record.revision) => {
+      assertHeld();
+      const old = await read(record.context);
+      if ((old?.revision ?? 0) !== previousRevision) fail28("PURCHASE_JOURNAL_CHANGED");
+      const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
+      try {
+        assertHeld();
+        await set(streamlinedPurchaseKey(record.context), next);
+        assertHeld();
+        if (!same25(next, await get(streamlinedPurchaseKey(record.context), null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+      return structuredClone(next);
+    };
+    const archive = async (record) => {
+      assertHeld();
+      validateStreamlinedPurchase(record, record.context);
+      if (streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+      if (!same25(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
+      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      try {
+        assertHeld();
+        await set(key, structuredClone(record));
+        assertHeld();
+        if (!same25(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+    };
+    return Object.freeze({ read, write, archive });
+  }
+  async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
+    const proof = item2?.purchaseReceipt;
+    if (!proof || proof.itemId !== item2.id || proof.definitionId !== item2.definitionId) return false;
+    const journal = createStreamlinedPurchaseJournal({ get });
+    const record = await journal.read(context);
+    if (!record || record.operationId !== proof.operationId) return false;
+    if (!challenge || record.challenge.id !== challenge.id || record.challenge.setId !== challenge.setId || record.challenge.targetScore !== challenge.targetScore) return false;
+    const entry = record.entries.find((row) => row.itemId === item2.id && row.definitionId === item2.definitionId);
+    return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
   }
 
   // src/adapters/browser/fc27-streamlined-session.js
@@ -29605,6 +29761,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             evaluations: result.nodes,
             currentScore: result.score,
             safeCandidates: result.candidateCount,
+            initialScore: input.challenge.submittedScore,
+            targetScore: input.challenge.targetScore,
+            plannedScore: result.score,
+            durationMs: result.wallElapsedMs,
+            processingMs: result.processingMs,
+            schedulingMs: result.schedulingMs,
             count: result.batches?.length,
             estimatedCost: result.purchaseCost,
             unknownCount: result.unknownValueCount,
@@ -29784,6 +29946,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             reason: result.reason,
             mismatch: result.mismatch,
             currentScore: result.record?.submittedScore,
+            targetScore: result.record?.challenge?.targetScore,
+            ...streamlinedPurchaseAudit(result.record),
             approvedBudget,
             spent,
             remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent) ? approvedBudget - spent : void 0
@@ -29834,6 +29998,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             status: result.status,
             reason: result.reason,
             currentScore: result.record?.submittedScore,
+            targetScore: result.record?.challenge?.targetScore,
+            ...streamlinedPurchaseAudit(result.record),
             setId: origin.challenge.setId,
             challengeId: origin.challenge.id
           });
@@ -32108,98 +32274,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } });
   }
 
-  // src/streamlined/purchase-journal.js
-  var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
-  var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
-  function validateStreamlinedPurchase(record, context) {
-    if (record?.plan?.schema === 1) {
-      assertStreamlinedPlan(record.plan);
-      if (record.plan.fingerprint !== record.fingerprint || !same25(record.plan.context, context) || !same25(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same25(record.plan.challenge, record.challenge) || !same25(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
-    }
-    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same25(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer15(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer15(record.budget) || !integer15(record.spent) || record.spent > record.budget || !integer15(record.submittedScore) || !integer15(record.challenge?.id, 1) || !integer15(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer15(record.confirmedBatches) || !integer15(record.challenge?.targetScore, 1) || !integer15(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer15(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer15(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer15(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
-    for (const group of record.route.groups) {
-      if (!["inventory", "market"].includes(group.source) || !integer15(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer15(group.item?.points, 1) || group.items.some((item2) => !integer15(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer15(item2.price, 150, 15e6) || !integer15(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer15(item2.id, 1))) fail28("PURCHASE_JOURNAL_INVALID");
-    }
-    const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
-    let spent = 0;
-    for (const entry of record.entries) {
-      const group = record.route.groups[entry.groupIndex];
-      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer15(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer15(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail28("PURCHASE_JOURNAL_INVALID");
-      keys2.add(entry.key);
-      if (entry.source === "inventory") {
-        if (!integer15(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
-        items.add(entry.itemId);
-        continue;
-      }
-      if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
-        if (!integer15(entry.itemId, 1) || !integer15(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer15(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
-        items.add(entry.itemId);
-        if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
-      } else if (entry.cap !== null && !integer15(entry.cap, 150, 15e6)) fail28("PURCHASE_JOURNAL_INVALID");
-      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail28("PURCHASE_JOURNAL_INVALID");
-    }
-    if (spent !== record.spent) fail28("PURCHASE_JOURNAL_INVALID");
-    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail28("PURCHASE_JOURNAL_INVALID");
-    if (record.contribution) {
-      const material = record.contribution.material;
-      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail28("PURCHASE_JOURNAL_INVALID");
-    }
-    return record;
-  }
-  function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
-  } }) {
-    const read = async (context) => {
-      let record;
-      try {
-        record = await get(streamlinedPurchaseKey(context), null);
-      } catch {
-        fail28("PURCHASE_JOURNAL_READ_FAILED");
-      }
-      return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
-    };
-    const write = async (record, previousRevision = record.revision) => {
-      assertHeld();
-      const old = await read(record.context);
-      if ((old?.revision ?? 0) !== previousRevision) fail28("PURCHASE_JOURNAL_CHANGED");
-      const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
-      try {
-        assertHeld();
-        await set(streamlinedPurchaseKey(record.context), next);
-        assertHeld();
-        if (!same25(next, await get(streamlinedPurchaseKey(record.context), null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
-      } catch {
-        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
-      }
-      return structuredClone(next);
-    };
-    const archive = async (record) => {
-      assertHeld();
-      validateStreamlinedPurchase(record, record.context);
-      if (streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
-      if (!same25(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
-      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
-      try {
-        assertHeld();
-        await set(key, structuredClone(record));
-        assertHeld();
-        if (!same25(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
-      } catch {
-        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
-      }
-    };
-    return Object.freeze({ read, write, archive });
-  }
-  async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
-    const proof = item2?.purchaseReceipt;
-    if (!proof || proof.itemId !== item2.id || proof.definitionId !== item2.definitionId) return false;
-    const journal = createStreamlinedPurchaseJournal({ get });
-    const record = await journal.read(context);
-    if (!record || record.operationId !== proof.operationId) return false;
-    if (!challenge || record.challenge.id !== challenge.id || record.challenge.setId !== challenge.setId || record.challenge.targetScore !== challenge.targetScore) return false;
-    const entry = record.entries.find((row) => row.itemId === item2.id && row.definitionId === item2.definitionId);
-    return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
-  }
-
   // src/adapters/ea/fc27-streamlined-purchase.js
   async function createFc27StreamlinedPurchaseAdapter(root, {
     plan,
@@ -33226,7 +33300,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.27" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.28" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33544,8 +33618,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.27"}`,
-    version: "27.0.27",
+    title: `FC Automation Tool ${"27.0.28"}`,
+    version: "27.0.28",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

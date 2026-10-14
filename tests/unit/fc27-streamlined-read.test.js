@@ -317,6 +317,9 @@ it('uses native AND/OR semantics and never matches market versions against an ow
 
 it('bundles the read-only inspector and exports no account or item identities', async () => {
   const { root, calls } = runtime();
+  root.scheduler = { yield: () => { throw Error('plain inspection must not schedule planning'); } };
+  root.MessageChannel = class { constructor() { throw Error('plain inspection must not open a task port'); } };
+  root.setTimeout = () => { throw Error('plain inspection must not start a timer'); };
   const report = await inspectStreamlined({ url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: source => runInNewContext(source, { globalThis: root, structuredClone }) });
   expect(report).toMatchObject({ status: 'observed', challenge: { id: 61, targetScore: 2500 }, liveExecutionEnabled: false });

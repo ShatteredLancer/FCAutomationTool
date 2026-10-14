@@ -2,6 +2,7 @@ import { filterStreamlinedItems } from './eligibility.js';
 import { integer, fail, deepFreeze } from './contract.js';
 import { streamlinedProgress } from './contract.js';
 import { compareStreamlinedPlans, streamlinedResourceCost } from './scoring.js';
+import { runStreamlinedSteps } from './scheduling.js';
 
 // Keep both cheaper material and fewer-card paths; owned cards do not become
 // economically free merely because purchaseCost is zero.
@@ -309,16 +310,8 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
 }
 
 export async function runStreamlinedRoutes(input, { onProgress = () => {}, stopped = () => false,
-  schedule = () => new Promise(resolve => setTimeout(resolve, 0)), ...options } = {}) {
-  const iterator = planStreamlinedRoutesSteps(input, options);
-  try {
-    let step = iterator.next();
-    while (!step.done) {
-      try { onProgress(step.value); } catch { /* Display only. */ }
-      await schedule(); step = iterator.next(stopped());
-    }
-    return step.value;
-  } finally { iterator.return(); }
+  schedule, metricsNow, ...options } = {}) {
+  return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
 }
 
 // Compatibility projection for the existing reviewed plan/Journal contract.

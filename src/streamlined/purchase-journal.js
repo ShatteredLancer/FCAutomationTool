@@ -7,6 +7,19 @@ export const streamlinedPurchaseNeedsRecovery = record => !!record?.contribution
   || record?.entries?.some(entry => ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state));
 
 export const streamlinedPurchaseKey = context => contextKey(context, 'streamlined-market-run');
+
+// Redacted audit only. Missing legacy/foreign fields stay unknown, not zero.
+export function streamlinedPurchaseAudit(record) {
+  if (!Array.isArray(record?.entries) || !Array.isArray(record.consumedIds)
+      || record.entries.some(entry => !['ready', 'waiting', 'buy-pending', 'bought', 'move-pending', 'club', 'rejected', 'consumed'].includes(entry?.state))) return {};
+  const pendingWriteCount = Number(!!record.contribution)
+    + record.entries.filter(entry => ['buy-pending', 'move-pending'].includes(entry.state)).length;
+  const unconsumedPurchaseCount = record.entries.filter(entry => entry.source === 'market'
+    && ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state)).length;
+  return { pendingWriteCount, unconsumedPurchaseCount, contributedCount: record.consumedIds.length,
+    confirmedBatches: record.confirmedBatches, purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0 };
+}
+
 export function validateStreamlinedPurchase(record, context) {
   if (record?.plan?.schema === 1) {
     assertStreamlinedPlan(record.plan);

@@ -245,7 +245,8 @@ function setup(overrides = {}) {
 it.each([undefined, 'record-identity'])('logs the actual budget and offer mismatch=%s without inferring it from estimates', async mismatch => {
   const diagnosticLog = { record: vi.fn() }, purchase = vi.fn(async (plan, approval) => ({ status: 'paused',
     reason: mismatch ? 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED' : 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', mismatch,
-    record: { plan, budget: approval.budget, spent: 300, submittedScore: 0 } }));
+    record: { plan, budget: approval.budget, spent: 300, submittedScore: 0, challenge: plan.challenge,
+      entries: [{ source: 'market', state: 'consumed', itemId: 123456, tradeId: '987654' }], consumedIds: [123456], confirmedBatches: 1 } }));
   const f = setup({ diagnosticLog,
     readMarketCandidates: async () => ({ pricePolicy: { source: 'futbin' }, market: [safeItem({ source: 'market',
       definitionId: 201, points: 40, price: 300, purchaseMaxBuy: 300,
@@ -257,7 +258,9 @@ it.each([undefined, 'record-identity'])('logs the actual budget and offer mismat
   await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 999, acknowledgeQuoteCoverage: true });
   expect(purchase).toHaveBeenCalledWith(result.plan, expect.objectContaining({ budget: 999 }), expect.any(Object));
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'contribution',
-    approvedBudget: 999, spent: 300, remainingBudget: 699, mismatch }));
+    approvedBudget: 999, spent: 300, remainingBudget: 699, mismatch, pendingWriteCount: 0, unconsumedPurchaseCount: 0,
+    contributedCount: 1, confirmedBatches: 1, purchasesSettled: true }));
+  expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toMatch(/123456|987654|itemId|tradeId/);
 });
 
 it('keeps verified quoted stock when all verified market quotes fail, but never downgrades a failed catalog', async () => {

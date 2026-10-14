@@ -56,6 +56,20 @@ it('exports skipped settled-auction counts and fixed mismatch causes without tra
   expect(JSON.stringify(payload)).not.toMatch(/123456|secret|"itemId"|"tradeId"|"token"|"raw"/);
 });
 
+it('exports planning time and settled-receipt arithmetic without exporting identities or mixing actual and planned score', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'plan', initialScore: 17210, plannedScore: 17430, targetScore: 34000,
+    durationMs: 35000, processingMs: 500, schedulingMs: 34000, itemId: 123456 });
+  await t.log.record({ area: 'streamlined', event: 'contribution', status: 'completed', currentScore: 34000,
+    pendingWriteCount: 0, unconsumedPurchaseCount: 0, contributedCount: 7, confirmedBatches: 2,
+    purchasesSettled: true, tradeId: '123456', account: 'secret' });
+  const payload = await t.log.exportPayload();
+  expect(payload.entries[0]).toMatchObject({ initialScore: 17210, plannedScore: 17430, durationMs: 35000, processingMs: 500, schedulingMs: 34000 });
+  expect(payload.entries.at(-1)).toMatchObject({ currentScore: 34000, pendingWriteCount: 0, unconsumedPurchaseCount: 0,
+    contributedCount: 7, confirmedBatches: 2, purchasesSettled: true });
+  expect(JSON.stringify(payload)).not.toMatch(/123456|secret|itemId|tradeId/);
+});
+
 it('retains approved and remaining purchase budget separately from an estimate without exporting identities', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution', status: 'paused',

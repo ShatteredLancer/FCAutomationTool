@@ -1,6 +1,7 @@
 import { filterStreamlinedItems } from './eligibility.js';
 import { compareStreamlinedPlans } from './scoring.js';
 import { integer, streamlinedProgress } from './contract.js';
+import { runStreamlinedSteps } from './scheduling.js';
 
 export function splitStreamlinedBatches(items, limit) {
   if (!integer(limit, 1, 1000)) throw Error('FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN');
@@ -109,14 +110,6 @@ export function planStreamlined(input) {
 }
 
 export async function runStreamlinedPlan(input, { onProgress = () => {}, stopped = () => false,
-  schedule = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
-  const iterator = planStreamlinedSteps(input);
-  try {
-    let step = iterator.next();
-    while (!step.done) {
-      try { onProgress(step.value); } catch { /* Diagnostics cannot change planning. */ }
-      await schedule(); step = iterator.next(stopped());
-    }
-    return step.value;
-  } finally { iterator.return(); }
+  schedule, metricsNow } = {}) {
+  return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
 }

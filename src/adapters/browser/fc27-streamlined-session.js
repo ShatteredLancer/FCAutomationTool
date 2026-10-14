@@ -7,6 +7,7 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/
 import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuote, fatalStreamlinedQuoteFailure, STREAMLINED_QUOTE_BUDGET_MS } from '../../streamlined/quotes.js';
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 import { createStreamlinedPurchaseScope } from '../../streamlined/purchase-scope.js';
+import { streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -262,6 +263,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const filteredInventoryCount = Object.values(filtered.excluded ?? {})
           .reduce((sum, count) => sum + (Number.isSafeInteger(count) ? count : 0), 0);
         log({ status: result.status, evaluations: result.nodes, currentScore: result.score, safeCandidates: result.candidateCount,
+          initialScore: input.challenge.submittedScore, targetScore: input.challenge.targetScore, plannedScore: result.score,
+          durationMs: result.wallElapsedMs, processingMs: result.processingMs, schedulingMs: result.schedulingMs,
           count: result.batches?.length, estimatedCost: result.purchaseCost, unknownCount: result.unknownValueCount,
           objective: config.objective, priceSource: quoteSource, materialValue: result.materialValue,
           totalValue: result.materialValue == null ? null : result.purchaseCost + result.materialValue,
@@ -367,6 +370,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         const approvedBudget = result.record?.budget, spent = result.record?.spent;
         log({ event: 'contribution', status: result.status, reason: result.reason, mismatch: result.mismatch, currentScore: result.record?.submittedScore,
+          targetScore: result.record?.challenge?.targetScore, ...streamlinedPurchaseAudit(result.record),
           approvedBudget, spent, remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent)
             ? approvedBudget - spent : undefined });
         return result;
@@ -406,6 +410,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
             || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
         log({ event: 'recovery', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
+          targetScore: result.record?.challenge?.targetScore, ...streamlinedPurchaseAudit(result.record),
           setId: origin.challenge.setId, challengeId: origin.challenge.id });
         const record = result.record;
         if (record && !['recovery-required', 'replan-required', 'blocked'].includes(result.status)) {

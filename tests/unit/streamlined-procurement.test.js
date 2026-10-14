@@ -138,6 +138,20 @@ it('does not start a second run for the same completed approval', async () => {
   expect(adapter.contribute).toHaveBeenCalledTimes(1);
 });
 
+it('archives a completed target and starts a different target only under its new explicit approval', async () => {
+  const firstCard = item(11, 101), nextCard = item(12, 102), first = planFor({ inventory: [firstCard] });
+  const next = planFor({ inventory: [nextCard] }); next.challenge = { ...next.challenge, id: 3, setId: 4 };
+  const { journal, values } = setup(), adapter = baseAdapter([firstCard, nextCard]);
+  const driver = createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' });
+  expect((await driver.execute(first, approval(first))).status).toBe('completed');
+  expect((await driver.execute(next, { ...approval(next), approved: false })).status).toBe('recovery-required');
+  expect(adapter.contribute).toHaveBeenCalledOnce();
+  expect(await driver.execute(next, approval(next))).toMatchObject({ status: 'completed', record: { consumedIds: [12] } });
+  expect(adapter.contribute).toHaveBeenCalledTimes(2);
+  expect([...values.entries()].filter(([key]) => key.includes(':history:'))[0][1])
+    .toMatchObject({ completed: true, consumedIds: [11], challenge: { id: 1, setId: 2 } });
+});
+
 const pendingRecord = (plan, state = 'buy-pending') => ({ schema: 1, context, operationId: 'op', revision: 1,
   fingerprint: JSON.stringify(plan), plan, challenge: plan.challenge, policy: plan.policy, route: plan.route,
   budget: 5000, spent: state === 'buy-pending' ? 0 : 200, submittedScore: 0,

@@ -37,7 +37,10 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
     'src/streamlined/planner.js', 'src/streamlined/scoring.js', 'src/streamlined/plan.js',
     // Plan scope validation adds only pure recipe/data helpers, no adapters,
     // journals or mutation drivers. The inspector remains read-only.
-    'src/streamlined/purchase-scope.js', 'src/streamlined/routes.js']);
+    'src/streamlined/purchase-scope.js', 'src/streamlined/routes.js',
+    // Reviewed async read-only planning dependency: no top-level effects,
+    // only owned local task ports; no network, journal or EA writer.
+    'src/streamlined/scheduling.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) {
     throw new Error('Unreviewed Streamlined inspection dependency');
   }
