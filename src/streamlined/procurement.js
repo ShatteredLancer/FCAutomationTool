@@ -181,9 +181,21 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
                 reason: offer?.reason ?? 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', count: 0 });
               break;
             }
-            if (record.entries.some(e => e.state === 'rejected' && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
-            if (offer.definitionId !== candidate.definitionId || !integer(offer.price, 150, cap)
-                || !integer(offer.itemId, 1) || record.entries.some(e => e.itemId === offer.itemId || e.tradeId === offer.tradeId)) fail('PURCHASE_OFFER_CHANGED');
+            const previous = record.entries.find(e => e.itemId === offer.itemId || e.tradeId === offer.tradeId);
+            const mismatch = offer.definitionId !== candidate.definitionId ? 'definition'
+              : !integer(offer.price, 150, cap) ? 'price' : !integer(offer.itemId, 1) ? 'item'
+                : typeof offer.tradeId !== 'string' || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? 'trade'
+                  : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId
+                    || previous.tradeId !== offer.tradeId || !['rejected', 'consumed'].includes(previous.state)) ? 'record-identity' : null;
+            if (mismatch) {
+              const error = new Error('FC27_STREAMLINED_PURCHASE_OFFER_CHANGED'); error.offerMismatch = mismatch; throw error;
+            }
+            if (previous) {
+              // A known settled auction is stale supply, not an unknown bid.
+              // Never pay again; bounded attempts can search for another copy.
+              report('search-result', { definitionId: candidate.definitionId, count: 0,
+                reason: 'FC27_STREAMLINED_PURCHASE_KNOWN_LISTING' }); continue;
+            }
             const index = record.entries.length;
             record.entries.push({ ...offer, source: 'market', key: `${record.operationId}:${index}`, groupIndex: slot.groupIndex, cap, state: 'buy-pending' });
             await save(); report('buying');
@@ -295,7 +307,8 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
           && !record?.contribution && !record?.entries.some(entry => ['buy-pending', 'move-pending'].includes(entry.state))) {
         return { status: 'paused', reason: reason(error), record };
       }
-      return { status: 'recovery-required', reason: reason(error), record };
+      return { status: 'recovery-required', reason: reason(error), record,
+        ...(error?.offerMismatch ? { mismatch: error.offerMismatch } : {}) };
     }
     finally { try { adapter.cancel?.(); } finally { try { await release?.(); } finally { busy = false; } } }
   };

@@ -44,6 +44,18 @@ it('exports bounded holdings-read arithmetic without physical identities, DTOs o
   expect(JSON.stringify(payload)).not.toMatch(/123456|secret|"itemId"|"token"|"raw"/);
 });
 
+it('exports skipped settled-auction counts and fixed mismatch causes without trade or item identities', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'purchase-native', phase: 'offer-filter', definitionId: 10,
+    count: 1, skippedCount: 3, itemId: 123456, tradeId: '123456', account: 'secret' });
+  await t.log.record({ area: 'streamlined', event: 'contribution', reason: 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED',
+    mismatch: 'record-identity', raw: { itemId: 123456 }, token: 'secret' });
+  const payload = await t.log.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ phase: 'offer-filter', count: 1, skippedCount: 3 }));
+  expect(payload.entries.at(-1)).toMatchObject({ mismatch: 'record-identity' });
+  expect(JSON.stringify(payload)).not.toMatch(/123456|secret|"itemId"|"tradeId"|"token"|"raw"/);
+});
+
 it('retains approved and remaining purchase budget separately from an estimate without exporting identities', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution', status: 'paused',

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.26
+// @version      27.0.27
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.26", at: Date.now(), status: 'started',
+    state = { version: "27.0.27", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7896,6 +7896,7 @@
     confirmCollection = null,
     playerDetails = null,
     preflightReceiptRead = false,
+    excludeOffer = null,
     attempts = 5,
     onEvent = () => {
     },
@@ -8069,7 +8070,17 @@
             return reply;
           }
         });
-        const items = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
+        const priced2 = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
+        const items = typeof excludeOffer === "function" ? priced2.filter((card) => {
+          const auction2 = card.getAuctionData();
+          return excludeOffer(Object.freeze({
+            definitionId,
+            itemId: card.id,
+            tradeId: String(auction2.tradeId),
+            price: auction2.buyNowPrice
+          }), currentRecord) !== true;
+        }) : priced2;
+        if (items.length < priced2.length) diagnostic("offer-filter", { definitionId, count: items.length, skippedCount: priced2.length - items.length });
         items.sort((a, b) => b.getAuctionData().buyNowPrice - a.getAuctionData().buyNowPrice);
         if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
         const selected = items[items.length - 1];
@@ -29771,6 +29782,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             event: "contribution",
             status: result.status,
             reason: result.reason,
+            mismatch: result.mismatch,
             currentScore: result.record?.submittedScore,
             approvedBudget,
             spent,
@@ -32227,6 +32239,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       attempts: searchAttempts,
       playerDetails: players,
       referencePrice: ({ definitionId }) => references.get(definitionId),
+      excludeOffer: (offer, record) => record?.entries?.some((entry) => ["rejected", "consumed"].includes(entry.state) && entry.definitionId === offer.definitionId && entry.itemId === offer.itemId && entry.tradeId === offer.tradeId) === true,
       onEvent,
       verifyCurrent: () => assertTarget(),
       verifySquad: async () => assertTarget()
@@ -32804,8 +32817,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 });
                 break;
               }
-              if (record.entries.some((e) => e.state === "rejected" && (e.itemId === offer.itemId || e.tradeId === offer.tradeId))) continue;
-              if (offer.definitionId !== candidate.definitionId || !integer15(offer.price, 150, cap) || !integer15(offer.itemId, 1) || record.entries.some((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId)) fail28("PURCHASE_OFFER_CHANGED");
+              const previous = record.entries.find((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId);
+              const mismatch2 = offer.definitionId !== candidate.definitionId ? "definition" : !integer15(offer.price, 150, cap) ? "price" : !integer15(offer.itemId, 1) ? "item" : typeof offer.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? "trade" : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId || previous.tradeId !== offer.tradeId || !["rejected", "consumed"].includes(previous.state)) ? "record-identity" : null;
+              if (mismatch2) {
+                const error2 = new Error("FC27_STREAMLINED_PURCHASE_OFFER_CHANGED");
+                error2.offerMismatch = mismatch2;
+                throw error2;
+              }
+              if (previous) {
+                report("search-result", {
+                  definitionId: candidate.definitionId,
+                  count: 0,
+                  reason: "FC27_STREAMLINED_PURCHASE_KNOWN_LISTING"
+                });
+                continue;
+              }
               const index = record.entries.length;
               record.entries.push({ ...offer, source: "market", key: `${record.operationId}:${index}`, groupIndex: slot.groupIndex, cap, state: "buy-pending" });
               await save();
@@ -32942,7 +32968,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         ].includes(error2?.message) && !record?.contribution && !record?.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) {
           return { status: "paused", reason: reason(error2), record };
         }
-        return { status: "recovery-required", reason: reason(error2), record };
+        return {
+          status: "recovery-required",
+          reason: reason(error2),
+          record,
+          ...error2?.offerMismatch ? { mismatch: error2.offerMismatch } : {}
+        };
       } finally {
         try {
           adapter.cancel?.();
@@ -33061,7 +33092,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               reason: row.reason,
               localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : void 0,
               httpStatus: row.httpStatus,
-              count: row.count
+              count: row.count,
+              skippedCount: row.skippedCount
             })).catch(() => {
             });
           } catch {
@@ -33194,7 +33226,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.26" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.27" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33512,8 +33544,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.26"}`,
-    version: "27.0.26",
+    title: `FC Automation Tool ${"27.0.27"}`,
+    version: "27.0.27",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -65,7 +65,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         requestedCount: row.requestedCount, responseCount: row.responseCount, acceptedCount: row.acceptedCount,
         foreignCount: row.foreignCount, unknownCount: row.unknownCount, offset: row.offset, reason: row.reason,
         localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined,
-        httpStatus: row.httpStatus, count: row.count })).catch(() => {}); } catch { /* diagnostic only */ } } });
+        httpStatus: row.httpStatus, count: row.count, skippedCount: row.skippedCount })).catch(() => {}); } catch { /* diagnostic only */ } } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
     async recoverMaterialization() {

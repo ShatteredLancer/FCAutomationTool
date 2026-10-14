@@ -52,7 +52,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   refreshReference = null, now = () => Date.now(), onSearch = () => {},
   verifyCurrent: verifyCurrentOverride = null, verifySquad: verifySquadOverride = null,
   collectionState = null, confirmCollection = null, playerDetails = null,
-  preflightReceiptRead = false,
+  preflightReceiptRead = false, excludeOffer = null,
   attempts = 5, onEvent = () => {}, wait = (min, max) => new Promise(resolve => setTimeout(resolve,
     Math.floor(Math.random() * (max * 1000 - min * 1000 + 1)) + min * 1000)) } = {}) {
   const context = readFc27Context(root); const service = root.services.Item;
@@ -171,8 +171,16 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
         } });
       // EA may return a stale/out-of-filter entity. Never interpret it as
       // permission to pay above the approved cap, even if it is the cheapest.
-      const items = found.filter(card => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice)
+      const priced = found.filter(card => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice)
         && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
+      // Opt-in only: a multi-wave owner may reject its already settled trades.
+      // Legacy Gallery/Puzzle selection and the FSU price walk stay unchanged.
+      const items = typeof excludeOffer === 'function' ? priced.filter(card => {
+        const auction = card.getAuctionData();
+        return excludeOffer(Object.freeze({ definitionId, itemId: card.id, tradeId: String(auction.tradeId),
+          price: auction.buyNowPrice }), currentRecord) !== true;
+      }) : priced;
+      if (items.length < priced.length) diagnostic('offer-filter', { definitionId, count: items.length, skippedCount: priced.length - items.length });
       items.sort((a, b) => b.getAuctionData().buyNowPrice - a.getAuctionData().buyNowPrice);
       if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
       const selected = items[items.length - 1]; const auction = selected.getAuctionData(); const tradeId = String(auction.tradeId);

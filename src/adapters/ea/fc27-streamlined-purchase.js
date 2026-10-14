@@ -32,6 +32,8 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     canWrite: () => canWrite() === true && persistence.inspect().active === true,
     assertTarget, attempts: searchAttempts, playerDetails: players,
     referencePrice: ({ definitionId }) => references.get(definitionId),
+    excludeOffer: (offer, record) => record?.entries?.some(entry => ['rejected', 'consumed'].includes(entry.state)
+      && entry.definitionId === offer.definitionId && entry.itemId === offer.itemId && entry.tradeId === offer.tradeId) === true,
     onEvent,
     verifyCurrent: () => assertTarget(), verifySquad: async () => assertTarget(),
   });

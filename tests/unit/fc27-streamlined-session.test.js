@@ -242,9 +242,10 @@ function setup(overrides = {}) {
   return { session, input, prices, inspect, store };
 }
 
-it('logs the actual approved and remaining market budget rather than inferring it from route estimates', async () => {
+it.each([undefined, 'record-identity'])('logs the actual budget and offer mismatch=%s without inferring it from estimates', async mismatch => {
   const diagnosticLog = { record: vi.fn() }, purchase = vi.fn(async (plan, approval) => ({ status: 'paused',
-    reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: { plan, budget: approval.budget, spent: 300, submittedScore: 0 } }));
+    reason: mismatch ? 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED' : 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', mismatch,
+    record: { plan, budget: approval.budget, spent: 300, submittedScore: 0 } }));
   const f = setup({ diagnosticLog,
     readMarketCandidates: async () => ({ pricePolicy: { source: 'futbin' }, market: [safeItem({ source: 'market',
       definitionId: 201, points: 40, price: 300, purchaseMaxBuy: 300,
@@ -256,7 +257,7 @@ it('logs the actual approved and remaining market budget rather than inferring i
   await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 999, acknowledgeQuoteCoverage: true });
   expect(purchase).toHaveBeenCalledWith(result.plan, expect.objectContaining({ budget: 999 }), expect.any(Object));
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'contribution',
-    approvedBudget: 999, spent: 300, remainingBudget: 699 }));
+    approvedBudget: 999, spent: 300, remainingBudget: 699, mismatch }));
 });
 
 it('keeps verified quoted stock when all verified market quotes fail, but never downgrades a failed catalog', async () => {

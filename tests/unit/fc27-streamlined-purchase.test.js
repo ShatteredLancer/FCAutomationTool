@@ -38,6 +38,19 @@ it('does not send a market search with an expired reference', async () => {
   expect(buyer.find).not.toHaveBeenCalled();
 });
 
+it('opts into excluding only same-version settled auctions while retaining unresolved and contradictory identities', async () => {
+  const createBuyer = vi.fn(async () => ({ verifySquad: vi.fn(), find: vi.fn() }));
+  await setup({ createBuyer });
+  const { excludeOffer } = createBuyer.mock.calls[0][1];
+  const offer = { definitionId: 101, itemId: 401, tradeId: '501', price: 200 };
+  for (const state of ['consumed', 'rejected']) expect(excludeOffer(offer, { entries: [{ ...offer, state }] })).toBe(true);
+  for (const state of ['buy-pending', 'bought', 'move-pending', 'club']) expect(excludeOffer(offer, { entries: [{ ...offer, state }] })).toBe(false);
+  expect(excludeOffer(offer, { entries: [{ ...offer, definitionId: 999, state: 'consumed' }] })).toBe(false);
+  expect(excludeOffer(offer, { entries: [{ ...offer, itemId: 402, state: 'consumed' }] })).toBe(false);
+  expect(excludeOffer(offer, { entries: [{ ...offer, tradeId: '502', state: 'consumed' }] })).toBe(false);
+  expect(excludeOffer({ ...offer, itemId: 402, tradeId: '502' }, { entries: [{ ...offer, state: 'consumed' }] })).toBe(false);
+});
+
 it.each([[200, 200], [300, 250]])('refreshes an expired quote to %s without exceeding the approved card cap %s', async (price, cap) => {
   const prices = { load: vi.fn(async ids => ({ references: { [ids[0]]: { quotes: { futgg: {
     definitionId: ids[0], source: 'futgg', price, fetchedAt: 1000, expiresAt: 2000 } } } } })) };

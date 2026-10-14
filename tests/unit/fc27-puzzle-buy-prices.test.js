@@ -2,9 +2,11 @@ import { expect, it, vi } from 'vitest';
 import { createFc27PuzzleBuyAdapter } from '../../src/adapters/ea/fc27-puzzle-buy.js';
 import { createPurchasePriceApproval } from '../../src/fc27/purchase-price-approval.js';
 import { priceTiers } from '../fixtures/enhancer-listing-price-reference.js';
+import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
+import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
 vi.mock('../../src/adapters/ea/fc27-transaction-transport.js', () => ({ verifyFc27Methods: async () => () => {} }));
 vi.mock('../../src/adapters/ea/fc27-local-read.js', () => ({ readFc27Context: () => ({ season: '27', accountScope: 'account', platform: 'pc' }) }));
-async function fixture({ premium = 0 } = {}) {
+async function fixture({ premium = 0, excludeOffer = null } = {}) {
   const state = { prices: [600,500], coins: 10000, time: 1000, bids: [], searches: [] };
   const quote = (source, price) => ({ schema: 2, source, definitionId: 10, season: '27', platform: 'pc', price,
     fetchedAt: 900, sourceUpdatedAt: null, expiresAt: 300900, error: null });
@@ -39,7 +41,7 @@ async function fixture({ premium = 0 } = {}) {
     } };
   const details = { _rating: 80, nationId: 1, teamId: 1, leagueId: 1, preferredPosition: 1 };
   const adapter = await createFc27PuzzleBuyAdapter(root, { canWrite: () => true, verifyCurrent: () => {},
-    playerDetails: new Map([[10, details]]), now: () => state.time, wait: async () => {} });
+    playerDetails: new Map([[10, details]]), referencePrice: () => 200, now: () => state.time, wait: async () => {}, excludeOffer });
   await adapter.verifySquad(record);
   return { state, record, adapter, root, cards, details };
 }
@@ -52,6 +54,48 @@ it('buys the lowest eligible offer and rechecks the frozen cap at dispatch', asy
   const found = await f.adapter.find(10, 200);
   expect(found.price).toBe(150); expect(await f.adapter.buy(found)).toMatchObject({ status: 'bought', price: 150 });
   expect(f.state.bids).toEqual([150]);
+});
+it('allows an opt-in owner to exclude a settled stale auction before choosing the cheapest fresh offer', async () => {
+  const excludeOffer = vi.fn((offer, record) => record.settledTrades.includes(offer.tradeId));
+  const f = await fixture({ excludeOffer }); f.state.prices = [150, 200]; f.record.settledTrades = ['1000'];
+  const offer = await f.adapter.find(10, 200);
+  expect(offer).toMatchObject({ itemId: 101, tradeId: '1001', price: 200 });
+  expect(excludeOffer).toHaveBeenCalledWith(expect.objectContaining({ itemId: 100, tradeId: '1000' }), f.record);
+  expect(await f.adapter.buy(offer)).toMatchObject({ status: 'bought', price: 200 });
+  expect(f.state.bids).toEqual([200]);
+});
+it('returns no supply without a bid when every native auction is excluded', async () => {
+  const f = await fixture({ excludeOffer: () => true }); f.state.prices = [150, 200];
+  expect(await f.adapter.find(10, 200)).toBeNull(); expect(f.state.bids).toEqual([]);
+});
+it('completes eight real native search/bid waves while old consumed listings remain in every response', async () => {
+  const excludeOffer = (offer, record) => record.entries.some(entry => entry.state === 'consumed'
+    && (entry.itemId === offer.itemId || entry.tradeId === offer.tradeId));
+  const f = await fixture({ excludeOffer }); f.state.prices = [150];
+  const market = { source: 'market', definitionId: 10, id: null, points: 20, price: 200, purchaseMaxBuy: 200 };
+  const plan = { context: { schema: 1, season: '27', accountScope: 'account', platform: 'pc' },
+    challenge: { id: 1, setId: 2, targetScore: 160, submittedScore: 0, selectionLimit: 30 }, policy: {},
+    route: { groups: [{ source: 'market', quantity: 8, item: market, items: [market] }] } };
+  const values = new Map(), journal = createStreamlinedPurchaseJournal({
+    get: async (key, fallback) => structuredClone(values.get(key) ?? fallback),
+    set: async (key, value) => values.set(key, structuredClone(value)) });
+  let score = 0;
+  const adapter = { assertCurrent: record => f.adapter.verifySquad(record),
+    readState: async record => ({ submittedScore: record.submittedScore, freeSlots: 30, heldDefinitions: [] }),
+    find: (card, cap) => f.adapter.find(card.definitionId, cap), buy: entry => f.adapter.buy(entry),
+    move: async () => ({ status: 'bought' }), locate: async () => 'club',
+    materialize: async entries => entries.map(entry => ({ item: { ...market, id: entry.itemId }, groupIndex: 0 })),
+    prepareContribution: async material => ({ material }),
+    contribute: async batch => { score += batch.material.length * 20;
+      f.state.prices = [...f.state.prices.map(() => 150), 200]; return { confirmed: true, submittedScore: score }; },
+  };
+  const result = await createStreamlinedProcurement({ adapter, journal, operationId: () => 'offline',
+    lock: { acquire: async () => () => {} }, now: () => 1000 }).execute(plan,
+    { approved: true, fingerprint: JSON.stringify(plan), budget: 2000, attempts: 2, expiresAt: 10000 });
+  expect(result).toMatchObject({ status: 'completed', record: { spent: 1550, submittedScore: 160 } });
+  expect(result.record.consumedIds).toEqual([100, 101, 102, 103, 104, 105, 106, 107]);
+  expect(f.state.bids).toEqual([150, 200, 200, 200, 200, 200, 200, 200]);
+  expect(f.state.searches).toEqual(Array(8).fill(200));
 });
 it('floors a 275 approval to a 250 search cap and cannot walk above it', async () => {
   const f = await fixture({ premium: 75 }); f.state.prices = [];

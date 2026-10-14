@@ -234,6 +234,62 @@ it('contributes partial supply, then repeats a version only after confirmed cons
   expect(adapter.waitForPartial).not.toHaveBeenCalled();
 });
 
+it('skips a stale already-consumed auction and completes the next batch without a duplicate bid', async () => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market], targetScore: 40 }), { journal } = setup();
+  const first = { definitionId: 201, itemId: 401, tradeId: '501', price: 200 };
+  const second = { definitionId: 201, itemId: 402, tradeId: '502', price: 200 };
+  const offers = [first, first, second]; let at = 0, score = 0;
+  const adapter = baseAdapter([], {
+    find: vi.fn(async () => offers[Math.min(at++, offers.length - 1)]),
+    buy: vi.fn(async entry => ({ ...entry, status: 'bought' })),
+    materialize: vi.fn(async entries => entries.map(e => ({ ...market, id: e.itemId }))),
+    contribute: vi.fn(async batch => ({ confirmed: true, submittedScore: score += batch.material.length * 20 })),
+  });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'completed', record: { spent: 400, submittedScore: 40, consumedIds: [401, 402] } });
+  expect(adapter.buy.mock.calls.map(([entry]) => entry.tradeId)).toEqual(['501', '502']);
+  expect(adapter.contribute).toHaveBeenCalledTimes(2);
+});
+
+it('treats exhausted known stale auctions as bounded scarcity, not an unknown transaction', async () => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market], targetScore: 40 }), { journal } = setup();
+  const offer = { definitionId: 201, itemId: 401, tradeId: '501', price: 200 };
+  const adapter = baseAdapter([], { find: vi.fn(async () => offer), buy: vi.fn(async entry => ({ ...entry, status: 'bought' })),
+    materialize: vi.fn(async entries => entries.map(e => ({ ...market, id: e.itemId }))),
+  });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY',
+    record: { spent: 200, submittedScore: 20, consumedIds: [401], contribution: null } });
+  expect(adapter.buy).toHaveBeenCalledOnce(); expect(adapter.find).toHaveBeenCalledTimes(3);
+});
+
+it.each([
+  ['definition', { definitionId: 999, itemId: 401, tradeId: '501', price: 200 }],
+  ['price', { definitionId: 201, itemId: 401, tradeId: '501', price: 300 }],
+  ['item', { definitionId: 201, itemId: null, tradeId: '501', price: 200 }],
+  ['trade', { definitionId: 201, itemId: 401, tradeId: 'invalid', price: 200 }],
+])('retains the %s offer guard with a redacted cause and no bid', async (mismatch, offer) => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market] }), { journal } = setup();
+  const adapter = baseAdapter([], { find: vi.fn(async () => offer) });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED', mismatch });
+  expect(adapter.buy).not.toHaveBeenCalled(); expect(adapter.move).not.toHaveBeenCalled();
+});
+
+it.each(['trade', 'item'])('does not disguise a changed %s identity on a settled listing as stale supply', async changed => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market], targetScore: 40 }), { journal } = setup();
+  const offer = { definitionId: 201, itemId: 401, tradeId: '501', price: 200 };
+  const changedOffer = changed === 'trade' ? { ...offer, tradeId: '502' } : { ...offer, itemId: 402 };
+  const adapter = baseAdapter([], { find: vi.fn().mockResolvedValueOnce(offer).mockResolvedValue(changedOffer),
+    buy: vi.fn(async entry => ({ ...entry, status: 'bought' })),
+    materialize: vi.fn(async entries => entries.map(e => ({ ...market, id: e.itemId }))),
+  });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED', mismatch: 'record-identity',
+    record: { spent: 200, consumedIds: [401] } });
+  expect(adapter.buy).toHaveBeenCalledOnce();
+});
+
 it('a lost receipt checkpoint stops and later reconciles without sending a second bid', async () => {
   const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market] }), storage = setup();
   let rejectReceipt = true;
