@@ -10,6 +10,11 @@ it('explains which protection input failed instead of only showing the aggregate
   expect(streamlinedExecutionMessage(reason, null, { phase: 'secret-payload', itemId: 123456 })).not.toContain('secret-payload');
 });
 
+it('explains an unverified native activation state without treating a zero identifier alone as proof', () => {
+  expect(streamlinedExecutionMessage('FC27_STREAMLINED_PROTECTION_UNVERIFIED', null,
+    { phase: 'protection-active-state', mismatch: 'inactive' })).toContain('启用状态尚未核验');
+});
+
 it('shows verified purchase/contribution counters and the current search without inventing success', () => {
   const text = streamlinedExecutionProgress({ phase: 'search', batchNumber: 2, purchased: 3, purchaseTarget: 40,
     spent: 3300, budget: 44000, contributed: 1, submittedScore: 830, targetScore: 34000,

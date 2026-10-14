@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.21
+// @version      27.0.22
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.21", at: Date.now(), status: 'started',
+    state = { version: "27.0.22", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27277,6 +27277,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var phases = /* @__PURE__ */ new Set([
     "protection-lock-list",
     "protection-active-id",
+    "protection-active-state",
     "protection-native-id",
     "protection-layout",
     "protection-slot-list",
@@ -27298,7 +27299,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "length",
     "binding",
     "id-mismatch",
-    "layout"
+    "layout",
+    "inactive",
+    "negative",
+    "non-finite",
+    "non-integer"
   ]);
   function normalizeStreamlinedProtectionFailure(value) {
     const phase = ownData(value, "phase");
@@ -27392,6 +27397,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const labels = {
         "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
         "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
+        "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
         "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
         "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
         "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
@@ -30354,7 +30360,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function readFc27StreamlinedProtection(root) {
     const context = readFc27Context(root), lockedItemIds = ids(at8(root, "info.lock"));
     const activeSquadId = at8(root, "services.Squad.activeSquad");
-    if (!integer15(activeSquadId, 1)) protectionFail("protection-active-id", { mismatch: typeof activeSquadId });
+    if (!integer15(activeSquadId)) protectionFail("protection-active-id", { mismatch: typeof activeSquadId === "number" ? !Number.isFinite(activeSquadId) ? "non-finite" : activeSquadId < 0 ? "negative" : "non-integer" : typeof activeSquadId });
     const userId = at8(root, "services.User.currentUserId");
     const personaId = at8(root, `services.User.repository._collection.${userId}.selectedPersona`);
     const squad = at8(root, `repositories.Squad.squads._collection.${personaId}._collection.${activeSquadId}`);
@@ -30363,6 +30369,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let activeSquadItemIds;
     if (squad !== void 0) {
       if (ownData(squad, "_id") !== activeSquadId) protectionFail("protection-native-id", { mismatch: "id-mismatch" });
+      if (activeSquadId === 0 && ownData(squad, "_isActive") !== true) protectionFail(
+        "protection-active-state",
+        { mismatch: ownData(squad, "_isActive") === false ? "inactive" : typeof ownData(squad, "_isActive") }
+      );
       if (!integer15(total, 11, 100)) protectionFail("protection-layout", { mismatch: typeof total });
       if (!Array.isArray(slots) || slots.length !== total) protectionFail(
         "protection-slot-list",
@@ -32760,7 +32770,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.21" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.22" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33078,8 +33088,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.21"}`,
-    version: "27.0.21",
+    title: `FC Automation Tool ${"27.0.22"}`,
+    version: "27.0.22",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

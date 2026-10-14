@@ -5,6 +5,15 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.22] - 2026-10-14
+
+- Accept EA squad ID zero only after its matching native entity is explicitly active and the full
+  roster is verified; do not treat the service's zero initialization default as readiness.
+- Preserve manual-lock, starting/bench/reserve and pre-dispatch guards, account/squad/FSU cache
+  bindings and rejection of missing, negative, non-finite or string identifiers.
+- Explain an unverified native activation state and distinguish invalid numeric identifier classes
+  in redacted diagnostics. No new EA calls or changes to quotes, routes or transactions.
+
 ## [27.0.21] - 2026-10-14
 
 - Explain Streamlined protection failures in the planning result and action footer instead of displaying

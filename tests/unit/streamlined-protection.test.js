@@ -12,6 +12,8 @@ it('accepts fixed protection phases and bounded facts only, without invoking acc
   const accessorPhase = {}; Object.defineProperty(accessorPhase, 'phase', { get: getter });
   expect(normalizeStreamlinedProtectionFailure(accessorPhase)).toBeNull();
   expect(normalizeStreamlinedProtectionFailure({ phase: 'arbitrary-input' })).toBeNull();
+  expect(normalizeStreamlinedProtectionFailure({ phase: 'protection-active-state', mismatch: 'inactive' }))
+    .toEqual({ phase: 'protection-active-state', mismatch: 'inactive' });
   expect(normalizeStreamlinedProtectionFailure({ phase: 'protection-cache', count: 20001, offset: -1, cached: 'true', mismatch: 'private-account' }))
     .toEqual({ phase: 'protection-cache' });
   expect(getter).not.toHaveBeenCalled();

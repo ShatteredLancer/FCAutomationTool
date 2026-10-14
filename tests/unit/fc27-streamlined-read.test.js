@@ -25,6 +25,60 @@ function runtime() {
   return { ...f, challenge, set, controller, anchor };
 }
 
+function zeroSquadRuntime() {
+  const f = runtime(), squads = f.root.repositories.Squad.squads._collection[902]._collection;
+  const squad = squads[7]; delete squads[7];
+  squads[0] = squad; squad._id = 0; squad._isActive = true;
+  f.root.services.Squad.activeSquad = 0;
+  for (const [index, id] of [[0, 1], [12, 2], [22, 3]]) squad._players[index]._item.id = f.root.info.squad[index] = id;
+  f.root.info.lock = [4];
+  return { ...f, squad };
+}
+
+it('accepts a complete, explicitly active native squad with ID zero and protects starters, bench, reserves and manual locks', () => {
+  const f = zeroSquadRuntime(), input = readFc27StreamlinedInputs(f.root);
+  expect(input.policy).toMatchObject({ activeSquadId: 0, protectFsuLockedPlayers: true, protectActiveSquad: true });
+  expect(input.policy.activeSquadItemIds).toEqual([1, 2, 3]);
+  const selected = filterStreamlinedItems(input.inventory, input).items;
+  expect(selected.some(item => [1, 2, 3, 4].includes(item.id))).toBe(false);
+  input.assertCurrent();
+  f.squad._isActive = false;
+  expect(input.assertCurrent).toThrow('PROTECTION_UNVERIFIED');
+  expect(f.calls).toEqual([]);
+});
+
+it('does not confuse an uninitialized zero default, inactive roster or invalid identifier with a verified active squad', () => {
+  for (const change of ['absent', 'inactive', 'unknown-active', 'partial', 'wrong-id', 'negative', 'nan', 'infinite', 'string']) {
+    const f = zeroSquadRuntime();
+    if (change === 'absent') f.root.repositories.Squad.squads._collection = {};
+    if (change === 'inactive') f.squad._isActive = false;
+    if (change === 'unknown-active') delete f.squad._isActive;
+    if (change === 'partial') f.squad._players.pop();
+    if (change === 'wrong-id') f.squad._id = 1;
+    if (change === 'negative') f.root.services.Squad.activeSquad = -1;
+    if (change === 'nan') f.root.services.Squad.activeSquad = NaN;
+    if (change === 'infinite') f.root.services.Squad.activeSquad = Infinity;
+    if (change === 'string') f.root.services.Squad.activeSquad = '0';
+    expect(() => readFc27StreamlinedProtection(f.root)).toThrow('PROTECTION_UNVERIFIED');
+    expect(f.calls).toEqual([]);
+  }
+});
+
+it('reuses only a verified zero-ID roster after cache eviction and rejects changed account/squad/FSU bindings', () => {
+  for (const change of ['none', 'fsu', 'squad', 'account']) {
+    const f = zeroSquadRuntime(), before = readFc27StreamlinedProtection(f.root);
+    f.root.repositories.Squad.squads._collection = {};
+    if (change === 'fsu') f.root.info.squad[22] = 5;
+    if (change === 'squad') f.root.services.Squad.activeSquad = 7;
+    if (change === 'account') {
+      f.root.services.User.currentUserId = 903;
+      f.root.services.User.repository._collection[903] = { ...f.root.services.User.repository._collection[901], id: 903 };
+    }
+    if (change === 'none') expect(readFc27StreamlinedProtection(f.root)).toEqual(before);
+    else expect(() => readFc27StreamlinedProtection(f.root)).toThrow('PROTECTION_UNVERIFIED');
+  }
+});
+
 it('identifies the failed protection stage without exporting account or card identities', () => {
   for (const [phase, change] of [
     ['protection-lock-list', f => { delete f.root.info.lock; }],

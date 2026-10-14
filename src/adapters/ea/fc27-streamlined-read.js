@@ -38,7 +38,12 @@ const ids = (value, max = 20000, phase = 'protection-lock-list') => {
 export function readFc27StreamlinedProtection(root) {
   const context = readFc27Context(root), lockedItemIds = ids(at(root, 'info.lock'));
   const activeSquadId = at(root, 'services.Squad.activeSquad');
-  if (!integer(activeSquadId, 1)) protectionFail('protection-active-id', { mismatch: typeof activeSquadId });
+  // EA accepts numeric squad IDs including 0. The service also initializes
+  // this field to 0, so zero alone is not readiness: require the matching
+  // native entity's active flag and the full roster below before binding it.
+  if (!integer(activeSquadId)) protectionFail('protection-active-id', { mismatch: typeof activeSquadId === 'number'
+    ? !Number.isFinite(activeSquadId) ? 'non-finite' : activeSquadId < 0 ? 'negative' : 'non-integer'
+    : typeof activeSquadId });
   const userId = at(root, 'services.User.currentUserId');
   const personaId = at(root, `services.User.repository._collection.${userId}.selectedPersona`);
   const squad = at(root, `repositories.Squad.squads._collection.${personaId}._collection.${activeSquadId}`);
@@ -47,6 +52,8 @@ export function readFc27StreamlinedProtection(root) {
   let activeSquadItemIds;
   if (squad !== undefined) {
     if (ownData(squad, '_id') !== activeSquadId) protectionFail('protection-native-id', { mismatch: 'id-mismatch' });
+    if (activeSquadId === 0 && ownData(squad, '_isActive') !== true) protectionFail('protection-active-state',
+      { mismatch: ownData(squad, '_isActive') === false ? 'inactive' : typeof ownData(squad, '_isActive') });
     if (!integer(total, 11, 100)) protectionFail('protection-layout', { mismatch: typeof total });
     if (!Array.isArray(slots) || slots.length !== total) protectionFail('protection-slot-list',
       { mismatch: Array.isArray(slots) ? 'length' : 'non-array', count: Array.isArray(slots) ? slots.length : undefined, requiredSlots: total });

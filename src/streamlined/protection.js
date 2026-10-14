@@ -1,9 +1,9 @@
 import { ownData } from '../fc27/prelaunch-contract.js';
 
-const phases = new Set(['protection-lock-list', 'protection-active-id', 'protection-native-id',
+const phases = new Set(['protection-lock-list', 'protection-active-id', 'protection-active-state', 'protection-native-id',
   'protection-layout', 'protection-slot-list', 'protection-slot-id', 'protection-fsu-roster', 'protection-cache']);
 const mismatches = new Set(['undefined', 'null', 'boolean', 'number', 'string', 'object', 'function',
-  'symbol', 'bigint', 'non-array', 'length', 'binding', 'id-mismatch', 'layout']);
+  'symbol', 'bigint', 'non-array', 'length', 'binding', 'id-mismatch', 'layout', 'inactive', 'negative', 'non-finite', 'non-integer']);
 
 // Diagnostic/display evidence only. No identities, raw objects or arbitrary
 // strings can enter a planning result or the persisted diagnostic log here.

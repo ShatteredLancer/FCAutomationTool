@@ -4,6 +4,7 @@ import { createFc27StreamlinedProvider } from '../../src/adapters/ea/fc27-stream
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
+import { readFc27StreamlinedPolicy } from '../../src/adapters/ea/fc27-streamlined-read.js';
 
 it('rechecks locks after validation and before an irreversible contribution', async () => {
   const f = await setup();
@@ -13,8 +14,16 @@ it('rechecks locks after validation and before an irreversible contribution', as
   expect(f.dispatched).not.toHaveBeenCalled();
 });
 
-async function setup({ legacyPolicy = false } = {}) {
-  const f = streamlinedRuntime(), pending = await pendingContribution(f);
+async function setup({ legacyPolicy = false, zeroSquad = false } = {}) {
+  const f = streamlinedRuntime();
+  if (zeroSquad) {
+    const squads = f.root.repositories.Squad.squads._collection[902]._collection;
+    const squad = squads[7]; delete squads[7]; squads[0] = squad;
+    squad._id = 0; squad._isActive = true; f.root.services.Squad.activeSquad = 0;
+    f.plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, result: f.plan,
+      policy: readFc27StreamlinedPolicy(f.root, f.plan.policy.maxRating, f.plan.policy.marketMaxRating) });
+  }
+  const pending = await pendingContribution(f);
   if (legacyPolicy) {
     const { marketMaxRating: _marketMaxRating, ...policy } = f.plan.policy;
     f.plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy, result: f.plan });
@@ -34,6 +43,17 @@ async function setup({ legacyPolicy = false } = {}) {
     canWrite: () => enabled, now: () => clock, createTransport: async () => ({ request }) });
   return { ...f, ...pending, provider, request, dispatched, setClock: n => { clock = n; }, disable: () => { enabled = false; } };
 }
+
+it.each(['active-state', 'lock'])('rechecks %s after validation of a zero-ID active squad before dispatch', async change => {
+  const f = await setup({ zeroSquad: true });
+  expect(f.plan.policy.activeSquadId).toBe(0);
+  expect(await f.provider.verify(f.plan, f.batch, 0)).toBe(true);
+  if (change === 'active-state') f.root.repositories.Squad.squads._collection[902]._collection[0]._isActive = false;
+  else f.root.info.lock = [f.selected[0].id];
+  const reason = change === 'active-state' ? 'FC27_STREAMLINED_PROTECTION_UNVERIFIED' : 'FC27_STREAMLINED_POLICY_CHANGED';
+  await expect(f.provider.contribute(f.plan, f.batch)).resolves.toMatchObject({ status: 'rejected', reason });
+  expect(f.dispatched).not.toHaveBeenCalled(); expect(f.request).not.toHaveBeenCalled();
+});
 
 it.each([false, true])('checks fresh readers and durable intent with legacy policy=%s before one exact contribution', async legacyPolicy => {
   const f = await setup({ legacyPolicy });

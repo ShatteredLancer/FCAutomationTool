@@ -201,7 +201,8 @@ async function exerciseStreamlinedProtectionBlocked(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  for (const [phase, message] of [['protection-lock-list', 'FSU 锁卡名单'], ['protection-slot-list', '11 / 23']]) {
+  for (const [phase, message] of [['protection-lock-list', 'FSU 锁卡名单'], ['protection-slot-list', '11 / 23'],
+    ['protection-active-state', '启用状态尚未核验']]) {
     await page.evaluate(value => { globalThis.protectionSmoke.phase = value; }, phase);
     await page.getByRole('button', { name: '生成方案', exact: true }).click();
     await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
@@ -211,7 +212,7 @@ async function exerciseStreamlinedProtectionBlocked(page) {
   }
   assert.deepEqual(await page.evaluate(() => {
     const e = globalThis.protectionSmoke; return { writes: e.writes, quoteReads: e.quoteReads, execution: e.execution, phases: e.logs.map(row => row.phase) };
-  }), { writes: 0, quoteReads: 0, execution: 0, phases: ['protection-lock-list', 'protection-slot-list'] });
+  }), { writes: 0, quoteReads: 0, execution: 0, phases: ['protection-lock-list', 'protection-slot-list', 'protection-active-state'] });
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-protection-blocked.png' });
 }
 
