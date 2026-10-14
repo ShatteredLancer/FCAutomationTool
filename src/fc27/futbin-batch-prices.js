@@ -3,11 +3,11 @@ import { parsePublicFutbinPrice } from './public-price-responses.js';
 // Same public filtered-price endpoint used by FSU. This is quote batching,
 // never a candidate database or an assertion that an omitted version is absent.
 export async function readFutbinBatchPrices(ids, players, { season = '27', platform, request,
-  check = async () => {}, now = () => Date.now(), cache = null, quoteTtlMs = 300000, force = false, deadlineAt = null } = {}) {
+  check = async () => {}, now = () => Date.now(), cache = null, quoteTtlMs = 300000, force = false, cacheOnly = false, deadlineAt = null } = {}) {
   const rating = players.find(row => ids.includes(row?.definitionId ?? row?.eaId))?.rating;
   if (season !== '27' || !['pc', 'console'].includes(platform) || !Number.isSafeInteger(quoteTtlMs)
       || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0)
-      || quoteTtlMs <= 0 || quoteTtlMs > 1800000 || typeof force !== 'boolean' || !Number.isSafeInteger(rating)
+      || quoteTtlMs <= 0 || quoteTtlMs > 1800000 || typeof force !== 'boolean' || typeof cacheOnly !== 'boolean' || !Number.isSafeInteger(rating)
       || rating < 1 || rating > 99 || !ids.length || ids.length > 250
       || ids.some(id => !Number.isSafeInteger(id) || id <= 0
         || !players.some(row => (row.definitionId ?? row.eaId) === id && row.rating === rating))) {
@@ -23,6 +23,7 @@ export async function readFutbinBatchPrices(ids, players, { season = '27', platf
     let payload, fetchedAt;
     if (cached) { payload = { data: saved.rows }; fetchedAt = saved.fetchedAt; }
     else {
+      if (cacheOnly) continue;
       const response = await request(`https://www.futbin.org/futbin/api/${season}/getFilteredPlayers?platform=${platform === 'pc' ? 'PC' : 'PS'}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`);
       requests++;
       await check();

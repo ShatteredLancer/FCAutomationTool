@@ -2,6 +2,22 @@ import { expect, it } from 'vitest';
 import { createPublicPricePolicyStore, publicPricePolicyKey, purchasePriceCap, normalizeGalleryPricePolicy } from '../../src/gallery/public-price-policy.js';
 
 const tiers = [{ min: 100000, inc: 1000 }, { min: 50000, inc: 500 }, { min: 10000, inc: 250 }, { min: 1000, inc: 100 }, { min: 0, inc: 50 }];
+it('uses FUTBIN/PS only for new accounts without rewriting legacy preferences or frozen normalization', async () => {
+  const data = new Map();
+  const store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
+    set: async (key, value) => data.set(key, structuredClone(value)) });
+  expect(await store.read('new')).toMatchObject({ readSources: 'futbin', source: 'futbin', listingSource: 'futbin', futbinPlatform: 'ps' });
+  for (const [scope, policy] of Object.entries({ legacy: {}, disabled: { futbinEnabled: false },
+    both: { readSources: 'both', source: 'futgg' }, pc: { readSources: 'futbin', futbinPlatform: 'pc' } })) {
+    data.set(publicPricePolicyKey(scope), { schema: 1, scope, policy });
+  }
+  expect(await store.read('legacy')).toMatchObject({ source: 'futgg', readSources: 'both' });
+  expect(await store.read('disabled')).toMatchObject({ source: 'futgg', readSources: 'futgg', futbinEnabled: false });
+  expect(await store.read('both')).toMatchObject({ source: 'futgg', readSources: 'both' });
+  expect(await store.read('pc')).toMatchObject({ source: 'futbin', futbinPlatform: 'pc' });
+  expect(normalizeGalleryPricePolicy({})).toMatchObject({ source: 'futgg', readSources: 'both' });
+  expect(data.has(publicPricePolicyKey('new'))).toBe(false);
+});
 it('defaults account FUTBIN references to PS, persists PC per account and preserves legacy frozen policies', async () => {
   const data = new Map(), store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
     set: async (key, value) => data.set(key, structuredClone(value)) });
@@ -62,7 +78,7 @@ it('saves by account, never migrates global spending settings, and verifies writ
   const data = new Map([['fcat-fc27-public-price-policy-v1', { source: 'futbin', premium: 1000 }]]);
   const store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
     set: async (key, value) => data.set(key, structuredClone(value)) });
-  expect((await store.read('account-a')).source).toBe('futgg');
+  expect((await store.read('account-a')).source).toBe('futbin');
   await store.save('account-a', { source: 'futbin', premium: 50 });
   expect((await store.read('account-a')).premium).toBe(50);
   expect((await store.read('account-b')).premium).toBe(0);

@@ -3,16 +3,55 @@ import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { createFc27PublicPrices } from '../../src/adapters/browser/fc27-public-prices.js';
 import { validatePurchasePriceApproval, purchaseApprovedPrice } from '../../src/fc27/purchase-price-approval.js';
 import { futbinFiltered, futbinMinimalPC, futbinMinimalPS, futggPC } from '../fixtures/fc27-public-prices.js';
-function fixture() {
+function fixture({ legacy = true } = {}) {
   const { root } = executionRuntime(), data = new Map(); let time = Date.parse('2026-10-04T03:42:02Z');
   const gm = vi.fn(options => options.onload({ status: 200, responseText: JSON.stringify(options.url.includes('getFilteredPlayers')
     ? futbinFiltered : options.url.includes('platform=PC') ? futbinMinimalPC : futbinMinimalPS) }));
   const transport = { getPrices: vi.fn(async () => ({ status: 200, text: JSON.stringify({ data: [futggPC.data[0]] }) })) };
   const service = createFc27PublicPrices({ root, gmRequest: gm, transport, now: () => time,
     get: async (key, fallback) => data.get(key) ?? fallback, set: async (key, value) => data.set(key, structuredClone(value)) });
+  if (legacy) {
+    const scope = service.scope();
+    data.set(`fcat-fc27-public-price-policy-v1:${scope}`, { schema: 1, scope, policy: {} });
+  }
   const player = { definitionId: 71494, rating: 80, nationId: 95, leagueId: 2221, teamId: 116308, preferredPosition: 12 };
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
+
+it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined'])('uses default FUTBIN batches for %s and shares page hits with other purposes', async purpose => {
+  const f = fixture({ legacy: false });
+  const rows = Array.from({ length: 14 }, (_, i) => ({ ...f.player, definitionId: i + 1000, rating: 84 }));
+  f.gm.mockImplementation(options => options.onload({ status: 200, responseText: JSON.stringify({ errorcode: '200',
+    data: rows.map(row => ({ resource_id: row.definitionId, rating: 84, ps_LCPrice: 650, pc_LCPrice: 900 })) }) }));
+  const first = await f.service.load(rows.slice(0, 12).map(row => row.definitionId), { purpose, rows });
+  expect(Object.keys(first.prices)).toHaveLength(12);
+  expect(first.requestedSources).toEqual(['futbin']);
+  expect(first.policy).toMatchObject({ source: 'futbin', futbinPlatform: 'ps' });
+  const second = await f.service.load([1012], { purpose: 'listing', rows });
+  expect(second.prices).toEqual({ 1012: 650 });
+  expect(second.references[1012].quotes.futbin.fetchedAt).toBe(first.references[1000].quotes.futbin.fetchedAt);
+  const [overlap, single] = await Promise.all([
+    f.service.load([1000, 1013], { purpose: 'purchase', rows }), f.service.quote(rows[13]),
+  ]);
+  expect(overlap.prices).toEqual({ 1000: 650, 1013: 650 });
+  expect(single.estimate).toBe(650);
+  expect(f.gm).toHaveBeenCalledTimes(1);
+  expect(f.gm.mock.calls[0][0].url).toContain('rating=84-84');
+  expect(f.transport.getPrices).not.toHaveBeenCalled();
+});
+
+it('reads the selected authority first in Both without changing either price source', async () => {
+  const f = fixture(), order = [];
+  await f.service.saveSettings({ readSources: 'both', source: 'futbin' });
+  f.gm.mockImplementation(options => {
+    order.push('futbin'); options.onload({ status: 200, responseText: JSON.stringify(futbinFiltered) });
+  });
+  f.transport.getPrices.mockImplementation(async () => { order.push('futgg'); return { status: 200,
+    text: JSON.stringify({ data: [futggPC.data[0]] }) }; });
+  const result = await f.service.load([f.player.definitionId], { rows: [f.player] });
+  expect(order).toEqual(['futbin', 'futgg']);
+  expect(result.references[71494]).toMatchObject({ estimate: 650, futbin: 650, futgg: 650 });
+});
 it('uses PS by default and isolates configurable FUTBIN quotes without changing EA or FUT.GG platforms', async () => {
   const f = fixture();
   const first = await f.service.quote(f.player);
@@ -201,7 +240,7 @@ it('routes a single-source preference and the shared purchase/listing reference 
   const f = fixture();
   await f.service.saveSettings({ readSources: 'both', source: 'futbin', listingSource: 'futgg' });
   const listing = await f.service.load([71494], { purpose: 'listing', rows: [f.player] });
-  expect(listing.requestedSources).toEqual(['futgg', 'futbin']);
+  expect(listing.requestedSources).toEqual(['futbin', 'futgg']);
   expect(listing.listingPriceSource).toBe('futbin');
   expect(listing.prices[71494]).toBe(650);
   expect(listing.references[71494].futbin).toBe(650);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.29
+// @version      27.0.30
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.29", at: Date.now(), status: 'started',
+    state = { version: "27.0.30", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5579,7 +5579,7 @@
       } catch {
         throw Error("FC27_PUBLIC_PRICE_POLICY_READ_FAILED");
       }
-      if (saved === null) return currentSettings({});
+      if (saved === null) return currentSettings({ readSources: "futbin" });
       if (saved?.schema !== 1 || saved.scope !== scope2 || !saved.policy) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
       return currentSettings(saved.policy);
     };
@@ -26792,8 +26792,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }
           const bulkIds = /* @__PURE__ */ new Set();
-          for (const [rating, batch] of grouped2) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99 && batch.length >= 12) {
-            jobs.push({ ids: batch, bulk: true });
+          for (const [rating, batch] of grouped2) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99) {
+            jobs.push({ ids: batch, bulk: true, cacheOnly: batch.length < 12 });
             for (const id12 of batch) bulkIds.add(id12);
           }
           const singles = missing.filter((id12) => !bulkIds.has(id12));
@@ -26815,6 +26815,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   ...options,
                   check: current2,
                   force,
+                  cacheOnly: job.cacheOnly,
                   quoteTtlMs: duration,
                   ...deadlineAt !== null ? { deadlineAt } : {}
                 });
@@ -26837,7 +26838,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 cooldowns.set(cooldownKey, { retryAt, reason: error2 });
               }
             }
-            const completedIds = job.bulk && !error2 ? batch.filter((id12) => rows.some((row) => row.definitionId === id12)) : batch;
+            const completedIds = job.bulk && !error2 ? batch.filter((id12) => rows.some((row) => row.definitionId === id12 && row.price !== null)) : batch;
             if (job.bulk && !error2) {
               for (const id12 of batch) if (!completedIds.includes(id12)) fallbackJobs.push({ ids: [id12], bulk: false });
             }
@@ -26924,7 +26925,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         onProgress = () => {
         },
         quoteTtlMs = ttlMs,
-        futbinBatch = false,
+        futbinBatch = true,
         deadlineAt = null
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
@@ -26939,7 +26940,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         };
         current2();
-        const unique2 = [...new Set(ids2)], byId = new Map(rows.map((row) => [row.eaId ?? row.definitionId, row]));
+        const unique2 = [...new Set(ids2)], byId = new Map(rows.map((row) => [
+          row.eaId ?? row.definitionId,
+          { ...row, rating: row.rating ?? row.overall ?? row._rating }
+        ]));
         const requested = [...new Set(sources3)].filter((source) => publicPriceSourceEnabled(policy, source));
         const forced = new Set(forceSources);
         if (force === true) for (const source of requested) forced.add(source);
@@ -27062,10 +27066,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     cache = null,
     quoteTtlMs = 3e5,
     force = false,
+    cacheOnly = false,
     deadlineAt = null
   } = {}) {
     const rating = players.find((row) => ids2.includes(row?.definitionId ?? row?.eaId))?.rating;
-    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id12) => !Number.isSafeInteger(id12) || id12 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id12 && row.rating === rating))) {
+    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || typeof cacheOnly !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id12) => !Number.isSafeInteger(id12) || id12 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id12 && row.rating === rating))) {
       throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
     }
     const found = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
@@ -27080,6 +27085,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         payload = { data: saved.rows };
         fetchedAt = saved.fetchedAt;
       } else {
+        if (cacheOnly) continue;
         const response = await request(`https://www.futbin.org/futbin/api/${season}/getFilteredPlayers?platform=${platform === "pc" ? "PC" : "PS"}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`);
         requests++;
         await check();
@@ -27270,7 +27276,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const purpose = options.purpose ?? "gallery";
       const policy = options.policy ?? (purpose === "listing" ? { ...settings, source: settings.listingSource } : settings);
       if (!publicPriceSourceEnabled(settings, policy.source)) throw Error(`FC27_PUBLIC_PRICE_${policy.source.toUpperCase()}_DISABLED`);
-      const sources3 = (options.sources ?? (purpose === "puzzle" || purpose === "purchase" ? [policy.source] : ["futgg", "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
+      const sources3 = (options.sources ?? (purpose === "puzzle" || purpose === "purchase" ? [policy.source] : [policy.source, policy.source === "futbin" ? "futgg" : "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
       if (!sources3.length) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
       const snapshot = await service.load(ids2, {
         ...options,
@@ -33317,7 +33323,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.29" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.30" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33635,8 +33641,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.29"}`,
-    version: "27.0.29",
+    title: `FC Automation Tool ${"27.0.30"}`,
+    version: "27.0.30",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

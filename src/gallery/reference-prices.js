@@ -58,8 +58,10 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
           }
         }
         const bulkIds = new Set();
-        for (const [rating, batch] of grouped) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99 && batch.length >= 12) {
-          jobs.push({ ids: batch, bulk: true }); for (const id of batch) bulkIds.add(id);
+        for (const [rating, batch] of grouped) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99) {
+          // Small reads reuse complete pages already fetched by other callers,
+          // but never start a rating-page scan for a single cold version.
+          jobs.push({ ids: batch, bulk: true, cacheOnly: batch.length < 12 }); for (const id of batch) bulkIds.add(id);
         }
         const singles = missing.filter(id => !bulkIds.has(id));
         for (let offset = 0; offset < singles.length; offset += batchSize) jobs.push({ ids: singles.slice(offset, offset + batchSize), bulk: false });
@@ -75,7 +77,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
             }
             requests++;
             if (job.bulk) {
-              const result = await readFutbinBatch(batch, batch.map(id => byId.get(id)), { ...options, check: current, force, quoteTtlMs: duration,
+              const result = await readFutbinBatch(batch, batch.map(id => byId.get(id)), { ...options, check: current, force, cacheOnly: job.cacheOnly, quoteTtlMs: duration,
                 ...(deadlineAt !== null ? { deadlineAt } : {}) });
               if (!Number.isSafeInteger(result?.requests) || result.requests < 0 || result.requests > 8) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
               requests += result.requests - 1; rows = result.rows;
@@ -101,7 +103,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
               cooldowns.set(cooldownKey, { retryAt, reason: error });
             }
           }
-          const completedIds = job.bulk && !error ? batch.filter(id => rows.some(row => row.definitionId === id)) : batch;
+          const completedIds = job.bulk && !error ? batch.filter(id => rows.some(row => row.definitionId === id && row.price !== null)) : batch;
           if (job.bulk && !error) for (const id of batch) if (!completedIds.includes(id)) fallbackJobs.push({ ids: [id], bulk: false });
           for (const id of completedIds) {
             const value = rows.find(row => row.definitionId === id);
@@ -144,7 +146,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
   return Object.freeze({
     async load(ids, { season = '27', platform, rows = [], policy = {}, force = false,
       sources = ['futgg', 'futbin'], forceSources = [], purpose = 'gallery',
-      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = false, deadlineAt = null } = {}) {
+      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = true, deadlineAt = null } = {}) {
       policy = normalizeGalleryPricePolicy(policy);
       if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 1800000
           || season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
@@ -156,7 +158,8 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
       const current = () => { if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED'); };
       const progress = value => { try { onProgress(value); } catch { /* UI cannot alter price reads. */ } };
       current();
-      const unique = [...new Set(ids)], byId = new Map(rows.map(row => [row.eaId ?? row.definitionId, row]));
+      const unique = [...new Set(ids)], byId = new Map(rows.map(row => [row.eaId ?? row.definitionId,
+        { ...row, rating: row.rating ?? row.overall ?? row._rating }]));
       // Puzzle and purchase approval only need the selected authority. Gallery
       // keeps the default dual-source display for comparison. Unrequested
       // sources receive an explicit evidence row so downstream approval can

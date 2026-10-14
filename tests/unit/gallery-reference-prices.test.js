@@ -66,32 +66,49 @@ it('does not turn a local deadline into a source cooldown or a reusable error ca
   expect(readFutbin).toHaveBeenCalledTimes(2);
 });
 
-it('batches opt-in same-rating FUTBIN misses, individually resolves omitted versions and preserves page fetch times', async () => {
+it('batches same-rating FUTBIN misses by default, resolves null/omitted versions and preserves page fetch times', async () => {
   let time = 1000;
   const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1050 }));
   const readFutbinBatch = vi.fn(async ids => {
     time = 1300;
-    return { requests: 2, rows: ids.slice(0, -1).map(definitionId => ({ definitionId, price: 1000, fetchedAt: 1100 })) };
+    return { requests: 2, rows: ids.slice(0, -1).map(definitionId => ({ definitionId, price: definitionId === 11 ? null : 1000, fetchedAt: 1100 })) };
   });
   const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch, now: () => time });
   const ids = Array.from({ length: 12 }, (_, i) => i + 1), rows = ids.map(definitionId => ({ definitionId, rating: 84 }));
-  const options = { platform: 'pc', policy: { source: 'futbin' }, sources: ['futbin'], rows, futbinBatch: true };
+  const options = { platform: 'pc', policy: { source: 'futbin' }, sources: ['futbin'], rows };
   const result = await service.load(ids, options);
   expect(readFutbinBatch).toHaveBeenCalledTimes(1);
-  expect(readFutbin).toHaveBeenCalledExactlyOnceWith(12, expect.any(Object), expect.any(Object));
+  expect(readFutbin).toHaveBeenCalledTimes(2);
+  expect(readFutbin.mock.calls.map(call => call[0])).toEqual([11, 12]);
+  expect(readFutbinBatch.mock.calls[0][2].cacheOnly).toBe(false);
   expect(result.references[1].quotes.futbin).toMatchObject({ fetchedAt: 1100, expiresAt: 301100, price: 1000 });
   expect(result.prices[12]).toBe(1050);
+  expect(result.prices[11]).toBe(1050);
   await service.load(ids, options);
   expect(readFutbinBatch).toHaveBeenCalledTimes(1);
-  expect(readFutbin).toHaveBeenCalledTimes(1);
+  expect(readFutbin).toHaveBeenCalledTimes(2);
 });
 
-it('does not enable FUTBIN batches for legacy callers or a disabled source', async () => {
+it('checks page cache only for small groups and falls back only for unresolved exact versions', async () => {
+  const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1500 }));
+  const readFutbinBatch = vi.fn(async () => ({ requests: 0,
+    rows: [{ definitionId: 1, price: 1000, fetchedAt: 900 }] }));
+  const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch, now: () => 1000 });
+  const result = await service.load([1, 2, 3], { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' },
+    rows: [{ definitionId: 1, overall: 84 }, { definitionId: 2, rating: 84 }, { definitionId: 3 }] });
+  expect(readFutbinBatch).toHaveBeenCalledExactlyOnceWith([1, 2], expect.arrayContaining([
+    expect.objectContaining({ definitionId: 1, rating: 84 })]), expect.objectContaining({ cacheOnly: true }));
+  expect(readFutbin.mock.calls.map(call => call[0]).sort()).toEqual([2, 3]);
+  expect(result.prices).toEqual({ 1: 1000, 2: 1500, 3: 1500 });
+  expect(result.references[1].quotes.futbin.fetchedAt).toBe(900);
+});
+
+it('allows explicit single-card opt-out and never batches a disabled source', async () => {
   const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1000 })), readFutbinBatch = vi.fn();
   const ids = Array.from({ length: 12 }, (_, i) => i + 1), rows = ids.map(definitionId => ({ definitionId, rating: 84 }));
   const service = createGalleryReferencePrices({ readFutbin, readFutbinBatch,
     readFutgg: async ids => ids.map(definitionId => ({ definitionId, price: 1000 })) });
-  await service.load(ids, { platform: 'pc', sources: ['futbin'], rows });
+  await service.load(ids, { platform: 'pc', sources: ['futbin'], rows, futbinBatch: false });
   expect(readFutbin).toHaveBeenCalledTimes(12);
   await service.load(ids, { platform: 'pc', rows, futbinBatch: true, policy: { readSources: 'futgg' } });
   expect(readFutbinBatch).not.toHaveBeenCalled();

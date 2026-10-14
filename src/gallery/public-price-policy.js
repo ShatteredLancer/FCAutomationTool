@@ -49,7 +49,7 @@ export function createPublicPricePolicyStore({ get, set }) {
     let saved;
     try { saved = await get(publicPricePolicyKey(scope), null); }
     catch { throw Error('FC27_PUBLIC_PRICE_POLICY_READ_FAILED'); }
-    if (saved === null) return currentSettings({});
+    if (saved === null) return currentSettings({ readSources: 'futbin' });
     if (saved?.schema !== 1 || saved.scope !== scope || !saved.policy) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
     return currentSettings(saved.policy);
   };

@@ -5,6 +5,20 @@ const players = Array.from({ length: 12 }, (_, i) => ({ definitionId: i + 1, rat
 const payload = rows => JSON.stringify({ errorcode: '200', data: rows });
 const row = (id, pc = 1000) => ({ resource_id: id, rating: 84, pc_LCPrice: pc, ps_LCPrice: 2500 });
 
+it('reads cache-only hits past uncached pages without network, renewing timestamps or crossing platforms', async () => {
+  const request = vi.fn(), cache = new Map([
+    ['27:pc:84:2', { fetchedAt: 1000, rows: [row(1)] }],
+  ]);
+  const options = { platform: 'pc', request, cache, cacheOnly: true, now: () => 2000, quoteTtlMs: 60000 };
+  expect(await readFutbinBatchPrices([1], players, options)).toMatchObject({ requests: 0,
+    rows: [{ definitionId: 1, price: 1000, fetchedAt: 1000 }] });
+  for (const changes of [{ force: true }, { now: () => 61000 }, { platform: 'console' }]) {
+    expect(await readFutbinBatchPrices([1], players, { ...options, ...changes })).toEqual({ requests: 0, rows: [] });
+  }
+  expect(request).not.toHaveBeenCalled();
+  expect(cache.size).toBe(1);
+});
+
 it('retains exact hits on the last page but starts no later page after a planning deadline', async () => {
   let time = 100;
   const request = vi.fn(async () => { time = 200; return payload([row(1), ...Array.from({ length: 31 }, (_, i) => row(i + 100))]); });
