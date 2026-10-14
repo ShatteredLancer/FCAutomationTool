@@ -5,7 +5,7 @@ const integer = value => Number.isSafeInteger(value) && value >= 0;
 const validId = value => integer(value) && value > 0;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const sources = ['futgg', 'futbin'];
-function copyQuotes(reference, definitionId, season, platform) {
+function copyQuotes(reference, definitionId, season, platform, policy) {
   if (reference?.definitionId !== definitionId || reference.season !== season || reference.platform !== platform) fail();
   return Object.fromEntries(sources.map(source => {
     const row = reference.quotes?.[source];
@@ -13,7 +13,12 @@ function copyQuotes(reference, definitionId, season, platform) {
         || row.price !== null && !validPublicPrice(row.price) || !integer(row.fetchedAt) || !integer(row.expiresAt) || row.expiresAt <= row.fetchedAt
         || row.sourceUpdatedAt !== null && (!integer(row.sourceUpdatedAt) || row.sourceUpdatedAt > row.fetchedAt)
         || row.error !== null && !/^FC27_[A-Z0-9_]+$/.test(row.error)) fail();
+    if (source === 'futbin' && row.futbinPlatform !== undefined
+        && (!['ps', 'pc'].includes(row.futbinPlatform)
+          || policy.source === 'futbin'
+            && row.futbinPlatform !== (policy.futbinPlatform ?? (platform === 'pc' ? 'pc' : 'ps')))) fail();
     return [source, { schema: 2, source, definitionId, season, platform, price: row.price,
+      ...(source === 'futbin' && row.futbinPlatform !== undefined ? { futbinPlatform: row.futbinPlatform } : {}),
       fetchedAt: row.fetchedAt, sourceUpdatedAt: row.sourceUpdatedAt, expiresAt: row.expiresAt, error: row.error }];
   }));
 }
@@ -35,7 +40,7 @@ export function createPurchasePriceApproval({ scope, definitionIds, references, 
   if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)
       || Object.keys(overrides).some(key => !definitionIds.includes(Number(key)) || !validPublicPrice(overrides[key]))) fail();
   const rows = definitionIds.map(definitionId => {
-    const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform);
+    const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform, policy);
     const price = projected(quotes, policy, now), overrideCap = overrides[definitionId];
     return { definitionId, quotes, ...price, ...(overrideCap === undefined ? {} : { overrideCap,
       maxBuy: price.maxBuy === null ? null : overrideCap }) };
@@ -52,7 +57,7 @@ export function validatePurchasePriceApproval(approval, scope, definitionIds) {
   // Read preferences were added after price approvals shipped. None of them
   // changes a frozen price/cap. Validate legacy records in their original
   // shape; do not rewrite receipts or apply today's account policy to them.
-  for (const field of ['futbinEnabled', 'futbinRefresh', 'readSources', 'listingSource', 'quoteValidityMinutes']) {
+  for (const field of ['futbinEnabled', 'futbinRefresh', 'readSources', 'listingSource', 'quoteValidityMinutes', 'futbinPlatform']) {
     if (!Object.hasOwn(approval.policy, field)) delete rebuilt.policy[field];
   }
   if (!same(rebuilt, approval)) fail();
@@ -61,7 +66,7 @@ export function purchaseApprovedPrice(approval, definitionId, { now = approval?.
   const row = approval?.rows?.find(value => value.definitionId === definitionId);
   if (!row) throw Error('FC27_BUY_PRICE_APPROVAL_REQUIRED');
   if (!integer(now)) fail();
-  const quotes = fresh ? copyQuotes(fresh, definitionId, approval.season, approval.platform) : row.quotes;
+  const quotes = fresh ? copyQuotes(fresh, definitionId, approval.season, approval.platform, approval.policy) : row.quotes;
   const current = projected(quotes, approval.policy, now);
   // Missing original authority stays missing. Refresh can lower a cap or
   // restore freshness, but increasing it requires a new explicit approval.

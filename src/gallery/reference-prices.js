@@ -6,7 +6,9 @@ export { normalizeGalleryPricePolicy, galleryReferenceQuote, PUBLIC_PRICE_POLICY
 const positive = value => Number.isSafeInteger(value) && value > 0;
 const timestamp = value => Number.isSafeInteger(value) && value >= 0;
 const reasonOf = error => /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_PUBLIC_PRICE_UNAVAILABLE';
-const keyOf = (source, options, id) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id}`;
+const platformSuffix = (source, options) => source === 'futbin' && options.futbinPlatform ? `:${options.futbinPlatform}` : '';
+const keyOf = (source, options, id) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id}${platformSuffix(source, options)}`;
+const cooldownKeyOf = (source, options) => `${source}:${options.season}:${options.platform}${platformSuffix(source, options)}`;
 
 export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbinBatch = null, get = async (_key, fallback) => fallback,
   set = async () => {}, now = () => Date.now(), ttlMs = 300000, failureTtlMs = 30000, diagnosticLog = null }) {
@@ -14,6 +16,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
   let queue = Promise.resolve();
   const valid = (row, source, options, id) => row?.schema === 2 && row.source === source
     && row.season === options.season && row.platform === options.platform && row.definitionId === id
+    && (source !== 'futbin' || row.futbinPlatform === options.futbinPlatform)
     && (row.price === null || validPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now()
     && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt
     && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt)
@@ -40,7 +43,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
           if (valid(saved, source, options, id) && saved.expiresAt > now() && (!force || saved.error)
               && !['FC27_PUBLIC_PRICE_PLAYER_INVALID', 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', 'FC27_PUBLIC_PRICE_FUTGG_DISABLED'].includes(saved.error)) {
             cache.set(key, saved);
-            if (saved.error) cooldowns.set(`${source}:${options.season}:${options.platform}`, { retryAt: saved.expiresAt, reason: saved.error });
+            if (saved.error) cooldowns.set(cooldownKeyOf(source, options), { retryAt: saved.expiresAt, reason: saved.error });
           } else missing.push(id);
         }
         let completed = ids.length - missing.length;
@@ -63,7 +66,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
         let next = 0, sourceFailure = null;
         const readBatch = async () => {
           current();
-          const job = jobs[next++], batch = job.ids, cooldownKey = `${source}:${options.season}:${options.platform}`;
+          const job = jobs[next++], batch = job.ids, cooldownKey = cooldownKeyOf(source, options);
           let rows = [], error = null, retryAt = null;
           const cooldown = sourceFailure ?? cooldowns.get(cooldownKey);
           try {
@@ -161,8 +164,9 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
       const requested = [...new Set(sources)].filter(source => publicPriceSourceEnabled(policy, source));
       const forced = new Set(forceSources);
       if (force === true) for (const source of requested) forced.add(source);
-      const quotes = {}, options = { season, platform }; let budgetExpired = false;
+      const quotes = {}, baseOptions = { season, platform }; let budgetExpired = false;
       for (const source of requested) {
+        const options = { ...baseOptions, ...(source === 'futbin' && policy.futbinPlatform ? { futbinPlatform: policy.futbinPlatform } : {}) };
         progress({ source, index: 0, total: unique.length });
         const startedAt = now(); let timer;
         const loading = ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs, futbinBatch, deadlineAt);
@@ -188,7 +192,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
       for (const [index, id] of unique.entries()) {
         const pair = Object.fromEntries(['futgg', 'futbin'].map(source => [source,
           requested.includes(source) ? structuredClone(quotes[source][index]) : {
-            schema: 2, source, ...options, definitionId: id, price: null, fetchedAt: now(),
+            schema: 2, source, ...baseOptions, definitionId: id, price: null, fetchedAt: now(),
             sourceUpdatedAt: null, expiresAt: now() + 1, error: 'FC27_PUBLIC_PRICE_SOURCE_NOT_REQUESTED'
           }]));
         const ref = galleryReferenceQuote(Object.fromEntries(Object.entries(pair).map(([source, row]) =>

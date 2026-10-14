@@ -16,6 +16,27 @@ it('freezes exact versions, both quote provenances and original per-card caps', 
   expect(() => validatePurchasePriceApproval(approval, 'another-account', [10,11])).toThrow('FC27_BUY_PRICE_APPROVAL_INVALID');
   expect(() => purchaseApprovedPrice(approval, 99)).toThrow('FC27_BUY_PRICE_APPROVAL_REQUIRED');
 });
+it('freezes FUTBIN reference platform independently of the EA trading platform', () => {
+  const input = approvalFixture();
+  input.policy = { ...input.policy, source: 'futbin', futbinPlatform: 'ps' };
+  for (const reference of Object.values(input.references)) reference.quotes.futbin.futbinPlatform = 'ps';
+  const approval = createPurchasePriceApproval(input);
+  expect(approval.platform).toBe('pc');
+  expect(approval.rows[0].quotes.futbin.futbinPlatform).toBe('ps');
+  expect(() => validatePurchasePriceApproval(approval, 'account', [10, 11])).not.toThrow();
+  const fresh = structuredClone(input.references[10]); fresh.quotes.futbin.futbinPlatform = 'pc';
+  expect(() => purchaseApprovedPrice(approval, 10, { fresh })).toThrow('FC27_BUY_PRICE_APPROVAL_INVALID');
+});
+it('keeps legacy FUTBIN approvals on their original EA reference platform when refreshing', () => {
+  const input = approvalFixture(); input.policy.source = 'futbin';
+  const approval = createPurchasePriceApproval(input), before = structuredClone(approval);
+  const fresh = structuredClone(input.references[10]);
+  fresh.quotes.futbin.futbinPlatform = 'pc';
+  expect(purchaseApprovedPrice(approval, 10, { fresh }).maxBuy).toBe(250);
+  fresh.quotes.futbin.futbinPlatform = 'ps';
+  expect(() => purchaseApprovedPrice(approval, 10, { fresh })).toThrow('FC27_BUY_PRICE_APPROVAL_INVALID');
+  expect(approval).toEqual(before);
+});
 it('records missing or expired selected sources without substituting another source or EA', () => {
   const input = approvalFixture(); input.references[10].quotes.futgg.price = null;
   input.references[11].quotes.futgg.expiresAt = 999;

@@ -1,6 +1,30 @@
 import { it, expect, vi } from 'vitest';
 import { normalizeGalleryPricePolicy, galleryReferenceQuote, createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
+it('isolates FUTBIN provider failures by reference platform', async () => {
+  const readFutbin = vi.fn(async (definitionId, _row, options) => {
+    if (options.futbinPlatform === 'ps') throw Error('FC27_PUBLIC_PRICE_HTTP_429');
+    return { definitionId, price: 1000 };
+  });
+  const service = createGalleryReferencePrices({ readFutbin });
+  const options = { platform: 'pc', sources: ['futbin'] };
+  const ps = await service.load([1], { ...options, policy: { source: 'futbin', futbinPlatform: 'ps' } });
+  expect(ps.prices).toEqual({});
+  const pc = await service.load([1], { ...options, policy: { source: 'futbin', futbinPlatform: 'pc' } });
+  expect(pc.prices).toEqual({ 1: 1000 });
+  expect(readFutbin).toHaveBeenCalledTimes(2);
+});
+
+it('rejects a persisted FUTBIN quote carrying another reference platform', async () => {
+  const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 650 }));
+  const service = createGalleryReferencePrices({ readFutbin, now: () => 1000,
+    get: async () => ({ schema: 2, source: 'futbin', season: '27', platform: 'pc', futbinPlatform: 'pc',
+      definitionId: 1, price: 9999, fetchedAt: 900, expiresAt: 300900, sourceUpdatedAt: null, error: null }) });
+  const result = await service.load([1], { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin', futbinPlatform: 'ps' } });
+  expect(result.prices).toEqual({ 1: 650 });
+  expect(readFutbin).toHaveBeenCalledTimes(1);
+});
+
 it('returns a bounded immutable planning snapshot while retaining ownership of outstanding workers', async () => {
   vi.useFakeTimers();
   try {

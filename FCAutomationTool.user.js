@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.28
+// @version      27.0.29
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.28", at: Date.now(), status: 'started',
+    state = { version: "27.0.29", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5548,9 +5548,10 @@
       futbinRefresh: value.futbinRefresh ?? "cache",
       readSources,
       quoteValidityMinutes: value.quoteValidityMinutes ?? 5,
-      listingSource: value.listingSource ?? (readSources === "futbin" ? "futbin" : "futgg")
+      listingSource: value.listingSource ?? (readSources === "futbin" ? "futbin" : "futgg"),
+      ...value.futbinPlatform === void 0 ? {} : { futbinPlatform: value.futbinPlatform }
     };
-    if (!["futgg", "futbin"].includes(policy.source) || !["fixed", "percent"].includes(policy.premiumMode) || !Number.isSafeInteger(policy.premium) || policy.premium < 0 || !Number.isSafeInteger(policy.purchaseAttempts) || policy.purchaseAttempts < 1 || !Number.isSafeInteger(policy.quoteValidityMinutes) || policy.quoteValidityMinutes < 1 || policy.quoteValidityMinutes > 30 || typeof policy.futbinEnabled !== "boolean" || !policy.futbinEnabled && policy.source === "futbin" || !["futgg", "futbin", "both"].includes(readSources) || policy.futbinEnabled !== (readSources !== "futgg") || !["futgg", "futbin"].includes(policy.listingSource) || readSources !== "both" && (policy.source !== readSources || policy.listingSource !== readSources) || !["cache", "force"].includes(policy.futbinRefresh)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+    if (!["futgg", "futbin"].includes(policy.source) || !["fixed", "percent"].includes(policy.premiumMode) || !Number.isSafeInteger(policy.premium) || policy.premium < 0 || !Number.isSafeInteger(policy.purchaseAttempts) || policy.purchaseAttempts < 1 || !Number.isSafeInteger(policy.quoteValidityMinutes) || policy.quoteValidityMinutes < 1 || policy.quoteValidityMinutes > 30 || typeof policy.futbinEnabled !== "boolean" || !policy.futbinEnabled && policy.source === "futbin" || !["futgg", "futbin", "both"].includes(readSources) || policy.futbinEnabled !== (readSources !== "futgg") || !["futgg", "futbin"].includes(policy.listingSource) || readSources !== "both" && (policy.source !== readSources || policy.listingSource !== readSources) || policy.futbinPlatform !== void 0 && !["ps", "pc"].includes(policy.futbinPlatform) || !["cache", "force"].includes(policy.futbinRefresh)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
     return Object.freeze(policy);
   }
   var publicPriceSourceEnabled = (policy, source) => (policy.readSources == null || policy.readSources === "both" || policy.readSources === source) && (source !== "futbin" || policy.futbinEnabled !== false);
@@ -5569,7 +5570,7 @@
   function createPublicPricePolicyStore({ get, set }) {
     const currentSettings = (value) => {
       const policy = normalizeGalleryPricePolicy(value);
-      return normalizeGalleryPricePolicy({ ...policy, listingSource: policy.source, futbinRefresh: "cache" });
+      return normalizeGalleryPricePolicy({ ...policy, listingSource: policy.source, futbinRefresh: "cache", futbinPlatform: policy.futbinPlatform ?? "ps" });
     };
     const read = async (scope2) => {
       let saved;
@@ -5578,7 +5579,7 @@
       } catch {
         throw Error("FC27_PUBLIC_PRICE_POLICY_READ_FAILED");
       }
-      if (saved === null) return normalizeGalleryPricePolicy();
+      if (saved === null) return currentSettings({});
       if (saved?.schema !== 1 || saved.scope !== scope2 || !saved.policy) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
       return currentSettings(saved.policy);
     };
@@ -5618,11 +5619,12 @@
   var validId3 = (value) => integer7(value) && value > 0;
   var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sources = ["futgg", "futbin"];
-  function copyQuotes(reference, definitionId, season, platform) {
+  function copyQuotes(reference, definitionId, season, platform, policy) {
     if (reference?.definitionId !== definitionId || reference.season !== season || reference.platform !== platform) fail12();
     return Object.fromEntries(sources.map((source) => {
       const row = reference.quotes?.[source];
       if (row?.schema !== 2 || row.source !== source || row.definitionId !== definitionId || row.season !== season || row.platform !== platform || row.price !== null && !validPublicPrice(row.price) || !integer7(row.fetchedAt) || !integer7(row.expiresAt) || row.expiresAt <= row.fetchedAt || row.sourceUpdatedAt !== null && (!integer7(row.sourceUpdatedAt) || row.sourceUpdatedAt > row.fetchedAt) || row.error !== null && !/^FC27_[A-Z0-9_]+$/.test(row.error)) fail12();
+      if (source === "futbin" && row.futbinPlatform !== void 0 && (!["ps", "pc"].includes(row.futbinPlatform) || policy.source === "futbin" && row.futbinPlatform !== (policy.futbinPlatform ?? (platform === "pc" ? "pc" : "ps")))) fail12();
       return [source, {
         schema: 2,
         source,
@@ -5630,6 +5632,7 @@
         season,
         platform,
         price: row.price,
+        ...source === "futbin" && row.futbinPlatform !== void 0 ? { futbinPlatform: row.futbinPlatform } : {},
         fetchedAt: row.fetchedAt,
         sourceUpdatedAt: row.sourceUpdatedAt,
         expiresAt: row.expiresAt,
@@ -5654,7 +5657,7 @@
     if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3 || season !== "27" || !["pc", "console"].includes(platform) || !integer7(now) || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 256 || definitionIds.some((value) => !validId3(value)) || new Set(definitionIds).size !== definitionIds.length) fail12();
     if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || Object.keys(overrides).some((key) => !definitionIds.includes(Number(key)) || !validPublicPrice(overrides[key]))) fail12();
     const rows = definitionIds.map((definitionId) => {
-      const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform);
+      const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform, policy);
       const price2 = projected(quotes, policy, now), overrideCap = overrides[definitionId];
       return { definitionId, quotes, ...price2, ...overrideCap === void 0 ? {} : {
         overrideCap,
@@ -5675,7 +5678,7 @@
       now: approval.approvedAt,
       overrides: Object.fromEntries(approval.rows.filter((row) => row.overrideCap !== void 0).map((row) => [row.definitionId, row.overrideCap]))
     });
-    for (const field of ["futbinEnabled", "futbinRefresh", "readSources", "listingSource", "quoteValidityMinutes"]) {
+    for (const field of ["futbinEnabled", "futbinRefresh", "readSources", "listingSource", "quoteValidityMinutes", "futbinPlatform"]) {
       if (!Object.hasOwn(approval.policy, field)) delete rebuilt.policy[field];
     }
     if (!same7(rebuilt, approval)) fail12();
@@ -5684,7 +5687,7 @@
     const row = approval?.rows?.find((value) => value.definitionId === definitionId);
     if (!row) throw Error("FC27_BUY_PRICE_APPROVAL_REQUIRED");
     if (!integer7(now)) fail12();
-    const quotes = fresh ? copyQuotes(fresh, definitionId, approval.season, approval.platform) : row.quotes;
+    const quotes = fresh ? copyQuotes(fresh, definitionId, approval.season, approval.platform, approval.policy) : row.quotes;
     const current2 = projected(quotes, approval.policy, now);
     const maxBuy = row.overrideCap === void 0 ? row.maxBuy === null || current2.maxBuy === null ? null : Math.min(row.maxBuy, current2.maxBuy) : row.overrideCap === null || current2.estimate === null ? null : row.overrideCap;
     return {
@@ -19277,6 +19280,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return control;
     };
     const readSources = select("\u8BFB\u53D6\u516C\u5171\u62A5\u4EF7\u6765\u6E90", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"], ["both", "Both \xB7 \u53CC\u6E90"]]);
+    const futbinPlatform = select("FUTBIN Reference Platform", [["ps", "PS"], ["pc", "PC"]]);
     const source = select("\u8D2D\u4E70 / \u6302\u724C\u4EF7\u683C\u53C2\u8003", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"]]);
     const mode = select("\u5141\u8BB8\u8D85\u8FC7\u53C2\u8003\u4EF7", [["fixed", "\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u767E\u5206\u6BD4"]]);
     const number3 = (label, min) => {
@@ -19303,7 +19307,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     status.setAttribute("aria-live", "polite");
     let scope2 = null, busy = false, epoch2 = 0;
     const enabled = (value) => {
-      for (const control of [source, mode, premium, attempts, validity, readSources, save]) control.disabled = !value;
+      for (const control of [source, mode, premium, attempts, validity, readSources, futbinPlatform, save]) control.disabled = !value;
     };
     const syncFutbin = () => {
       for (const control of [source]) {
@@ -19336,6 +19340,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         premium.value = String(value.premium);
         attempts.value = String(value.purchaseAttempts);
         validity.value = String(value.quoteValidityMinutes ?? 5);
+        futbinPlatform.value = value.futbinPlatform ?? "ps";
         readSources.value = value.readSources ?? (value.futbinEnabled === false ? "futgg" : "both");
         syncFutbin();
         summary3();
@@ -19362,6 +19367,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           readSources: readSources.value,
           listingSource: source.value,
           quoteValidityMinutes: validity.valueAsNumber,
+          futbinPlatform: futbinPlatform.value,
           futbinEnabled: readSources.value !== "futgg",
           futbinRefresh: "cache"
         });
@@ -26721,7 +26727,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var positive10 = (value) => Number.isSafeInteger(value) && value > 0;
   var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
   var reasonOf2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE";
-  var keyOf4 = (source, options, id12) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id12}`;
+  var platformSuffix = (source, options) => source === "futbin" && options.futbinPlatform ? `:${options.futbinPlatform}` : "";
+  var keyOf4 = (source, options, id12) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id12}${platformSuffix(source, options)}`;
+  var cooldownKeyOf = (source, options) => `${source}:${options.season}:${options.platform}${platformSuffix(source, options)}`;
   function createGalleryReferencePrices({
     readFutgg,
     readFutbin,
@@ -26736,7 +26744,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }) {
     const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map(), cooldowns = /* @__PURE__ */ new Map();
     let queue = Promise.resolve();
-    const valid3 = (row, source, options, id12) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id12 && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
+    const valid3 = (row, source, options, id12) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id12 && (source !== "futbin" || row.futbinPlatform === options.futbinPlatform) && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
     const record = (fields4) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "public-quote", ...fields4 })).catch(() => {
@@ -26767,7 +26775,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (valid3(saved, source, options, id12)) saved = lifetime2(saved, duration);
             if (valid3(saved, source, options, id12) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
               cache.set(key, saved);
-              if (saved.error) cooldowns.set(`${source}:${options.season}:${options.platform}`, { retryAt: saved.expiresAt, reason: saved.error });
+              if (saved.error) cooldowns.set(cooldownKeyOf(source, options), { retryAt: saved.expiresAt, reason: saved.error });
             } else missing.push(id12);
           }
           let completed = ids2.length - missing.length;
@@ -26793,7 +26801,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           let next = 0, sourceFailure = null;
           const readBatch = async () => {
             current2();
-            const job = jobs[next++], batch = job.ids, cooldownKey = `${source}:${options.season}:${options.platform}`;
+            const job = jobs[next++], batch = job.ids, cooldownKey = cooldownKeyOf(source, options);
             let rows = [], error2 = null, retryAt = null;
             const cooldown = sourceFailure ?? cooldowns.get(cooldownKey);
             try {
@@ -26935,9 +26943,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const requested = [...new Set(sources3)].filter((source) => publicPriceSourceEnabled(policy, source));
         const forced = new Set(forceSources);
         if (force === true) for (const source of requested) forced.add(source);
-        const quotes = {}, options = { season, platform };
+        const quotes = {}, baseOptions = { season, platform };
         let budgetExpired = false;
         for (const source of requested) {
+          const options = { ...baseOptions, ...source === "futbin" && policy.futbinPlatform ? { futbinPlatform: policy.futbinPlatform } : {} };
           progress({ source, index: 0, total: unique2.length });
           const startedAt = now();
           let timer;
@@ -26972,7 +26981,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             requested.includes(source) ? structuredClone(quotes[source][index]) : {
               schema: 2,
               source,
-              ...options,
+              ...baseOptions,
               definitionId: id12,
               price: null,
               fetchedAt: now(),
@@ -27163,14 +27172,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       diagnosticLog: diagnosticLog2,
       readFutbinBatch: async (ids2, players, options) => {
         const captured = capture();
-        const result = await readFutbinBatchPrices(ids2, players, { ...options, request, now, cache: futbinPages, check: async () => {
-          options.check();
-          captured.assert();
-          const policy = await policyStore.read(captured.scope);
-          captured.assert();
-          options.check();
-          if (!publicPriceSourceEnabled(policy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
-        } });
+        const result = await readFutbinBatchPrices(ids2, players, {
+          ...options,
+          platform: options.futbinPlatform ? options.futbinPlatform === "pc" ? "pc" : "console" : options.platform,
+          request,
+          now,
+          cache: futbinPages,
+          check: async () => {
+            options.check();
+            captured.assert();
+            const policy = await policyStore.read(captured.scope);
+            captured.assert();
+            options.check();
+            if (!publicPriceSourceEnabled(policy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+          }
+        });
         record({
           event: "futbin-batch-result",
           status: "success",
@@ -27190,8 +27206,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return parsePublicFutggPrices(reply.text, ids2, platform);
       },
-      readFutbin: async (definitionId, row, { season, platform, deadlineAt = null, check = () => {
+      readFutbin: async (definitionId, row, { season, platform, futbinPlatform, deadlineAt = null, check = () => {
       } }) => {
+        const referencePlatform = futbinPlatform ? futbinPlatform === "pc" ? "pc" : "console" : platform;
         const captured = capture();
         const position = row?.preferredPosition ?? row?.positions?.[0];
         const player = {
@@ -27205,7 +27222,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         let result;
         const reader = createFsuReferencePrice({
           season,
-          platform: platform === "pc" ? "pc" : "ps",
+          platform: referencePlatform === "pc" ? "pc" : "ps",
           get,
           set,
           updateIds,
@@ -27218,7 +27235,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const minimal = new URL(url).pathname.endsWith("fetchPlayerInformationMinimal");
             if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(player.preferredPosition) || !positions2[player.preferredPosition])) throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
             const response = await request(url);
-            result = parsePublicFutbinPrice(response, definitionId, platform, minimal);
+            result = parsePublicFutbinPrice(response, definitionId, referencePlatform, minimal);
             return response;
           }
         });
@@ -33300,7 +33317,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.28" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.29" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33618,8 +33635,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.28"}`,
-    version: "27.0.28",
+    title: `FC Automation Tool ${"27.0.29"}`,
+    version: "27.0.29",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

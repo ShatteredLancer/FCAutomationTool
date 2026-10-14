@@ -2,6 +2,16 @@ import { expect, it } from 'vitest';
 import { createPublicPricePolicyStore, publicPricePolicyKey, purchasePriceCap, normalizeGalleryPricePolicy } from '../../src/gallery/public-price-policy.js';
 
 const tiers = [{ min: 100000, inc: 1000 }, { min: 50000, inc: 500 }, { min: 10000, inc: 250 }, { min: 1000, inc: 100 }, { min: 0, inc: 50 }];
+it('defaults account FUTBIN references to PS, persists PC per account and preserves legacy frozen policies', async () => {
+  const data = new Map(), store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
+    set: async (key, value) => data.set(key, structuredClone(value)) });
+  expect((await store.read('a')).futbinPlatform).toBe('ps');
+  await store.save('a', { futbinPlatform: 'pc' });
+  expect((await store.read('a')).futbinPlatform).toBe('pc');
+  expect((await store.read('b')).futbinPlatform).toBe('ps');
+  expect(normalizeGalleryPricePolicy({})).not.toHaveProperty('futbinPlatform');
+  expect(() => normalizeGalleryPricePolicy({ futbinPlatform: 'xbox' })).toThrow('FC27_PUBLIC_PRICE_POLICY_INVALID');
+});
 it('persists account quote lifetime and defaults older accounts to five minutes', async () => {
   const data = new Map(), store = createPublicPricePolicyStore({ get: async (key, fallback) => data.get(key) ?? fallback,
     set: async (key, value) => data.set(key, value) });

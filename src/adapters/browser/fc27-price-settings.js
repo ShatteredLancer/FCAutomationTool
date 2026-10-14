@@ -12,6 +12,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
     return control;
   };
   const readSources = select('读取公共报价来源', [['futgg', 'FUT.GG'], ['futbin', 'FUTBIN'], ['both', 'Both · 双源']]);
+  const futbinPlatform = select('FUTBIN Reference Platform', [['ps', 'PS'], ['pc', 'PC']]);
   const source = select('购买 / 挂牌价格参考', [['futgg', 'FUT.GG'], ['futbin', 'FUTBIN']]);
   const mode = select('允许超过参考价', [['fixed', '固定金币'], ['percent', '百分比']]);
   const number = (label, min) => {
@@ -28,7 +29,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
   const status = add(card, 'output'); status.setAttribute('aria-live', 'polite');
   let scope = null, busy = false, epoch = 0;
   const enabled = value => {
-    for (const control of [source, mode, premium, attempts, validity, readSources, save]) control.disabled = !value;
+    for (const control of [source, mode, premium, attempts, validity, readSources, futbinPlatform, save]) control.disabled = !value;
   };
   const syncFutbin = () => {
     for (const control of [source]) {
@@ -57,6 +58,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
       scope = expected; source.value = value.source; mode.value = value.premiumMode;
       premium.value = String(value.premium); attempts.value = String(value.purchaseAttempts);
       validity.value = String(value.quoteValidityMinutes ?? 5);
+      futbinPlatform.value = value.futbinPlatform ?? 'ps';
       readSources.value = value.readSources ?? (value.futbinEnabled === false ? 'futgg' : 'both');
       syncFutbin();
       summary(); status.textContent = ''; enabled(true);
@@ -70,6 +72,7 @@ export function mountFc27PriceSettings({ document, parent, service }) {
       await service.saveSettings({ source: source.value, premiumMode: mode.value, premium: premium.valueAsNumber,
         purchaseAttempts: attempts.valueAsNumber, readSources: readSources.value, listingSource: source.value,
         quoteValidityMinutes: validity.valueAsNumber,
+        futbinPlatform: futbinPlatform.value,
         futbinEnabled: readSources.value !== 'futgg', futbinRefresh: 'cache' });
       if (scope !== service.scope()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
       status.textContent = '当前账号价格设置已保存；新批次生效，进行中的购买上限不变。';

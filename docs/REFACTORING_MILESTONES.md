@@ -1,5 +1,19 @@
 # FC Automation Tool 架构重构与里程碑
 
+## 2026-10-14 27.0.29 FUTBIN 参考平台与评分廉价卡调查
+
+用户要求 FUTBIN 默认 PS、Settings 可选 PC；公共报价单卡/批量读取及缓存、
+pending、失败冷却按参考平台隔离，不改变 EA 交易平台或 FUT.GG 平台。
+旧审批缺字段不改写并按旧平台刷新，新审批保留参考平台并拒绝跨平台刷新。定向 75 项与完整
+verify 416 文件 / 4,798 项通过；FC27 首轮 87 文件 / 1,518 项及最终离线 Chrome
+self-test 通过。专用 Tampermonkey 精确安装最终构建，登录后
+Settings/新方案平台验收待用户进行，未操作真实交易。
+
+FUT.GG cheapest-by-rating/v2/overview 经代理匿名 PS/PC 均返回 HTTP 200，
+13 个评分段、135/134 个候选；本轮仅调查，未作为生产 Provider 接线。
+FUTBIN cheapest 网页同一路径仍为 403。接口能力、来源/审批边界、验证与恢复点见
+[调查记录](FC27_CHEAPEST_BY_RATING_ZH.md) 和 [27.0.29](releases/27.0.29.md)。
+
 ## 2026-10-14 27.0.22 Streamlined Squad ID 0
 
 基于 main `536dce3 / 27.0.21`。现场新诊断定位 active ID 数值被拒绝，原 guard

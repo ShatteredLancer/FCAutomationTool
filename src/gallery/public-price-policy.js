@@ -8,7 +8,8 @@ export function normalizeGalleryPricePolicy(value = {}) {
   const policy = { source: value.source ?? (readSources === 'futbin' ? 'futbin' : 'futgg'), premiumMode: value.premiumMode ?? 'fixed', premium: value.premium ?? 0,
     purchaseAttempts: value.purchaseAttempts ?? 3, futbinEnabled: value.futbinEnabled ?? readSources !== 'futgg',
     futbinRefresh: value.futbinRefresh ?? 'cache', readSources, quoteValidityMinutes: value.quoteValidityMinutes ?? 5,
-    listingSource: value.listingSource ?? (readSources === 'futbin' ? 'futbin' : 'futgg') };
+    listingSource: value.listingSource ?? (readSources === 'futbin' ? 'futbin' : 'futgg'),
+    ...(value.futbinPlatform === undefined ? {} : { futbinPlatform: value.futbinPlatform }) };
   if (!['futgg', 'futbin'].includes(policy.source) || !['fixed', 'percent'].includes(policy.premiumMode)
       || !Number.isSafeInteger(policy.premium) || policy.premium < 0
       || !Number.isSafeInteger(policy.purchaseAttempts) || policy.purchaseAttempts < 1
@@ -17,6 +18,7 @@ export function normalizeGalleryPricePolicy(value = {}) {
       || !['futgg', 'futbin', 'both'].includes(readSources) || policy.futbinEnabled !== (readSources !== 'futgg')
       || !['futgg', 'futbin'].includes(policy.listingSource)
       || readSources !== 'both' && (policy.source !== readSources || policy.listingSource !== readSources)
+      || policy.futbinPlatform !== undefined && !['ps', 'pc'].includes(policy.futbinPlatform)
       || !['cache', 'force'].includes(policy.futbinRefresh)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
   return Object.freeze(policy);
 }
@@ -41,13 +43,13 @@ export function createPublicPricePolicyStore({ get, set }) {
   // retain its original fields and caps for journal validation.
   const currentSettings = value => {
     const policy = normalizeGalleryPricePolicy(value);
-    return normalizeGalleryPricePolicy({ ...policy, listingSource: policy.source, futbinRefresh: 'cache' });
+    return normalizeGalleryPricePolicy({ ...policy, listingSource: policy.source, futbinRefresh: 'cache', futbinPlatform: policy.futbinPlatform ?? 'ps' });
   };
   const read = async scope => {
     let saved;
     try { saved = await get(publicPricePolicyKey(scope), null); }
     catch { throw Error('FC27_PUBLIC_PRICE_POLICY_READ_FAILED'); }
-    if (saved === null) return normalizeGalleryPricePolicy();
+    if (saved === null) return currentSettings({});
     if (saved?.schema !== 1 || saved.scope !== scope || !saved.policy) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
     return currentSettings(saved.policy);
   };

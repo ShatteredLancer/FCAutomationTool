@@ -25,6 +25,9 @@ export async function exercisePublicPriceSettings(context) {
     assert.equal(await page.getByLabel('FUTBIN 价格更新', { exact: true }).count(), 0);
     assert.equal(await page.getByLabel('购买 / 挂牌价格参考', { exact: true }).inputValue(), 'futgg');
     assert.equal(await page.getByLabel('每卡购买尝试次数', { exact: true }).inputValue(), '3');
+    const futbinPlatform = page.getByLabel('FUTBIN Reference Platform', { exact: true });
+    assert.equal(await futbinPlatform.inputValue(), 'ps');
+    await futbinPlatform.selectOption('pc');
     const validity = page.getByLabel('报价有效期（分钟）', { exact: true });
     assert.equal(await validity.inputValue(), '5');
     await page.getByLabel('读取公共报价来源', { exact: true }).selectOption('futbin');
@@ -38,10 +41,12 @@ export async function exercisePublicPriceSettings(context) {
     await page.getByRole('button', { name: '保存价格设置' }).click();
     assert.match(await page.locator('output').last().textContent(), /已保存/);
     await page.evaluate(() => { globalThis.priceScope = 'account-b'; return globalThis.priceView.refresh(); });
+    assert.equal(await futbinPlatform.inputValue(), 'ps');
     assert.equal(await page.getByLabel('购买 / 挂牌价格参考', { exact: true }).inputValue(), 'futgg');
     assert.equal(await page.getByLabel('溢价数值', { exact: true }).inputValue(), '0');
     assert.equal(await validity.inputValue(), '5');
     await page.evaluate(() => { globalThis.priceScope = 'account-a'; return globalThis.priceView.refresh(); });
+    assert.equal(await futbinPlatform.inputValue(), 'pc');
     assert.equal(await page.getByLabel('溢价数值', { exact: true }).inputValue(), '10');
     assert.equal(await validity.inputValue(), '30');
     for (const invalid of ['0', '31', '1.5', '']) {

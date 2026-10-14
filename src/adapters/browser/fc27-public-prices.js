@@ -47,7 +47,9 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
   const service = createGalleryReferencePrices({ get, set, now, diagnosticLog,
     readFutbinBatch: async (ids, players, options) => {
       const captured = capture();
-      const result = await readFutbinBatchPrices(ids, players, { ...options, request, now, cache: futbinPages, check: async () => {
+      const result = await readFutbinBatchPrices(ids, players, { ...options,
+        platform: options.futbinPlatform ? (options.futbinPlatform === 'pc' ? 'pc' : 'console') : options.platform,
+        request, now, cache: futbinPages, check: async () => {
         options.check(); captured.assert();
         const policy = await policyStore.read(captured.scope); captured.assert(); options.check();
         if (!publicPriceSourceEnabled(policy, 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
@@ -66,7 +68,8 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       }
       return parsePublicFutggPrices(reply.text, ids, platform);
     },
-    readFutbin: async (definitionId, row, { season, platform, deadlineAt = null, check = () => {} }) => {
+    readFutbin: async (definitionId, row, { season, platform, futbinPlatform, deadlineAt = null, check = () => {} }) => {
+      const referencePlatform = futbinPlatform ? (futbinPlatform === 'pc' ? 'pc' : 'console') : platform;
       const captured = capture();
       const position = row?.preferredPosition ?? row?.positions?.[0];
       const player = { definitionId, rating: row?.rating ?? row?.overall ?? row?._rating,
@@ -75,7 +78,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       let result;
       // Retain FSU's exact ID/filter route and ID mapping. Create a fresh
       // reader for this response so an omitted version cannot refresh old data.
-      const reader = createFsuReferencePrice({ season, platform: platform === 'pc' ? 'pc' : 'ps', get, set, updateIds,
+      const reader = createFsuReferencePrice({ season, platform: referencePlatform === 'pc' ? 'pc' : 'ps', get, set, updateIds,
         request: async url => {
           const currentPolicy = await policyStore.read(captured.scope); captured.assert();
           check();
@@ -85,7 +88,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
           if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every(value => Number.isSafeInteger(value) && value > 0)
               || !Number.isSafeInteger(player.preferredPosition) || !positions[player.preferredPosition])) throw Error('FC27_PUBLIC_PRICE_PLAYER_INVALID');
           const response = await request(url);
-          result = parsePublicFutbinPrice(response, definitionId, platform, minimal);
+          result = parsePublicFutbinPrice(response, definitionId, referencePlatform, minimal);
           return response;
         } });
       try {
