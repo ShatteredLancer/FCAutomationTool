@@ -4,6 +4,7 @@ import { scoreStreamlinedItems } from './scoring.js';
 function validPlanContents(plan) {
   const { challenge, items, batches } = plan;
   if (plan.execution && (!integer(plan.execution.purchaseAttempts, 1)
+      || plan.execution.quoteLimited !== undefined && typeof plan.execution.quoteLimited !== 'boolean'
       || !integer(plan.execution.partialWaitMs, 0, 3600000))) return false;
   if (!challenge || challenge.mechanism !== 'streamlined' || !integer(challenge.targetScore, 1)
       || !integer(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore)

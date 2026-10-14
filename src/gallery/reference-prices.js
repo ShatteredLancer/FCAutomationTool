@@ -22,7 +22,8 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
   // Reproject successful cache entries per caller without extending a frozen
   // snapshot or changing the original fetch time. Error cooldowns are separate.
   const lifetime = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
-  const ensure = (source, ids, options, byId, current, force, progress, duration, futbinBatch) => {
+  const ensure = (source, ids, options, byId, current, force, progress, duration, futbinBatch, deadlineAt) => {
+    const withinBudget = () => deadlineAt === null || now() < deadlineAt;
     // Reserve exact per-version promises synchronously, before storage awaits,
     // so overlapping Gallery/Puzzle reads share the same in-flight request.
     const freshIds = ids.filter(id => !pending.has(keyOf(source, options, id)));
@@ -71,11 +72,13 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
             }
             requests++;
             if (job.bulk) {
-              const result = await readFutbinBatch(batch, batch.map(id => byId.get(id)), { ...options, check: current, force, quoteTtlMs: duration });
+              const result = await readFutbinBatch(batch, batch.map(id => byId.get(id)), { ...options, check: current, force, quoteTtlMs: duration,
+                ...(deadlineAt !== null ? { deadlineAt } : {}) });
               if (!Number.isSafeInteger(result?.requests) || result.requests < 0 || result.requests > 8) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
               requests += result.requests - 1; rows = result.rows;
             } else rows = source === 'futgg' ? await readFutgg(batch, options)
-              : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
+              : [await readFutbin(batch[0], byId.get(batch[0]), { ...options,
+                ...(deadlineAt !== null ? { deadlineAt, check: current } : {}) })].filter(Boolean);
             if (!Array.isArray(rows) || rows.some(row => !batch.includes(row?.definitionId)
                 || row.price !== null && !validPrice(row.price)
                 || job.bulk && (!timestamp(row.fetchedAt) || row.fetchedAt > now())
@@ -83,6 +86,10 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
                 || new Set(rows.map(row => row.definitionId)).size !== rows.length) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
           } catch (failure) {
             error = reasonOf(failure); rows = [];
+            // A local planning deadline is not a provider outage and must not
+            // poison another caller's cache/circuit with a synthetic failure.
+            if (deadlineAt !== null && error === 'FC27_STREAMLINED_QUOTE_BUDGET') return;
+            if (deadlineAt !== null && /(?:CONTEXT_CHANGED|CANCELLED)$/.test(error)) throw failure;
             retryAt ??= Math.max(now() + failureTtlMs, timestamp(failure?.retryAt) ? failure.retryAt : 0);
             // Bad/missing player metadata is local to that version, not an
             // outage. Network/payload failures stop request storms per source.
@@ -109,7 +116,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
         // cancellation. A later caller must not overlap abandoned requests.
         const workers = source === 'futbin' ? 3 : 1;
         const drain = () => Promise.allSettled(Array.from({ length: Math.min(workers, jobs.length) }, async () => {
-          while (next < jobs.length) await readBatch();
+          while (next < jobs.length && withinBudget()) await readBatch();
         }));
         const settled = await drain();
         if (!settled.some(result => result.status === 'rejected') && fallbackJobs.length) {
@@ -117,7 +124,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
           settled.push(...await drain());
         }
         const failed = settled.find(result => result.status === 'rejected');
-        record({ source, event: 'quote-batch', phase: 'complete', status: failed ? 'failed' : sourceFailure ? 'failed' : 'success',
+        record({ source, event: 'quote-batch', phase: 'complete', status: failed ? 'failed' : sourceFailure ? 'failed' : completed < ids.length ? 'partial' : 'success',
           requestedCount: freshIds.length, cached: missing.length === 0, count: missing.length,
           requests, batchSize: workers, durationMs: Math.max(0, now() - startedAt) });
         if (failed) throw failed.reason;
@@ -134,12 +141,13 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
   return Object.freeze({
     async load(ids, { season = '27', platform, rows = [], policy = {}, force = false,
       sources = ['futgg', 'futbin'], forceSources = [], purpose = 'gallery',
-      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = false } = {}) {
+      isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = false, deadlineAt = null } = {}) {
       policy = normalizeGalleryPricePolicy(policy);
       if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 1800000
           || season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
           || ids.length > 250 || ids.some(id => !positive(id))
           || !Array.isArray(sources) || !sources.length || sources.some(source => !['futgg', 'futbin'].includes(source))
+          || deadlineAt !== null && !timestamp(deadlineAt)
           || typeof futbinBatch !== 'boolean' || new Set(sources).size !== sources.length || !Array.isArray(forceSources)
           || forceSources.some(source => !['futgg', 'futbin'].includes(source))) throw Error('FC27_PUBLIC_PRICE_INPUT_INVALID');
       const current = () => { if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED'); };
@@ -153,12 +161,28 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
       const requested = [...new Set(sources)].filter(source => publicPriceSourceEnabled(policy, source));
       const forced = new Set(forceSources);
       if (force === true) for (const source of requested) forced.add(source);
-      const quotes = {}, options = { season, platform };
+      const quotes = {}, options = { season, platform }; let budgetExpired = false;
       for (const source of requested) {
         progress({ source, index: 0, total: unique.length });
-        quotes[source] = (await ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs, futbinBatch))
-          .map(row => lifetime(row, quoteTtlMs)); current();
-        progress({ source, index: unique.length, total: unique.length });
+        const startedAt = now(); let timer;
+        const loading = ensure(source, unique, options, byId, current, forced.has(source), progress, quoteTtlMs, futbinBatch, deadlineAt);
+        let values;
+        try {
+          values = deadlineAt === null ? await loading : await Promise.race([loading,
+            new Promise(resolve => { timer = setTimeout(() => resolve(null), Math.max(0, deadlineAt - now())); })]);
+        } finally { clearTimeout(timer); }
+        current();
+        if (values === null) {
+          // A snapshot does not release the queue or pending reservations.
+          // In-flight readers settle normally; no new jobs start past the deadline.
+          values = unique.map(id => {
+            const row = cache.get(keyOf(source, options, id));
+            return valid(row, source, options, id) && (!forced.has(source) || row.fetchedAt >= startedAt) ? row : undefined;
+          });
+        }
+        quotes[source] = values.map(row => lifetime(row, quoteTtlMs));
+        if (deadlineAt !== null && now() >= deadlineAt && quotes[source].some(row => !row || row.error || !validPrice(row.price) || row.expiresAt <= now())) budgetExpired = true;
+        progress({ source, index: quotes[source].filter(Boolean).length, total: unique.length });
       }
       const prices = {}, references = {}; let expiresAt = null;
       for (const [index, id] of unique.entries()) {
@@ -176,7 +200,7 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
         }
       }
       return { prices, freshPrices: prices, references, policy, requestedSources: requested,
-        source: 'public-references', expiresAt,
+        source: 'public-references', expiresAt, ...(deadlineAt !== null ? { budgetExpired } : {}),
         missingIds: unique.filter(id => !Object.hasOwn(prices, id)), staleIds: [], stale: false };
     },
   });

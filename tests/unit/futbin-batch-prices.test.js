@@ -5,6 +5,16 @@ const players = Array.from({ length: 12 }, (_, i) => ({ definitionId: i + 1, rat
 const payload = rows => JSON.stringify({ errorcode: '200', data: rows });
 const row = (id, pc = 1000) => ({ resource_id: id, rating: 84, pc_LCPrice: pc, ps_LCPrice: 2500 });
 
+it('retains exact hits on the last page but starts no later page after a planning deadline', async () => {
+  let time = 100;
+  const request = vi.fn(async () => { time = 200; return payload([row(1), ...Array.from({ length: 31 }, (_, i) => row(i + 100))]); });
+  const result = await readFutbinBatchPrices(players.map(p => p.definitionId), players,
+    { platform: 'pc', request, now: () => time, deadlineAt: 150 });
+  expect(result.requests).toBe(1);
+  expect(result.rows).toEqual([expect.objectContaining({ definitionId: 1, price: 1000, fetchedAt: 200 })]);
+  expect(request).toHaveBeenCalledOnce();
+});
+
 it('reads exact-version prices across real 32-row pages without substituting another platform', async () => {
   let time = 1000;
   const request = vi.fn(async () => { time += 100; return request.mock.calls.length === 1

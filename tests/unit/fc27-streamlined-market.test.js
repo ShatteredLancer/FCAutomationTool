@@ -49,6 +49,21 @@ function expiringMarket(count = expiryEvidence.marketCandidateCount, { rolling =
   return { f, prices, reader, cached, storage, diagnosticLog, readFutbin, readFutgg, search, now: () => time };
 }
 
+it('isolates an opt-in market quote timeout, preserves exact fresh rows and caps, and never writes during planning', async () => {
+  const f = expiringMarket(4), read = f.readFutbin.getMockImplementation(), set = vi.fn();
+  f.readFutbin.mockImplementation(id => id === 103 ? Promise.reject(Error('FC27_BUY_REFERENCE_TIMEOUT')) : read(id));
+  const session = createFc27StreamlinedSession({ prices: f.prices, readMarketCandidates: f.reader, now: f.now,
+    inspect: () => ({ context: f.f.input.context, challenge: f.f.input.challenge }),
+    readInputs: () => ({ ...f.f.input, inventory: [] }), get: async () => null, set });
+  const result = await session.plan({ mode: 'market' });
+  expect(result).toMatchObject({ status: 'ready', quoteSource: 'futbin', quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT',
+    quoteCoverage: { limited: true, market: { requested: 4, valid: 2, failed: 2 } }, plan: { execution: { quoteLimited: true } } });
+  expect(result.items.every(item => [102, 104].includes(item.definitionId) && item.quote.expiresAt > f.now()
+    && item.price === 500 && item.purchaseMaxBuy === 550)).toBe(true);
+  expect(f.readFutgg).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled();
+  expect(f.f.calls.some(call => ['bid', 'move', 'submit', 'contribute'].includes(call.kind))).toBe(false);
+});
+
 it('recovers the rolling expiry window: refreshing 51 stale cache entries must not leave the next entry expiring', async () => {
   const f = expiringMarket(rollingExpiryEvidence.replay.candidateCount, { rolling: true });
   const result = await f.reader({ input: f.f.input });
@@ -134,16 +149,17 @@ it('refreshes an earlier quote batch after later batches without exceeding the p
   expect(f.prices.load.mock.calls.at(-1)[0]).toEqual([101]);
 });
 
-it('produces a frozen mixed-scope plan after expiration recovery without trading or writing journals', async () => {
+it('keeps a bounded mixed-scope preview when the cheapest cached quote cannot refresh inside the total budget', async () => {
   const f = expiringMarket(), set = vi.fn();
   const session = createFc27StreamlinedSession({ prices: f.prices, readMarketCandidates: f.reader,
     readInputs: () => ({ ...f.f.input, inventory: [] }),
     inspect: () => ({ context: f.f.input.context, challenge: f.f.input.challenge }),
     get: async (_key, fallback) => fallback, set, now: f.now });
   const result = await session.plan({ mode: 'inventory-market' });
-  expect(result).toMatchObject({ status: 'ready', quoteSource: 'futbin', marketError: null, purchaseCost: 3750 });
+  expect(result).toMatchObject({ status: 'ready', quoteSource: 'futbin', marketError: null, purchaseCost: 7500,
+    plan: { execution: { quoteLimited: true } }, quoteCoverage: { limited: true } });
   expect(result.plan).not.toBeNull();
-  expect(result.plan.route.groups[0].item).toMatchObject({ price: 250, purchaseMaxBuy: 300 });
+  expect(result.plan.route.groups[0].item).toMatchObject({ price: 500, purchaseMaxBuy: 550 });
   expect(set).not.toHaveBeenCalled();
 });
 

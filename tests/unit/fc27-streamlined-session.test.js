@@ -3,6 +3,33 @@ import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-st
 import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined.js';
 import { assertStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { normalizeStreamlinedSettings } from '../../src/streamlined/settings.js';
+import { createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
+
+it('bounds a real shared inventory quote read to 90 seconds and reports valid coverage once, not contradictory success/failure', async () => {
+  vi.useFakeTimers();
+  try {
+    const c = challenge({ scoreRequirement: 100 }), diagnosticLog = { record: vi.fn() };
+    let finish;
+    const readFutbin = vi.fn(id => id === 1 ? Promise.resolve({ definitionId: 1, price: 1000 })
+      : new Promise(resolve => { finish = resolve; }));
+    const shared = createGalleryReferencePrices({ readFutbin });
+    const prices = { load: (ids, options) => shared.load(ids, { ...options, platform: 'console', sources: ['futbin'], policy: { source: 'futbin' } }) };
+    const session = createFc27StreamlinedSession({ prices, diagnosticLog,
+      inspect: () => ({ context: c.context, challenge: c }), get: async () => null, set: async () => {},
+      readInputs: () => ({ context: c.context, challenge: c, policy, eligibility,
+        inventory: [safeItem({ id: 1, definitionId: 1, points: 100 }), safeItem({ id: 2, definitionId: 2, points: 100 })], assertCurrent() {} }) });
+    const pending = session.plan({ mode: 'inventory' });
+    await vi.advanceTimersByTimeAsync(90000);
+    const result = await pending;
+    expect(result).toMatchObject({ status: 'ready', quoteReadError: 'FC27_STREAMLINED_QUOTE_BUDGET',
+      plan: { execution: { quoteLimited: true } }, quoteCoverage: { inventory: { requested: 2, valid: 1, missing: 1 } } });
+    expect(result.items.map(i => i.id)).toEqual([1]);
+    const events = diagnosticLog.record.mock.calls.map(([r]) => r).filter(r => r.event === 'planning-read' && r.phase === 'inventory-quotes');
+    expect(events).toEqual([expect.objectContaining({ status: 'partial', count: 1, requestedCount: 2, unknownCount: 1, durationMs: 90000 })]);
+    finish({ definitionId: 2, price: 1200 }); await vi.advanceTimersByTimeAsync(0);
+    expect(result.items).toHaveLength(1); expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
 
 it('retains only bounded protection evidence at the planning failure seam and performs no further reads or writes', async () => {
   const c = challenge(), diagnosticLog = { record: vi.fn() }, prices = { load: vi.fn() }, createExecution = vi.fn(), set = vi.fn();
@@ -214,6 +241,51 @@ function setup(overrides = {}) {
     get: async (key, fallback) => store.get(key) ?? fallback, set: async (key, value) => store.set(key, structuredClone(value)), ...overrides });
   return { session, input, prices, inspect, store };
 }
+
+it('keeps verified quoted stock when all verified market quotes fail, but never downgrades a failed catalog', async () => {
+  const readMarketCandidates = vi.fn(async () => ({ market: [], pricePolicy: { source: 'futbin' },
+    quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', quoteCoverage: { requested: 3, valid: 0, failed: 3, missing: 0 } }));
+  const f = setup({ readMarketCandidates });
+  const result = await f.session.plan({ mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'ready', marketPending: false, quoteCoverage: { limited: true },
+    plan: { execution: { quoteLimited: true } } });
+  expect(result.items.map(item => item.id)).toEqual([1]);
+  readMarketCandidates.mockRejectedValue(Error('FC27_STREAMLINED_CATALOG_UNAVAILABLE'));
+  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE', plan: null });
+});
+
+it('retains quote acknowledgement requirements after journal recovery without rewriting the frozen plan', async () => {
+  let record;
+  const execute = vi.fn(), recover = vi.fn(async () => ({ status: 'observed', record }));
+  const f = setup({ createExecution: async () => ({ prepare() {}, transaction: { recover, execute } }) });
+  f.input.inventory.push(safeItem({ id: 3, definitionId: 4, points: 40 }));
+  const result = await f.session.plan({ mode: 'inventory' });
+  expect(result.plan.execution.quoteLimited).toBe(true);
+  record = { context: f.input.context, plan: result.plan, submittedScore: 0,
+    batches: result.plan.batches.map(() => ({ state: 'waiting' })) };
+  const restored = await f.session.recover();
+  expect(restored.preview.plan.fingerprint).toBe(result.plan.fingerprint);
+  expect(restored.preview.plan.execution.quoteLimited).toBe(true);
+  expect(await f.session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: [0] })).toMatchObject({
+    status: 'blocked', reason: 'FC27_STREAMLINED_QUOTE_CONFIRMATION_REQUIRED' });
+  expect(execute).not.toHaveBeenCalled();
+  assertStreamlinedPlan(restored.preview.plan);
+});
+
+it('does not let an earlier timeout hide a later source-disabled failure across inventory chunks', async () => {
+  const f = setup(), createExecution = vi.fn();
+  f.input.inventory = Array.from({ length: 251 }, (_, i) => safeItem({ id: i + 1, definitionId: i + 1, points: 40 }));
+  f.prices.load.mockImplementation(async ids => ({ policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(id => [id,
+    { quotes: { futbin: id === 1 || id === 251 ? { definitionId: id, source: 'futbin', price: null,
+      error: id === 1 ? 'FC27_BUY_REFERENCE_TIMEOUT' : 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED' }
+      : { definitionId: id, source: 'futbin', price: 300, fetchedAt: 10, expiresAt: 100 } } }])) }));
+  const session = createFc27StreamlinedSession({ inspect: f.inspect, readInputs: () => f.input, prices: f.prices, now: () => 20,
+    get: async () => null, set: async () => {}, createExecution });
+  expect(await session.plan({ mode: 'inventory' })).toMatchObject({ status: 'blocked',
+    reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', liveExecutionEnabled: false });
+  expect(createExecution).not.toHaveBeenCalled();
+});
 it('forwards per-version inventory quote progress instead of remaining at zero until the batch finishes', async () => {
   const f = setup(), progress = [];
   f.prices.load.mockImplementation(async (_ids, options) => {
@@ -224,16 +296,25 @@ it('forwards per-version inventory quote progress instead of remaining at zero u
   expect(progress).toContainEqual(expect.objectContaining({ phase: 'quotes', source: 'futbin', completed: 1, total: 1 }));
 });
 
-it('does not produce an expensive mixed route after a selected-source timeout', async () => {
+it('keeps a selected-source partial route pending explicit coverage acknowledgement after a timeout', async () => {
   const market = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
     points: 4100, price: 41000, quote: { source: 'futbin', definitionId: 901, price: 41000, fetchedAt: 1, expiresAt: 1000 } })] }));
-  const f = setup({ readMarketCandidates: market });
+  const purchase = vi.fn(async () => ({ status: 'stopped' }));
+  const f = setup({ readMarketCandidates: market, createExecution: async () => ({ prepare() {}, purchase }) });
   f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
     2: { quotes: { futbin: { source: 'futbin', definitionId: 2, price: null, error: 'FC27_BUY_REFERENCE_TIMEOUT' } } },
   } });
-  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'blocked',
-    reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', liveExecutionEnabled: false });
-  expect(market).not.toHaveBeenCalled();
+  const result = await f.session.plan({ mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'ready', quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT',
+    quoteCoverage: { limited: true, inventory: { requested: 1, valid: 0, failed: 1 } },
+    plan: { execution: { quoteLimited: true } } });
+  expect(result.items.every(item => item.source === 'market' && item.quote.source === 'futbin')).toBe(true);
+  expect(market).toHaveBeenCalledOnce();
+  expect(await f.session.contribute({ fingerprint: result.plan.fingerprint })).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_QUOTE_CONFIRMATION_REQUIRED' });
+  expect(purchase).not.toHaveBeenCalled();
+  await f.session.contribute({ fingerprint: result.plan.fingerprint, acknowledgeQuoteCoverage: true });
+  expect(purchase).toHaveBeenCalledOnce();
 });
 
 it('shows elapsed waiting and stops promptly during an unresolved shared quote read', async () => {
@@ -254,7 +335,7 @@ it('shows elapsed waiting and stops promptly during an unresolved shared quote r
   } finally { vi.useRealTimers(); }
 });
 
-it('keeps normal missing inventory value explicit when market quotes are healthy', async () => {
+it('excludes unquoted inventory even when market quotes are healthy; never treats it as free', async () => {
   const readMarketCandidates = vi.fn(async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
     points: 40, price: 200, quote: { source: 'futbin', definitionId: 901, price: 200, fetchedAt: 1, expiresAt: 1000 } })],
     pricePolicy: { source: 'futbin' } }));
@@ -264,7 +345,8 @@ it('keeps normal missing inventory value explicit when market quotes are healthy
   } });
   expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'ready', purchaseCost: 200,
     materialValue: 0, quoteReadError: null });
-  expect(await f.session.plan({ mode: 'inventory' })).toMatchObject({ status: 'ready', unknownValueCount: 1, materialValue: null });
+  expect(await f.session.plan({ mode: 'inventory' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE',
+    quoteCoverage: { limited: true, inventory: { requested: 1, valid: 0, missing: 1 } }, plan: null });
 });
 
 it('does not renew an expired inventory quote or block healthy market routes after a long stock read', async () => {
@@ -277,7 +359,8 @@ it('does not renew an expired inventory quote or block healthy market routes aft
   } });
   const result = await f.session.plan({ mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 200, materialValue: 0 });
-  expect(result.routes.find(r => r.purchaseCost === 0)).toMatchObject({ materialValue: null, unknownValueCount: 1 });
+  expect(result.routes.some(r => r.purchaseCost === 0)).toBe(false);
+  expect(result.plan.execution.quoteLimited).toBe(true);
 });
 
 it('stops a stalled market read and prevents the old callback from re-entering a new plan', async () => {
@@ -373,7 +456,7 @@ it('records the exact unreviewed method evidence needed for a safe runtime revie
 it('does not invent market capabilities, re-enable disabled sources or hide missing quotes', async () => {
   const f = setup();
   f.prices.load.mockRejectedValue(Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED'));
-  expect(await f.session.plan({})).toMatchObject({ materialValue: null, unknownValueCount: 1, quoteReadError: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED' });
+  expect(await f.session.plan({})).toMatchObject({ status: 'blocked', reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', liveExecutionEnabled: false });
   f.prices.load.mockClear();
   expect(await f.session.plan({ mode: 'market' })).toMatchObject({ status: 'unavailable', marketAvailable: false });
   expect(f.prices.load).not.toHaveBeenCalled();

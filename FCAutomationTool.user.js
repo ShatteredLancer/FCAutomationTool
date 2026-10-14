@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.22
+// @version      27.0.23
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.22", at: Date.now(), status: 'started',
+    state = { version: "27.0.23", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26724,7 +26724,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const lifetime2 = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
-    const ensure = (source, ids2, options, byId, current2, force, progress, duration, futbinBatch) => {
+    const ensure = (source, ids2, options, byId, current2, force, progress, duration, futbinBatch, deadlineAt) => {
+      const withinBudget = () => deadlineAt === null || now() < deadlineAt;
       const freshIds = ids2.filter((id12) => !pending2.has(keyOf4(source, options, id12)));
       if (freshIds.length) {
         const task = queue.catch(() => {
@@ -26781,15 +26782,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               }
               requests++;
               if (job.bulk) {
-                const result = await readFutbinBatch(batch, batch.map((id12) => byId.get(id12)), { ...options, check: current2, force, quoteTtlMs: duration });
+                const result = await readFutbinBatch(batch, batch.map((id12) => byId.get(id12)), {
+                  ...options,
+                  check: current2,
+                  force,
+                  quoteTtlMs: duration,
+                  ...deadlineAt !== null ? { deadlineAt } : {}
+                });
                 if (!Number.isSafeInteger(result?.requests) || result.requests < 0 || result.requests > 8) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
                 requests += result.requests - 1;
                 rows = result.rows;
-              } else rows = source === "futgg" ? await readFutgg(batch, options) : [await readFutbin(batch[0], byId.get(batch[0]), options)].filter(Boolean);
+              } else rows = source === "futgg" ? await readFutgg(batch, options) : [await readFutbin(batch[0], byId.get(batch[0]), {
+                ...options,
+                ...deadlineAt !== null ? { deadlineAt, check: current2 } : {}
+              })].filter(Boolean);
               if (!Array.isArray(rows) || rows.some((row) => !batch.includes(row?.definitionId) || row.price !== null && !validPublicPrice(row.price) || job.bulk && (!timestamp(row.fetchedAt) || row.fetchedAt > now()) || row.sourceUpdatedAt != null && (!timestamp(row.sourceUpdatedAt) || row.sourceUpdatedAt > now())) || new Set(rows.map((row) => row.definitionId)).size !== rows.length) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
             } catch (failure) {
               error2 = reasonOf2(failure);
               rows = [];
+              if (deadlineAt !== null && error2 === "FC27_STREAMLINED_QUOTE_BUDGET") return;
+              if (deadlineAt !== null && /(?:CONTEXT_CHANGED|CANCELLED)$/.test(error2)) throw failure;
               retryAt ??= Math.max(now() + failureTtlMs, timestamp(failure?.retryAt) ? failure.retryAt : 0);
               if (!["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(error2)) {
                 sourceFailure ??= { retryAt, reason: error2 };
@@ -26836,7 +26848,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           };
           const workers = source === "futbin" ? 3 : 1;
           const drain = () => Promise.allSettled(Array.from({ length: Math.min(workers, jobs.length) }, async () => {
-            while (next < jobs.length) await readBatch();
+            while (next < jobs.length && withinBudget()) await readBatch();
           }));
           const settled2 = await drain();
           if (!settled2.some((result) => result.status === "rejected") && fallbackJobs.length) {
@@ -26849,7 +26861,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             source,
             event: "quote-batch",
             phase: "complete",
-            status: failed2 ? "failed" : sourceFailure ? "failed" : "success",
+            status: failed2 ? "failed" : sourceFailure ? "failed" : completed < ids2.length ? "partial" : "success",
             requestedCount: freshIds.length,
             cached: missing.length === 0,
             count: missing.length,
@@ -26883,10 +26895,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         onProgress = () => {
         },
         quoteTtlMs = ttlMs,
-        futbinBatch = false
+        futbinBatch = false,
+        deadlineAt = null
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id12) => !positive10(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id12) => !positive10(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const current2 = () => {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         };
@@ -26902,11 +26915,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const forced = new Set(forceSources);
         if (force === true) for (const source of requested) forced.add(source);
         const quotes = {}, options = { season, platform };
+        let budgetExpired = false;
         for (const source of requested) {
           progress({ source, index: 0, total: unique2.length });
-          quotes[source] = (await ensure(source, unique2, options, byId, current2, forced.has(source), progress, quoteTtlMs, futbinBatch)).map((row) => lifetime2(row, quoteTtlMs));
+          const startedAt = now();
+          let timer;
+          const loading = ensure(source, unique2, options, byId, current2, forced.has(source), progress, quoteTtlMs, futbinBatch, deadlineAt);
+          let values7;
+          try {
+            values7 = deadlineAt === null ? await loading : await Promise.race([
+              loading,
+              new Promise((resolve) => {
+                timer = setTimeout(() => resolve(null), Math.max(0, deadlineAt - now()));
+              })
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
           current2();
-          progress({ source, index: unique2.length, total: unique2.length });
+          if (values7 === null) {
+            values7 = unique2.map((id12) => {
+              const row = cache.get(keyOf4(source, options, id12));
+              return valid3(row, source, options, id12) && (!forced.has(source) || row.fetchedAt >= startedAt) ? row : void 0;
+            });
+          }
+          quotes[source] = values7.map((row) => lifetime2(row, quoteTtlMs));
+          if (deadlineAt !== null && now() >= deadlineAt && quotes[source].some((row) => !row || row.error || !validPublicPrice(row.price) || row.expiresAt <= now())) budgetExpired = true;
+          progress({ source, index: quotes[source].filter(Boolean).length, total: unique2.length });
         }
         const prices = {}, references = {};
         let expiresAt = null;
@@ -26940,6 +26975,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           requestedSources: requested,
           source: "public-references",
           expiresAt,
+          ...deadlineAt !== null ? { budgetExpired } : {},
           missingIds: unique2.filter((id12) => !Object.hasOwn(prices, id12)),
           staleIds: [],
           stale: false
@@ -26995,16 +27031,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     now = () => Date.now(),
     cache = null,
     quoteTtlMs = 3e5,
-    force = false
+    force = false,
+    deadlineAt = null
   } = {}) {
     const rating = players.find((row) => ids2.includes(row?.definitionId ?? row?.eaId))?.rating;
-    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id12) => !Number.isSafeInteger(id12) || id12 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id12 && row.rating === rating))) {
+    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id12) => !Number.isSafeInteger(id12) || id12 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id12 && row.rating === rating))) {
       throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
     }
     const found = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
     let requests = 0;
     for (let page = 1; page <= 8 && found.size < ids2.length; page++) {
       await check();
+      if (deadlineAt !== null && now() >= deadlineAt) break;
       const key = `${season}:${platform}:${rating}:${page}`, saved = cache?.get(key);
       const cached = !force && Number.isSafeInteger(saved?.fetchedAt) && saved.fetchedAt <= now() && saved.fetchedAt + quoteTtlMs > now();
       let payload, fetchedAt;
@@ -27131,7 +27169,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return parsePublicFutggPrices(reply.text, ids2, platform);
       },
-      readFutbin: async (definitionId, row, { season, platform }) => {
+      readFutbin: async (definitionId, row, { season, platform, deadlineAt = null, check = () => {
+      } }) => {
         const captured = capture();
         const position = row?.preferredPosition ?? row?.positions?.[0];
         const player = {
@@ -27152,7 +27191,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           request: async (url) => {
             const currentPolicy = await policyStore.read(captured.scope);
             captured.assert();
+            check();
             if (!publicPriceSourceEnabled(currentPolicy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+            if (deadlineAt !== null && now() >= deadlineAt) throw Error("FC27_STREAMLINED_QUOTE_BUDGET");
             const minimal = new URL(url).pathname.endsWith("fetchPlayerInformationMinimal");
             if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(player.preferredPosition) || !positions2[player.preferredPosition])) throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
             const response = await request(url);
@@ -27508,7 +27549,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
     const rendered = /* @__PURE__ */ new Set();
     let renderGeneration = 0;
-    let shown = null, selected = /* @__PURE__ */ new Set();
+    let shown = null, selected = /* @__PURE__ */ new Set(), quoteCoverageAcknowledged = false;
     let executionProgress = null;
     const resetProgress = () => {
       executionProgress = null;
@@ -27546,7 +27587,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       executionProgress.progress = p;
       refreshClock();
     };
-    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
+    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.execution?.quoteLimited !== true || quoteCoverageAcknowledged) && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
     const clearRendered = () => {
       renderGeneration++;
       for (const node2 of rendered) {
@@ -27685,6 +27726,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const renderResult = (result) => {
+      quoteCoverageAcknowledged = false;
       clearRendered();
       node("result").replaceChildren();
       node("contribute").hidden = true;
@@ -27708,6 +27750,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
       node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
       const output = node("result"), p = result.progress;
+      if (result.plan.execution?.quoteLimited === true) {
+        const warning = add2(output, "section");
+        warning.className = "inventory-warning";
+        add2(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
+        for (const [key, label2] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
+          const coverage = result.quoteCoverage?.[key];
+          if (coverage) add2(warning, "small", `${label2}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number2(coverage.valid)} / ${number2(coverage.requested)} \xB7 \u5931\u8D25 ${number2(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number2(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
+        }
+        const label = add2(warning, "label"), confirm = add2(label, "input");
+        label.style.cssText = "display:flex;align-items:flex-start;gap:8px;margin:10px 0";
+        confirm.type = "checkbox";
+        confirm.dataset.quoteConfirm = "";
+        label.append(document.createTextNode("\u6211\u5DF2\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u63A5\u53D7\u4EC5\u7528\u6709\u6548\u62A5\u4EF7\u7684\u672C\u65B9\u6848\u3002"));
+        confirm.addEventListener("change", (event) => {
+          if (!event.isTrusted || busy) return;
+          quoteCoverageAcknowledged = confirm.checked;
+          node("contribute").disabled = !contributionReady();
+        });
+      }
       const inventoryReview = add2(output, "details");
       inventoryReview.className = "inventory-review";
       inventoryReview.dataset.inventoryReview = "";
@@ -27768,7 +27829,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const next = await session2.selectRoute(route.id);
               if (serial === opened) {
                 renderResult(next);
-                node("status").textContent = next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
+                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u8BF7\u91CD\u65B0\u6838\u5BF9\u5E76\u52FE\u9009\u786E\u8BA4\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002" : next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
               }
             } catch (error2) {
               node("status").textContent = safeReason9(error2);
@@ -27945,7 +28006,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
+        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
         renderResult(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -27989,7 +28050,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       setBusy(true);
       beginProgress(result);
       try {
-        const outcome = await session2.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === "partial" }, {
+        const outcome = await session2.contribute({
+          fingerprint: result.plan.fingerprint,
+          batchIndices: indices,
+          allowPartial: result.plan.status === "partial",
+          acknowledgeQuoteCoverage: quoteCoverageAcknowledged
+        }, {
           onProgress: (p) => {
             if (serial !== opened) return;
             executionStep(p);
@@ -28490,7 +28556,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/streamlined/plan.js
   function validPlanContents(plan) {
     const { challenge, items, batches } = plan;
-    if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
+    if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
     if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
     if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
@@ -28937,13 +29003,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/streamlined/quotes.js
+  var STREAMLINED_QUOTE_BUDGET_MS = 9e4;
+  var fatalStreamlinedQuoteFailure = (reason) => /(?:CONTEXT_CHANGED|CANCELLED|PRICE_POLICY_CHANGED|_DISABLED|INPUT_INVALID)$/.test(reason ?? "");
+  function streamlinedQuoteCoverage(references, source, ids2, at10) {
+    const result = { requested: new Set(ids2).size, valid: 0, failed: 0, missing: 0 };
+    for (const id12 of new Set(ids2)) {
+      if (validStreamlinedQuote(references[id12]?.quotes?.[source], source, id12, at10)) result.valid++;
+      else if (references[id12]?.quotes?.[source]?.error) result.failed++;
+      else result.missing++;
+    }
+    return result;
+  }
+  function validStreamlinedQuote(q, source, id12, at10) {
+    return q?.definitionId === id12 && q.source === source && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at10 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at10;
+  }
   function streamlinedQuoteFailure(references, source, ids2, at10, { requireFresh = true } = {}) {
+    let failure = null;
     for (const id12 of ids2) {
       const quote2 = references[id12]?.quotes?.[source];
-      if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") return quote2.error;
-      if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at10 || quote2.expiresAt <= at10)) return "FC27_STREAMLINED_QUOTES_EXPIRED";
+      if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") {
+        if (fatalStreamlinedQuoteFailure(quote2.error)) return quote2.error;
+        failure ??= quote2.error;
+      }
+      if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at10 || quote2.expiresAt <= at10)) failure ??= "FC27_STREAMLINED_QUOTES_EXPIRED";
     }
-    return null;
+    return failure;
   }
 
   // src/adapters/browser/fc27-streamlined-session.js
@@ -29065,6 +29149,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const config = normalizeStreamlinedSettings(value), origin = capture();
           const input = readInputs(config);
           input.assertCurrent();
+          const quoteDeadlineAt = now() + STREAMLINED_QUOTE_BUDGET_MS;
           const check = () => {
             unchanged(origin);
             input.assertCurrent();
@@ -29080,7 +29165,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               }
             };
             report(initial);
-            let timer, outcome = "success", reason = null;
+            let timer, outcome = "completed", reason = null;
             try {
               return await Promise.race([
                 Promise.resolve().then(() => read(report)),
@@ -29102,9 +29187,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             } finally {
               active = false;
               clearInterval(timer);
-              log({
+              if (initial.phase !== "quotes") log({
                 event: "planning-read",
-                phase: last.phase,
+                phase: "market-candidates",
                 source: last.source,
                 status: outcome,
                 reason,
@@ -29157,6 +29242,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   purpose: "puzzle",
                   rows: input.priceRows,
                   futbinBatch: true,
+                  deadlineAt: quoteDeadlineAt,
                   onProgress: (p) => report({ phase: "quotes", source: p.source, completed: offset + p.index, total: ids2.length }),
                   isCurrent: () => {
                     check();
@@ -29167,53 +29253,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 quoteSource = snapshot.policy.source;
                 purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
                 Object.assign(references, snapshot.references);
-                quoteReadError = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+                const failure = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+                if (fatalStreamlinedQuoteFailure(failure)) throw Error(failure);
+                quoteReadError ??= failure ?? (snapshot.budgetExpired ? "FC27_STREAMLINED_QUOTE_BUDGET" : null);
                 progress({ phase: "quotes", source: quoteSource, completed: offset + batch.length, total: ids2.length });
-                log({
-                  event: "planning-read",
-                  phase: "quotes",
-                  status: quoteReadError ? "failed" : "success",
-                  source: quoteSource,
-                  reason: quoteReadError,
-                  count: offset + batch.length,
-                  requestedCount: ids2.length
-                });
-                if (quoteReadError) break;
               } catch (error2) {
                 quoteReadError = /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_QUOTES_UNAVAILABLE";
                 break;
               }
             }
+            const coverage = streamlinedQuoteCoverage(references, quoteSource, ids2, now());
             log({
               event: "planning-read",
               phase: "inventory-quotes",
-              status: quoteReadError ? "failed" : "success",
+              status: coverage.valid === ids2.length ? "success" : coverage.valid ? "partial" : "failed",
               source: quoteSource,
               reason: quoteReadError,
               durationMs: Math.max(0, now() - inventoryQuotesStartedAt),
-              count: Object.keys(references).length,
+              count: coverage.valid,
+              unknownCount: coverage.failed + coverage.missing,
               requestedCount: ids2.length
             });
           }
           check();
-          if (quoteReadError && config.mode === "inventory-market" && typeof readMarketCandidates === "function") {
-            log({
-              status: "blocked",
-              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
-              localReason: quoteReadError,
-              source: quoteSource,
-              requestedCount: ids2.length
-            });
-            return {
-              status: "blocked",
-              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
-              quoteReadError,
-              quoteSource,
-              plan: null,
-              liveExecutionEnabled: false
-            };
-          }
-          let market = [], marketError = null;
+          if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
+          let market = [], marketError = null, marketCoverage = null;
           if (config.mode !== "inventory" && typeof readMarketCandidates === "function") {
             try {
               check();
@@ -29223,9 +29287,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 quoteSource,
                 references,
                 check,
+                quoteDeadlineAt,
+                allowPartialQuotes: true,
                 onProgress: report
               }), { phase: "catalog", completed: 0, total: 0 });
               market = Array.isArray(data) ? data : data.market;
+              marketCoverage = data.quoteCoverage ?? null;
+              quoteReadError ??= data.quoteReadError ?? null;
               if (!Array.isArray(market)) fail28("MARKET_CANDIDATES_UNVERIFIED");
               if (data.pricePolicy) {
                 if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
@@ -29247,7 +29315,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           check();
           const marketProvider = typeof readMarketCandidates === "function";
-          if (config.mode !== "inventory" && marketProvider && (!market.length || marketError)) {
+          const marketQuoteLimited = marketCoverage?.requested > 0 && marketCoverage.valid < marketCoverage.requested;
+          if (config.mode !== "inventory" && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
             const reason = "FC27_STREAMLINED_MARKET_UNAVAILABLE";
             const unavailable = {
               status: "blocked",
@@ -29273,23 +29342,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           check();
           const quoteAt = now();
+          if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
           quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids2, quoteAt, { requireFresh: false });
-          if (quoteReadError && config.mode === "inventory-market" && marketProvider) {
-            log({ status: "blocked", reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE", localReason: quoteReadError, source: quoteSource });
-            return {
-              status: "blocked",
-              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
-              quoteReadError,
-              quoteSource,
-              plan: null,
-              liveExecutionEnabled: false
-            };
-          }
+          const inventoryCoverage = streamlinedQuoteCoverage(references, quoteSource, ids2, quoteAt);
+          const quoteCoverage = {
+            inventory: inventoryCoverage,
+            market: marketCoverage,
+            limited: !!quoteReadError || !!prices && config.mode !== "market" && inventoryCoverage.valid < inventoryCoverage.requested || !!marketCoverage && marketCoverage.valid < marketCoverage.requested
+          };
           const inventory = input.inventory.map((item2) => {
             const q = references[item2.definitionId]?.quotes?.[quoteSource];
-            const valid3 = q?.definitionId === item2.definitionId && q?.source === quoteSource && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.fetchedAt <= quoteAt && q.expiresAt > quoteAt;
+            const valid3 = validStreamlinedQuote(q, quoteSource, item2.definitionId, quoteAt);
             return { ...item2, price: valid3 ? q.price : null, quote: valid3 ? q : null };
-          });
+          }).filter((item2) => !quoteCoverage.limited || item2.quote !== null);
           const eligibleKeys = new Set(filtered.items.map((item2) => item2.key)), buckets = /* @__PURE__ */ new Map();
           for (const item2 of [...inventory.filter((item3) => eligibleKeys.has(item3.key)), ...market]) {
             const key = JSON.stringify([item2.source, item2.pile, item2.rating, item2.points]);
@@ -29355,13 +29420,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             now
           }, options);
           check();
+          if (!result.items?.length && quoteCoverage.limited) {
+            return {
+              ...result,
+              status: "blocked",
+              reason: "FC27_STREAMLINED_QUOTES_UNAVAILABLE",
+              quoteSource,
+              quoteReadError,
+              quoteCoverage,
+              plan: null,
+              liveExecutionEnabled: false
+            };
+          }
           const plan = ["ready", "partial"].includes(result.status) ? createStreamlinedPlan({
             context: input.context,
             challenge: input.challenge,
             policy: input.policy,
             result,
             objective: config.objective,
-            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs }
+            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs, ...quoteCoverage.limited ? { quoteLimited: true } : {} }
           }) : null;
           let execution = null, executionReason = "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED", executionRecovery = null, executionError = null;
           if (plan && typeof createExecution === "function") {
@@ -29388,6 +29465,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             quoteSource,
             marketError,
             inventorySelection,
+            quoteCoverage,
+            quoteReadError,
             execution: plan.execution
           };
           const inventoryStats = input.inventoryStats ?? {};
@@ -29458,9 +29537,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             plan,
             quoteSource,
             quoteReadError,
+            quoteCoverage,
             marketError,
             marketAvailable: typeof readMarketCandidates === "function",
-            marketPending: config.mode !== "inventory" && market.length === 0,
+            marketPending: config.mode !== "inventory" && market.length === 0 && !marketQuoteLimited,
             policy: input.policy,
             inventoryStats: input.inventoryStats ?? null,
             inventorySelection,
@@ -29529,6 +29609,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             routes: saved.routes,
             selectedRoute: routeId,
             quoteSource: saved.quoteSource,
+            quoteCoverage: saved.quoteCoverage,
+            quoteReadError: saved.quoteReadError,
             marketAvailable: true,
             marketPending: false,
             marketError: saved.marketError,
@@ -29545,9 +29627,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           busy = false;
         }
       },
-      async contribute({ fingerprint, batchIndices, allowPartial = false } = {}, callbacks = {}) {
+      async contribute({ fingerprint, batchIndices, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: "blocked", reason: "FC27_STREAMLINED_PLAN_CHANGED" };
+        if (preview.plan.execution?.quoteLimited === true && acknowledgeQuoteCoverage !== true) {
+          return { status: "blocked", reason: "FC27_STREAMLINED_QUOTE_CONFIRMATION_REQUIRED" };
+        }
         busy = true;
         stopRequested = false;
         const selected = preview;
@@ -29761,7 +29846,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     return async ({ input, check = () => {
     }, onProgress = () => {
-    } }) => {
+    }, quoteDeadlineAt = null, allowPartialQuotes = false }) => {
       if (busy) fail28("BUSY");
       busy = true;
       try {
@@ -29833,7 +29918,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const filtered = filterStreamlinedItems(projected2, input);
         if (filtered.status !== "observed") throw Error(filtered.reason);
         const references = {}, quotesStartedAt = now();
-        let pricePolicy = null;
+        let pricePolicy = null, quoteReadError = null;
         for (let start = 0; start < filtered.items.length; start += 250) {
           assert();
           onProgress({ phase: "market-quotes", completed: start, total: filtered.items.length });
@@ -29841,6 +29926,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const snapshot = await prices.load(batch.map((row) => row.definitionId), {
             purpose: "puzzle",
             futbinBatch: true,
+            deadlineAt: quoteDeadlineAt,
             onProgress: (p) => onProgress({
               phase: "market-quotes",
               source: p.source,
@@ -29874,7 +29960,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             now(),
             { requireFresh: false }
           );
-          if (quoteError2) throw Error(quoteError2);
+          if (fatalStreamlinedQuoteFailure(quoteError2)) throw Error(quoteError2);
+          quoteReadError ??= quoteError2 ?? (snapshot.budgetExpired ? "FC27_STREAMLINED_QUOTE_BUDGET" : null);
+          if (quoteReadError && (!allowPartialQuotes || fatalStreamlinedQuoteFailure(quoteReadError))) throw Error(quoteReadError);
         }
         const ids2 = filtered.items.map((row) => row.definitionId), checkedAt = now();
         const refreshWindowMs = Math.max(0, checkedAt - quotesStartedAt);
@@ -29903,6 +29991,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const refresh = await prices.load(batch, {
             purpose: "puzzle",
             futbinBatch: true,
+            deadlineAt: quoteDeadlineAt,
             forceSources: [pricePolicy.source],
             rows: batch.map((id12) => {
               const raw = entities.get(id12);
@@ -29931,7 +30020,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (!same25(pricePolicy, refresh.policy)) fail28("PRICE_POLICY_CHANGED");
           Object.assign(references, refresh.references);
           const refreshError = streamlinedQuoteFailure(refresh.references, pricePolicy.source, batch, now(), { requireFresh: false });
-          if (refreshError) throw Error(refreshError);
+          if (fatalStreamlinedQuoteFailure(refreshError)) throw Error(refreshError);
+          quoteReadError ??= refreshError ?? (refresh.budgetExpired ? "FC27_STREAMLINED_QUOTE_BUDGET" : null);
+          if (quoteReadError && (!allowPartialQuotes || fatalStreamlinedQuoteFailure(quoteReadError))) throw Error(quoteReadError);
         }
         const quoteAt = now();
         const quoteError = streamlinedQuoteFailure(references, pricePolicy?.source, ids2, quoteAt);
@@ -29952,20 +30043,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               durationMs: Math.max(0, quoteAt - quotesStartedAt)
             });
           }
-          throw Error(quoteError);
+          quoteReadError ??= quoteError;
+          if (!allowPartialQuotes) throw Error(quoteError);
         }
+        const quoteCoverage = streamlinedQuoteCoverage(references, pricePolicy?.source, ids2, quoteAt);
         record({
           source: pricePolicy?.source,
-          phase: "validate",
-          status: "success",
+          phase: "coverage",
+          status: quoteCoverage.valid === ids2.length ? "success" : quoteCoverage.valid ? "partial" : "failed",
           requestedCount: ids2.length,
-          count: staleIds.length,
+          count: quoteCoverage.valid,
+          unknownCount: quoteCoverage.failed + quoteCoverage.missing,
+          reason: quoteReadError,
           durationMs: Math.max(0, quoteAt - quotesStartedAt)
         });
         const market = [];
         for (const item2 of filtered.items) {
           const quote2 = references[item2.definitionId]?.quotes?.[pricePolicy.source];
-          if (!quote2?.error && integer15(quote2?.price, 150, 15e6) && quote2.fetchedAt <= quoteAt && quote2.expiresAt > quoteAt) {
+          if (validStreamlinedQuote(quote2, pricePolicy.source, item2.definitionId, quoteAt) && integer15(quote2.price, 150, 15e6)) {
             const authority = galleryReferenceQuote({ [pricePolicy.source]: quote2.price }, pricePolicy);
             if (!integer15(authority.maxBuy, 150, 15e6)) continue;
             const raw = entities.get(item2.definitionId);
@@ -29983,7 +30078,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
         onProgress({ phase: "market-quotes", source: pricePolicy?.source, completed: filtered.items.length, total: filtered.items.length });
-        return { market, references, pricePolicy, complete: false, candidateCount: projected2.length };
+        return { market, references, pricePolicy, quoteReadError, quoteCoverage, complete: false, candidateCount: projected2.length };
       } finally {
         busy = false;
       }
@@ -32770,7 +32865,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.22" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.23" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33088,8 +33183,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.22"}`,
-    version: "27.0.22",
+    title: `FC Automation Tool ${"27.0.23"}`,
+    version: "27.0.23",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

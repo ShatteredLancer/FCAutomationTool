@@ -1,6 +1,47 @@
 import { it, expect, vi } from 'vitest';
 import { normalizeGalleryPricePolicy, galleryReferenceQuote, createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
+it('returns a bounded immutable planning snapshot while retaining ownership of outstanding workers', async () => {
+  vi.useFakeTimers();
+  try {
+    const start = Date.now(), finishes = new Map();
+    const readFutbin = vi.fn(id => id === 1 ? Promise.resolve({ definitionId: id, price: 1000 })
+      : new Promise(resolve => finishes.set(id, resolve)));
+    const service = createGalleryReferencePrices({ readFutbin });
+    const options = { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } };
+    const loading = service.load([1, 2, 3, 4, 5], { ...options, deadlineAt: start + 1000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    const snapshot = await loading;
+    expect(snapshot.budgetExpired).toBe(true);
+    expect(snapshot.prices).toEqual({ 1: 1000 });
+    expect(readFutbin).toHaveBeenCalledTimes(4); // Three held workers; no request #5 after the deadline.
+    const later = service.load([9], options);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(readFutbin).toHaveBeenCalledTimes(4);
+    for (const [id, finish] of finishes) finish({ definitionId: id, price: 1100 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readFutbin).toHaveBeenCalledTimes(5);
+    finishes.get(9)({ definitionId: 9, price: 1200 });
+    expect((await later).prices).toEqual({ 9: 1200 });
+    expect(snapshot.prices).toEqual({ 1: 1000 });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
+it('does not turn a local deadline into a source cooldown or a reusable error cache', async () => {
+  let time = 100;
+  const readFutbin = vi.fn(async definitionId => {
+    if (readFutbin.mock.calls.length === 1) { time = 200; throw Error('FC27_STREAMLINED_QUOTE_BUDGET'); }
+    return { definitionId, price: 1000 };
+  });
+  const service = createGalleryReferencePrices({ readFutbin, now: () => time });
+  const options = { platform: 'pc', sources: ['futbin'], policy: { source: 'futbin' } };
+  expect(await service.load([1, 2], { ...options, deadlineAt: 150 })).toMatchObject({ prices: {}, budgetExpired: true });
+  expect(readFutbin).toHaveBeenCalledTimes(1); // Synchronous cutoff prevents the other workers from starting.
+  expect((await service.load([1], options)).prices[1]).toBe(1000);
+  expect(readFutbin).toHaveBeenCalledTimes(2);
+});
+
 it('batches opt-in same-rating FUTBIN misses, individually resolves omitted versions and preserves page fetch times', async () => {
   let time = 1000;
   const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 1050 }));

@@ -157,7 +157,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
   const rendered = new Set();
   let renderGeneration = 0;
-  let shown = null, selected = new Set();
+  let shown = null, selected = new Set(), quoteCoverageAcknowledged = false;
   let executionProgress = null;
   const resetProgress = () => { executionProgress = null; node('clock').hidden = true; node('final-progress').hidden = true; };
   const refreshClock = () => {
@@ -183,7 +183,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     if (p.phase !== executionProgress.progress.phase) executionProgress.phaseAt = now();
     executionProgress.progress = p; refreshClock();
   };
-  const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some(g => g.source === 'market')
+  const contributionReady = () => shown?.liveExecutionEnabled === true
+    && (shown.plan.execution?.quoteLimited !== true || quoteCoverageAcknowledged) && (shown.plan.route?.groups?.some(g => g.source === 'market')
     ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore
     : selected.size > 0);
   const clearRendered = () => { renderGeneration++; for (const node of rendered) { try { node.__fcatDealloc?.(); } catch { /* UI disposal only. */ } node.remove(); } rendered.clear(); };
@@ -247,6 +248,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     catch (error) { node('status').textContent = safeReason(error); } finally { setBusy(false); }
   });
   const renderResult = result => {
+      quoteCoverageAcknowledged = false;
       clearRendered(); node('result').replaceChildren(); node('contribute').hidden = true; shown = null;
       node('review-stock').hidden = true;
       if (!result.plan) {
@@ -268,6 +270,23 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
       node('contribute').textContent = marketRun ? '按方案购买并贡献' : '贡献所选批次';
       const output = node('result'), p = result.progress;
+      if (result.plan.execution?.quoteLimited === true) {
+        const warning = add(output, 'section'); warning.className = 'inventory-warning';
+        add(warning, 'strong', '报价覆盖不完整：待确认方案，不保证全库存/全市场最低价。');
+        for (const [key, label] of [['inventory', '库存'], ['market', '补卡']]) {
+          const coverage = result.quoteCoverage?.[key];
+          if (coverage) add(warning, 'small', `${label}版本报价：有效 ${number(coverage.valid)} / ${number(coverage.requested)} · 失败 ${number(coverage.failed)} · 缺失/过期 ${number(coverage.missing)}；未取得有效报价的卡不参加本方案。`);
+        }
+        const label = add(warning, 'label'), confirm = add(label, 'input');
+        label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;margin:10px 0';
+        confirm.type = 'checkbox'; confirm.dataset.quoteConfirm = '';
+        label.append(document.createTextNode('我已核对库存消耗和价格，接受仅用有效报价的本方案。'));
+        confirm.addEventListener('change', event => {
+          if (!event.isTrusted || busy) return;
+          quoteCoverageAcknowledged = confirm.checked;
+          node('contribute').disabled = !contributionReady();
+        });
+      }
       const inventoryReview = add(output, 'details'); inventoryReview.className = 'inventory-review'; inventoryReview.dataset.inventoryReview = ''; inventoryReview.open = true;
       const inventorySummary = add(inventoryReview, 'summary'), inventoryList = add(inventoryReview, 'div');
       let inventoryPage = 0;
@@ -307,7 +326,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           button.setAttribute('aria-pressed', String(route.id === result.selectedRoute));
           button.addEventListener('click', async event => {
             if (!event.isTrusted || busy) return; const serial = opened; setBusy(true);
-            try { const next = await session.selectRoute(route.id); if (serial === opened) { renderResult(next); node('status').textContent = next.reason ?? '已选择路线，未购买或贡献。'; } }
+            try { const next = await session.selectRoute(route.id); if (serial === opened) { renderResult(next);
+              node('status').textContent = next.plan?.execution?.quoteLimited === true ? '报价覆盖不完整：请重新核对并勾选确认，尚未购买或贡献。'
+                : next.reason ?? '已选择路线，未购买或贡献。'; } }
             catch (error) { node('status').textContent = safeReason(error); } finally { setBusy(false); }
           });
         }
@@ -444,6 +465,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       } });
       if (serial !== opened) return;
       node('status').textContent = result.status === 'cancelled' ? '已停止。'
+        : result.plan?.execution?.quoteLimited === true ? '部分报价可用：请核对库存消耗和价格，再确认是否执行。'
         : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
           ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
       renderResult(result);
@@ -476,7 +498,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     setBusy(true);
     beginProgress(result);
     try {
-      const outcome = await session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === 'partial' }, {
+      const outcome = await session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: indices, allowPartial: result.plan.status === 'partial',
+        acknowledgeQuoteCoverage: quoteCoverageAcknowledged }, {
         onProgress: p => {
           if (serial !== opened) return;
           executionStep(p);

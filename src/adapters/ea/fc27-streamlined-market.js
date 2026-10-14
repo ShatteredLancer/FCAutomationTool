@@ -2,7 +2,7 @@ import { readFc27Context, isFc27PlayerItem } from './fc27-local-read.js';
 import { normalizeStreamlinedItem, integer, same, fail } from '../../streamlined/contract.js';
 import { filterStreamlinedItems } from '../../streamlined/eligibility.js';
 import { galleryReferenceQuote } from '../../gallery/public-price-policy.js';
-import { streamlinedQuoteFailure } from '../../streamlined/quotes.js';
+import { streamlinedQuoteFailure, streamlinedQuoteCoverage, fatalStreamlinedQuoteFailure, validStreamlinedQuote } from '../../streamlined/quotes.js';
 
 // The exact-id concept read follows the already observed Gallery native
 // searchConceptItems contract. Entities remain in memory; no owned-item claim.
@@ -24,7 +24,7 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
       observable.observe(owner, (_sender, reply) => finish(null, reply));
     } catch { finish(Error('FC27_STREAMLINED_MARKET_READ_FAILED')); }
   });
-  return async ({ input, check = () => {}, onProgress = () => {} }) => {
+  return async ({ input, check = () => {}, onProgress = () => {}, quoteDeadlineAt = null, allowPartialQuotes = false }) => {
     if (busy) fail('BUSY'); busy = true;
     try {
       const assert = () => { check(); input.assertCurrent(); if (!same(readFc27Context(root), input.context)) fail('CONTEXT_CHANGED'); };
@@ -76,11 +76,11 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
       }
       const filtered = filterStreamlinedItems(projected, input);
       if (filtered.status !== 'observed') throw Error(filtered.reason);
-      const references = {}, quotesStartedAt = now(); let pricePolicy = null;
+      const references = {}, quotesStartedAt = now(); let pricePolicy = null, quoteReadError = null;
       for (let start = 0; start < filtered.items.length; start += 250) {
         assert(); onProgress({ phase: 'market-quotes', completed: start, total: filtered.items.length });
         const batch = filtered.items.slice(start, start + 250);
-        const snapshot = await prices.load(batch.map(row => row.definitionId), { purpose: 'puzzle', futbinBatch: true,
+        const snapshot = await prices.load(batch.map(row => row.definitionId), { purpose: 'puzzle', futbinBatch: true, deadlineAt: quoteDeadlineAt,
           onProgress: p => onProgress({ phase: 'market-quotes', source: p.source,
             completed: start + p.index, total: filtered.items.length }),
           rows: batch.map(item => { const raw = entities.get(item.definitionId); return { definitionId: item.definitionId,
@@ -90,11 +90,13 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
         if (pricePolicy && !same(pricePolicy, snapshot.policy)) fail('PRICE_POLICY_CHANGED');
         pricePolicy = snapshot.policy; Object.assign(references, snapshot.references);
         // A cached quote can be valid when this batch starts and expire while
-        // the remaining FUTBIN versions are fetched. Source errors still stop
-        // immediately; expiration is handled by the bounded refresh below.
+        // the remaining FUTBIN versions are fetched. Strict callers still stop
+        // on source errors; planning can explicitly retain the verified subset.
         const quoteError = streamlinedQuoteFailure(snapshot.references, pricePolicy.source,
           batch.map(row => row.definitionId), now(), { requireFresh: false });
-        if (quoteError) throw Error(quoteError);
+        if (fatalStreamlinedQuoteFailure(quoteError)) throw Error(quoteError);
+        quoteReadError ??= quoteError ?? (snapshot.budgetExpired ? 'FC27_STREAMLINED_QUOTE_BUDGET' : null);
+        if (quoteReadError && (!allowPartialQuotes || fatalStreamlinedQuoteFailure(quoteReadError))) throw Error(quoteReadError);
       }
 
       const ids = filtered.items.map(row => row.definitionId), checkedAt = now();
@@ -113,7 +115,7 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
         const batch = staleIds.slice(start, start + 250);
         onProgress({ phase: 'market-quotes', source: pricePolicy.source, completed: start,
           total: staleIds.length, refresh: true });
-        const refresh = await prices.load(batch, { purpose: 'puzzle', futbinBatch: true, forceSources: [pricePolicy.source],
+        const refresh = await prices.load(batch, { purpose: 'puzzle', futbinBatch: true, deadlineAt: quoteDeadlineAt, forceSources: [pricePolicy.source],
           rows: batch.map(id => {
             const raw = entities.get(id);
             return { definitionId: id, rating: raw?._rating, nationId: raw?.nationId,
@@ -126,7 +128,9 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
         if (!same(pricePolicy, refresh.policy)) fail('PRICE_POLICY_CHANGED');
         Object.assign(references, refresh.references);
         const refreshError = streamlinedQuoteFailure(refresh.references, pricePolicy.source, batch, now(), { requireFresh: false });
-        if (refreshError) throw Error(refreshError);
+        if (fatalStreamlinedQuoteFailure(refreshError)) throw Error(refreshError);
+        quoteReadError ??= refreshError ?? (refresh.budgetExpired ? 'FC27_STREAMLINED_QUOTE_BUDGET' : null);
+        if (quoteReadError && (!allowPartialQuotes || fatalStreamlinedQuoteFailure(quoteReadError))) throw Error(quoteReadError);
       }
       const quoteAt = now();
       const quoteError = streamlinedQuoteFailure(references, pricePolicy?.source, ids, quoteAt);
@@ -138,14 +142,17 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
             requestedCount: ids.length, count: invalidIds.length, definitionId: id, fetchedAt: quote?.fetchedAt,
             expiresAt: quote?.expiresAt, durationMs: Math.max(0, quoteAt - quotesStartedAt) });
         }
-        throw Error(quoteError);
+        quoteReadError ??= quoteError;
+        if (!allowPartialQuotes) throw Error(quoteError);
       }
-      record({ source: pricePolicy?.source, phase: 'validate', status: 'success', requestedCount: ids.length,
-        count: staleIds.length, durationMs: Math.max(0, quoteAt - quotesStartedAt) });
+      const quoteCoverage = streamlinedQuoteCoverage(references, pricePolicy?.source, ids, quoteAt);
+      record({ source: pricePolicy?.source, phase: 'coverage', status: quoteCoverage.valid === ids.length ? 'success' : quoteCoverage.valid ? 'partial' : 'failed',
+        requestedCount: ids.length, count: quoteCoverage.valid, unknownCount: quoteCoverage.failed + quoteCoverage.missing,
+        reason: quoteReadError, durationMs: Math.max(0, quoteAt - quotesStartedAt) });
       const market = [];
       for (const item of filtered.items) {
         const quote = references[item.definitionId]?.quotes?.[pricePolicy.source];
-        if (!quote?.error && integer(quote?.price, 150, 15000000) && quote.fetchedAt <= quoteAt && quote.expiresAt > quoteAt) {
+        if (validStreamlinedQuote(quote, pricePolicy.source, item.definitionId, quoteAt) && integer(quote.price, 150, 15000000)) {
           const authority = galleryReferenceQuote({ [pricePolicy.source]: quote.price }, pricePolicy);
           if (!integer(authority.maxBuy, 150, 15000000)) continue;
           const raw = entities.get(item.definitionId);
@@ -155,7 +162,7 @@ export function createFc27StreamlinedMarket(root, { catalog, prices, diagnosticL
         }
       }
       onProgress({ phase: 'market-quotes', source: pricePolicy?.source, completed: filtered.items.length, total: filtered.items.length });
-      return { market, references, pricePolicy, complete: false, candidateCount: projected.length };
+      return { market, references, pricePolicy, quoteReadError, quoteCoverage, complete: false, candidateCount: projected.length };
     } finally { busy = false; }
   };
 }

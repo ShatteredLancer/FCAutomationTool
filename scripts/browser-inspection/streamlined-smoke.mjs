@@ -325,7 +325,9 @@ async function exerciseStreamlinedRollingExpiry(page) {
   await page.getByText(/刷新过期补卡报价 \d+ \/ 52 · FUTBIN · 已等待 \d+ 秒/, { exact: true }).waitFor();
   await page.locator('.route-list button').first().waitFor();
   assert.match(await page.locator('[data-result]').innerText(), /待购 3,750 金币/);
-  assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166);
+  assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 144, 'One quote round stops launching reads at its shared 90-second deadline');
+  assert.match(await page.locator('[data-result]').innerText(), /补卡版本报价：有效 144 \/ 166/);
+  assert.equal(await page.locator('[data-quote-confirm]').isChecked(), false);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.maximum), 3);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.active), 0);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.writes), 0);
@@ -333,7 +335,11 @@ async function exerciseStreamlinedRollingExpiry(page) {
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-futbin-rolling-expiry.png' });
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
-  assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166, 'Regeneration reuses recovered price cache');
+  assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166, 'Regeneration reads only the remaining 22 unresolved versions');
+  assert.equal(await page.locator('[data-quote-confirm]').count(), 0, 'Complete fresh coverage removes the partial-quote confirmation requirement');
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.locator('.route-list button').first().waitFor();
+  assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 166, 'A complete recovered cache is reused without new network reads');
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.writes), 0);
 }
 
@@ -435,7 +441,8 @@ async function exerciseStreamlinedQuoteWait(page) {
         return { policy: { source: 'futbin' }, references: { 2: { quotes: { futbin: {
           source: 'futbin', definitionId: 2, price: null, error: 'FC27_BUY_REFERENCE_TIMEOUT' } } } } };
       } },
-      readMarketCandidates: async () => { throw Error('UNEXPECTED_MARKET_READ'); },
+      readMarketCandidates: async () => ({ market: [], pricePolicy: { source: 'futbin' },
+        quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', quoteCoverage: { requested: 1, valid: 0, failed: 1, missing: 0 } }),
     });
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
@@ -587,6 +594,8 @@ async function exerciseStreamlinedMarket(page) {
       readInputs: () => ({ context: c.context, challenge: c, policy: a.policy, eligibility: a.eligibility,
         inventory: [], assertCurrent() {} }),
       readMarketCandidates: async () => ({ pricePolicy: { source: 'futgg', purchaseAttempts: 7 },
+        ...(evidence.quoteLimited ? { quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT',
+          quoteCoverage: { requested: 3, valid: 2, failed: 1, missing: 0 } } : {}),
         market: [[101, 10, 150], [102, 100, 2000]].map(([definitionId, points, price]) => a.safeItem({
           source: 'market', definitionId, points, price,
           quote: { definitionId, source: 'futgg', price, fetchedAt: 1, expiresAt: 1000 },
@@ -678,5 +687,33 @@ async function exerciseStreamlinedMarket(page) {
   await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
   assert.equal(await run.isDisabled(), true);
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3);
+  await page.evaluate(() => { globalThis.marketSmoke.quoteLimited = true; });
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.locator('[data-quote-confirm]').waitFor();
+  assert.match(await page.locator('[data-result]').innerText(), /待确认方案.*不保证全库存\/全市场最低价/);
+  assert.match(await page.locator('[data-result]').innerText(), /补卡版本报价：有效 2 \/ 3 · 失败 1/);
+  assert.equal(await run.isDisabled(), true);
+  await page.locator('[data-quote-confirm]').evaluate(input => { input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); });
+  assert.equal(await run.isDisabled(), true, 'Synthetic acknowledgement cannot enable execution');
+  await page.locator('[data-quote-confirm]').uncheck();
+  await page.locator('[data-quote-confirm]').check();
+  assert.equal(await run.isEnabled(), true);
+  await page.locator('.route-list button').last().click();
+  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
+  assert.equal(await page.locator('[data-quote-confirm]').isChecked(), false, 'Changing route resets acknowledgement');
+  assert.equal(await run.isDisabled(), true);
+  await page.locator('[data-result] section.inventory-warning').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-quote-coverage-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.locator('[data-result] section.inventory-warning').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-quote-coverage-mobile.png' });
+  const coverageBounds = await page.getByRole('dialog').evaluate(node => ({ width: node.clientWidth, scroll: node.scrollWidth }));
+  assert.ok(coverageBounds.scroll <= coverageBounds.width + 1, 'Quote coverage warning has no narrow-screen horizontal overflow');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 3, 'Quote-limited previews have not executed');
+  await page.locator('[data-quote-confirm]').check();
+  await run.click();
+  await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 4);
   assert.equal(requests, 0, 'The synthetic market UI must never make network requests');
 }

@@ -66,7 +66,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       }
       return parsePublicFutggPrices(reply.text, ids, platform);
     },
-    readFutbin: async (definitionId, row, { season, platform }) => {
+    readFutbin: async (definitionId, row, { season, platform, deadlineAt = null, check = () => {} }) => {
       const captured = capture();
       const position = row?.preferredPosition ?? row?.positions?.[0];
       const player = { definitionId, rating: row?.rating ?? row?.overall ?? row?._rating,
@@ -78,7 +78,9 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       const reader = createFsuReferencePrice({ season, platform: platform === 'pc' ? 'pc' : 'ps', get, set, updateIds,
         request: async url => {
           const currentPolicy = await policyStore.read(captured.scope); captured.assert();
+          check();
           if (!publicPriceSourceEnabled(currentPolicy, 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+          if (deadlineAt !== null && now() >= deadlineAt) throw Error('FC27_STREAMLINED_QUOTE_BUDGET');
           const minimal = new URL(url).pathname.endsWith('fetchPlayerInformationMinimal');
           if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every(value => Number.isSafeInteger(value) && value > 0)
               || !Number.isSafeInteger(player.preferredPosition) || !positions[player.preferredPosition])) throw Error('FC27_PUBLIC_PRICE_PLAYER_INVALID');

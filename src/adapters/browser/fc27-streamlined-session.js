@@ -4,7 +4,7 @@ import { runStreamlinedPlan } from '../../streamlined/planner.js';
 import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { same, fail } from '../../streamlined/contract.js';
 import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/routes.js';
-import { streamlinedQuoteFailure } from '../../streamlined/quotes.js';
+import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuote, fatalStreamlinedQuoteFailure, STREAMLINED_QUOTE_BUDGET_MS } from '../../streamlined/quotes.js';
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 
 // Execution is optional and only entered through the separate contribution action.
@@ -62,6 +62,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       try {
         const config = normalizeStreamlinedSettings(value), origin = capture();
         const input = readInputs(config); input.assertCurrent();
+        const quoteDeadlineAt = now() + STREAMLINED_QUOTE_BUDGET_MS;
         const check = () => { unchanged(origin); input.assertCurrent(); if (stopRequested || run !== planningRun) fail('CANCELLED'); };
         // Wait locally: shared quote requests remain owned by the price service.
         // A stopped/closed preview must not wait for hundreds of queued reads.
@@ -69,7 +70,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           const started = now(); let last = initial, active = true;
           const report = row => { if (active) { last = row; progress({ ...row, elapsedMs: now() - (progressStartedAt ?? started) }); } };
           report(initial);
-          let timer, outcome = 'success', reason = null;
+          let timer, outcome = 'completed', reason = null;
           try {
             return await Promise.race([
               Promise.resolve().then(() => read(report)),
@@ -82,7 +83,9 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           } catch (error) { outcome = 'failed'; reason = safeReason(error); throw error; }
           finally {
             active = false; clearInterval(timer);
-            log({ event: 'planning-read', phase: last.phase, source: last.source, status: outcome, reason,
+            // Completion of a read is not evidence that every quote is usable.
+            // Quote phases emit one validated coverage summary below instead.
+            if (initial.phase !== 'quotes') log({ event: 'planning-read', phase: 'market-candidates', source: last.source, status: outcome, reason,
               durationMs: Math.max(0, now() - started), count: last.completed, requestedCount: last.total });
           }
         };
@@ -115,36 +118,34 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             check();
             try {
               const batch = ids.slice(offset, offset + 250);
-              const snapshot = await waitRead(report => prices.load(batch, { purpose: 'puzzle', rows: input.priceRows, futbinBatch: true,
+              const snapshot = await waitRead(report => prices.load(batch, { purpose: 'puzzle', rows: input.priceRows, futbinBatch: true, deadlineAt: quoteDeadlineAt,
                 onProgress: p => report({ phase: 'quotes', source: p.source, completed: offset + p.index, total: ids.length }),
                 isCurrent: () => { check(); return true; } }), { phase: 'quotes', completed: offset, total: ids.length }, inventoryQuotesStartedAt);
               if (offset && snapshot.policy.source !== quoteSource) fail('PRICE_POLICY_CHANGED');
               quoteSource = snapshot.policy.source; purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
               Object.assign(references, snapshot.references);
-              quoteReadError = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+              const failure = streamlinedQuoteFailure(snapshot.references, quoteSource, batch, now(), { requireFresh: false });
+              if (fatalStreamlinedQuoteFailure(failure)) throw Error(failure);
+              quoteReadError ??= failure ?? (snapshot.budgetExpired ? 'FC27_STREAMLINED_QUOTE_BUDGET' : null);
               progress({ phase: 'quotes', source: quoteSource, completed: offset + batch.length, total: ids.length });
-              log({ event: 'planning-read', phase: 'quotes', status: quoteReadError ? 'failed' : 'success',
-                source: quoteSource, reason: quoteReadError, count: offset + batch.length, requestedCount: ids.length });
-              if (quoteReadError) break;
             } catch (error) { quoteReadError = /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_QUOTES_UNAVAILABLE'; break; }
           }
-          log({ event: 'planning-read', phase: 'inventory-quotes', status: quoteReadError ? 'failed' : 'success',
+          const coverage = streamlinedQuoteCoverage(references, quoteSource, ids, now());
+          log({ event: 'planning-read', phase: 'inventory-quotes', status: coverage.valid === ids.length ? 'success' : coverage.valid ? 'partial' : 'failed',
             source: quoteSource, reason: quoteReadError, durationMs: Math.max(0, now() - inventoryQuotesStartedAt),
-            count: Object.keys(references).length, requestedCount: ids.length });
+            count: coverage.valid, unknownCount: coverage.failed + coverage.missing, requestedCount: ids.length });
         }
         check();
-        if (quoteReadError && config.mode === 'inventory-market' && typeof readMarketCandidates === 'function') {
-          log({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', localReason: quoteReadError,
-            source: quoteSource, requestedCount: ids.length });
-          return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError,
-            quoteSource, plan: null, liveExecutionEnabled: false };
-        }
-        let market = [], marketError = null;
+        if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
+        let market = [], marketError = null, marketCoverage = null;
         if (config.mode !== 'inventory' && typeof readMarketCandidates === 'function') {
           try {
             check(); const data = await waitRead(report => readMarketCandidates({ input, ids, quoteSource, references, check,
+              quoteDeadlineAt, allowPartialQuotes: true,
               onProgress: report }), { phase: 'catalog', completed: 0, total: 0 });
             market = Array.isArray(data) ? data : data.market;
+            marketCoverage = data.quoteCoverage ?? null;
+            quoteReadError ??= data.quoteReadError ?? null;
             if (!Array.isArray(market)) fail('MARKET_CANDIDATES_UNVERIFIED');
             if (data.pricePolicy) {
               if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail('PRICE_POLICY_CHANGED');
@@ -169,12 +170,12 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           } catch (error) { marketError = safeReason(error); market = []; }
         }
         check();
-        // A mixed plan must never silently become inventory-only when its
-        // market lane was requested and could not be verified. The inventory
-        // mode remains the explicit escape hatch for users who accept that
-        // scope; otherwise a catalog/market failure is a hard planning stop.
+        // Catalog/identity failure is still a hard stop. A verified market
+        // pool with no usable quotes can only yield a visibly quote-limited
+        // stock preview under the new explicit acknowledgement contract.
         const marketProvider = typeof readMarketCandidates === 'function';
-        if (config.mode !== 'inventory' && marketProvider && (!market.length || marketError)) {
+        const marketQuoteLimited = marketCoverage?.requested > 0 && marketCoverage.valid < marketCoverage.requested;
+        if (config.mode !== 'inventory' && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
           const reason = 'FC27_STREAMLINED_MARKET_UNAVAILABLE';
           const unavailable = {
             status: 'blocked', reason, marketError: marketError ?? 'FC27_STREAMLINED_MARKET_EMPTY',
@@ -187,18 +188,17 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           return unavailable;
         }
         check(); const quoteAt = now();
+        if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
         quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids, quoteAt, { requireFresh: false });
-        if (quoteReadError && config.mode === 'inventory-market' && marketProvider) {
-          log({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', localReason: quoteReadError, source: quoteSource });
-          return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteReadError,
-            quoteSource, plan: null, liveExecutionEnabled: false };
-        }
+        const inventoryCoverage = streamlinedQuoteCoverage(references, quoteSource, ids, quoteAt);
+        const quoteCoverage = { inventory: inventoryCoverage, market: marketCoverage,
+          limited: !!quoteReadError || !!prices && config.mode !== 'market' && inventoryCoverage.valid < inventoryCoverage.requested
+            || !!marketCoverage && marketCoverage.valid < marketCoverage.requested };
         const inventory = input.inventory.map(item => {
           const q = references[item.definitionId]?.quotes?.[quoteSource];
-          const valid = q?.definitionId === item.definitionId && q?.source === quoteSource && !q.error
-            && Number.isSafeInteger(q.price) && q.price > 0 && q.fetchedAt <= quoteAt && q.expiresAt > quoteAt;
+          const valid = validStreamlinedQuote(q, quoteSource, item.definitionId, quoteAt);
           return { ...item, price: valid ? q.price : null, quote: valid ? q : null };
-        });
+        }).filter(item => !quoteCoverage.limited || item.quote !== null);
         const eligibleKeys = new Set(filtered.items.map(item => item.key)), buckets = new Map();
         for (const item of [...inventory.filter(item => eligibleKeys.has(item.key)), ...market]) {
           const key = JSON.stringify([item.source, item.pile, item.rating, item.points]);
@@ -233,9 +233,13 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         } else result = await runStreamlinedPlan({ ...input, inventory, market, mode: config.mode, objective: config.objective,
           quoteSource, quoteAt, now }, options);
         check();
+        if (!result.items?.length && quoteCoverage.limited) {
+          return { ...result, status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteSource, quoteReadError,
+            quoteCoverage, plan: null, liveExecutionEnabled: false };
+        }
         const plan = ['ready', 'partial'].includes(result.status)
           ? createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy, result, objective: config.objective,
-            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs } }) : null;
+            execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs, ...(quoteCoverage.limited ? { quoteLimited: true } : {}) } }) : null;
         let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null, executionError = null;
         if (plan && typeof createExecution === 'function') {
           try {
@@ -246,7 +250,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         if (plan) preview = { origin, input, items: result.items, plan, execution };
         if (plan && routes.length) routePreview = { origin, input, config, routes, result, quoteSource, marketError,
-          inventorySelection, execution: plan.execution };
+          inventorySelection, quoteCoverage, quoteReadError, execution: plan.execution };
         const inventoryStats = input.inventoryStats ?? {};
         const excluded = result.excluded ?? {};
         const filteredInventoryCount = Object.values(filtered.excluded ?? {})
@@ -293,8 +297,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             }
           }
         }
-        return { ...result, plan, quoteSource, quoteReadError, marketError, marketAvailable: typeof readMarketCandidates === 'function',
-          marketPending: config.mode !== 'inventory' && market.length === 0, policy: input.policy,
+        return { ...result, plan, quoteSource, quoteReadError, quoteCoverage, marketError, marketAvailable: typeof readMarketCandidates === 'function',
+          marketPending: config.mode !== 'inventory' && market.length === 0 && !marketQuoteLimited, policy: input.policy,
           inventoryStats: input.inventoryStats ?? null,
           inventorySelection,
           liveExecutionEnabled: !!execution, executionReason, executionRecovery };
@@ -327,14 +331,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         if (executionReason) log({ event: 'execution-preflight', status: 'blocked', reason: executionReason,
           ...executionEvidence(executionError) });
         return { ...saved.result, ...result, plan, routes: saved.routes, selectedRoute: routeId, quoteSource: saved.quoteSource,
+          quoteCoverage: saved.quoteCoverage, quoteReadError: saved.quoteReadError,
           marketAvailable: true, marketPending: false, marketError: saved.marketError, executionReason, liveExecutionEnabled: !!execution,
           policy: saved.input.policy, inventoryStats: saved.input.inventoryStats ?? null, inventorySelection: saved.inventorySelection };
       } catch (error) { preview = null; return { status: 'blocked', reason: safeReason(error) }; }
       finally { busy = false; }
     },
-    async contribute({ fingerprint, batchIndices, allowPartial = false } = {}, callbacks = {}) {
+    async contribute({ fingerprint, batchIndices, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: 'blocked', reason: 'FC27_STREAMLINED_PLAN_CHANGED' };
+      if (preview.plan.execution?.quoteLimited === true && acknowledgeQuoteCoverage !== true) {
+        return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTE_CONFIRMATION_REQUIRED' };
+      }
       busy = true; stopRequested = false;
       const selected = preview;
       try {
