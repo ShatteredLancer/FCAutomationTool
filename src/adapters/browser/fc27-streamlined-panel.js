@@ -21,6 +21,16 @@ export function streamlinedRouteSummary(route) {
   return `总价值 ${number(total)} ◉ · 待购 ${number(route.purchaseCost)} · 上限 ${number(cap)} · ${number(route.score)} 分 · ${number(route.count)} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${number(route.minBatches)} 批${route.repeatPurchaseCount ? ` · 重复购卡 ${route.repeatPurchaseCount}` : ''}`;
 }
 
+export function streamlinedPurchaseBudgetPreview(plan) {
+  const base = (plan?.route?.groups ?? []).filter(group => group.source === 'market')
+    .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0);
+  const reserve = Math.ceil(base * 15 / 100), budget = base + reserve;
+  if (!Number.isSafeInteger(base) || base < 0 || !Number.isSafeInteger(budget)) throw Error('FC27_STREAMLINED_PURCHASE_BUDGET_UNVERIFIED');
+  // A displayed proposal, not spending authority. The trusted execution click
+  // passes the user's current input; existing journals keep their frozen budget.
+  return { base, reserve, budget };
+}
+
 export function streamlinedInventoryPreview(plan, indices = null, record = null) {
   const market = plan?.route?.groups?.some(group => group.source === 'market');
   const selected = new Set((market || indices === null ? plan?.items ?? []
@@ -36,7 +46,8 @@ export function streamlinedInventoryPreview(plan, indices = null, record = null)
 export function streamlinedExecutionProgress(p = {}) {
   const stages = { 'checking-source': '检查外部卡', 'checking-club': '核对 Club', 'journal-pending': '写入恢复记录',
     'move-request': '请求移入 Club', 'move-acknowledged': '移动回执已确认', 'club-readback': '核对 Club 回读', confirmed: '移入 Club 已确认' };
-  const label = p.phase === 'materialize' ? stages[p.stage] ?? '移入 Club'
+  const label = p.phase === 'partial-ready' && p.waitMs === 0 ? '本批已就绪，立即贡献'
+    : p.phase === 'materialize' ? stages[p.stage] ?? '移入 Club'
     : { preflight: '准备执行：核对方案与恢复记录', 'checking-state': '核对库存与剩余容量', search: '搜索限价内挂牌',
       buying: '买入中', moving: '移入 Club', 'partial-ready': '等待部分批次收批', validation: '复核材料',
       contribution: '贡献中', reconciliation: '核对回执', confirmed: '贡献已确认', recovery: '核对已有执行记录',
@@ -165,7 +176,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
     <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-value">最低总材料价值（库存+待购）</option><option value="lowest-coins">先最低购卡金币，再库存价值</option><option value="fewest-cards">最少卡数</option></select></label>
     <label>材料范围<select data-mode><option value="inventory-market">库存+补卡</option><option value="inventory">仅库存</option><option value="market">仅市场补卡</option></select></label>
-    <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待（秒）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC 仓库</label><label><input data-unassigned type="checkbox">未分配</label><label><input data-transfer type="checkbox">转会列表</label></div>
+    <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待上限（秒，已搜尽时跳过）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC 仓库</label><label><input data-unassigned type="checkbox">未分配</label><label><input data-transfer type="checkbox">转会列表</label></div>
     <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
     <section data-result></section></div>
     <footer><output data-status aria-live="polite"></output><progress aria-label="执行进度" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
@@ -328,10 +339,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       if (marketRun) {
         const label = add(output, 'label', '购卡总预算（金币）'), budget = add(label, 'input');
         budget.type = 'number'; budget.min = '0'; budget.step = '1'; budget.dataset.purchaseBudget = '';
-        budget.value = String(result.record?.budget ?? result.plan.route.groups.filter(group => group.source === 'market')
-          .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0));
+        const proposal = streamlinedPurchaseBudgetPreview(result.plan);
+        budget.value = String(result.record?.budget ?? proposal.budget);
         if (result.record) { budget.dataset.settled = 'true'; budget.disabled = true; }
-        add(output, 'small', `每卡最多尝试 ${number(result.plan.execution?.purchaseAttempts ?? 3)} 次 · 部分批次等待 ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} 秒 · 每次点击授权最长 10 分钟；到期保留进度。`);
+        add(output, 'small', result.record
+          ? `执行预算已冻结：${number(result.record.budget)} 金币。更改额度需重新生成方案并确认；不会自动改写旧预算。`
+          : `预算明细：单卡上限合计 ${number(proposal.base)} + 15% 替代预留 ${number(proposal.reserve)} = 建议总预算 ${number(proposal.budget)} 金币。预留仅用于授权市场池内换卡，不提高单卡限价，也不要求花完。`);
+        add(output, 'small', `每卡最多尝试 ${number(result.plan.execution?.purchaseAttempts ?? 3)} 次 · 部分批次等待上限 ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} 秒（本批无更多候选时跳过）· 每次点击授权最长 10 分钟；到期保留进度。`);
         const scope = result.plan.execution?.purchaseScope;
         if (scope) {
           const pool = add(output, 'details'), rows = scope.groups.flatMap(group => group.items);

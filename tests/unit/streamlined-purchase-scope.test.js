@@ -5,11 +5,13 @@ import { createStreamlinedPlan, assertStreamlinedPlan } from '../../src/streamli
 import { createStreamlinedPurchaseScope, approvedStreamlinedPurchaseRoute } from '../../src/streamlined/purchase-scope.js';
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal, validateStreamlinedPurchase } from '../../src/streamlined/purchase-journal.js';
+import { streamlinedPurchaseBudgetPreview } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
 const card = (id, points, price) => ({ ...safeItem({ source: 'market', definitionId: id, points, price,
   quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 10000 } }), purchaseMaxBuy: price });
-async function fixture({ inventory = [], market = [card(201, 20, 200), card(202, 100, 1100)], submittedScore = 0 } = {}) {
-  const c = challenge({ scoreRequirement: 100, submittedScore, selectionLimit: 5 });
+async function fixture({ inventory = [], market = [card(201, 20, 200), card(202, 100, 1100)], submittedScore = 0,
+  targetScore = 100, selectionLimit = 5 } = {}) {
+  const c = challenge({ scoreRequirement: targetScore, submittedScore, selectionLimit });
   const input = { challenge: c, inventory, market, policy, eligibility, quoteSource: 'futgg', quoteAt: 100, objective: 'lowest-value' };
   const result = await runStreamlinedRoutes(input, { now: () => 100, schedule: async () => {} });
   const route = result.routes[0], scope = createStreamlinedPurchaseScope(input);
@@ -31,6 +33,81 @@ async function fixture({ inventory = [], market = [card(201, 20, 200), card(202,
   const approval = { approved: true, fingerprint: plan.fingerprint, budget: 1100, attempts: 2, expiresAt: 10000, idleMs: 1000 };
   return { plan, scope, adapter, driver, approval, journal, values };
 }
+
+async function shortageFixture() {
+  const stock = safeItem({ id: 11, definitionId: 101, rating: 84, points: 830, price: 1100 });
+  const f = await fixture({ inventory: [stock], market: [card(201, 830, 1100), card(202, 830, 1200)],
+    submittedScore: 1660, targetScore: 34000, selectionLimit: 30 });
+  const find = f.adapter.find.getMockImplementation();
+  f.adapter.find.mockImplementation(async item => item.definitionId === 201 ? null : find(item));
+  return f;
+}
+
+it('reproduces the reported stock-first stop when the cheapest version is absent and the exact 41800 budget excludes alternatives', async () => {
+  const f = await shortageFixture();
+  expect(f.plan.route.purchaseCost).toBe(41800);
+  const result = await f.driver.execute(f.plan, { ...f.approval, budget: 41800 });
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY',
+    record: { submittedScore: 2490, spent: 0, consumedIds: [11] } });
+  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201, 201, 201, 201]);
+  expect(f.adapter.buy).not.toHaveBeenCalled();
+});
+
+it('uses the displayed 15% reserve to complete the same shortage through approved alternatives without raising card caps', async () => {
+  const f = await shortageFixture();
+  const proposal = streamlinedPurchaseBudgetPreview(f.plan);
+  const result = await f.driver.execute(f.plan, { ...f.approval, budget: proposal.budget });
+  expect(result).toMatchObject({ status: 'completed', record: { submittedScore: 34030, spent: 45600, budget: 48070 } });
+  expect(proposal).toEqual({ base: 41800, reserve: 6270, budget: 48070 });
+  expect(f.adapter.buy).toHaveBeenCalledTimes(38);
+  expect(f.adapter.buy.mock.calls.every(([entry]) => entry.definitionId === 202 && entry.price === 1200 && entry.cap === 1200)).toBe(true);
+  expect(result.record.consumedIds).toContain(11);
+});
+
+it('finishes stock plus 38 repeat purchases within one ten-minute approval without pointless 60-second partial waits', async () => {
+  const f = await shortageFixture(); let at = 100;
+  for (const key of ['readState', 'find', 'buy', 'move', 'locate', 'contribute']) {
+    const original = f.adapter[key].getMockImplementation();
+    f.adapter[key].mockImplementation(async (...args) => { at += 500; return original(...args); });
+  }
+  f.adapter.waitForPartial.mockImplementation(async ms => { at += ms; });
+  const driver = createStreamlinedProcurement({ adapter: f.adapter, journal: f.journal, operationId: () => 'timed',
+    lock: { acquire: async () => () => {} }, now: () => at });
+  const result = await driver.execute(f.plan, { ...f.approval, budget: streamlinedPurchaseBudgetPreview(f.plan).budget,
+    idleMs: 60000, expiresAt: 600100 });
+  expect(result).toMatchObject({ status: 'completed', record: { submittedScore: 34030, spent: 45600 } });
+  expect(at).toBeLessThan(600100);
+  expect(f.adapter.waitForPartial).not.toHaveBeenCalled();
+  expect(f.adapter.contribute).toHaveBeenCalledTimes(39);
+});
+
+it('does not spend the reserve when the cheaper version is available', async () => {
+  const f = await fixture();
+  const result = await f.driver.execute(f.plan, { ...f.approval, budget: streamlinedPurchaseBudgetPreview(f.plan).budget });
+  expect(result).toMatchObject({ status: 'completed', record: { budget: 1150, spent: 1000 } });
+  expect(f.adapter.buy.mock.calls.every(([entry]) => entry.definitionId === 201 && entry.cap === 200)).toBe(true);
+});
+
+it('never applies the new default reserve to an existing frozen execution record', async () => {
+  const f = await shortageFixture();
+  expect((await f.driver.execute(f.plan, { ...f.approval, budget: 41800 })).status).toBe('paused');
+  const reads = f.adapter.find.mock.calls.length;
+  expect(await f.driver.execute(f.plan, { ...f.approval, budget: streamlinedPurchaseBudgetPreview(f.plan).budget }))
+    .toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_CHANGED', record: { budget: 41800, spent: 0 } });
+  expect(f.adapter.find).toHaveBeenCalledTimes(reads); expect(f.adapter.buy).not.toHaveBeenCalled();
+});
+
+it('replaces the settled tight-budget run through a regenerated explicit approval, archives its stock consumption and continues without recovery clicks', async () => {
+  const f = await shortageFixture();
+  expect(await f.driver.execute(f.plan, { ...f.approval, budget: 41800 })).toMatchObject({ record: { submittedScore: 2490, consumedIds: [11] } });
+  const next = await fixture({ submittedScore: 2490, targetScore: 34000, selectionLimit: 30,
+    market: [card(201, 830, 1100), card(202, 830, 1200)] });
+  expect(await f.driver.execute(next.plan, { ...next.approval, budget: streamlinedPurchaseBudgetPreview(next.plan).budget }))
+    .toMatchObject({ status: 'completed', record: { spent: 45600, submittedScore: 34030, budget: 48070 } });
+  const history = [...f.values].filter(([key]) => key.includes(':history:')).map(([, record]) => record);
+  expect(history).toContainEqual(expect.objectContaining({ budget: 41800, consumedIds: [11], submittedScore: 2490 }));
+  expect(f.adapter.contribute.mock.calls.filter(([batch]) => batch.material.some(row => row.item.id === 11))).toHaveLength(1);
+});
 
 it('keeps the cheap repeat recipe instead of buying the faster premium version', async () => {
   const f = await fixture(), progress = [];

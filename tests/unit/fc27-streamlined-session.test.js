@@ -242,6 +242,23 @@ function setup(overrides = {}) {
   return { session, input, prices, inspect, store };
 }
 
+it('logs the actual approved and remaining market budget rather than inferring it from route estimates', async () => {
+  const diagnosticLog = { record: vi.fn() }, purchase = vi.fn(async (plan, approval) => ({ status: 'paused',
+    reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: { plan, budget: approval.budget, spent: 300, submittedScore: 0 } }));
+  const f = setup({ diagnosticLog,
+    readMarketCandidates: async () => ({ pricePolicy: { source: 'futbin' }, market: [safeItem({ source: 'market',
+      definitionId: 201, points: 40, price: 300, purchaseMaxBuy: 300,
+      quote: { source: 'futbin', definitionId: 201, price: 300, fetchedAt: 10, expiresAt: 100 } })] }),
+    createExecution: async () => ({ prepare() {}, purchase }) });
+  f.input.inventory = [];
+  const result = await f.session.plan({ mode: 'market' });
+  expect(result.purchaseCost).toBe(300);
+  await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 999, acknowledgeQuoteCoverage: true });
+  expect(purchase).toHaveBeenCalledWith(result.plan, expect.objectContaining({ budget: 999 }), expect.any(Object));
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'contribution',
+    approvedBudget: 999, spent: 300, remainingBudget: 699 }));
+});
+
 it('keeps verified quoted stock when all verified market quotes fail, but never downgrades a failed catalog', async () => {
   const readMarketCandidates = vi.fn(async () => ({ market: [], pricePolicy: { source: 'futbin' },
     quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', quoteCoverage: { requested: 3, valid: 0, failed: 3, missing: 0 } }));

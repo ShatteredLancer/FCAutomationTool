@@ -230,7 +230,8 @@ it('contributes partial supply, then repeats a version only after confirmed cons
   expect(adapter.contribute.mock.invocationCallOrder[0]).toBeLessThan(adapter.buy.mock.invocationCallOrder[1]);
   expect(progress.some(p => p.phase === 'checking-state')).toBe(true);
   expect(progress.find(p => p.phase === 'search')).toMatchObject({ maxBuy: 250, attempt: 1, attemptLimit: 2 });
-  expect(progress.find(p => p.phase === 'partial-ready').waitMs).toBe(adapter.waitForPartial.mock.calls[0][0]);
+  expect(progress.find(p => p.phase === 'partial-ready').waitMs).toBe(0);
+  expect(adapter.waitForPartial).not.toHaveBeenCalled();
 });
 
 it('a lost receipt checkpoint stops and later reconciles without sending a second bid', async () => {
@@ -310,7 +311,8 @@ it('closes an 18/30 wave with visible ready progress, then pauses on zero supply
   expect(result).toMatchObject({ status: 'paused', record: { submittedScore: 360, spent: 3600 } });
   expect(adapter.contribute).toHaveBeenCalledOnce(); expect(adapter.buy).toHaveBeenCalledTimes(18);
   expect(progress).toContainEqual(expect.objectContaining({ phase: 'partial-ready', readyCount: 18, readyPoints: 360, selectionLimit: 30 }));
-  expect(adapter.waitForPartial.mock.calls[0][0]).toBeLessThanOrEqual(1234);
+  expect(progress.find(p => p.phase === 'partial-ready').waitMs).toBe(0);
+  expect(adapter.waitForPartial).not.toHaveBeenCalled();
 });
 
 it('uses a Club copy before an external copy of the same definition', async () => {

@@ -7,13 +7,13 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
 
-async function setup() {
+async function setup(options = {}) {
   const f = streamlinedRuntime(), candidate = { ...f.plan.items[0], source: 'market', quote: {
     definitionId: f.plan.items[0].definitionId, source: 'futgg', price: 200, fetchedAt: 1, expiresAt: 10000 } };
   const buyer = { verifySquad: vi.fn(), find: vi.fn() };
   const plan = { ...f.plan, route: { groups: [{ source: 'market', quantity: 1, item: candidate, items: [candidate] }] } };
   const adapter = await createFc27StreamlinedPurchaseAdapter(f.root, { plan, persistence: {}, canWrite: () => false,
-    now: () => 1000, createBuyer: async () => buyer });
+    now: () => 1000, createBuyer: async () => buyer, ...options });
   return { f, plan, candidate, buyer, adapter };
 }
 
@@ -36,6 +36,16 @@ it('does not send a market search with an expired reference', async () => {
   const { adapter, candidate, buyer } = await setup();
   await expect(adapter.find({ ...candidate, quote: { expiresAt: 999 } }, 250)).rejects.toThrow('PURCHASE_QUOTE_EXPIRED');
   expect(buyer.find).not.toHaveBeenCalled();
+});
+
+it.each([[200, 200], [300, 250]])('refreshes an expired quote to %s without exceeding the approved card cap %s', async (price, cap) => {
+  const prices = { load: vi.fn(async ids => ({ references: { [ids[0]]: { quotes: { futgg: {
+    definitionId: ids[0], source: 'futgg', price, fetchedAt: 1000, expiresAt: 2000 } } } } })) };
+  const { f, adapter, candidate, buyer } = await setup({ prices });
+  f.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 0, inc: 50 }] };
+  await adapter.find({ ...candidate, pricePolicy: { source: 'futgg' }, quote: { ...candidate.quote, expiresAt: 999 } }, 250);
+  expect(prices.load).toHaveBeenCalledWith([candidate.definitionId], expect.objectContaining({ purpose: 'purchase' }));
+  expect(buyer.find).toHaveBeenCalledWith(candidate.definitionId, cap);
 });
 
 it('prepares an inventory-only first wave with its actual known material value', async () => {

@@ -44,6 +44,16 @@ it('exports bounded holdings-read arithmetic without physical identities, DTOs o
   expect(JSON.stringify(payload)).not.toMatch(/123456|secret|"itemId"|"token"|"raw"/);
 });
 
+it('retains approved and remaining purchase budget separately from an estimate without exporting identities', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'contribution', status: 'paused',
+    approvedBudget: 48070, spent: 1200, remainingBudget: 46870, currentScore: 2490,
+    account: 'secret', itemId: 123456 });
+  const entries = (await t.log.exportPayload()).entries;
+  expect(entries.at(-1)).toMatchObject({ approvedBudget: 48070, spent: 1200, remainingBudget: 46870 });
+  expect(JSON.stringify(entries)).not.toMatch(/secret|123456|account|itemId/);
+});
+
 it('retains anonymous FSU exclusion evidence across reloads without inventing price fields', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'inventory-exclusion', source: 'club', phase: 'fsu-gold-range',

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.25
+// @version      27.0.26
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.25", at: Date.now(), status: 'started',
+    state = { version: "27.0.26", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26438,6 +26438,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "batchSize",
     "count",
     "spent",
+    "approvedBudget",
+    "remainingBudget",
     "retryAt",
     "durationMs",
     "setId",
@@ -27378,6 +27380,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
     return `\u603B\u4EF7\u503C ${number2(total)} \u25C9 \xB7 \u5F85\u8D2D ${number2(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u5206 \xB7 ${number2(route.count)} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${number2(route.minBatches)} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
   }
+  function streamlinedPurchaseBudgetPreview(plan) {
+    const base = (plan?.route?.groups ?? []).filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
+    const reserve = Math.ceil(base * 15 / 100), budget = base + reserve;
+    if (!Number.isSafeInteger(base) || base < 0 || !Number.isSafeInteger(budget)) throw Error("FC27_STREAMLINED_PURCHASE_BUDGET_UNVERIFIED");
+    return { base, reserve, budget };
+  }
   function streamlinedInventoryPreview(plan, indices = null, record = null) {
     const market = plan?.route?.groups?.some((group) => group.source === "market");
     const selected = new Set((market || indices === null ? plan?.items ?? [] : indices.flatMap((index) => plan?.batches?.[index] ?? [])).map((item2) => item2.id));
@@ -27397,7 +27405,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
       confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
     };
-    const label = p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
+    const label = p.phase === "partial-ready" && p.waitMs === 0 ? "\u672C\u6279\u5DF2\u5C31\u7EEA\uFF0C\u7ACB\u5373\u8D21\u732E" : p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
       preflight: "\u51C6\u5907\u6267\u884C\uFF1A\u6838\u5BF9\u65B9\u6848\u4E0E\u6062\u590D\u8BB0\u5F55",
       "checking-state": "\u6838\u5BF9\u5E93\u5B58\u4E0E\u5269\u4F59\u5BB9\u91CF",
       search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
@@ -27562,7 +27570,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
     <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
     <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58+\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u5E02\u573A\u8865\u5361</option></select></label>
-    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
+    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650\uFF08\u79D2\uFF0C\u5DF2\u641C\u5C3D\u65F6\u8DF3\u8FC7\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
     <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
     <section data-result></section></div>
     <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
@@ -27830,12 +27838,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         budget.min = "0";
         budget.step = "1";
         budget.dataset.purchaseBudget = "";
-        budget.value = String(result.record?.budget ?? result.plan.route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0));
+        const proposal = streamlinedPurchaseBudgetPreview(result.plan);
+        budget.value = String(result.record?.budget ?? proposal.budget);
         if (result.record) {
           budget.dataset.settled = "true";
           budget.disabled = true;
         }
-        add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85 ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2 \xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+        add2(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number2(result.record.budget)} \u91D1\u5E01\u3002\u66F4\u6539\u989D\u5EA6\u9700\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u786E\u8BA4\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6539\u5199\u65E7\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number2(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number2(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number2(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
+        add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
         const scope2 = result.plan.execution?.purchaseScope;
         if (scope2) {
           const pool = add2(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
@@ -29756,7 +29766,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (same25(current2.context, selected.origin.context) && current2.challenge.id === selected.plan.challenge.id && current2.challenge.setId === selected.plan.challenge.setId) selected.origin = current2;
             else preview = null;
           }
-          log({ event: "contribution", status: result.status, reason: result.reason, currentScore: result.record?.submittedScore });
+          const approvedBudget = result.record?.budget, spent = result.record?.spent;
+          log({
+            event: "contribution",
+            status: result.status,
+            reason: result.reason,
+            currentScore: result.record?.submittedScore,
+            approvedBudget,
+            spent,
+            remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent) ? approvedBudget - spent : void 0
+          });
           return result;
         } catch (error2) {
           return { status: "blocked", reason: safeReason10(error2) };
@@ -32849,7 +32868,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           scarcityRound = 0;
           if ((wave.purchases.length || boughtThisWave > 0) && material.length < record.challenge.selectionLimit && material.reduce((sum2, r) => sum2 + r.item.points, record.submittedScore) < record.challenge.targetScore) {
-            const waitMs = Math.max(0, (approval.idleMs ?? 6e4) - (now() - lastBought));
+            const canGrow = nextStreamlinedWave(streamlinedDemandRoute(record), {
+              ...state,
+              ready: material,
+              freeSlots: Math.max(0, state.freeSlots - boughtThisWave),
+              blockedDefinitions: [...attempted],
+              limit: record.challenge.selectionLimit,
+              submittedScore: record.submittedScore,
+              targetScore: record.challenge.targetScore,
+              consumedIds: record.consumedIds,
+              fulfilled: record.fulfilled
+            }).purchases.length > 0;
+            const waitMs = canGrow ? Math.max(0, (approval.idleMs ?? 6e4) - (now() - lastBought)) : 0;
             report("partial-ready", {
               readyCount: material.length,
               waitMs,
@@ -32857,7 +32887,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               selectionLimit: record.challenge.selectionLimit,
               nextBatch: (record.confirmedBatches ?? 0) + 1
             });
-            await adapter.waitForPartial?.(waitMs, () => stopped);
+            if (waitMs > 0) await adapter.waitForPartial?.(waitMs, () => stopped);
           }
           if (stopped) break;
           await check();
@@ -33164,7 +33194,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.25" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.26" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33482,8 +33512,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.25"}`,
-    version: "27.0.25",
+    title: `FC Automation Tool ${"27.0.26"}`,
+    version: "27.0.26",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

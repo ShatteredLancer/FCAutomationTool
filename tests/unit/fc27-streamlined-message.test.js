@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage,
-  streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+  streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
+  streamlinedPurchaseBudgetPreview } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
 it('restores the Points Solver interface copy to Chinese without translating settings keys or native player names', () => {
   const source = readFileSync(new URL('../../src/adapters/browser/fc27-streamlined-panel.js', import.meta.url), 'utf8');
@@ -21,6 +22,23 @@ it('shows holdings pagination separately from contribution batch progress and ex
   expect(text).toContain('版本核对 2 / 3 组 · 第 2 页');
   expect(streamlinedExecutionMessage('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED')).toContain('可直接重试');
   expect(streamlinedExecutionMessage('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED')).toContain('未决交易仍须先核对');
+});
+
+it('proposes exactly 15% budget reserve over frozen card caps, without editing the plan or inventing a cap', () => {
+  const plan = { route: { groups: [
+    { source: 'inventory', quantity: 1, items: [{ id: 11, price: 1100 }] },
+    { source: 'market', quantity: 38, items: [{ price: 1100, purchaseMaxBuy: 1100 }] },
+  ] } };
+  const before = structuredClone(plan);
+  expect(streamlinedPurchaseBudgetPreview(plan)).toEqual({ base: 41800, reserve: 6270, budget: 48070 });
+  expect(plan).toEqual(before);
+  expect(streamlinedPurchaseBudgetPreview({ route: { groups: [] } })).toEqual({ base: 0, reserve: 0, budget: 0 });
+  expect(streamlinedPurchaseBudgetPreview({ route: { groups: [
+    { source: 'market', quantity: 1, items: [{ price: 101, purchaseMaxBuy: 151 }] },
+  ] } })).toEqual({ base: 151, reserve: 23, budget: 174 });
+  expect(() => streamlinedPurchaseBudgetPreview({ route: { groups: [
+    { source: 'market', quantity: 1, items: [{}] },
+  ] } })).toThrow('PURCHASE_BUDGET_UNVERIFIED');
 });
 
 it('explains which protection input failed instead of only showing the aggregate error code', () => {
@@ -60,6 +78,7 @@ it('counts elapsed/waiting time without claiming that a timer confirms a transac
   expect(streamlinedExecutionClock({}, NaN, -3000)).toContain('0 秒');
   expect(streamlinedExecutionClock({ phase: 'waiting-supply', waitMs: 15000 }, 30000, 4000)).toContain('供应重试等待剩余 11 秒');
   expect(streamlinedExecutionProgress({ phase: 'waiting-supply', attempt: 1, attemptLimit: 2 })).toContain('供应重试 1 / 2');
+  expect(streamlinedExecutionProgress({ phase: 'partial-ready', waitMs: 0 })).toContain('立即贡献');
 });
 
 it('lists each physical stock copy, binds market previews to the frozen route and preserves the plan', () => {

@@ -365,7 +365,10 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
               && current.challenge.setId === selected.plan.challenge.setId) selected.origin = current;
           else preview = null;
         }
-        log({ event: 'contribution', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore });
+          const approvedBudget = result.record?.budget, spent = result.record?.spent;
+          log({ event: 'contribution', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
+            approvedBudget, spent, remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent)
+              ? approvedBudget - spent : undefined });
         return result;
       } catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
       finally { activeExecution = null; busy = false; }

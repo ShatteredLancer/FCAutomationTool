@@ -575,14 +575,14 @@ async function exerciseStreamlinedMarket(page) {
         if (evidence.holdHoldings) await new Promise(resolve => {
           evidence.holdings = resolve;
           onProgress({ phase: 'checking-holdings', holdingsBatch: 1, holdingsBatchTotal: 2, offset: 250,
-            batchNumber: 1, purchased: 0, purchaseTarget: 10, spent: 0, budget: 1500,
+            batchNumber: 1, purchased: 0, purchaseTarget: 10, spent: 0, budget: approval.budget,
             contributed: 0, submittedScore: 0, targetScore: 100 });
         });
         if (evidence.mode === 'stopped') {
           await new Promise(resolve => {
             finish = resolve;
             onProgress({ phase: 'partial-ready', batchNumber: 1, purchased: 2, purchaseTarget: 10,
-              spent: 300, budget: 1500, contributed: 0, submittedScore: 0, targetScore: 100,
+              spent: 300, budget: approval.budget, contributed: 0, submittedScore: 0, targetScore: 100,
               readyCount: 2, selectionLimit: 30, readyPoints: 20, waitMs: 12000 });
           });
           finish = null;
@@ -645,9 +645,12 @@ async function exerciseStreamlinedMarket(page) {
     .querySelector('.route-list button').getAttribute('aria-pressed') === 'true');
   assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).count(), 0);
   assert.match(await page.locator('[data-selection]').innerText(), /点击执行将授权此目标/);
-  assert.equal(await page.locator('[data-purchase-budget]').inputValue(), '1500');
+  assert.equal(await page.locator('[data-purchase-budget]').inputValue(), '1725');
+  assert.match(await page.locator('[data-result]').innerText(), /单卡上限合计 1,500 \+ 15% 替代预留 225/);
+  assert.match(await page.locator('[data-result]').innerText(), /不提高单卡限价，也不要求花完/);
+  await page.locator('[data-purchase-budget]').fill('1600');
   assert.match(await page.locator('[data-result]').innerText(), /授权市场替代池：2 个版本/);
-  assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待 12 秒/);
+  assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待上限 12 秒/);
   const run = page.getByRole('button', { name: '按方案购买并贡献', exact: true });
   assert.equal(await run.isEnabled(), true);
   assert.equal(await page.locator('[data-status]').evaluate(node => !!node.closest('footer')), true,
@@ -688,7 +691,10 @@ async function exerciseStreamlinedMarket(page) {
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.purchaseAttempts), 7);
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.partialWaitMs), 12000);
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.execution.purchaseScope.groups.length), 2);
-  assert.equal(await page.evaluate(() => globalThis.marketSmoke.approval.budget), 1500);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.approval.budget), 1600, 'The trusted click uses the edited budget, not the default reserve');
+  assert.equal(await page.locator('[data-purchase-budget]').inputValue(), '1600');
+  assert.equal(await page.locator('[data-purchase-budget]').isDisabled(), true);
+  assert.match(await page.locator('[data-result]').innerText(), /执行预算已冻结：1,600 金币/);
   await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
   assert.equal(await run.isEnabled(), true);

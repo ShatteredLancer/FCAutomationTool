@@ -241,11 +241,18 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         scarcityRound = 0;
         if ((wave.purchases.length || boughtThisWave > 0) && material.length < record.challenge.selectionLimit
             && material.reduce((sum,r) => sum+r.item.points, record.submittedScore) < record.challenge.targetScore) {
-          const waitMs = Math.max(0, (approval.idleMs ?? 60000) - (now() - lastBought));
+          // Sleeping does not poll or add material. Once the permitted distinct
+          // versions have been exhausted, contribute now so repeat purchases
+          // can resume; a fixed wait would only consume the approval deadline.
+          const canGrow = nextStreamlinedWave(streamlinedDemandRoute(record), { ...state, ready: material,
+            freeSlots: Math.max(0, state.freeSlots - boughtThisWave), blockedDefinitions: [...attempted],
+            limit: record.challenge.selectionLimit, submittedScore: record.submittedScore,
+            targetScore: record.challenge.targetScore, consumedIds: record.consumedIds, fulfilled: record.fulfilled }).purchases.length > 0;
+          const waitMs = canGrow ? Math.max(0, (approval.idleMs ?? 60000) - (now() - lastBought)) : 0;
           report('partial-ready', { readyCount: material.length, waitMs,
             readyPoints: material.reduce((sum, row) => sum + row.item.points, 0), selectionLimit: record.challenge.selectionLimit,
             nextBatch: (record.confirmedBatches ?? 0) + 1 });
-          await adapter.waitForPartial?.(waitMs, () => stopped);
+          if (waitMs > 0) await adapter.waitForPartial?.(waitMs, () => stopped);
         }
         if (stopped) break;
         await check();
