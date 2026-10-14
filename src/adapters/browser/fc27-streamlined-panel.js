@@ -1,25 +1,24 @@
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 
-const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : 'Unknown';
-const quantity = (value, noun, plural = `${noun}s`) => `${number(value)} ${value === 1 ? noun : plural}`;
+const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
 
 export function streamlinedMarketMessage(result) {
-  const source = { futbin: 'FUTBIN', futgg: 'FUT.GG' }[result.quoteSource] ?? 'Selected source';
+  const source = { futbin: 'FUTBIN', futgg: 'FUT.GG' }[result.quoteSource] ?? '所选来源';
   if (result.marketError === 'FC27_STREAMLINED_QUOTES_EXPIRED') {
-    return `${source} market quotes expired while waiting and could not be refreshed. Generate a new plan. Expired quotes and other price sources are not used.`;
+    return `${source} 补卡报价在等待中到期，刷新后仍未取得完整有效报价。请重新生成方案；不会使用过期报价或自动切换来源。`;
   }
   if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ''))) {
-    return `${source} market quotes could not be loaded. No plan was generated. Check the price source connection and try again.`;
+    return `${source} 补卡报价读取失败，未生成方案。请检查该报价来源连接后重新生成。`;
   }
-  return 'Market candidates could not be verified. No purchase plan was generated. Check the FUT.GG catalog connection or choose Inventory only.';
+  return '市场候选未验证，未生成补卡方案。请检查候选目录连接（FUT.GG），或将材料范围切换为“仅库存”后重试。';
 }
 
 export function streamlinedRouteSummary(route) {
   const cap = route.groups.filter(group => group.source === 'market')
     .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0);
   const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-  return `Total value ${number(total)} ◉ · To buy ${number(route.purchaseCost)} · Cap ${number(cap)} · ${number(route.score)} points · ${quantity(route.count, 'card')} (Inventory ${route.inventoryCount} / To buy ${route.marketCount}) · at least ${quantity(route.minBatches, 'batch', 'batches')}${route.repeatPurchaseCount ? ` · Repeat purchases ${route.repeatPurchaseCount}` : ''}`;
+  return `总价值 ${number(total)} ◉ · 待购 ${number(route.purchaseCost)} · 上限 ${number(cap)} · ${number(route.score)} 分 · ${number(route.count)} 张（库存 ${route.inventoryCount} / 待购 ${route.marketCount}）· 至少 ${number(route.minBatches)} 批${route.repeatPurchaseCount ? ` · 重复购卡 ${route.repeatPurchaseCount}` : ''}`;
 }
 
 export function streamlinedInventoryPreview(plan, indices = null, record = null) {
@@ -35,33 +34,34 @@ export function streamlinedInventoryPreview(plan, indices = null, record = null)
 }
 
 export function streamlinedExecutionProgress(p = {}) {
-  const stages = { 'checking-source': 'Checking external cards', 'checking-club': 'Checking Club', 'journal-pending': 'Saving recovery record',
-    'move-request': 'Moving to Club', 'move-acknowledged': 'Move receipt confirmed', 'club-readback': 'Verifying Club delivery', confirmed: 'Club delivery confirmed' };
-  const label = p.phase === 'materialize' ? stages[p.stage] ?? 'Moving to Club'
-    : { preflight: 'Preparing execution: checking the plan and records', 'checking-state': 'Checking inventory and capacity', search: 'Searching within the price cap',
-      buying: 'Buying', moving: 'Moving to Club', 'partial-ready': 'Waiting to close the partial batch', validation: 'Checking cards',
-      contribution: 'Contributing', reconciliation: 'Reconciling receipts', confirmed: 'Contribution confirmed', recovery: 'Reconciling previous records',
-      replanning: 'Selecting the lowest-cost approved alternative', 'waiting-supply': 'Waiting to retry available supply', 'search-result': 'Search finished',
-      'purchase-rejected': 'Purchase rejected by EA' }[p.phase] ?? 'Running';
-  let text = `${Number.isSafeInteger(p.batchNumber) ? `Batch ${number(p.batchNumber)} · ` : ''}${label}`;
-  if (p.playerName || Number.isSafeInteger(p.rating)) text += `\nCurrent candidate: ${p.playerName ?? 'Name unavailable'} · ${number(p.rating)} OVR · Cap ${number(p.maxBuy)} coins · Attempt ${number(p.attempt)} / ${number(p.attemptLimit)}`;
-  if (p.purchaseTarget !== undefined) text += `\nPurchased ${number(p.purchased)} / ${number(p.purchaseTarget)} cards · Spent ${number(p.spent)} / ${number(p.budget)} coins`;
-  text += `\nContributed ${number(p.contributed)} cards · Confirmed ${number(p.submittedScore)} / ${number(p.targetScore)} points`;
-  if (p.readyCount !== undefined) text += `\nReady in this batch ${number(p.readyCount)} / ${number(p.selectionLimit)} cards · ${number(p.readyPoints)} points`;
-  if (p.phase === 'materialize') text += `\nExternal cards ${number(p.completed)} / ${number(p.materialTotal)} cards`;
-  if (p.phase === 'waiting-supply') text += `\nSupply retry ${number(p.attempt)} / ${number(p.attemptLimit)}`;
+  const stages = { 'checking-source': '检查外部卡', 'checking-club': '核对 Club', 'journal-pending': '写入恢复记录',
+    'move-request': '请求移入 Club', 'move-acknowledged': '移动回执已确认', 'club-readback': '核对 Club 回读', confirmed: '移入 Club 已确认' };
+  const label = p.phase === 'materialize' ? stages[p.stage] ?? '移入 Club'
+    : { preflight: '准备执行：核对方案与恢复记录', 'checking-state': '核对库存与剩余容量', search: '搜索限价内挂牌',
+      buying: '买入中', moving: '移入 Club', 'partial-ready': '等待部分批次收批', validation: '复核材料',
+      contribution: '贡献中', reconciliation: '核对回执', confirmed: '贡献已确认', recovery: '核对已有执行记录',
+      replanning: '选择授权范围内的最低成本替代方案', 'waiting-supply': '等待后重试市场供应', 'search-result': '本次搜索完成',
+      'checking-holdings': '核对 Club 版本持有', 'purchase-rejected': 'EA 拒绝了买入请求' }[p.phase] ?? '执行中';
+  let text = `${Number.isSafeInteger(p.batchNumber) ? `第 ${number(p.batchNumber)} 批 · ` : ''}${label}`;
+  if (p.phase === 'checking-holdings') text += `\n版本核对 ${number(p.holdingsBatch)} / ${number(p.holdingsBatchTotal)} 组 · 第 ${number(Math.floor((p.offset ?? 0) / 250) + 1)} 页`;
+  if (p.playerName || Number.isSafeInteger(p.rating)) text += `\n当前候选：${p.playerName ?? '姓名未取得'} · ${number(p.rating)} OVR · 上限 ${number(p.maxBuy)} 金币 · 尝试 ${number(p.attempt)} / ${number(p.attemptLimit)}`;
+  if (p.purchaseTarget !== undefined) text += `\n已购 ${number(p.purchased)} / ${number(p.purchaseTarget)} 张 · 已花费 ${number(p.spent)} / ${number(p.budget)} 金币`;
+  text += `\n已贡献 ${number(p.contributed)} 张 · 已确认 ${number(p.submittedScore)} / ${number(p.targetScore)} 分`;
+  if (p.readyCount !== undefined) text += `\n本批就绪 ${number(p.readyCount)} / ${number(p.selectionLimit)} 张 · ${number(p.readyPoints)} 分`;
+  if (p.phase === 'materialize') text += `\n外部卡 ${number(p.completed)} / ${number(p.materialTotal)} 张`;
+  if (p.phase === 'waiting-supply') text += `\n供应重试 ${number(p.attempt)} / ${number(p.attemptLimit)}`;
   return text;
 }
 
 export function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
   const seconds = ms => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1000);
-  let text = `Elapsed ${seconds(elapsedMs)} s`;
-  if (active) text += ` · Current step ${seconds(phaseElapsedMs)} s`;
+  let text = `本次耗时 ${seconds(elapsedMs)} 秒`;
+  if (active) text += ` · 当前步骤等待 ${seconds(phaseElapsedMs)} 秒`;
   if (active && p?.phase === 'partial-ready' && Number.isSafeInteger(p.waitMs)) {
-    text += ` · Estimated batch wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} s`;
+    text += ` · 预计收批等待剩余 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} 秒`;
   }
   if (active && p?.phase === 'waiting-supply' && Number.isSafeInteger(p.waitMs)) {
-    text += ` · Supply retry wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} s`;
+    text += ` · 供应重试等待剩余 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} 秒`;
   }
   return text;
 }
@@ -70,68 +70,68 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
   if (reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') {
     const evidence = normalizeStreamlinedProtectionFailure(protection);
     const labels = {
-      'protection-lock-list': 'The FSU lock list is unavailable or invalid. Ensure FSU Local is enabled and initialized, then refresh. Keep your cards locked.',
-      'protection-active-id': 'The active squad ID could not be verified. Open your active squad in Squads, then return to generate a plan.',
-      'protection-active-state': 'The active squad status could not be verified. Confirm the squad is active in Squads. Export diagnostics if the issue persists.',
-      'protection-native-id': 'The cached squad ID does not match the active squad. Export diagnostics.',
-      'protection-layout': 'The native squad slot layout could not be verified. Export diagnostics.',
-      'protection-slot-list': `The native squad slot list is incomplete (${number(evidence?.count)} / ${number(evidence?.requiredSlots)}). Export diagnostics.`,
-      'protection-slot-id': 'An item ID in the active squad could not be verified. Export diagnostics.',
-      'protection-fsu-roster': 'The FSU active squad snapshot is unavailable or invalid. Export diagnostics.',
-      'protection-cache': 'The active squad cache is missing and no verified snapshot matches this account and squad. Export diagnostics.',
+      'protection-lock-list': 'FSU 锁卡名单未读到或格式异常。请确认 FSU Local 已启用并初始化完成，再刷新页面；不要解除锁卡。',
+      'protection-active-id': 'EA 当前主阵容标识尚未核验。请在 Squads 打开当前主阵容，再返回生成方案。',
+      'protection-active-state': '原生主阵容的启用状态尚未核验。请在 Squads 确认当前主阵容已启用；若仍报错，请导出诊断。',
+      'protection-native-id': '原生缓存中的主阵容标识与当前主阵容不一致。请导出诊断排查。',
+      'protection-layout': '原生主阵容卡位数量定义未通过核验。请导出诊断排查。',
+      'protection-slot-list': `原生主阵容卡位未完整核验（${number(evidence?.count)} / ${number(evidence?.requiredSlots)}）。请导出诊断排查。`,
+      'protection-slot-id': '原生主阵容卡位中的物品标识未通过核验。请导出诊断排查。',
+      'protection-fsu-roster': 'FSU 主阵容快照未读到或格式异常。请导出诊断排查。',
+      'protection-cache': '原生主阵容缓存缺失，且没有当前账号/主阵容的有效已核验快照。请导出诊断排查。',
     };
-    return `${labels[evidence?.phase] ?? 'Card locks or the active squad could not be verified. Open your active EA squad and try again. Export diagnostics if the issue persists.'} No new cards were contributed.`;
+    return `${labels[evidence?.phase] ?? '锁卡或当前主阵容信息尚未核验。请先打开 EA 主阵容，再返回生成方案；若仍报错，请导出诊断。'} 本次未投入新材料。`;
   }
   if (reason === 'FC27_BUY_RECOVERY_REQUIRED') {
     const target = recovery?.kind === 'puzzle-purchase' && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId)
       ? ` (Set ${recovery.setId} / Challenge ${recovery.challengeId})` : '';
-    const phase = { 'save-pending': 'Squad replacement has not been reconciled', ready: 'Purchase or Club delivery has not been reconciled', saved: 'The purchase recovery marker is unresolved' }[recovery?.phase];
-    const labels = { waiting: 'Not purchased', 'buy-pending': 'Purchase unconfirmed', bought: 'Purchased, awaiting delivery',
-      'move-pending': 'Delivery unconfirmed', 'move-rejected': 'Delivery rejected', club: 'In Club' };
+    const phase = { 'save-pending': '阵容替换保存尚未核对', ready: '购买或入库尚未核对', saved: '购买恢复标记尚未结清' }[recovery?.phase];
+    const labels = { waiting: '未购买', 'buy-pending': '成交待核对', bought: '已购待入库',
+      'move-pending': '入库待核对', 'move-rejected': '入库被拒', club: '已入库' };
     const counts = Object.entries(labels).flatMap(([state, label]) => {
       const count = recovery?.states?.[state];
       return Number.isSafeInteger(count) && count > 0 && count <= 32 ? [`${label} ${count}`] : [];
     });
-    if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`Confirmed replacements ${recovery.applied}`);
-    return `This account has an unresolved Puzzle purchase record${target}${phase ? `: ${phase}` : ''}. ${counts.length ? `Record states: ${counts.join(', ')}. ` : ''} Open that SBC's bulk purchase window to reconcile the record. If the SBC has expired, keep the record and export diagnostics. No cards were contributed.`;
+    if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`已确认替换 ${recovery.applied}`);
+    return `当前账号有待核对的 Puzzle 购卡记录${target}${phase ? `: ${phase}` : ''}. ${counts.length ? `记录状态：${counts.join(', ')}. ` : ''}请先回对应 SBC 的批量购买窗口核对并恢复；若该 SBC 已下架，请保留记录并导出诊断。本次未投入材料。`;
   }
   const messages = {
-    FC27_STREAMLINED_STOPPED: 'Stopped. Confirmed purchases are retained. Resume with the execution button; unresolved receipts are checked first.',
-    FC27_STREAMLINED_NO_AFFORDABLE_CARDS: 'Paused: no executable purchase candidate for the current plan. Confirmed purchases have been retained.',
-    FC27_STREAMLINED_PURCHASE_NO_SUPPLY: 'Paused after bounded retries: no approved candidate was available within the frozen price caps. Purchases are retained. Retry later or generate a new plan; no receipt recovery is needed for a normal shortage.',
-    FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: 'Unassigned capacity is full. Clear space manually, then retry. No market search or automatic disposal was performed.',
-    FC27_STREAMLINED_PURCHASE_VERSION_HELD: 'The remaining versions are already held in Club and are not approved inventory materials. Choose another route or explicitly approve those stock cards; they will not be consumed automatically.',
-    FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: 'The remaining approved budget cannot cover this purchase. No cap was raised. Generate a new plan to approve a different budget.',
-    FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: 'A purchase price could not be verified. No purchase was authorized from that quote. Refresh the plan or export diagnostics.',
-    FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: 'Current Club holdings could not be verified. No missing cache entry was treated as permission to buy or consume a card. Retry or export diagnostics.',
-    FC27_BUY_SEARCH_FAILED: 'EA rejected the market search. No purchase was sent for that search. Retry later; export diagnostics if this persists.',
-    FC27_STREAMLINED_PURCHASE_REJECTED: 'EA rejected the purchase attempts. Confirmed purchases are retained. This is not an unknown receipt or proof that the market has no supply.',
-    FC27_BUY_NATIVE_REJECTED: 'EA rejected the purchase attempts. Confirmed purchases are retained. Retry later or export diagnostics.',
-    FC27_BUY_INSUFFICIENT_COINS: 'EA reported insufficient coins for the purchase. Confirmed purchases are retained. No approved price cap or budget was increased.',
-    FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: 'The execution approval has expired. Confirmed transactions are retained. Click the execution button to approve another run; unresolved receipts will be checked first.',
-    FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: 'Public quotes expired and could not be refreshed. Purchased cards are retained. Generate a fresh plan; no cap was raised.',
-    FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: 'A purchase, delivery or previous plan needs reconciliation. Reconcile before continuing; purchases will not be repeated.',
-    FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: 'This contribution has not been confirmed. Reconcile before continuing; it will not be submitted again.',
-    FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: 'The purchase record could not be read. Retry reconciliation or export diagnostics.',
-    FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: 'The purchase record could not be saved. Reconcile before continuing.',
-    FC27_STREAMLINED_PROGRESS_CHANGED: 'The current points no longer match the plan. Execution stopped. Reconcile before continuing.',
-    FC27_STREAMLINED_PROTECTION_UNVERIFIED: 'Card locks or the active squad could not be verified. Open your active EA squad and try again. No new cards were contributed.',
-    FC27_STREAMLINED_POLICY_CHANGED: 'Card protection or settings changed. Reconcile the previous run, then generate a new plan.',
-    FC27_STREAMLINED_MATERIAL_CHANGED: 'Selected cards changed or are protected by locks or the active squad. Execution stopped. Reconcile, then generate a new plan.',
-    FC27_BUY_JOURNAL_READ_FAILED: 'The Puzzle purchase record could not be read. Retry or export diagnostics. No record was cleared and no cards were contributed.',
-    FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: 'This account has an unresolved Gallery purchase. Reconcile it in the Gallery purchase window.',
-    FC27_RECOVERY_REQUIRED: 'This account has an unresolved standard SBC submission. Reconcile that submission first.',
-    FC27_STREAMLINED_INITIATION_UNVERIFIED: 'Start this SBC in the native EA interface, then generate a plan.',
-    FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: 'Contribution is not enabled in this build.',
-    FC27_STREAMLINED_RECONCILIATION_REQUIRED: 'This contribution needs reconciliation. Click Check & recover; do not submit it again.',
-    FC27_STREAMLINED_RECOVERY_REQUIRED: 'The previous contribution was dispatched but is not confirmed. Click Check & recover; do not submit it again.',
-    FC27_STREAMLINED_CONTEXT_CHANGED: 'The account, SBC or points changed. Reopen the current SBC and generate a new plan.',
-    FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}) has an unresolved contribution. Nothing was resumed or submitted again in this SBC.`,
-    FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}) has an unresolved external card move (${recovery?.pendingCount ?? '?'} cards). Click Check & recover. This only checks Club delivery; it does not repeat moves, purchases or contributions.`,
-    FC27_STREAMLINED_COMPLETED: 'The selected target is complete. No further contribution is needed.',
-    FC27_STREAMLINED_PURCHASE_PENDING: 'This route needs market cards. Purchases and delivery must be confirmed before contribution.',
+    FC27_STREAMLINED_STOPPED: '已停止；已确认成交保留。有未决回执时先核对，否则可直接继续。',
+    FC27_STREAMLINED_NO_AFFORDABLE_CARDS: '当前方案没有可执行的限价内候选，已暂停。已确认购入的材料保留。',
+    FC27_STREAMLINED_PURCHASE_NO_SUPPLY: '有限重试后仍无授权范围内的限价候选，已暂停。已购材料保留，可稍后重试或生成新方案；普通缺货不需要核对交易回执。',
+    FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: '未分配区已满。请手动腾出空间后重试；未搜索市场，也未自动丢弃卡片。',
+    FC27_STREAMLINED_PURCHASE_VERSION_HELD: '剩余版本已在 Club 持有，但未被选为本次库存材料。请选择其他路线，或重新生成方案明确选择这些库存卡；不会自动消耗。',
+    FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: '剩余预算不足以完成本次购买，未提高限价。请重新生成方案并明确调整预算。',
+    FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: '购买报价未通过核验，未按该报价买入。请刷新方案，持续出错时导出诊断。',
+    FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: 'Club 版本持有读取未通过核验，已暂停；本次检查未发出购买或献祭请求。可直接重试，持续出错时导出诊断；已有未决交易仍须先核对。',
+    FC27_BUY_SEARCH_FAILED: 'EA 拒绝了市场搜索；未为这次搜索发送买入请求。请稍后重试，持续出错时导出诊断。',
+    FC27_STREAMLINED_PURCHASE_REJECTED: 'EA 拒绝了买入尝试。已确认购入的材料保留；这不是未知回执，也不等于市场缺货。',
+    FC27_BUY_NATIVE_REJECTED: 'EA 拒绝了买入尝试。已确认购入的材料保留，请稍后重试或导出诊断。',
+    FC27_BUY_INSUFFICIENT_COINS: 'EA 返回金币不足。已确认购入的材料保留，未提高单卡限价或总预算。',
+    FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: '本次执行授权已到期。已发生的交易保留；无未决回执时可再次点击继续。',
+    FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: '公共报价已过期且未能更新。已购材料保留；请重新生成方案，不使用过期报价。',
+    FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: '购买或入库结果尚未确认，请核对并恢复；不会重复买入。',
+    FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: '本批贡献结果尚未确认，请核对并恢复；不会重复贡献。',
+    FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: '购买记录读取失败，请重试恢复或导出诊断。',
+    FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: '购买记录保存失败，请核对并恢复后继续。',
+    FC27_STREAMLINED_PROGRESS_CHANGED: '当前积分与方案不一致，已停止，请核对并恢复。',
+    FC27_STREAMLINED_PROTECTION_UNVERIFIED: '锁卡或当前主阵容信息尚未核验，请先打开 EA 主阵容，再返回生成方案；未投入新材料。',
+    FC27_STREAMLINED_POLICY_CHANGED: '材料保护或设置已变化，请核对旧执行记录后重新生成方案。',
+    FC27_STREAMLINED_MATERIAL_CHANGED: '选中材料已变化或受到锁卡/主阵容保护，已停止；请核对记录后重新生成方案。',
+    FC27_BUY_JOURNAL_READ_FAILED: 'Puzzle 购买记录读取失败，请重新读取或导出诊断；未清除记录、未投入材料。',
+    FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: '当前账号有待核对的 Gallery 购卡记录，请先到 Gallery 购买窗口核对并继续购买。',
+    FC27_RECOVERY_REQUIRED: '当前账号有待核对的传统 SBC 提交记录，请先恢复该次提交。',
+    FC27_STREAMLINED_INITIATION_UNVERIFIED: '请先通过 EA 原生界面开始此 SBC，再重新生成方案。',
+    FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: '当前构建未启用贡献接口。',
+    FC27_STREAMLINED_RECONCILIATION_REQUIRED: '本次投入结果尚待核对，请点击“核对并恢复”，不要重复投入。',
+    FC27_STREAMLINED_RECOVERY_REQUIRED: '上次贡献已发出，结果尚待核对；请点击“核对并恢复”，不要再次投入。',
+    FC27_STREAMLINED_CONTEXT_CHANGED: '账号、SBC 或积分状态已变化，请重新打开当前 SBC 并生成方案。',
+    FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未结清的贡献记录，未在当前 SBC 恢复或重复投入。`,
+    FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未核对的外部卡移动记录（${recovery?.pendingCount ?? '?'} 张）。请先点击“核对并恢复”；这里只检查是否已进入 Club，不会重复移动、购买或贡献。`,
+    FC27_STREAMLINED_COMPLETED: '所选目标已达成，无需再次贡献。',
+    FC27_STREAMLINED_PURCHASE_PENDING: '此路线含待购材料；先完成购买并核对真实实体，才能贡献。',
   };
-  return messages[reason] ?? reason ?? 'Generate a new plan or reconcile the previous run.';
+  return messages[reason] ?? reason ?? '请重新生成方案或核对执行结果。';
 }
 
 // Fodder's observed workflow: native work-area entry -> settings -> progress ->
@@ -141,7 +141,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   if (!document?.body || document.getElementById('fcat-streamlined-entry')) return null;
   const add = (parent, tag, value = '') => { const node = document.createElement(tag); node.textContent = value; parent.append(node); return node; };
   const entry = document.createElement('button'); entry.id = 'fcat-streamlined-entry'; entry.type = 'button';
-  entry.textContent = 'FCAT Points Solver'; entry.className = 'btn-standard call-to-action';
+  entry.textContent = 'FCAT 积分解题'; entry.className = 'btn-standard call-to-action';
   entry.style.cssText = 'margin:8px;min-height:38px';
   const host = document.createElement('div'); host.id = 'fcat-streamlined-panel'; document.body.append(host);
   const shadow = host.attachShadow({ mode: 'closed' });
@@ -161,15 +161,15 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
     .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
-  </style><dialog aria-label="FCAT Streamlined SBC"><div class="panel-body"><header><strong>FCAT Points Solver</strong><button data-close aria-label="Close">×</button></header>
-    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">Current SBC</button><button data-global aria-pressed="false">Global settings</button></div>
-    <section data-settings><div class="fields"><label>Planning objective<select data-objective><option value="lowest-value">Lowest total card value (inventory + purchases)</option><option value="lowest-coins">Lowest purchase cost, then inventory value</option><option value="fewest-cards">Fewest cards</option></select></label>
-    <label>Card sources<select data-mode><option value="inventory-market">Inventory + market</option><option value="inventory">Inventory only</option><option value="market">Market only</option></select></label>
-    <label>Maximum inventory rating<input data-rating type="number" min="1" max="99" step="1"></label><label>Maximum market rating<input data-market-rating type="number" min="1" max="99" step="1"></label><label>Partial batch wait (seconds)<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
-    <small>Inventory follows FSU card protection. Purchases use the selected price source. Estimates do not guarantee market availability. Selecting a route does not buy or contribute cards.</small><button data-save>Save settings</button></section>
+  </style><dialog aria-label="FCAT 积分解题"><div class="panel-body"><header><strong>FCAT 积分解题</strong><button data-close aria-label="关闭">×</button></header>
+    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
+    <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-value">最低总材料价值（库存+待购）</option><option value="lowest-coins">先最低购卡金币，再库存价值</option><option value="fewest-cards">最少卡数</option></select></label>
+    <label>材料范围<select data-mode><option value="inventory-market">库存+补卡</option><option value="inventory">仅库存</option><option value="market">仅市场补卡</option></select></label>
+    <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待（秒）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC 仓库</label><label><input data-unassigned type="checkbox">未分配</label><label><input data-transfer type="checkbox">转会列表</label></div>
+    <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
     <section data-result></section></div>
-    <footer><output data-status aria-live="polite"></output><progress aria-label="Execution progress" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <div class="actions"><button data-review-stock hidden>View inventory cards</button><button data-stop hidden>Stop</button><button data-recover>Check & recover</button><button data-solve class="primary">Generate plan</button><button data-contribute disabled hidden>Contribute selected batches</button></div></footer></dialog>`;
+    <footer><output data-status aria-live="polite"></output><progress aria-label="执行进度" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
+      <div class="actions"><button data-review-stock hidden>查看库存卡</button><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></div></footer></dialog>`;
   const node = key => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector('dialog');
   let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
   const rendered = new Set();
@@ -248,20 +248,20 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   entry.addEventListener('click', async event => {
     if (!event.isTrusted || disposed || busy) return;
     update(); if (!target) return;
-    origin = target; const serial = ++opened; dialog.showModal(); node('status').textContent = 'Loading requirements…'; node('result').replaceChildren(); node('contribute').hidden = true; clearRendered();
+    origin = target; const serial = ++opened; dialog.showModal(); node('status').textContent = '读取当前需求…'; node('result').replaceChildren(); node('contribute').hidden = true; clearRendered();
     setBusy(true);
     try {
       const result = await session.readSettings(); if (serial !== opened) return;
       const c = result.challenge, s = result.settings;
-      node('target').textContent = `${c.name ?? 'Streamlined SBC'} · ${number(c.submittedScore)} / ${number(c.targetScore)} · Remaining ${number(c.remainingScore)}`;
+      node('target').textContent = `${c.name ?? 'Streamlined SBC'} · ${number(c.submittedScore)} / ${number(c.targetScore)} · 剩余 ${number(c.remainingScore)}`;
       applySettings(s);
-      node('status').textContent = 'Planning does not select or submit cards.'; selectScope(false);
+      node('status').textContent = '规划不会选卡或提交。'; selectScope(false);
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }
     finally { setBusy(false); }
   });
   on('save', async () => {
     if (busy) return; setBusy(true);
-    try { await session.saveSettings(config(), global); node('status').textContent = global ? 'Global defaults saved. Settings for the current SBC take priority.' : 'Settings saved for this SBC.'; }
+    try { await session.saveSettings(config(), global); node('status').textContent = global ? '全局默认设置已保存。当前 SBC 独立设置优先。' : '当前 SBC 设置已保存。'; }
     catch (error) { node('status').textContent = safeReason(error); } finally { setBusy(false); }
   });
   const renderResult = result => {
@@ -270,13 +270,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       if (!result.plan) {
         const output = node('result');
         if (result.reason === 'FC27_STREAMLINED_QUOTES_UNAVAILABLE') {
-          add(output, 'div', 'Quotes are unavailable or expired. No plan was generated. Check the selected price source and try again.').className = 'result-summary';
+          add(output, 'div', '报价读取失败或已过期，未生成方案。请检查所选报价来源连接后重新生成。').className = 'result-summary';
           add(output, 'small', `${String(result.quoteSource).toUpperCase()} · ${result.quoteReadError}`);
         } else if (result.reason === 'FC27_STREAMLINED_MARKET_UNAVAILABLE') {
           add(output, 'div', streamlinedMarketMessage(result)).className = 'result-summary';
-          if (result.marketError) add(output, 'small', `Market candidates unavailable: ${result.marketError}`);
+          if (result.marketError) add(output, 'small', `补卡候选读取失败：${result.marketError}`);
         } else if (result.reason) {
-          add(output, 'div', `No plan generated: ${result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+          add(output, 'div', `未生成方案：${result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
             ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = 'result-summary';
           if (result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') add(output, 'small', `${result.reason}${result.protectionFailure?.phase ? ` · ${result.protectionFailure.phase}` : ''}`);
         }
@@ -284,16 +284,16 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       }
       shown = result;
       const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
-      node('contribute').textContent = marketRun ? 'Buy & contribute' : 'Contribute selected batches';
+      node('contribute').textContent = marketRun ? '按方案购买并贡献' : '贡献所选批次';
       const output = node('result'), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add(output, 'section'); warning.className = 'inventory-warning';
-        add(warning, 'strong', 'Quote coverage is incomplete. Review this plan; it may not be the cheapest across all inventory and market cards.');
-        for (const [key, label] of [['inventory', 'Inventory'], ['market', 'Market']]) {
+        add(warning, 'strong', '报价覆盖不完整：待确认方案，不保证全库存/全市场最低价。');
+        for (const [key, label] of [['inventory', '库存'], ['market', '补卡']]) {
           const coverage = result.quoteCoverage?.[key];
-          if (coverage) add(warning, 'small', `${label} quote coverage: valid ${number(coverage.valid)} / ${number(coverage.requested)} · failed ${number(coverage.failed)} · missing/expired ${number(coverage.missing)}; cards without valid quotes are excluded.`);
+          if (coverage) add(warning, 'small', `${label}版本报价：有效 ${number(coverage.valid)} / ${number(coverage.requested)} · 失败 ${number(coverage.failed)} · 缺失/过期 ${number(coverage.missing)}；未取得有效报价的卡不参加本方案。`);
         }
-        add(warning, 'small', 'Clicking the execution button accepts this displayed quote coverage, inventory list and purchase scope. No additional coverage checkbox is required.');
+        add(warning, 'small', '请核对报价覆盖、库存清单和购买范围；点击执行按钮即确认当前显示内容，无需额外勾选。');
       }
       const inventoryReview = add(output, 'details'); inventoryReview.className = 'inventory-review'; inventoryReview.dataset.inventoryReview = ''; inventoryReview.open = true;
       const inventorySummary = add(inventoryReview, 'summary'), inventoryList = add(inventoryReview, 'div');
@@ -302,23 +302,23 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         inventoryList.replaceChildren();
         const rows = streamlinedInventoryPreview(result.plan, [...selected], result.record);
         const remaining = rows.filter(item => !item.consumed).length, consumed = rows.length - remaining;
-        inventorySummary.textContent = `Inventory cards this plan will consume: ${quantity(remaining, 'card')}${consumed ? ` · Consumed ${quantity(consumed, 'card')}` : ''}`;
-        node('review-stock').textContent = `Inventory ${quantity(remaining, 'card')} (view)`; node('review-stock').hidden = false;
-        if (!rows.length) { add(inventoryList, 'small', 'This route or batch selection uses no existing inventory cards.'); return; }
+        inventorySummary.textContent = `本方案将消耗的现有库存卡：${number(remaining)} 张${consumed ? ` · 已消耗 ${number(consumed)} 张` : ''}`;
+        node('review-stock').textContent = `库存 ${number(remaining)} 张（查看）`; node('review-stock').hidden = false;
+        if (!rows.length) { add(inventoryList, 'small', '当前路线/已选批次不消耗现有库存卡。'); return; }
         if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
-          add(inventoryList, 'small', 'This saved plan has old protection flags. Current card locks and the active squad will be checked before execution. Review the inventory list.').className = 'inventory-warning';
+          add(inventoryList, 'small', '旧方案的保护标记未更新；执行前会按当前锁卡和主阵容重新复核。请先逐张核对库存清单。').className = 'inventory-warning';
         }
         inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
         for (const item of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
           const row = add(inventoryList, 'div'); row.className = `inventory-row${item.consumed ? ' consumed' : ''}`;
           add(row, 'strong', number(item.rating));
-          const text = add(row, 'div'); add(text, 'strong', item.name ?? `Version ${item.definitionId} (name unavailable)`);
-          const pile = { club: 'Club', storage: 'SBC Storage', unassigned: 'Unassigned → Club', transfer: 'Transfer List → Club' }[item.pile] ?? 'Source unverified';
-          add(text, 'small', `${pile} · ${number(item.points)} points · ${item.price == null ? 'Value unknown' : `Value ${number(item.price)} coins`} · ${item.consumed ? 'Consumed' : 'Will consume'}`);
+          const text = add(row, 'div'); add(text, 'strong', item.name ?? `版本 ${item.definitionId}（姓名未取得）`);
+          const pile = { club: 'Club', storage: 'SBC 仓库', unassigned: '未分配 → Club', transfer: '转会列表 → Club' }[item.pile] ?? '来源未核验';
+          add(text, 'small', `${pile} · ${number(item.points)} 分 · ${item.price == null ? '估值未知' : `估值 ${number(item.price)} 金币`} · ${item.consumed ? '已消耗' : '将消耗'}`);
         }
         if (rows.length > 50) {
-          add(inventoryList, 'small', `Showing ${inventoryPage * 50 + 1}–${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} cards`);
-          for (const [label, delta] of [['Previous', -1], ['Next', 1]]) {
+          add(inventoryList, 'small', `显示 ${inventoryPage * 50 + 1}–${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} 张`);
+          for (const [label, delta] of [['上一页', -1], ['下一页', 1]]) {
             const button = add(inventoryList, 'button', label); button.type = 'button';
             button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
             button.addEventListener('click', () => { inventoryPage += delta; updateInventoryReview(); });
@@ -326,18 +326,18 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         }
       };
       if (marketRun) {
-        const label = add(output, 'label', 'Total purchase budget (coins)'), budget = add(label, 'input');
+        const label = add(output, 'label', '购卡总预算（金币）'), budget = add(label, 'input');
         budget.type = 'number'; budget.min = '0'; budget.step = '1'; budget.dataset.purchaseBudget = '';
         budget.value = String(result.record?.budget ?? result.plan.route.groups.filter(group => group.source === 'market')
           .reduce((sum, group) => sum + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0));
         if (result.record) { budget.dataset.settled = 'true'; budget.disabled = true; }
-        add(output, 'small', `Attempts per card: ${number(result.plan.execution?.purchaseAttempts ?? 3)} · Partial batch wait: ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} s · Each click approves up to 10 minutes of execution. Progress is retained on expiry.`);
+        add(output, 'small', `每卡最多尝试 ${number(result.plan.execution?.purchaseAttempts ?? 3)} 次 · 部分批次等待 ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} 秒 · 每次点击授权最长 10 分钟；到期保留进度。`);
         const scope = result.plan.execution?.purchaseScope;
         if (scope) {
           const pool = add(output, 'details'), rows = scope.groups.flatMap(group => group.items);
-          add(pool, 'summary', `Approved market substitution pool: ${quantity(rows.length, 'version')}`);
-          add(pool, 'small', 'Execution may select a lower-cost feasible recipe from these versions within the total budget and each frozen cap. Existing inventory is limited to the displayed selected stock IDs. Estimated prices are not supply guarantees.');
-          for (const item of rows) add(pool, 'small', `${item.name ?? `Version ${item.definitionId}`} · OVR ${item.rating} · ${number(item.points)} points · Estimate ${number(item.price)} · Cap ${number(item.purchaseMaxBuy)} coins`);
+          add(pool, 'summary', `授权市场替代池：${number(rows.length)} 个版本`);
+          add(pool, 'small', '执行时可在这些版本中选择成本更低的可行配方，仍受总预算和每卡冻结上限限制。现有库存仅限清单中的已选实体；估价不保证市场供应。');
+          for (const item of rows) add(pool, 'small', `${item.name ?? `版本 ${item.definitionId}`} · ${item.rating} OVR · ${number(item.points)} 分 · 估价 ${number(item.price)} · 上限 ${number(item.purchaseMaxBuy)} 金币`);
         }
       }
       if (result.routes?.length) {
@@ -349,30 +349,31 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           button.addEventListener('click', async event => {
             if (!event.isTrusted || busy) return; const serial = opened; setBusy(true);
             try { const next = await session.selectRoute(route.id); if (serial === opened) { renderResult(next);
-              node('status').textContent = next.plan?.execution?.quoteLimited === true ? 'Quote coverage is incomplete. Review and confirm the selected route. No purchase or contribution has started.'
-                : next.reason ?? 'Route selected. No purchase or contribution has started.'; } }
+              node('status').textContent = next.plan?.execution?.quoteLimited === true ? '报价覆盖不完整：请核对清单，点击执行即确认；尚未购买或贡献。'
+                : next.reason ?? '已选择路线，未购买或贡献。'; } }
             catch (error) { node('status').textContent = safeReason(error); } finally { setBusy(false); }
           });
         }
       }
-      add(output, 'div', `${result.status === 'ready' ? 'Target covered' : 'Partial plan'} · ${number(p.submitted)} submitted + ${number(p.added)} this plan · Remaining ${number(p.remaining)} / Excess ${number(p.excess)}`).className = 'result-summary';
+      add(output, 'div', `${result.status === 'ready' ? '预计达标' : '部分方案'} · ${number(p.submitted)} 已提交 + ${number(p.added)} 本次 · 还差 ${number(p.remaining)} / 超额 ${number(p.excess)}`).className = 'result-summary';
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      add(output, 'small', `Total card value ${number(total)} coins · To buy ${number(result.purchaseCost)} coins · Inventory value ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${quantity(result.items.length, 'card')} / ${quantity(result.batches.length, 'batch', 'batches')}`);
+      add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${number(result.items.length)} 张 / ${number(result.batches.length)} 批`);
       if (result.policy) {
         const stats = result.inventoryStats;
-        const pileText = stats?.byPile ? ['club', 'storage', 'unassigned', 'transfer'].map(pile => `${pile} ${number(stats.byPile[pile] ?? 0)}`).join(' / ') : 'Club / Storage';
-        const raw = stats?.rawByPile ? ` · raw ${number(stats.rawByPile.club)} / ${number(stats.rawByPile.storage)}` : '';
-        add(output, 'small', `FSU Only Untradeable: ${result.policy.onlyUntradeable ? 'enabled' : 'disabled'} · Read inventory: ${pileText}${raw}`);
+        const pileLabels = { club: 'Club', storage: 'SBC 仓库', unassigned: '未分配', transfer: '转会列表' };
+        const pileText = stats?.byPile ? ['club', 'storage', 'unassigned', 'transfer'].map(pile => `${pileLabels[pile]} ${number(stats.byPile[pile] ?? 0)}`).join(' / ') : 'Club / SBC 仓库';
+        const raw = stats?.rawByPile ? ` · 原始 ${number(stats.rawByPile.club)} / ${number(stats.rawByPile.storage)}` : '';
+        add(output, 'small', `FSU 仅不可交易：${result.policy.onlyUntradeable ? '开启' : '关闭'} · 读取库存：${pileText}${raw}`);
         add(output, 'small', result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad
-          ? 'Card locks: enabled · Active squad protection: enabled (starters, substitutes and reserves)'
-          : 'Saved plan: current card locks and active squad protection will be checked before execution.');
+          ? '锁卡保护：开启 · 当前主阵容保护：开启（首发/替补/预备）'
+          : '旧方案：执行前重新核验当前锁卡与主阵容保护。');
       }
-      if (!result.searchComplete) add(output, 'small', 'Search budget reached. Showing the best plan found, not a guaranteed global optimum.');
-      if (!result.poolComplete) add(output, 'small', 'Based on currently readable inventory; full inventory coverage is not confirmed.');
-      if (result.marketPending) add(output, 'small', 'Verified market candidates are unavailable. This result contains inventory only.');
-      if (result.quoteReadError) add(output, 'small', `Quote reads incomplete: ${result.quoteReadError}`);
-      if (result.marketError) add(output, 'small', `Market candidates incomplete: ${result.marketError}`);
-      if (result.unknownValueCount) add(output, 'small', `${result.unknownValueCount} cards have unknown value. They are not treated as free.`);
+      if (!result.searchComplete) add(output, 'small', '搜索已达预算；显示最佳已知方案，不代表全局最优。');
+      if (!result.poolComplete) add(output, 'small', '基于当前可读取库存；未确认全量库存。');
+      if (result.marketPending) add(output, 'small', '当前未接入可验证的市场候选；此结果仅包含库存。');
+      if (result.quoteReadError) add(output, 'small', `报价读取未完成：${result.quoteReadError}`);
+      if (result.marketError) add(output, 'small', `补卡候选读取未完成：${result.marketError}`);
+      if (result.unknownValueCount) add(output, 'small', `${result.unknownValueCount} 张材料估值未知，不能视作零价。`);
       const settled = index => !!result.record && (result.record.submittedScore >= p.target
         || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== 'waiting'));
       selected = new Set(result.batches.map((_, index) => index).filter(index => !settled(index)));
@@ -380,12 +381,12 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const updateSelection = () => {
         const items = [...selected].flatMap(index => result.batches[index]);
         const points = items.reduce((sum, item) => sum + item.points, 0);
-        selection.textContent = marketRun ? 'Review the target, total budget, market pool and inventory below. The execution button approves this scope. Batches are estimates.'
-          : `Selected ${selected.size} batches · ${items.length} cards · ${number(points)} points · Remaining ${number(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        selection.textContent = marketRun ? '点击执行将授权此目标、总预算、市场替代池/每卡上限及所选库存卡；下方批次仅为预估。'
+          : `已选 ${selected.size} 批 · ${items.length} 张 · ${number(points)} 分 · 还差 ${number(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
         if (marketRun && result.record) {
           const r = result.record, rows = r.entries ?? [];
-          selection.textContent += `\nConfirmed ${number(r.submittedScore)} / ${number(p.target)} points · Spent ${number(r.spent)} / ${number(r.budget)} coins`
-            + `\nPurchased, awaiting delivery ${rows.filter(e => ['bought', 'move-pending'].includes(e.state)).length} cards · Ready ${rows.filter(e => ['ready', 'club'].includes(e.state)).length} cards · Contributed ${r.consumedIds?.length ?? 0} cards`;
+          selection.textContent += `\n已确认 ${number(r.submittedScore)} / ${number(p.target)} 分 · 已花费 ${number(r.spent)} / ${number(r.budget)} 金币`
+            + `\n已购待入库 ${rows.filter(e => ['bought', 'move-pending'].includes(e.state)).length} 张 · 已就绪 ${rows.filter(e => ['ready', 'club'].includes(e.state)).length} 张 · 已贡献 ${r.consumedIds?.length ?? 0} 张`;
         }
         node('contribute').disabled = busy || !contributionReady();
         updateInventoryReview();
@@ -399,11 +400,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         // projected batches are informational and cannot be approved alone.
         if (marketRun) choice.hidden = true;
         choice.dataset.settled = String(settled(index)); choice.disabled = busy || settled(index);
-        choice.setAttribute('aria-label', `Select batch ${index + 1}`);
+        choice.setAttribute('aria-label', `选择第 ${index + 1} 批`);
         choice.addEventListener('click', event => event.stopPropagation());
         choice.addEventListener('change', () => { if (marketRun) return; if (choice.checked) selected.add(index); else selected.delete(index); updateSelection(); });
         const pending = batch.filter(item => item.source === 'market');
-        summary.append(document.createTextNode(` Batch ${index + 1} · ${quantity(batch.length, 'card')} (Inventory ${batch.length - pending.length} / To buy ${pending.length}) · ${number(batch.reduce((sum, i) => sum + i.points, 0))} points · To buy ${number(pending.reduce((sum, item) => sum + item.price, 0))} coins`));
+        summary.append(document.createTextNode(` 第 ${index + 1} 批 · ${number(batch.length)} 张（库存 ${batch.length - pending.length} / 待购 ${pending.length}) · ${number(batch.reduce((sum, i) => sum + i.points, 0))} 分 · 待购 ${number(pending.reduce((sum, item) => sum + item.price, 0))} 金币`));
         let populated = false;
         const populate = () => {
           if (populated || !details.open || generation !== renderGeneration || disposed) return;
@@ -412,20 +413,20 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           for (const item of batch) {
             const row = add(list, 'div'); row.className = 'player-row';
             const card = add(row, 'div'); card.className = 'player-card';
-            const fallback = add(card, 'span', number(item.rating)); fallback.title = 'Card image unavailable';
+            const fallback = add(card, 'span', number(item.rating)); fallback.title = '卡面不可用';
             const slot = add(card, 'slot'); slot.name = `streamlined-card-${generation}-${item.key}`;
             const text = add(row, 'div'); text.className = 'player-text';
-            add(text, 'strong', item.name ?? `Version ${item.definitionId}`);
-            add(text, 'span', `${number(item.rating)} OVR · ${number(item.points)} points`);
+            add(text, 'strong', item.name ?? `版本 ${item.definitionId}`);
+            add(text, 'span', `${number(item.rating)} OVR · ${number(item.points)} 分`);
             add(text, 'span', item.source === 'market'
-              ? 'To buy · Market concept card'
-              : item.pile === 'storage' ? 'SBC Storage · owned'
-                : item.pile === 'unassigned' ? 'Unassigned → Club · owned'
-                  : item.pile === 'transfer' ? 'Transfer List → Club · owned' : 'Club · owned');
-            const points = add(row, 'span', `${number(item.points)} points`); points.className = 'player-points';
-            const price = add(row, 'span', item.price == null ? 'Value unknown' : `${number(item.price)} coins`);
-            price.className = 'player-price'; price.title = item.source === 'market' ? 'Purchase estimate' : 'Inventory value';
-            if (item.source === 'market') add(price, 'small', `Cap ${number(item.purchaseMaxBuy)}`);
+              ? '待购 · 市场概念卡'
+              : item.pile === 'storage' ? 'SBC 仓库 · 已有'
+                : item.pile === 'unassigned' ? '未分配 → Club · 已有'
+                  : item.pile === 'transfer' ? '转会列表 → Club · 已有' : 'Club · 已有');
+            const points = add(row, 'span', `${number(item.points)} 分`); points.className = 'player-points';
+            const price = add(row, 'span', item.price == null ? '估值未知' : `${number(item.price)} 金币`);
+            price.className = 'player-price'; price.title = item.source === 'market' ? '待购估价' : '库存材料估值';
+            if (item.source === 'market') add(price, 'small', `上限 ${number(item.purchaseMaxBuy)}`);
             let native = null, failed = false;
             const unavailable = () => {
               failed = true;
@@ -435,7 +436,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
             try {
               const raw = session.resolveDisplayItem?.(item);
               if (raw) native = (item.source === 'market' ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({ parent: host, raw, slot: slot.name,
-                label: item.name ?? `Version ${item.definitionId}`, onUnavailable: unavailable });
+                label: item.name ?? `版本 ${item.definitionId}`, onUnavailable: unavailable });
             } catch { unavailable(); }
             if (native && !failed) { rendered.add(native); fallback.hidden = true; }
             else unavailable();
@@ -444,52 +445,53 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         details.addEventListener('toggle', populate); populate();
       });
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count]) => `${key}: ${count}`).join(' · ');
-      if (skipped) { const details = add(output, 'details'); add(details, 'summary', 'Card exclusion reasons'); add(details, 'small', skipped); }
+      if (skipped) { const details = add(output, 'details'); add(details, 'summary', '材料排除原因'); add(details, 'small', skipped); }
       if (result.policy?.goldRange?.[1] < 99) {
-        add(output, 'small', `FSU gold rating cap ${number(result.policy.goldRange[1])}: inventory above this rating is protected. Market purchases use their separate rating limit.`);
+        add(output, 'small', `FSU 金卡上限 ${number(result.policy.goldRange[1])}：高于该上限的库存卡受保护，不会自动投入；市场补卡仍按独立市场上限。`);
       }
       const exclusionBuckets = result.inventorySelection?.buckets;
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
         const details = add(output, 'details');
-        add(details, 'summary', `Excluded inventory ${quantity(result.inventorySelection.readCount - result.inventorySelection.eligibleCount, 'card')}`);
+        add(details, 'summary', `未采用库存 ${number(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} 张`);
         const labels = {
-          'fsu-gold-range': 'Outside the FSU gold rating range',
-          untradeable: 'Excluded by Only Untradeable',
-          pile: 'Unsupported inventory pile',
-          locked: 'FSU manual card lock',
-          'active-squad': 'Active squad protection',
-          'eligibility-ineligible': 'Does not meet SBC requirements',
-          'eligibility-unknown': 'SBC eligibility unverified',
+          'fsu-gold-range': '不在 FSU 金卡评分范围',
+          untradeable: 'Only Untradeable 不满足',
+          pile: '不支持的库存位置',
+          locked: 'FSU 手动锁卡保护',
+          'active-squad': '当前主阵容保护',
+          'eligibility-ineligible': '不符合 SBC 条件',
+          'eligibility-unknown': 'SBC 资格未确认',
         };
         add(details, 'small', exclusionBuckets.map(bucket =>
-          `${labels[bucket.reason] ?? bucket.reason} · ${bucket.pile === 'storage' ? 'Storage' : bucket.pile === 'club' ? 'Club' : bucket.pile} · ${bucket.rating == null ? 'Rating unknown' : `${number(bucket.rating)} OVR`} ×${number(bucket.count)}`
+          `${labels[bucket.reason] ?? bucket.reason} · ${bucket.pile === 'storage' ? 'Storage' : bucket.pile === 'club' ? 'Club' : bucket.pile} · ${bucket.rating == null ? '评分未知' : `${number(bucket.rating)}级`} ×${number(bucket.count)}`
         ).join('; '));
       }
       add(output, 'small', result.liveExecutionEnabled ? (marketRun
-        ? 'Click to search, buy, deliver to Club and contribute in batches. Purchases stay within each approved card price cap.'
-        : 'Contributing permanently consumes selected cards. You can contribute in batches. Stop waits for the current batch to be reconciled.')
-        : `Execution unavailable: ${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`); node('contribute').hidden = false;
+        ? '点击后按当前路线逐批搜卡、买断、入 Club 并贡献；实际成交不超过每张卡的冻结上限。'
+        : '点击贡献将永久消耗所选批次的卡片；可以分批贡献，停止会等待当前批次核对完成。')
+        : `当前不能贡献：${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`); node('contribute').hidden = false;
   };
   on('solve', async () => {
     if (busy || !origin || !same(origin, read())) return;
     resetProgress(); node('review-stock').hidden = true;
-    const serial = opened; shown = null; setBusy(true); clearRendered(); node('result').replaceChildren(); node('contribute').hidden = true; node('status').textContent = 'Preparing candidates…';
+    const serial = opened; shown = null; setBusy(true); clearRendered(); node('result').replaceChildren(); node('contribute').hidden = true; node('status').textContent = '正在准备候选…';
     try {
       const result = await session.plan(config(), { onProgress: p => {
         if (serial !== opened) return;
         const bar = shadow.querySelector('progress');
-        const stage = p.phase === 'market-quotes' && p.refresh ? 'Refreshing expired market quotes'
-          : { quotes: 'Inventory quotes', catalog: 'Candidate groups', 'market-validation': 'Verifying candidate points', 'market-quotes': 'Market quotes' }[p.phase];
+        const stage = p.phase === 'market-quotes' && p.refresh ? '刷新过期补卡报价'
+          : { quotes: '库存报价', catalog: '候选分组', 'market-validation': '核对候选积分', 'market-quotes': '补卡报价' }[p.phase];
         bar.max = stage ? p.total || 1 : p.maxNodes || 1;
         bar.value = stage ? p.completed : p.nodes;
-        node('status').textContent = stage ? `${stage} ${number(p.completed)} / ${number(p.total)}${p.source ? ` · ${String(p.source).toUpperCase()}` : ''}${Number.isFinite(p.elapsedMs) ? ` · Waiting ${Math.floor(p.elapsedMs / 1000)} s` : ''}`
-          : `Search nodes ${number(p.nodes)} / ${number(p.maxNodes)} · Candidates ${number(p.candidates)} · ${number(p.elapsedMs)} ms`;
+        node('status').textContent = stage ? `${stage} ${number(p.completed)} / ${number(p.total)}${p.source ? ` · ${String(p.source).toUpperCase()}` : ''}${Number.isFinite(p.elapsedMs) ? ` · 已等待 ${Math.floor(p.elapsedMs / 1000)} 秒` : ''}`
+          : `搜索节点 ${number(p.nodes)} / ${number(p.maxNodes)} · 候选 ${number(p.candidates)} · ${number(p.elapsedMs)} ms`;
       } });
       if (serial !== opened) return;
-      node('status').textContent = result.status === 'cancelled' ? 'Stopped.'
-        : result.plan?.execution?.quoteLimited === true ? 'Some quotes are unavailable. Review the inventory cards and prices before confirming execution.'
+      node('status').textContent = result.status === 'cancelled' ? '已停止。'
+        : result.plan?.execution?.quoteLimited === true ? '部分报价可用：请核对库存消耗和价格，再确认是否执行。'
         : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
-          ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
+          ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason
+            ?? { ready: '方案已生成，尚未购买或贡献。', partial: '部分方案已生成，请核对材料与剩余需求。', blocked: '未生成可执行方案。' }[result.status] ?? result.status;
       renderResult(result);
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }
     finally { setBusy(false); }
@@ -499,18 +501,18 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       executionProgress.active = false; executionProgress.endedAt = now(); refreshClock();
       const record = result.record;
       if (record) {
-        const spent = Number.isSafeInteger(record.spent) ? ` · Spent ${number(record.spent)} / ${number(record.budget)} coins` : '';
-        node('final-progress').textContent = `Confirmed ${number(record.submittedScore)} / ${number(record.plan?.challenge.targetScore)} points${spent}`;
+        const spent = Number.isSafeInteger(record.spent) ? ` · 已花费 ${number(record.spent)} / ${number(record.budget)} 金币` : '';
+        node('final-progress').textContent = `已确认 ${number(record.submittedScore)} / ${number(record.plan?.challenge.targetScore)} 分${spent}`;
         node('final-progress').hidden = false;
         const bar = shadow.querySelector('progress'); bar.max = record.plan?.challenge.targetScore || 1;
         if (Number.isSafeInteger(record.submittedScore)) bar.value = record.submittedScore; else bar.removeAttribute('value');
       }
     }
-    const labels = { completed: 'Target reached. Check the reward status separately.', partial: 'Contribution confirmed. Remaining batches can continue.',
-      stopped: 'Stopped. Confirmed purchases and contributions are retained. Resume with the execution button; unresolved receipts are checked first.', recovered: 'Record reconciled. No contribution was repeated.', observed: 'Previous record loaded.', absent: 'No contribution record needs reconciliation.',
-      'recovery-required': 'The result is unconfirmed. Reconcile before continuing; contributions will not be repeated.', rejected: 'EA rejected this contribution. Generate a new plan.' };
+    const labels = { completed: '目标已达成，奖励状态需另行核对。', partial: '本次贡献已确认，可继续剩余批次。',
+      stopped: '已停止；已确认的成交和贡献保留，可核对并恢复。', recovered: '已恢复记录，未重复贡献。', observed: '已读取上次记录。', absent: '没有待恢复的贡献记录。',
+      'recovery-required': '结果尚未确认，请核对并恢复；不会重复贡献。', rejected: 'EA 拒绝了本次贡献，请重新规划。' };
     node('status').textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
-      : result.status === 'absent' ? 'This SBC has no contribution record to reconcile. Click Generate plan.' : labels[result.status] ?? result.status;
+      : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status;
     if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${number(result.record.submittedScore)} / ${number(result.record.plan.challenge.targetScore)}`;
   };
   on('contribute', async () => {
@@ -526,17 +528,17 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         onProgress: p => {
           if (serial !== opened) return;
           executionStep(p);
-          const materializeLabel = { 'checking-source': 'Checking external cards', 'checking-club': 'Checking Club',
-            'journal-pending': 'Saving recovery record', 'move-request': 'Moving to Club',
-            'move-acknowledged': 'Move receipt confirmed', 'club-readback': 'Verifying Club delivery', confirmed: 'Club delivery confirmed' }[p.stage];
+          const materializeLabel = { 'checking-source': '检查外部卡', 'checking-club': '核对 Club',
+            'journal-pending': '写入恢复记录', 'move-request': '请求移入 Club',
+            'move-acknowledged': '移动回执已确认', 'club-readback': '核对 Club 回读', confirmed: '移入 Club 已确认' }[p.stage];
           if (marketRun) {
             node('status').textContent = streamlinedExecutionProgress(p);
             const bar = shadow.querySelector('progress'); bar.max = p.targetScore || 1; bar.value = p.submittedScore;
             return;
           }
           const label = p.phase === 'materialize' && materializeLabel ? materializeLabel
-            : { validation: 'Checking cards', materialize: 'Moving to Club', contribution: 'Contributing', reconciliation: 'Reconciling receipts', confirmed: 'Confirmed' }[p.phase];
-          node('status').textContent = `Batch ${p.index + 1} · ${label} · Confirmed ${number(p.submittedScore)} points`;
+            : { validation: '复核材料', materialize: '移入 Club', contribution: '贡献中', reconciliation: '核对回执', confirmed: '已确认' }[p.phase];
+          node('status').textContent = `第 ${p.index + 1} 批 · ${label} · 已确认 ${number(p.submittedScore)} 分`;
           const bar = shadow.querySelector('progress'); bar.max = indices.length;
           bar.value = indices.indexOf(p.index) + (p.phase === 'confirmed' ? 1 : 0);
         },

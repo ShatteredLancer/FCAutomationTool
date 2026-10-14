@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.24
+// @version      27.0.25
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.24", at: Date.now(), status: 'started',
+    state = { version: "27.0.25", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13074,9 +13074,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       reward.value,
       reward.untradeable ?? null
     ]);
-    const quantity2 = token ? reward.count * reward.value : reward.count;
-    if (!Number.isSafeInteger(quantity2)) return null;
-    return { key, quantity: quantity2, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
+    const quantity = token ? reward.count * reward.value : reward.count;
+    if (!Number.isSafeInteger(quantity)) return null;
+    return { key, quantity, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
   }
   function galleryRewardOptions(targets) {
     const options = /* @__PURE__ */ new Map();
@@ -27361,23 +27361,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-streamlined-panel.js
-  var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "Unknown";
-  var quantity = (value, noun, plural = `${noun}s`) => `${number2(value)} ${value === 1 ? noun : plural}`;
+  var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
   function streamlinedMarketMessage(result) {
-    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "Selected source";
+    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
     if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
-      return `${source} market quotes expired while waiting and could not be refreshed. Generate a new plan. Expired quotes and other price sources are not used.`;
+      return `${source} \u8865\u5361\u62A5\u4EF7\u5728\u7B49\u5F85\u4E2D\u5230\u671F\uFF0C\u5237\u65B0\u540E\u4ECD\u672A\u53D6\u5F97\u5B8C\u6574\u6709\u6548\u62A5\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u4E0D\u4F1A\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u6216\u81EA\u52A8\u5207\u6362\u6765\u6E90\u3002`;
     }
     if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ""))) {
-      return `${source} market quotes could not be loaded. No plan was generated. Check the price source connection and try again.`;
+      return `${source} \u8865\u5361\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u8BE5\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002`;
     }
-    return "Market candidates could not be verified. No purchase plan was generated. Check the FUT.GG catalog connection or choose Inventory only.";
+    return "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u8865\u5361\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u5019\u9009\u76EE\u5F55\u8FDE\u63A5\uFF08FUT.GG\uFF09\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002";
   }
   function streamlinedRouteSummary(route) {
     const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
     const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-    return `Total value ${number2(total)} \u25C9 \xB7 To buy ${number2(route.purchaseCost)} \xB7 Cap ${number2(cap)} \xB7 ${number2(route.score)} points \xB7 ${quantity(route.count, "card")} (Inventory ${route.inventoryCount} / To buy ${route.marketCount}) \xB7 at least ${quantity(route.minBatches, "batch", "batches")}${route.repeatPurchaseCount ? ` \xB7 Repeat purchases ${route.repeatPurchaseCount}` : ""}`;
+    return `\u603B\u4EF7\u503C ${number2(total)} \u25C9 \xB7 \u5F85\u8D2D ${number2(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number2(cap)} \xB7 ${number2(route.score)} \u5206 \xB7 ${number2(route.count)} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${number2(route.minBatches)} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
   }
   function streamlinedInventoryPreview(plan, indices = null, record = null) {
     const market = plan?.route?.groups?.some((group) => group.source === "market");
@@ -27390,55 +27389,58 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function streamlinedExecutionProgress(p = {}) {
     const stages = {
-      "checking-source": "Checking external cards",
-      "checking-club": "Checking Club",
-      "journal-pending": "Saving recovery record",
-      "move-request": "Moving to Club",
-      "move-acknowledged": "Move receipt confirmed",
-      "club-readback": "Verifying Club delivery",
-      confirmed: "Club delivery confirmed"
+      "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
+      "checking-club": "\u6838\u5BF9 Club",
+      "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
+      "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
+      "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
+      "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
+      confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
     };
-    const label = p.phase === "materialize" ? stages[p.stage] ?? "Moving to Club" : {
-      preflight: "Preparing execution: checking the plan and records",
-      "checking-state": "Checking inventory and capacity",
-      search: "Searching within the price cap",
-      buying: "Buying",
-      moving: "Moving to Club",
-      "partial-ready": "Waiting to close the partial batch",
-      validation: "Checking cards",
-      contribution: "Contributing",
-      reconciliation: "Reconciling receipts",
-      confirmed: "Contribution confirmed",
-      recovery: "Reconciling previous records",
-      replanning: "Selecting the lowest-cost approved alternative",
-      "waiting-supply": "Waiting to retry available supply",
-      "search-result": "Search finished",
-      "purchase-rejected": "Purchase rejected by EA"
-    }[p.phase] ?? "Running";
-    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `Batch ${number2(p.batchNumber)} \xB7 ` : ""}${label}`;
+    const label = p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
+      preflight: "\u51C6\u5907\u6267\u884C\uFF1A\u6838\u5BF9\u65B9\u6848\u4E0E\u6062\u590D\u8BB0\u5F55",
+      "checking-state": "\u6838\u5BF9\u5E93\u5B58\u4E0E\u5269\u4F59\u5BB9\u91CF",
+      search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
+      buying: "\u4E70\u5165\u4E2D",
+      moving: "\u79FB\u5165 Club",
+      "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
+      validation: "\u590D\u6838\u6750\u6599",
+      contribution: "\u8D21\u732E\u4E2D",
+      reconciliation: "\u6838\u5BF9\u56DE\u6267",
+      confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4",
+      recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55",
+      replanning: "\u9009\u62E9\u6388\u6743\u8303\u56F4\u5185\u7684\u6700\u4F4E\u6210\u672C\u66FF\u4EE3\u65B9\u6848",
+      "waiting-supply": "\u7B49\u5F85\u540E\u91CD\u8BD5\u5E02\u573A\u4F9B\u5E94",
+      "search-result": "\u672C\u6B21\u641C\u7D22\u5B8C\u6210",
+      "checking-holdings": "\u6838\u5BF9 Club \u7248\u672C\u6301\u6709",
+      "purchase-rejected": "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u8BF7\u6C42"
+    }[p.phase] ?? "\u6267\u884C\u4E2D";
+    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number2(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
+    if (p.phase === "checking-holdings") text5 += `
+\u7248\u672C\u6838\u5BF9 ${number2(p.holdingsBatch)} / ${number2(p.holdingsBatchTotal)} \u7EC4 \xB7 \u7B2C ${number2(Math.floor((p.offset ?? 0) / 250) + 1)} \u9875`;
     if (p.playerName || Number.isSafeInteger(p.rating)) text5 += `
-Current candidate: ${p.playerName ?? "Name unavailable"} \xB7 ${number2(p.rating)} OVR \xB7 Cap ${number2(p.maxBuy)} coins \xB7 Attempt ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
+\u5F53\u524D\u5019\u9009\uFF1A${p.playerName ?? "\u59D3\u540D\u672A\u53D6\u5F97"} \xB7 ${number2(p.rating)} OVR \xB7 \u4E0A\u9650 ${number2(p.maxBuy)} \u91D1\u5E01 \xB7 \u5C1D\u8BD5 ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     if (p.purchaseTarget !== void 0) text5 += `
-Purchased ${number2(p.purchased)} / ${number2(p.purchaseTarget)} cards \xB7 Spent ${number2(p.spent)} / ${number2(p.budget)} coins`;
+\u5DF2\u8D2D ${number2(p.purchased)} / ${number2(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number2(p.spent)} / ${number2(p.budget)} \u91D1\u5E01`;
     text5 += `
-Contributed ${number2(p.contributed)} cards \xB7 Confirmed ${number2(p.submittedScore)} / ${number2(p.targetScore)} points`;
+\u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
     if (p.readyCount !== void 0) text5 += `
-Ready in this batch ${number2(p.readyCount)} / ${number2(p.selectionLimit)} cards \xB7 ${number2(p.readyPoints)} points`;
+\u672C\u6279\u5C31\u7EEA ${number2(p.readyCount)} / ${number2(p.selectionLimit)} \u5F20 \xB7 ${number2(p.readyPoints)} \u5206`;
     if (p.phase === "materialize") text5 += `
-External cards ${number2(p.completed)} / ${number2(p.materialTotal)} cards`;
+\u5916\u90E8\u5361 ${number2(p.completed)} / ${number2(p.materialTotal)} \u5F20`;
     if (p.phase === "waiting-supply") text5 += `
-Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
+\u4F9B\u5E94\u91CD\u8BD5 ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     return text5;
   }
   function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
     const seconds = (ms) => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1e3);
-    let text5 = `Elapsed ${seconds(elapsedMs)} s`;
-    if (active) text5 += ` \xB7 Current step ${seconds(phaseElapsedMs)} s`;
+    let text5 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
+    if (active) text5 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
     if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 Estimated batch wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} s`;
+      text5 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 Supply retry wait remaining ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} s`;
+      text5 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     return text5;
   }
@@ -27446,73 +27448,73 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
       const evidence = normalizeStreamlinedProtectionFailure(protection);
       const labels = {
-        "protection-lock-list": "The FSU lock list is unavailable or invalid. Ensure FSU Local is enabled and initialized, then refresh. Keep your cards locked.",
-        "protection-active-id": "The active squad ID could not be verified. Open your active squad in Squads, then return to generate a plan.",
-        "protection-active-state": "The active squad status could not be verified. Confirm the squad is active in Squads. Export diagnostics if the issue persists.",
-        "protection-native-id": "The cached squad ID does not match the active squad. Export diagnostics.",
-        "protection-layout": "The native squad slot layout could not be verified. Export diagnostics.",
-        "protection-slot-list": `The native squad slot list is incomplete (${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}). Export diagnostics.`,
-        "protection-slot-id": "An item ID in the active squad could not be verified. Export diagnostics.",
-        "protection-fsu-roster": "The FSU active squad snapshot is unavailable or invalid. Export diagnostics.",
-        "protection-cache": "The active squad cache is missing and no verified snapshot matches this account and squad. Export diagnostics."
+        "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
+        "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
+        "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+        "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number2(evidence?.count)} / ${number2(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
+        "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002"
       };
-      return `${labels[evidence?.phase] ?? "Card locks or the active squad could not be verified. Open your active EA squad and try again. Export diagnostics if the issue persists."} No new cards were contributed.`;
+      return `${labels[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
     }
     if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
       const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? ` (Set ${recovery.setId} / Challenge ${recovery.challengeId})` : "";
-      const phase = { "save-pending": "Squad replacement has not been reconciled", ready: "Purchase or Club delivery has not been reconciled", saved: "The purchase recovery marker is unresolved" }[recovery?.phase];
+      const phase = { "save-pending": "\u9635\u5BB9\u66FF\u6362\u4FDD\u5B58\u5C1A\u672A\u6838\u5BF9", ready: "\u8D2D\u4E70\u6216\u5165\u5E93\u5C1A\u672A\u6838\u5BF9", saved: "\u8D2D\u4E70\u6062\u590D\u6807\u8BB0\u5C1A\u672A\u7ED3\u6E05" }[recovery?.phase];
       const labels = {
-        waiting: "Not purchased",
-        "buy-pending": "Purchase unconfirmed",
-        bought: "Purchased, awaiting delivery",
-        "move-pending": "Delivery unconfirmed",
-        "move-rejected": "Delivery rejected",
-        club: "In Club"
+        waiting: "\u672A\u8D2D\u4E70",
+        "buy-pending": "\u6210\u4EA4\u5F85\u6838\u5BF9",
+        bought: "\u5DF2\u8D2D\u5F85\u5165\u5E93",
+        "move-pending": "\u5165\u5E93\u5F85\u6838\u5BF9",
+        "move-rejected": "\u5165\u5E93\u88AB\u62D2",
+        club: "\u5DF2\u5165\u5E93"
       };
       const counts = Object.entries(labels).flatMap(([state, label]) => {
         const count2 = recovery?.states?.[state];
         return Number.isSafeInteger(count2) && count2 > 0 && count2 <= 32 ? [`${label} ${count2}`] : [];
       });
-      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`Confirmed replacements ${recovery.applied}`);
-      return `This account has an unresolved Puzzle purchase record${target}${phase ? `: ${phase}` : ""}. ${counts.length ? `Record states: ${counts.join(", ")}. ` : ""} Open that SBC's bulk purchase window to reconcile the record. If the SBC has expired, keep the record and export diagnostics. No cards were contributed.`;
+      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`\u5DF2\u786E\u8BA4\u66FF\u6362 ${recovery.applied}`);
+      return `\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Puzzle \u8D2D\u5361\u8BB0\u5F55${target}${phase ? `: ${phase}` : ""}. ${counts.length ? `\u8BB0\u5F55\u72B6\u6001\uFF1A${counts.join(", ")}. ` : ""}\u8BF7\u5148\u56DE\u5BF9\u5E94 SBC \u7684\u6279\u91CF\u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u82E5\u8BE5 SBC \u5DF2\u4E0B\u67B6\uFF0C\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002\u672C\u6B21\u672A\u6295\u5165\u6750\u6599\u3002`;
     }
     const messages2 = {
-      FC27_STREAMLINED_STOPPED: "Stopped. Confirmed purchases are retained. Resume with the execution button; unresolved receipts are checked first.",
-      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "Paused: no executable purchase candidate for the current plan. Confirmed purchases have been retained.",
-      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "Paused after bounded retries: no approved candidate was available within the frozen price caps. Purchases are retained. Retry later or generate a new plan; no receipt recovery is needed for a normal shortage.",
-      FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "Unassigned capacity is full. Clear space manually, then retry. No market search or automatic disposal was performed.",
-      FC27_STREAMLINED_PURCHASE_VERSION_HELD: "The remaining versions are already held in Club and are not approved inventory materials. Choose another route or explicitly approve those stock cards; they will not be consumed automatically.",
-      FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "The remaining approved budget cannot cover this purchase. No cap was raised. Generate a new plan to approve a different budget.",
-      FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: "A purchase price could not be verified. No purchase was authorized from that quote. Refresh the plan or export diagnostics.",
-      FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: "Current Club holdings could not be verified. No missing cache entry was treated as permission to buy or consume a card. Retry or export diagnostics.",
-      FC27_BUY_SEARCH_FAILED: "EA rejected the market search. No purchase was sent for that search. Retry later; export diagnostics if this persists.",
-      FC27_STREAMLINED_PURCHASE_REJECTED: "EA rejected the purchase attempts. Confirmed purchases are retained. This is not an unknown receipt or proof that the market has no supply.",
-      FC27_BUY_NATIVE_REJECTED: "EA rejected the purchase attempts. Confirmed purchases are retained. Retry later or export diagnostics.",
-      FC27_BUY_INSUFFICIENT_COINS: "EA reported insufficient coins for the purchase. Confirmed purchases are retained. No approved price cap or budget was increased.",
-      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "The execution approval has expired. Confirmed transactions are retained. Click the execution button to approve another run; unresolved receipts will be checked first.",
-      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "Public quotes expired and could not be refreshed. Purchased cards are retained. Generate a fresh plan; no cap was raised.",
-      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "A purchase, delivery or previous plan needs reconciliation. Reconcile before continuing; purchases will not be repeated.",
-      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "This contribution has not been confirmed. Reconcile before continuing; it will not be submitted again.",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "The purchase record could not be read. Retry reconciliation or export diagnostics.",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "The purchase record could not be saved. Reconcile before continuing.",
-      FC27_STREAMLINED_PROGRESS_CHANGED: "The current points no longer match the plan. Execution stopped. Reconcile before continuing.",
-      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "Card locks or the active squad could not be verified. Open your active EA squad and try again. No new cards were contributed.",
-      FC27_STREAMLINED_POLICY_CHANGED: "Card protection or settings changed. Reconcile the previous run, then generate a new plan.",
-      FC27_STREAMLINED_MATERIAL_CHANGED: "Selected cards changed or are protected by locks or the active squad. Execution stopped. Reconcile, then generate a new plan.",
-      FC27_BUY_JOURNAL_READ_FAILED: "The Puzzle purchase record could not be read. Retry or export diagnostics. No record was cleared and no cards were contributed.",
-      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "This account has an unresolved Gallery purchase. Reconcile it in the Gallery purchase window.",
-      FC27_RECOVERY_REQUIRED: "This account has an unresolved standard SBC submission. Reconcile that submission first.",
-      FC27_STREAMLINED_INITIATION_UNVERIFIED: "Start this SBC in the native EA interface, then generate a plan.",
-      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "Contribution is not enabled in this build.",
-      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "This contribution needs reconciliation. Click Check & recover; do not submit it again.",
-      FC27_STREAMLINED_RECOVERY_REQUIRED: "The previous contribution was dispatched but is not confirmed. Click Check & recover; do not submit it again.",
-      FC27_STREAMLINED_CONTEXT_CHANGED: "The account, SBC or points changed. Reopen the current SBC and generate a new plan.",
-      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}) has an unresolved contribution. Nothing was resumed or submitted again in this SBC.`,
-      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `Another SBC (Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}) has an unresolved external card move (${recovery?.pendingCount ?? "?"} cards). Click Check & recover. This only checks Club delivery; it does not repeat moves, purchases or contributions.`,
-      FC27_STREAMLINED_COMPLETED: "The selected target is complete. No further contribution is needed.",
-      FC27_STREAMLINED_PURCHASE_PENDING: "This route needs market cards. Purchases and delivery must be confirmed before contribution."
+      FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\u3002\u6709\u672A\u51B3\u56DE\u6267\u65F6\u5148\u6838\u5BF9\uFF0C\u5426\u5219\u53EF\u76F4\u63A5\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u65B9\u6848\u6CA1\u6709\u53EF\u6267\u884C\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\u3002",
+      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "\u6709\u9650\u91CD\u8BD5\u540E\u4ECD\u65E0\u6388\u6743\u8303\u56F4\u5185\u7684\u9650\u4EF7\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u53EF\u7A0D\u540E\u91CD\u8BD5\u6216\u751F\u6210\u65B0\u65B9\u6848\uFF1B\u666E\u901A\u7F3A\u8D27\u4E0D\u9700\u8981\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u3002",
+      FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "\u672A\u5206\u914D\u533A\u5DF2\u6EE1\u3002\u8BF7\u624B\u52A8\u817E\u51FA\u7A7A\u95F4\u540E\u91CD\u8BD5\uFF1B\u672A\u641C\u7D22\u5E02\u573A\uFF0C\u4E5F\u672A\u81EA\u52A8\u4E22\u5F03\u5361\u7247\u3002",
+      FC27_STREAMLINED_PURCHASE_VERSION_HELD: "\u5269\u4F59\u7248\u672C\u5DF2\u5728 Club \u6301\u6709\uFF0C\u4F46\u672A\u88AB\u9009\u4E3A\u672C\u6B21\u5E93\u5B58\u6750\u6599\u3002\u8BF7\u9009\u62E9\u5176\u4ED6\u8DEF\u7EBF\uFF0C\u6216\u91CD\u65B0\u751F\u6210\u65B9\u6848\u660E\u786E\u9009\u62E9\u8FD9\u4E9B\u5E93\u5B58\u5361\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6D88\u8017\u3002",
+      FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "\u5269\u4F59\u9884\u7B97\u4E0D\u8DB3\u4EE5\u5B8C\u6210\u672C\u6B21\u8D2D\u4E70\uFF0C\u672A\u63D0\u9AD8\u9650\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u660E\u786E\u8C03\u6574\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: "\u8D2D\u4E70\u62A5\u4EF7\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u672A\u6309\u8BE5\u62A5\u4EF7\u4E70\u5165\u3002\u8BF7\u5237\u65B0\u65B9\u6848\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: "Club \u7248\u672C\u6301\u6709\u8BFB\u53D6\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u5DF2\u6682\u505C\uFF1B\u672C\u6B21\u68C0\u67E5\u672A\u53D1\u51FA\u8D2D\u4E70\u6216\u732E\u796D\u8BF7\u6C42\u3002\u53EF\u76F4\u63A5\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u5DF2\u6709\u672A\u51B3\u4EA4\u6613\u4ECD\u987B\u5148\u6838\u5BF9\u3002",
+      FC27_BUY_SEARCH_FAILED: "EA \u62D2\u7EDD\u4E86\u5E02\u573A\u641C\u7D22\uFF1B\u672A\u4E3A\u8FD9\u6B21\u641C\u7D22\u53D1\u9001\u4E70\u5165\u8BF7\u6C42\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF1B\u8FD9\u4E0D\u662F\u672A\u77E5\u56DE\u6267\uFF0C\u4E5F\u4E0D\u7B49\u4E8E\u5E02\u573A\u7F3A\u8D27\u3002",
+      FC27_BUY_NATIVE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_BUY_INSUFFICIENT_COINS: "EA \u8FD4\u56DE\u91D1\u5E01\u4E0D\u8DB3\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u672A\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\u6216\u603B\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF1B\u65E0\u672A\u51B3\u56DE\u6267\u65F6\u53EF\u518D\u6B21\u70B9\u51FB\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF0C\u4E0D\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u3002",
+      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
+      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\uFF0C\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u672A\u6295\u5165\u65B0\u6750\u6599\u3002",
+      FC27_STREAMLINED_POLICY_CHANGED: "\u6750\u6599\u4FDD\u62A4\u6216\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u65E7\u6267\u884C\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_MATERIAL_CHANGED: "\u9009\u4E2D\u6750\u6599\u5DF2\u53D8\u5316\u6216\u53D7\u5230\u9501\u5361/\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u6838\u5BF9\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
+      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
+      FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
+      FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
+      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
+      FC27_STREAMLINED_RECOVERY_REQUIRED: "\u4E0A\u6B21\u8D21\u732E\u5DF2\u53D1\u51FA\uFF0C\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u518D\u6B21\u6295\u5165\u3002",
+      FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
+      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
+      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
     };
-    return messages2[reason] ?? reason ?? "Generate a new plan or reconcile the previous run.";
+    return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
   }
   function mountFc27StreamlinedPanel({
     document,
@@ -27533,7 +27535,7 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     const entry = document.createElement("button");
     entry.id = "fcat-streamlined-entry";
     entry.type = "button";
-    entry.textContent = "FCAT Points Solver";
+    entry.textContent = "FCAT \u79EF\u5206\u89E3\u9898";
     entry.className = "btn-standard call-to-action";
     entry.style.cssText = "margin:8px;min-height:38px";
     const host = document.createElement("div");
@@ -27556,15 +27558,15 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
     .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
     .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
-  </style><dialog aria-label="FCAT Streamlined SBC"><div class="panel-body"><header><strong>FCAT Points Solver</strong><button data-close aria-label="Close">\xD7</button></header>
-    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">Current SBC</button><button data-global aria-pressed="false">Global settings</button></div>
-    <section data-settings><div class="fields"><label>Planning objective<select data-objective><option value="lowest-value">Lowest total card value (inventory + purchases)</option><option value="lowest-coins">Lowest purchase cost, then inventory value</option><option value="fewest-cards">Fewest cards</option></select></label>
-    <label>Card sources<select data-mode><option value="inventory-market">Inventory + market</option><option value="inventory">Inventory only</option><option value="market">Market only</option></select></label>
-    <label>Maximum inventory rating<input data-rating type="number" min="1" max="99" step="1"></label><label>Maximum market rating<input data-market-rating type="number" min="1" max="99" step="1"></label><label>Partial batch wait (seconds)<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC Storage</label><label><input data-unassigned type="checkbox">Unassigned</label><label><input data-transfer type="checkbox">Transfer List</label></div>
-    <small>Inventory follows FSU card protection. Purchases use the selected price source. Estimates do not guarantee market availability. Selecting a route does not buy or contribute cards.</small><button data-save>Save settings</button></section>
+  </style><dialog aria-label="FCAT \u79EF\u5206\u89E3\u9898"><div class="panel-body"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
+    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
+    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
+    <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58+\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u5E02\u573A\u8865\u5361</option></select></label>
+    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\uFF08\u79D2\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
+    <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
     <section data-result></section></div>
-    <footer><output data-status aria-live="polite"></output><progress aria-label="Execution progress" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <div class="actions"><button data-review-stock hidden>View inventory cards</button><button data-stop hidden>Stop</button><button data-recover>Check & recover</button><button data-solve class="primary">Generate plan</button><button data-contribute disabled hidden>Contribute selected batches</button></div></footer></dialog>`;
+    <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
+      <div class="actions"><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
     const node = (key) => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector("dialog");
     let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
     const rendered = /* @__PURE__ */ new Set();
@@ -27714,7 +27716,7 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
       origin = target;
       const serial = ++opened;
       dialog.showModal();
-      node("status").textContent = "Loading requirements\u2026";
+      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u9700\u6C42\u2026";
       node("result").replaceChildren();
       node("contribute").hidden = true;
       clearRendered();
@@ -27723,9 +27725,9 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
         const result = await session2.readSettings();
         if (serial !== opened) return;
         const c = result.challenge, s = result.settings;
-        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number2(c.submittedScore)} / ${number2(c.targetScore)} \xB7 Remaining ${number2(c.remainingScore)}`;
+        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number2(c.submittedScore)} / ${number2(c.targetScore)} \xB7 \u5269\u4F59 ${number2(c.remainingScore)}`;
         applySettings(s);
-        node("status").textContent = "Planning does not select or submit cards.";
+        node("status").textContent = "\u89C4\u5212\u4E0D\u4F1A\u9009\u5361\u6216\u63D0\u4EA4\u3002";
         selectScope(false);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -27738,7 +27740,7 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
       setBusy(true);
       try {
         await session2.saveSettings(config(), global);
-        node("status").textContent = global ? "Global defaults saved. Settings for the current SBC take priority." : "Settings saved for this SBC.";
+        node("status").textContent = global ? "\u5168\u5C40\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002\u5F53\u524D SBC \u72EC\u7ACB\u8BBE\u7F6E\u4F18\u5148\u3002" : "\u5F53\u524D SBC \u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002";
       } catch (error2) {
         node("status").textContent = safeReason9(error2);
       } finally {
@@ -27754,30 +27756,30 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
       if (!result.plan) {
         const output2 = node("result");
         if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
-          add2(output2, "div", "Quotes are unavailable or expired. No plan was generated. Check the selected price source and try again.").className = "result-summary";
+          add2(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
           add2(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
         } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
           add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
-          if (result.marketError) add2(output2, "small", `Market candidates unavailable: ${result.marketError}`);
+          if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
         } else if (result.reason) {
-          add2(output2, "div", `No plan generated: ${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
           if (result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
         }
         return;
       }
       shown = result;
       const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
-      node("contribute").textContent = marketRun ? "Buy & contribute" : "Contribute selected batches";
+      node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
       const output = node("result"), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add2(output, "section");
         warning.className = "inventory-warning";
-        add2(warning, "strong", "Quote coverage is incomplete. Review this plan; it may not be the cheapest across all inventory and market cards.");
-        for (const [key, label] of [["inventory", "Inventory"], ["market", "Market"]]) {
+        add2(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
+        for (const [key, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
           const coverage = result.quoteCoverage?.[key];
-          if (coverage) add2(warning, "small", `${label} quote coverage: valid ${number2(coverage.valid)} / ${number2(coverage.requested)} \xB7 failed ${number2(coverage.failed)} \xB7 missing/expired ${number2(coverage.missing)}; cards without valid quotes are excluded.`);
+          if (coverage) add2(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number2(coverage.valid)} / ${number2(coverage.requested)} \xB7 \u5931\u8D25 ${number2(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number2(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
         }
-        add2(warning, "small", "Clicking the execution button accepts this displayed quote coverage, inventory list and purchase scope. No additional coverage checkbox is required.");
+        add2(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
       }
       const inventoryReview = add2(output, "details");
       inventoryReview.className = "inventory-review";
@@ -27789,15 +27791,15 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
         inventoryList.replaceChildren();
         const rows = streamlinedInventoryPreview(result.plan, [...selected], result.record);
         const remaining = rows.filter((item2) => !item2.consumed).length, consumed = rows.length - remaining;
-        inventorySummary.textContent = `Inventory cards this plan will consume: ${quantity(remaining, "card")}${consumed ? ` \xB7 Consumed ${quantity(consumed, "card")}` : ""}`;
-        node("review-stock").textContent = `Inventory ${quantity(remaining, "card")} (view)`;
+        inventorySummary.textContent = `\u672C\u65B9\u6848\u5C06\u6D88\u8017\u7684\u73B0\u6709\u5E93\u5B58\u5361\uFF1A${number2(remaining)} \u5F20${consumed ? ` \xB7 \u5DF2\u6D88\u8017 ${number2(consumed)} \u5F20` : ""}`;
+        node("review-stock").textContent = `\u5E93\u5B58 ${number2(remaining)} \u5F20\uFF08\u67E5\u770B\uFF09`;
         node("review-stock").hidden = false;
         if (!rows.length) {
-          add2(inventoryList, "small", "This route or batch selection uses no existing inventory cards.");
+          add2(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
           return;
         }
         if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
-          add2(inventoryList, "small", "This saved plan has old protection flags. Current card locks and the active squad will be checked before execution. Review the inventory list.").className = "inventory-warning";
+          add2(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
         }
         inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
         for (const item2 of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
@@ -27805,13 +27807,13 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
           row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
           add2(row, "strong", number2(item2.rating));
           const text5 = add2(row, "div");
-          add2(text5, "strong", item2.name ?? `Version ${item2.definitionId} (name unavailable)`);
-          const pile = { club: "Club", storage: "SBC Storage", unassigned: "Unassigned \u2192 Club", transfer: "Transfer List \u2192 Club" }[item2.pile] ?? "Source unverified";
-          add2(text5, "small", `${pile} \xB7 ${number2(item2.points)} points \xB7 ${item2.price == null ? "Value unknown" : `Value ${number2(item2.price)} coins`} \xB7 ${item2.consumed ? "Consumed" : "Will consume"}`);
+          add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
+          const pile = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D \u2192 Club", transfer: "\u8F6C\u4F1A\u5217\u8868 \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
+          add2(text5, "small", `${pile} \xB7 ${number2(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number2(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
         }
         if (rows.length > 50) {
-          add2(inventoryList, "small", `Showing ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} cards`);
-          for (const [label, delta] of [["Previous", -1], ["Next", 1]]) {
+          add2(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
+          for (const [label, delta] of [["\u4E0A\u4E00\u9875", -1], ["\u4E0B\u4E00\u9875", 1]]) {
             const button = add2(inventoryList, "button", label);
             button.type = "button";
             button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
@@ -27823,7 +27825,7 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
         }
       };
       if (marketRun) {
-        const label = add2(output, "label", "Total purchase budget (coins)"), budget = add2(label, "input");
+        const label = add2(output, "label", "\u8D2D\u5361\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09"), budget = add2(label, "input");
         budget.type = "number";
         budget.min = "0";
         budget.step = "1";
@@ -27833,13 +27835,13 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
           budget.dataset.settled = "true";
           budget.disabled = true;
         }
-        add2(output, "small", `Attempts per card: ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \xB7 Partial batch wait: ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} s \xB7 Each click approves up to 10 minutes of execution. Progress is retained on expiry.`);
+        add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number2(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85 ${number2((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2 \xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
         const scope2 = result.plan.execution?.purchaseScope;
         if (scope2) {
           const pool = add2(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
-          add2(pool, "summary", `Approved market substitution pool: ${quantity(rows.length, "version")}`);
-          add2(pool, "small", "Execution may select a lower-cost feasible recipe from these versions within the total budget and each frozen cap. Existing inventory is limited to the displayed selected stock IDs. Estimated prices are not supply guarantees.");
-          for (const item2 of rows) add2(pool, "small", `${item2.name ?? `Version ${item2.definitionId}`} \xB7 OVR ${item2.rating} \xB7 ${number2(item2.points)} points \xB7 Estimate ${number2(item2.price)} \xB7 Cap ${number2(item2.purchaseMaxBuy)} coins`);
+          add2(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number2(rows.length)} \u4E2A\u7248\u672C`);
+          add2(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
+          for (const item2 of rows) add2(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number2(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number2(item2.price)} \xB7 \u4E0A\u9650 ${number2(item2.purchaseMaxBuy)} \u91D1\u5E01`);
         }
       }
       if (result.routes?.length) {
@@ -27858,7 +27860,7 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
               const next = await session2.selectRoute(route.id);
               if (serial === opened) {
                 renderResult(next);
-                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "Quote coverage is incomplete. Review and confirm the selected route. No purchase or contribution has started." : next.reason ?? "Route selected. No purchase or contribution has started.";
+                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u8BF7\u6838\u5BF9\u6E05\u5355\uFF0C\u70B9\u51FB\u6267\u884C\u5373\u786E\u8BA4\uFF1B\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002" : next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
               }
             } catch (error2) {
               node("status").textContent = safeReason9(error2);
@@ -27868,22 +27870,23 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
           });
         }
       }
-      add2(output, "div", `${result.status === "ready" ? "Target covered" : "Partial plan"} \xB7 ${number2(p.submitted)} submitted + ${number2(p.added)} this plan \xB7 Remaining ${number2(p.remaining)} / Excess ${number2(p.excess)}`).className = "result-summary";
+      add2(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number2(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number2(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number2(p.remaining)} / \u8D85\u989D ${number2(p.excess)}`).className = "result-summary";
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      add2(output, "small", `Total card value ${number2(total)} coins \xB7 To buy ${number2(result.purchaseCost)} coins \xB7 Inventory value ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${quantity(result.items.length, "card")} / ${quantity(result.batches.length, "batch", "batches")}`);
+      add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number2(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${number2(result.items.length)} \u5F20 / ${number2(result.batches.length)} \u6279`);
       if (result.policy) {
         const stats = result.inventoryStats;
-        const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pile} ${number2(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / Storage";
-        const raw = stats?.rawByPile ? ` \xB7 raw ${number2(stats.rawByPile.club)} / ${number2(stats.rawByPile.storage)}` : "";
-        add2(output, "small", `FSU Only Untradeable: ${result.policy.onlyUntradeable ? "enabled" : "disabled"} \xB7 Read inventory: ${pileText}${raw}`);
-        add2(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "Card locks: enabled \xB7 Active squad protection: enabled (starters, substitutes and reserves)" : "Saved plan: current card locks and active squad protection will be checked before execution.");
+        const pileLabels = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D", transfer: "\u8F6C\u4F1A\u5217\u8868" };
+        const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pileLabels[pile]} ${number2(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / SBC \u4ED3\u5E93";
+        const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number2(stats.rawByPile.club)} / ${number2(stats.rawByPile.storage)}` : "";
+        add2(output, "small", `FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
+        add2(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
       }
-      if (!result.searchComplete) add2(output, "small", "Search budget reached. Showing the best plan found, not a guaranteed global optimum.");
-      if (!result.poolComplete) add2(output, "small", "Based on currently readable inventory; full inventory coverage is not confirmed.");
-      if (result.marketPending) add2(output, "small", "Verified market candidates are unavailable. This result contains inventory only.");
-      if (result.quoteReadError) add2(output, "small", `Quote reads incomplete: ${result.quoteReadError}`);
-      if (result.marketError) add2(output, "small", `Market candidates incomplete: ${result.marketError}`);
-      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} cards have unknown value. They are not treated as free.`);
+      if (!result.searchComplete) add2(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
+      if (!result.poolComplete) add2(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
+      if (result.marketPending) add2(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
+      if (result.quoteReadError) add2(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
+      if (result.marketError) add2(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
+      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
       const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
       selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
       const selection = add2(output, "output");
@@ -27891,12 +27894,12 @@ Supply retry ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
       const updateSelection = () => {
         const items = [...selected].flatMap((index) => result.batches[index]);
         const points = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-        selection.textContent = marketRun ? "Review the target, total budget, market pool and inventory below. The execution button approves this scope. Batches are estimates." : `Selected ${selected.size} batches \xB7 ${items.length} cards \xB7 ${number2(points)} points \xB7 Remaining ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        selection.textContent = marketRun ? "\u70B9\u51FB\u6267\u884C\u5C06\u6388\u6743\u6B64\u76EE\u6807\u3001\u603B\u9884\u7B97\u3001\u5E02\u573A\u66FF\u4EE3\u6C60/\u6BCF\u5361\u4E0A\u9650\u53CA\u6240\u9009\u5E93\u5B58\u5361\uFF1B\u4E0B\u65B9\u6279\u6B21\u4EC5\u4E3A\u9884\u4F30\u3002" : `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number2(points)} \u5206 \xB7 \u8FD8\u5DEE ${number2(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
         if (marketRun && result.record) {
           const r = result.record, rows = r.entries ?? [];
           selection.textContent += `
-Confirmed ${number2(r.submittedScore)} / ${number2(p.target)} points \xB7 Spent ${number2(r.spent)} / ${number2(r.budget)} coins
-Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} cards \xB7 Ready ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} cards \xB7 Contributed ${r.consumedIds?.length ?? 0} cards`;
+\u5DF2\u786E\u8BA4 ${number2(r.submittedScore)} / ${number2(p.target)} \u5206 \xB7 \u5DF2\u82B1\u8D39 ${number2(r.spent)} / ${number2(r.budget)} \u91D1\u5E01
+\u5DF2\u8D2D\u5F85\u5165\u5E93 ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u5C31\u7EEA ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u8D21\u732E ${r.consumedIds?.length ?? 0} \u5F20`;
         }
         node("contribute").disabled = busy || !contributionReady();
         updateInventoryReview();
@@ -27912,7 +27915,7 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         if (marketRun) choice.hidden = true;
         choice.dataset.settled = String(settled2(index));
         choice.disabled = busy || settled2(index);
-        choice.setAttribute("aria-label", `Select batch ${index + 1}`);
+        choice.setAttribute("aria-label", `\u9009\u62E9\u7B2C ${index + 1} \u6279`);
         choice.addEventListener("click", (event) => event.stopPropagation());
         choice.addEventListener("change", () => {
           if (marketRun) return;
@@ -27921,7 +27924,7 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
           updateSelection();
         });
         const pending2 = batch.filter((item2) => item2.source === "market");
-        summary3.append(document.createTextNode(` Batch ${index + 1} \xB7 ${quantity(batch.length, "card")} (Inventory ${batch.length - pending2.length} / To buy ${pending2.length}) \xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} points \xB7 To buy ${number2(pending2.reduce((sum2, item2) => sum2 + item2.price, 0))} coins`));
+        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${number2(batch.length)} \u5F20\uFF08\u5E93\u5B58 ${batch.length - pending2.length} / \u5F85\u8D2D ${pending2.length}) \xB7 ${number2(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206 \xB7 \u5F85\u8D2D ${number2(pending2.reduce((sum2, item2) => sum2 + item2.price, 0))} \u91D1\u5E01`));
         let populated = false;
         const populate = () => {
           if (populated || !details.open || generation !== renderGeneration || disposed) return;
@@ -27934,20 +27937,20 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
             const card = add2(row, "div");
             card.className = "player-card";
             const fallback = add2(card, "span", number2(item2.rating));
-            fallback.title = "Card image unavailable";
+            fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
             const slot = add2(card, "slot");
             slot.name = `streamlined-card-${generation}-${item2.key}`;
             const text5 = add2(row, "div");
             text5.className = "player-text";
-            add2(text5, "strong", item2.name ?? `Version ${item2.definitionId}`);
-            add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} points`);
-            add2(text5, "span", item2.source === "market" ? "To buy \xB7 Market concept card" : item2.pile === "storage" ? "SBC Storage \xB7 owned" : item2.pile === "unassigned" ? "Unassigned \u2192 Club \xB7 owned" : item2.pile === "transfer" ? "Transfer List \u2192 Club \xB7 owned" : "Club \xB7 owned");
-            const points = add2(row, "span", `${number2(item2.points)} points`);
+            add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
+            add2(text5, "span", `${number2(item2.rating)} OVR \xB7 ${number2(item2.points)} \u5206`);
+            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            const points = add2(row, "span", `${number2(item2.points)} \u5206`);
             points.className = "player-points";
-            const price2 = add2(row, "span", item2.price == null ? "Value unknown" : `${number2(item2.price)} coins`);
+            const price2 = add2(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number2(item2.price)} \u91D1\u5E01`);
             price2.className = "player-price";
-            price2.title = item2.source === "market" ? "Purchase estimate" : "Inventory value";
-            if (item2.source === "market") add2(price2, "small", `Cap ${number2(item2.purchaseMaxBuy)}`);
+            price2.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
+            if (item2.source === "market") add2(price2, "small", `\u4E0A\u9650 ${number2(item2.purchaseMaxBuy)}`);
             let native = null, failed2 = false;
             const unavailable = () => {
               failed2 = true;
@@ -27970,7 +27973,7 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
                 parent: host,
                 raw,
                 slot: slot.name,
-                label: item2.name ?? `Version ${item2.definitionId}`,
+                label: item2.name ?? `\u7248\u672C ${item2.definitionId}`,
                 onUnavailable: unavailable
               });
             } catch {
@@ -27988,30 +27991,30 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count2]) => `${key}: ${count2}`).join(" \xB7 ");
       if (skipped) {
         const details = add2(output, "details");
-        add2(details, "summary", "Card exclusion reasons");
+        add2(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
         add2(details, "small", skipped);
       }
       if (result.policy?.goldRange?.[1] < 99) {
-        add2(output, "small", `FSU gold rating cap ${number2(result.policy.goldRange[1])}: inventory above this rating is protected. Market purchases use their separate rating limit.`);
+        add2(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number2(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
       }
       const exclusionBuckets = result.inventorySelection?.buckets;
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
         const details = add2(output, "details");
-        add2(details, "summary", `Excluded inventory ${quantity(result.inventorySelection.readCount - result.inventorySelection.eligibleCount, "card")}`);
+        add2(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number2(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
         const labels = {
-          "fsu-gold-range": "Outside the FSU gold rating range",
-          untradeable: "Excluded by Only Untradeable",
-          pile: "Unsupported inventory pile",
-          locked: "FSU manual card lock",
-          "active-squad": "Active squad protection",
-          "eligibility-ineligible": "Does not meet SBC requirements",
-          "eligibility-unknown": "SBC eligibility unverified"
+          "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
+          untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
+          pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
+          locked: "FSU \u624B\u52A8\u9501\u5361\u4FDD\u62A4",
+          "active-squad": "\u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4",
+          "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
+          "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
         };
         add2(details, "small", exclusionBuckets.map(
-          (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "Rating unknown" : `${number2(bucket.rating)} OVR`} \xD7${number2(bucket.count)}`
+          (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number2(bucket.rating)}\u7EA7`} \xD7${number2(bucket.count)}`
         ).join("; "));
       }
-      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "Click to search, buy, deliver to Club and contribute in batches. Purchases stay within each approved card price cap." : "Contributing permanently consumes selected cards. You can contribute in batches. Stop waits for the current batch to be reconciled." : `Execution unavailable: ${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
+      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
       node("contribute").hidden = false;
     };
     on("solve", async () => {
@@ -28024,18 +28027,18 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
       clearRendered();
       node("result").replaceChildren();
       node("contribute").hidden = true;
-      node("status").textContent = "Preparing candidates\u2026";
+      node("status").textContent = "\u6B63\u5728\u51C6\u5907\u5019\u9009\u2026";
       try {
         const result = await session2.plan(config(), { onProgress: (p) => {
           if (serial !== opened) return;
           const bar = shadow.querySelector("progress");
-          const stage = p.phase === "market-quotes" && p.refresh ? "Refreshing expired market quotes" : { quotes: "Inventory quotes", catalog: "Candidate groups", "market-validation": "Verifying candidate points", "market-quotes": "Market quotes" }[p.phase];
+          const stage = p.phase === "market-quotes" && p.refresh ? "\u5237\u65B0\u8FC7\u671F\u8865\u5361\u62A5\u4EF7" : { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
           bar.max = stage ? p.total || 1 : p.maxNodes || 1;
           bar.value = stage ? p.completed : p.nodes;
-          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 Waiting ${Math.floor(p.elapsedMs / 1e3)} s` : ""}` : `Search nodes ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 Candidates ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
+          node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "Stopped." : result.plan?.execution?.quoteLimited === true ? "Some quotes are unavailable. Review the inventory cards and prices before confirming execution." : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? result.status;
+        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status;
         renderResult(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -28050,8 +28053,8 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         refreshClock();
         const record = result.record;
         if (record) {
-          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 Spent ${number2(record.spent)} / ${number2(record.budget)} coins` : "";
-          node("final-progress").textContent = `Confirmed ${number2(record.submittedScore)} / ${number2(record.plan?.challenge.targetScore)} points${spent}`;
+          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number2(record.spent)} / ${number2(record.budget)} \u91D1\u5E01` : "";
+          node("final-progress").textContent = `\u5DF2\u786E\u8BA4 ${number2(record.submittedScore)} / ${number2(record.plan?.challenge.targetScore)} \u5206${spent}`;
           node("final-progress").hidden = false;
           const bar = shadow.querySelector("progress");
           bar.max = record.plan?.challenge.targetScore || 1;
@@ -28060,16 +28063,16 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         }
       }
       const labels = {
-        completed: "Target reached. Check the reward status separately.",
-        partial: "Contribution confirmed. Remaining batches can continue.",
-        stopped: "Stopped. Confirmed purchases and contributions are retained. Resume with the execution button; unresolved receipts are checked first.",
-        recovered: "Record reconciled. No contribution was repeated.",
-        observed: "Previous record loaded.",
-        absent: "No contribution record needs reconciliation.",
-        "recovery-required": "The result is unconfirmed. Reconcile before continuing; contributions will not be repeated.",
-        rejected: "EA rejected this contribution. Generate a new plan."
+        completed: "\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u5956\u52B1\u72B6\u6001\u9700\u53E6\u884C\u6838\u5BF9\u3002",
+        partial: "\u672C\u6B21\u8D21\u732E\u5DF2\u786E\u8BA4\uFF0C\u53EF\u7EE7\u7EED\u5269\u4F59\u6279\u6B21\u3002",
+        stopped: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u7684\u6210\u4EA4\u548C\u8D21\u732E\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+        recovered: "\u5DF2\u6062\u590D\u8BB0\u5F55\uFF0C\u672A\u91CD\u590D\u8D21\u732E\u3002",
+        observed: "\u5DF2\u8BFB\u53D6\u4E0A\u6B21\u8BB0\u5F55\u3002",
+        absent: "\u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002",
+        "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+        rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
-      node("status").textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "This SBC has no contribution record to reconcile. Click Generate plan." : labels[result.status] ?? result.status;
+      node("status").textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels[result.status] ?? result.status;
       if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(result.record.submittedScore)} / ${number2(result.record.plan.challenge.targetScore)}`;
     };
     on("contribute", async () => {
@@ -28090,13 +28093,13 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
             if (serial !== opened) return;
             executionStep(p);
             const materializeLabel = {
-              "checking-source": "Checking external cards",
-              "checking-club": "Checking Club",
-              "journal-pending": "Saving recovery record",
-              "move-request": "Moving to Club",
-              "move-acknowledged": "Move receipt confirmed",
-              "club-readback": "Verifying Club delivery",
-              confirmed: "Club delivery confirmed"
+              "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
+              "checking-club": "\u6838\u5BF9 Club",
+              "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
+              "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
+              "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
+              "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
+              confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
             }[p.stage];
             if (marketRun) {
               node("status").textContent = streamlinedExecutionProgress(p);
@@ -28105,8 +28108,8 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
               bar2.value = p.submittedScore;
               return;
             }
-            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "Checking cards", materialize: "Moving to Club", contribution: "Contributing", reconciliation: "Reconciling receipts", confirmed: "Confirmed" }[p.phase];
-            node("status").textContent = `Batch ${p.index + 1} \xB7 ${label} \xB7 Confirmed ${number2(p.submittedScore)} points`;
+            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "\u590D\u6838\u6750\u6599", materialize: "\u79FB\u5165 Club", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
+            node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} \u5206`;
             const bar = shadow.querySelector("progress");
             bar.max = indices.length;
             bar.value = indices.indexOf(p.index) + (p.phase === "confirmed" ? 1 : 0);
@@ -28827,9 +28830,9 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         for (const [key, count2] of demands) {
           let remaining = count2;
           for (const { g, i } of families.get(key)) {
-            const quantity2 = Math.min(remaining, waves * g.items.length);
-            if (quantity2) state = add(state, g, i, quantity2);
-            remaining -= quantity2;
+            const quantity = Math.min(remaining, waves * g.items.length);
+            if (quantity) state = add(state, g, i, quantity);
+            remaining -= quantity;
             if (!remaining) break;
           }
           if (remaining) return null;
@@ -32209,6 +32212,57 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
       verifyCurrent: () => assertTarget(),
       verifySquad: async () => assertTarget()
     });
+    const createOwnedReader = async (onEntity) => {
+      const contradictoryIds = /* @__PURE__ */ new Set(), evolutionIds = /* @__PURE__ */ new Set();
+      const reader = await createClubRead(root, { nativeReauth: true, onEntity: (entity) => {
+        const descriptor = Object.getOwnPropertyDescriptor(entity, "utasPile"), pile = descriptor?.value;
+        const any = root.ItemPile?.ANY, club = root.ItemPile?.CLUB, evolution = root.ItemPile?.EVOLUTION;
+        if (Number.isSafeInteger(evolution) && pile === evolution) evolutionIds.add(entity.id);
+        else if (descriptor && !("value" in descriptor) || pile != null && pile !== club && !(Number.isSafeInteger(any) && pile === any)) contradictoryIds.add(entity.id);
+        onEntity?.(entity);
+      } });
+      return { reader, contradictoryIds, evolutionIds };
+    };
+    const readOwnedClub = async (definitionIds, { itemId = null, onEntity = null, owned: owned2 = null, onProgress = () => {
+    }, stopped = () => false } = {}) => {
+      const { reader, contradictoryIds, evolutionIds } = owned2 ?? await createOwnedReader(onEntity);
+      const seen = /* @__PURE__ */ new Set(), matched = [];
+      for (let offset = 0; offset <= 2e4; offset += 250) {
+        if (stopped()) fail28("STOPPED");
+        assertTarget();
+        onProgress({ phase: "checking-holdings", offset });
+        if (stopped()) fail28("STOPPED");
+        const rows = await reader.readPage({ start: offset, count: 250, definitionIds });
+        assertTarget();
+        if (stopped()) fail28("STOPPED");
+        const invalid2 = !Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer15(row?.id, 1) || !integer15(row.definitionId, 1) || !["club", null].includes(row.pile) || contradictoryIds.has(row.id));
+        const duplicate = !invalid2 && rows.some((row) => {
+          if (seen.has(row.id)) return true;
+          seen.add(row.id);
+          return false;
+        });
+        const current2 = invalid2 ? [] : rows.filter((row) => definitionIds.includes(row.definitionId));
+        try {
+          onEvent({
+            stage: "holdings-read",
+            offset,
+            requestedCount: definitionIds.length,
+            responseCount: Array.isArray(rows) ? rows.length : 0,
+            acceptedCount: current2.length,
+            foreignCount: invalid2 ? 0 : rows.length - current2.length,
+            unknownCount: invalid2 ? 0 : current2.filter((row) => row.pile === null).length,
+            reason: invalid2 || duplicate ? "FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED" : void 0
+          });
+        } catch {
+        }
+        if (invalid2 || duplicate) fail28("PURCHASE_HOLDINGS_UNVERIFIED");
+        if (itemId !== null && evolutionIds.has(itemId)) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        matched.push(...current2.filter((row) => itemId === null || row.id === itemId));
+        if (itemId !== null && matched.length || itemId === null && definitionIds.every((id12) => matched.some((row) => row.definitionId === id12))) return matched;
+        if (rows.length < 250) return matched;
+      }
+      fail28("PURCHASE_HOLDINGS_UNVERIFIED");
+    };
     const materialize3 = async (entries2, currentRecord) => {
       assertFc27StreamlinedPolicy(root, plan.policy, entries2.map((entry) => ({ id: entry.itemId, source: "inventory" })));
       const output = [];
@@ -32221,12 +32275,13 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
           continue;
         }
         const entities = /* @__PURE__ */ new Map();
-        const transport = await createFc27ClubReadTransport(root, {
-          nativeReauth: true,
-          onEntity: (entity2) => entities.set(entity2.id, entity2)
+        const rows = await readOwnedClub([entry.definitionId], {
+          itemId: entry.itemId,
+          onEntity: (entity2) => {
+            if (entity2.id === entry.itemId) entities.set(entity2.id, entity2);
+          }
         });
-        const rows = await transport.readPage({ start: 0, count: 250, definitionIds: [entry.definitionId] });
-        const raw = rows.find((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId && item2.pile === "club");
+        const raw = rows.find((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId);
         if (!raw) fail28("PURCHASE_MATERIAL_UNKNOWN");
         const entity = entities.get(entry.itemId);
         if (!entity || entity.id !== raw.id || entity.definitionId !== raw.definitionId) fail28("PURCHASE_MATERIAL_UNKNOWN");
@@ -32261,7 +32316,8 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         assertTarget();
         await buyer.verifySquad(currentRecord);
       },
-      async readState(currentRecord) {
+      async readState(currentRecord, { onProgress = () => {
+      }, stopped = () => false } = {}) {
         assertTarget();
         const page = locateFc27StreamlinedPage(root), challenge = projectFc27StreamlinedChallenge(page, origin);
         const purchased = root.repositories?.Item?.numItemsInCache?.(root.ItemPile.PURCHASED);
@@ -32271,12 +32327,15 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         const heldDefinitions = [];
         if (plan.execution?.purchaseScope) {
           const ids2 = [...new Set(marketItems.map((item2) => item2.definitionId))];
-          const transport = await createClubRead(root, { nativeReauth: true });
+          const owned2 = await createOwnedReader();
           for (let start = 0; start < ids2.length; start += 50) {
             const batch = ids2.slice(start, start + 50);
-            const rows = await transport.readPage({ start: 0, count: 250, definitionIds: batch });
-            assertTarget();
-            if (!Array.isArray(rows) || rows.some((row) => !integer15(row.id, 1) || !batch.includes(row.definitionId) || row.pile !== "club")) fail28("PURCHASE_HOLDINGS_UNVERIFIED");
+            const rows = await readOwnedClub(batch, { owned: owned2, stopped, onProgress: (row) => onProgress({
+              ...row,
+              holdingsBatch: start / 50 + 1,
+              holdingsBatchTotal: Math.ceil(ids2.length / 50),
+              requestedCount: ids2.length
+            }) });
             heldDefinitions.push(...rows.map((row) => row.definitionId));
           }
         } else {
@@ -32628,7 +32687,7 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
             continue;
           }
           report("checking-state");
-          const state = await adapter.readState(record);
+          const state = await adapter.readState(record, { onProgress: (row) => report(row.phase ?? "checking-state", row), stopped: () => stopped });
           await check();
           if (state.submittedScore !== record.submittedScore) fail28("PROGRESS_CHANGED");
           const available = record.entries.filter((e) => ["ready", "club"].includes(e.state));
@@ -32848,7 +32907,8 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
         if ([
           "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED",
           "FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED",
-          "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED"
+          "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED",
+          "FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED"
         ].includes(error2?.message) && !record?.contribution && !record?.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) {
           return { status: "paused", reason: reason(error2), record };
         }
@@ -32962,6 +33022,13 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
               maxBuy: row.maxBuy,
               referencePrice: row.stage === "reference" ? row.price : void 0,
               actualPrice: row.stage === "bid" ? row.price : void 0,
+              requestedCount: row.requestedCount,
+              responseCount: row.responseCount,
+              acceptedCount: row.acceptedCount,
+              foreignCount: row.foreignCount,
+              unknownCount: row.unknownCount,
+              offset: row.offset,
+              reason: row.reason,
               localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : void 0,
               httpStatus: row.httpStatus,
               count: row.count
@@ -33097,7 +33164,7 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.24" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.25" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33415,8 +33482,8 @@ Purchased, awaiting delivery ${rows.filter((e) => ["bought", "move-pending"].inc
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.24"}`,
-    version: "27.0.24",
+    title: `FC Automation Tool ${"27.0.25"}`,
+    version: "27.0.25",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

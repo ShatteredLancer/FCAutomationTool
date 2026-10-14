@@ -105,7 +105,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
           await settleContribution(result); continue;
         }
         report('checking-state');
-        const state = await adapter.readState(record); await check();
+        const state = await adapter.readState(record, { onProgress: row => report(row.phase ?? 'checking-state', row), stopped: () => stopped }); await check();
         if (state.submittedScore !== record.submittedScore) fail('PROGRESS_CHANGED');
         const available = record.entries.filter(e => ['ready', 'club'].includes(e.state));
         const preferredDefinitions = new Set(available.filter(e => ['club', 'storage'].includes(e.pile)).map(e => e.definitionId));
@@ -284,7 +284,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record };
       }
       if (['FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED', 'FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED',
-        'FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED'].includes(error?.message)
+        'FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED', 'FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'].includes(error?.message)
           && !record?.contribution && !record?.entries.some(entry => ['buy-pending', 'move-pending'].includes(entry.state))) {
         return { status: 'paused', reason: reason(error), record };
       }

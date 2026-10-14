@@ -33,6 +33,17 @@ it('retains Streamlined bucket and repeated-wave arithmetic while redacting phys
   expect(JSON.stringify((await t.log.exportPayload()).criticalEntries)).not.toMatch(/secret|raw|itemId/);
 });
 
+it('exports bounded holdings-read arithmetic without physical identities, DTOs or credentials', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'purchase-native', phase: 'holdings-read',
+    requestedCount: 50, responseCount: 250, acceptedCount: 2, foreignCount: 248, unknownCount: 2, offset: 250,
+    raw: [{ id: 123456 }], itemId: 123456, account: 'secret', token: 'secret' });
+  const payload = await t.log.exportPayload();
+  expect(payload.entries.at(-1)).toMatchObject({ phase: 'holdings-read', requestedCount: 50,
+    responseCount: 250, acceptedCount: 2, foreignCount: 248, unknownCount: 2, offset: 250 });
+  expect(JSON.stringify(payload)).not.toMatch(/123456|secret|"itemId"|"token"|"raw"/);
+});
+
 it('retains anonymous FSU exclusion evidence across reloads without inventing price fields', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'inventory-exclusion', source: 'club', phase: 'fsu-gold-range',

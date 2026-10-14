@@ -62,6 +62,8 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         phase: row.stage, definitionId: row.definitionId, maxBuy: row.maxBuy,
         referencePrice: row.stage === 'reference' ? row.price : undefined,
         actualPrice: row.stage === 'bid' ? row.price : undefined,
+        requestedCount: row.requestedCount, responseCount: row.responseCount, acceptedCount: row.acceptedCount,
+        foreignCount: row.foreignCount, unknownCount: row.unknownCount, offset: row.offset, reason: row.reason,
         localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined,
         httpStatus: row.httpStatus, count: row.count })).catch(() => {}); } catch { /* diagnostic only */ } } });
   };

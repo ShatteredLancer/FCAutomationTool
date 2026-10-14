@@ -52,6 +52,21 @@ it('retains a known search rejection rather than reporting no affordable supply'
   expect(adapter.buy).not.toHaveBeenCalled();
 });
 
+it('pauses a read-only holdings failure and retries directly without making up a pending receipt', async () => {
+  const market = item(0, 201, 20, 'market'), plan = planFor({ market: [market] }), { journal } = setup();
+  const adapter = baseAdapter([], {
+    find: vi.fn(async () => ({ definitionId: 201, itemId: 401, tradeId: '501', price: 200 })),
+    buy: vi.fn(async entry => ({ ...entry, status: 'bought' })), materialize: vi.fn(async () => [{ ...market, id: 401 }]),
+  });
+  adapter.readState.mockRejectedValueOnce(Error('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'));
+  const driver = createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' });
+  expect(await driver.execute(plan, approval(plan))).toMatchObject({ status: 'paused',
+    reason: 'FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED', record: { spent: 0, entries: [], contribution: null } });
+  for (const key of ['find', 'buy', 'move', 'contribute']) expect(adapter[key]).not.toHaveBeenCalled();
+  expect(await driver.execute(plan, approval(plan))).toMatchObject({ status: 'completed', record: { spent: 200 } });
+  expect(adapter.buy).toHaveBeenCalledOnce();
+});
+
 it('accepts an explicitly approved replacement plan when the previous run has zero effects', async () => {
   const plan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal } = setup();
   const adapter = baseAdapter([], { find: vi.fn(async () => null) });
@@ -152,6 +167,16 @@ it('does not interpret missing pending purchase identity as permission to buy ag
   const result = await createStreamlinedProcurement({ journal, lock, adapter }).execute(plan, null, { reconcileOnly: true });
   expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
   expect((await journal.read(context)).entries[0].state).toBe('buy-pending'); expect(adapter.buy).not.toHaveBeenCalled();
+});
+
+it('does not downgrade an unresolved buy to a retryable holdings pause', async () => {
+  const plan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal } = setup(pendingRecord(plan));
+  const adapter = baseAdapter([], { locate: vi.fn(async () => 'unknown'),
+    readState: vi.fn(async () => { throw Error('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'); }) });
+  const result = await createStreamlinedProcurement({ journal, lock, adapter }).execute(plan, approval(plan));
+  expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
+  expect(adapter.readState).not.toHaveBeenCalled(); expect(adapter.buy).not.toHaveBeenCalled();
+  expect((await journal.read(context)).entries[0].state).toBe('buy-pending');
 });
 
 it('reconciles a last contribution to completed and never resubmits it', async () => {

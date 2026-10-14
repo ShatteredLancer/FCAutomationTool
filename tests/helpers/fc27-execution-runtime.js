@@ -46,8 +46,8 @@ export function executionRuntime() {
         retry: this.doRetry, reauth: this.doReauth });
       if (state.timeout) return;
       let response;
-      if (this.url.endsWith('/club')) response = ok({ itemData: state.filterClubQueries && this.requestBody?.defId
-        ? state.players.filter(item => this.requestBody.defId.split(',').map(Number).includes(item.resourceId)) : state.players });
+      if (this.url.endsWith('/club')) response = ok({ itemData: state.clubPages?.[this.requestBody?.start] ?? (state.filterClubQueries && this.requestBody?.defId
+        ? state.players.filter(item => this.requestBody.defId.split(',').map(Number).includes(item.resourceId)) : state.players) });
       else if (this.url.endsWith('/purchased/items')) response = ok({ itemData: state.unassigned });
       else if (this.url.endsWith('/store/purchaseGroup/all')) response = ok({ purchase: [{ id: 509, displayGroup: { value: 'mypacks' },
         packType: 'CARDPACK', untradeable: true, quantity: state.packCount }] });
