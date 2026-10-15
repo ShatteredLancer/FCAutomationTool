@@ -112,10 +112,11 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     }
     return output;
   };
+  const contributionDiagnostic = row => onEvent({ ...row, stage: `contribution-${row.phase}` });
   const contribute = async (batchPlan, callbacks = {}) => {
     if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail('WRITE_CONTRACT_UNVERIFIED');
     const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
-      lock: { acquire: async () => () => {} }, now }).execute(batchPlan,
+      lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).execute(batchPlan,
       { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }, callbacks);
     return result.status === 'completed' || result.status === 'partial' ? { confirmed: true, submittedScore: result.record.submittedScore }
       : { confirmed: false, reason: result.reason };
@@ -193,7 +194,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
       if (previous.plan.fingerprint !== saved.batchPlan.fingerprint) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
       if (previous.batches.every(batch => ['waiting', 'rejected'].includes(batch.state))) return { notDispatched: true };
       const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
-        lock: { acquire: async () => () => {} }, now }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
+        lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
       if (result.status === 'recovered' || result.status === 'observed') {
         const score = result.record?.submittedScore;
         if (integer(score, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score };

@@ -1,5 +1,34 @@
 # Streamlined purchase execution: findings and approved redesign
 
+## 15 October 2026 — contribution diagnostics, 27.0.31
+
+The 27.0.30 account export confirms three bought/moved players, 1,650 spent
+within an approved 1,840 budget, and one settled contribution at 430/1,250.
+The next contribution and two recovery attempts remain unresolved. The export
+has one pending operation and two unconsumed purchases, but no underlying
+contribution response/readback cause. This is not evidence of budget exhaustion,
+and does not establish whether the second contribution reached EA.
+
+27.0.31 adds isolated fixed-code diagnostics through the actual transaction,
+purchase bridge and production log. Validation, dispatch exceptions, normalized
+response/HTTP, receipt verification, readback, finalization and recovery are
+distinguishable. Failure stages survive subsequent planning in the existing
+bounded transaction summary. No raw response, receipt, physical/account identity,
+fingerprint or free-form error text is exported. No transaction decision,
+request count, retry, frozen authorization, protection, Journal schema or
+economic objective changes. Same-version per-wave blocking and confirmed
+consumption before repurchase remain unchanged.
+
+Regression coverage includes accepted reply then failed readback, original
+dispatch failure then missing receipt, invalid receipt, known EA rejection/
+unknown classifications, finalization failure, diagnostic sink failures, and
+settled first batch followed by unresolved second batch with repeated read-only
+recovery. The original incident still needs an account recovery/export on the
+new version; diagnostic completion is not an end-to-end runtime fix. Keep the
+existing Journal, return to the same SBC, reconcile and inspect the new fixed
+stage/cause before changing the transaction path. Do not clear or replay it.
+Build/release evidence: [27.0.31](releases/27.0.31.md).
+
 ## Scope and state — 14 October 2026
 
 Baseline: main `cd09458`, version 27.0.23. Fresh origin/main check matched it.

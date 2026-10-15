@@ -10,7 +10,7 @@ const receipt = (plan, batch, previousScore = 0, completed = false) => normalize
     grantedChallengeAwards: completed ? [{ type: 'pack' }] : [], grantedSetAwards: [] },
 }, { challengeId: plan.challenge.id, setId: plan.challenge.setId, previousScore, itemIds: batch.refs.map(ref => ref.id) });
 
-function setup() {
+function setup(options = {}) {
   const store = new Map(), events = [], plan = testPlan();
   const journal = createStreamlinedJournal({ get: async key => store.get(key),
     set: async (key, value) => { store.set(key, structuredClone(value)); events.push(`persist:${value.batches.map(b => b.state)}`); }, now: () => 100 });
@@ -20,10 +20,85 @@ function setup() {
       fresh: true, context: record.context, setId: 31, challengeId: 61, observedAt: 100,
       absent: batch.refs, submittedScore: record.submittedScore + 20, operationConfirmed: true }; }) };
   const release = vi.fn(), lock = { acquire: async () => release };
-  const tx = createStreamlinedTransaction({ adapter, journal, lock, now: () => 100 });
+  const tx = createStreamlinedTransaction({ adapter, journal, lock, now: () => 100, ...options });
   const approval = { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1] };
   return { tx, adapter, journal, lock, plan, approval, events, release };
 }
+
+it('keeps accepted response, failed readback and repeated recovery causes without resending', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.contribute.mockImplementation(async (plan, batch) => receipt(plan, batch));
+  f.adapter.reconcile.mockRejectedValue(Error('FC27_STREAMLINED_MATERIAL_STILL_PRESENT'));
+  const result = await f.tx.execute(f.plan, f.approval);
+  expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'response', status: 'accepted', httpStatus: 200 }));
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'readback', status: 'blocked',
+    reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT', count: 1, currentScore: 0, targetScore: 40 }));
+  for (let i = 0; i < 2; i++) expect(await f.tx.recover(f.plan.context)).toMatchObject({
+    status: 'recovery-required', reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' });
+  expect(f.adapter.contribute).toHaveBeenCalledOnce();
+  expect((await f.journal.read(f.plan.context)).batches[0]).toMatchObject({ state: 'unknown', receipt: { status: 'accepted' } });
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/itemIds|accountScope|fingerprint|"refs"/);
+});
+
+it('records the original dispatch error separately from missing-receipt readback', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.contribute.mockRejectedValue(Error('FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED'));
+  f.adapter.reconcile.mockRejectedValue(Error('FC27_STREAMLINED_RECEIPT_REQUIRED'));
+  expect(await f.tx.execute(f.plan, f.approval)).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED' });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'dispatch', status: 'unknown',
+    reason: 'FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED' }));
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'readback', reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED' }));
+  expect(f.adapter.contribute).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ['unknown', 'EA_CONTRIBUTION_RESPONSE_CONFLICT', 200],
+  ['unknown', 'EA_CONTRIBUTION_RESPONSE_UNVERIFIED', 521],
+  ['rejected', 'EA_SQUAD_CONFLICT', 200],
+  ['rejected', 'EA_CONTRIBUTION_REJECTED', 409],
+])('retains the fixed normalized %s response reason %s without changing its outcome', async (status, reason, code) => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.contribute.mockResolvedValue({ status, reason, code });
+  f.adapter.reconcile.mockRejectedValue(Error('FC27_STREAMLINED_RECEIPT_REQUIRED'));
+  expect((await f.tx.execute(f.plan, f.approval)).status).toBe(status === 'rejected' ? 'rejected' : 'recovery-required');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'response', status, httpStatus: code,
+    reason: `FC27_STREAMLINED_${reason}` }));
+  expect(f.adapter.contribute).toHaveBeenCalledOnce();
+});
+
+it('distinguishes validation and finalization failures without exporting arbitrary error text', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.verify.mockRejectedValueOnce(Error('secret https://example.test/?token=secret'));
+  expect((await f.tx.execute(f.plan, f.approval)).status).toBe('blocked');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'validation', status: 'blocked',
+    reason: 'FC27_STREAMLINED_TRANSACTION_UNCONFIRMED' }));
+  f.adapter.contribute.mockImplementation(async (plan, batch) => receipt(plan, batch));
+  f.adapter.finalize = vi.fn(async () => false);
+  expect((await f.tx.execute(f.plan, f.approval)).status).toBe('recovery-required');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'finalization', status: 'blocked',
+    reason: 'FC27_STREAMLINED_FINALIZATION_REQUIRED' }));
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/secret|example\.test|token/);
+});
+
+it('records receipt validation failure while keeping the dispatched batch unknown', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.contribute.mockResolvedValue({ schema: 1, status: 'accepted', code: 200 });
+  expect(await f.tx.execute(f.plan, f.approval)).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_RECEIPT_INVALID' });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'receipt', status: 'invalid', reason: 'FC27_STREAMLINED_RECEIPT_INVALID' }));
+  expect((await f.journal.read(f.plan.context)).batches[0].state).toBe('unknown');
+  expect(f.adapter.contribute).toHaveBeenCalledOnce();
+  expect(f.adapter.reconcile).not.toHaveBeenCalled();
+});
+
+it.each(['throw', 'reject'])('does not let a diagnostic %s alter writes, receipts or recovery', async mode => {
+  const onDiagnostic = vi.fn(() => { if (mode === 'throw') throw Error('diagnostic failed'); return Promise.reject(Error('diagnostic failed')); });
+  const f = setup({ onDiagnostic });
+  expect((await f.tx.execute(f.plan, f.approval)).status).toBe('completed');
+  expect(onDiagnostic).toHaveBeenCalled();
+  expect((await f.tx.recover(f.plan.context)).status).toBe('observed');
+  expect(f.adapter.contribute).toHaveBeenCalledTimes(2);
+});
 it('persists before writes, reconciles each batch and does not repeat confirmed contributions', async () => {
   const f = setup();
   expect((await f.tx.execute(f.plan, f.approval)).status).toBe('completed');

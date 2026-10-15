@@ -6,6 +6,8 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../src/streamli
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
+import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
+import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 
 async function setup(options = {}) {
   const f = streamlinedRuntime(), candidate = { ...f.plan.items[0], source: 'market', quote: {
@@ -16,6 +18,38 @@ async function setup(options = {}) {
     now: () => 1000, createBuyer: async () => buyer, ...options });
   return { f, plan, candidate, buyer, adapter };
 }
+
+it('traces a settled first batch and unknown second batch through the production purchase bridge without repeat contribution', async () => {
+  const memory = new Map(), onEvent = vi.fn();
+  const journal = createStreamlinedJournal({ now: () => 1000,
+    get: async key => structuredClone(memory.get(key)), set: async (key, value) => memory.set(key, structuredClone(value)) });
+  const writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async () => true),
+    contribute: vi.fn(async (plan, batch) => normalizeStreamlinedContributionReply({ success: true, status: 200,
+      response: { setId: plan.challenge.setId, challengeId: plan.challenge.id,
+        submittedScore: plan.challenge.submittedScore + plan.score, grantedChallengeAwards: [], grantedSetAwards: [] } },
+    { setId: plan.challenge.setId, challengeId: plan.challenge.id, previousScore: plan.challenge.submittedScore,
+      itemIds: batch.refs.map(ref => ref.id) })),
+    reconcile: vi.fn(async (record, batch) => ({ fresh: true, context: record.context, observedAt: 1000,
+      setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id,
+      absent: batch.refs, submittedScore: record.plan.challenge.submittedScore + record.plan.score, operationConfirmed: true })) };
+  const { f, adapter } = await setup({ contributionAdapter: { adapter: writer, journal }, onEvent });
+  expect(await adapter.contribute(f.plan)).toEqual({ confirmed: true, submittedScore: 100 });
+  f.challenge.submittedScore = 100;
+  const next = await adapter.prepareContribution(f.input.inventory.slice(5, 10).map(item => ({ groupIndex: 0, item })), { submittedScore: 100 });
+  writer.reconcile.mockRejectedValue(Error('FC27_STREAMLINED_MATERIAL_STILL_PRESENT'));
+  expect(await adapter.contribute(next)).toEqual({ confirmed: false, reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' });
+  for (let i = 0; i < 2; i++) expect(await adapter.recoverContribution({ batchPlan: next })).toEqual({
+    confirmed: false, reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' });
+  expect(writer.contribute).toHaveBeenCalledTimes(2);
+  expect(await journal.read(f.plan.context)).toMatchObject({ submittedScore: 100,
+    batches: [{ state: 'unknown', receipt: { status: 'accepted', submittedScore: 200 } }] });
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ stage: 'contribution-response', status: 'accepted', httpStatus: 200 }));
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ stage: 'contribution-readback', status: 'blocked',
+    reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT', currentScore: 100, targetScore: 200, count: 5 }));
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ stage: 'contribution-recovery', status: 'recovery-required',
+    reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' }));
+  expect(JSON.stringify(onEvent.mock.calls)).not.toMatch(/accountScope|itemIds|tradeId|fingerprint|"refs"/);
+});
 
 it('accepts its own score progress but rejects native target/eligibility/limit changes before market search', async () => {
   const { f, adapter, candidate, buyer } = await setup();

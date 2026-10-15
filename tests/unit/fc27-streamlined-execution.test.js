@@ -182,7 +182,7 @@ it('recovers a mixed-pile contribution after the final checkpoint fails without 
   expect(f.set.totalSubmittedScore).toBe(100); expect(held).toBe(false);
 });
 
-it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'same-target'])('market recovery %s never grants EA write authority', async scenario => {
+it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'same-target'])('market recovery %s never grants EA write authority and forwards bounded diagnostics', async scenario => {
   const f = streamlinedRuntime(), memory = new Map(), market = { ...f.plan.items[0], source: 'market', id: null,
     key: 'market:101:0', price: 200, purchaseMaxBuy: 250 };
   const plan = { ...f.plan, route: { groups: [{ source: 'market', quantity: 1, item: market, items: [market] }] } };
@@ -201,9 +201,10 @@ it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'sa
   const buyer = { assertCurrent: vi.fn(), verifySquad: vi.fn(), locate: vi.fn(async () => scenario === 'unknown' ? 'unknown' : 'club'), cancel: vi.fn(),
     buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
   const createPurchaseAdapter = vi.fn(async () => buyer);
+  const diagnosticLog = { record: vi.fn(async () => true) };
   const execution = await createFc27StreamlinedExecution(f.root, { context: plan.context,
     get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
-    set: async (key, value) => memory.set(key, structuredClone(value)), createPurchaseAdapter,
+    set: async (key, value) => memory.set(key, structuredClone(value)), createPurchaseAdapter, diagnosticLog,
     lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) } });
   const challenge = { ...plan.challenge, ...(scenario === 'other-target' ? { id: 999 } : {}),
     ...(scenario === 'changed-target' ? { targetScore: 999 } : {}) };
@@ -212,6 +213,15 @@ it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'sa
     expect(outcome.status, outcome.reason).toBe({ absent: 'absent', completed: 'completed',
       'other-target': 'recovery-required', unknown: 'recovery-required', 'same-target': 'recovered' }[scenario]); }
   if (['absent', 'completed', 'other-target', 'changed-target'].includes(scenario)) expect(createPurchaseAdapter).not.toHaveBeenCalled();
+  if (scenario === 'same-target') {
+    createPurchaseAdapter.mock.calls[0][1].onEvent({ stage: 'contribution-readback', status: 'blocked',
+      reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED', count: 2, currentScore: 430, targetScore: 1250,
+      accountScope: 'secret', itemIds: [123456], raw: { token: 'secret' } });
+    expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ area: 'streamlined', event: 'contribution-transaction',
+      phase: 'contribution-readback', status: 'blocked', reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED',
+      count: 2, currentScore: 430, targetScore: 1250 }));
+    expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toMatch(/secret|itemIds|accountScope|123456|"raw"/);
+  }
   expect(buyer.buy).not.toHaveBeenCalled(); expect(buyer.move).not.toHaveBeenCalled(); expect(buyer.contribute).not.toHaveBeenCalled();
   expect(f.calls).toHaveLength(0);
 });

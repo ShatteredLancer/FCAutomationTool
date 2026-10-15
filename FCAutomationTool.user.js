@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.30
+// @version      27.0.31
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.30", at: Date.now(), status: 'started',
+    state = { version: "27.0.31", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26674,7 +26674,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "streamlined" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
         }
-        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result") {
+        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result" || entry.area === "streamlined" && entry.event === "contribution-transaction" && entry.reason) {
           transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
         if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
@@ -32131,29 +32131,58 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/streamlined/transaction.js
-  function createStreamlinedTransaction({ adapter, journal, lock, now = () => Date.now() }) {
+  function createStreamlinedTransaction({ adapter, journal, lock, now = () => Date.now(), onDiagnostic = () => {
+  } }) {
     let running = false, stopping = false;
     const safeReason10 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_TRANSACTION_UNCONFIRMED";
+    const responseReason = (reason) => [
+      "EA_CONTRIBUTION_RESPONSE_CONFLICT",
+      "EA_CONTRIBUTION_RESPONSE_UNVERIFIED",
+      "EA_SQUAD_CONFLICT",
+      "EA_CONTRIBUTION_REJECTED"
+    ].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason10({ message: reason });
+    const diagnose = (phase, status, record, batch, detail = {}) => {
+      try {
+        Promise.resolve(onDiagnostic({
+          phase,
+          status,
+          count: batch?.refs?.length,
+          currentScore: record?.submittedScore,
+          targetScore: record?.plan?.challenge?.targetScore,
+          ...typeof detail === "function" ? detail() : detail
+        })).catch(() => {
+        });
+      } catch {
+      }
+    };
     const observe = async (record, batch) => {
-      const evidence = await adapter.reconcile(record, batch);
-      const receipt = batch.receipt;
-      const reset = receipt?.challengeCompleted === true && receipt.submittedScore >= record.plan.challenge.targetScore && evidence?.cycleResetConfirmed === true && evidence.submittedScore === 0;
-      const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
-      if (evidence?.fresh !== true || !same25(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same25(evidence.absent, batch.refs) || !integer15(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail28("RECONCILIATION_REQUIRED");
-      const confirmed = { ...evidence, submittedScore };
-      if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
-      return confirmed;
+      let phase = "readback";
+      try {
+        const evidence = await adapter.reconcile(record, batch);
+        const receipt = batch.receipt;
+        const reset = receipt?.challengeCompleted === true && receipt.submittedScore >= record.plan.challenge.targetScore && evidence?.cycleResetConfirmed === true && evidence.submittedScore === 0;
+        const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
+        if (evidence?.fresh !== true || !same25(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same25(evidence.absent, batch.refs) || !integer15(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail28("RECONCILIATION_REQUIRED");
+        const confirmed = { ...evidence, submittedScore };
+        diagnose("readback", "verified", record, batch);
+        phase = "finalization";
+        if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
+        return confirmed;
+      } catch (error2) {
+        diagnose(phase, "blocked", record, batch, { reason: safeReason10(error2) });
+        throw error2;
+      }
     };
     const execute = async (plan, approval, { onProgress = () => {
     } } = {}) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
       running = true;
       stopping = false;
-      let release, record;
-      const report = (phase, index) => {
+      let release, record, activeBatch, phase = "preflight";
+      const report = (phase2, index) => {
         try {
           onProgress({
-            phase,
+            phase: phase2,
             index,
             total: approval.batchIndices.length,
             submittedScore: record?.submittedScore ?? plan.challenge.submittedScore
@@ -32174,9 +32203,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (record.batches.some((b) => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail28("PROGRESS_CHANGED");
         for (const index of approval.batchIndices) {
           let batch = record.batches[index];
+          activeBatch = batch;
           if (batch.state === "confirmed") continue;
           if (batch.state !== "waiting") fail28("REPLAN_REQUIRED");
           if (stopping || record.submittedScore >= plan.challenge.targetScore) break;
+          phase = "validation";
           report("validation", index);
           if (await adapter.verify(plan, batch, record.submittedScore, {
             stopped: () => stopping,
@@ -32188,22 +32219,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }) !== true) fail28("MATERIAL_CHANGED");
           if (stopping) break;
+          phase = "checkpoint";
           record.batches[index].state = "pending";
           record.batches[index].startingScore = record.submittedScore;
           record = await journal.write(plan.context, record, record.revision);
           batch = record.batches[index];
           let reply;
           report("contribution", index);
+          phase = "dispatch";
           try {
             reply = await adapter.contribute(plan, batch);
-          } catch {
+          } catch (error2) {
+            diagnose("dispatch", "unknown", record, batch, { reason: safeReason10(error2) });
             reply = { status: "unknown" };
           }
+          diagnose("response", "unknown", record, batch, () => ({
+            status: ["accepted", "rejected", "unknown"].includes(reply?.status) ? reply.status : "unknown",
+            ...integer15(reply?.code, 100, 599) ? { httpStatus: reply.code } : {},
+            ...reply?.reason ? { reason: responseReason(reply.reason) } : {}
+          }));
           if (reply?.status === "rejected") {
             record.batches[index].state = "rejected";
             record = await journal.write(plan.context, record, record.revision);
             return { status: "rejected", reason: reply.reason, record };
           }
+          phase = "receipt";
           if (reply?.status === "accepted" && reply.schema !== void 0) {
             try {
               record.batches[index].receipt = projectStreamlinedReceipt(reply, {
@@ -32214,13 +32254,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 itemIds: batch.refs.map((ref) => ref.id)
               });
             } catch {
+              diagnose("receipt", "invalid", record, batch, { reason: "FC27_STREAMLINED_RECEIPT_INVALID" });
               record.batches[index].state = "unknown";
               record = await journal.write(plan.context, record, record.revision);
               return { status: "recovery-required", reason: "FC27_STREAMLINED_RECEIPT_INVALID", record };
             }
+            diagnose("receipt", "verified", record, batch, { httpStatus: record.batches[index].receipt.code });
+            phase = "checkpoint";
             record = await journal.write(plan.context, record, record.revision);
             batch = record.batches[index];
           }
+          phase = "readback";
           try {
             report("reconciliation", index);
             const evidence = await observe(record, batch);
@@ -32234,6 +32278,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             record = await journal.write(plan.context, record, record.revision);
             return { status: "recovery-required", reason: safeReason10(error2), record };
           }
+          phase = "checkpoint";
           record = await journal.write(plan.context, record, record.revision);
           report("confirmed", index);
           if (record.batches[index].progressChanged && record.submittedScore < plan.challenge.targetScore) {
@@ -32242,6 +32287,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return { status: stopping ? "stopped" : record.submittedScore >= plan.challenge.targetScore ? "completed" : "partial", record };
       } catch (error2) {
+        diagnose(phase, "blocked", record, activeBatch, { reason: safeReason10(error2) });
         return { status: "blocked", reason: safeReason10(error2) };
       } finally {
         try {
@@ -32254,11 +32300,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const recover = async (context, target = null) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
       running = true;
-      let release;
+      let release, record, batch;
       try {
         release = await lock.acquire(context);
         if (typeof release !== "function") fail28("BUSY");
-        const record = await journal.read(context);
+        record = await journal.read(context);
         if (!record) return { status: "absent" };
         if (target && (record.plan.challenge.setId !== target.setId || record.plan.challenge.id !== target.challengeId)) {
           if (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state))) {
@@ -32270,7 +32316,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             recovery: { setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id }
           };
         }
-        const batch = record.batches.find((b) => ["pending", "unknown"].includes(b.state));
+        batch = record.batches.find((b) => ["pending", "unknown"].includes(b.state));
         if (!batch) return { status: "observed", record };
         const evidence = await observe(record, batch);
         batch.progressChanged = evidence.submittedScore !== record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
@@ -32283,6 +32329,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         record.rewardState = evidence.rewardConfirmed === true ? "confirmed" : "unknown";
         return { status: "recovered", record: await journal.write(context, record, record.revision) };
       } catch (error2) {
+        diagnose("recovery", "recovery-required", record, batch, { reason: safeReason10(error2) });
         return { status: "recovery-required", reason: safeReason10(error2) };
       } finally {
         try {
@@ -32425,6 +32472,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       return output;
     };
+    const contributionDiagnostic = (row) => onEvent({ ...row, stage: `contribution-${row.phase}` });
     const contribute = async (batchPlan, callbacks = {}) => {
       if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail28("WRITE_CONTRACT_UNVERIFIED");
       const result = await createStreamlinedTransaction({
@@ -32432,7 +32480,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         journal: contributionAdapter.journal,
         lock: { acquire: async () => () => {
         } },
-        now
+        now,
+        onDiagnostic: contributionDiagnostic
       }).execute(
         batchPlan,
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
@@ -32565,7 +32614,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           journal: contributionAdapter.journal,
           lock: { acquire: async () => () => {
           } },
-          now
+          now,
+          onDiagnostic: contributionDiagnostic
         }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
         if (result.status === "recovered" || result.status === "observed") {
           const score2 = result.record?.submittedScore;
@@ -33156,7 +33206,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       checkOtherTransactions,
       purchaseVerifier
     });
-    const transaction = createStreamlinedTransaction({ adapter, ...persistence, now });
+    const contributionDiagnostic = (row) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({
+          area: "streamlined",
+          event: "contribution-transaction",
+          phase: `contribution-${row.phase}`,
+          status: row.status,
+          reason: row.reason,
+          httpStatus: row.httpStatus,
+          count: row.count,
+          currentScore: row.currentScore,
+          targetScore: row.targetScore
+        })).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const transaction = createStreamlinedTransaction({ adapter, ...persistence, now, onDiagnostic: contributionDiagnostic });
     const createMarket = async (plan2) => {
       if (!plan2?.route?.groups?.some((group) => group.source === "market")) return null;
       await materializationJournal.assertSettled();
@@ -33174,8 +33241,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           try {
             Promise.resolve(diagnosticLog2?.record?.({
               area: "streamlined",
-              event: "purchase-native",
+              event: row.stage?.startsWith("contribution-") ? "contribution-transaction" : "purchase-native",
               phase: row.stage,
+              status: row.status,
+              currentScore: row.currentScore,
+              targetScore: row.targetScore,
               definitionId: row.definitionId,
               maxBuy: row.maxBuy,
               referencePrice: row.stage === "reference" ? row.price : void 0,
@@ -33323,7 +33393,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.30" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.31" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33641,8 +33711,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.30"}`,
-    version: "27.0.30",
+    title: `FC Automation Tool ${"27.0.31"}`,
+    version: "27.0.31",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

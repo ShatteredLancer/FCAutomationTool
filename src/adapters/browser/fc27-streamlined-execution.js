@@ -52,14 +52,22 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
     materializationStorage,
     checkOtherTransactions, purchaseVerifier });
-  const transaction = createStreamlinedTransaction({ adapter, ...persistence, now });
+  const contributionDiagnostic = row => {
+    try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'contribution-transaction',
+      phase: `contribution-${row.phase}`, status: row.status, reason: row.reason,
+      httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
+    catch { /* Diagnostic only. */ }
+  };
+  const transaction = createStreamlinedTransaction({ adapter, ...persistence, now, onDiagnostic: contributionDiagnostic });
   const createMarket = async plan => {
     if (!plan?.route?.groups?.some(group => group.source === 'market')) return null;
     await materializationJournal.assertSettled();
     const contribution = { adapter, journal: persistence.journal };
     return createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution,
-      onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'purchase-native',
-        phase: row.stage, definitionId: row.definitionId, maxBuy: row.maxBuy,
+      onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined',
+        event: row.stage?.startsWith('contribution-') ? 'contribution-transaction' : 'purchase-native',
+        phase: row.stage, status: row.status, currentScore: row.currentScore, targetScore: row.targetScore,
+        definitionId: row.definitionId, maxBuy: row.maxBuy,
         referencePrice: row.stage === 'reference' ? row.price : undefined,
         actualPrice: row.stage === 'bid' ? row.price : undefined,
         requestedCount: row.requestedCount, responseCount: row.responseCount, acceptedCount: row.acceptedCount,

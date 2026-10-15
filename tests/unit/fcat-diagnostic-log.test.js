@@ -10,6 +10,19 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains contribution failure stages across new planning and quote floods without raw trade data', async () => {
+  const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
+  await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-readback',
+    status: 'blocked', reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT', httpStatus: 200, count: 2,
+    currentScore: 430, targetScore: 1250, itemIds: [123456], raw: { token: 'secret' }, accountScope: 'secret' });
+  for (let i = 0; i < 125; i++) await t.log.record({ area: 'streamlined', event: 'candidate-bucket', count: i });
+  const restored = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await restored.exportPayload();
+  expect(payload.transactionResults).toContainEqual(expect.objectContaining({ phase: 'contribution-readback',
+    reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT', count: 2, currentScore: 430, targetScore: 1250 }));
+  expect(JSON.stringify(payload)).not.toMatch(/123456|secret|itemIds|accountScope|"raw"/);
+});
+
 it('retains bounded planning performance summaries across quote floods and reloads', async () => {
   const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
   await t.log.record({ area: 'streamlined', event: 'planning-read', phase: 'quotes', durationMs: 100000,
