@@ -2,7 +2,7 @@
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 main：**27.0.33**。修正积分贡献前 Storage 读取的原生方法兼容检查，保留未知实现拦截及 [27.0.32](docs/releases/27.0.32.md) 的库存优先默认：**Storage → Club → 缺口补卡**，库存足够时不查市场、不购卡；原最低总材料价值仍可选。旧冻结计划/未决记录不改写，锁卡/进化/主阵容、预算和未知回执保护保留，普通 SBC/Puzzle、Gallery 与 FSU 不变。详见 [27.0.33 说明](docs/releases/27.0.33.md)。公开代码重放与离线贯通不等于真实账号完成贡献，需更新后验证。
+当前 main：**27.0.34**。修正积分 SBC 已完成却在本地收尾报错的提示：独立读回确认后，明确区分“贡献成功、仅本地同步待完成”和“贡献结果未知”。公开原生 Set factory 重放修复到期时间重算引起的一秒误差，不延长冻结授权；真正的元数据/计数异常仍停止，恢复不重复投入。保留 Storage → Club → 缺口补卡、锁卡/进化/主阵容、预算、旧记录和未知回执保护，普通 SBC/Puzzle、Gallery 与 FSU 不变。详见 [27.0.34 说明](docs/releases/27.0.34.md)。用户已确认 .33 现场 SBC 完成；本次新提示与兼容修复的账号验收仍待更新后验证。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

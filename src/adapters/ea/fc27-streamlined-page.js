@@ -61,8 +61,17 @@ export async function createFc27StreamlinedPageMaintenance(root, { now = () => D
           const matches = Object.keys(collection).map(key => ownData(collection, key)).filter(row => ownData(row, 'id') === page.setId);
           if (matches.length !== 1) fail('SET_READ_UNVERIFIED');
           const set = matches[0];
-          if (setFields.some(key => !integer(ownData(set, key)))
-              || ['repeats', 'repeatabilityMode', 'endTime'].some(key => ownData(set, key) !== ownData(page.set, key))) fail('SET_CHANGED');
+          for (const key of setFields) {
+            if (!integer(ownData(set, key))) fail(`SET_${{ totalSubmittedScore: 'SCORE',
+              challengesCompletedCount: 'CHALLENGE_COUNT', timesCompleted: 'CYCLE_COUNT' }[key]}_UNVERIFIED`);
+          }
+          if (['repeats', 'repeatabilityMode'].some(key => ownData(set, key) !== ownData(page.set, key))) fail('SET_CHANGED');
+          // EA's createSet rebases remaining seconds with Math.round(Date.now()).
+          // A fresh hub entity can therefore have a different positive expiry.
+          // This post-commit read copies counters only: never copy that expiry
+          // or extend the frozen plan's permission for any subsequent request.
+          if (!integer(ownData(set, 'endTime'))
+              || (set.endTime === 0) !== (page.set.endTime === 0)) fail('SET_EXPIRY_UNVERIFIED');
           finish(null, Object.fromEntries(setFields.map(key => [key, set[key]])));
         } catch (error) { finish(error); }
       });

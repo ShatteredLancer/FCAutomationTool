@@ -32,6 +32,23 @@ const baseAdapter = (rows, overrides = {}) => ({
 const approval = plan => ({ approved: true, fingerprint: plan.fingerprint ?? JSON.stringify(plan), budget: 5000, attempts: 2, expiresAt: Date.now() + 60000 });
 const lock = { acquire: vi.fn(async () => () => {}) };
 
+it('preserves confirmed contribution display evidence across purchase recovery without settling or resending', async () => {
+  const stock = item(1, 201), plan = planFor({ inventory: [stock] }), { journal } = setup();
+  const confirmation = { submittedScore: 20, targetScore: 20, completed: true, finalizationPending: true };
+  const pending = { confirmed: false, reason: 'FC27_STREAMLINED_SET_CHANGED', confirmation };
+  const adapter = baseAdapter([stock], { contribute: vi.fn(async () => pending), recoverContribution: vi.fn(async () => pending) });
+  const driver = createStreamlinedProcurement({ journal, lock, adapter, operationId: () => 'op' });
+  for (let i = 0; i < 2; i++) {
+    const result = await driver.execute(plan, approval(plan));
+    expect(result).toMatchObject({ status: 'recovery-required', reason: pending.reason, confirmation,
+      record: { submittedScore: 0, consumedIds: [], completed: false } });
+    expect(result.record.contribution).toBeTruthy();
+  }
+  expect(adapter.contribute).toHaveBeenCalledOnce();
+  expect(adapter.recoverContribution).toHaveBeenCalledOnce();
+  expect(adapter.buy).not.toHaveBeenCalled();
+});
+
 it.each([
   ['capacity', { freeSlots: 0 }, 'FC27_STREAMLINED_PURCHASE_CAPACITY_FULL'],
   ['held version', { heldDefinitions: [201] }, 'FC27_STREAMLINED_PURCHASE_VERSION_HELD'],

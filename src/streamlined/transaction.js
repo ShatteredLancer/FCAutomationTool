@@ -25,7 +25,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       ...(typeof detail === 'function' ? detail() : detail) })).catch(() => {}); } catch { /* Diagnostic failures do not affect transactions. */ }
   };
   const observe = async (record, batch) => {
-    let phase = 'readback';
+    let phase = 'readback', confirmed;
     try {
       const evidence = await adapter.reconcile(record, batch);
       const receipt = batch.receipt;
@@ -43,19 +43,28 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           || submittedScore > record.submittedScore + batch.refs.reduce((sum, ref) => sum + ref.points, 0)
           || receipt && receipt.submittedScore !== submittedScore
           || evidence.operationConfirmed !== true) fail('RECONCILIATION_REQUIRED');
-      const confirmed = { ...evidence, submittedScore };
+      confirmed = { ...evidence, submittedScore, finalizationReason: null };
       // Cache/page maintenance follows authoritative readback, never precedes it.
       // A failed finalizer leaves the durable receipt recoverable and prevents
       // another batch. Recovery repeats only idempotent local maintenance.
-      diagnose('readback', 'verified', record, batch);
+      diagnose('readback', 'verified', record, batch, { currentScore: submittedScore });
       phase = 'finalization';
       if (typeof adapter.finalize === 'function' && await adapter.finalize(record, batch, confirmed) !== true) fail('FINALIZATION_REQUIRED');
       return confirmed;
     } catch (error) {
-      diagnose(phase, 'blocked', record, batch, () => failureDetail(error));
+      diagnose(phase, 'blocked', record, batch, () => ({ ...failureDetail(error),
+        ...(confirmed ? { currentScore: confirmed.submittedScore } : {}) }));
+      if (phase === 'finalization') return { ...confirmed, finalizationReason: safeReason(error) };
       throw error;
     }
   };
+  const finalizationPending = (record, evidence) => ({
+    status: 'recovery-required', reason: evidence.finalizationReason, record,
+    // Display-only verified progress. The durable batch stays unknown until
+    // local maintenance/checkpoint completes; this never authorizes more work.
+    confirmation: { submittedScore: evidence.submittedScore, targetScore: record.plan.challenge.targetScore,
+      completed: evidence.submittedScore >= record.plan.challenge.targetScore, finalizationPending: true },
+  });
   const execute = async (plan, approval, { onProgress = () => {} } = {}) => {
     if (running) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
     running = true; stopping = false;
@@ -141,6 +150,11 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         try {
           report('reconciliation', index);
           const evidence = await observe(record, batch);
+          if (evidence.finalizationReason) {
+            record.batches[index].state = 'unknown';
+            record = await journal.write(plan.context, record, record.revision);
+            return finalizationPending(record, evidence);
+          }
           const expected = record.submittedScore + batch.refs.reduce((sum, ref) => sum + ref.points, 0);
           record.batches[index].state = 'confirmed';
           record.batches[index].progressChanged = evidence.submittedScore !== expected;
@@ -186,6 +200,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       batch = record.batches.find(b => ['pending', 'unknown'].includes(b.state));
       if (!batch) return { status: 'observed', record };
       const evidence = await observe(record, batch);
+      if (evidence.finalizationReason) return finalizationPending(record, evidence);
       batch.progressChanged = evidence.submittedScore !== record.submittedScore + batch.refs.reduce((sum, ref) => sum + ref.points, 0);
       batch.state = 'confirmed'; record.submittedScore = evidence.submittedScore;
       if (batch.progressChanged && record.submittedScore < record.plan.challenge.targetScore) {

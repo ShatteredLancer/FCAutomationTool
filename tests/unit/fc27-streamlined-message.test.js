@@ -2,7 +2,20 @@ import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage,
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
-  streamlinedPurchaseBudgetPreview } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+  streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+
+it.each([20, 40])('separates confirmed score %s from unfinished local synchronization', score => {
+  const result = { status: 'recovery-required', reason: 'FC27_STREAMLINED_SET_CHANGED',
+    confirmation: { submittedScore: score, targetScore: 40, finalizationPending: true } };
+  const value = streamlinedConfirmedContribution(result);
+  expect(value).toMatchObject({ submittedScore: score, targetScore: 40 });
+  expect(value.message).toContain(score === 40 ? 'SBC 已完成' : '本批贡献已确认');
+  expect(value.message).toContain('仅本地界面同步未完成');
+  expect(value.message).toContain('不会重复投入');
+  expect(value.message).not.toContain('结果尚未确认');
+  expect(streamlinedConfirmedContribution({ reason: result.reason })).toBe(null);
+  expect(streamlinedConfirmedContribution({ confirmation: { ...result.confirmation, submittedScore: null } })).toBe(null);
+});
 
 it('restores the Points Solver interface copy to Chinese without translating settings keys or native player names', () => {
   const source = readFileSync(new URL('../../src/adapters/browser/fc27-streamlined-panel.js', import.meta.url), 'utf8');

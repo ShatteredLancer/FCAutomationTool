@@ -37,6 +37,7 @@ export async function exerciseStreamlined(context) {
             async execute(plan, approval, callbacks) {
               if (globalThis.streamlinedEvidence.purchasePending) return { status: 'blocked', reason: 'FC27_BUY_RECOVERY_REQUIRED' };
               globalThis.streamlinedEvidence.approval = approval;
+              globalThis.streamlinedEvidence.lastPlan = plan;
               const record = { plan, submittedScore: 0, batches: plan.batches.map(() => ({ state: 'waiting' })) };
               for (const index of approval.batchIndices) {
                 globalThis.streamlinedEvidence.writes++;
@@ -156,6 +157,28 @@ export async function exerciseStreamlined(context) {
     assert.deepEqual(await page.evaluate(() => globalThis.streamlinedEvidence.approval.batchIndices), [1]);
     assert.equal(await page.getByRole('checkbox', { name: '选择第 2 批' }).isDisabled(), true);
     assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isEnabled(), true);
+    // A successful EA contribution with unfinished local synchronization is
+    // not an unknown contribution and must never leave the writer enabled.
+    await page.evaluate(() => {
+      const plan = globalThis.streamlinedEvidence.lastPlan;
+      globalThis.streamlinedEvidence.recoveryThrows = false;
+      globalThis.streamlinedEvidence.recoveryOutcome = { status: 'recovery-required', reason: 'FC27_STREAMLINED_SET_CHANGED',
+        record: { plan, submittedScore: 0, batches: plan.batches.map(() => ({ state: 'unknown' })) },
+        confirmation: { submittedScore: plan.challenge.targetScore, targetScore: plan.challenge.targetScore,
+          completed: true, finalizationPending: true } };
+    });
+    await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+    const confirmedMessage = await page.locator('[data-status]').innerText();
+    assert.match(confirmedMessage, /SBC 已完成/);
+    assert.match(confirmedMessage, /仅本地界面同步未完成.*不会重复投入/);
+    assert.doesNotMatch(confirmedMessage, /结果尚未确认/);
+    const completedScore = await page.evaluate(() => globalThis.streamlinedEvidence.lastPlan.challenge.targetScore.toLocaleString('en-US'));
+    assert.equal(await page.locator('[data-final-progress]').innerText(), `已确认 ${completedScore} / ${completedScore} 分`);
+    assert.equal(await contribute.isVisible(), false);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-confirmed-sync-pending.png') });
+    await page.evaluate(() => { globalThis.streamlinedEvidence.recoveryOutcome = { status: 'absent' }; });
     // A purchase marker can appear between planning and execution. Preserve
     // the actual failure after redraw instead of saying the writer is absent.
     await page.evaluate(() => { globalThis.streamlinedEvidence.purchasePending = true; });

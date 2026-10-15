@@ -3,6 +3,14 @@ import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protect
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
 
+export function streamlinedConfirmedContribution(result) {
+  const value = result?.confirmation;
+  if (value?.finalizationPending !== true || !Number.isSafeInteger(value.submittedScore) || value.submittedScore <= 0
+      || !Number.isSafeInteger(value.targetScore) || value.targetScore <= 0) return null;
+  return { submittedScore: value.submittedScore, targetScore: value.targetScore,
+    message: `${value.submittedScore >= value.targetScore ? 'SBC 已完成' : '本批贡献已确认'}（${number(value.submittedScore)} / ${number(value.targetScore)} 分）。仅本地界面同步未完成，不代表贡献失败；不会重复投入。可刷新页面后核对并恢复。奖励是否领取请另行查看。` };
+}
+
 export function streamlinedMarketMessage(result) {
   const source = { futbin: 'FUTBIN', futgg: 'FUT.GG' }[result.quoteSource] ?? '所选来源';
   if (result.marketError === 'FC27_STREAMLINED_QUOTES_EXPIRED') {
@@ -483,10 +491,10 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           `${labels[bucket.reason] ?? bucket.reason} · ${bucket.pile === 'storage' ? 'Storage' : bucket.pile === 'club' ? 'Club' : bucket.pile} · ${bucket.rating == null ? '评分未知' : `${number(bucket.rating)}级`} ×${number(bucket.count)}`
         ).join('; '));
       }
-      add(output, 'small', result.liveExecutionEnabled ? (marketRun
+      add(output, 'small', streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? (marketRun
         ? '点击后按当前路线逐批搜卡、买断、入 Club 并贡献；实际成交不超过每张卡的冻结上限。'
         : '点击贡献将永久消耗所选批次的卡片；可以分批贡献，停止会等待当前批次核对完成。')
-        : `当前不能贡献：${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`); node('contribute').hidden = false;
+        : `当前不能贡献：${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`)); node('contribute').hidden = false;
   };
   on('solve', async () => {
     if (busy || !origin || !same(origin, read())) return;
@@ -514,23 +522,24 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     finally { setBusy(false); }
   });
   const showOutcome = result => {
+    const confirmed = streamlinedConfirmedContribution(result);
     if (executionProgress) {
       executionProgress.active = false; executionProgress.endedAt = now(); refreshClock();
       const record = result.record;
       if (record) {
         const spent = Number.isSafeInteger(record.spent) ? ` · 已花费 ${number(record.spent)} / ${number(record.budget)} 金币` : '';
-        node('final-progress').textContent = `已确认 ${number(record.submittedScore)} / ${number(record.plan?.challenge.targetScore)} 分${spent}`;
+        node('final-progress').textContent = `已确认 ${number(confirmed?.submittedScore ?? record.submittedScore)} / ${number(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} 分${spent}`;
         node('final-progress').hidden = false;
         const bar = shadow.querySelector('progress'); bar.max = record.plan?.challenge.targetScore || 1;
-        if (Number.isSafeInteger(record.submittedScore)) bar.value = record.submittedScore; else bar.removeAttribute('value');
+        if (confirmed || Number.isSafeInteger(record.submittedScore)) bar.value = confirmed?.submittedScore ?? record.submittedScore; else bar.removeAttribute('value');
       }
     }
     const labels = { completed: '目标已达成，奖励状态需另行核对。', partial: '本次贡献已确认，可继续剩余批次。',
       stopped: '已停止；已确认的成交和贡献保留，可核对并恢复。', recovered: '已恢复记录，未重复贡献。', observed: '已读取上次记录。', absent: '没有待恢复的贡献记录。',
       'recovery-required': '结果尚未确认，请核对并恢复；不会重复贡献。', rejected: 'EA 拒绝了本次贡献，请重新规划。' };
-    node('status').textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
+    node('status').textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
       : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status;
-    if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${number(result.record.submittedScore)} / ${number(result.record.plan.challenge.targetScore)}`;
+    if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${number(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
   };
   on('contribute', async () => {
     if (busy || !contributionReady()) return;
@@ -561,7 +570,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         },
       });
       if (serial !== opened) return;
-      renderResult({ ...result, record: outcome.record,
+      renderResult({ ...result, record: outcome.record, confirmation: outcome.confirmation,
         executionReason: outcome.reason ?? (outcome.status === 'completed' ? 'FC27_STREAMLINED_COMPLETED' : result.executionReason),
         liveExecutionEnabled: result.liveExecutionEnabled && ['partial', 'stopped', 'paused'].includes(outcome.status) });
       showOutcome(outcome);

@@ -375,8 +375,9 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           else preview = null;
         }
         const approvedBudget = result.record?.budget, spent = result.record?.spent;
-        log({ event: 'contribution', status: result.status, reason: result.reason, mismatch: result.mismatch, currentScore: result.record?.submittedScore,
-          targetScore: result.record?.challenge?.targetScore, ...streamlinedPurchaseAudit(result.record),
+        log({ event: 'contribution', status: result.status, reason: result.reason, mismatch: result.mismatch,
+          currentScore: result.confirmation?.submittedScore ?? result.record?.submittedScore,
+          targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
           approvedBudget, spent, remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent)
             ? approvedBudget - spent : undefined });
         return result;

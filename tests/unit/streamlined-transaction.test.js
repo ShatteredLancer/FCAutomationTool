@@ -31,6 +31,7 @@ it('keeps accepted response, failed readback and repeated recovery causes withou
   f.adapter.reconcile.mockRejectedValue(Error('FC27_STREAMLINED_MATERIAL_STILL_PRESENT'));
   const result = await f.tx.execute(f.plan, f.approval);
   expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT' });
+  expect(result.confirmation).toBeUndefined();
   expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'response', status: 'accepted', httpStatus: 200 }));
   expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'readback', status: 'blocked',
     reason: 'FC27_STREAMLINED_MATERIAL_STILL_PRESENT', count: 1, currentScore: 0, targetScore: 40 }));
@@ -169,15 +170,17 @@ it('stops after reconciliation and resumes the remaining batch', async () => {
 it('recovers failed local finalization without a second contribution or consuming the next batch', async () => {
   const f = setup();
   f.adapter.contribute.mockImplementation(async (plan, batch) => receipt(plan, batch));
-  f.adapter.finalize = vi.fn().mockRejectedValueOnce(Error('cache unavailable')).mockResolvedValue(true);
+  f.adapter.finalize = vi.fn().mockRejectedValueOnce(Error('cache unavailable')).mockResolvedValueOnce(false).mockResolvedValue(true);
   const result = await f.tx.execute(f.plan, f.approval);
   expect(result.status).toBe('recovery-required');
+  expect(result.confirmation).toEqual({ submittedScore: 20, targetScore: 40, completed: false, finalizationPending: true });
   const pending = await f.journal.read(f.plan.context);
   expect(pending.batches[0].state).toBe('unknown'); expect(pending.batches[0].receipt.status).toBe('accepted');
   expect(pending.batches[1].state).toBe('waiting');
+  expect(await f.tx.recover(f.plan.context)).toMatchObject({ status: 'recovery-required', confirmation: result.confirmation });
   expect((await f.tx.recover(f.plan.context)).status).toBe('recovered');
   expect(f.adapter.contribute).toHaveBeenCalledTimes(1);
-  expect(f.adapter.finalize).toHaveBeenCalledTimes(2);
+  expect(f.adapter.finalize).toHaveBeenCalledTimes(3);
 });
 it('keeps the specific sanitized readback failure and the accepted receipt for recovery', async () => {
   const f = setup();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.33
+// @version      27.0.34
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.33", at: Date.now(), status: 'started',
+    state = { version: "27.0.34", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27407,6 +27407,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-streamlined-panel.js
   var number2 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
+  function streamlinedConfirmedContribution(result) {
+    const value = result?.confirmation;
+    if (value?.finalizationPending !== true || !Number.isSafeInteger(value.submittedScore) || value.submittedScore <= 0 || !Number.isSafeInteger(value.targetScore) || value.targetScore <= 0) return null;
+    return {
+      submittedScore: value.submittedScore,
+      targetScore: value.targetScore,
+      message: `${value.submittedScore >= value.targetScore ? "SBC \u5DF2\u5B8C\u6210" : "\u672C\u6279\u8D21\u732E\u5DF2\u786E\u8BA4"}\uFF08${number2(value.submittedScore)} / ${number2(value.targetScore)} \u5206\uFF09\u3002\u4EC5\u672C\u5730\u754C\u9762\u540C\u6B65\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u8D21\u732E\u5931\u8D25\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002\u53EF\u5237\u65B0\u9875\u9762\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002\u5956\u52B1\u662F\u5426\u9886\u53D6\u8BF7\u53E6\u884C\u67E5\u770B\u3002`
+    };
+  }
   function streamlinedMarketMessage(result) {
     const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
     if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
@@ -28069,7 +28078,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           (bucket) => `${labels[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number2(bucket.rating)}\u7EA7`} \xD7${number2(bucket.count)}`
         ).join("; "));
       }
-      add2(output, "small", result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`);
+      add2(output, "small", streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`));
       node("contribute").hidden = false;
     };
     on("solve", async () => {
@@ -28102,6 +28111,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const showOutcome = (result) => {
+      const confirmed = streamlinedConfirmedContribution(result);
       if (executionProgress) {
         executionProgress.active = false;
         executionProgress.endedAt = now();
@@ -28109,11 +28119,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const record = result.record;
         if (record) {
           const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number2(record.spent)} / ${number2(record.budget)} \u91D1\u5E01` : "";
-          node("final-progress").textContent = `\u5DF2\u786E\u8BA4 ${number2(record.submittedScore)} / ${number2(record.plan?.challenge.targetScore)} \u5206${spent}`;
+          node("final-progress").textContent = `\u5DF2\u786E\u8BA4 ${number2(confirmed?.submittedScore ?? record.submittedScore)} / ${number2(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} \u5206${spent}`;
           node("final-progress").hidden = false;
           const bar = shadow.querySelector("progress");
           bar.max = record.plan?.challenge.targetScore || 1;
-          if (Number.isSafeInteger(record.submittedScore)) bar.value = record.submittedScore;
+          if (confirmed || Number.isSafeInteger(record.submittedScore)) bar.value = confirmed?.submittedScore ?? record.submittedScore;
           else bar.removeAttribute("value");
         }
       }
@@ -28127,8 +28137,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
         rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
-      node("status").textContent = result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels[result.status] ?? result.status;
-      if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(result.record.submittedScore)} / ${number2(result.record.plan.challenge.targetScore)}`;
+      node("status").textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels[result.status] ?? result.status;
+      if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number2(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
     };
     on("contribute", async () => {
       if (busy || !contributionReady()) return;
@@ -28174,6 +28184,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         renderResult({
           ...result,
           record: outcome.record,
+          confirmation: outcome.confirmation,
           executionReason: outcome.reason ?? (outcome.status === "completed" ? "FC27_STREAMLINED_COMPLETED" : result.executionReason),
           liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status)
         });
@@ -30070,8 +30081,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             status: result.status,
             reason: result.reason,
             mismatch: result.mismatch,
-            currentScore: result.record?.submittedScore,
-            targetScore: result.record?.challenge?.targetScore,
+            currentScore: result.confirmation?.submittedScore ?? result.record?.submittedScore,
+            targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
             ...streamlinedPurchaseAudit(result.record),
             approvedBudget,
             spent,
@@ -32181,7 +32192,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const matches2 = Object.keys(collection).map((key) => ownData(collection, key)).filter((row) => ownData(row, "id") === page.setId);
             if (matches2.length !== 1) fail28("SET_READ_UNVERIFIED");
             const set = matches2[0];
-            if (setFields.some((key) => !integer15(ownData(set, key))) || ["repeats", "repeatabilityMode", "endTime"].some((key) => ownData(set, key) !== ownData(page.set, key))) fail28("SET_CHANGED");
+            for (const key of setFields) {
+              if (!integer15(ownData(set, key))) fail28(`SET_${{
+                totalSubmittedScore: "SCORE",
+                challengesCompletedCount: "CHALLENGE_COUNT",
+                timesCompleted: "CYCLE_COUNT"
+              }[key]}_UNVERIFIED`);
+            }
+            if (["repeats", "repeatabilityMode"].some((key) => ownData(set, key) !== ownData(page.set, key))) fail28("SET_CHANGED");
+            if (!integer15(ownData(set, "endTime")) || set.endTime === 0 !== (page.set.endTime === 0)) fail28("SET_EXPIRY_UNVERIFIED");
             finish(null, Object.fromEntries(setFields.map((key) => [key, set[key]])));
           } catch (error2) {
             finish(error2);
@@ -32269,23 +32288,40 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const observe = async (record, batch) => {
-      let phase = "readback";
+      let phase = "readback", confirmed;
       try {
         const evidence = await adapter.reconcile(record, batch);
         const receipt = batch.receipt;
         const reset = receipt?.challengeCompleted === true && receipt.submittedScore >= record.plan.challenge.targetScore && evidence?.cycleResetConfirmed === true && evidence.submittedScore === 0;
         const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
         if (evidence?.fresh !== true || !same25(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same25(evidence.absent, batch.refs) || !integer15(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail28("RECONCILIATION_REQUIRED");
-        const confirmed = { ...evidence, submittedScore };
-        diagnose("readback", "verified", record, batch);
+        confirmed = { ...evidence, submittedScore, finalizationReason: null };
+        diagnose("readback", "verified", record, batch, { currentScore: submittedScore });
         phase = "finalization";
         if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
         return confirmed;
       } catch (error2) {
-        diagnose(phase, "blocked", record, batch, () => failureDetail(error2));
+        diagnose(phase, "blocked", record, batch, () => ({
+          ...failureDetail(error2),
+          ...confirmed ? { currentScore: confirmed.submittedScore } : {}
+        }));
+        if (phase === "finalization") return { ...confirmed, finalizationReason: safeReason10(error2) };
         throw error2;
       }
     };
+    const finalizationPending = (record, evidence) => ({
+      status: "recovery-required",
+      reason: evidence.finalizationReason,
+      record,
+      // Display-only verified progress. The durable batch stays unknown until
+      // local maintenance/checkpoint completes; this never authorizes more work.
+      confirmation: {
+        submittedScore: evidence.submittedScore,
+        targetScore: record.plan.challenge.targetScore,
+        completed: evidence.submittedScore >= record.plan.challenge.targetScore,
+        finalizationPending: true
+      }
+    });
     const execute = async (plan, approval, { onProgress = () => {
     } } = {}) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
@@ -32381,6 +32417,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           try {
             report("reconciliation", index);
             const evidence = await observe(record, batch);
+            if (evidence.finalizationReason) {
+              record.batches[index].state = "unknown";
+              record = await journal.write(plan.context, record, record.revision);
+              return finalizationPending(record, evidence);
+            }
             const expected = record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
             record.batches[index].state = "confirmed";
             record.batches[index].progressChanged = evidence.submittedScore !== expected;
@@ -32432,6 +32473,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         batch = record.batches.find((b) => ["pending", "unknown"].includes(b.state));
         if (!batch) return { status: "observed", record };
         const evidence = await observe(record, batch);
+        if (evidence.finalizationReason) return finalizationPending(record, evidence);
         batch.progressChanged = evidence.submittedScore !== record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
         batch.state = "confirmed";
         record.submittedScore = evidence.submittedScore;
@@ -32600,7 +32642,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
         callbacks
       );
-      return result.status === "completed" || result.status === "partial" ? { confirmed: true, submittedScore: result.record.submittedScore } : { confirmed: false, reason: result.reason };
+      return result.status === "completed" || result.status === "partial" ? { confirmed: true, submittedScore: result.record.submittedScore } : { confirmed: false, reason: result.reason, ...result.confirmation ? { confirmation: result.confirmation } : {} };
     };
     return Object.freeze({
       async assertCurrent(currentRecord) {
@@ -32734,7 +32776,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const score2 = result.record?.submittedScore;
           if (integer15(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
         }
-        return { confirmed: false, reason: result.reason ?? "FC27_STREAMLINED_CONTRIBUTION_RECOVERY_REQUIRED" };
+        return {
+          confirmed: false,
+          reason: result.reason ?? "FC27_STREAMLINED_CONTRIBUTION_RECOVERY_REQUIRED",
+          ...result.confirmation ? { confirmation: result.confirmation } : {}
+        };
       },
       async waitForPartial(ms, stopped) {
         for (let left = ms; left > 0 && !stopped(); left -= 250) await new Promise((resolve) => setTimeout(resolve, Math.min(250, left)));
@@ -32871,6 +32917,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const save = async () => {
         record = await journal.write(record);
       };
+      const unsettledContribution = (result) => ({
+        status: "recovery-required",
+        reason: /^FC27_[A-Z0-9_]+$/.test(result?.reason) ? result.reason : "FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED",
+        record,
+        ...result?.confirmation ? { confirmation: result.confirmation } : {}
+      });
       try {
         if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer15(approval.budget) || !integer15(approval.attempts, 1) || !integer15(approval.expiresAt) || !plan?.route?.groups?.length || !integer15(plan.challenge?.selectionLimit, 1, 1e3))) fail28("PURCHASE_APPROVAL_REQUIRED");
         release = await lock.acquire(plan.context);
@@ -32937,7 +32989,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             record.contribution = null;
             await save();
           } else {
-            if (!result?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+            if (!result?.confirmed) return unsettledContribution(result);
             await settleContribution(result);
           }
         }
@@ -32974,7 +33026,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           if (record.contribution) {
             const result2 = await adapter.recoverContribution(record.contribution);
-            if (!result2?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+            if (!result2?.confirmed) return unsettledContribution(result2);
             await settleContribution(result2);
             continue;
           }
@@ -33186,7 +33238,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const result = await adapter.contribute(batchPlan, {
             onProgress: (progress) => report(progress?.phase ?? "contribution", progress)
           });
-          if (!result?.confirmed) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+          if (!result?.confirmed) return unsettledContribution(result);
           await settleContribution(result);
         }
         record.completed = record.submittedScore >= record.challenge.targetScore;
@@ -33512,7 +33564,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.33" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.34" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33830,8 +33882,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.33"}`,
-    version: "27.0.33",
+    title: `FC Automation Tool ${"27.0.34"}`,
+    version: "27.0.34",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

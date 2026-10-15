@@ -25,6 +25,9 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       contributed: record?.consumedIds.length ?? 0,
       remainingScore: Math.max(0, (record?.challenge.targetScore ?? 0) - (record?.submittedScore ?? 0)), ...extra }); } catch { /* UI only. */ } };
     const save = async () => { record = await journal.write(record); };
+    const unsettledContribution = result => ({ status: 'recovery-required',
+      reason: /^FC27_[A-Z0-9_]+$/.test(result?.reason) ? result.reason : 'FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED',
+      record, ...(result?.confirmation ? { confirmation: result.confirmation } : {}) });
     try {
       if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer(approval.budget)
           || !integer(approval.attempts, 1) || !integer(approval.expiresAt)
@@ -69,7 +72,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       if (record.contribution) {
         const result = await adapter.recoverContribution(record.contribution);
         if (result?.notDispatched) { record.contribution = null; await save(); }
-        else { if (!result?.confirmed) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED'); await settleContribution(result); }
+        else { if (!result?.confirmed) return unsettledContribution(result); await settleContribution(result); }
       }
       // A pending contribution may already have consumed the receipt, so
       // settle it before requiring any unconsumed market item to be located.
@@ -101,7 +104,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         }
         if (record.contribution) {
           const result = await adapter.recoverContribution(record.contribution);
-          if (!result?.confirmed) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
+          if (!result?.confirmed) return unsettledContribution(result);
           await settleContribution(result); continue;
         }
         report('checking-state');
@@ -275,7 +278,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         const result = await adapter.contribute(batchPlan, {
           onProgress: progress => report(progress?.phase ?? 'contribution', progress),
         });
-        if (!result?.confirmed) fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
+        if (!result?.confirmed) return unsettledContribution(result);
         await settleContribution(result);
       }
       record.completed = record.submittedScore >= record.challenge.targetScore; await save();

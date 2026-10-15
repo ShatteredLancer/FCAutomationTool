@@ -66,6 +66,27 @@ it('accepts its own score progress but rejects native target/eligibility/limit c
   expect(buyer.find).not.toHaveBeenCalled();
 });
 
+it('forwards authoritative contribution confirmation through the production purchase bridge without settling the pending batch', async () => {
+  const memory = new Map();
+  const journal = createStreamlinedJournal({ now: () => 1000,
+    get: async key => structuredClone(memory.get(key)), set: async (key, value) => memory.set(key, structuredClone(value)) });
+  const writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async () => true),
+    contribute: vi.fn(async (plan, batch) => normalizeStreamlinedContributionReply({ success: true, status: 200,
+      response: { setId: plan.challenge.setId, challengeId: plan.challenge.id, submittedScore: 100 } },
+    { setId: plan.challenge.setId, challengeId: plan.challenge.id, previousScore: 0, itemIds: batch.refs.map(ref => ref.id) })),
+    reconcile: vi.fn(async (record, batch) => ({ fresh: true, context: record.context, observedAt: 1000,
+      setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id, absent: batch.refs,
+      submittedScore: 100, operationConfirmed: true })),
+    finalize: vi.fn(async () => { throw Error('FC27_STREAMLINED_SET_CHANGED'); }) };
+  const { f, adapter } = await setup({ contributionAdapter: { adapter: writer, journal } });
+  const confirmation = { submittedScore: 100, targetScore: 200, completed: false, finalizationPending: true };
+  expect(await adapter.contribute(f.plan)).toEqual({ confirmed: false, reason: 'FC27_STREAMLINED_SET_CHANGED', confirmation });
+  expect(await adapter.recoverContribution({ batchPlan: f.plan })).toEqual({ confirmed: false,
+    reason: 'FC27_STREAMLINED_SET_CHANGED', confirmation });
+  expect(writer.contribute).toHaveBeenCalledOnce();
+  expect((await journal.read(f.plan.context)).batches[0].state).toBe('unknown');
+});
+
 it('does not send a market search with an expired reference', async () => {
   const { adapter, candidate, buyer } = await setup();
   await expect(adapter.find({ ...candidate, quote: { expiresAt: 999 } }, 250)).rejects.toThrow('PURCHASE_QUOTE_EXPIRED');

@@ -9,9 +9,11 @@ import { galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js
 import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.js';
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime.js';
+import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
 
-it('validates and settles mixed Storage/Club using the actual public Storage hashes without a new write permission', async () => {
-  const f = streamlinedRuntime({ targetScore: 100, mixedStorage: true }), memory = new Map();
+it.each(['non-expiring', 'rebased-expiry', 'invalid-hub'])('settles mixed Storage/Club with public native contracts: %s', async scenario => {
+  const at = Math.floor(Date.now() / 1000) * 1000, endTime = scenario === 'non-expiring' ? 0 : observedSet(at).endTime;
+  const f = streamlinedRuntime({ targetScore: 100, mixedStorage: true, endTime }), memory = new Map();
   installObservedStorage(f);
   f.replies.rows[0].submittedScore = 0;
   let writes = 0;
@@ -26,6 +28,9 @@ it('validates and settles mixed Storage/Club using the actual public Storage has
         f.storage.payload = f.storage.payload.filter(item => !target.itemIds.includes(item.id));
         f.replies.rows[0].submittedScore = 100; f.replies.rows[0].timesCompleted = 1; f.replies.rows[0].status = 'COMPLETED';
         f.replies.set = { ...f.set, totalSubmittedScore: 100, timesCompleted: 1, challengesCompletedCount: 1 };
+        if (endTime) f.replies.set = observedSet(at + 1501, { endTime: 3599, combinedSubmittedChallengeScore: 100,
+          timesCompleted: 1, challengesCompletedCount: 1 });
+        if (scenario === 'invalid-hub') f.replies.set.challengesCompletedCount = null;
         return { success: true, status: 200, response: { setId: 31, challengeId: 61, submittedScore: 100,
           grantedChallengeAwards: [{ type: 'pack' }] } };
       } }) }),
@@ -33,10 +38,20 @@ it('validates and settles mixed Storage/Club using the actual public Storage has
   execution.prepare(f.plan);
   expect(writes).toBe(0);
   const result = await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [0] });
-  expect(result.status, result.reason).toBe('completed'); expect(writes).toBe(1);
-  expect(f.calls.filter(row => row.kind === 'storage')).toHaveLength(2);
+  if (scenario === 'invalid-hub') {
+    expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_SET_CHALLENGE_COUNT_UNVERIFIED',
+      confirmation: { submittedScore: 100, targetScore: 100, completed: true, finalizationPending: true } });
+    expect(result.record.submittedScore).toBe(0); expect(result.record.batches[0].state).toBe('unknown');
+    expect((await execution.transaction.recover(f.plan.context)).confirmation).toEqual(result.confirmation);
+    expect(writes).toBe(1);
+    f.replies.set.challengesCompletedCount = 1;
+    expect((await execution.transaction.recover(f.plan.context)).status).toBe('recovered');
+  } else expect(result.status, result.reason).toBe('completed');
+  expect(writes).toBe(1);
+  expect(f.calls.filter(row => row.kind === 'storage')).toHaveLength(scenario === 'invalid-hub' ? 4 : 2);
   expect((await execution.transaction.recover(f.plan.context)).status).toBe('observed');
   expect(writes).toBe(1); expect(f.challenge.submittedScore).toBe(100);
+  expect(f.set.endTime).toBe(endTime);
 });
 
 it('blocks Club-only contribution before any EA request when another target has an unknown move', async () => {

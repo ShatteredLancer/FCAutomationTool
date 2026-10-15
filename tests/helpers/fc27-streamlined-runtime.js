@@ -8,7 +8,7 @@ import { FC27_STREAMLINED_PAGE_METHODS } from '../../src/adapters/ea/fc27-stream
 import { FC27_STREAMLINED_CACHE_METHODS } from '../../src/adapters/ea/fc27-streamlined-cache.js';
 import { addStorageRuntime } from './fc27-storage-runtime.js';
 
-export function streamlinedRuntime({ targetScore = 200, mixedStorage = false } = {}) {
+export function streamlinedRuntime({ targetScore = 200, mixedStorage = false, endTime = 0 } = {}) {
   const f = executionRuntime(), { root } = f;
   root.document = {};
   const anchor = { isConnected: true, ownerDocument: root.document };
@@ -17,7 +17,7 @@ export function streamlinedRuntime({ targetScore = 200, mixedStorage = false } =
     eligibilityOperation: 'AND', eligibilityRequirements: [
       { count: -1, scope: 0, kvPairs: { _collection: { 40: [45], 41: [1] } } },
     ] };
-  const set = { id: 31, repeats: 1, repeatabilityMode: 'REFRESH', endTime: 0,
+  const set = { id: 31, repeats: 1, repeatabilityMode: 'REFRESH', endTime,
     totalSubmittedScore: 0, challengesCompletedCount: 0, timesCompleted: 0 };
   root.EAObservable = class { notify(value) { f.calls.push({ kind: 'notify', value }); } };
   challenge.onDataChange = new root.EAObservable();

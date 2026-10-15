@@ -119,7 +119,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
       lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).execute(batchPlan,
       { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }, callbacks);
     return result.status === 'completed' || result.status === 'partial' ? { confirmed: true, submittedScore: result.record.submittedScore }
-      : { confirmed: false, reason: result.reason };
+      : { confirmed: false, reason: result.reason, ...(result.confirmation ? { confirmation: result.confirmation } : {}) };
   };
   return Object.freeze({
     async assertCurrent(currentRecord) { assertTarget(); await buyer.verifySquad(currentRecord); },
@@ -199,7 +199,8 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
         const score = result.record?.submittedScore;
         if (integer(score, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score };
       }
-      return { confirmed: false, reason: result.reason ?? 'FC27_STREAMLINED_CONTRIBUTION_RECOVERY_REQUIRED' };
+      return { confirmed: false, reason: result.reason ?? 'FC27_STREAMLINED_CONTRIBUTION_RECOVERY_REQUIRED',
+        ...(result.confirmation ? { confirmation: result.confirmation } : {}) };
     },
     async waitForPartial(ms, stopped) { for (let left = ms; left > 0 && !stopped(); left -= 250) await new Promise(resolve => setTimeout(resolve, Math.min(250, left))); },
     cancel() { buyer.cancel?.(); },
