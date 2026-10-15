@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "observedAt": "2026-10-15T06:22:28.248Z",
+  "source": "https://www.ea.com/ea-sports-fc/ultimate-team/web-app/",
+  "authenticated": false,
+  "writes": 0,
+  "methods": [
+    {
+      "path": "UTItemDAO.prototype.searchStorageItems",
+      "source": "function(_0x51cb64){var _0x43d11b=_0x436f56,_0x242f25=this,_0x51692b=new EAObservable(),_0x39fb87=new UTHttpResponseDTO();if(!this[_0x43d11b(0x12b3)][_0x43d11b(0xb66)](ItemPile[_0x43d11b(0x13d5)])){_0x39fb87[_0x43d11b(0x77d)]=!![],_0x39fb87[_0x43d11b(0x257)]=HttpStatusCode[_0x43d11b(0xf2b)];var _0x341e6b={};return _0x341e6b[_0x43d11b(0xdb3)]=this[_0x43d11b(0x12b3)][_0x43d11b(0x3cd)](_0x51cb64),_0x341e6b[_0x43d11b(0xd47)]=!![],_0x39fb87[_0x43d11b(0x6cc)]=_0x341e6b,_0x51692b[_0x43d11b(0x40e)](_0x39fb87),_0x51692b;}var _0x324757=new UTHttpRequest(this[_0x43d11b(0xa1e)]);_0x324757[_0x43d11b(0x10ea)]=![],_0x324757[_0x43d11b(0x109d)](_0x43d11b(0xc8c)[_0x43d11b(0xe3a)](GAME_NAME,_0x43d11b(0xfc4)));var _0x24a42d={};return _0x24a42d[_0x43d11b(0x1497)]=_0x43d11b(0x214),_0x324757[_0x43d11b(0x12f6)](_0x24a42d),services[_0x43d11b(0x63e)][_0x43d11b(0xe58)](_0x324757)[_0x43d11b(0x678)](this,function(_0xbad9ee,_0x11392f){var _0x446008=_0x43d11b;_0xbad9ee[_0x446008(0x11e6)](_0x242f25),JSUtils[_0x446008(0xb4b)](_0x11392f,_0x39fb87);if(_0x11392f[_0x446008(0x77d)]&&JSUtils[_0x446008(0x64a)](_0x11392f[_0x446008(0x6cc)])){_0x11392f[_0x446008(0x6cc)][_0x446008(0x11b0)]&&_0x242f25[_0x446008(0x12b3)][_0x446008(0x13eb)](ItemPile[_0x446008(0x13d5)],_0x11392f[_0x446008(0x6cc)][_0x446008(0x11b0)]);var _0x4197ca=factories[_0x446008(0x1076)][_0x446008(0x2be)](_0x11392f[_0x446008(0x6cc)][_0x446008(0x113d)],_0x11392f[_0x446008(0x6cc)][_0x446008(0xde7)]);_0x242f25[_0x446008(0x12b3)][_0x446008(0xb7a)](_0x4197ca),_0x242f25[_0x446008(0x12b3)][_0x446008(0x1474)](ItemPile[_0x446008(0x13d5)],Date[_0x446008(0x235)](),_0x11392f[_0x446008(0x1403)]>0x0?_0x11392f[_0x446008(0x1403)]:0x3c*0x5);var _0x266920={};_0x266920[_0x446008(0xd47)]=!![],_0x266920[_0x446008(0xdb3)]=_0x242f25[_0x446008(0x12b3)][_0x446008(0x3cd)](_0x51cb64),_0x39fb87[_0x446008(0x6cc)]=_0x266920;}else{var _0x1803e9={};_0x1803e9[_0x446008(0xd47)]=!![],_0x1803e9[_0x446008(0xdb3)]=[],_0x39fb87[_0x446008(0x6cc)]=_0x1803e9;}_0x51692b[_0x446008(0x40e)](_0x39fb87);}),_0x51692b;}",
+      "decoded": "function(_0x51cb64){var _0x43d11b=_0x436f56,_0x242f25=this,_0x51692b=new EAObservable(),_0x39fb87=new UTHttpResponseDTO();if(!this[\"itemRepo\"][\"isDirty\"](ItemPile[\"STORAGE\"])){_0x39fb87[\"success\"]=!![],_0x39fb87[\"status\"]=HttpStatusCode[\"NOT_MODIFIED\"];var _0x341e6b={};return _0x341e6b[\"items\"]=this[\"itemRepo\"][\"searchStorage\"](_0x51cb64),_0x341e6b[\"endOfList\"]=!![],_0x39fb87[\"response\"]=_0x341e6b,_0x51692b[\"notify\"](_0x39fb87),_0x51692b;}var _0x324757=new UTHttpRequest(this[\"authDelegate\"]);_0x324757[\"cache\"]=![],_0x324757[\"setPath\"](\"/ut/game/\"[\"concat\"](GAME_NAME,\"/storagepile\"));var _0x24a42d={};return _0x24a42d[\"skuMode\"]=\"FUT\",_0x324757[\"setUrlVariables\"](_0x24a42d),services[\"UTUtasRequestQueue\"][\"send\"](_0x324757)[\"observe\"](this,function(_0xbad9ee,_0x11392f){var _0x446008=_0x43d11b;_0xbad9ee[\"unobserve\"](_0x242f25),JSUtils[\"assignPropertyValues\"](_0x11392f,_0x39fb87);if(_0x11392f[\"success\"]&&JSUtils[\"isObject\"](_0x11392f[\"response\"])){_0x11392f[\"response\"][\"maxSize\"]&&_0x242f25[\"itemRepo\"][\"setPileSize\"](ItemPile[\"STORAGE\"],_0x11392f[\"response\"][\"maxSize\"]);var _0x4197ca=factories[\"Item\"][\"generateItemsFromItemData\"](_0x11392f[\"response\"][\"itemData\"],_0x11392f[\"response\"][\"duplicateItemIdList\"]);_0x242f25[\"itemRepo\"][\"setStorageItems\"](_0x4197ca),_0x242f25[\"itemRepo\"][\"setCacheTimestamp\"](ItemPile[\"STORAGE\"],Date[\"now\"](),_0x11392f[\"maxAge\"]>0x0?_0x11392f[\"maxAge\"]:0x3c*0x5);var _0x266920={};_0x266920[\"endOfList\"]=!![],_0x266920[\"items\"]=_0x242f25[\"itemRepo\"][\"searchStorage\"](_0x51cb64),_0x39fb87[\"response\"]=_0x266920;}else{var _0x1803e9={};_0x1803e9[\"endOfList\"]=!![],_0x1803e9[\"items\"]=[],_0x39fb87[\"response\"]=_0x1803e9;}_0x51692b[\"notify\"](_0x39fb87);}),_0x51692b;}",
+      "strings": {
+        "0x12b3": "itemRepo",
+        "0xb66": "isDirty",
+        "0x13d5": "STORAGE",
+        "0x77d": "success",
+        "0x257": "status",
+        "0xf2b": "NOT_MODIFIED",
+        "0xdb3": "items",
+        "0x3cd": "searchStorage",
+        "0xd47": "endOfList",
+        "0x6cc": "response",
+        "0x40e": "notify",
+        "0xa1e": "authDelegate",
+        "0x10ea": "cache",
+        "0x109d": "setPath",
+        "0xc8c": "/ut/game/",
+        "0xe3a": "concat",
+        "0xfc4": "/storagepile",
+        "0x1497": "skuMode",
+        "0x214": "FUT",
+        "0x12f6": "setUrlVariables",
+        "0x63e": "UTUtasRequestQueue",
+        "0xe58": "send",
+        "0x678": "observe",
+        "0x11e6": "unobserve",
+        "0xb4b": "assignPropertyValues",
+        "0x64a": "isObject",
+        "0x11b0": "maxSize",
+        "0x13eb": "setPileSize",
+        "0x1076": "Item",
+        "0x2be": "generateItemsFromItemData",
+        "0x113d": "itemData",
+        "0xde7": "duplicateItemIdList",
+        "0xb7a": "setStorageItems",
+        "0x1474": "setCacheTimestamp",
+        "0x235": "now",
+        "0x1403": "maxAge"
+      },
+      "sha256": "77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788"
+    },
+    {
+      "path": "UTHttpRequest.prototype.setUrlVariables",
+      "source": "function(_0x405ab4){var _0x62b4bc=_0x37b64a;this[_0x62b4bc(0x7c4)]=HttpUtils[_0x62b4bc(0xca0)](_0x405ab4);}",
+      "decoded": "function(_0x405ab4){var _0x62b4bc=_0x37b64a;this[\"urlVariables\"]=HttpUtils[\"generateUrlParams\"](_0x405ab4);}",
+      "strings": {
+        "0x7c4": "urlVariables",
+        "0xca0": "generateUrlParams"
+      },
+      "sha256": "e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f"
+    }
+  ]
+}

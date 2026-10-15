@@ -10,6 +10,13 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
   const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_TRANSACTION_UNCONFIRMED';
   const responseReason = reason => ['EA_CONTRIBUTION_RESPONSE_CONFLICT', 'EA_CONTRIBUTION_RESPONSE_UNVERIFIED',
     'EA_SQUAD_CONFLICT', 'EA_CONTRIBUTION_REJECTED'].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason({ message: reason });
+  const failureDetail = error => {
+    const detail = { reason: safeReason(error) };
+    if (typeof error?.methodPath === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error.methodPath)) detail.methodPath = error.methodPath;
+    if (typeof error?.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(error.observedHash) || error.observedHash === 'oversized')) detail.observedHash = error.observedHash;
+    if (typeof error?.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(error.expectedHash)) detail.expectedHash = error.expectedHash;
+    return detail;
+  };
   const diagnose = (phase, status, record, batch, detail = {}) => {
     // Fixed stages, codes and arithmetic only. Never pass plans, receipts,
     // physical identities or arbitrary exception text to the diagnostic sink.
@@ -45,7 +52,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       if (typeof adapter.finalize === 'function' && await adapter.finalize(record, batch, confirmed) !== true) fail('FINALIZATION_REQUIRED');
       return confirmed;
     } catch (error) {
-      diagnose(phase, 'blocked', record, batch, { reason: safeReason(error) });
+      diagnose(phase, 'blocked', record, batch, () => failureDetail(error));
       throw error;
     }
   };
@@ -95,7 +102,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         phase = 'dispatch';
         try { reply = await adapter.contribute(plan, batch); }
         catch (error) {
-          diagnose('dispatch', 'unknown', record, batch, { reason: safeReason(error) });
+          diagnose('dispatch', 'unknown', record, batch, () => failureDetail(error));
           reply = { status: 'unknown' };
         }
         diagnose('response', 'unknown', record, batch, () => ({
@@ -153,7 +160,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       }
       return { status: stopping ? 'stopped' : record.submittedScore >= plan.challenge.targetScore ? 'completed' : 'partial', record };
     } catch (error) {
-      diagnose(phase, 'blocked', record, activeBatch, { reason: safeReason(error) });
+      diagnose(phase, 'blocked', record, activeBatch, () => failureDetail(error));
       return { status: 'blocked', reason: safeReason(error) };
     }
     finally { try { await release?.(); } finally { running = false; } }
@@ -188,7 +195,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       record.rewardState = evidence.rewardConfirmed === true ? 'confirmed' : 'unknown';
       return { status: 'recovered', record: await journal.write(context, record, record.revision) };
     } catch (error) {
-      diagnose('recovery', 'recovery-required', record, batch, { reason: safeReason(error) });
+      diagnose('recovery', 'recovery-required', record, batch, () => failureDetail(error));
       return { status: 'recovery-required', reason: safeReason(error) };
     }
     finally { try { await release?.(); } finally { running = false; } }

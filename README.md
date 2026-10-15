@@ -2,7 +2,7 @@
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 main：**27.0.32**。积分 SBC 默认参照普通 SBC 的现有材料优先逻辑：**Storage → Club → 缺口补卡**，库存足够时不查市场、不购卡；原最低总材料价值仍可选。旧冻结计划/未决记录不改写，锁卡/进化/主阵容、预算和未知回执保护保留，普通 SBC/Puzzle、Gallery 与 FSU 不变。详见 [27.0.32 说明](docs/releases/27.0.32.md)。已有一次真实闭环不等于全环境稳定或奖励已领取；新版选材需更新后验证。
+当前 main：**27.0.33**。修正积分贡献前 Storage 读取的原生方法兼容检查，保留未知实现拦截及 [27.0.32](docs/releases/27.0.32.md) 的库存优先默认：**Storage → Club → 缺口补卡**，库存足够时不查市场、不购卡；原最低总材料价值仍可选。旧冻结计划/未决记录不改写，锁卡/进化/主阵容、预算和未知回执保护保留，普通 SBC/Puzzle、Gallery 与 FSU 不变。详见 [27.0.33 说明](docs/releases/27.0.33.md)。公开代码重放与离线贯通不等于真实账号完成贡献，需更新后验证。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

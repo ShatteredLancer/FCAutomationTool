@@ -8,6 +8,36 @@ import { puzzleBuyPendingKey, puzzleBuyKey } from '../../src/fc27/puzzle-buy-ses
 import { galleryPurchasePendingKey } from '../../src/gallery/purchase-session.js';
 import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.js';
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
+import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime.js';
+
+it('validates and settles mixed Storage/Club using the actual public Storage hashes without a new write permission', async () => {
+  const f = streamlinedRuntime({ targetScore: 100, mixedStorage: true }), memory = new Map();
+  installObservedStorage(f);
+  f.replies.rows[0].submittedScore = 0;
+  let writes = 0;
+  const execution = await createFc27StreamlinedExecution(f.root, { context: f.plan.context,
+    get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) },
+    createProvider: (root, options) => createFc27StreamlinedProvider(root, { ...options,
+      createTransport: async () => ({ request: async (_action, target, before) => {
+        await before(); writes++;
+        f.state.players = f.state.players.filter(item => !target.itemIds.includes(item.id));
+        f.storage.payload = f.storage.payload.filter(item => !target.itemIds.includes(item.id));
+        f.replies.rows[0].submittedScore = 100; f.replies.rows[0].timesCompleted = 1; f.replies.rows[0].status = 'COMPLETED';
+        f.replies.set = { ...f.set, totalSubmittedScore: 100, timesCompleted: 1, challengesCompletedCount: 1 };
+        return { success: true, status: 200, response: { setId: 31, challengeId: 61, submittedScore: 100,
+          grantedChallengeAwards: [{ type: 'pack' }] } };
+      } }) }),
+  });
+  execution.prepare(f.plan);
+  expect(writes).toBe(0);
+  const result = await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [0] });
+  expect(result.status, result.reason).toBe('completed'); expect(writes).toBe(1);
+  expect(f.calls.filter(row => row.kind === 'storage')).toHaveLength(2);
+  expect((await execution.transaction.recover(f.plan.context)).status).toBe('observed');
+  expect(writes).toBe(1); expect(f.challenge.submittedScore).toBe(100);
+});
 
 it('blocks Club-only contribution before any EA request when another target has an unknown move', async () => {
   const f = streamlinedRuntime(), key = contextKey(f.plan.context, 'streamlined-materialization');
@@ -216,9 +246,11 @@ it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'sa
   if (scenario === 'same-target') {
     createPurchaseAdapter.mock.calls[0][1].onEvent({ stage: 'contribution-readback', status: 'blocked',
       reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED', count: 2, currentScore: 430, targetScore: 1250,
+      methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
       accountScope: 'secret', itemIds: [123456], raw: { token: 'secret' } });
     expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ area: 'streamlined', event: 'contribution-transaction',
       phase: 'contribution-readback', status: 'blocked', reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED',
+      methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
       count: 2, currentScore: 430, targetScore: 1250 }));
     expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toMatch(/secret|itemIds|accountScope|123456|"raw"/);
   }

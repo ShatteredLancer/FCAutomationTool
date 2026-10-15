@@ -55,6 +55,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   const contributionDiagnostic = row => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'contribution-transaction',
       phase: `contribution-${row.phase}`, status: row.status, reason: row.reason,
+      methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
       httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
     catch { /* Diagnostic only. */ }
   };
@@ -67,6 +68,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined',
         event: row.stage?.startsWith('contribution-') ? 'contribution-transaction' : 'purchase-native',
         phase: row.stage, status: row.status, currentScore: row.currentScore, targetScore: row.targetScore,
+        methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
         definitionId: row.definitionId, maxBuy: row.maxBuy,
         referencePrice: row.stage === 'reference' ? row.price : undefined,
         actualPrice: row.stage === 'bid' ? row.price : undefined,

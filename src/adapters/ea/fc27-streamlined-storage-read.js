@@ -7,6 +7,15 @@ import { integer, same, fail } from '../../streamlined/contract.js';
 export const FC27_STREAMLINED_STORAGE_HASH = '29b26cfe38eed39262f3976c7e122329703b37572dae41d36365966c082fab4e';
 export const FC27_STREAMLINED_STORAGE_QUERY_HASH = '2e4fc68dd8d9b1fce716adeb21f09793c836545829ff0a138d4c86e2d06d404c';
 
+// Public EA implementation independently inspected and replayed 2026-10-15.
+// Same owned GET /storagepile + skuMode=FUT contract; the native cache branch
+// still filters locally. Keep exact compatibility local to this read adapter,
+// not the shared write verifier. See the dated Storage observation fixture.
+export const FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES = Object.freeze({
+  'methods.search': Object.freeze(['77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788']),
+  'methods.query': Object.freeze(['e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f']),
+});
+
 // Native searchStorageItems, decoded 2026-10-07: one GET of the entire Storage
 // pile, with skuMode=FUT. Its criteria are LOCAL filters, not server pagination.
 // Use an owned request so 304/local cache cannot impersonate a fresh read and
@@ -16,7 +25,7 @@ export async function createFc27StreamlinedStorageReader(root, { onEntity = null
   const methods = { search: dao?.searchStorageItems, query: root.UTHttpRequest?.prototype?.setUrlVariables };
   const native = await verifyFc27Methods({ methods, crypto: root.crypto }, [
     ['methods.search', FC27_STREAMLINED_STORAGE_HASH], ['methods.query', FC27_STREAMLINED_STORAGE_QUERY_HASH],
-  ]);
+  ], FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES);
   const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
   const Request = root.UTHttpRequest, factory = root.factories?.Item, createItem = factory?.createItem;
   const auth = ownData(dao, 'authDelegate'), game = ownData(root, 'GAME_NAME'), pile = ownData(root.ItemPile, 'STORAGE');

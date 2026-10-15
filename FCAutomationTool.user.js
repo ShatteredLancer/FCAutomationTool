@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.32
+// @version      27.0.33
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.32", at: Date.now(), status: 'started',
+    state = { version: "27.0.33", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -30749,13 +30749,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/ea/fc27-streamlined-storage-read.js
   var FC27_STREAMLINED_STORAGE_HASH = "29b26cfe38eed39262f3976c7e122329703b37572dae41d36365966c082fab4e";
   var FC27_STREAMLINED_STORAGE_QUERY_HASH = "2e4fc68dd8d9b1fce716adeb21f09793c836545829ff0a138d4c86e2d06d404c";
+  var FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES = Object.freeze({
+    "methods.search": Object.freeze(["77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788"]),
+    "methods.query": Object.freeze(["e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f"])
+  });
   async function createFc27StreamlinedStorageReader(root, { onEntity = null, nativeReauth = false } = {}) {
     const context = readFc27Context(root), dao = root.services?.Item?.itemDao;
     const methods = { search: dao?.searchStorageItems, query: root.UTHttpRequest?.prototype?.setUrlVariables };
     const native = await verifyFc27Methods({ methods, crypto: root.crypto }, [
       ["methods.search", FC27_STREAMLINED_STORAGE_HASH],
       ["methods.query", FC27_STREAMLINED_STORAGE_QUERY_HASH]
-    ]);
+    ], FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES);
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
     const Request = root.UTHttpRequest, factory = root.factories?.Item, createItem = factory?.createItem;
     const auth = ownData(dao, "authDelegate"), game = ownData(root, "GAME_NAME"), pile = ownData(root.ItemPile, "STORAGE");
@@ -32243,6 +32247,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "EA_SQUAD_CONFLICT",
       "EA_CONTRIBUTION_REJECTED"
     ].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason10({ message: reason });
+    const failureDetail = (error2) => {
+      const detail = { reason: safeReason10(error2) };
+      if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
+      if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
+      if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
+      return detail;
+    };
     const diagnose = (phase, status, record, batch, detail = {}) => {
       try {
         Promise.resolve(onDiagnostic({
@@ -32271,7 +32282,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
         return confirmed;
       } catch (error2) {
-        diagnose(phase, "blocked", record, batch, { reason: safeReason10(error2) });
+        diagnose(phase, "blocked", record, batch, () => failureDetail(error2));
         throw error2;
       }
     };
@@ -32332,7 +32343,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           try {
             reply = await adapter.contribute(plan, batch);
           } catch (error2) {
-            diagnose("dispatch", "unknown", record, batch, { reason: safeReason10(error2) });
+            diagnose("dispatch", "unknown", record, batch, () => failureDetail(error2));
             reply = { status: "unknown" };
           }
           diagnose("response", "unknown", record, batch, () => ({
@@ -32389,7 +32400,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return { status: stopping ? "stopped" : record.submittedScore >= plan.challenge.targetScore ? "completed" : "partial", record };
       } catch (error2) {
-        diagnose(phase, "blocked", record, activeBatch, { reason: safeReason10(error2) });
+        diagnose(phase, "blocked", record, activeBatch, () => failureDetail(error2));
         return { status: "blocked", reason: safeReason10(error2) };
       } finally {
         try {
@@ -32431,7 +32442,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         record.rewardState = evidence.rewardConfirmed === true ? "confirmed" : "unknown";
         return { status: "recovered", record: await journal.write(context, record, record.revision) };
       } catch (error2) {
-        diagnose("recovery", "recovery-required", record, batch, { reason: safeReason10(error2) });
+        diagnose("recovery", "recovery-required", record, batch, () => failureDetail(error2));
         return { status: "recovery-required", reason: safeReason10(error2) };
       } finally {
         try {
@@ -33316,6 +33327,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           phase: `contribution-${row.phase}`,
           status: row.status,
           reason: row.reason,
+          methodPath: row.methodPath,
+          observedHash: row.observedHash,
+          expectedHash: row.expectedHash,
           httpStatus: row.httpStatus,
           count: row.count,
           currentScore: row.currentScore,
@@ -33348,6 +33362,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               status: row.status,
               currentScore: row.currentScore,
               targetScore: row.targetScore,
+              methodPath: row.methodPath,
+              observedHash: row.observedHash,
+              expectedHash: row.expectedHash,
               definitionId: row.definitionId,
               maxBuy: row.maxBuy,
               referencePrice: row.stage === "reference" ? row.price : void 0,
@@ -33495,7 +33512,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.32" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.33" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33813,8 +33830,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.32"}`,
-    version: "27.0.32",
+    title: `FC Automation Tool ${"27.0.33"}`,
+    version: "27.0.33",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

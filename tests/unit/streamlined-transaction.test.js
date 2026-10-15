@@ -41,6 +41,19 @@ it('keeps accepted response, failed readback and repeated recovery causes withou
   expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/itemIds|accountScope|fingerprint|"refs"/);
 });
 
+it('retains the exact method path and bounded hashes when fresh material validation blocks', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.verify.mockRejectedValue(Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'), {
+    methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
+    sourceCode: 'private-source', accountScope: 'private-account', token: 'private-token',
+  }));
+  expect(await f.tx.execute(f.plan, f.approval)).toMatchObject({ status: 'blocked', reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED' });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'validation', status: 'blocked',
+    methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64) }));
+  expect(f.adapter.contribute).not.toHaveBeenCalled();
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/private-|sourceCode|accountScope|token/);
+});
+
 it('records the original dispatch error separately from missing-receipt readback', async () => {
   const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
   f.adapter.contribute.mockRejectedValue(Error('FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED'));
