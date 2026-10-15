@@ -2,7 +2,7 @@
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 main：**27.0.28**。用户已在 27.0.27 完成一次真实买入/入库/贡献闭环；本版改进规划任务调度并补充计算/等待、已确认批次和未决购卡诊断，不改变交易节奏、原搜索/授权期限或资金/材料许可。默认 15% 替代总预算、最低材料成本、旧挂牌排除、锁卡/进化/主阵容与未知回执保护保持。一次闭环不等于全环境稳定或奖励已领取，见 [27.0.28 审查](docs/releases/27.0.28.md)。Gallery 能力及验收历史见 [27.0.12 说明](docs/releases/27.0.12.md)。
+当前 main：**27.0.32**。积分 SBC 默认参照普通 SBC 的现有材料优先逻辑：**Storage → Club → 缺口补卡**，库存足够时不查市场、不购卡；原最低总材料价值仍可选。旧冻结计划/未决记录不改写，锁卡/进化/主阵容、预算和未知回执保护保留，普通 SBC/Puzzle、Gallery 与 FSU 不变。详见 [27.0.32 说明](docs/releases/27.0.32.md)。已有一次真实闭环不等于全环境稳定或奖励已领取；新版选材需更新后验证。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

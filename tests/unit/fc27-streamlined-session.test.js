@@ -18,7 +18,7 @@ it('bounds a real shared inventory quote read to 90 seconds and reports valid co
       inspect: () => ({ context: c.context, challenge: c }), get: async () => null, set: async () => {},
       readInputs: () => ({ context: c.context, challenge: c, policy, eligibility,
         inventory: [safeItem({ id: 1, definitionId: 1, points: 100 }), safeItem({ id: 2, definitionId: 2, points: 100 })], assertCurrent() {} }) });
-    const pending = session.plan({ mode: 'inventory' });
+    const pending = session.plan({ objective: 'lowest-value', mode: 'inventory' });
     await vi.advanceTimersByTimeAsync(90000);
     const result = await pending;
     expect(result).toMatchObject({ status: 'ready', quoteReadError: 'FC27_STREAMLINED_QUOTE_BUDGET',
@@ -38,7 +38,7 @@ it('retains only bounded protection evidence at the planning failure seam and pe
     itemId: 123456, account: 'private-account', token: 'private-token' };
   const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
     readInputs: () => { throw error; }, diagnosticLog, prices, createExecution, get: async () => null, set });
-  const result = await session.plan({});
+  const result = await session.plan({ objective: 'lowest-value',});
   expect(result).toMatchObject({ status: 'blocked', reason: error.message, liveExecutionEnabled: false,
     protectionFailure: { phase: 'protection-slot-list', count: 11, requiredSlots: 23, mismatch: 'length' } });
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ phase: 'protection-slot-list', count: 11, requiredSlots: 23 }));
@@ -59,7 +59,7 @@ it('reports total inventory quote elapsed time across both 250-version chunks an
     inspect: () => ({ context: c.context, challenge: c }), get: async () => null, set: async () => {},
     readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory,
       priceRows: inventory, assertCurrent() {} }) });
-  expect((await session.plan({ mode: 'inventory' }, { onProgress: row => progress.push(row) })).status).toBe('ready');
+  expect((await session.plan({ objective: 'lowest-value', mode: 'inventory' }, { onProgress: row => progress.push(row) })).status).toBe('ready');
   expect(progress.filter(row => row.phase === 'quotes' && row.elapsedMs != null).at(-1).elapsedMs).toBe(12000);
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'planning-read', phase: 'inventory-quotes',
     durationMs: 12000, requestedCount: 251, count: 251, source: 'futbin' }));
@@ -80,7 +80,7 @@ it('selects alternate compressed routes without fetching again or granting purch
   const native = { name: 'native concept' }, resolveDisplayItem = vi.fn(() => native);
   const session = createFc27StreamlinedSession({ inspect, get: async () => null, set: async () => {}, now: () => 100,
     readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory: [], assertCurrent() {}, resolveDisplayItem }), readMarketCandidates });
-  const result = await session.plan({ mode: 'market' });
+  const result = await session.plan({ objective: 'lowest-value', mode: 'market' });
   expect(result.routes).toHaveLength(2); expect(result.purchaseCost).toBe(1500);
   expect(session.resolveDisplayItem({ ...result.items[0], key: 'market:1:999' })).toBeNull();
   const copy = result.items[1];
@@ -108,7 +108,7 @@ it('selects the cheaper total-value market route while allowing zero-purchase st
     readInputs: () => ({ context: c.context, challenge: c, policy, eligibility,
       inventory: [safeItem({ points: 100, price: 30000 })], assertCurrent() {} }),
     prices, readMarketCandidates, get: async () => null, set: async () => {}, now: () => 100 });
-  const result = await session.plan({});
+  const result = await session.plan({ objective: 'lowest-value',});
   expect(result).toMatchObject({ purchaseCost: 8000, materialValue: 0, plan: { objective: 'lowest-value' }, liveExecutionEnabled: false });
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ objective: 'lowest-value',
     priceSource: 'futgg', estimatedCost: 8000, materialValue: 0, totalValue: 8000 }));
@@ -130,7 +130,7 @@ it('logs bounded score and price buckets and selected repeats without account or
     prices: { load: async () => ({ policy: { source: 'futgg' }, references: { 101: { quotes: { futgg: quotes(2000) } } } }) },
     readMarketCandidates: async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
       points: 830, rating: 84, price: 700, quote: { ...quotes(700), definitionId: 901 } })] }) });
-  const result = await session.plan({});
+  const result = await session.plan({ objective: 'lowest-value',});
   expect(result.route).toMatchObject({ marketCount: 15, minBatches: 15, repeatPurchaseCount: 14 });
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'candidate-bucket', source: 'inventory',
     phase: 'club', rating: 84, unitScore: 830, count: 1, quotedCount: 1, cheapestPrice: 2000, bestPrice: 2000 }));
@@ -153,7 +153,7 @@ it('keeps owned entities in the final TOTW preview and frozen plan without extra
     readMarketCandidates: async () => ({ market: [[901, 830, 800, 84], [902, 5500, 5200, 87]]
       .map(([definitionId, points, price, rating]) => safeItem({ source: 'market', definitionId,
         points, price, rating, quote: quote(definitionId, price) })) }) });
-  const result = await session.plan({ mode: 'inventory-market' });
+  const result = await session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result.route).toMatchObject({ totalValue: 11600, materialValue: 6400, purchaseCost: 5200,
     inventoryCount: 8, marketCount: 1, score: 12140 });
   expect(result.items.filter(item => item.source === 'inventory').map(item => item.id).sort((a,b) => a-b))
@@ -181,7 +181,7 @@ it.each([83, 85])('explains inventory protection with FSU max %s without extra q
       eligibility, assertCurrent() {}, inventory: stock }),
     readMarketCandidates: async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
       rating: 84, points: 830, price: 700, quote: quote(901, 700) })] }) });
-  const result = await session.plan({});
+  const result = await session.plan({ objective: 'lowest-value',});
   expect(result.inventorySelection).toMatchObject({ readCount: 4, eligibleCount: goldenMax === 83 ? 1 : 3,
     excluded: goldenMax === 83 ? { 'fsu-gold-range': 2, untradeable: 1 } : { untradeable: 1 } });
   if (goldenMax === 83) {
@@ -224,7 +224,7 @@ it.each([
     readMarketCandidates: async () => ({ pricePolicy: { source: 'futgg' },
       market: [safeItem({ source: 'market', definitionId: 101, points: 100, price: 700, quote: current })],
       references: { 101: { quotes: { futgg: { ...current, ...fields } } } } }) });
-  const result = await session.plan({});
+  const result = await session.plan({ objective: 'lowest-value',});
   expect(result.route.inventoryCount).toBe(inventoryCount);
   if (inventoryCount) expect(result.items[0].quote).toEqual(current);
   else expect(result.routes.find(route => route.marketCount === 0).materialValue).toBe(900);
@@ -253,7 +253,7 @@ it.each([undefined, 'record-identity'])('logs the actual budget and offer mismat
       quote: { source: 'futbin', definitionId: 201, price: 300, fetchedAt: 10, expiresAt: 100 } })] }),
     createExecution: async () => ({ prepare() {}, purchase }) });
   f.input.inventory = [];
-  const result = await f.session.plan({ mode: 'market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'market' });
   expect(result.purchaseCost).toBe(300);
   await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 999, acknowledgeQuoteCoverage: true });
   expect(purchase).toHaveBeenCalledWith(result.plan, expect.objectContaining({ budget: 999 }), expect.any(Object));
@@ -267,12 +267,12 @@ it('keeps verified quoted stock when all verified market quotes fail, but never 
   const readMarketCandidates = vi.fn(async () => ({ market: [], pricePolicy: { source: 'futbin' },
     quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT', quoteCoverage: { requested: 3, valid: 0, failed: 3, missing: 0 } }));
   const f = setup({ readMarketCandidates });
-  const result = await f.session.plan({ mode: 'inventory-market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'ready', marketPending: false, quoteCoverage: { limited: true },
     plan: { execution: { quoteLimited: true } } });
   expect(result.items.map(item => item.id)).toEqual([1]);
   readMarketCandidates.mockRejectedValue(Error('FC27_STREAMLINED_CATALOG_UNAVAILABLE'));
-  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'blocked',
+  expect(await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' })).toMatchObject({ status: 'blocked',
     reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE', plan: null });
 });
 
@@ -281,7 +281,7 @@ it('retains quote acknowledgement requirements after journal recovery without re
   const execute = vi.fn(), recover = vi.fn(async () => ({ status: 'observed', record }));
   const f = setup({ createExecution: async () => ({ prepare() {}, transaction: { recover, execute } }) });
   f.input.inventory.push(safeItem({ id: 3, definitionId: 4, points: 40 }));
-  const result = await f.session.plan({ mode: 'inventory' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory' });
   expect(result.plan.execution.quoteLimited).toBe(true);
   record = { context: f.input.context, plan: result.plan, submittedScore: 0,
     batches: result.plan.batches.map(() => ({ state: 'waiting' })) };
@@ -303,7 +303,7 @@ it('does not let an earlier timeout hide a later source-disabled failure across 
       : { definitionId: id, source: 'futbin', price: 300, fetchedAt: 10, expiresAt: 100 } } }])) }));
   const session = createFc27StreamlinedSession({ inspect: f.inspect, readInputs: () => f.input, prices: f.prices, now: () => 20,
     get: async () => null, set: async () => {}, createExecution });
-  expect(await session.plan({ mode: 'inventory' })).toMatchObject({ status: 'blocked',
+  expect(await session.plan({ objective: 'lowest-value', mode: 'inventory' })).toMatchObject({ status: 'blocked',
     reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', liveExecutionEnabled: false });
   expect(createExecution).not.toHaveBeenCalled();
 });
@@ -313,7 +313,7 @@ it('forwards per-version inventory quote progress instead of remaining at zero u
     options.onProgress({ source: 'futbin', index: 1, total: 1 });
     return { policy: { source: 'futbin' }, references: {} };
   });
-  await f.session.plan({ mode: 'inventory' }, { onProgress: row => progress.push(row) });
+  await f.session.plan({ objective: 'lowest-value', mode: 'inventory' }, { onProgress: row => progress.push(row) });
   expect(progress).toContainEqual(expect.objectContaining({ phase: 'quotes', source: 'futbin', completed: 1, total: 1 }));
 });
 
@@ -325,7 +325,7 @@ it('keeps a selected-source partial route pending explicit coverage acknowledgem
   f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
     2: { quotes: { futbin: { source: 'futbin', definitionId: 2, price: null, error: 'FC27_BUY_REFERENCE_TIMEOUT' } } },
   } });
-  const result = await f.session.plan({ mode: 'inventory-market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'ready', quoteReadError: 'FC27_BUY_REFERENCE_TIMEOUT',
     quoteCoverage: { limited: true, inventory: { requested: 1, valid: 0, failed: 1 } },
     plan: { execution: { quoteLimited: true } } });
@@ -344,7 +344,7 @@ it('shows elapsed waiting and stops promptly during an unresolved shared quote r
     const f = setup({ now: () => Date.now() }), progress = [];
     let finish;
     f.prices.load.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const pending = f.session.plan({}, { onProgress: row => progress.push(row) });
+    const pending = f.session.plan({ objective: 'lowest-value',}, { onProgress: row => progress.push(row) });
     await vi.advanceTimersByTimeAsync(1000);
     expect(progress).toContainEqual(expect.objectContaining({ phase: 'quotes', completed: 0, elapsedMs: 1000 }));
     f.session.stop();
@@ -364,9 +364,9 @@ it('excludes unquoted inventory even when market quotes are healthy; never treat
   f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
     2: { quotes: { futbin: { definitionId: 2, source: 'futbin', price: null, error: null } } },
   } });
-  expect(await f.session.plan({ mode: 'inventory-market' })).toMatchObject({ status: 'ready', purchaseCost: 200,
+  expect(await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' })).toMatchObject({ status: 'ready', purchaseCost: 200,
     materialValue: 0, quoteReadError: null });
-  expect(await f.session.plan({ mode: 'inventory' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE',
+  expect(await f.session.plan({ objective: 'lowest-value', mode: 'inventory' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE',
     quoteCoverage: { limited: true, inventory: { requested: 1, valid: 0, missing: 1 } }, plan: null });
 });
 
@@ -378,7 +378,7 @@ it('does not renew an expired inventory quote or block healthy market routes aft
   f.prices.load.mockResolvedValue({ policy: { source: 'futbin' }, references: {
     2: { quotes: { futbin: { definitionId: 2, source: 'futbin', price: 150, fetchedAt: 1, expiresAt: 20 } } },
   } });
-  const result = await f.session.plan({ mode: 'inventory-market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 200, materialValue: 0 });
   expect(result.routes.some(r => r.purchaseCost === 0)).toBe(false);
   expect(result.plan.execution.quoteLimited).toBe(true);
@@ -392,18 +392,18 @@ it('stops a stalled market read and prevents the old callback from re-entering a
       firstCheck = check; return new Promise(resolve => { finish = resolve; });
     }).mockResolvedValue({ market: [] });
     const f = setup({ readMarketCandidates });
-    const pending = f.session.plan({ mode: 'market' });
+    const pending = f.session.plan({ objective: 'lowest-value', mode: 'market' });
     await vi.advanceTimersByTimeAsync(250);
     f.session.stop(); await vi.advanceTimersByTimeAsync(250);
     expect(await pending).toMatchObject({ status: 'cancelled' });
-    expect(await f.session.plan({ mode: 'market' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE' });
+    expect(await f.session.plan({ objective: 'lowest-value', mode: 'market' })).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE' });
     expect(firstCheck).toThrow('FC27_STREAMLINED_CANCELLED');
     finish({ market: [] }); await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBe(0);
   } finally { vi.useRealTimers(); }
 });
 it('loads only the shared selected source and displays a frozen inventory preview', async () => {
-  const f = setup(), result = await f.session.plan({});
+  const f = setup(), result = await f.session.plan({ objective: 'lowest-value',});
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 0, materialValue: 300, quoteSource: 'futbin', marketPending: true, liveExecutionEnabled: false });
   expect(f.prices.load).toHaveBeenCalledWith([2], expect.objectContaining({ purpose: 'puzzle' }));
   expect(f.store.size).toBe(0); // preview does not create a contribution Journal
@@ -413,7 +413,7 @@ it('blocks a mixed plan when market candidates cannot be verified instead of fal
   const f = setup({ diagnosticLog, readMarketCandidates: vi.fn(async () => {
     throw Error('FC27_STREAMLINED_CATALOG_HTTP_403');
   }) });
-  const result = await f.session.plan({ mode: 'inventory-market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE',
     marketError: 'FC27_STREAMLINED_CATALOG_HTTP_403', marketPending: true, plan: null, liveExecutionEnabled: false });
   expect(result.items).toBeUndefined();
@@ -423,19 +423,19 @@ it('blocks a mixed plan when market candidates cannot be verified instead of fal
 });
 it('keeps inventory-only mode explicit when the market provider is unavailable', async () => {
   const f = setup({ readMarketCandidates: vi.fn(async () => { throw Error('FC27_STREAMLINED_CATALOG_HTTP_403'); }) });
-  const result = await f.session.plan({ mode: 'inventory' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory' });
   expect(result).toMatchObject({ status: 'ready', purchaseCost: 0, marketPending: false, liveExecutionEnabled: false });
 });
 it('blocks an empty verified market lane in mixed mode rather than claiming a complete inventory plan', async () => {
   const f = setup({ readMarketCandidates: vi.fn(async () => ({ market: [] })) });
-  const result = await f.session.plan({ mode: 'inventory-market' });
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'inventory-market' });
   expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MARKET_UNAVAILABLE',
     marketError: 'FC27_STREAMLINED_MARKET_EMPTY', plan: null });
 });
 it('planning never executes; only the separate exact-plan contribution action does, and Stop is forwarded', async () => {
   const transaction = { execute: vi.fn(async () => ({ status: 'partial' })), stop: vi.fn() };
   const createExecution = vi.fn(async () => ({ prepare: () => true, transaction }));
-  const f = setup({ createExecution }), result = await f.session.plan({});
+  const f = setup({ createExecution }), result = await f.session.plan({ objective: 'lowest-value',});
   expect(result.liveExecutionEnabled).toBe(true); expect(transaction.execute).not.toHaveBeenCalled();
   expect((await f.session.contribute({ fingerprint: 'wrong', batchIndices: [0] })).status).toBe('blocked');
   transaction.execute.mockImplementationOnce(async () => { f.session.stop(); return { status: 'stopped' }; });
@@ -446,7 +446,7 @@ it('planning never executes; only the separate exact-plan contribution action do
 });
 it('shows execution preparation errors without losing a usable preview or bypassing them', async () => {
   const f = setup({ createExecution: async () => { throw Error('FC27_STREAMLINED_CACHE_UNVERIFIED'); } });
-  const result = await f.session.plan({});
+  const result = await f.session.plan({ objective: 'lowest-value',});
   expect(result).toMatchObject({ status: 'ready', liveExecutionEnabled: false, executionReason: 'FC27_STREAMLINED_CACHE_UNVERIFIED' });
   expect((await f.session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: [0] })).status).toBe('blocked');
 });
@@ -455,7 +455,7 @@ it('keeps recovery target and reason on preview and records the failed preflight
   const recovery = { kind: 'puzzle-purchase', setId: 19, challengeId: 43, phase: 'save-pending', states: { club: 3, 'buy-pending': 1 } };
   const diagnosticLog = { record: vi.fn() };
   const f = setup({ diagnosticLog, createExecution: async () => { throw Object.assign(Error('FC27_BUY_RECOVERY_REQUIRED'), { recovery }); } });
-  expect(await f.session.plan({})).toMatchObject({ status: 'ready', liveExecutionEnabled: false,
+  expect(await f.session.plan({ objective: 'lowest-value',})).toMatchObject({ status: 'ready', liveExecutionEnabled: false,
     executionReason: 'FC27_BUY_RECOVERY_REQUIRED', executionRecovery: recovery });
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'execution-preflight',
     reason: 'FC27_BUY_RECOVERY_REQUIRED', setId: 19, challengeId: 43 }));
@@ -469,7 +469,7 @@ it('records the exact unreviewed method evidence needed for a safe runtime revie
     methodPath: 'dao.submitPlayers', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
   });
   const f = setup({ diagnosticLog, createExecution: async () => { throw error; } });
-  await f.session.plan({});
+  await f.session.plan({ objective: 'lowest-value',});
   expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'execution-preflight',
     reason: 'FC27_TRANSACTION_METHOD_UNREVIEWED', methodPath: 'dao.submitPlayers',
     observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64) }));
@@ -477,9 +477,9 @@ it('records the exact unreviewed method evidence needed for a safe runtime revie
 it('does not invent market capabilities, re-enable disabled sources or hide missing quotes', async () => {
   const f = setup();
   f.prices.load.mockRejectedValue(Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED'));
-  expect(await f.session.plan({})).toMatchObject({ status: 'blocked', reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', liveExecutionEnabled: false });
+  expect(await f.session.plan({ objective: 'lowest-value',})).toMatchObject({ status: 'blocked', reason: 'FC27_PUBLIC_PRICE_FUTBIN_DISABLED', liveExecutionEnabled: false });
   f.prices.load.mockClear();
-  expect(await f.session.plan({ mode: 'market' })).toMatchObject({ status: 'unavailable', marketAvailable: false });
+  expect(await f.session.plan({ objective: 'lowest-value', mode: 'market' })).toMatchObject({ status: 'unavailable', marketAvailable: false });
   expect(f.prices.load).not.toHaveBeenCalled();
 });
 it('persists per-account/per-challenge settings, keeps global defaults separate and detects context changes', async () => {
@@ -488,7 +488,7 @@ it('persists per-account/per-challenge settings, keeps global defaults separate 
   await f.session.saveSettings({ maxRating: 64 }, true);
   expect((await f.session.readSettings()).settings.maxRating).toBe(74);
   f.prices.load.mockImplementation(async () => { f.input.assertCurrent.mockImplementation(() => { throw Error('FC27_STREAMLINED_CONTEXT_CHANGED'); }); return { policy: { source: 'futgg' }, references: {} }; });
-  expect(await f.session.plan({})).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_CONTEXT_CHANGED' });
+  expect(await f.session.plan({ objective: 'lowest-value',})).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_CONTEXT_CHANGED' });
 });
 
 it('freezes shared retry policy and partial wait without changing the material protection policy', async () => {
@@ -499,7 +499,7 @@ it('freezes shared retry policy and partial wait without changing the material p
     readInputs: () => ({ context: c.context, challenge: c, policy, eligibility, inventory: [], assertCurrent() {} }),
     readMarketCandidates: async () => ({ market: [candidate(1, 10, 150), candidate(2, 100, 2000)],
       pricePolicy: { source: 'futgg', purchaseAttempts: 7 } }) });
-  const first = await session.plan({ mode: 'market', partialWaitMs: 12000 });
+  const first = await session.plan({ objective: 'lowest-value', mode: 'market', partialWaitMs: 12000 });
   expect(first.plan.execution).toEqual({ purchaseAttempts: 7, partialWaitMs: 12000 });
   expect(first.plan.policy).toEqual(policy); expect(assertStreamlinedPlan(first.plan)).toBe(first.plan);
   const next = await session.selectRoute(first.routes[1].id);
@@ -512,7 +512,7 @@ it('keeps native display entities outside serializable plans and drops them when
   const f = setup(), raw = { native: true };
   f.input.resolveDisplayItem = vi.fn(() => raw);
   expect(f.session.resolveDisplayItem(f.input.inventory[0])).toBeNull();
-  const result = await f.session.plan({});
+  const result = await f.session.plan({ objective: 'lowest-value',});
   expect(f.session.resolveDisplayItem(result.items[0])).toBe(raw);
   expect(JSON.stringify(result)).not.toContain('native');
   expect(f.session.resolveDisplayItem({ ...result.items[0], id: 999 })).toBeNull();
@@ -537,7 +537,7 @@ it('checks old material moves before purchase/contribution recovery and never tu
   const recoverPurchase = vi.fn(async () => ({ status: 'absent' }));
   const transaction = { recover: vi.fn(async () => ({ status: 'absent' })), execute: vi.fn() };
   const f = setup({ createExecution: async () => ({ prepare() {}, transaction, recoverPurchase, recoverMaterialization }) });
-  const planned = await f.session.plan({});
+  const planned = await f.session.plan({ objective: 'lowest-value',});
   expect(await f.session.recover()).toMatchObject({ status: 'recovery-required', recovery: { setId: 99, challengeId: 199 } });
   expect(recoverPurchase).not.toHaveBeenCalled(); expect(transaction.recover).not.toHaveBeenCalled();
   expect((await f.session.contribute({ fingerprint: planned.plan.fingerprint })).status).toBe('blocked');
@@ -550,7 +550,7 @@ it('checks old material moves before purchase/contribution recovery and never tu
 it('restores the market run rather than displaying its last contribution as the whole plan', async () => {
   const recoverPurchase = vi.fn(), transaction = { recover: vi.fn(), execute: vi.fn() }, prepare = vi.fn();
   const f = setup({ createExecution: async () => ({ prepare, transaction, recoverPurchase }) });
-  const result = await f.session.plan({});
+  const result = await f.session.plan({ objective: 'lowest-value',});
   const record = { context: f.input.context, plan: result.plan, submittedScore: 0, entries: [], fulfilled: [], completed: false };
   recoverPurchase.mockResolvedValue({ status: 'recovered', record });
   transaction.recover.mockResolvedValue({ status: 'observed', record: { plan: { fingerprint: 'last-wave' } } });
@@ -564,7 +564,7 @@ it('does not revive a preview or continue contribution when purchase recovery is
   const recoverPurchase = vi.fn(async () => ({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' }));
   const transaction = { recover: vi.fn(), execute: vi.fn() };
   const f = setup({ createExecution: async () => ({ prepare() {}, transaction, recoverPurchase }) });
-  const result = await f.session.plan({});
+  const result = await f.session.plan({ objective: 'lowest-value',});
   expect(await f.session.recover()).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
   expect(transaction.recover).not.toHaveBeenCalled();
   expect((await f.session.contribute({ fingerprint: result.plan.fingerprint })).status).toBe('blocked');
@@ -574,14 +574,14 @@ it('completed market recovery stays disabled and does not require a new writable
   const recoverPurchase = vi.fn(), prepare = vi.fn();
   const transaction = { recover: vi.fn(async () => ({ status: 'absent' })) };
   const f = setup({ createExecution: async () => ({ prepare, transaction, recoverPurchase }) });
-  const result = await f.session.plan({}); prepare.mockImplementation(() => { throw Error('FC27_STREAMLINED_INITIATION_UNVERIFIED'); });
+  const result = await f.session.plan({ objective: 'lowest-value',}); prepare.mockImplementation(() => { throw Error('FC27_STREAMLINED_INITIATION_UNVERIFIED'); });
   recoverPurchase.mockResolvedValue({ status: 'completed', record: { context: f.input.context, plan: result.plan, completed: true, submittedScore: 40 } });
   expect(await f.session.recover()).toMatchObject({ status: 'completed', preview: { liveExecutionEnabled: false } });
   expect(prepare).toHaveBeenCalledTimes(1);
 });
 
 it('binds recovery to the displayed target and invalidates the old preview when no recovery is needed', async () => {
-  const f = recoverySetup(), result = await f.session.plan({});
+  const f = recoverySetup(), result = await f.session.plan({ objective: 'lowest-value',});
   f.transaction.recover.mockResolvedValue({ status: 'absent' });
   expect(await f.session.recover()).toEqual({ status: 'absent' });
   expect(f.transaction.recover).toHaveBeenCalledWith(f.input.context, { setId: f.input.challenge.setId, challengeId: f.input.challenge.id });
@@ -591,7 +591,7 @@ it('binds recovery to the displayed target and invalidates the old preview when 
 });
 
 it('shows the other target recovery reason without reviving the current preview', async () => {
-  const f = recoverySetup(); await f.session.plan({});
+  const f = recoverySetup(); await f.session.plan({ objective: 'lowest-value',});
   f.transaction.recover.mockResolvedValue({ status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED',
     recovery: { setId: 48, challengeId: 85 } });
   expect(await f.session.recover()).toMatchObject({ status: 'recovery-required',
@@ -601,7 +601,7 @@ it('shows the other target recovery reason without reviving the current preview'
 });
 
 it('keeps same-target recovery and blocks reuse of a preview after storage or account failure', async () => {
-  const f = recoverySetup(), result = await f.session.plan({});
+  const f = recoverySetup(), result = await f.session.plan({ objective: 'lowest-value',});
   const record = { context: f.input.context, plan: result.plan, submittedScore: 0, batches: [{ state: 'waiting' }] };
   f.transaction.recover.mockResolvedValue({ status: 'observed', record });
   expect(await f.session.recover()).toMatchObject({ status: 'observed', preview: { plan: result.plan } });
@@ -618,7 +618,7 @@ it('keeps same-target recovery and blocks reuse of a preview after storage or ac
 });
 
 it('accepts its own verified recovery progress but rejects a real target switch during recovery', async () => {
-  const f = recoverySetup(), result = await f.session.plan({});
+  const f = recoverySetup(), result = await f.session.plan({ objective: 'lowest-value',});
   const record = { context: f.input.context, plan: result.plan, submittedScore: 40, batches: [{ state: 'confirmed' }] };
   f.transaction.recover.mockImplementationOnce(async () => {
     f.inspect.mockReturnValue({ context: f.input.context, challenge: { ...f.input.challenge, submittedScore: 40 } });

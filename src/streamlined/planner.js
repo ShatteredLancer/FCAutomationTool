@@ -2,6 +2,7 @@ import { filterStreamlinedItems } from './eligibility.js';
 import { compareStreamlinedPlans } from './scoring.js';
 import { integer, streamlinedProgress } from './contract.js';
 import { runStreamlinedSteps } from './scheduling.js';
+import { planStreamlinedRoutesSteps, expandStreamlinedRoute } from './routes.js';
 
 export function splitStreamlinedBatches(items, limit) {
   if (!integer(limit, 1, 1000)) throw Error('FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN');
@@ -30,11 +31,18 @@ export function* planStreamlinedSteps({ challenge, inventory = [], market = [], 
   inventoryComplete = false, marketComplete = false } = {}) {
   const blocked = reason => ({ status: 'blocked', reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
   if (challenge?.mechanism !== 'streamlined' || !integer(challenge.remainingScore)
-      || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective) || !['inventory', 'inventory-market', 'market'].includes(mode)
+      || !['inventory-first', 'lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective) || !['inventory', 'inventory-market', 'market'].includes(mode)
       || !integer(maxNodes, 1, 5000000) || !integer(maxStates, 1, 100000) || !integer(maxMs, 1, 60000)
       || !integer(quoteAt) || !['futgg', 'futbin'].includes(quoteSource)) return blocked('PLAN_INPUT_INVALID');
   if (!challenge.remainingScore || challenge.status === 'COMPLETED') return { status: 'completed', items: [], batches: [], liveExecutionEnabled: false };
   if (!integer(challenge.selectionLimit, 1, 1000)) return blocked('BATCH_LIMIT_UNKNOWN');
+  if (objective === 'inventory-first') {
+    const result = yield* planStreamlinedRoutesSteps({ challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
+      { maxNodes, maxStates, maxMs, now });
+    const route = result.routes?.[0];
+    if (!route || result.status === 'cancelled' || result.status === 'partial' && !allowPartial) return { ...result, items: [], batches: [] };
+    return { ...result, ...expandStreamlinedRoute(route, challenge), route };
+  }
   const filtered = filterStreamlinedItems([...(mode === 'market' ? [] : inventory), ...(mode === 'inventory' ? [] : market)], { eligibility, policy });
   if (filtered.status !== 'observed') return filtered;
   const excluded = { ...filtered.excluded };

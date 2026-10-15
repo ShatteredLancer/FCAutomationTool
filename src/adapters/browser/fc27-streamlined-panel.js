@@ -174,7 +174,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
   </style><dialog aria-label="FCAT 积分解题"><div class="panel-body"><header><strong>FCAT 积分解题</strong><button data-close aria-label="关闭">×</button></header>
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
-    <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="lowest-value">最低总材料价值（库存+待购）</option><option value="lowest-coins">先最低购卡金币，再库存价值</option><option value="fewest-cards">最少卡数</option></select></label>
+    <section data-settings><div class="fields"><label>规划目标<select data-objective><option value="inventory-first">库存优先：Storage → Club → 缺口补卡</option><option value="lowest-value">最低总材料价值（库存+待购）</option><option value="lowest-coins">先最低购卡金币，再库存价值</option><option value="fewest-cards">最少卡数</option></select></label>
     <label>材料范围<select data-mode><option value="inventory-market">库存+补卡</option><option value="inventory">仅库存</option><option value="market">仅市场补卡</option></select></label>
     <label>库存最高评分<input data-rating type="number" min="1" max="99" step="1"></label><label>补卡最高评分<input data-market-rating type="number" min="1" max="99" step="1"></label><label>部分批次等待上限（秒，已搜尽时跳过）<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC 仓库</label><label><input data-unassigned type="checkbox">未分配</label><label><input data-transfer type="checkbox">转会列表</label></div>
     <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
@@ -371,7 +371,10 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       }
       add(output, 'div', `${result.status === 'ready' ? '预计达标' : '部分方案'} · ${number(p.submitted)} 已提交 + ${number(p.added)} 本次 · 还差 ${number(p.remaining)} / 超额 ${number(p.excess)}`).className = 'result-summary';
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${String(result.quoteSource).toUpperCase()} · ${number(result.items.length)} 张 / ${number(result.batches.length)} 批`);
+      const inventoryFirst = result.plan.objective === 'inventory-first';
+      const quoteLabel = inventoryFirst && !marketRun ? '库存优先 · 未查询市场报价' : String(result.quoteSource).toUpperCase();
+      add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${quoteLabel} · ${number(result.items.length)} 张 / ${number(result.batches.length)} 批`);
+      if (inventoryFirst) add(output, 'small', '先用合规 SBC Storage，再用 Club 材料；库存不足才补卡，原材料保护不变。');
       if (result.policy) {
         const stats = result.inventoryStats;
         const pileLabels = { club: 'Club', storage: 'SBC 仓库', unassigned: '未分配', transfer: '转会列表' };

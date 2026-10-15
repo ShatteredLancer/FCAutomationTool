@@ -55,8 +55,10 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   const { challenge, objective = 'lowest-value' } = input;
   if (!integer(maxNodes, 1, 5000000) || !integer(maxStates, 1, 100000) || !integer(maxMs, 1, 60000)
       || budget !== null && !integer(budget) || !integer(challenge?.selectionLimit, 1, 1000)
-      || !['lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective)) fail('ROUTE_INPUT_INVALID');
+      || !['inventory-first', 'lowest-value', 'lowest-coins', 'fewest-cards'].includes(objective)) fail('ROUTE_INPUT_INVALID');
   const { groups, excluded } = groupStreamlinedCandidates(input);
+  if (objective === 'inventory-first') return yield* planInventoryFirstRoutesSteps(input, groups, excluded,
+    { maxNodes, maxStates, maxMs, now, budget });
   const rank = (a, b) => compareStreamlinedPlans(a, b, objective);
   const target = challenge.remainingScore, started = now(), frontier = [];
   const stock = groups.map((g, i) => ({ g, i })).filter(v => v.g.source === 'inventory');
@@ -309,6 +311,50 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
     elapsedMs: now() - started, poolComplete: false, liveExecutionEnabled: false });
 }
 
+// Source priority is a constraint, not a cheap-price tie-break. Freeze every
+// eligible card in an insufficient tier; solve only the final tier/deficit.
+// Legacy economic objectives and already frozen plans keep their old meaning.
+function* planInventoryFirstRoutesSteps(input, groups, excluded, options) {
+  const { challenge } = input, required = [];
+  const cancelled = yield { phase: 'search', nodes: 0, maxNodes: options.maxNodes, candidates: groups.length, elapsedMs: 0 };
+  if (cancelled) return { status: 'cancelled', reason: 'FC27_STREAMLINED_SEARCH_CANCELLED', routes: [], excluded,
+    nodes: 0, searchComplete: false, liveExecutionEnabled: false };
+  let remainingScore = challenge.remainingScore, finalTier = [];
+  for (const pile of ['storage', 'club', 'unassigned', 'transfer']) {
+    const tier = groups.filter(g => g.source === 'inventory' && g.item.pile === pile);
+    const score = tier.reduce((sum, g) => sum + g.quantity * g.item.points, 0);
+    if (score >= remainingScore) { finalTier = tier; break; }
+    required.push(...tier); remainingScore -= score;
+  }
+  if (!finalTier.length) finalTier = groups.filter(g => g.source === 'market');
+  const prefixScore = required.reduce((sum, g) => sum + g.quantity * g.item.points, 0);
+  let result = { routes: [], nodes: 0, searchComplete: true, elapsedMs: 0 };
+  if (finalTier.length) {
+    const inventory = finalTier.filter(g => g.source === 'inventory').flatMap(g => g.items);
+    const market = finalTier.filter(g => g.source === 'market').flatMap(g => g.items);
+    result = yield* planStreamlinedRoutesSteps({ ...input, inventory, market,
+      challenge: { ...challenge, remainingScore }, mode: market.length ? 'market' : 'inventory',
+      objective: market.length ? 'lowest-value' : 'lowest-coins' }, options);
+  }
+  const tails = result.routes.length ? result.routes : required.length && result.status !== 'cancelled'
+    ? [{ groups: [], score: 0, count: 0, purchaseCost: 0, inventoryCount: 0, marketCount: 0,
+      minBatches: 0, repeatPurchaseCount: 0, searchComplete: result.searchComplete }] : [];
+  const routes = tails.map((tail, index) => {
+    const selected = [...required, ...tail.groups], count = selected.reduce((sum, g) => sum + g.quantity, 0);
+    const unknown = selected.filter(g => g.source === 'inventory' && g.item.price == null).reduce((sum, g) => sum + g.quantity, 0);
+    const materialValue = unknown ? null : selected.filter(g => g.source === 'inventory')
+      .reduce((sum, g) => sum + g.quantity * g.item.price, 0);
+    return { ...tail, id: `inventory-first:${index}`, groups: selected,
+      score: prefixScore + tail.score, excess: prefixScore + tail.score - challenge.remainingScore, count,
+      materialValue, totalValue: unknown ? null : materialValue + tail.purchaseCost, unknownValueCount: unknown,
+      inventoryCount: selected.filter(g => g.source === 'inventory').reduce((sum, g) => sum + g.quantity, 0),
+      minBatches: Math.max(tail.minBatches, Math.ceil(count / challenge.selectionLimit)), supplyVerified: false };
+  });
+  return deepFreeze({ ...result, routes, excluded, candidateCount: groups.length, poolComplete: false, liveExecutionEnabled: false,
+    status: result.status === 'cancelled' ? 'cancelled' : routes[0]?.score >= challenge.remainingScore ? 'ready' : routes.length ? 'partial' : 'unavailable',
+    reason: result.reason ?? (routes[0]?.score >= challenge.remainingScore ? 'FC27_STREAMLINED_LOCAL_PLAN' : 'FC27_STREAMLINED_POOL_SHORTAGE') });
+}
+
 export async function runStreamlinedRoutes(input, { onProgress = () => {}, stopped = () => false,
   schedule, metricsNow, ...options } = {}) {
   return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
@@ -344,7 +390,7 @@ export function expandStreamlinedRoute(route, challenge) {
     nextByDefinition.set(item.definitionId, index + 1);
     while (batches[firstOpen]?.length >= challenge.selectionLimit) firstOpen++;
   }
-  return { status: 'ready', items: batches.flat(), batches,
+  return { status: route.score >= challenge.remainingScore ? 'ready' : 'partial', items: batches.flat(), batches,
     score: route.score, purchaseCost: route.purchaseCost, materialValue: route.materialValue,
     progress: streamlinedProgress(challenge, route.score), searchComplete: route.searchComplete,
     unknownValueCount: items.filter(i => i.source === 'inventory' && i.price == null).length, poolComplete: false };

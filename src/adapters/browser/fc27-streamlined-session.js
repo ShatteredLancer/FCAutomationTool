@@ -112,9 +112,12 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             inventoryMaxRating: input.policy.maxRating, fsuGoldMin: input.policy.goldRange[0],
             fsuGoldMax: input.policy.goldRange[1], onlyUntradeable: input.policy.onlyUntradeable });
         }
+        const inventoryFirst = config.objective === 'inventory-first';
+        const marketNeeded = config.mode === 'market' || !inventoryFirst
+          || filtered.items.reduce((sum, item) => sum + item.points, 0) < input.challenge.remainingScore;
         const ids = [...new Set(filtered.items.map(i => i.definitionId))];
         const references = {}; let quoteSource = 'futgg', quoteReadError = null, purchaseAttempts = 3;
-        if (prices && config.mode !== 'market') {
+        if (prices && config.mode !== 'market' && !inventoryFirst) {
           const inventoryQuotesStartedAt = now();
           for (let offset = 0; offset < ids.length; offset += 250) {
             check();
@@ -140,7 +143,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         check();
         if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
         let market = [], marketError = null, marketCoverage = null;
-        if (config.mode !== 'inventory' && typeof readMarketCandidates === 'function') {
+        if (marketNeeded && config.mode !== 'inventory' && typeof readMarketCandidates === 'function') {
           try {
             check(); const data = await waitRead(report => readMarketCandidates({ input, ids, quoteSource, references, check,
               quoteDeadlineAt, allowPartialQuotes: true,
@@ -177,7 +180,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         // stock preview under the new explicit acknowledgement contract.
         const marketProvider = typeof readMarketCandidates === 'function';
         const marketQuoteLimited = marketCoverage?.requested > 0 && marketCoverage.valid < marketCoverage.requested;
-        if (config.mode !== 'inventory' && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
+        if (marketNeeded && config.mode !== 'inventory' && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
           const reason = 'FC27_STREAMLINED_MARKET_UNAVAILABLE';
           const unavailable = {
             status: 'blocked', reason, marketError: marketError ?? 'FC27_STREAMLINED_MARKET_EMPTY',
@@ -191,16 +194,16 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         check(); const quoteAt = now();
         if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
-        quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids, quoteAt, { requireFresh: false });
+        if (!inventoryFirst) quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids, quoteAt, { requireFresh: false });
         const inventoryCoverage = streamlinedQuoteCoverage(references, quoteSource, ids, quoteAt);
         const quoteCoverage = { inventory: inventoryCoverage, market: marketCoverage,
-          limited: !!quoteReadError || !!prices && config.mode !== 'market' && inventoryCoverage.valid < inventoryCoverage.requested
+          limited: !!quoteReadError || !inventoryFirst && !!prices && config.mode !== 'market' && inventoryCoverage.valid < inventoryCoverage.requested
             || !!marketCoverage && marketCoverage.valid < marketCoverage.requested };
         const inventory = input.inventory.map(item => {
           const q = references[item.definitionId]?.quotes?.[quoteSource];
           const valid = validStreamlinedQuote(q, quoteSource, item.definitionId, quoteAt);
           return { ...item, price: valid ? q.price : null, quote: valid ? q : null };
-        }).filter(item => !quoteCoverage.limited || item.quote !== null);
+        }).filter(item => inventoryFirst || !quoteCoverage.limited || item.quote !== null);
         const eligibleKeys = new Set(filtered.items.map(item => item.key)), buckets = new Map();
         for (const item of [...inventory.filter(item => eligibleKeys.has(item.key)), ...market]) {
           const key = JSON.stringify([item.source, item.pile, item.rating, item.points]);
@@ -232,8 +235,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             const selected = config.objective === 'fewest-cards' ? routes.reduce((a,b) => a.count <= b.count ? a : b) : routes[0];
             result = { ...output, ...expandStreamlinedRoute(selected, input.challenge), route: selected, routes, selectedRoute: selected.id };
           } else result = output;
-        } else result = await runStreamlinedPlan({ ...input, inventory, market, mode: config.mode, objective: config.objective,
-          quoteSource, quoteAt, now }, options);
+        } else {
+          result = await runStreamlinedPlan({ ...input, inventory, market, mode: config.mode, objective: config.objective,
+            quoteSource, quoteAt, now }, options);
+          routes = result.routes ?? [];
+        }
         check();
         if (!result.items?.length && quoteCoverage.limited) {
           return { ...result, status: 'blocked', reason: 'FC27_STREAMLINED_QUOTES_UNAVAILABLE', quoteSource, quoteReadError,
@@ -307,7 +313,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           }
         }
         return { ...result, plan, quoteSource, quoteReadError, quoteCoverage, marketError, marketAvailable: typeof readMarketCandidates === 'function',
-          marketPending: config.mode !== 'inventory' && market.length === 0 && !marketQuoteLimited, policy: input.policy,
+          marketPending: marketNeeded && config.mode !== 'inventory' && market.length === 0 && !marketQuoteLimited, policy: input.policy,
           inventoryStats: input.inventoryStats ?? null,
           inventorySelection,
           liveExecutionEnabled: !!execution, executionReason, executionRecovery };

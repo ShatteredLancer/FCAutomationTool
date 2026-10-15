@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.31
+// @version      27.0.32
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.31", at: Date.now(), status: 'started',
+    state = { version: "27.0.32", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27610,7 +27610,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
   </style><dialog aria-label="FCAT \u79EF\u5206\u89E3\u9898"><div class="panel-body"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
-    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
+    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="inventory-first">\u5E93\u5B58\u4F18\u5148\uFF1AStorage \u2192 Club \u2192 \u7F3A\u53E3\u8865\u5361</option><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
     <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58+\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u5E02\u573A\u8865\u5361</option></select></label>
     <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650\uFF08\u79D2\uFF0C\u5DF2\u641C\u5C3D\u65F6\u8DF3\u8FC7\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
     <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
@@ -27924,7 +27924,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       add2(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number2(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number2(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number2(p.remaining)} / \u8D85\u989D ${number2(p.excess)}`).className = "result-summary";
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number2(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${String(result.quoteSource).toUpperCase()} \xB7 ${number2(result.items.length)} \u5F20 / ${number2(result.batches.length)} \u6279`);
+      const inventoryFirst = result.plan.objective === "inventory-first";
+      const quoteLabel = inventoryFirst && !marketRun ? "\u5E93\u5B58\u4F18\u5148 \xB7 \u672A\u67E5\u8BE2\u5E02\u573A\u62A5\u4EF7" : String(result.quoteSource).toUpperCase();
+      add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number2(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number2(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number2(result.materialValue)} \xB7 ${quoteLabel} \xB7 ${number2(result.items.length)} \u5F20 / ${number2(result.batches.length)} \u6279`);
+      if (inventoryFirst) add2(output, "small", "\u5148\u7528\u5408\u89C4 SBC Storage\uFF0C\u518D\u7528 Club \u6750\u6599\uFF1B\u5E93\u5B58\u4E0D\u8DB3\u624D\u8865\u5361\uFF0C\u539F\u6750\u6599\u4FDD\u62A4\u4E0D\u53D8\u3002");
       if (result.policy) {
         const stats = result.inventoryStats;
         const pileLabels = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D", transfer: "\u8F6C\u4F1A\u5217\u8868" };
@@ -28357,12 +28360,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const result = {
       maxRating: value.maxRating ?? 99,
       marketMaxRating: value.marketMaxRating ?? 99,
-      objective: value.objective ?? "lowest-value",
+      objective: value.objective ?? "inventory-first",
       mode: value.mode ?? "inventory-market",
       sources: value.sources ?? ["club", "storage"],
       partialWaitMs: value.partialWaitMs ?? 6e4
     };
-    if (!integer15(result.maxRating, 1, 99) || !integer15(result.marketMaxRating, 1, 99) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer15(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
+    if (!integer15(result.maxRating, 1, 99) || !integer15(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer15(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
     return deepFreeze(structuredClone(result));
   }
   function createStreamlinedSettings({ get, set }) {
@@ -28376,17 +28379,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         fail28("SETTINGS_READ_FAILED");
       }
       if (value === null) return challengeId === null ? normalizeStreamlinedSettings() : read(context);
-      if (![1, 2].includes(value?.schema) || !value.settings) fail28("SETTINGS_INVALID");
+      if (![1, 2, 3].includes(value?.schema) || !value.settings) fail28("SETTINGS_INVALID");
       return normalizeStreamlinedSettings({
         ...value.settings,
-        ...value.schema === 1 && value.settings.objective === "lowest-coins" ? { objective: "lowest-value" } : {}
+        ...value.schema < 3 && (value.settings.objective === "lowest-value" || value.schema === 1 && value.settings.objective === "lowest-coins") ? { objective: "inventory-first" } : {}
       });
     };
     return Object.freeze({ read, async save(context, challengeId, value) {
       if (challengeId !== null && !integer15(challengeId, 1)) fail28("SETTINGS_INVALID");
       const settings = normalizeStreamlinedSettings(value);
       try {
-        await set(key(context, challengeId), { schema: 2, settings });
+        await set(key(context, challengeId), { schema: 3, settings });
         if (!same25(await read(context, challengeId), settings)) fail28("SETTINGS_SAVE_FAILED");
       } catch {
         fail28("SETTINGS_SAVE_FAILED");
@@ -28542,159 +28545,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
   }
 
-  // src/streamlined/planner.js
-  function splitStreamlinedBatches(items, limit) {
-    if (!integer15(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
-    const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
-    const batches = [], nextVersion = /* @__PURE__ */ new Map();
-    let open = 0;
-    for (const item2 of ordered) {
-      let index = ["unassigned", "transfer"].includes(item2.pile) ? Math.max(open, nextVersion.get(item2.definitionId) ?? 0) : open;
-      while (batches[index]?.length >= limit) index++;
-      (batches[index] ??= []).push(item2);
-      nextVersion.set(item2.definitionId, index + 1);
-      while (batches[open]?.length >= limit) open++;
-    }
-    return batches.filter(Boolean);
-  }
-  function* planStreamlinedSteps({
-    challenge,
-    inventory = [],
-    market = [],
-    eligibility,
-    policy,
-    objective = "lowest-value",
-    mode = "inventory-market",
-    maxNodes = 25e4,
-    maxStates = 5e4,
-    allowPartial = true,
-    now = () => Date.now(),
-    maxMs = 4e3,
-    quoteSource = "futgg",
-    quoteAt = now(),
-    inventoryComplete = false,
-    marketComplete = false
-  } = {}) {
-    const blocked11 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
-    if (challenge?.mechanism !== "streamlined" || !integer15(challenge.remainingScore) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer15(maxNodes, 1, 5e6) || !integer15(maxStates, 1, 1e5) || !integer15(maxMs, 1, 6e4) || !integer15(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked11("PLAN_INPUT_INVALID");
-    if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
-    if (!integer15(challenge.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
-    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
-    if (filtered.status !== "observed") return filtered;
-    const excluded = { ...filtered.excluded };
-    const candidates = filtered.items.filter((item2) => {
-      if (item2.source !== "market") return true;
-      const q = item2.quote;
-      const valid3 = integer15(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer15(q.fetchedAt) && q.fetchedAt <= quoteAt && integer15(q.expiresAt) && q.expiresAt > quoteAt;
-      if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
-      return valid3;
-    }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
-    const target = challenge.remainingScore, started = now();
-    let nodes = 0, processed = 0, budget = null, best = null;
-    const empty2 = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
-    let partial = empty2;
-    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
-    const append = (prev, item2) => ({
-      score: prev.score + item2.points,
-      purchaseCost: prev.purchaseCost + (item2.source === "market" ? item2.price : 0),
-      materialValue: prev.materialValue + (item2.source === "inventory" ? item2.price ?? 0 : 0),
-      unknownValue: prev.unknownValue + Number(item2.source === "inventory" && item2.price == null),
-      storagePenalty: prev.storagePenalty + Number(policy.storageFirst && item2.pile !== "storage"),
-      count: prev.count + 1,
-      prev,
-      item: item2
-    });
-    const remember = (state) => {
-      if (state.score >= target) {
-        if (!best || rank3(state, best) < 0) best = state;
-      } else if (state.score > partial.score || state.score === partial.score && rank3(state, partial) < 0) partial = state;
-    };
-    for (const order2 of [candidates, candidates.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || (a.price ?? Infinity) - (b.price ?? Infinity) || b.points - a.points)]) {
-      let seed = empty2;
-      for (const item2 of order2) {
-        seed = append(seed, item2);
-        remember(seed);
-        if (seed.score >= target) break;
-      }
-    }
-    const states4 = /* @__PURE__ */ new Map([[0, empty2]]);
-    outer: for (const item2 of candidates) {
-      const before = [...states4.values()];
-      for (const state of before) {
-        if (nodes >= maxNodes) {
-          budget = "nodes";
-          break outer;
-        }
-        const candidate = append(state, item2);
-        nodes++;
-        remember(candidate);
-        if (candidate.score < target) {
-          const previous = states4.get(candidate.score);
-          if (!previous || rank3(candidate, previous) < 0) states4.set(candidate.score, candidate);
-        }
-        if (nodes % 256 === 0) {
-          const cancelled = yield {
-            phase: "search",
-            nodes,
-            maxNodes,
-            processed,
-            candidates: candidates.length,
-            elapsedMs: now() - started,
-            bestScore: best?.score ?? partial.score,
-            bestPurchaseCost: best?.purchaseCost ?? null
-          };
-          if (cancelled) {
-            budget = "cancelled";
-            break outer;
-          }
-          if (now() - started >= maxMs) {
-            budget = "time";
-            break outer;
-          }
-        }
-        if (states4.size > maxStates) {
-          budget = "states";
-          break outer;
-        }
-      }
-      processed++;
-    }
-    const chosen = best ?? partial, items = [];
-    for (let state = chosen; state.item; state = state.prev) items.push(state.item);
-    items.reverse();
-    const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
-    const reached = !!best, searchComplete = budget === null;
-    return {
-      status: budget === "cancelled" ? "cancelled" : reached ? "ready" : allowPartial && items.length ? "partial" : "unavailable",
-      reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE",
-      items: batches.flat(),
-      batches,
-      score: chosen.score,
-      purchaseCost: chosen.purchaseCost,
-      materialValue: chosen.unknownValue ? null : chosen.materialValue,
-      unknownValueCount: chosen.unknownValue,
-      progress: streamlinedProgress(challenge, chosen.score),
-      nodes,
-      maxNodes,
-      elapsedMs: now() - started,
-      searchComplete,
-      optimalWithinPricedPool: searchComplete && !chosen.unknownValue,
-      poolComplete: inventoryComplete && (mode === "inventory" || marketComplete),
-      candidateCount: candidates.length,
-      excluded,
-      liveExecutionEnabled: false
-    };
-  }
-  async function runStreamlinedPlan(input, {
-    onProgress = () => {
-    },
-    stopped = () => false,
-    schedule,
-    metricsNow
-  } = {}) {
-    return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
-  }
-
   // src/streamlined/routes.js
   var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
   var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
@@ -28751,8 +28601,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     budget = null
   } = {}) {
     const { challenge, objective = "lowest-value" } = input;
-    if (!integer15(maxNodes, 1, 5e6) || !integer15(maxStates, 1, 1e5) || !integer15(maxMs, 1, 6e4) || budget !== null && !integer15(budget) || !integer15(challenge?.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail28("ROUTE_INPUT_INVALID");
+    if (!integer15(maxNodes, 1, 5e6) || !integer15(maxStates, 1, 1e5) || !integer15(maxMs, 1, 6e4) || budget !== null && !integer15(budget) || !integer15(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail28("ROUTE_INPUT_INVALID");
     const { groups, excluded } = groupStreamlinedCandidates(input);
+    if (objective === "inventory-first") return yield* planInventoryFirstRoutesSteps(
+      input,
+      groups,
+      excluded,
+      { maxNodes, maxStates, maxMs, now, budget }
+    );
     const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
     const target = challenge.remainingScore, started = now(), frontier2 = [];
     const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
@@ -29024,6 +28880,85 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       liveExecutionEnabled: false
     });
   }
+  function* planInventoryFirstRoutesSteps(input, groups, excluded, options) {
+    const { challenge } = input, required2 = [];
+    const cancelled = yield { phase: "search", nodes: 0, maxNodes: options.maxNodes, candidates: groups.length, elapsedMs: 0 };
+    if (cancelled) return {
+      status: "cancelled",
+      reason: "FC27_STREAMLINED_SEARCH_CANCELLED",
+      routes: [],
+      excluded,
+      nodes: 0,
+      searchComplete: false,
+      liveExecutionEnabled: false
+    };
+    let remainingScore = challenge.remainingScore, finalTier = [];
+    for (const pile of ["storage", "club", "unassigned", "transfer"]) {
+      const tier = groups.filter((g) => g.source === "inventory" && g.item.pile === pile);
+      const score2 = tier.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
+      if (score2 >= remainingScore) {
+        finalTier = tier;
+        break;
+      }
+      required2.push(...tier);
+      remainingScore -= score2;
+    }
+    if (!finalTier.length) finalTier = groups.filter((g) => g.source === "market");
+    const prefixScore = required2.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
+    let result = { routes: [], nodes: 0, searchComplete: true, elapsedMs: 0 };
+    if (finalTier.length) {
+      const inventory = finalTier.filter((g) => g.source === "inventory").flatMap((g) => g.items);
+      const market = finalTier.filter((g) => g.source === "market").flatMap((g) => g.items);
+      result = yield* planStreamlinedRoutesSteps({
+        ...input,
+        inventory,
+        market,
+        challenge: { ...challenge, remainingScore },
+        mode: market.length ? "market" : "inventory",
+        objective: market.length ? "lowest-value" : "lowest-coins"
+      }, options);
+    }
+    const tails = result.routes.length ? result.routes : required2.length && result.status !== "cancelled" ? [{
+      groups: [],
+      score: 0,
+      count: 0,
+      purchaseCost: 0,
+      inventoryCount: 0,
+      marketCount: 0,
+      minBatches: 0,
+      repeatPurchaseCount: 0,
+      searchComplete: result.searchComplete
+    }] : [];
+    const routes = tails.map((tail, index) => {
+      const selected = [...required2, ...tail.groups], count2 = selected.reduce((sum2, g) => sum2 + g.quantity, 0);
+      const unknown = selected.filter((g) => g.source === "inventory" && g.item.price == null).reduce((sum2, g) => sum2 + g.quantity, 0);
+      const materialValue = unknown ? null : selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity * g.item.price, 0);
+      return {
+        ...tail,
+        id: `inventory-first:${index}`,
+        groups: selected,
+        score: prefixScore + tail.score,
+        excess: prefixScore + tail.score - challenge.remainingScore,
+        count: count2,
+        materialValue,
+        totalValue: unknown ? null : materialValue + tail.purchaseCost,
+        unknownValueCount: unknown,
+        inventoryCount: selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity, 0),
+        minBatches: Math.max(tail.minBatches, Math.ceil(count2 / challenge.selectionLimit)),
+        supplyVerified: false
+      };
+    });
+    return deepFreeze({
+      ...result,
+      routes,
+      excluded,
+      candidateCount: groups.length,
+      poolComplete: false,
+      liveExecutionEnabled: false,
+      status: result.status === "cancelled" ? "cancelled" : routes[0]?.score >= challenge.remainingScore ? "ready" : routes.length ? "partial" : "unavailable",
+      reason: result.reason ?? (routes[0]?.score >= challenge.remainingScore ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE")
+    });
+  }
   async function runStreamlinedRoutes(input, {
     onProgress = () => {
     },
@@ -29061,7 +28996,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       while (batches[firstOpen]?.length >= challenge.selectionLimit) firstOpen++;
     }
     return {
-      status: "ready",
+      status: route.score >= challenge.remainingScore ? "ready" : "partial",
       items: batches.flat(),
       batches,
       score: route.score,
@@ -29072,6 +29007,168 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
       poolComplete: false
     };
+  }
+
+  // src/streamlined/planner.js
+  function splitStreamlinedBatches(items, limit) {
+    if (!integer15(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
+    const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
+    const batches = [], nextVersion = /* @__PURE__ */ new Map();
+    let open = 0;
+    for (const item2 of ordered) {
+      let index = ["unassigned", "transfer"].includes(item2.pile) ? Math.max(open, nextVersion.get(item2.definitionId) ?? 0) : open;
+      while (batches[index]?.length >= limit) index++;
+      (batches[index] ??= []).push(item2);
+      nextVersion.set(item2.definitionId, index + 1);
+      while (batches[open]?.length >= limit) open++;
+    }
+    return batches.filter(Boolean);
+  }
+  function* planStreamlinedSteps({
+    challenge,
+    inventory = [],
+    market = [],
+    eligibility,
+    policy,
+    objective = "lowest-value",
+    mode = "inventory-market",
+    maxNodes = 25e4,
+    maxStates = 5e4,
+    allowPartial = true,
+    now = () => Date.now(),
+    maxMs = 4e3,
+    quoteSource = "futgg",
+    quoteAt = now(),
+    inventoryComplete = false,
+    marketComplete = false
+  } = {}) {
+    const blocked11 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
+    if (challenge?.mechanism !== "streamlined" || !integer15(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer15(maxNodes, 1, 5e6) || !integer15(maxStates, 1, 1e5) || !integer15(maxMs, 1, 6e4) || !integer15(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked11("PLAN_INPUT_INVALID");
+    if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
+    if (!integer15(challenge.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
+    if (objective === "inventory-first") {
+      const result = yield* planStreamlinedRoutesSteps(
+        { challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
+        { maxNodes, maxStates, maxMs, now }
+      );
+      const route = result.routes?.[0];
+      if (!route || result.status === "cancelled" || result.status === "partial" && !allowPartial) return { ...result, items: [], batches: [] };
+      return { ...result, ...expandStreamlinedRoute(route, challenge), route };
+    }
+    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
+    if (filtered.status !== "observed") return filtered;
+    const excluded = { ...filtered.excluded };
+    const candidates = filtered.items.filter((item2) => {
+      if (item2.source !== "market") return true;
+      const q = item2.quote;
+      const valid3 = integer15(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer15(q.fetchedAt) && q.fetchedAt <= quoteAt && integer15(q.expiresAt) && q.expiresAt > quoteAt;
+      if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
+      return valid3;
+    }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
+    const target = challenge.remainingScore, started = now();
+    let nodes = 0, processed = 0, budget = null, best = null;
+    const empty2 = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
+    let partial = empty2;
+    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
+    const append = (prev, item2) => ({
+      score: prev.score + item2.points,
+      purchaseCost: prev.purchaseCost + (item2.source === "market" ? item2.price : 0),
+      materialValue: prev.materialValue + (item2.source === "inventory" ? item2.price ?? 0 : 0),
+      unknownValue: prev.unknownValue + Number(item2.source === "inventory" && item2.price == null),
+      storagePenalty: prev.storagePenalty + Number(policy.storageFirst && item2.pile !== "storage"),
+      count: prev.count + 1,
+      prev,
+      item: item2
+    });
+    const remember = (state) => {
+      if (state.score >= target) {
+        if (!best || rank3(state, best) < 0) best = state;
+      } else if (state.score > partial.score || state.score === partial.score && rank3(state, partial) < 0) partial = state;
+    };
+    for (const order2 of [candidates, candidates.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || (a.price ?? Infinity) - (b.price ?? Infinity) || b.points - a.points)]) {
+      let seed = empty2;
+      for (const item2 of order2) {
+        seed = append(seed, item2);
+        remember(seed);
+        if (seed.score >= target) break;
+      }
+    }
+    const states4 = /* @__PURE__ */ new Map([[0, empty2]]);
+    outer: for (const item2 of candidates) {
+      const before = [...states4.values()];
+      for (const state of before) {
+        if (nodes >= maxNodes) {
+          budget = "nodes";
+          break outer;
+        }
+        const candidate = append(state, item2);
+        nodes++;
+        remember(candidate);
+        if (candidate.score < target) {
+          const previous = states4.get(candidate.score);
+          if (!previous || rank3(candidate, previous) < 0) states4.set(candidate.score, candidate);
+        }
+        if (nodes % 256 === 0) {
+          const cancelled = yield {
+            phase: "search",
+            nodes,
+            maxNodes,
+            processed,
+            candidates: candidates.length,
+            elapsedMs: now() - started,
+            bestScore: best?.score ?? partial.score,
+            bestPurchaseCost: best?.purchaseCost ?? null
+          };
+          if (cancelled) {
+            budget = "cancelled";
+            break outer;
+          }
+          if (now() - started >= maxMs) {
+            budget = "time";
+            break outer;
+          }
+        }
+        if (states4.size > maxStates) {
+          budget = "states";
+          break outer;
+        }
+      }
+      processed++;
+    }
+    const chosen = best ?? partial, items = [];
+    for (let state = chosen; state.item; state = state.prev) items.push(state.item);
+    items.reverse();
+    const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
+    const reached = !!best, searchComplete = budget === null;
+    return {
+      status: budget === "cancelled" ? "cancelled" : reached ? "ready" : allowPartial && items.length ? "partial" : "unavailable",
+      reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE",
+      items: batches.flat(),
+      batches,
+      score: chosen.score,
+      purchaseCost: chosen.purchaseCost,
+      materialValue: chosen.unknownValue ? null : chosen.materialValue,
+      unknownValueCount: chosen.unknownValue,
+      progress: streamlinedProgress(challenge, chosen.score),
+      nodes,
+      maxNodes,
+      elapsedMs: now() - started,
+      searchComplete,
+      optimalWithinPricedPool: searchComplete && !chosen.unknownValue,
+      poolComplete: inventoryComplete && (mode === "inventory" || marketComplete),
+      candidateCount: candidates.length,
+      excluded,
+      liveExecutionEnabled: false
+    };
+  }
+  async function runStreamlinedPlan(input, {
+    onProgress = () => {
+    },
+    stopped = () => false,
+    schedule,
+    metricsNow
+  } = {}) {
+    return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
   }
 
   // src/streamlined/purchase-scope.js
@@ -29142,7 +29239,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function validPlanContents(plan) {
     const { challenge, items, batches } = plan;
     if (plan.execution && (!integer15(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer15(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer15(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer15(plan.execution.partialWaitMs, 0, 36e5))) return false;
-    if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
+    if (!challenge || challenge.mechanism !== "streamlined" || !integer15(challenge.targetScore, 1) || !integer15(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer15(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same25(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
     if (items.some((i) => !integer15(i?.definitionId, 1) || !integer15(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer15(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer15(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
     const inventory = items.filter((i) => i.source === "inventory");
@@ -29526,10 +29623,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               onlyUntradeable: input.policy.onlyUntradeable
             });
           }
+          const inventoryFirst = config.objective === "inventory-first";
+          const marketNeeded = config.mode === "market" || !inventoryFirst || filtered.items.reduce((sum2, item2) => sum2 + item2.points, 0) < input.challenge.remainingScore;
           const ids2 = [...new Set(filtered.items.map((i) => i.definitionId))];
           const references = {};
           let quoteSource = "futgg", quoteReadError = null, purchaseAttempts = 3;
-          if (prices && config.mode !== "market") {
+          if (prices && config.mode !== "market" && !inventoryFirst) {
             const inventoryQuotesStartedAt = now();
             for (let offset = 0; offset < ids2.length; offset += 250) {
               check();
@@ -29575,7 +29674,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           check();
           if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
           let market = [], marketError = null, marketCoverage = null;
-          if (config.mode !== "inventory" && typeof readMarketCandidates === "function") {
+          if (marketNeeded && config.mode !== "inventory" && typeof readMarketCandidates === "function") {
             try {
               check();
               const data = await waitRead((report) => readMarketCandidates({
@@ -29613,7 +29712,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           check();
           const marketProvider = typeof readMarketCandidates === "function";
           const marketQuoteLimited = marketCoverage?.requested > 0 && marketCoverage.valid < marketCoverage.requested;
-          if (config.mode !== "inventory" && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
+          if (marketNeeded && config.mode !== "inventory" && marketProvider && (!market.length && !marketQuoteLimited || marketError)) {
             const reason = "FC27_STREAMLINED_MARKET_UNAVAILABLE";
             const unavailable = {
               status: "blocked",
@@ -29640,18 +29739,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           check();
           const quoteAt = now();
           if (fatalStreamlinedQuoteFailure(quoteReadError)) throw Error(quoteReadError);
-          quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids2, quoteAt, { requireFresh: false });
+          if (!inventoryFirst) quoteReadError ??= streamlinedQuoteFailure(references, quoteSource, ids2, quoteAt, { requireFresh: false });
           const inventoryCoverage = streamlinedQuoteCoverage(references, quoteSource, ids2, quoteAt);
           const quoteCoverage = {
             inventory: inventoryCoverage,
             market: marketCoverage,
-            limited: !!quoteReadError || !!prices && config.mode !== "market" && inventoryCoverage.valid < inventoryCoverage.requested || !!marketCoverage && marketCoverage.valid < marketCoverage.requested
+            limited: !!quoteReadError || !inventoryFirst && !!prices && config.mode !== "market" && inventoryCoverage.valid < inventoryCoverage.requested || !!marketCoverage && marketCoverage.valid < marketCoverage.requested
           };
           const inventory = input.inventory.map((item2) => {
             const q = references[item2.definitionId]?.quotes?.[quoteSource];
             const valid3 = validStreamlinedQuote(q, quoteSource, item2.definitionId, quoteAt);
             return { ...item2, price: valid3 ? q.price : null, quote: valid3 ? q : null };
-          }).filter((item2) => !quoteCoverage.limited || item2.quote !== null);
+          }).filter((item2) => inventoryFirst || !quoteCoverage.limited || item2.quote !== null);
           const eligibleKeys = new Set(filtered.items.map((item2) => item2.key)), buckets = /* @__PURE__ */ new Map();
           for (const item2 of [...inventory.filter((item3) => eligibleKeys.has(item3.key)), ...market]) {
             const key = JSON.stringify([item2.source, item2.pile, item2.rating, item2.points]);
@@ -29706,16 +29805,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const selected = config.objective === "fewest-cards" ? routes.reduce((a, b) => a.count <= b.count ? a : b) : routes[0];
               result = { ...output, ...expandStreamlinedRoute(selected, input.challenge), route: selected, routes, selectedRoute: selected.id };
             } else result = output;
-          } else result = await runStreamlinedPlan({
-            ...input,
-            inventory,
-            market,
-            mode: config.mode,
-            objective: config.objective,
-            quoteSource,
-            quoteAt,
-            now
-          }, options);
+          } else {
+            result = await runStreamlinedPlan({
+              ...input,
+              inventory,
+              market,
+              mode: config.mode,
+              objective: config.objective,
+              quoteSource,
+              quoteAt,
+              now
+            }, options);
+            routes = result.routes ?? [];
+          }
           check();
           if (!result.items?.length && quoteCoverage.limited) {
             return {
@@ -29853,7 +29955,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             quoteCoverage,
             marketError,
             marketAvailable: typeof readMarketCandidates === "function",
-            marketPending: config.mode !== "inventory" && market.length === 0 && !marketQuoteLimited,
+            marketPending: marketNeeded && config.mode !== "inventory" && market.length === 0 && !marketQuoteLimited,
             policy: input.policy,
             inventoryStats: input.inventoryStats ?? null,
             inventorySelection,
@@ -33393,7 +33495,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.31" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.32" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33711,8 +33813,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.31"}`,
-    version: "27.0.31",
+    title: `FC Automation Tool ${"27.0.32"}`,
+    version: "27.0.32",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

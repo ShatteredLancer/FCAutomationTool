@@ -17,7 +17,7 @@ it('freezes exact items/batches and detects mutations including score/status', (
 
 it('preserves already-frozen legacy objectives and fingerprints after the new default changes', () => {
   const previous = testPlan();
-  for (const objective of ['lowest-coins', 'fewest-cards']) {
+  for (const objective of ['lowest-value', 'lowest-coins', 'fewest-cards']) {
     const legacy = createStreamlinedPlan({ ...previous, result: previous, objective });
     const serialized = JSON.stringify(legacy);
     expect(assertStreamlinedPlan(JSON.parse(serialized)).objective).toBe(objective);

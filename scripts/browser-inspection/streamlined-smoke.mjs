@@ -250,6 +250,7 @@ async function exerciseStreamlinedBatchedInventory(page) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
   await page.locator('[data-mode]').selectOption('inventory');
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.getByText(/库存报价 \d+ \/ 482 · FUTBIN/, { exact: false }).waitFor();
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-batched-inventory-progress.png' });
@@ -364,6 +365,7 @@ async function exerciseStreamlinedOwnedRecipe(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.match(await page.locator('.route-list button').first().innerText(), /总价值 11,600.*待购 5,200.*库存 8 \/ 待购 1/);
@@ -406,6 +408,7 @@ async function exerciseStreamlinedDistinctRecipe(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.match(await page.locator('.route-list button').first().innerText(), /总价值 14,700.*至少 9 批/);
@@ -450,6 +453,7 @@ async function exerciseStreamlinedQuoteWait(page) {
   });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.getByText('库存报价 0 / 1 · FUTBIN · 已等待 1 秒', { exact: true }).waitFor();
   assert.ok(await page.evaluate(() => globalThis.quoteWaitSmoke.heartbeats >= 10), 'Read wait does not block the UI thread');
@@ -495,6 +499,7 @@ async function exerciseStreamlinedQuoteExpiry(page) {
   });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.getByText('刷新过期补卡报价 0 / 1 · FUTBIN · 已等待 0 秒', { exact: true }).waitFor();
   await page.getByText('FUTBIN 补卡报价在等待中到期，刷新后仍未取得完整有效报价。请重新生成方案；不会使用过期报价或自动切换来源。', { exact: true }).waitFor();
@@ -529,7 +534,21 @@ async function exerciseStreamlinedValue(page) {
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
   await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
-  assert.equal(await page.locator('[data-objective]').inputValue(), 'lowest-value');
+  assert.equal(await page.locator('[data-objective]').inputValue(), 'inventory-first');
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.locator('.route-list button').first().waitFor();
+  assert.match(await page.locator('.route-list button').first().innerText(), /待购 0.*1 张/);
+  assert.deepEqual(await page.evaluate(() => globalThis.valueSmoke), { quotes: 0, market: 0 });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 700 });
+    const dimensions = await page.getByRole('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width,
+      scroll: node.scrollWidth, client: node.clientWidth }));
+    assert.ok(dimensions.width <= width && dimensions.scroll <= dimensions.client + 1, 'Inventory-first fits desktop and mobile');
+    await page.locator('.route-list button').first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `artifacts/fc27-browser/streamlined-inventory-first-${width}.png` });
+  }
+  // The prior economic behavior remains available as an explicit choice.
+  await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
   assert.match(await page.locator('.route-list button').first().innerText(), /总价值 8,000.*待购 8,000.*4 张/);
