@@ -67,6 +67,27 @@ it('does not use stale FSU ready cache as exact validation', async () => {
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
 });
 
+it('retries exact Club identity when EA ignores a multi-definition filter', async () => {
+  const x = await fixture();
+  x.state.filterClubQueries = true;
+  x.state.clubQueryMode = 'bulk-extra';
+  const selected = x.plan.selected.slice(0, 2);
+  const result = await settle(x.provider.validateItems({ selected }));
+  expect(result.items.map(({ id, definitionId }) => ({ id, definitionId })))
+    .toEqual(selected.map(({ id, definitionId }) => ({ id, definitionId })));
+  expect(x.calls.filter(call => call.method === 'POST' && call.url.endsWith('/club'))).toHaveLength(3);
+});
+
+it('keeps blocking when a single-definition retry cannot find the planned item identity', async () => {
+  const x = await fixture();
+  x.state.filterClubQueries = true;
+  x.state.clubQueryMode = 'bulk-extra';
+  x.state.players = x.state.players.slice(1);
+  await expect(settle(x.provider.validateItems({ selected: x.plan.selected.slice(0, 2) })))
+    .rejects.toMatchObject({ message: 'FC27_EXACT_ITEMS_CHANGED', mismatch: 'club-response-item-missing' });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+});
+
 it.each(['occupied', 'bench', 'slot', 'before-write'])('blocks Puzzle %s at the native save boundary', async kind => {
   const x = await fixture();
   const provider = await createFc27TraditionalProvider(x.root, { canWrite: () => true });

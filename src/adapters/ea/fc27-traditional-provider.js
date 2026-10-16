@@ -159,14 +159,39 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
     if (!Array.isArray(refs) || refs.length < 1 || refs.length > 11 || refs.some(ref => !identity(ref.id)
         || !identity(ref.definitionId) || ref.pile !== 'club') || new Set(refs.map(ref => ref.id)).size !== refs.length
         || new Set(refs.map(ref => ref.definitionId)).size !== refs.length) return fail('FC27_EXACT_ITEMS_CHANGED');
+    const read = definitionIds => club.readPage({ start: 0, count: 250, definitionIds });
+    const exact = (items, requested) => {
+      if (!Array.isArray(items)) return { mismatch: 'club-response-shape' };
+      if (items.length >= 250) return { mismatch: 'club-response-page-full' };
+      if (new Set(items.map(item => item.id)).size !== items.length) return { mismatch: 'club-response-duplicate-id' };
+      if (items.some(item => !requested.some(ref => ref.definitionId === item.definitionId))) {
+        return { mismatch: 'club-response-unexpected-version' };
+      }
+      const selected = requested.map(ref => items.find(item => item.id === ref.id && item.definitionId === ref.definitionId));
+      return selected.every(Boolean) ? { items: selected.map(protectedItem) } : { mismatch: 'club-response-item-missing' };
+    };
     // A bounded native query also proves absence when FSU ready would return cached=true.
-    const items = await club.readPage({ start: 0, count: 250, definitionIds: refs.map(ref => ref.definitionId) });
+    // Some EA responses do not preserve a multi-definition filter. Retry only that
+    // exact read one definition at a time; identity and response-shape guards stay
+    // strict, and no fallback uses the shared Club cache.
+    const bulk = await read(refs.map(ref => ref.definitionId));
     assert();
-    if (items.length >= 250 || new Set(items.map(item => item.id)).size !== items.length
-        || items.some(item => !refs.some(ref => ref.definitionId === item.definitionId))) {
-      const error = new Error('FC27_EXACT_ITEMS_CHANGED'); error.mismatch = 'club-response'; throw error;
+    // An empty Club response is valid during post-submit reconciliation: it
+    // proves that none of the consumed refs remains in Club.
+    if (bulk.length === 0) return [];
+    const selected = exact(bulk, refs);
+    if (selected.items) return selected.items;
+    const recovered = [];
+    for (const ref of refs) {
+      const rows = await read([ref.definitionId]);
+      assert();
+      const match = exact(rows, [ref]);
+      if (!match.items) {
+        const error = new Error('FC27_EXACT_ITEMS_CHANGED'); error.mismatch = match.mismatch; throw error;
+      }
+      recovered.push(match.items[0]);
     }
-    return items.filter(item => refs.some(ref => ref.id === item.id && ref.definitionId === item.definitionId)).map(protectedItem);
+    return recovered;
   };
   const rewardCount = async reward => projectFc27OwnedPackCount(root, success(await transport.request('packs')), reward);
   const unassigned = async () => {
