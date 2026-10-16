@@ -67,7 +67,7 @@ it('does not use stale FSU ready cache as exact validation', async () => {
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
 });
 
-it('retries exact Club identity when EA ignores a multi-definition filter', async () => {
+it('retries exact Club identity when EA ignores both multi- and single-definition filters', async () => {
   const x = await fixture();
   x.state.filterClubQueries = true;
   x.state.clubQueryMode = 'bulk-extra';

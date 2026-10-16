@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.38
+// @version      27.0.39
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.38", at: Date.now(), status: 'started',
+    state = { version: "27.0.39", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -1821,15 +1821,18 @@
       assert();
       if (!Array.isArray(refs3) || refs3.length < 1 || refs3.length > 11 || refs3.some((ref) => !identity4(ref.id) || !identity4(ref.definitionId) || ref.pile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail4("FC27_EXACT_ITEMS_CHANGED");
       const read = (definitionIds) => club.readPage({ start: 0, count: 250, definitionIds });
-      const exact = (items, requested) => {
+      const exact = (items, requested, { allowUnrequested = false } = {}) => {
         if (!Array.isArray(items)) return { mismatch: "club-response-shape" };
-        if (items.length >= 250) return { mismatch: "club-response-page-full" };
         if (new Set(items.map((item2) => item2.id)).size !== items.length) return { mismatch: "club-response-duplicate-id" };
-        if (items.some((item2) => !requested.some((ref) => ref.definitionId === item2.definitionId))) {
+        if (!allowUnrequested && items.some((item2) => !requested.some((ref) => ref.definitionId === item2.definitionId))) {
+          return { mismatch: "club-response-unexpected-version" };
+        }
+        if (items.some((item2) => requested.some((ref) => ref.id === item2.id && ref.definitionId !== item2.definitionId))) {
           return { mismatch: "club-response-unexpected-version" };
         }
         const selected2 = requested.map((ref) => items.find((item2) => item2.id === ref.id && item2.definitionId === ref.definitionId));
-        return selected2.every(Boolean) ? { items: selected2.map(protectedItem) } : { mismatch: "club-response-item-missing" };
+        if (selected2.every(Boolean)) return { items: selected2.map(protectedItem) };
+        return { mismatch: items.length >= 250 ? "club-response-page-full" : "club-response-item-missing" };
       };
       const bulk = await read(refs3.map((ref) => ref.definitionId));
       assert();
@@ -1840,7 +1843,7 @@
       for (const ref of refs3) {
         const rows = await read([ref.definitionId]);
         assert();
-        const match = exact(rows, [ref]);
+        const match = exact(rows, [ref], { allowUnrequested: true });
         if (!match.items) {
           const error2 = new Error("FC27_EXACT_ITEMS_CHANGED");
           error2.mismatch = match.mismatch;
@@ -33750,7 +33753,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.38" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.39" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34068,8 +34071,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.38"}`,
-    version: "27.0.38",
+    title: `FC Automation Tool ${"27.0.39"}`,
+    version: "27.0.39",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

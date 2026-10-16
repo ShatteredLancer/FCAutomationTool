@@ -47,7 +47,7 @@ export function executionRuntime() {
       if (state.timeout) return;
       let response;
       if (this.url.endsWith('/club')) response = ok({ itemData: state.clubPages?.[this.requestBody?.start] ?? (state.filterClubQueries && this.requestBody?.defId
-        ? state.clubQueryMode === 'bulk-extra' && this.requestBody.defId.includes(',')
+        ? state.clubQueryMode === 'bulk-extra'
           ? state.players
           : state.players.filter(item => this.requestBody.defId.split(',').map(Number).includes(item.resourceId)) : state.players) });
       else if (this.url.endsWith('/purchased/items')) response = ok({ itemData: state.unassigned });

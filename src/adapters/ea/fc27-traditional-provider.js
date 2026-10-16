@@ -160,15 +160,18 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
         || !identity(ref.definitionId) || ref.pile !== 'club') || new Set(refs.map(ref => ref.id)).size !== refs.length
         || new Set(refs.map(ref => ref.definitionId)).size !== refs.length) return fail('FC27_EXACT_ITEMS_CHANGED');
     const read = definitionIds => club.readPage({ start: 0, count: 250, definitionIds });
-    const exact = (items, requested) => {
+    const exact = (items, requested, { allowUnrequested = false } = {}) => {
       if (!Array.isArray(items)) return { mismatch: 'club-response-shape' };
-      if (items.length >= 250) return { mismatch: 'club-response-page-full' };
       if (new Set(items.map(item => item.id)).size !== items.length) return { mismatch: 'club-response-duplicate-id' };
-      if (items.some(item => !requested.some(ref => ref.definitionId === item.definitionId))) {
+      if (!allowUnrequested && items.some(item => !requested.some(ref => ref.definitionId === item.definitionId))) {
+        return { mismatch: 'club-response-unexpected-version' };
+      }
+      if (items.some(item => requested.some(ref => ref.id === item.id && ref.definitionId !== item.definitionId))) {
         return { mismatch: 'club-response-unexpected-version' };
       }
       const selected = requested.map(ref => items.find(item => item.id === ref.id && item.definitionId === ref.definitionId));
-      return selected.every(Boolean) ? { items: selected.map(protectedItem) } : { mismatch: 'club-response-item-missing' };
+      if (selected.every(Boolean)) return { items: selected.map(protectedItem) };
+      return { mismatch: items.length >= 250 ? 'club-response-page-full' : 'club-response-item-missing' };
     };
     // A bounded native query also proves absence when FSU ready would return cached=true.
     // Some EA responses do not preserve a multi-definition filter. Retry only that
@@ -185,7 +188,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
     for (const ref of refs) {
       const rows = await read([ref.definitionId]);
       assert();
-      const match = exact(rows, [ref]);
+      const match = exact(rows, [ref], { allowUnrequested: true });
       if (!match.items) {
         const error = new Error('FC27_EXACT_ITEMS_CHANGED'); error.mismatch = match.mismatch; throw error;
       }
