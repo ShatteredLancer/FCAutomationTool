@@ -300,6 +300,8 @@ it('exports procurement cost and selected public versions after a successful con
       estimatedCost: 500, initialEstimatedCost: 500, refinementPasses: 0, optimizationBudgetExhausted: false,
       purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true }),
     expect.objectContaining({ area: 'puzzle', event: 'procurement-card', definitionId: 901, referencePrice: 500 }),
+    expect.objectContaining({ area: 'puzzle', event: 'catalog-query', phase: 'bronze', attempt: 1,
+      requestedCount: 20, responseCount: 1, cached: true }),
   ]));
   expect(JSON.stringify(payload)).not.toMatch(/accountScope|selectedOwned|catalogRef|operationId/);
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.35
+// @version      27.0.36
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.35", at: Date.now(), status: 'started',
+    state = { version: "27.0.36", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5360,7 +5360,7 @@
       marketAvailabilityVerified: false
     };
   }
-  function planFc27PuzzleShortageQueries(input, entries2 = []) {
+  function planFc27PuzzleShortageQueries(input, entries2 = [], { usedQueries = [] } = {}) {
     const pool = poolOf(input);
     if (pool.status !== "candidates") return stop4(pool.reason);
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
@@ -5428,6 +5428,40 @@
       const resolveClub = createFc27ClubResolver(input.clubLinks);
       if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
       const candidates = [...pool.candidates, ...marketCandidates(input, entries2)];
+      if (clubs.length && tiers2.length > 1) {
+        const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
+        for (const rule of clubs) {
+          const ids2 = new Set(rule.ids.map(resolveClub));
+          const matching = new Set(candidates.filter((item2) => ids2.has(resolveClub(item2.teamId)) && tiers2.includes(levelOf(quality(item2.rating)))).map((item2) => item2.definitionId));
+          if (matching.size >= rule.count) continue;
+          const lane = generic.queries.find((query2) => rule.ids.includes(query2.team));
+          const level = lane?.level ?? tiers2[0];
+          const query = rule.ids.map((team) => ({ start: 0, count: 20, level, team })).find(unused);
+          if (query) add2(query);
+        }
+        const fillers = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
+        const groups = /* @__PURE__ */ new Map();
+        for (const item2 of candidates.filter((item3) => tiers2.includes(levelOf(quality(item3.rating))))) {
+          const key = resolveClub(item2.teamId);
+          if (!positive7(key)) continue;
+          if (!groups.has(key)) groups.set(key, { team: item2.teamId, ids: /* @__PURE__ */ new Map() });
+          groups.get(key).ids.set(item2.definitionId, quality(item2.rating));
+        }
+        const coverage = (group) => fillers.map((rule) => Math.min(
+          rule.count,
+          [...group.ids.values()].filter((tier) => tier === rule.qualities[0]).length
+        ));
+        const ranked = [...groups.values()].map((group) => ({ ...group, coverage: coverage(group) })).sort((a, b) => b.coverage.reduce((n, count2) => n + count2, 0) - a.coverage.reduce((n, count2) => n + count2, 0) || b.coverage[0] - a.coverage[0] || a.team - b.team);
+        if (!ranked.some((group) => group.coverage[0] > 0)) {
+          const query = { start: 0, count: 20, level: levelOf(fillers[0].qualities[0]) };
+          if (unused(query)) add2(query);
+        }
+        for (const group of ranked) for (const rule of fillers) {
+          const query = { start: 0, count: 20, level: levelOf(rule.qualities[0]), team: group.team };
+          if (unused(query)) add2(query);
+        }
+        return { status: "ready", executable: false, queries, complete: false };
+      }
       const lanes = tiers2.map((level) => {
         const groups = /* @__PURE__ */ new Map();
         for (const item2 of candidates.filter((item3) => levelOf(quality(item3.rating)) === level)) {
@@ -5854,7 +5888,8 @@
         search: null,
         initialEstimatedCost: null,
         refinementPasses: 0,
-        optimizationBudgetExhausted: false
+        optimizationBudgetExhausted: false,
+        catalogQueries: []
       };
       let quoteCompleted = 0;
       let quoteTotal = 0;
@@ -6008,10 +6043,12 @@
             break;
           }
           const query = pendingQueries.shift();
+          const previousHits = cacheHits;
           const page = await cachedRead("catalog", query);
           usedQueries.push(query);
           if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same8(page.query, query) || !id2(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw new Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
           pages.push(page);
+          diagnostics.catalogQueries.push({ ...query, returnedCount: page.entries.length, cached: cacheHits > previousHits });
           for (const entry of page.entries) {
             if (entries2.has(entry.definitionId) && !same8(entries2.get(entry.definitionId), entry)) throw new Error("FC27_PURCHASE_CATALOG_CHANGED");
             entries2.set(entry.definitionId, entry);
@@ -6190,7 +6227,11 @@
             }
             pendingQueries = [...refinementQueries(incumbent[0], pages, usedQueries), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same8(used, candidate)) && all.findIndex((other) => same8(other, candidate)) === index);
           } else if (seed.status !== "ready" && usedQueries.length < 3) {
-            const nextRoute = planFc27PuzzleShortageQueries(input, [...entries2.values()]);
+            const nextRoute = planFc27PuzzleShortageQueries(
+              input,
+              [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId)),
+              { usedQueries }
+            );
             if (nextRoute.status !== "ready") return finish(nextRoute);
             pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same8(used, candidate)) && all.findIndex((other) => same8(other, candidate)) === index);
           }
@@ -10558,6 +10599,15 @@
             optimalWithinPool: searchEvidence.optimalWithinPool,
             durationMs: log.finishedAt - log.startedAt
           });
+          for (const deficit of (searchEvidence.deficits ?? []).slice(0, 11)) await diagnosticLog2?.record?.({
+            area: "puzzle",
+            event: "constraint-deficit",
+            phase: "inventory",
+            setId: target.setId,
+            challengeId: target.challengeId,
+            source: deficit.kind,
+            count: deficit.minimumMissing
+          });
           const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
           if (purchase) await diagnosticLog2?.record?.({
             area: "puzzle",
@@ -10593,6 +10643,21 @@
             searchComplete: d?.searchComplete,
             optimalWithinPool: d?.optimalWithinPool,
             cached: purchase.cacheHits > 0
+          });
+          for (const [index, query] of (d?.catalogQueries ?? []).slice(0, 3).entries()) await diagnosticLog2?.record?.({
+            area: "puzzle",
+            event: "catalog-query",
+            setId: target.setId,
+            challengeId: target.challengeId,
+            attempt: index + 1,
+            phase: query.level,
+            queryTeamId: query.team,
+            queryNationId: query.nation,
+            queryLeagueId: query.league,
+            offset: query.start,
+            requestedCount: query.count,
+            responseCount: query.returnedCount,
+            cached: query.cached
           });
           for (const card of purchase?.cards ?? []) await diagnosticLog2?.record?.({
             area: "puzzle",
@@ -26483,6 +26548,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "expiresAt",
     "catalogAttempts",
     "quoteAttempts",
+    "queryTeamId",
+    "queryNationId",
+    "queryLeagueId",
     "safeCandidates",
     "usableCandidates",
     "excludedUnavailable",
@@ -33606,7 +33674,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.35" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.36" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33924,8 +33992,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.35"}`,
-    version: "27.0.35",
+    title: `FC Automation Tool ${"27.0.36"}`,
+    version: "27.0.36",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

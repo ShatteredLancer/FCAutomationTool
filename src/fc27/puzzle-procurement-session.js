@@ -82,7 +82,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
       failurePhase: null, excludedUnavailable: 0, replans: 0, searchComplete: null,
       optimalWithinPool: null, estimatedCost: null, priceSource: null, search: null,
-      initialEstimatedCost: null, refinementPasses: 0, optimizationBudgetExhausted: false };
+      initialEstimatedCost: null, refinementPasses: 0, optimizationBudgetExhausted: false, catalogQueries: [] };
     let quoteCompleted = 0; let quoteTotal = 0;
     const reportProgress = value => {
       if (typeof onProgress !== 'function') return;
@@ -190,12 +190,14 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.localReason = 'FC27_PUZZLE_SEARCH_LIMIT'; break;
         }
         const query = pendingQueries.shift();
+        const previousHits = cacheHits;
         const page = await cachedRead('catalog', query); usedQueries.push(query);
         if (page?.status !== 'observed' || page.season !== '27' || page.source !== 'ea-defid'
             || !same(page.query, query) || !id(page.observedAt) || page.observedAt > now()
             || now() - page.observedAt > 86400000 || !Array.isArray(page.entries) || page.entries.length > query.count
             || new Set(page.entries.map(item => item?.definitionId)).size !== page.entries.length) throw new Error('FC27_PURCHASE_CATALOG_UNVERIFIED');
         pages.push(page);
+        diagnostics.catalogQueries.push({ ...query, returnedCount: page.entries.length, cached: cacheHits > previousHits });
         for (const entry of page.entries) {
           if (entries.has(entry.definitionId) && !same(entries.get(entry.definitionId), entry)) throw new Error('FC27_PURCHASE_CATALOG_CHANGED');
           entries.set(entry.definitionId, entry);
@@ -343,7 +345,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
               && all.findIndex(other => same(other, candidate)) === index);
         } else if (seed.status !== 'ready' && usedQueries.length < 3) {
-          const nextRoute = planFc27PuzzleShortageQueries(input, [...entries.values()]);
+          const nextRoute = planFc27PuzzleShortageQueries(input,
+            [...entries.values()].filter(item => !unavailable.has(item.definitionId)), { usedQueries });
           if (nextRoute.status !== 'ready') return finish(nextRoute);
           pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) =>
             !usedQueries.some(used => same(used, candidate)) && all.findIndex(other => same(other, candidate)) === index);

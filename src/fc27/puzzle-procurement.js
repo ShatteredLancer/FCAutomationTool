@@ -189,7 +189,7 @@ function projectSuggestion(squad, facts, requirementCount) {
 
 // Missing quality/count materials cannot produce an eleven-player repair seed.
 // Sample the actually missing tier first, preserving the same three-page bound.
-export function planFc27PuzzleShortageQueries(input, entries = []) {
+export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries = [] } = {}) {
   const pool = poolOf(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
@@ -269,6 +269,44 @@ export function planFc27PuzzleShortageQueries(input, entries = []) {
     const resolveClub = createFc27ClubResolver(input.clubLinks);
     if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
     const candidates = [...pool.candidates, ...marketCandidates(input, entries)];
+    if (clubs.length && tiers.length > 1) {
+      const unused = query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query));
+      // OR clubs share one requirement. Reserve one identity lane at a time;
+      // after a successful anchor, spend the remaining pages on compatible
+      // quality tiers of the same dense clubs, not the alternative OR club.
+      for (const rule of clubs) {
+        const ids = new Set(rule.ids.map(resolveClub));
+        const matching = new Set(candidates.filter(item => ids.has(resolveClub(item.teamId))
+          && tiers.includes(levelOf(quality(item.rating)))).map(item => item.definitionId));
+        if (matching.size >= rule.count) continue;
+        const lane = generic.queries.find(query => rule.ids.includes(query.team));
+        const level = lane?.level ?? tiers[0];
+        const query = rule.ids.map(team => ({ start: 0, count: 20, level, team })).find(unused);
+        if (query) add(query);
+      }
+      const fillers = material.filter(rule => rule.count > 0).sort((a, b) => b.count - a.count);
+      const groups = new Map();
+      for (const item of candidates.filter(item => tiers.includes(levelOf(quality(item.rating))))) {
+        const key = resolveClub(item.teamId);
+        if (!positive(key)) continue;
+        if (!groups.has(key)) groups.set(key, { team: item.teamId, ids: new Map() });
+        groups.get(key).ids.set(item.definitionId, quality(item.rating));
+      }
+      const coverage = group => fillers.map(rule => Math.min(rule.count,
+        [...group.ids.values()].filter(tier => tier === rule.qualities[0]).length));
+      const ranked = [...groups.values()].map(group => ({ ...group, coverage: coverage(group) }))
+        .sort((a, b) => b.coverage.reduce((n, count) => n + count, 0) - a.coverage.reduce((n, count) => n + count, 0)
+          || b.coverage[0] - a.coverage[0] || a.team - b.team);
+      if (!ranked.some(group => group.coverage[0] > 0)) {
+        const query = { start: 0, count: 20, level: levelOf(fillers[0].qualities[0]) };
+        if (unused(query)) add(query);
+      }
+      for (const group of ranked) for (const rule of fillers) {
+        const query = { start: 0, count: 20, level: levelOf(rule.qualities[0]), team: group.team };
+        if (unused(query)) add(query);
+      }
+      return { status: 'ready', executable: false, queries, complete: false };
+    }
     const lanes = tiers.map(level => {
       const groups = new Map();
       for (const item of candidates.filter(item => levelOf(quality(item.rating)) === level)) {

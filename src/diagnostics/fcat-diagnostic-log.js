@@ -12,7 +12,7 @@ const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transp
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'processingMs', 'schedulingMs',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
-  'catalogAttempts', 'quoteAttempts', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
+  'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
   'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',

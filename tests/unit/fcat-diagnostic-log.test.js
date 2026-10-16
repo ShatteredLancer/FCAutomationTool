@@ -178,6 +178,19 @@ it('retains the real Puzzle solver reason and candidate counts across Gallery sy
   expect((await t.log.exportPayload()).criticalEntries[1]).not.toHaveProperty('localReason');
 });
 
+it('retains only public Puzzle query selectors and aggregate constraint deficits', async () => {
+  const t = harness({ maxEntries: 1 });
+  await t.log.record({ area: 'puzzle', event: 'catalog-query', phase: 'silver', attempt: 1,
+    queryTeamId: 9011, queryNationId: 1, queryLeagueId: 2, offset: 0, requestedCount: 20,
+    responseCount: 1, cached: true, accountScope: 'secret', inventory: [{ id: 123 }], rawResponse: 'secret' });
+  await t.log.record({ area: 'puzzle', event: 'constraint-deficit', phase: 'inventory', source: 'quality-count', count: 2 });
+  const payload = await t.log.exportPayload();
+  expect(payload.criticalEntries[0]).toMatchObject({ event: 'catalog-query', phase: 'silver', queryTeamId: 9011,
+    queryNationId: 1, queryLeagueId: 2, responseCount: 1, cached: true });
+  expect(payload.criticalEntries[1]).toMatchObject({ event: 'constraint-deficit', source: 'quality-count', count: 2 });
+  expect(JSON.stringify(payload)).not.toMatch(/inventory.*id|secret|accountScope|rawResponse/);
+});
+
 it('retains bounded redacted trade stages independently of sync floods and reloads', async () => {
   const t = harness({ maxEntries: 2, maxCriticalEntries: 2 });
   for (const phase of ['prepare', 'mutation', 'readback']) await t.log.record({ area: 'gallery', event: 'listing-stage',

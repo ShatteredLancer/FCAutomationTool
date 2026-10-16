@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "evidence": "Requirements transcribed from the 2026-10-16 Set 45 Challenge 79 screenshot; club IDs, inventory, positions, catalog pages and prices below are synthetic, not recovered account data.",
+  "requirements": [
+    { "count": 1, "scope": 0, "pairs": [{ "key": 12, "values": [9011, 9012] }] },
+    { "count": -1, "scope": 1, "pairs": [{ "key": 9, "values": [4] }] },
+    { "count": 3, "scope": 0, "pairs": [{ "key": 17, "values": [2] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [1] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [14] }] }
+  ],
+  "ownedGroups": [
+    { "count": 3, "rating": 60, "teamId": 101 },
+    { "count": 2, "rating": 60, "teamId": 100 },
+    { "count": 1, "rating": 60, "teamId": 102 },
+    { "count": 1, "rating": 60, "teamId": 103 },
+    { "count": 1, "rating": 60, "teamId": 104 },
+    { "count": 9, "rating": 70, "teamId": 200, "distinctTeams": true }
+  ],
+  "pages": [
+    { "query": { "start": 0, "count": 20, "level": "silver", "team": 9011 }, "rating": 70, "count": 1 },
+    { "query": { "start": 0, "count": 20, "level": "silver", "team": 9012 }, "rating": 70, "count": 1 },
+    { "query": { "start": 0, "count": 20, "level": "bronze", "team": 101 }, "rating": 60, "count": 2 },
+    { "query": { "start": 0, "count": 20, "level": "silver", "team": 101 }, "rating": 70, "count": 2 }
+  ]
+}

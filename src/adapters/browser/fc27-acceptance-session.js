@@ -822,6 +822,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           searchComplete: searchEvidence.searchComplete,
           optimalWithinPool: searchEvidence.optimalWithinPool,
           durationMs: log.finishedAt - log.startedAt });
+        for (const deficit of (searchEvidence.deficits ?? []).slice(0, 11)) await diagnosticLog?.record?.({
+          area: 'puzzle', event: 'constraint-deficit', phase: 'inventory', setId: target.setId, challengeId: target.challengeId,
+          source: deficit.kind, count: deficit.minimumMissing });
         const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
         if (purchase) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-result',
           setId: target.setId, challengeId: target.challengeId, status: purchase.status, reason: purchase.reason,
@@ -837,6 +840,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
           searchComplete: d?.searchComplete, optimalWithinPool: d?.optimalWithinPool,
           cached: purchase.cacheHits > 0 });
+        for (const [index, query] of (d?.catalogQueries ?? []).slice(0, 3).entries()) await diagnosticLog?.record?.({
+          area: 'puzzle', event: 'catalog-query', setId: target.setId, challengeId: target.challengeId,
+          attempt: index + 1, phase: query.level, queryTeamId: query.team, queryNationId: query.nation,
+          queryLeagueId: query.league, offset: query.start, requestedCount: query.count,
+          responseCount: query.returnedCount, cached: query.cached });
         for (const card of purchase?.cards ?? []) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-card',
           setId: target.setId, challengeId: target.challengeId, definitionId: card.definitionId,
           referencePrice: card.referencePrice, source: card.source });
