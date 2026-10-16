@@ -2,6 +2,8 @@ import { expect, it, vi } from 'vitest';
 import { streamlinedRuntime, pendingContribution } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedReconciler } from '../../src/adapters/ea/fc27-streamlined-reconciliation.js';
 import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
+import nativeObservation from '../fixtures/fc27-streamlined-reset-observation-2026-10-16.json';
+import { createHash } from 'node:crypto';
 
 async function setup(options) {
   const f = streamlinedRuntime(options), pending = await pendingContribution(f);
@@ -9,6 +11,25 @@ async function setup(options) {
   if (f.storage) f.storage.payload = [];
   return { ...f, ...pending };
 }
+
+it.each([0, undefined])('confirms exact completed consumption after a repeat reset with native child counter %s', async timesCompleted => {
+  const f = await setup({ targetScore: 100 });
+  f.batch.receipt = normalizeStreamlinedContributionReply({ success: true, status: 200, response: {
+    setId: 31, challengeId: 61, submittedScore: 100, grantedChallengeAwards: [{ type: 'pack' }] } },
+  { setId: 31, challengeId: 61, previousScore: 0, previousTimesCompleted: 0, itemIds: f.batch.refs.map(ref => ref.id) });
+  for (const method of nativeObservation.methods) expect(createHash('sha256').update(method.source).digest('hex')).toBe(method.sha256);
+  const factory = new Function('JSUtils', 'UTSBCChallengeEntity', 'Date',
+    `return (${nativeObservation.methods.find(row => row.name === 'createChallenge').source})`)(
+    { isNumber: value => typeof value === 'number', isEmpty: value => value == null || value === '' },
+    class { constructor(data) { Object.assign(this, data); } }, { now: () => 1000 });
+  const native = factory.call({ createRequirements: () => [] }, { challengeId: 61, setId: 31,
+    elgOperation: 'AND', submittedScore: 0, status: 'NOT_STARTED', ...(timesCompleted === undefined ? {} : { timesCompleted }) });
+  Object.assign(f.replies.rows[0], { submittedScore: native.submittedScore, status: native.status, timesCompleted: native.timesCompleted });
+  await expect(createFc27StreamlinedReconciler(f.root, { now: () => 1000 }).reconcile(f.record, f.batch))
+    .resolves.toMatchObject({ operationConfirmed: true, cycleResetConfirmed: true, submittedScore: 0 });
+  expect(f.record.batches[0].state).toBe('pending');
+  expect(f.calls.map(row => row.kind)).toEqual(['request', 'progress']);
+});
 
 it('requires durable receipt, exact Club absence and fresh progress without editing shared repositories', async () => {
   const f = await setup(), before = JSON.stringify(f.root.repositories);
@@ -106,7 +127,7 @@ it('serializes readback and stops when the account changes mid-read', async () =
   await expect(retry).resolves.toMatchObject({ operationConfirmed: true });
 });
 
-it('confirms a cycle reset only with an accepted completion receipt and a fresh one-step completion counter', async () => {
+it('keeps one-step counter proof and accepts valid reset state, but rejects known conflicting counters', async () => {
   for (const timesCompleted of [0, 1, 2, null]) {
     const f = streamlinedRuntime({ targetScore: 100 });
     const { record, batch } = await pendingContribution(f);
@@ -115,7 +136,7 @@ it('confirms a cycle reset only with an accepted completion receipt and a fresh 
     { setId: 31, challengeId: 61, previousScore: 0, previousTimesCompleted: 0, itemIds: batch.refs.map(ref => ref.id) });
     f.state.players = []; f.replies.rows[0].submittedScore = 0; f.replies.rows[0].timesCompleted = timesCompleted;
     const result = createFc27StreamlinedReconciler(f.root).reconcile(record, batch);
-    if (timesCompleted === 1) await expect(result).resolves.toMatchObject({ cycleResetConfirmed: true,
+    if (timesCompleted !== 2) await expect(result).resolves.toMatchObject({ cycleResetConfirmed: true,
       operationConfirmed: true, submittedScore: 0, rewardConfirmed: false });
     else await expect(result).rejects.toThrow('CYCLE_RESET_UNVERIFIED');
   }

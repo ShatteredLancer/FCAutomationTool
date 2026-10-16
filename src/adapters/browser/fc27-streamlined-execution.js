@@ -56,6 +56,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'contribution-transaction',
       phase: `contribution-${row.phase}`, status: row.status, reason: row.reason,
       methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
+      mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
       httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
     catch { /* Diagnostic only. */ }
   };
@@ -69,6 +70,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         event: row.stage?.startsWith('contribution-') ? 'contribution-transaction' : 'purchase-native',
         phase: row.stage, status: row.status, currentScore: row.currentScore, targetScore: row.targetScore,
         methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
+        mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
         definitionId: row.definitionId, maxBuy: row.maxBuy,
         referencePrice: row.stage === 'reference' ? row.price : undefined,
         actualPrice: row.stage === 'bid' ? row.price : undefined,

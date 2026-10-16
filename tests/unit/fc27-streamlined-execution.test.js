@@ -11,15 +11,15 @@ import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime.js';
 import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
 
-it.each(['non-expiring', 'rebased-expiry', 'invalid-hub'])('settles mixed Storage/Club with public native contracts: %s', async scenario => {
+it.each(['non-expiring', 'rebased-expiry', 'invalid-hub', 'reset-count-unchanged', 'reset-count-missing', 'reset-count-conflict'])('settles mixed Storage/Club with public native contracts: %s', async scenario => {
   const at = Math.floor(Date.now() / 1000) * 1000, endTime = scenario === 'non-expiring' ? 0 : observedSet(at).endTime;
   const f = streamlinedRuntime({ targetScore: 100, mixedStorage: true, endTime }), memory = new Map();
   installObservedStorage(f);
   f.replies.rows[0].submittedScore = 0;
-  let writes = 0;
+  let writes = 0; const diagnosticLog = { record: vi.fn() };
   const execution = await createFc27StreamlinedExecution(f.root, { context: f.plan.context,
     get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
-    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true,
+    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true, diagnosticLog,
     lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) },
     createProvider: (root, options) => createFc27StreamlinedProvider(root, { ...options,
       createTransport: async () => ({ request: async (_action, target, before) => {
@@ -31,6 +31,11 @@ it.each(['non-expiring', 'rebased-expiry', 'invalid-hub'])('settles mixed Storag
         if (endTime) f.replies.set = observedSet(at + 1501, { endTime: 3599, combinedSubmittedChallengeScore: 100,
           timesCompleted: 1, challengesCompletedCount: 1 });
         if (scenario === 'invalid-hub') f.replies.set.challengesCompletedCount = null;
+        if (scenario.startsWith('reset-count-')) {
+          Object.assign(f.replies.rows[0], { submittedScore: 0, status: 'NOT_STARTED',
+            timesCompleted: scenario === 'reset-count-missing' ? undefined : scenario === 'reset-count-conflict' ? 2 : 0 });
+          Object.assign(f.replies.set, { totalSubmittedScore: 0, timesCompleted: 1, challengesCompletedCount: 0 });
+        }
         return { success: true, status: 200, response: { setId: 31, challengeId: 61, submittedScore: 100,
           grantedChallengeAwards: [{ type: 'pack' }] } };
       } }) }),
@@ -38,7 +43,16 @@ it.each(['non-expiring', 'rebased-expiry', 'invalid-hub'])('settles mixed Storag
   execution.prepare(f.plan);
   expect(writes).toBe(0);
   const result = await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [0] });
-  if (scenario === 'invalid-hub') {
+  if (scenario === 'reset-count-conflict') {
+    expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED' });
+    expect(result.confirmation).toBeUndefined();
+    expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'contribution-readback', mismatch: 'cycle-count-conflict', cycleCountBefore: 0, cycleCountAfter: 2 }));
+    expect((await execution.transaction.recover(f.plan.context)).status).toBe('recovery-required');
+    expect(writes).toBe(1);
+    f.replies.rows[0].timesCompleted = 0;
+    expect((await execution.transaction.recover(f.plan.context)).status).toBe('recovered');
+  } else if (scenario === 'invalid-hub') {
     expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_SET_CHALLENGE_COUNT_UNVERIFIED',
       confirmation: { submittedScore: 100, targetScore: 100, completed: true, finalizationPending: true } });
     expect(result.record.submittedScore).toBe(0); expect(result.record.batches[0].state).toBe('unknown');
@@ -48,9 +62,14 @@ it.each(['non-expiring', 'rebased-expiry', 'invalid-hub'])('settles mixed Storag
     expect((await execution.transaction.recover(f.plan.context)).status).toBe('recovered');
   } else expect(result.status, result.reason).toBe('completed');
   expect(writes).toBe(1);
-  expect(f.calls.filter(row => row.kind === 'storage')).toHaveLength(scenario === 'invalid-hub' ? 4 : 2);
+  expect(f.calls.filter(row => row.kind === 'storage')).toHaveLength(['invalid-hub', 'reset-count-conflict'].includes(scenario) ? 4 : 2);
   expect((await execution.transaction.recover(f.plan.context)).status).toBe('observed');
-  expect(writes).toBe(1); expect(f.challenge.submittedScore).toBe(100);
+  expect(writes).toBe(1); expect(f.challenge.submittedScore).toBe(scenario.startsWith('reset-count-') ? 0 : 100);
+  if (scenario.startsWith('reset-count-')) {
+    expect((await execution.journal.read(f.plan.context)).submittedScore).toBe(100);
+    expect((await execution.journal.read(f.plan.context)).rewardState).toBe('unknown');
+    expect(f.challenge.timesCompleted).toBe(0); // Never manufacture a local increment.
+  }
   expect(f.set.endTime).toBe(endTime);
 });
 

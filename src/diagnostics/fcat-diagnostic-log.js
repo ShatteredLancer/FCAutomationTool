@@ -20,7 +20,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'batchSize', 'count', 'spent'
   'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount', 'excludedGoldRangeCount', 'fsuGoldMax', 'fsuGoldMin', 'inventoryMaxRating',
   'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
   'combinationNodes', 'placementNodes', 'evaluationNodes', 'boundNodes', 'strategyAttempts',
-  'targetScore', 'currentScore', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
+  'targetScore', 'currentScore', 'cycleCountBefore', 'cycleCountAfter', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
 const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled']);
 

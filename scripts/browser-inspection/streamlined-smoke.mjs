@@ -128,12 +128,13 @@ export async function exerciseStreamlined(context) {
     assert.equal(await contribute.isEnabled(), true);
     // Screenshot regression: recovery errors/other-target history must not
     // leave an old generated plan and active contribution button underneath.
-    for (const scenario of ['absent', 'other-target', 'context-error']) {
+    for (const scenario of ['absent', 'other-target', 'context-error', 'cycle-conflict']) {
       await page.evaluate(scenario => {
         globalThis.streamlinedEvidence.recoveryThrows = scenario === 'context-error';
         globalThis.streamlinedEvidence.recoveryOutcome = scenario === 'other-target'
           ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery: { setId: 48, challengeId: 85 } }
-          : { status: 'absent' };
+          : scenario === 'cycle-conflict' ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED' }
+            : { status: 'absent' };
       }, scenario);
       await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
       await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
@@ -142,7 +143,8 @@ export async function exerciseStreamlined(context) {
       assert.equal(await page.locator('.player-row').count(), 0);
       assert.equal(await page.locator('.gallery-native-card').count(), 0);
       const message = await page.locator('[data-status]').innerText();
-      assert.match(message, scenario === 'absent' ? /当前 SBC 没有待恢复的贡献记录/ : scenario === 'other-target' ? /Set 48 \/ Challenge 85/ : /账号、SBC 或积分状态已变化/);
+      assert.match(message, scenario === 'absent' ? /当前 SBC 没有待恢复的贡献记录/ : scenario === 'other-target' ? /Set 48 \/ Challenge 85/
+        : scenario === 'cycle-conflict' ? /EA 已返回本批完成回执.*不要重新买卡或重复投入/ : /账号、SBC 或积分状态已变化/);
       assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 0);
       await page.getByRole('button', { name: '生成方案', exact: true }).click();
       await page.getByText('第 3 批', { exact: false }).waitFor();

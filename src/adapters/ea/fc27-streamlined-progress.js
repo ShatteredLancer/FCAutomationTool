@@ -66,9 +66,11 @@ export function createFc27StreamlinedProgressReader(root, { now = () => Date.now
                   || new Set(rows.map(row => row.id)).size !== rows.length) fail('PROGRESS_READ_UNVERIFIED');
               const selected = rows.find(row => row.id === expected.id);
               if (!selected) fail('PROGRESS_READ_UNVERIFIED');
+              const timesCompleted = ownData(selected, 'timesCompleted');
+              if (timesCompleted != null && !integer(timesCompleted)) fail('PROGRESS_COUNT_UNVERIFIED');
               const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
               finish(null, { fresh: true, observedAt: now(), challenge,
-                timesCompleted: integer(ownData(selected, 'timesCompleted')) ? selected.timesCompleted : null,
+                timesCompleted: timesCompleted ?? null,
                 freshFields: ['status', 'targetScore', 'submittedScore', 'eligibility', 'eligibilityOperation'],
                 setMetadataFresh: false, rewardConfirmed: false });
             } catch (error) { finish(error); }

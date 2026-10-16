@@ -10,6 +10,16 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains bounded cycle counters and proof class, never raw completion or account data', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-readback',
+    status: 'blocked', reason: 'FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED', mismatch: 'cycle-count-conflict',
+    cycleCountBefore: 0, cycleCountAfter: 2, receipt: { itemIds: [123456] }, token: 'secret' });
+  expect((await t.log.exportPayload()).transactionResults.at(-1)).toMatchObject({
+    mismatch: 'cycle-count-conflict', cycleCountBefore: 0, cycleCountAfter: 2 });
+  expect(JSON.stringify(await t.log.exportPayload())).not.toMatch(/receipt|itemIds|123456|secret/);
+});
+
 it('retains contribution failure stages across new planning and quote floods without raw trade data', async () => {
   const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
   await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-readback',

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "observedAt": "2026-10-16T07:00:36.531Z",
+  "sourceUrl": "https://www.ea.com/ea-sports-fc/ultimate-team/web-app/",
+  "authenticated": false,
+  "modes": {
+    "LIMITED": "LIMITED",
+    "NON_REPEATABLE": "NON_REPEATABLE",
+    "REFRESH": "REFRESH",
+    "UNLIMITED": "UNLIMITED"
+  },
+  "methods": [
+    {
+      "name": "createChallenge",
+      "source": "function(t){var e=this,i=JSUtils.isNumber(t.endTime)&&0<t.endTime?t.endTime+Math.round(Date.now()/1e3):0,i={assetId:JSUtils.isEmpty(t.challengeImageId)?t.trophyId:t.challengeImageId,description:t.description,eligibilityOperation:t.elgOperation||SBCEligibilityOperation.AND,endTime:i,formation:t.formation||\"\",id:t.challengeId,name:t.name,priority:t.priority,repeatable:t.repeatable,requirements:this.createRequirements(t.elgReq),rewards:t.awards?t.awards.map(function(t){return e.rewardFactory.createRewardFromSbcData(t)}):[],setId:t.setId,status:t.status,scoreRequirement:null!=(i=t.scoreRequirement)?i:0,submittedScore:null!=(i=t.submittedScore)?i:0,timesCompleted:t.timesCompleted,type:t.type};return new UTSBCChallengeEntity(i)}",
+      "sha256": "30c665c6d3c6a6bd10e24524dec9667670549528e6ba3d503eda8e02a9e32017"
+    },
+    {
+      "name": "reset",
+      "source": "function(){this.status=SBCChallengeStatus.NOT_STARTED,this.squad=null,this.submittedScore=0,this.onDataChange.notify({status:this.status,squad:this.squad})}",
+      "sha256": "a055281b1e7aa8bdac448f1012301eb25f7ca55f97ffca1313ea747a796af07a"
+    }
+  ]
+}

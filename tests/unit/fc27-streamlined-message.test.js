@@ -4,6 +4,13 @@ import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarket
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
   streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
+it('explains a genuine completion-state conflict without telling the user to buy or contribute again', () => {
+  const message = streamlinedExecutionMessage('FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED');
+  expect(message).toContain('EA 已返回本批完成回执');
+  expect(message).toContain('不要重新买卡或重复投入');
+  expect(message).not.toBe('FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED');
+});
+
 it.each([20, 40])('separates confirmed score %s from unfinished local synchronization', score => {
   const result = { status: 'recovery-required', reason: 'FC27_STREAMLINED_SET_CHANGED',
     confirmation: { submittedScore: score, targetScore: 40, finalizationPending: true } };

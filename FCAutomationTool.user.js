@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.34
+// @version      27.0.35
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.34", at: Date.now(), status: 'started',
+    state = { version: "27.0.35", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26537,6 +26537,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "strategyAttempts",
     "targetScore",
     "currentScore",
+    "cycleCountBefore",
+    "cycleCountAfter",
     "requiredSlots",
     "quotedCount",
     "eaScoreCount",
@@ -27566,6 +27568,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
       FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
+      FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: "EA \u5DF2\u8FD4\u56DE\u672C\u6279\u5B8C\u6210\u56DE\u6267\uFF0C\u4F46\u5F52\u96F6\u540E\u7684 SBC \u72B6\u6001\u5B58\u5728\u51B2\u7A81\uFF0C\u6682\u672A\u7ED3\u6E05\u8BB0\u5F55\u3002\u4E0D\u8981\u91CD\u65B0\u4E70\u5361\u6216\u91CD\u590D\u6295\u5165\uFF1B\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: "EA \u8FD4\u56DE\u7684 SBC \u5B8C\u6210\u6B21\u6570\u683C\u5F0F\u5F02\u5E38\uFF0C\u5DF2\u4FDD\u7559\u672C\u6279\u8BB0\u5F55\u3002\u8BF7\u52FF\u91CD\u590D\u6295\u5165\uFF1B\u53EF\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
       FC27_STREAMLINED_RECOVERY_REQUIRED: "\u4E0A\u6B21\u8D21\u732E\u5DF2\u53D1\u51FA\uFF0C\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u518D\u6B21\u6295\u5165\u3002",
       FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
@@ -31397,12 +31401,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 if (rows.some((row) => !integer15(ownData(row, "id"), 1) || ownData(row, "setId") !== expected.setId) || new Set(rows.map((row) => row.id)).size !== rows.length) fail28("PROGRESS_READ_UNVERIFIED");
                 const selected = rows.find((row) => row.id === expected.id);
                 if (!selected) fail28("PROGRESS_READ_UNVERIFIED");
+                const timesCompleted = ownData(selected, "timesCompleted");
+                if (timesCompleted != null && !integer15(timesCompleted)) fail28("PROGRESS_COUNT_UNVERIFIED");
                 const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
                 finish(null, {
                   fresh: true,
                   observedAt: now(),
                   challenge,
-                  timesCompleted: integer15(ownData(selected, "timesCompleted")) ? selected.timesCompleted : null,
+                  timesCompleted: timesCompleted ?? null,
                   freshFields: ["status", "targetScore", "submittedScore", "eligibility", "eligibilityOperation"],
                   setMetadataFresh: false,
                   rewardConfirmed: false
@@ -31539,6 +31545,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
 
+  // src/streamlined/completion.js
+  function streamlinedResetProof(receipt, expected, current2, timesCompleted) {
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeCompleted !== true || receipt.challengeId !== expected?.id || receipt.setId !== expected.setId || !integer15(expected.targetScore, 1) || !integer15(receipt.submittedScore, expected.targetScore) || !integer15(receipt.challengeAwardCount, 0, 100) || !integer15(receipt.setAwardCount, 0, 100) || receipt.challengeAwardCount + receipt.setAwardCount === 0 || current2?.id !== expected.id || current2.setId !== expected.setId || current2.submittedScore !== 0 || current2.targetScore !== expected.targetScore || !same25(current2.context, expected.context) || ![receipt.previousTimesCompleted, timesCompleted].every((value) => value == null || integer15(value))) return null;
+    const previous = receipt.previousTimesCompleted;
+    if (integer15(previous) && integer15(timesCompleted)) {
+      if (timesCompleted === previous + 1) return "challenge-count";
+      if (timesCompleted !== previous) return null;
+    }
+    if (current2.status === "COMPLETED") return "receipt-completed-state";
+    if (["UNLIMITED", "LIMITED", "REFRESH"].includes(expected.repeatabilityMode) && ["NOT_STARTED", "IN_PROGRESS"].includes(current2.status)) return "receipt-reset-state";
+    return null;
+  }
+
   // src/adapters/ea/fc27-streamlined-reconciliation.js
   function createFc27StreamlinedReconciler(root, {
     now = () => Date.now(),
@@ -31604,7 +31623,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const changed = { ...expected, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore };
         if (!same25(current2, changed)) fail28("PROGRESS_CHANGED");
         const cycleReset = current2.submittedScore === 0 && batch.receipt.challengeCompleted;
-        if (cycleReset && !(batch.receipt.submittedScore >= expected.targetScore && integer15(batch.receipt.previousTimesCompleted) && integer15(progress.timesCompleted) && progress.timesCompleted === batch.receipt.previousTimesCompleted + 1)) fail28("CYCLE_RESET_UNVERIFIED");
+        const resetProof = cycleReset ? streamlinedResetProof(batch.receipt, expected, current2, progress.timesCompleted) : null;
+        if (cycleReset && !resetProof) {
+          throw Object.assign(Error("FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED"), {
+            mismatch: batch.receipt.submittedScore < expected.targetScore ? "completion-score-below-target" : integer15(batch.receipt.previousTimesCompleted) && integer15(progress.timesCompleted) && progress.timesCompleted !== batch.receipt.previousTimesCompleted && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? "cycle-count-conflict" : "cycle-state-conflict",
+            cycleCountBefore: batch.receipt.previousTimesCompleted,
+            cycleCountAfter: progress.timesCompleted
+          });
+        }
         if (!cycleReset && current2.submittedScore !== batch.receipt.submittedScore) fail28("PROGRESS_CHANGED");
         return {
           fresh: true,
@@ -31618,6 +31644,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           timesCompleted: progress.timesCompleted,
           operationConfirmed: true,
           cycleResetConfirmed: cycleReset,
+          cycleResetProof: resetProof,
           rewardConfirmed: false,
           requests: requests + 1
         };
@@ -32215,7 +32242,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       cache.prepare(refs3);
       writable(page.challenge, ["submittedScore", "status", "timesCompleted"]);
       writable(page.set, setFields);
-      if (setFields.some((key) => !integer15(ownData(page.set, key))) || !integer15(ownData(page.challenge, "timesCompleted"))) fail28("PAGE_FIELDS_UNVERIFIED");
+      const count2 = ownData(page.challenge, "timesCompleted");
+      if (setFields.some((key) => !integer15(ownData(page.set, key))) || count2 != null && !integer15(count2)) fail28("PAGE_FIELDS_UNVERIFIED");
     };
     return Object.freeze({
       prepare: prepare2,
@@ -32223,14 +32251,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       async apply(record, batch, evidence) {
         prepare2(batch.refs);
         const current2 = projectFc27StreamlinedChallenge(page, context), fresh = evidence?.challenge;
-        if (!fresh || !same25(fresh.context, context) || !integer15(evidence.timesCompleted) || !same25(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same25({
+        const completed = batch.receipt?.challengeCompleted === true;
+        if (!fresh || !same25(fresh.context, context) || !integer15(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null) || !same25(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same25({
           ...record.plan.challenge,
           status: fresh.status,
           submittedScore: fresh.submittedScore,
           remainingScore: fresh.remainingScore
         }, fresh)) fail28("PAGE_PROGRESS_UNVERIFIED");
-        const completed = batch.receipt?.challengeCompleted === true;
-        if (evidence.cycleResetConfirmed === true && (!completed || fresh.submittedScore !== 0 || batch.receipt.submittedScore < record.plan.challenge.targetScore || !integer15(batch.receipt.previousTimesCompleted) || evidence.timesCompleted !== batch.receipt.previousTimesCompleted + 1)) fail28("PAGE_PROGRESS_UNVERIFIED");
+        if (evidence.cycleResetConfirmed === true || completed && fresh.submittedScore === 0) {
+          if (evidence.cycleResetConfirmed !== true || !streamlinedResetProof(batch.receipt, record.plan.challenge, fresh, evidence.timesCompleted)) fail28("PAGE_PROGRESS_UNVERIFIED");
+        }
         let set;
         if (completed) {
           set = await hub();
@@ -32244,12 +32274,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         assert();
         cache.apply(record, batch, evidence);
         Object.assign(page.set, set);
-        Object.assign(page.challenge, { submittedScore: fresh.submittedScore, status: fresh.status, timesCompleted: evidence.timesCompleted });
-        methods.notify.call(page.challenge.onDataChange, {
+        const progress = {
           submittedScore: fresh.submittedScore,
           status: fresh.status,
-          timesCompleted: evidence.timesCompleted
-        });
+          ...integer15(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}
+        };
+        Object.assign(page.challenge, progress);
+        methods.notify.call(page.challenge.onDataChange, progress);
         return true;
       }
     });
@@ -32271,6 +32302,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
       if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
       if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
+      if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
+      for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer15(error2?.[key], 0, 1e9)) detail[key] = error2[key];
       return detail;
     };
     const diagnose = (phase, status, record, batch, detail = {}) => {
@@ -32296,7 +32329,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
         if (evidence?.fresh !== true || !same25(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same25(evidence.absent, batch.refs) || !integer15(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail28("RECONCILIATION_REQUIRED");
         confirmed = { ...evidence, submittedScore, finalizationReason: null };
-        diagnose("readback", "verified", record, batch, { currentScore: submittedScore });
+        diagnose("readback", "verified", record, batch, {
+          currentScore: submittedScore,
+          ...["challenge-count", "receipt-completed-state", "receipt-reset-state"].includes(evidence.cycleResetProof) ? { mismatch: evidence.cycleResetProof, cycleCountBefore: receipt?.previousTimesCompleted, cycleCountAfter: evidence.timesCompleted } : {}
+        });
         phase = "finalization";
         if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
         return confirmed;
@@ -33382,6 +33418,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           methodPath: row.methodPath,
           observedHash: row.observedHash,
           expectedHash: row.expectedHash,
+          mismatch: row.mismatch,
+          cycleCountBefore: row.cycleCountBefore,
+          cycleCountAfter: row.cycleCountAfter,
           httpStatus: row.httpStatus,
           count: row.count,
           currentScore: row.currentScore,
@@ -33417,6 +33456,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               methodPath: row.methodPath,
               observedHash: row.observedHash,
               expectedHash: row.expectedHash,
+              mismatch: row.mismatch,
+              cycleCountBefore: row.cycleCountBefore,
+              cycleCountAfter: row.cycleCountAfter,
               definitionId: row.definitionId,
               maxBuy: row.maxBuy,
               referencePrice: row.stage === "reference" ? row.price : void 0,
@@ -33564,7 +33606,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.34" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.35" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33882,8 +33924,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.34"}`,
-    version: "27.0.34",
+    title: `FC Automation Tool ${"27.0.35"}`,
+    version: "27.0.35",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

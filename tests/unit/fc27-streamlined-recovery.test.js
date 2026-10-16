@@ -2,6 +2,24 @@ import { expect, it, vi } from 'vitest';
 import { streamlinedRuntime, pendingContribution } from '../helpers/fc27-streamlined-runtime.js';
 import { recoverFc27Streamlined } from '../../src/adapters/browser/fc27-streamlined-recovery.js';
 
+it.each([0, undefined])('settles an old accepted reset receipt with child counter %s without an open work area or a new write', async timesCompleted => {
+  const f = streamlinedRuntime({ targetScore: 100 }), { journal, record } = await pendingContribution(f);
+  record.batches[0].receipt.challengeCompleted = true; record.batches[0].receipt.challengeAwardCount = 1;
+  // Legacy receipt: no previousTimesCompleted. Its exact identities/award and
+  // score remain durable; recovery must not fabricate the missing baseline.
+  await journal.write(f.input.context, record, record.revision);
+  f.state.players = []; Object.assign(f.replies.rows[0], { submittedScore: 0, status: 'NOT_STARTED', timesCompleted });
+  f.root.getAppMain = () => null;
+  const createPersistence = () => ({ journal, lock: { acquire: async () => () => {} } });
+  expect(await recoverFc27Streamlined(f.root, { createPersistence, now: () => 1000 }))
+    .toMatchObject({ status: 'recovered', currentScore: 100, targetScore: 100 });
+  expect((await journal.read(f.input.context)).batches[0]).toMatchObject({ state: 'confirmed', receipt: { submittedScore: 100 } });
+  const count = f.calls.length;
+  expect(await recoverFc27Streamlined(f.root, { createPersistence })).toEqual({ status: 'absent' });
+  expect(f.calls).toHaveLength(count);
+  expect(f.calls.every(row => !['contribute', 'bid', 'move'].includes(row.kind))).toBe(true);
+});
+
 it('settles a completed journal without a work area and repeats no contribution or read on the next login', async () => {
   const f = streamlinedRuntime({ targetScore: 100 }), { journal, record } = await pendingContribution(f);
   record.batches[0].receipt.challengeCompleted = true; record.batches[0].receipt.challengeAwardCount = 1;

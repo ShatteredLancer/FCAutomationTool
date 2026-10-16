@@ -3,6 +3,10 @@ import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedProgressReader } from '../../src/adapters/ea/fc27-streamlined-progress.js';
 
 afterEach(() => vi.useRealTimers());
+it.each([-1, '0', 0.5])('rejects malformed native completion count %s instead of treating it as absent', async count => {
+  const f = streamlinedRuntime(); f.replies.rows[0].timesCompleted = count;
+  await expect(createFc27StreamlinedProgressReader(f.root).read(f.input.challenge)).rejects.toThrow('PROGRESS_COUNT_UNVERIFIED');
+});
 it('reads the prototype DAO once, keeps page metadata distinct and leaves shared caches unchanged', async () => {
   const f = streamlinedRuntime(), before = JSON.stringify(f.root.repositories);
   const result = await createFc27StreamlinedProgressReader(f.root, { now: () => 1000 }).read(f.input.challenge);

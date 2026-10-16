@@ -4,6 +4,7 @@ import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge } from './fc
 import { verifyFc27Methods } from './fc27-transaction-transport.js';
 import { createFc27StreamlinedCache } from './fc27-streamlined-cache.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
+import { streamlinedResetProof } from '../../streamlined/completion.js';
 
 export const FC27_STREAMLINED_PAGE_METHODS = Object.freeze([
   ['methods.hub', '81e6a860e8929e73fc8cc62db59442b9b45eb8aae900562ac808bd362cc83e80'],
@@ -81,21 +82,23 @@ export async function createFc27StreamlinedPageMaintenance(root, { now = () => D
     assert(); cache.prepare(refs);
     writable(page.challenge, ['submittedScore', 'status', 'timesCompleted']);
     writable(page.set, setFields);
-    if (setFields.some(key => !integer(ownData(page.set, key))) || !integer(ownData(page.challenge, 'timesCompleted'))) fail('PAGE_FIELDS_UNVERIFIED');
+    const count = ownData(page.challenge, 'timesCompleted');
+    if (setFields.some(key => !integer(ownData(page.set, key))) || count != null && !integer(count)) fail('PAGE_FIELDS_UNVERIFIED');
   };
   return Object.freeze({ prepare, dirty: cache.dirty,
     async apply(record, batch, evidence) {
       prepare(batch.refs);
       const current = projectFc27StreamlinedChallenge(page, context), fresh = evidence?.challenge;
-      if (!fresh || !same(fresh.context, context) || !integer(evidence.timesCompleted)
+      const completed = batch.receipt?.challengeCompleted === true;
+      if (!fresh || !same(fresh.context, context)
+          || !integer(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null)
           || !same(current, { ...fresh, status: current.status, submittedScore: current.submittedScore, remainingScore: current.remainingScore })
           || !same({ ...record.plan.challenge, status: fresh.status, submittedScore: fresh.submittedScore,
             remainingScore: fresh.remainingScore }, fresh)) fail('PAGE_PROGRESS_UNVERIFIED');
-      const completed = batch.receipt?.challengeCompleted === true;
-      if (evidence.cycleResetConfirmed === true && (!completed || fresh.submittedScore !== 0
-          || batch.receipt.submittedScore < record.plan.challenge.targetScore
-          || !integer(batch.receipt.previousTimesCompleted)
-          || evidence.timesCompleted !== batch.receipt.previousTimesCompleted + 1)) fail('PAGE_PROGRESS_UNVERIFIED');
+      if (evidence.cycleResetConfirmed === true || completed && fresh.submittedScore === 0) {
+        if (evidence.cycleResetConfirmed !== true
+            || !streamlinedResetProof(batch.receipt, record.plan.challenge, fresh, evidence.timesCompleted)) fail('PAGE_PROGRESS_UNVERIFIED');
+      }
       let set;
       if (completed) {
         set = await hub();
@@ -114,9 +117,11 @@ export async function createFc27StreamlinedPageMaintenance(root, { now = () => D
       // the subsequent GM checkpoint fails.
       cache.apply(record, batch, evidence);
       Object.assign(page.set, set);
-      Object.assign(page.challenge, { submittedScore: fresh.submittedScore, status: fresh.status, timesCompleted: evidence.timesCompleted });
-      methods.notify.call(page.challenge.onDataChange, { submittedScore: fresh.submittedScore,
-        status: fresh.status, timesCompleted: evidence.timesCompleted });
+      const progress = { submittedScore: fresh.submittedScore, status: fresh.status,
+        ...(integer(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}) };
+      // Missing readback counters remain missing/unchanged; never fabricate +1.
+      Object.assign(page.challenge, progress);
+      methods.notify.call(page.challenge.onDataChange, progress);
       return true;
     },
   });

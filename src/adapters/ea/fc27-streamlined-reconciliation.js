@@ -5,10 +5,11 @@ import { readFc27Context } from './fc27-local-read.js';
 import { locateFc27StreamlinedPage } from './fc27-streamlined-read.js';
 import { validateStreamlinedJournal } from '../../streamlined/journal.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
+import { streamlinedResetProof } from '../../streamlined/completion.js';
 
 // Readback only. Do not infer commitment from an emptied local repository or
-// mutate that repository to manufacture absence. Receipt-less and reset-cycle
-// recovery remain unconfirmed until their independent evidence is implemented.
+// mutate that repository to manufacture absence. A completed zero-score cycle
+// requires its exact durable completion receipt and independently read state.
 export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
   createTransport = createFc27ClubReadTransport, createStorage = createFc27StreamlinedStorageReader,
   createProgress = createFc27StreamlinedProgressReader, nativeReauth = false, requirePage = true } = {}) {
@@ -73,14 +74,21 @@ export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
       const changed = { ...expected, status: current.status, submittedScore: current.submittedScore, remainingScore: current.remainingScore };
       if (!same(current, changed)) fail('PROGRESS_CHANGED');
       const cycleReset = current.submittedScore === 0 && batch.receipt.challengeCompleted;
-      if (cycleReset && !(batch.receipt.submittedScore >= expected.targetScore
-          && integer(batch.receipt.previousTimesCompleted) && integer(progress.timesCompleted)
-          && progress.timesCompleted === batch.receipt.previousTimesCompleted + 1)) fail('CYCLE_RESET_UNVERIFIED');
+      const resetProof = cycleReset ? streamlinedResetProof(batch.receipt, expected, current, progress.timesCompleted) : null;
+      if (cycleReset && !resetProof) {
+        throw Object.assign(Error('FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED'), {
+          mismatch: batch.receipt.submittedScore < expected.targetScore ? 'completion-score-below-target'
+            : integer(batch.receipt.previousTimesCompleted) && integer(progress.timesCompleted)
+              && progress.timesCompleted !== batch.receipt.previousTimesCompleted
+              && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? 'cycle-count-conflict' : 'cycle-state-conflict',
+          cycleCountBefore: batch.receipt.previousTimesCompleted, cycleCountAfter: progress.timesCompleted,
+        });
+      }
       if (!cycleReset && current.submittedScore !== batch.receipt.submittedScore) fail('PROGRESS_CHANGED');
       return { fresh: true, context: record.context, setId: expected.setId, challengeId: expected.id,
         observedAt: progress.observedAt, submittedScore: current.submittedScore, absent: structuredClone(batch.refs),
         challenge: current, timesCompleted: progress.timesCompleted,
-        operationConfirmed: true, cycleResetConfirmed: cycleReset, rewardConfirmed: false,
+        operationConfirmed: true, cycleResetConfirmed: cycleReset, cycleResetProof: resetProof, rewardConfirmed: false,
         requests: requests + 1 };
     } finally { busy = false; }
   } });
