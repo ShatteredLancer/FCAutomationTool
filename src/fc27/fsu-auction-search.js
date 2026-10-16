@@ -23,9 +23,34 @@
 // Same bounded price walk as FSU: no results -> one price tick up; full page ->
 // one tick down; partial page -> done. Never query a price twice in one pass.
 // Runtime, pacing and authorization are injected; no FSU globals or callbacks.
+function spreadIntervalCount(attempts) {
+  return Math.max(1, attempts - 1);
+}
+
+function floorLegalPrice(value, priceTiers) {
+  if (!Array.isArray(priceTiers) || !priceTiers.length) return value;
+  const tier = priceTiers.find(row => Number.isSafeInteger(row?.min) && Number.isSafeInteger(row?.inc)
+    && row.inc > 0 && value >= row.min);
+  return tier ? tier.min + Math.floor((value - tier.min) / tier.inc) * tier.inc : value;
+}
+
+function nextSpreadPrice(initial, ceiling, attempts, nextIndex, current, priceTiers, above) {
+  if (nextIndex >= attempts - 1) return ceiling;
+  const slots = spreadIntervalCount(attempts);
+  const target = initial + ((ceiling - initial) * nextIndex) / slots;
+  let candidate = Math.min(ceiling, floorLegalPrice(target, priceTiers));
+  if (candidate <= current && typeof above === 'function') candidate = above(current);
+  return Math.min(ceiling, candidate);
+}
+
 export async function readFsuStyleAuctionPrices({ search, above, below, initial, ceiling = Infinity, attempts = 5,
-  wait = async () => {}, onResults = () => {}, onSearchFailure = () => {} }) {
-  let price = Math.min(initial, ceiling);
+  wait = async () => {}, onResults = () => {}, onSearchFailure = () => {}, spreadCeiling = false, priceTiers = null }) {
+  if (!Number.isSafeInteger(attempts) || attempts <= 0) return [];
+  const attemptLimit = attempts;
+  const boundedInitial = Math.min(initial, ceiling);
+  let price = spreadCeiling && Number.isFinite(ceiling) && ceiling > boundedInitial && attempts === 1
+    ? ceiling : boundedInitial;
+  let spreadActive = spreadCeiling && Number.isFinite(ceiling) && ceiling > boundedInitial;
   const queried = new Set(); let items = [];
   while (attempts-- > 0) {
     if (price > ceiling || queried.has(price)) break;
@@ -36,8 +61,12 @@ export async function readFsuStyleAuctionPrices({ search, above, below, initial,
     const page = reply.data.items;
     items = items.concat(page);
     queried.add(price);
-    if (!page.length) price = above(price);
-    else if (page.length === 21) price = below(price);
+    if (!page.length) {
+      price = spreadActive
+        ? nextSpreadPrice(boundedInitial, ceiling, attemptLimit, queried.size, price, priceTiers, above)
+        : above(price);
+    }
+    else if (page.length === 21) { spreadActive = false; price = below(price); }
     else break;
     if (attempts > 0) await wait(0.2, 0.5);
   }

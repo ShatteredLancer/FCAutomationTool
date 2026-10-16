@@ -157,7 +157,10 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       if (initial === null) return { unavailable: true, reason: 'FC27_BUY_PRICE_LIMIT_UNAVAILABLE' };
       diagnostic('reference', { definitionId, price: initial });
       let searchFailure = null;
+      let searchAttempt = 0;
       const found = await readFsuStyleAuctionPrices({ ceiling: maxBuy, initial, attempts, wait,
+        spreadCeiling: Boolean(approval) && Number.isFinite(maxBuy) && maxBuy > initial,
+        priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS,
         onResults: () => pin('Transfer Market Results - List View'),
         onSearchFailure: reply => { searchFailure = { reason: 'FC27_BUY_SEARCH_FAILED', ...responseCodes(reply) }; },
         above: price => root.UTCurrencyInputControl.getIncrementAboveVal(price),
@@ -165,7 +168,9 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
         search: async price => {
           verifyCurrent(currentRecord); criteria.maxBuy = price; model.updateSearchCriteria(criteria); service.clearTransferMarketCache();
           const reply = await observe(() => { onSearch(definitionId); return service.searchTransferMarket(model.searchCriteria, 1); });
-          diagnostic('search', { definitionId, maxBuy: model.searchCriteria.maxBuy, ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
+          diagnostic('search', { definitionId, maxBuy: model.searchCriteria.maxBuy, referencePrice: initial,
+            searchCeiling: maxBuy, attempt: ++searchAttempt, attemptLimit: attempts,
+            ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
           if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some(card => card.definitionId !== definitionId))) fail('FC27_BUY_QUOTE_UNVERIFIED');
           return reply;
         } });

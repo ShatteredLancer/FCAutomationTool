@@ -701,6 +701,12 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
               setId: target.setId, challengeId: target.challengeId, phase: event.stage,
               status: event.status, reason: event.reason, method: event.method, observedHash: event.observedHash });
           }
+          for (const event of events.filter(event => event.stage === 'search').slice(-60)) {
+            await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-search', phase: 'market-query',
+              definitionId: event.definitionId, referencePrice: event.referencePrice, searchCeiling: event.searchCeiling,
+              maxBuy: event.maxBuy, attempt: event.attempt, attemptLimit: event.attemptLimit,
+              count: event.count, httpStatus: event.httpStatus, errorCode: event.errorCode });
+          }
           await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-result',
             setId: target.setId, challengeId: target.challengeId, status: result?.status, reason: result?.reason,
             count: result?.purchased, spent: result?.spent });

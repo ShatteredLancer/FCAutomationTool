@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.36
+// @version      27.0.37
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.36", at: Date.now(), status: 'started',
+    state = { version: "27.0.37", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7844,6 +7844,22 @@
    * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    * SOFTWARE.
    */
+  function spreadIntervalCount(attempts) {
+    return Math.max(1, attempts - 1);
+  }
+  function floorLegalPrice(value, priceTiers) {
+    if (!Array.isArray(priceTiers) || !priceTiers.length) return value;
+    const tier = priceTiers.find((row) => Number.isSafeInteger(row?.min) && Number.isSafeInteger(row?.inc) && row.inc > 0 && value >= row.min);
+    return tier ? tier.min + Math.floor((value - tier.min) / tier.inc) * tier.inc : value;
+  }
+  function nextSpreadPrice(initial, ceiling, attempts, nextIndex, current2, priceTiers, above) {
+    if (nextIndex >= attempts - 1) return ceiling;
+    const slots = spreadIntervalCount(attempts);
+    const target = initial + (ceiling - initial) * nextIndex / slots;
+    let candidate = Math.min(ceiling, floorLegalPrice(target, priceTiers));
+    if (candidate <= current2 && typeof above === "function") candidate = above(current2);
+    return Math.min(ceiling, candidate);
+  }
   async function readFsuStyleAuctionPrices({
     search,
     above,
@@ -7856,9 +7872,15 @@
     onResults = () => {
     },
     onSearchFailure = () => {
-    }
+    },
+    spreadCeiling = false,
+    priceTiers = null
   }) {
-    let price2 = Math.min(initial, ceiling);
+    if (!Number.isSafeInteger(attempts) || attempts <= 0) return [];
+    const attemptLimit = attempts;
+    const boundedInitial = Math.min(initial, ceiling);
+    let price2 = spreadCeiling && Number.isFinite(ceiling) && ceiling > boundedInitial && attempts === 1 ? ceiling : boundedInitial;
+    let spreadActive = spreadCeiling && Number.isFinite(ceiling) && ceiling > boundedInitial;
     const queried = /* @__PURE__ */ new Set();
     let items = [];
     while (attempts-- > 0) {
@@ -7873,9 +7895,12 @@
       const page = reply.data.items;
       items = items.concat(page);
       queried.add(price2);
-      if (!page.length) price2 = above(price2);
-      else if (page.length === 21) price2 = below(price2);
-      else break;
+      if (!page.length) {
+        price2 = spreadActive ? nextSpreadPrice(boundedInitial, ceiling, attemptLimit, queried.size, price2, priceTiers, above) : above(price2);
+      } else if (page.length === 21) {
+        spreadActive = false;
+        price2 = below(price2);
+      } else break;
       if (attempts > 0) await wait(0.2, 0.5);
     }
     return items;
@@ -8089,11 +8114,14 @@
         if (initial === null) return { unavailable: true, reason: "FC27_BUY_PRICE_LIMIT_UNAVAILABLE" };
         diagnostic("reference", { definitionId, price: initial });
         let searchFailure = null;
+        let searchAttempt = 0;
         const found = await readFsuStyleAuctionPrices({
           ceiling: maxBuy,
           initial,
           attempts,
           wait,
+          spreadCeiling: Boolean(approval) && Number.isFinite(maxBuy) && maxBuy > initial,
+          priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS,
           onResults: () => pin("Transfer Market Results - List View"),
           onSearchFailure: (reply) => {
             searchFailure = { reason: "FC27_BUY_SEARCH_FAILED", ...responseCodes(reply) };
@@ -8109,7 +8137,16 @@
               onSearch(definitionId);
               return service.searchTransferMarket(model.searchCriteria, 1);
             });
-            diagnostic("search", { definitionId, maxBuy: model.searchCriteria.maxBuy, ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
+            diagnostic("search", {
+              definitionId,
+              maxBuy: model.searchCriteria.maxBuy,
+              referencePrice: initial,
+              searchCeiling: maxBuy,
+              attempt: ++searchAttempt,
+              attemptLimit: attempts,
+              ...responseCodes(reply),
+              count: reply.data?.items?.length ?? 0
+            });
             if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some((card) => card.definitionId !== definitionId))) fail17("FC27_BUY_QUOTE_UNVERIFIED");
             return reply;
           }
@@ -10440,6 +10477,22 @@
                 reason: event.reason,
                 method: event.method,
                 observedHash: event.observedHash
+              });
+            }
+            for (const event of events.filter((event2) => event2.stage === "search").slice(-60)) {
+              await diagnosticLog2?.record?.({
+                area: "puzzle",
+                event: "buy-search",
+                phase: "market-query",
+                definitionId: event.definitionId,
+                referencePrice: event.referencePrice,
+                searchCeiling: event.searchCeiling,
+                maxBuy: event.maxBuy,
+                attempt: event.attempt,
+                attemptLimit: event.attemptLimit,
+                count: event.count,
+                httpStatus: event.httpStatus,
+                errorCode: event.errorCode
               });
             }
             await diagnosticLog2?.record?.({
@@ -26517,6 +26570,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
+    "errorCode",
     "batchSize",
     "count",
     "spent",
@@ -26537,6 +26591,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "requests",
     "definitionId",
     "referencePrice",
+    "searchCeiling",
     "futggPrice",
     "futbinPrice",
     "maxBuy",
@@ -33674,7 +33729,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.36" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.37" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -33992,8 +34047,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.36"}`,
-    version: "27.0.36",
+    title: `FC Automation Tool ${"27.0.37"}`,
+    version: "27.0.37",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

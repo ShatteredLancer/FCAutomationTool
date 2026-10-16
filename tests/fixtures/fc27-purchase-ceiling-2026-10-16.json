@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "evidence": "The 27.0.35 diagnostic reported a repeated 350 FUTBIN quote and NO_LISTING; the user showed a 650 listing and reported retrying with an 800 cap. The original log did not export search parameters. Offers and identities in this replay are synthetic, not recovered account transactions.",
+  "referencePrice": 350,
+  "retryCaps": [650, 800],
+  "queriesPerAttempt": 5,
+  "offerPrices": [850, 800, 700, 650]
+}
