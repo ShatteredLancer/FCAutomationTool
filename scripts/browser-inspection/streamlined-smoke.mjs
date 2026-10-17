@@ -181,6 +181,24 @@ export async function exerciseStreamlined(context) {
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-progress-read-paused.png') });
     await page.evaluate(() => { globalThis.streamlinedEvidence.progressReadFailure = false; });
+    // A truly unresolved foreign purchase must not conceal this SBC's settled
+    // score, replace its target, or revive an executable preview.
+    await page.evaluate(() => {
+      const plan = globalThis.streamlinedEvidence.lastPlan;
+      globalThis.streamlinedEvidence.recoveryThrows = false;
+      globalThis.streamlinedEvidence.recoveryOutcome = { status: 'recovery-required',
+        reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
+        recovery: { setId: 71, challengeId: 999, pendingWriteCount: 1, unconsumedPurchaseCount: 2 },
+        record: { plan, submittedScore: plan.batches[0].reduce((sum, item) => sum + item.points, 0),
+          batches: plan.batches.map((_, index) => ({ state: index ? 'waiting' : 'confirmed' })) } };
+    });
+    await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+    assert.match(await page.locator('[data-status]').innerText(), /Set 71 \/ Challenge 999.*1 笔待核对请求、2 张采购材料待处理/);
+    assert.equal(await page.locator('[data-final-progress]').innerText(), `已确认 ${partial.score} / ${partial.target} 分`);
+    assert.equal(await contribute.isVisible(), false);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-foreign-purchase-blocked.png') });
     // A successful EA contribution with unfinished local synchronization is
     // not an unknown contribution and must never leave the writer enabled.
     await page.evaluate(() => {

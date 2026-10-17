@@ -400,6 +400,27 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const purchase = typeof activeExecution.recoverPurchase === 'function'
           ? await activeExecution.recoverPurchase(origin.challenge) : { status: 'absent' };
         if (['recovery-required', 'blocked', 'replan-required'].includes(purchase.status)) {
+          if (purchase.reason === 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED') {
+            // Read-only recovery of this SBC may still expose its confirmed
+            // progress. The foreign purchase remains the blocking outcome;
+            // never turn its record into a preview or grant write permission.
+            const contribution = await activeExecution.transaction.recover(origin.context,
+              { setId: origin.challenge.setId, challengeId: origin.challenge.id });
+            const current = capture(), record = contribution.record;
+            if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
+                || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
+            const ownRecord = record && same(record.context, origin.context)
+              && record.plan?.challenge.id === origin.challenge.id && record.plan.challenge.setId === origin.challenge.setId;
+            const result = { ...purchase, contributionRecovery: contribution, ...(ownRecord ? { record } : {}) };
+            log({ event: 'recovery', status: result.status, reason: result.reason,
+              setId: purchase.recovery?.setId, challengeId: purchase.recovery?.challengeId,
+              pendingWriteCount: purchase.recovery?.pendingWriteCount,
+              unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
+              contributedCount: purchase.recovery?.contributedCount, purchasesSettled: purchase.recovery?.purchasesSettled,
+              currentScore: ownRecord ? record.submittedScore : undefined,
+              targetScore: ownRecord ? record.plan.challenge.targetScore : undefined });
+            return result;
+          }
           log({ event: 'recovery', status: purchase.status, reason: purchase.reason });
           return purchase;
         }
@@ -417,7 +438,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
             || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
         log({ event: 'recovery', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
-          targetScore: result.record?.challenge?.targetScore, ...streamlinedPurchaseAudit(result.record),
+          targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
           setId: origin.challenge.setId, challengeId: origin.challenge.id });
         const record = result.record;
         if (record && !['recovery-required', 'replan-required', 'blocked'].includes(result.status)) {

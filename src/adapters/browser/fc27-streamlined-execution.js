@@ -9,7 +9,8 @@ import { assertPuzzleBuyTargetAvailable } from '../../fc27/puzzle-buy-lifecycle.
 import { maintainFc27PuzzlePurchases } from './fc27-puzzle-buy-lifecycle.js';
 import { galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
 import { assertGalleryRelistSettled } from '../../gallery/relist-recovery.js';
-import { createStreamlinedPurchaseJournal, verifyStreamlinedPurchasedItem } from '../../streamlined/purchase-journal.js';
+import { createStreamlinedPurchaseJournal, verifyStreamlinedPurchasedItem, streamlinedPurchaseNeedsRecovery,
+  streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
 import { createFc27StreamlinedPurchaseAdapter } from '../ea/fc27-streamlined-purchase.js';
 import { createStreamlinedProcurement } from '../../streamlined/procurement.js';
 import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streamlined-materialize.js';
@@ -96,9 +97,18 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       const saved = await marketJournal.read(context);
       if (!saved) return { status: 'absent' };
       if (saved.challenge.setId !== challenge.setId || saved.challenge.id !== challenge.id) {
-        if (saved.completed) return { status: 'absent' };
+        // Completion is not the settlement predicate: a stopped, fully settled
+        // run can remain incomplete. Leave its history untouched. Unknown buys,
+        // moves, contributions and unconsumed purchases still need recovery.
+        const pending = streamlinedPurchaseNeedsRecovery(saved), audit = streamlinedPurchaseAudit(saved);
+        const recovery = { kind: 'streamlined-purchase', setId: saved.challenge.setId,
+          challengeId: saved.challenge.id, ...audit };
+        try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'purchase-recovery-state',
+          phase: pending ? 'other-target-pending' : 'settled-history', status: pending ? 'recovery-required' : 'ignored',
+          setId: recovery.setId, challengeId: recovery.challengeId, ...audit })).catch(() => {}); } catch { /* diagnostic only */ }
+        if (!pending) return { status: 'absent' };
         return { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
-          recovery: { setId: saved.challenge.setId, challengeId: saved.challenge.id } };
+          recovery };
       }
       if (saved.challenge.targetScore !== challenge.targetScore) fail('CONTEXT_CHANGED');
       if (!saved.plan) fail('PURCHASE_JOURNAL_INVALID');
