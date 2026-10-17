@@ -189,7 +189,7 @@ export async function exerciseStreamlined(context) {
       globalThis.streamlinedEvidence.recoveryOutcome = { status: 'recovery-required',
         reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
         recovery: { setId: 71, challengeId: 999, pendingWriteCount: 1, unconsumedPurchaseCount: 2 },
-        record: { plan, submittedScore: plan.batches[0].reduce((sum, item) => sum + item.points, 0),
+        record: { context: plan.context, plan, submittedScore: plan.batches[0].reduce((sum, item) => sum + item.points, 0),
           batches: plan.batches.map((_, index) => ({ state: index ? 'waiting' : 'confirmed' })) } };
     });
     await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
@@ -199,6 +199,19 @@ export async function exerciseStreamlined(context) {
     assert.equal(await contribute.isVisible(), false);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-foreign-purchase-blocked.png') });
+    await page.evaluate(() => {
+      const saved = globalThis.streamlinedEvidence.recoveryOutcome;
+      globalThis.streamlinedEvidence.recoveryOutcome = { status: 'observed', record: saved.record,
+        warning: { reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED', recovery: saved.recovery } };
+    });
+    await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+    assert.match(await page.locator('[data-status]').innerText(), /已恢复当前 SBC.*历史待核对记录已隔离保留.*不买卡、不重跑旧任务/);
+    assert.equal(await page.locator('[data-final-progress]').innerText(), `已确认 ${partial.score} / ${partial.target} 分`);
+    assert.equal(await contribute.isEnabled(), true);
+    assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isDisabled(), true);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2, 'Recovery never dispatches a new or historical contribution');
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-historical-isolation.png') });
     // A successful EA contribution with unfinished local synchronization is
     // not an unknown contribution and must never leave the writer enabled.
     await page.evaluate(() => {

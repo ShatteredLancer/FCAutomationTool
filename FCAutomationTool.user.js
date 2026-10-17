@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.41
+// @version      27.0.42
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.41", at: Date.now(), status: 'started',
+    state = { version: "27.0.42", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -9832,8 +9832,12 @@
     };
     const releasePuzzleReservations = async (target) => {
       const current2 = await readPuzzleReservations(gmGetValue, scope2);
+      const previous = current2.targets.find((entry) => entry.setId === target.setId && entry.challengeId === target.challengeId);
+      if (previous?.itemRefs.length === 0) return;
+      if (!previous && !await readFc27ConceptReservation(gmGetValue, scope2, target, context)) return;
       const targets = current2.targets.filter((entry) => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
-      if (targets.length !== current2.targets.length) await writePuzzleReservations(gmGetValue, gmSetValue, scope2, { schema: 1, targets });
+      targets.push({ ...target, itemRefs: [] });
+      await writePuzzleReservations(gmGetValue, gmSetValue, scope2, { schema: 1, targets });
     };
     const invalidate = () => {
       prepared?.adapter.cancel();
@@ -27722,7 +27726,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_RECOVERY_REQUIRED: "\u5DF2\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u67E5\u770B\u5DF2\u786E\u8BA4\u8FDB\u5EA6\u548C\u5269\u4F59\u6279\u6B21\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u5DF2\u786E\u8BA4\u7684\u5361\u3002",
       FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
-      FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u8FD8\u6709 ${recovery?.pendingWriteCount ?? "?"} \u7B14\u5F85\u6838\u5BF9\u8BF7\u6C42\u3001${recovery?.unconsumedPurchaseCount ?? "?"} \u5F20\u91C7\u8D2D\u6750\u6599\u5F85\u5904\u7406\u3002\u8BF7\u6253\u5F00\u8BE5 SBC \u70B9\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u5F53\u524D\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u6216\u6295\u5165\u3002`,
+      FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `\u672C\u5730\u5386\u53F2 SBC${typeof recovery?.name === "string" ? `\u300C${recovery.name.slice(0, 160)}\u300D` : ""}\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u8BB0\u5F55\u4E2D\u8FD8\u6709 ${recovery?.pendingWriteCount ?? "?"} \u7B14\u5F85\u6838\u5BF9\u8BF7\u6C42\u3001${recovery?.unconsumedPurchaseCount ?? "?"} \u5F20\u91C7\u8D2D\u6750\u6599\u5F85\u5904\u7406\u3002\u8BE5\u8BB0\u5F55\u4E0D\u4EE3\u8868\u4EFB\u52A1\u4ECD\u5728\u8FD0\u884C\uFF1B\u5F53\u524D\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u6216\u6295\u5165\u3002`,
+      FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED: "\u5DF2\u6062\u590D\u5F53\u524D SBC \u7684\u5269\u4F59\u5E93\u5B58\u6279\u6B21\u3002\u5386\u53F2\u5F85\u6838\u5BF9\u8BB0\u5F55\u5DF2\u9694\u79BB\u4FDD\u7559\uFF1B\u672C\u6B21\u53EA\u7528\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\uFF0C\u4E0D\u4E70\u5361\u3001\u4E0D\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u70B9\u51FB\u201C\u8D21\u732E\u6240\u9009\u6279\u6B21\u201D\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED: "\u5F53\u524D\u5269\u4F59\u6279\u6B21\u5305\u542B\u65E7\u4EFB\u52A1\u5F85\u6838\u5BF9\u7684\u540C\u4E00\u5F20\u5361\uFF0C\u6682\u4E0D\u6295\u5165\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u548C\u65E7\u8BB0\u5F55\u5747\u4FDD\u7559\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5361\u6216\u6D88\u8017\u8FD9\u5F20\u5361\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_BLOCKED: "\u65E7\u4EFB\u52A1\u4ECD\u5F85\u6838\u5BF9\uFF1B\u672C\u6B21\u53EA\u5141\u8BB8\u6062\u590D\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\u3002\u542B\u8865\u5361\u3001\u5916\u90E8\u5361\u79FB\u52A8\u6216\u91C7\u8D2D\u56DE\u6267\u7684\u8DEF\u7EBF\u6682\u4E0D\u6267\u884C\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_UNVERIFIED: "\u65E7\u4EFB\u52A1\u7684\u7CBE\u786E\u6750\u6599\u8303\u56F4\u5C1A\u672A\u6838\u9A8C\uFF0C\u6682\u4E0D\u6295\u5165\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4E0E\u65E7\u8BB0\u5F55\u4FDD\u7559\u3002",
       FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
       FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
       FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
@@ -28292,6 +28300,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
       node("status").textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels[result.status] ?? result.status;
+      if (result.warning?.reason === "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED") {
+        node("status").textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
+      }
       if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number2(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
     };
     on("contribute", async () => {
@@ -30265,21 +30276,37 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             log({ event: "recovery", status: materialization.status, reason: materialization.reason });
             return materialization;
           }
-          const purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
+          let contribution, warning, purchaseRecovery;
+          let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
           if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
             if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
-              const contribution2 = await activeExecution.transaction.recover(
+              contribution = await activeExecution.transaction.recover(
                 origin.context,
                 { setId: origin.challenge.setId, challengeId: origin.challenge.id }
               );
-              const current3 = capture(), record2 = contribution2.record;
+              const current3 = capture(), record2 = contribution.record;
               if (!same25(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
               const ownRecord = record2 && same25(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId;
-              const result2 = { ...purchase, contributionRecovery: contribution2, ...ownRecord ? { record: record2 } : {} };
+              let isolationReason;
+              if (ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
+                try {
+                  if (await activeExecution.inspectInventoryRecovery(record2) === true) {
+                    warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
+                  }
+                } catch (error2) {
+                  isolationReason = safeReason10(error2);
+                }
+              }
+              const result2 = {
+                ...purchase,
+                ...isolationReason ? { reason: isolationReason } : {},
+                contributionRecovery: contribution,
+                ...ownRecord ? { record: record2 } : {}
+              };
               log({
                 event: "recovery",
-                status: result2.status,
-                reason: result2.reason,
+                status: warning ? "observed" : result2.status,
+                reason: warning?.reason ?? result2.reason,
                 setId: purchase.recovery?.setId,
                 challengeId: purchase.recovery?.challengeId,
                 pendingWriteCount: purchase.recovery?.pendingWriteCount,
@@ -30289,16 +30316,28 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 currentScore: ownRecord ? record2.submittedScore : void 0,
                 targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
               });
-              return result2;
+              if (!warning) return result2;
+              purchaseRecovery = purchase;
+              purchase = { status: "absent" };
+              log({
+                event: "recovery-isolation",
+                status: "verified",
+                reason: warning.reason,
+                setId: origin.challenge.setId,
+                challengeId: origin.challenge.id,
+                currentScore: record2.submittedScore
+              });
+            } else {
+              log({ event: "recovery", status: purchase.status, reason: purchase.reason });
+              return purchase;
             }
-            log({ event: "recovery", status: purchase.status, reason: purchase.reason });
-            return purchase;
           }
-          const contribution = await activeExecution.transaction.recover(
+          contribution ??= await activeExecution.transaction.recover(
             origin.context,
             { setId: origin.challenge.setId, challengeId: origin.challenge.id }
           );
           let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
+          if (warning) result = { ...result, warning, purchaseRecovery };
           if (materialization.status !== "absent") {
             result = { ...result, materializationRecovery: materialization };
             if (result.status === "absent" && materialization.status === "recovered") {
@@ -30855,7 +30894,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     set,
     lockManager,
     readContext = () => context,
-    now = () => Date.now()
+    now = () => Date.now(),
+    beforeReplace = async () => {
+    }
   } = {}) {
     const bound = createSeasonContext(context), scope2 = traditionalJournalScope(bound);
     const exclusive = createTraditionalExclusive({ context: bound, lockManager });
@@ -30903,7 +30944,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       begin: (plan) => {
         assertContext(plan.context);
         assertHeld();
-        return raw.begin(plan);
+        return (async () => {
+          const previous = await raw.read(bound);
+          if (previous && previous.plan.fingerprint !== plan.fingerprint) {
+            await beforeReplace(previous, plan);
+            assertHeld();
+            if (!same25(previous, await raw.read(bound))) fail28("JOURNAL_CHANGED");
+          }
+          return raw.begin(plan);
+        })();
       }
     });
     const lock = Object.freeze({ async acquire(requested) {
@@ -32204,7 +32253,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (plan.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
           const origin = binding();
           unchanged(origin, plan);
-          await checkOtherTransactions();
+          await checkOtherTransactions(plan, batch);
           unchanged(origin, plan);
           await maintenance?.prepare?.(batch.refs);
           if (batch.refs.some((ref) => ["unassigned", "transfer"].includes(ref.pile))) {
@@ -32264,7 +32313,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             itemIds: batch.refs.map((ref) => ref.id)
           }, async () => {
             assert();
-            await checkOtherTransactions();
+            await checkOtherTransactions(plan, batch);
             assert();
             const record = validateStreamlinedJournal(await journal.read(plan.context), plan.context);
             if (record.plan.fingerprint !== plan.fingerprint || record.submittedScore !== approved.submittedScore || !same25(record.batches[batch.index], batch) || batch.state !== "pending" || batch.receipt) fail28("JOURNAL_CHANGED");
@@ -33552,6 +33601,73 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } });
   }
 
+  // src/streamlined/recovery-isolation.js
+  function assertStreamlinedRecoveryIsolation(plan, refs3, purchase) {
+    assertStreamlinedPlan(plan);
+    if (!purchase) return true;
+    validateStreamlinedPurchase(purchase, plan.context);
+    if (!streamlinedPurchaseNeedsRecovery(purchase)) return true;
+    if (purchase.challenge.setId === plan.challenge.setId && purchase.challenge.id === plan.challenge.id || plan.execution?.purchaseScope || plan.route && (!Array.isArray(plan.route.groups) || plan.route.groups.some((group) => group.source === "market")) || plan.items.some((item2) => item2.source !== "inventory" || !["club", "storage"].includes(item2.pile) || item2.purchaseReceipt)) {
+      fail28("FOREIGN_PURCHASE_SCOPE_BLOCKED");
+    }
+    const planned2 = new Map(plan.items.map((item2) => [item2.id, item2]));
+    if (!Array.isArray(refs3) || !refs3.length || refs3.length > 2e4 || refs3.some((ref) => {
+      const item2 = planned2.get(ref.id);
+      return !item2 || item2.definitionId !== ref.definitionId || item2.points !== ref.points || item2.pile !== ref.pile || ref.executionPile;
+    })) fail28("PLAN_CHANGED");
+    const reserved = /* @__PURE__ */ new Set();
+    for (const entry of purchase.entries) {
+      if (!["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)) continue;
+      if (!integer15(entry.itemId, 1)) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      reserved.add(entry.itemId);
+    }
+    if (purchase.contribution) {
+      const { batchPlan, material } = purchase.contribution;
+      try {
+        assertStreamlinedPlan(batchPlan);
+      } catch {
+        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      }
+      if (!same25(batchPlan.context, purchase.context) || batchPlan.challenge.setId !== purchase.challenge.setId || batchPlan.challenge.id !== purchase.challenge.id || batchPlan.challenge.targetScore !== purchase.challenge.targetScore || batchPlan.challenge.submittedScore !== purchase.submittedScore || !same25(batchPlan.items, material.map((row) => row.item))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      for (const item2 of batchPlan.items) reserved.add(item2.id);
+    }
+    if (refs3.some((ref) => reserved.has(ref.id))) fail28("FOREIGN_PURCHASE_MATERIAL_RESERVED");
+    return true;
+  }
+
+  // src/streamlined/purchase-handoff.js
+  function projectStreamlinedPurchaseHandoff(purchase, previous) {
+    if (!purchase?.contribution || !previous) return null;
+    validateStreamlinedPurchase(purchase, previous.context);
+    validateStreamlinedJournal(previous, previous.context);
+    const marker = purchase.contribution, old = previous.plan.challenge;
+    if (old.setId !== purchase.challenge.setId || old.id !== purchase.challenge.id) return null;
+    if (marker.batchPlan?.fingerprint !== previous.plan.fingerprint || previous.batches.length !== 1 || !same25(previous.plan.items, marker.material.map((row) => row.item)) || old.submittedScore !== purchase.submittedScore || old.targetScore !== purchase.challenge.targetScore) {
+      fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+    }
+    const next = structuredClone(purchase), batch = previous.batches[0];
+    if (isUnsentStreamlinedJournal(previous) || batch.state === "rejected") {
+      next.contribution = null;
+      return validateStreamlinedPurchase(next, previous.context);
+    }
+    if (["pending", "unknown"].includes(batch.state)) return null;
+    const maximum = purchase.submittedScore + marker.material.reduce((sum2, row) => sum2 + row.item.points, 0);
+    if (batch.state !== "confirmed" || batch.receipt?.status !== "accepted" || batch.receipt.submittedScore !== previous.submittedScore || !integer15(previous.submittedScore, purchase.submittedScore + 1, maximum)) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+    for (const row of marker.material) {
+      const entry = next.entries.find((item2) => item2.itemId === row.item.id && item2.definitionId === row.item.definitionId);
+      if (!entry || !["ready", "club"].includes(entry.state) || next.consumedIds.includes(entry.itemId)) fail28("PURCHASE_IDENTITY_CONFLICT");
+      entry.state = "consumed";
+      next.consumedIds.push(entry.itemId);
+      next.fulfilled[row.groupIndex]++;
+    }
+    next.submittedScore = previous.submittedScore;
+    next.contribution = null;
+    next.completed = next.submittedScore >= next.challenge.targetScore;
+    next.confirmedBatches = (next.confirmedBatches ?? 0) + 1;
+    next.progressChanged = next.submittedScore !== maximum && !next.completed;
+    return validateStreamlinedPurchase(next, previous.context);
+  }
+
   // src/adapters/browser/fc27-streamlined-execution.js
   async function assertStreamlinedOtherTransactions(get, context) {
     const scope2 = traditionalJournalScope(context), raw = await get(scope2, null);
@@ -33583,7 +33699,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       set,
       lockManager,
       readContext: () => readFc27Context(root),
-      now
+      now,
+      beforeReplace: async (previous) => {
+        const saved = await marketJournal.read(context), settled2 = projectStreamlinedPurchaseHandoff(saved, previous);
+        if (settled2) await marketJournal.write(settled2, saved.revision);
+      }
     });
     const materializationStorage = { get, set: async (key, value) => {
       persistence.assertHeld();
@@ -33597,12 +33717,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!same25(readFc27Context(root), context)) fail28("CONTEXT_CHANGED");
       }
     });
-    const checkOtherTransactions = async () => {
+    const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
+    const checkOtherTransactions = async (plan2, batch) => {
       await assertStreamlinedOtherTransactions(get, context);
       await materializationJournal.assertSettled();
+      const saved = await marketJournal.read(context);
+      if (saved && (saved.challenge.setId !== plan2.challenge.setId || saved.challenge.id !== plan2.challenge.id)) {
+        assertStreamlinedRecoveryIsolation(plan2, batch.refs, saved);
+      }
     };
     const maintenance = await createMaintenance(root, { now });
-    const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
     const purchaseVerifier = async (item2, proof, currentPlan = plan) => verifyStreamlinedPurchasedItem(
       get,
       context,
@@ -33702,6 +33826,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Object.freeze({
       transaction,
       journal: persistence.journal,
+      async inspectInventoryRecovery(record) {
+        const release = await persistence.lock.acquire(context);
+        if (typeof release !== "function") fail28("BUSY");
+        try {
+          if (!same25(record, await persistence.journal.read(context))) fail28("JOURNAL_CHANGED");
+          if (record.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail28("RECOVERY_REQUIRED");
+          const refs3 = record.batches.filter((batch) => batch.state === "waiting").flatMap((batch) => batch.refs);
+          if (!refs3.length) fail28("RECOVERY_REQUIRED");
+          return assertStreamlinedRecoveryIsolation(record.plan, refs3, await marketJournal.read(context));
+        } finally {
+          await release();
+        }
+      },
       async recoverMaterialization() {
         const release = await persistence.lock.acquire(context);
         if (typeof release !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
@@ -33725,6 +33862,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             kind: "streamlined-purchase",
             setId: saved.challenge.setId,
             challengeId: saved.challenge.id,
+            name: saved.challenge.name,
             ...audit
           };
           try {
@@ -33844,7 +33982,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.41" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.42" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34162,8 +34300,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.41"}`,
-    version: "27.0.41",
+    title: `FC Automation Tool ${"27.0.42"}`,
+    version: "27.0.42",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

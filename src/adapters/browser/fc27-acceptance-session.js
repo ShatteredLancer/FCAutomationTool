@@ -180,8 +180,15 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
   };
   const releasePuzzleReservations = async target => {
     const current = await readPuzzleReservations(gmGetValue, scope);
+    const previous = current.targets.find(entry => entry.setId === target.setId && entry.challengeId === target.challengeId);
+    if (previous?.itemRefs.length === 0) return;
+    if (!previous && !await readFc27ConceptReservation(gmGetValue, scope, target, context)) return;
     const targets = current.targets.filter(entry => entry.setId !== target.setId || entry.challengeId !== target.challengeId);
-    if (targets.length !== current.targets.length) await writePuzzleReservations(gmGetValue, gmSetValue, scope, { schema: 1, targets });
+    // Empty refs are a durable release marker, not a new reservation. Deleting
+    // the target let legacy-draft backfill resurrect its old cards on the next
+    // sibling Challenge. A later confirmed save replaces this marker normally.
+    targets.push({ ...target, itemRefs: [] });
+    await writePuzzleReservations(gmGetValue, gmSetValue, scope, { schema: 1, targets });
   };
   const invalidate = () => {
     prepared?.adapter.cancel(); prepared = null;

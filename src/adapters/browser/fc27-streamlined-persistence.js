@@ -7,7 +7,7 @@ import { same, fail } from '../../streamlined/contract.js';
 // Share the existing cross-tab mutation lock with traditional SBC, Puzzle and
 // Gallery. The transaction owns it through receipt persistence and reconciliation.
 export function createFc27StreamlinedPersistence({ context, get, set, lockManager,
-  readContext = () => context, now = () => Date.now() } = {}) {
+  readContext = () => context, now = () => Date.now(), beforeReplace = async () => {} } = {}) {
   const bound = createSeasonContext(context), scope = traditionalJournalScope(bound);
   const exclusive = createTraditionalExclusive({ context: bound, lockManager });
   const pending = new Set();
@@ -34,7 +34,17 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
   const journal = Object.freeze({
     read: requested => { assertContext(requested); return raw.read(bound); },
     write: (requested, record, revision) => { assertContext(requested); assertHeld(); return raw.write(bound, record, revision); },
-    begin: plan => { assertContext(plan.context); assertHeld(); return raw.begin(plan); },
+    begin: plan => {
+      assertContext(plan.context); assertHeld();
+      return (async () => {
+        const previous = await raw.read(bound);
+        if (previous && previous.plan.fingerprint !== plan.fingerprint) {
+          await beforeReplace(previous, plan); assertHeld();
+          if (!same(previous, await raw.read(bound))) fail('JOURNAL_CHANGED');
+        }
+        return raw.begin(plan);
+      })();
+    },
   });
   const lock = Object.freeze({ async acquire(requested) {
     assertContext(requested);

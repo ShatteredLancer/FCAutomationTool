@@ -697,6 +697,23 @@ it.each([false, true])('preserves the terminal record if re-solving fails after 
   expect(x.calls.slice(before).some(call => call.method === 'PUT')).toBe(false);
 });
 
+it('does not resurrect released cards from a retained concept draft on a sibling Challenge', async () => {
+  const x = await missingFixture(); await x.fill();
+  const oldTarget = { setId: x.challenge.setId, challengeId: x.challenge.id };
+  const key = [...x.data.keys()].find(key => key.startsWith('fcat-fc27-concept-draft:'));
+  const oldDraft = structuredClone(x.data.get(key));
+  clearLocalSquad(x); x.root.crypto.randomUUID = () => 'invalid operation';
+  expect((await x.fill()).saved).not.toBe(true);
+  const reservationKey = [...x.data.keys()].find(key => key.startsWith('fcat-fc27-puzzle-reservations:'));
+  expect(x.data.get(reservationKey).targets).toContainEqual({ ...oldTarget, itemRefs: [] });
+  x.challenge.id++;
+  x.root.services.SBC.repository.sets._collection = { [oldTarget.setId]: { id: oldTarget.setId,
+    challenges: [{ id: oldTarget.challengeId }, { id: x.challenge.id }] } };
+  expect((await x.fill()).saved).not.toBe(true);
+  expect(x.data.get(reservationKey).targets.find(row => row.challengeId === oldTarget.challengeId).itemRefs).toEqual([]);
+  expect(x.data.get(key)).toEqual(oldDraft);
+});
+
 it.each([false, true])('blocks server changes between the baseline and save (concept=%s)', async concept => {
   const x = concept ? await missingFixture() : fixture();
   const push = x.calls.push.bind(x.calls);

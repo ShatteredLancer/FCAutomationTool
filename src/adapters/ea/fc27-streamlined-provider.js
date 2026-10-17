@@ -43,7 +43,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
       try {
         if (plan.challenge.status !== 'IN_PROGRESS') fail('INITIATION_UNVERIFIED');
         const origin = binding(); unchanged(origin, plan);
-        await checkOtherTransactions(); unchanged(origin, plan);
+        await checkOtherTransactions(plan, batch); unchanged(origin, plan);
         await maintenance?.prepare?.(batch.refs);
         if (batch.refs.some(ref => ['unassigned', 'transfer'].includes(ref.pile))) {
           if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
@@ -87,7 +87,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
         const reply = await transport.request('contribute', { challengeId: plan.challenge.id,
           itemIds: batch.refs.map(ref => ref.id) }, async () => {
           assert();
-          await checkOtherTransactions(); assert();
+          await checkOtherTransactions(plan, batch); assert();
           const record = validateStreamlinedJournal(await journal.read(plan.context), plan.context);
           if (record.plan.fingerprint !== plan.fingerprint || record.submittedScore !== approved.submittedScore
               || !same(record.batches[batch.index], batch) || batch.state !== 'pending' || batch.receipt) fail('JOURNAL_CHANGED');
