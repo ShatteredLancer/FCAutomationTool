@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedExecution, assertStreamlinedOtherTransactions } from '../../src/adapters/browser/fc27-streamlined-execution.js';
 import { createFc27StreamlinedProvider } from '../../src/adapters/ea/fc27-streamlined-provider.js';
@@ -10,6 +10,8 @@ import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.j
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime.js';
 import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
+
+afterEach(() => vi.useRealTimers());
 
 it.each(['non-expiring', 'rebased-expiry', 'invalid-hub', 'reset-count-unchanged', 'reset-count-missing', 'reset-count-conflict'])('settles mixed Storage/Club with public native contracts: %s', async scenario => {
   const at = Math.floor(Date.now() / 1000) * 1000, endTime = scenario === 'non-expiring' ? 0 : observedSet(at).endTime;
@@ -154,7 +156,8 @@ it('does not let a valid Puzzle purchase marker block an unrelated contribution'
   expect(reads).not.toContain(foreign);
 });
 
-it('composes shared locking, durable GM, real readers, native eviction and page progress across two batches', async () => {
+it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without resending the settled first batch: %s', async failure => {
+  if (failure === 'transient-read') vi.useFakeTimers();
   const f = streamlinedRuntime(), selected = f.input.inventory.slice(0, 10), memory = new Map();
   const plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
     result: { status: 'ready', items: selected, batches: [selected.slice(0, 5), selected.slice(5)], score: 200,
@@ -164,8 +167,9 @@ it('composes shared locking, durable GM, real readers, native eviction and page 
   const get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);
   const set = vi.fn(async (key, value) => { expect(held).toBe(true); memory.set(key, structuredClone(value)); });
   f.replies.rows[0].submittedScore = 0;
-  const writes = [], progress = [];
-  const options = { context: f.plan.context, get, set, canWrite: () => true,
+  if (failure !== 'none') f.replies.progressReplies = [{}, {}, { success: false, status: failure === 'transient-read' ? 503 : 429 }];
+  const writes = [], progress = [], diagnosticLog = { record: vi.fn(async () => true) };
+  const options = { context: f.plan.context, get, set, canWrite: () => true, diagnosticLog,
     lockManager: { request: async (name, options, task) => {
       if (held) return task(null);
       held = true; try { return await task({ name, mode: options.mode }); } finally { held = false; }
@@ -189,7 +193,19 @@ it('composes shared locking, durable GM, real readers, native eviction and page 
   execution.prepare(plan);
   expect(writes).toHaveLength(0); expect(set).not.toHaveBeenCalled();
   const approval = { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1] };
-  const result = await execution.transaction.execute(plan, approval, { onProgress: p => progress.push(p) });
+  const pending = execution.transaction.execute(plan, approval, { onProgress: p => progress.push(p) });
+  if (failure === 'transient-read') await vi.advanceTimersByTimeAsync(1501);
+  let result = await pending;
+  if (failure === 'rate-limit') {
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: 429,
+      record: { submittedScore: 100, batches: [{ state: 'confirmed' }, { state: 'waiting' }] } });
+    expect(writes).toHaveLength(1);
+    expect(f.calls.filter(row => row.kind === 'progress')).toHaveLength(3);
+    expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ phase: 'contribution-validation',
+      reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: 429, attempt: 1, attemptLimit: 3, currentScore: 100 }));
+    const resumed = await createFc27StreamlinedExecution(f.root, options);
+    result = await resumed.transaction.execute(plan, approval, { onProgress: p => progress.push(p) });
+  }
   expect(result.status).toBe('completed'); expect(result.record.rewardState).toBe('unknown');
   expect(f.challenge.submittedScore).toBe(200); expect(f.challenge.status).toBe('COMPLETED');
   expect(f.challenge.timesCompleted).toBe(1); expect(f.set.totalSubmittedScore).toBe(200);
@@ -200,6 +216,7 @@ it('composes shared locking, durable GM, real readers, native eviction and page 
   expect((await restarted.transaction.recover(plan.context)).status).toBe('observed');
   expect((await restarted.transaction.execute(plan, approval)).status).toBe('completed');
   expect(writes).toHaveLength(2);
+  expect(writes.filter(ids => ids.includes(1))).toHaveLength(1);
 });
 
 it('recovers a mixed-pile contribution after the final checkpoint fails without consuming twice', async () => {
@@ -280,10 +297,12 @@ it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'sa
   if (scenario === 'same-target') {
     createPurchaseAdapter.mock.calls[0][1].onEvent({ stage: 'contribution-readback', status: 'blocked',
       reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED', count: 2, currentScore: 430, targetScore: 1250,
+      httpStatus: 503, localReason: 'FC27_NATIVE_ERROR_521', attempt: 3, attemptLimit: 3,
       methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
       accountScope: 'secret', itemIds: [123456], raw: { token: 'secret' } });
     expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ area: 'streamlined', event: 'contribution-transaction',
       phase: 'contribution-readback', status: 'blocked', reason: 'FC27_STREAMLINED_RECEIPT_REQUIRED',
+      httpStatus: 503, localReason: 'FC27_NATIVE_ERROR_521', attempt: 3, attemptLimit: 3,
       methodPath: 'methods.search', observedHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64),
       count: 2, currentScore: 430, targetScore: 1250 }));
     expect(JSON.stringify(diagnosticLog.record.mock.calls)).not.toMatch(/secret|itemIds|accountScope|123456|"raw"/);

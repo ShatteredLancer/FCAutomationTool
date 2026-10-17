@@ -52,7 +52,9 @@ export function streamlinedRuntime({ targetScore = 200, mixedStorage = false, en
     getChallengesForSet(setId) {
       f.calls.push({ kind: 'progress', setId });
       return { observe(owner, callback) {
-        replies.deliver = () => callback(this, { success: replies.success, status: replies.status,
+        const queued = replies.progressReplies?.shift() ?? {};
+        replies.deliver = () => callback(this, { success: queued.success ?? replies.success, status: queued.status ?? replies.status,
+          error: queued.error,
           response: { challenges: replies.rows } });
         if (!replies.hold) replies.deliver();
       }, unobserve };

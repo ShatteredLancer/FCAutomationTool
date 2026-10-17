@@ -55,6 +55,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   const contributionDiagnostic = row => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'contribution-transaction',
       phase: `contribution-${row.phase}`, status: row.status, reason: row.reason,
+      localReason: row.localReason, attempt: row.attempt, attemptLimit: row.attemptLimit,
       methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
       mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
       httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
@@ -69,6 +70,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined',
         event: row.stage?.startsWith('contribution-') ? 'contribution-transaction' : 'purchase-native',
         phase: row.stage, status: row.status, currentScore: row.currentScore, targetScore: row.targetScore,
+        attempt: row.attempt, attemptLimit: row.attemptLimit,
         methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
         mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
         definitionId: row.definitionId, maxBuy: row.maxBuy,
@@ -76,7 +78,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         actualPrice: row.stage === 'bid' ? row.price : undefined,
         requestedCount: row.requestedCount, responseCount: row.responseCount, acceptedCount: row.acceptedCount,
         foreignCount: row.foreignCount, unknownCount: row.unknownCount, offset: row.offset, reason: row.reason,
-        localReason: Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined,
+        localReason: row.localReason ?? (Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined),
         httpStatus: row.httpStatus, count: row.count, skippedCount: row.skippedCount })).catch(() => {}); } catch { /* diagnostic only */ } } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,

@@ -145,6 +145,8 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_RECONCILIATION_REQUIRED: '本次投入结果尚待核对，请点击“核对并恢复”，不要重复投入。',
     FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: 'EA 已返回本批完成回执，但归零后的 SBC 状态存在冲突，暂未结清记录。不要重新买卡或重复投入；保留记录并导出诊断。',
     FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: 'EA 返回的 SBC 完成次数格式异常，已保留本批记录。请勿重复投入；可稍后核对并恢复。',
+    FC27_STREAMLINED_PROGRESS_READ_FAILED: 'EA 进度读取未成功。已确认批次和积分保留，不会重复投入；请稍后核对并恢复。',
+    FC27_STREAMLINED_PROGRESS_READ_TIMEOUT: 'EA 进度读取超时。已确认批次和积分保留；请稍后核对并恢复，不要重新投入旧批次。',
     FC27_STREAMLINED_RECOVERY_REQUIRED: '上次贡献已发出，结果尚待核对；请点击“核对并恢复”，不要再次投入。',
     FC27_STREAMLINED_CONTEXT_CHANGED: '账号、SBC 或积分状态已变化，请重新打开当前 SBC 并生成方案。',
     FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未结清的贡献记录，未在当前 SBC 恢复或重复投入。`,

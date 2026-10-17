@@ -12,6 +12,9 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     'EA_SQUAD_CONFLICT', 'EA_CONTRIBUTION_REJECTED'].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason({ message: reason });
   const failureDetail = error => {
     const detail = { reason: safeReason(error) };
+    if (integer(error?.httpStatus, 0, 599)) detail.httpStatus = error.httpStatus;
+    if (typeof error?.localReason === 'string' && /^FC27_NATIVE_ERROR_\d{1,10}$/.test(error.localReason)) detail.localReason = error.localReason;
+    for (const key of ['attempt', 'attemptLimit']) if (integer(error?.[key], 1, 3)) detail[key] = error[key];
     if (typeof error?.methodPath === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error.methodPath)) detail.methodPath = error.methodPath;
     if (typeof error?.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(error.observedHash) || error.observedHash === 'oversized')) detail.observedHash = error.observedHash;
     if (typeof error?.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(error.expectedHash)) detail.expectedHash = error.expectedHash;
@@ -167,7 +170,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         } catch (error) {
           record.batches[index].state = 'unknown';
           record = await journal.write(plan.context, record, record.revision);
-          return { status: 'recovery-required', reason: safeReason(error), record };
+          return { status: 'recovery-required', ...failureDetail(error), record };
         }
         phase = 'checkpoint';
         record = await journal.write(plan.context, record, record.revision);
@@ -179,7 +182,9 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       return { status: stopping ? 'stopped' : record.submittedScore >= plan.challenge.targetScore ? 'completed' : 'partial', record };
     } catch (error) {
       diagnose(phase, 'blocked', record, activeBatch, () => failureDetail(error));
-      return { status: 'blocked', reason: safeReason(error) };
+      return { status: 'blocked', ...failureDetail(error),
+        ...(phase === 'validation' && ['FC27_STREAMLINED_PROGRESS_READ_FAILED', 'FC27_STREAMLINED_PROGRESS_READ_TIMEOUT'].includes(error?.message)
+          ? { record } : {}) };
     }
     finally { try { await release?.(); } finally { running = false; } }
   };
@@ -215,7 +220,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       return { status: 'recovered', record: await journal.write(context, record, record.revision) };
     } catch (error) {
       diagnose('recovery', 'recovery-required', record, batch, () => failureDetail(error));
-      return { status: 'recovery-required', reason: safeReason(error) };
+      return { status: 'recovery-required', ...failureDetail(error) };
     }
     finally { try { await release?.(); } finally { running = false; } }
   };

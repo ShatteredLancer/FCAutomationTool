@@ -3,6 +3,72 @@ import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedProgressReader } from '../../src/adapters/ea/fc27-streamlined-progress.js';
 
 afterEach(() => vi.useRealTimers());
+it.each([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524])('retries transient GET status %s once and accepts only fresh success', async status => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime();
+  f.replies.progressReplies = [{ success: false, status }, {}];
+  const pending = createFc27StreamlinedProgressReader(f.root).read(f.input.challenge);
+  await vi.advanceTimersByTimeAsync(1499); expect(f.calls).toHaveLength(1);
+  const oldReply = f.replies.deliver;
+  await vi.advanceTimersByTimeAsync(1);
+  await expect(pending).resolves.toMatchObject({ fresh: true, attempts: 2 });
+  oldReply(); f.replies.deliver();
+  expect(f.calls).toHaveLength(2); expect(f.unobserve).toHaveBeenCalledTimes(2);
+});
+
+it('stops after three failed GETs and exports only bounded HTTP/native failure metadata', async () => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime(); f.replies.success = false; f.replies.status = 503;
+  f.replies.progressReplies = Array.from({ length: 3 }, () => ({ error: { code: 521, token: 'private' } }));
+  const pending = createFc27StreamlinedProgressReader(f.root).read(f.input.challenge);
+  const failure = expect(pending).rejects.toMatchObject({ message: 'FC27_STREAMLINED_PROGRESS_READ_FAILED',
+    httpStatus: 503, localReason: 'FC27_NATIVE_ERROR_521', attempt: 3, attemptLimit: 3 });
+  await vi.advanceTimersByTimeAsync(4500); await failure;
+  expect(f.calls).toHaveLength(3); expect(f.unobserve).toHaveBeenCalledTimes(3);
+  await vi.advanceTimersByTimeAsync(20000); expect(f.calls).toHaveLength(3);
+  expect(JSON.stringify(await pending.catch(error => error))).not.toContain('private');
+});
+
+it.each([200, 304, 400, 401, 403, 404, 429, 461])('does not retry status %s without explicit transient evidence', async status => {
+  const f = streamlinedRuntime(); f.replies.success = false; f.replies.status = status;
+  await expect(createFc27StreamlinedProgressReader(f.root).read(f.input.challenge)).rejects.toMatchObject({
+    message: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: status, attempt: 1 });
+  expect(f.calls).toHaveLength(1);
+});
+
+it.each([401, 429, 461, 'private-code'])('does not retry transient HTTP when native code %s is not transient', async code => {
+  const f = streamlinedRuntime(); f.replies.progressReplies = [{ success: false, status: 503, error: { code } }];
+  await expect(createFc27StreamlinedProgressReader(f.root).read(f.input.challenge)).rejects.toMatchObject({
+    message: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: 503, attempt: 1 });
+  expect(f.calls).toHaveLength(1);
+});
+
+it('shares one deadline across backoff instead of granting another fifteen seconds', async () => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime(); f.replies.hold = true; f.replies.status = 503; f.replies.success = false;
+  const reader = createFc27StreamlinedProgressReader(f.root);
+  const pending = reader.read(f.input.challenge);
+  const failure = expect(pending).rejects.toThrow('PROGRESS_READ_TIMEOUT');
+  await vi.advanceTimersByTimeAsync(14000); const oldReply = f.replies.deliver; oldReply();
+  await vi.advanceTimersByTimeAsync(1000); await failure;
+  await vi.advanceTimersByTimeAsync(10000); oldReply(); expect(f.calls).toHaveLength(1);
+  f.replies.hold = false; f.replies.success = true; f.replies.status = 200;
+  await expect(reader.read(f.input.challenge)).resolves.toMatchObject({ fresh: true, attempts: 1 });
+});
+
+it.each(['account', 'controller', 'method'])('rechecks %s during backoff before issuing another GET', async kind => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime(); f.replies.progressReplies = [{ success: false, status: 503 }];
+  const pending = createFc27StreamlinedProgressReader(f.root).read(f.input.challenge);
+  const failure = expect(pending).rejects.toThrow(/CONTEXT_(CHANGED|UNAVAILABLE)/);
+  await vi.advanceTimersByTimeAsync(1);
+  if (kind === 'account') f.user.selectedPersona = 444;
+  if (kind === 'controller') f.root.getAppMain = () => null;
+  if (kind === 'method') f.root.services.SBC.sbcDAO.getChallengesForSet = () => {};
+  await vi.advanceTimersByTimeAsync(1500); await failure;
+  expect(f.calls).toHaveLength(1); expect(f.unobserve).toHaveBeenCalledTimes(1);
+});
+
 it.each([-1, '0', 0.5])('rejects malformed native completion count %s instead of treating it as absent', async count => {
   const f = streamlinedRuntime(); f.replies.rows[0].timesCompleted = count;
   await expect(createFc27StreamlinedProgressReader(f.root).read(f.input.challenge)).rejects.toThrow('PROGRESS_COUNT_UNVERIFIED');

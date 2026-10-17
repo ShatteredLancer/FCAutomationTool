@@ -45,7 +45,9 @@ export async function exerciseStreamlined(context) {
                 record.submittedScore += plan.batches[index].reduce((sum, item) => sum + item.points, 0);
                 callbacks.onProgress({ phase: 'confirmed', index, submittedScore: record.submittedScore });
               }
-              return { status: 'partial', record };
+              return globalThis.streamlinedEvidence.progressReadFailure
+                ? { status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', record }
+                : { status: 'partial', record };
             },
           } };
         },
@@ -159,6 +161,26 @@ export async function exerciseStreamlined(context) {
     assert.deepEqual(await page.evaluate(() => globalThis.streamlinedEvidence.approval.batchIndices), [1]);
     assert.equal(await page.getByRole('checkbox', { name: '选择第 2 批' }).isDisabled(), true);
     assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isEnabled(), true);
+    // A later pre-dispatch GET failure retains the first batch's authoritative
+    // score, disables its checkbox and never presents the run as zero progress.
+    await page.evaluate(() => { globalThis.streamlinedEvidence.progressReadFailure = true; });
+    await page.getByRole('button', { name: '生成方案', exact: true }).click();
+    await page.getByText('第 3 批', { exact: false }).waitFor();
+    await page.getByRole('checkbox', { name: '选择第 2 批' }).uncheck();
+    await page.getByRole('checkbox', { name: '选择第 3 批' }).uncheck();
+    await contribute.click();
+    await page.getByText('EA 进度读取未成功。已确认批次和积分保留，不会重复投入；请稍后核对并恢复。', { exact: true }).first().waitFor();
+    const partial = await page.evaluate(() => {
+      const p = globalThis.streamlinedEvidence.lastPlan;
+      return { score: p.batches[0].reduce((sum, item) => sum + item.points, 0).toLocaleString('en-US'),
+        target: p.challenge.targetScore.toLocaleString('en-US') };
+    });
+    assert.equal(await page.locator('[data-final-progress]').innerText(), `已确认 ${partial.score} / ${partial.target} 分`);
+    assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isDisabled(), true);
+    assert.equal(await contribute.isDisabled(), true);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-progress-read-paused.png') });
+    await page.evaluate(() => { globalThis.streamlinedEvidence.progressReadFailure = false; });
     // A successful EA contribution with unfinished local synchronization is
     // not an unknown contribution and must never leave the writer enabled.
     await page.evaluate(() => {
@@ -178,7 +200,7 @@ export async function exerciseStreamlined(context) {
     const completedScore = await page.evaluate(() => globalThis.streamlinedEvidence.lastPlan.challenge.targetScore.toLocaleString('en-US'));
     assert.equal(await page.locator('[data-final-progress]').innerText(), `已确认 ${completedScore} / ${completedScore} 分`);
     assert.equal(await contribute.isVisible(), false);
-    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-confirmed-sync-pending.png') });
     await page.evaluate(() => { globalThis.streamlinedEvidence.recoveryOutcome = { status: 'absent' }; });
     // A purchase marker can appear between planning and execution. Preserve
@@ -193,7 +215,7 @@ export async function exerciseStreamlined(context) {
     const blocked = await page.getByRole('dialog').innerText();
     assert.match(blocked, /当前不能贡献：当前账号有待核对的 Puzzle 购卡记录/);
     assert.doesNotMatch(blocked, /contribution interface unavailable/);
-    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 1, 'Pending purchase never spends materials');
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2, 'Pending purchase never spends materials');
     await exerciseStreamlinedMarket(page);
     await exerciseStreamlinedValue(page);
     await exerciseStreamlinedOwnedRecipe(page);

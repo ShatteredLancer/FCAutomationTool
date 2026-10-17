@@ -89,7 +89,7 @@ export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
         observedAt: progress.observedAt, submittedScore: current.submittedScore, absent: structuredClone(batch.refs),
         challenge: current, timesCompleted: progress.timesCompleted,
         operationConfirmed: true, cycleResetConfirmed: cycleReset, cycleResetProof: resetProof, rewardConfirmed: false,
-        requests: requests + 1 };
+        requests: requests + (progress.attempts ?? 1) };
     } finally { busy = false; }
   } });
 }

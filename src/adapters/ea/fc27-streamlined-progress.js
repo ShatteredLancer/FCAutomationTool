@@ -4,6 +4,7 @@ import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge } from './fc
 import { integer, same, fail } from '../../streamlined/contract.js';
 
 export const FC27_STREAMLINED_PROGRESS_HASH = '238c93154b271b36affb9e95eb5696d05471cc8d533294a0d0d8848c55e3b693';
+const transientReadStatuses = new Set([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
 const method = (object, key) => {
   for (let depth = 0; object && depth < 8; depth++, object = Object.getPrototypeOf(object)) {
     const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -42,40 +43,64 @@ export function createFc27StreamlinedProgressReader(root, { now = () => Date.now
       };
       assert();
       return await new Promise((resolve, reject) => {
-        const owner = {}; let observable, done = false;
+        let owner, observable, retryTimer, done = false, attempts = 0;
+        const release = () => {
+          const current = observable, currentOwner = owner; observable = null; owner = null;
+          try { current?.unobserve(currentOwner); } catch { /* Only this reader's observer. */ }
+        };
+        const readError = (code, status, nativeCode) => Object.assign(Error(`FC27_STREAMLINED_${code}`), {
+          ...(integer(status, 0, 599) ? { httpStatus: status } : {}), attempt: attempts, attemptLimit: 3,
+          ...(integer(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}),
+        });
         const finish = (error, value) => {
-          if (done) return; done = true; clearTimeout(timer);
-          try { observable?.unobserve(owner); } catch { /* Only this reader's observer. */ }
+          if (done) return; done = true; clearTimeout(timer); clearTimeout(retryTimer); release();
           if (error) reject(error); else resolve(value);
         };
-        const timer = setTimeout(() => finish(Error('FC27_STREAMLINED_PROGRESS_READ_TIMEOUT')), 15000);
-        try {
-          observable = read.call(dao, expected.setId);
-          observable.observe(owner, (_sender, reply) => {
-            if (done) return;
-            try {
-              assert();
-              if (ownData(reply, 'success') !== true || ownData(reply, 'status') !== 200) fail('PROGRESS_READ_FAILED');
-              const value = ownData(ownData(reply, 'response'), 'challenges');
-              const raw = ownData(value, '_collection') ?? value;
-              if (!raw || typeof raw !== 'object') fail('PROGRESS_READ_UNVERIFIED');
-              const keys = Object.getOwnPropertyNames(raw).filter(key => key !== 'length');
-              if (keys.length > 100) fail('PROGRESS_READ_UNVERIFIED');
-              const rows = keys.map(key => ownData(raw, key));
-              if (rows.some(row => !integer(ownData(row, 'id'), 1) || ownData(row, 'setId') !== expected.setId)
-                  || new Set(rows.map(row => row.id)).size !== rows.length) fail('PROGRESS_READ_UNVERIFIED');
-              const selected = rows.find(row => row.id === expected.id);
-              if (!selected) fail('PROGRESS_READ_UNVERIFIED');
-              const timesCompleted = ownData(selected, 'timesCompleted');
-              if (timesCompleted != null && !integer(timesCompleted)) fail('PROGRESS_COUNT_UNVERIFIED');
-              const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
-              finish(null, { fresh: true, observedAt: now(), challenge,
-                timesCompleted: timesCompleted ?? null,
-                freshFields: ['status', 'targetScore', 'submittedScore', 'eligibility', 'eligibilityOperation'],
-                setMetadataFresh: false, rewardConfirmed: false });
-            } catch (error) { finish(error); }
-          });
-        } catch (error) { finish(error); }
+        // One shared deadline, not a fresh 15 seconds for each retry. Only
+        // explicit transient read failures retry; never auth, rate limits,
+        // malformed metadata, missing identities, or any contribution request.
+        const timer = setTimeout(() => finish(readError('PROGRESS_READ_TIMEOUT')), 15000);
+        const request = () => {
+          if (done) return;
+          const attempt = ++attempts; let settled = false;
+          try {
+            assert(); owner = {};
+            observable = read.call(dao, expected.setId);
+            observable.observe(owner, (_sender, reply) => {
+              if (done || settled || attempt !== attempts) return;
+              settled = true;
+              try {
+                assert();
+                const status = ownData(reply, 'status'), nativeCode = ownData(ownData(reply, 'error'), 'code');
+                if (ownData(reply, 'success') !== true || status !== 200) {
+                  if (attempts < 3 && transientReadStatuses.has(status)
+                      && (nativeCode == null || transientReadStatuses.has(nativeCode))) {
+                    release(); retryTimer = setTimeout(request, 1500 * attempts); return;
+                  }
+                  finish(readError('PROGRESS_READ_FAILED', status, nativeCode)); return;
+                }
+                const value = ownData(ownData(reply, 'response'), 'challenges');
+                const raw = ownData(value, '_collection') ?? value;
+                if (!raw || typeof raw !== 'object') fail('PROGRESS_READ_UNVERIFIED');
+                const keys = Object.getOwnPropertyNames(raw).filter(key => key !== 'length');
+                if (keys.length > 100) fail('PROGRESS_READ_UNVERIFIED');
+                const rows = keys.map(key => ownData(raw, key));
+                if (rows.some(row => !integer(ownData(row, 'id'), 1) || ownData(row, 'setId') !== expected.setId)
+                    || new Set(rows.map(row => row.id)).size !== rows.length) fail('PROGRESS_READ_UNVERIFIED');
+                const selected = rows.find(row => row.id === expected.id);
+                if (!selected) fail('PROGRESS_READ_UNVERIFIED');
+                const timesCompleted = ownData(selected, 'timesCompleted');
+                if (timesCompleted != null && !integer(timesCompleted)) fail('PROGRESS_COUNT_UNVERIFIED');
+                const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
+                finish(null, { fresh: true, observedAt: now(), challenge,
+                  timesCompleted: timesCompleted ?? null, attempts,
+                  freshFields: ['status', 'targetScore', 'submittedScore', 'eligibility', 'eligibilityOperation'],
+                  setMetadataFresh: false, rewardConfirmed: false });
+              } catch (error) { finish(error); }
+            });
+          } catch (error) { finish(error); }
+        };
+        request();
       });
     } finally { busy = false; }
   } });

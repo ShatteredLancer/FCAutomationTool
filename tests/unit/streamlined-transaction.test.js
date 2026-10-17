@@ -66,6 +66,20 @@ it('records the original dispatch error separately from missing-receipt readback
   expect(f.adapter.contribute).toHaveBeenCalledOnce();
 });
 
+it('drops arbitrary failure metadata instead of exporting it with read diagnostics', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.verify.mockRejectedValue(Object.assign(Error('FC27_STREAMLINED_PROGRESS_READ_FAILED'), {
+    httpStatus: 'private-http', localReason: 'private-reason', attempt: 99, attemptLimit: -1,
+    response: { token: 'private-response' },
+  }));
+  const result = await f.tx.execute(f.plan, f.approval);
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED' });
+  expect(result.httpStatus).toBeUndefined(); expect(result.localReason).toBeUndefined();
+  expect(result.attempt).toBeUndefined(); expect(result.attemptLimit).toBeUndefined();
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain('private-');
+  expect(f.adapter.contribute).not.toHaveBeenCalled();
+});
+
 it.each([
   ['unknown', 'EA_CONTRIBUTION_RESPONSE_CONFLICT', 200],
   ['unknown', 'EA_CONTRIBUTION_RESPONSE_UNVERIFIED', 521],
