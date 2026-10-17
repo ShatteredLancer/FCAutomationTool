@@ -10,7 +10,7 @@ it('rechecks locks after validation and before an irreversible contribution', as
   const f = await setup();
   await f.provider.verify(f.plan, f.batch, 0);
   f.root.info.lock = [f.selected[0].id];
-  await expect(f.provider.contribute(f.plan, f.batch)).resolves.toMatchObject({ status: 'rejected', reason: 'FC27_STREAMLINED_POLICY_CHANGED' });
+  await expect(f.provider.contribute(f.plan, f.batch)).resolves.toMatchObject({ status: 'rejected', reason: 'FC27_STREAMLINED_MATERIAL_CHANGED' });
   expect(f.dispatched).not.toHaveBeenCalled();
 });
 
@@ -50,7 +50,7 @@ it.each(['active-state', 'lock'])('rechecks %s after validation of a zero-ID act
   expect(await f.provider.verify(f.plan, f.batch, 0)).toBe(true);
   if (change === 'active-state') f.root.repositories.Squad.squads._collection[902]._collection[0]._isActive = false;
   else f.root.info.lock = [f.selected[0].id];
-  const reason = change === 'active-state' ? 'FC27_STREAMLINED_PROTECTION_UNVERIFIED' : 'FC27_STREAMLINED_POLICY_CHANGED';
+  const reason = change === 'active-state' ? 'FC27_STREAMLINED_PROTECTION_UNVERIFIED' : 'FC27_STREAMLINED_MATERIAL_CHANGED';
   await expect(f.provider.contribute(f.plan, f.batch)).resolves.toMatchObject({ status: 'rejected', reason });
   expect(f.dispatched).not.toHaveBeenCalled(); expect(f.request).not.toHaveBeenCalled();
 });

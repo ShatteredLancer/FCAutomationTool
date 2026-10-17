@@ -130,12 +130,13 @@ export async function exerciseStreamlined(context) {
     assert.equal(await contribute.isEnabled(), true);
     // Screenshot regression: recovery errors/other-target history must not
     // leave an old generated plan and active contribution button underneath.
-    for (const scenario of ['absent', 'other-target', 'context-error', 'cycle-conflict']) {
+    for (const scenario of ['absent', 'other-target', 'context-error', 'cycle-conflict', 'policy-change']) {
       await page.evaluate(scenario => {
         globalThis.streamlinedEvidence.recoveryThrows = scenario === 'context-error';
         globalThis.streamlinedEvidence.recoveryOutcome = scenario === 'other-target'
           ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery: { setId: 48, challengeId: 85 } }
           : scenario === 'cycle-conflict' ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED' }
+            : scenario === 'policy-change' ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_POLICY_CHANGED' }
             : { status: 'absent' };
       }, scenario);
       await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
@@ -146,8 +147,10 @@ export async function exerciseStreamlined(context) {
       assert.equal(await page.locator('.gallery-native-card').count(), 0);
       const message = await page.locator('[data-status]').innerText();
       assert.match(message, scenario === 'absent' ? /当前 SBC 没有待恢复的贡献记录/ : scenario === 'other-target' ? /Set 48 \/ Challenge 85/
-        : scenario === 'cycle-conflict' ? /EA 已返回本批完成回执.*不要重新买卡或重复投入/ : /账号、SBC 或积分状态已变化/);
+        : scenario === 'cycle-conflict' ? /EA 已返回本批完成回执.*不要重新买卡或重复投入/
+          : scenario === 'policy-change' ? /选材设置已变化.*生成新方案.*已确认积分保留.*先归档/ : /账号、SBC 或积分状态已变化/);
       assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 0);
+      if (scenario === 'policy-change') await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-policy-replan.png') });
       await page.getByRole('button', { name: '生成方案', exact: true }).click();
       await page.getByText('第 3 批', { exact: false }).waitFor();
       assert.equal(await contribute.isEnabled(), true, 'A new valid plan is independently usable');

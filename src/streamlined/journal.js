@@ -11,6 +11,26 @@ export const STREAMLINED_JOURNAL_SCHEMA = 1;
 export const isUnsentStreamlinedJournal = record => record?.batches?.length > 0
   && record.batches.every(batch => batch.state === 'waiting' && batch.startingScore === undefined
     && batch.receipt === undefined && batch.progressChanged !== true);
+// A new explicit plan may replace only the never-dispatched remainder of a
+// confirmed stock run, starting at exactly its durable score. Keep the whole
+// old journal first; pending/unknown writes and purchased/external cards are
+// not a cancellable planning reservation.
+export function canReplaceStreamlinedRemainder(record, plan) {
+  const stock = candidate => candidate.items.every(item => item.source === 'inventory'
+    && ['club', 'storage'].includes(item.pile) && !item.purchaseReceipt)
+    && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some(group => group.source === 'market');
+  const confirmed = record?.batches?.filter(batch => batch.state === 'confirmed') ?? [];
+  const consumed = new Set(confirmed.flatMap(batch => batch.refs.map(ref => ref.id)));
+  return !!record && same(record.context, plan.context)
+    && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id
+    && record.plan.challenge.targetScore === plan.challenge.targetScore
+    && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore
+    && confirmed.length > 0 && confirmed.every(batch => batch.receipt?.status === 'accepted')
+    && Math.max(...confirmed.map(batch => batch.receipt.submittedScore)) === record.submittedScore
+    && record.batches.some(batch => batch.state === 'waiting')
+    && record.batches.every(batch => ['waiting', 'confirmed', 'rejected'].includes(batch.state) && !batch.progressChanged)
+    && stock(record.plan) && stock(plan) && !plan.items.some(item => consumed.has(item.id));
+}
 const states = ['waiting', 'pending', 'confirmed', 'rejected', 'unknown'];
 const refOf = item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile,
   ...(item.executionPile ? { executionPile: item.executionPile } : {}) });
@@ -62,12 +82,24 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now() } = 
     });
     tail = task.catch(() => {}); return task;
   };
-  return Object.freeze({ read, write, async begin(plan) {
+  return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
     assertStreamlinedPlan(plan);
     if (plan.items.some(item => item.source !== 'inventory')) fail('PURCHASE_PENDING');
     const prior = await read(plan.context);
+    const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint
+      && canReplaceStreamlinedRemainder(prior, plan);
+    if (replaceRemainder && !replacement) fail('RECOVERY_REQUIRED');
     if (prior && !isUnsentStreamlinedJournal(prior)
-        && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state))) fail('RECOVERY_REQUIRED');
+        && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state)) && !replacement) fail('RECOVERY_REQUIRED');
+    if (replacement) {
+      const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
+      try {
+        const saved = await get(key, null);
+        if (saved != null && !same(saved, prior)) fail('JOURNAL_ARCHIVE_CONFLICT');
+        if (saved == null) await set(key, structuredClone(prior));
+        if (!same(await get(key, null), prior)) fail('JOURNAL_ARCHIVE_FAILED');
+      } catch { fail('JOURNAL_ARCHIVE_FAILED'); }
+    }
     return write(plan.context, { schema: 1, context: plan.context, plan, submittedScore: plan.challenge.submittedScore,
       rewardState: 'unknown', batches: plan.batches.map((batch, index) => ({ index, state: 'waiting',
       refs: batch.map(refOf) })) }, prior?.revision ?? 0);

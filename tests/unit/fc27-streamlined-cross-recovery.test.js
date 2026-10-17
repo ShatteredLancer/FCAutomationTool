@@ -9,6 +9,8 @@ import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.j
 import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 import { streamlinedExecutionMessage } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 import { assertStreamlinedRecoveryIsolation } from '../../src/streamlined/recovery-isolation.js';
+import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
+import { streamlinedProgress } from '../../src/streamlined/contract.js';
 
 async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch = null } = {}) {
   const f = streamlinedRuntime(), memory = new Map(), mutations = vi.fn(), diagnosticLog = { record: vi.fn() };
@@ -102,6 +104,116 @@ it('restores disjoint stock-only work without settling or executing a foreign pu
   expect((await f.session.contribute({ fingerprint: f.plan.fingerprint, batchIndices: [0, 1] })).status).toBe('completed');
   expect(f.mutations).toHaveBeenCalledExactlyOnceWith(f.plan.batches[1].map(item => item.id));
   expect(await f.get(streamlinedPurchaseKey(f.plan.context))).toEqual(old);
+});
+
+it.each(['lock', 'roster'])('continues a recovered remainder after an unrelated %s changes', async change => {
+  const f = await setup('club');
+  if (change === 'lock') f.root.info.lock.push(9999);
+  else {
+    f.root.info.squad[0] = 9999;
+    f.root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item.id = 9999;
+  }
+  expect((await f.session.recover()).preview.liveExecutionEnabled).toBe(true);
+  const result = await f.session.contribute({ fingerprint: f.plan.fingerprint, batchIndices: [1] });
+  expect(result.status, result.reason).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledExactlyOnceWith(f.plan.batches[1].map(item => item.id));
+});
+
+function replacementPlan(f, { challenge: overrides = {}, alterItems = () => {} } = {}) {
+  const input = readFc27StreamlinedInputs(f.root), challenge = { ...input.challenge, ...overrides };
+  const items = structuredClone(input.inventory.slice(-5)); alterItems(items);
+  const score = items.reduce((sum, item) => sum + item.points, 0), progress = streamlinedProgress(challenge, score);
+  return createStreamlinedPlan({ context: input.context, challenge, policy: input.policy,
+    result: { status: progress.reached ? 'ready' : 'partial', items, batches: [items], score, progress,
+      purchaseCost: 0, materialValue: null, searchComplete: true } });
+}
+
+it.each(['observed', 'old-card-locked', 'policy-change', 'old-card-missing'])('replans a %s partial stock journal without losing its confirmed record', async scenario => {
+  const f = await setup('club'), key = streamlinedJournalKey(f.plan.context);
+  const previous = structuredClone(f.memory.get(key));
+  if (scenario === 'old-card-locked') f.root.info.lock.push(6);
+  if (scenario === 'policy-change') f.root.info.set.goldenrange = 80;
+  if (scenario === 'old-card-missing') {
+    f.state.players = f.state.players.filter(item => item.id !== 6); f.root.repositories.Item.club.items.remove(6);
+  }
+  const next = replacementPlan(f), items = next.items;
+  const execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  const result = await execution.transaction.execute(next, { approved: true, fingerprint: next.fingerprint, batchIndices: [0] });
+  expect(result.status, result.reason).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledExactlyOnceWith(items.map(item => item.id));
+  expect([...f.memory].some(([storedKey, row]) => storedKey.startsWith(`${key}:history:`)
+    && JSON.stringify(row) === JSON.stringify(previous))).toBe(true);
+  expect(f.memory.get(key).plan.fingerprint).toBe(next.fingerprint);
+  expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(f.old);
+});
+
+it.each(['pending', 'unknown', 'missing-receipt', 'progress-changed', 'wrong-score', 'wrong-target',
+  'consumed-card', 'external', 'purchased', 'not-approved', 'archive-failed', 'archive-conflict'])('does not discard the old record while replanning %s', async scenario => {
+  const f = await setup('club'), key = streamlinedJournalKey(f.plan.context), saved = f.memory.get(key);
+  if (['pending', 'unknown'].includes(scenario)) Object.assign(saved.batches[1], { state: scenario, startingScore: 100 });
+  if (scenario === 'missing-receipt') delete saved.batches[0].receipt;
+  if (scenario === 'progress-changed') saved.batches[0].progressChanged = true;
+  const previous = structuredClone(saved), next = replacementPlan(f, {
+    challenge: scenario === 'wrong-score' ? { submittedScore: 99, remainingScore: 101 }
+      : scenario === 'wrong-target' ? { id: 62 } : {},
+    alterItems: items => {
+      if (scenario === 'consumed-card') items[0] = structuredClone(f.plan.items[0]);
+      if (scenario === 'external') Object.assign(items[0], { pile: 'unassigned', executionPile: 'club' });
+      if (scenario === 'purchased') items[0].purchaseReceipt = { itemId: items[0].id };
+    } });
+  if (scenario === 'archive-failed') f.set.mockImplementationOnce(async () => { throw Error('synthetic disk failure'); });
+  if (scenario === 'archive-conflict') f.memory.set(`${key}:history:${saved.revision}`, { conflicting: true });
+  const execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  const result = await execution.transaction.execute(next, { approved: scenario !== 'not-approved', fingerprint: next.fingerprint,
+    batchIndices: [0], allowPartial: true });
+  expect(result.status).toBe('blocked');
+  expect(f.memory.get(key)).toEqual(previous); expect(f.mutations).not.toHaveBeenCalled();
+  expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(f.old);
+});
+
+it('retains an archived original through a failed new checkpoint and retries without duplicate contribution', async () => {
+  const f = await setup('club'), key = streamlinedJournalKey(f.plan.context), previous = structuredClone(f.memory.get(key));
+  const next = replacementPlan(f), write = f.set.getMockImplementation(); let failed = false;
+  f.set.mockImplementation(async (storedKey, value) => {
+    if (!failed && storedKey === key && value.plan.fingerprint === next.fingerprint) {
+      failed = true; throw Error('synthetic checkpoint failure');
+    }
+    return write(storedKey, value);
+  });
+  const execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  const approve = { approved: true, fingerprint: next.fingerprint, batchIndices: [0] };
+  expect(await execution.transaction.execute(next, approve)).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_JOURNAL_WRITE_FAILED' });
+  expect(f.memory.get(key)).toEqual(previous); expect(f.mutations).not.toHaveBeenCalled();
+  expect(f.memory.get(`${key}:history:${previous.revision}`)).toEqual(previous);
+  expect((await execution.transaction.execute(next, approve)).status).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledExactlyOnceWith(next.items.map(item => item.id));
+  expect([...f.memory.keys()].filter(storedKey => storedKey.startsWith(`${key}:history:`))).toHaveLength(1);
+});
+
+it('revalidates live progress after an approved stock replan and before dispatch', async () => {
+  const f = await setup('club'), next = replacementPlan(f);
+  f.replies.rows[0].submittedScore = 101;
+  const execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  expect(await execution.transaction.execute(next, { approved: true, fingerprint: next.fingerprint, batchIndices: [0] }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_CHANGED' });
+  expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('generates and executes a fresh protected remainder through the production session without a recovery loop', async () => {
+  const f = await setup('club'), key = streamlinedJournalKey(f.plan.context), previous = structuredClone(f.memory.get(key));
+  f.root.info.lock.push(6);
+  const session = createFc27StreamlinedSession({ get: f.get, set: f.set, createExecution: f.createExecution,
+    inspect: () => { const input = readFc27StreamlinedInputs(f.root); return { context: input.context, challenge: input.challenge }; },
+    readInputs: settings => readFc27StreamlinedInputs(f.root, settings) });
+  const settings = (await session.readSettings()).settings;
+  const result = await session.plan({ ...settings, objective: 'inventory-first', sources: ['club'] });
+  expect(result.status, result.reason).toBe('ready'); expect(result.liveExecutionEnabled).toBe(true);
+  expect(result.plan.challenge.submittedScore).toBe(100);
+  expect(result.plan.items.map(item => item.id).sort((a, b) => a - b)).toEqual([7, 8, 9, 10, 11]);
+  expect(f.memory.get(key)).toEqual(previous); expect(f.mutations).not.toHaveBeenCalled();
+  expect((await session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: [0] })).status).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledOnce();
+  expect(f.memory.get(`${key}:history:${previous.revision}`)).toEqual(previous);
 });
 
 it.each(['buy-pending', 'bought', 'move-pending', 'club', 'contribution'])('isolates foreign %s without settling it or spending its materials', async state => {

@@ -75,13 +75,17 @@ export function readFc27StreamlinedProtection(root) {
 
 export function assertFc27StreamlinedPolicy(root, expected, items = []) {
   const current = readFc27StreamlinedPolicy(root, expected.maxRating, expected.marketMaxRating);
-  if (!same(current, expected)) {
+  const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current;
+  const { lockedItemIds: _oldLocks, activeSquadId: _oldSquad, activeSquadItemIds: _oldMembers, ...frozen } = expected;
+  // These identities are live protection evidence, not selection settings.
+  // An unrelated lock/roster change must not invalidate the whole remainder;
+  // every selected entity is still checked against the current lists below.
+  if (!same(base, frozen)) {
     // Old journals remain frozen and readback stays available. The sole
     // migration exception adds current protection to old false/false plans;
     // it never restores their old permission to consume protected items.
-    const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current;
     if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false
-        || !same({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, expected)) fail('POLICY_CHANGED');
+        || !same({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, frozen)) fail('POLICY_CHANGED');
   }
   const locked = new Set(current.lockedItemIds), active = new Set(current.activeSquadItemIds);
   if (items.some(item => item.source === 'inventory' && (locked.has(item.id) || active.has(item.id)))) fail('MATERIAL_CHANGED');

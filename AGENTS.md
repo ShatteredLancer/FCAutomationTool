@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-17 Streamlined 27.0.43：现场.42已多次验证历史9/24隔离成功，当前60/100仍确认11,680/50,000；之后旧方案校验POLICY_CHANGED，新方案preflight RECOVERY_REQUIRED。日志未导出变化字段，不断言是哪项设置。生产贯通复现无关锁卡/主阵容名单变化被完整policy相等误判，以及部分confirmed＋waiting无法重新规划的死循环。保护名单改为live证据，不再因无关实体变化拒绝整份旧方案；真实选材设置变化仍拦，当前锁卡/主阵容实体仍在校验与dispatch前拒绝。新可信执行仅可从相同账号/目标/已确认积分替换纯Club/Storage等待余批：已确认回执完整、无pending/unknown/progressChanged/采购回执/外部移动，且新材料不含已确认消耗实体；先在共享锁内完整归档旧Journal并回读成功，再写新计划，正常独立进度/材料校验后才发贡献。旧采购历史和.42保护/隔离保留，未知请求或缺证据不清、不重发，不改Gallery/Puzzle/FSU或旧预算；真实账号待更新验收。验证见27.0.43说明。
+
 2026-10-17 Streamlined 27.0.42：Sam明确没有同时做另一SBC；9/24是本地历史未收尾标记，不是正在运行的证据，也未证明旧请求成功/失败。修正.41把旧标记当全局锁的过严恢复：共享锁内核验当前原贡献Journal，仅无采购/回执/外部移动的Club/Storage剩余批次，且精确实体ID与旧任务保留材料及贡献范围完全不重叠时恢复。旧contribution.batchPlan与material须完整绑定；同一实体、坏范围、当前未决或缺记录仍停止。材料校验和native dispatch回调再次读取核验，恢复本身不发EA写请求，新可信点击才继续原未完成批次，confirmed跳过。旧采购Journal原样保留，不算结清、不重买/重跑，不更改schema/预算或旧授权；界面明确历史记录及可继续状态，普通Puzzle解题目标、Gallery/FSU与全部材料保护不变，实机验收待更新。
 
 同轮补查生命周期：普通Puzzle清空当前页后的释放索引会被保留的terminal concept draft在兄弟Challenge迁移时重新填回；改用既有schema的空itemRefs条目持久标记已释放，新确认保存正常替换，不删除终态证据或放松pending save/服务端baseline。积分采购在内层已确认、外层未收尾时切换新Journal会丢旧证明；新替换钩子在原共享锁内仅用精确内层已确认回执结清外层，明确未发送/拒绝才清意图。未知/缺回执/范围变化/写入失败仍保留并阻止覆盖；不为已丢证明的历史记录补造成功。定向235项、完整verify 420文件/4918项（39跳过）及全部离线Chrome通过，已视觉核对历史隔离恢复提示。普通Puzzle只改预留释放生命周期，原解题与全部保护不改。

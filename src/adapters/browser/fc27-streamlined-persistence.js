@@ -34,7 +34,7 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
   const journal = Object.freeze({
     read: requested => { assertContext(requested); return raw.read(bound); },
     write: (requested, record, revision) => { assertContext(requested); assertHeld(); return raw.write(bound, record, revision); },
-    begin: plan => {
+    begin: (plan, options) => {
       assertContext(plan.context); assertHeld();
       return (async () => {
         const previous = await raw.read(bound);
@@ -42,7 +42,7 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
           await beforeReplace(previous, plan); assertHeld();
           if (!same(previous, await raw.read(bound))) fail('JOURNAL_CHANGED');
         }
-        return raw.begin(plan);
+        return raw.begin(plan, options);
       })();
     },
   });

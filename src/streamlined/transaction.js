@@ -1,7 +1,7 @@
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
-import { isUnsentStreamlinedJournal } from './journal.js';
+import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder } from './journal.js';
 
 // Adapter-neutral transaction driver. The production composition supplies a
 // separately guarded writer; a read-only preview never grants approval.
@@ -89,8 +89,11 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       release = await lock.acquire(plan.context);
       if (typeof release !== 'function') fail('BUSY');
       record = await journal.read(plan.context);
+      const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
       if (!record || record.plan.fingerprint !== plan.fingerprint
-          && (isUnsentStreamlinedJournal(record) || record.batches.every(b => ['confirmed', 'rejected'].includes(b.state)))) record = await journal.begin(plan);
+          && (isUnsentStreamlinedJournal(record) || record.batches.every(b => ['confirmed', 'rejected'].includes(b.state)) || replaceRemainder)) {
+        record = await journal.begin(plan, { replaceRemainder });
+      }
       if (record.plan.fingerprint !== plan.fingerprint) fail('RECOVERY_REQUIRED');
       if (record.batches.some(b => ['pending', 'unknown'].includes(b.state))) fail('RECOVERY_REQUIRED');
       if (record.batches.some(b => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail('PROGRESS_CHANGED');

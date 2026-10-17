@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.42
+// @version      27.0.43
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.42", at: Date.now(), status: 'started',
+    state = { version: "27.0.43", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27711,7 +27711,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
       FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
       FC27_STREAMLINED_PROTECTION_UNVERIFIED: "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\uFF0C\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u672A\u6295\u5165\u65B0\u6750\u6599\u3002",
-      FC27_STREAMLINED_POLICY_CHANGED: "\u6750\u6599\u4FDD\u62A4\u6216\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u6838\u5BF9\u65E7\u6267\u884C\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_POLICY_CHANGED: "\u9009\u6750\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u65E7\u65B9\u6848\u672A\u7EE7\u7EED\u6295\u5165\u3002\u8BF7\u751F\u6210\u65B0\u65B9\u6848\u5E76\u786E\u8BA4\u6267\u884C\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u65E7\u8BB0\u5F55\u4F1A\u5148\u5F52\u6863\uFF0C\u672A\u5B8C\u6210\u7684\u7EAF\u5E93\u5B58\u6279\u6B21\u53EF\u91CD\u65B0\u89C4\u5212\u3002",
       FC27_STREAMLINED_MATERIAL_CHANGED: "\u9009\u4E2D\u6750\u6599\u5DF2\u53D8\u5316\u6216\u53D7\u5230\u9501\u5361/\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u6838\u5BF9\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
       FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
       FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
@@ -27725,6 +27725,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_PROGRESS_READ_TIMEOUT: "EA \u8FDB\u5EA6\u8BFB\u53D6\u8D85\u65F6\u3002\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u79EF\u5206\u4FDD\u7559\uFF1B\u8BF7\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\uFF0C\u4E0D\u8981\u91CD\u65B0\u6295\u5165\u65E7\u6279\u6B21\u3002",
       FC27_STREAMLINED_RECOVERY_REQUIRED: "\u5DF2\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u67E5\u770B\u5DF2\u786E\u8BA4\u8FDB\u5EA6\u548C\u5269\u4F59\u6279\u6B21\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u5DF2\u786E\u8BA4\u7684\u5361\u3002",
       FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_JOURNAL_ARCHIVE_FAILED: "\u65E7\u65B9\u6848\u8BB0\u5F55\u5C1A\u672A\u6210\u529F\u5F52\u6863\uFF0C\u672C\u6B21\u672A\u53D1\u51FA\u8D21\u732E\u8BF7\u6C42\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF1B\u4E0D\u4F1A\u4E22\u5F03\u65E7\u8BB0\u5F55\u6216\u91CD\u590D\u6295\u5165\u3002",
       FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u7ED3\u6E05\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u672A\u5728\u5F53\u524D SBC \u6062\u590D\u6216\u91CD\u590D\u6295\u5165\u3002`,
       FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `\u672C\u5730\u5386\u53F2 SBC${typeof recovery?.name === "string" ? `\u300C${recovery.name.slice(0, 160)}\u300D` : ""}\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u8BB0\u5F55\u4E2D\u8FD8\u6709 ${recovery?.pendingWriteCount ?? "?"} \u7B14\u5F85\u6838\u5BF9\u8BF7\u6C42\u3001${recovery?.unconsumedPurchaseCount ?? "?"} \u5F20\u91C7\u8D2D\u6750\u6599\u5F85\u5904\u7406\u3002\u8BE5\u8BB0\u5F55\u4E0D\u4EE3\u8868\u4EFB\u52A1\u4ECD\u5728\u8FD0\u884C\uFF1B\u5F53\u524D\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u6216\u6295\u5165\u3002`,
       FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED: "\u5DF2\u6062\u590D\u5F53\u524D SBC \u7684\u5269\u4F59\u5E93\u5B58\u6279\u6B21\u3002\u5386\u53F2\u5F85\u6838\u5BF9\u8BB0\u5F55\u5DF2\u9694\u79BB\u4FDD\u7559\uFF1B\u672C\u6B21\u53EA\u7528\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\uFF0C\u4E0D\u4E70\u5361\u3001\u4E0D\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u70B9\u51FB\u201C\u8D21\u732E\u6240\u9009\u6279\u6B21\u201D\u7EE7\u7EED\u3002",
@@ -30801,6 +30802,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/streamlined/journal.js
   var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
+  function canReplaceStreamlinedRemainder(record, plan) {
+    const stock = (candidate) => candidate.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some((group) => group.source === "market");
+    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
+    const consumed = new Set(confirmed.flatMap((batch) => batch.refs.map((ref) => ref.id)));
+    return !!record && same25(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
+  }
   var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
   var refOf = (item2) => ({
     id: item2.id,
@@ -30867,11 +30874,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       return task;
     };
-    return Object.freeze({ read, write, async begin(plan) {
+    return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
       assertStreamlinedPlan(plan);
       if (plan.items.some((item2) => item2.source !== "inventory")) fail28("PURCHASE_PENDING");
       const prior = await read(plan.context);
-      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state))) fail28("RECOVERY_REQUIRED");
+      const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
+      if (replaceRemainder && !replacement) fail28("RECOVERY_REQUIRED");
+      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement) fail28("RECOVERY_REQUIRED");
+      if (replacement) {
+        const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
+        try {
+          const saved = await get(key, null);
+          if (saved != null && !same25(saved, prior)) fail28("JOURNAL_ARCHIVE_CONFLICT");
+          if (saved == null) await set(key, structuredClone(prior));
+          if (!same25(await get(key, null), prior)) fail28("JOURNAL_ARCHIVE_FAILED");
+        } catch {
+          fail28("JOURNAL_ARCHIVE_FAILED");
+        }
+      }
       return write(plan.context, {
         schema: 1,
         context: plan.context,
@@ -30941,7 +30961,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         assertHeld();
         return raw.write(bound, record, revision);
       },
-      begin: (plan) => {
+      begin: (plan, options) => {
         assertContext(plan.context);
         assertHeld();
         return (async () => {
@@ -30951,7 +30971,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             assertHeld();
             if (!same25(previous, await raw.read(bound))) fail28("JOURNAL_CHANGED");
           }
-          return raw.begin(plan);
+          return raw.begin(plan, options);
         })();
       }
     });
@@ -31157,9 +31177,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function assertFc27StreamlinedPolicy(root, expected, items = []) {
     const current2 = readFc27StreamlinedPolicy(root, expected.maxRating, expected.marketMaxRating);
-    if (!same25(current2, expected)) {
-      const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current2;
-      if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false || !same25({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, expected)) fail28("POLICY_CHANGED");
+    const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current2;
+    const { lockedItemIds: _oldLocks, activeSquadId: _oldSquad, activeSquadItemIds: _oldMembers, ...frozen } = expected;
+    if (!same25(base, frozen)) {
+      if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false || !same25({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, frozen)) fail28("POLICY_CHANGED");
     }
     const locked = new Set(current2.lockedItemIds), active = new Set(current2.activeSquadItemIds);
     if (items.some((item2) => item2.source === "inventory" && (locked.has(item2.id) || active.has(item2.id)))) fail28("MATERIAL_CHANGED");
@@ -32640,7 +32661,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         release = await lock.acquire(plan.context);
         if (typeof release !== "function") fail28("BUSY");
         record = await journal.read(plan.context);
-        if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)))) record = await journal.begin(plan);
+        const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
+        if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)) || replaceRemainder)) {
+          record = await journal.begin(plan, { replaceRemainder });
+        }
         if (record.plan.fingerprint !== plan.fingerprint) fail28("RECOVERY_REQUIRED");
         if (record.batches.some((b) => ["pending", "unknown"].includes(b.state))) fail28("RECOVERY_REQUIRED");
         if (record.batches.some((b) => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail28("PROGRESS_CHANGED");
@@ -33982,7 +34006,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.42" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.43" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34300,8 +34324,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.42"}`,
-    version: "27.0.42",
+    title: `FC Automation Tool ${"27.0.43"}`,
+    version: "27.0.43",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
