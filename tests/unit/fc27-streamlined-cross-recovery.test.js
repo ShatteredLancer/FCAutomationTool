@@ -12,29 +12,30 @@ import { assertStreamlinedRecoveryIsolation } from '../../src/streamlined/recove
 import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
 import { streamlinedProgress } from '../../src/streamlined/contract.js';
 
-async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch = null } = {}) {
-  const f = streamlinedRuntime(), memory = new Map(), mutations = vi.fn(), diagnosticLog = { record: vi.fn() };
+async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch = null, sameTarget = false, completedCycle = false } = {}) {
+  const f = streamlinedRuntime({ targetScore: completedCycle ? 100 : 200 }), memory = new Map(), mutations = vi.fn(), diagnosticLog = { record: vi.fn() };
   const get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);
   const set = vi.fn(async (key, value) => memory.set(key, structuredClone(value)));
-  const selected = f.input.inventory.slice(0, 10);
+  const selected = f.input.inventory.slice(0, completedCycle ? 5 : 10), score = selected.length * 20;
   const plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
-    result: { status: 'ready', items: selected, batches: [selected.slice(0, 5), selected.slice(5)], score: 200,
-      progress: { target: 200, submitted: 0, added: 200, total: 200, remaining: 0, excess: 0, reached: true },
+    result: { status: 'ready', items: selected, batches: completedCycle ? [selected] : [selected.slice(0, 5), selected.slice(5)], score,
+      progress: streamlinedProgress(f.input.challenge, score),
       purchaseCost: 0, materialValue: null, searchComplete: true } });
   const journal = createStreamlinedJournal({ get, set });
   let record = await journal.begin(plan);
   Object.assign(record.batches[0], { state: 'confirmed', startingScore: 0,
     receipt: normalizeStreamlinedContributionReply({ success: true, status: 200,
-      response: { setId: 31, challengeId: 61, submittedScore: 100 } },
+      response: { setId: 31, challengeId: 61, submittedScore: 100,
+        ...(completedCycle ? { grantedChallengeAwards: [{ type: 'pack' }] } : {}) } },
     { setId: 31, challengeId: 61, previousScore: 0, itemIds: selected.slice(0, 5).map(item => item.id) }) });
   record.submittedScore = 100; await journal.write(plan.context, record, record.revision);
-  f.challenge.submittedScore = 100; f.replies.rows[0].submittedScore = 100;
+  f.challenge.submittedScore = completedCycle ? 0 : 100; f.replies.rows[0].submittedScore = f.challenge.submittedScore;
   const consumed = selected.slice(0, 5).map(item => item.id);
   f.state.players = f.state.players.filter(item => !consumed.includes(item.id));
   consumed.forEach(id => f.root.repositories.Item.club.items.remove(id));
   const source = plan.items.find(item => item.id === (copyOfId ?? reservedId)) ?? plan.items[0];
   const market = { ...source, source: 'market', id: null, key: `market:${source.definitionId}:0`, price: 200, purchaseMaxBuy: 250 };
-  const oldPlan = { ...plan, challenge: { ...plan.challenge, setId: 71, id: 999, name: 'Old synthetic SBC' },
+  const oldPlan = { ...plan, challenge: { ...plan.challenge, setId: sameTarget ? 31 : 71, id: sameTarget ? 61 : 999, name: 'Old synthetic SBC' },
     route: { groups: [{ source: 'market', quantity: 1, item: market, items: [market] }] } };
   delete oldPlan.schema; delete oldPlan.fingerprint;
   const entry = { key: 'old:0', source: 'market', groupIndex: 0, state: state === 'contribution' ? 'club' : state,
@@ -49,7 +50,7 @@ async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch 
     const item = { ...source, id: reservedId, key: `item:${reservedId}`, price: 200 };
     const batchPlan = createStreamlinedPlan({ context: plan.context, challenge: oldPlan.challenge, policy: plan.policy,
       result: { status: 'partial', items: [item], batches: [[item]], score: 20,
-        progress: { target: 200, submitted: 0, added: 20, total: 20, remaining: 180, excess: 0, reached: false },
+        progress: streamlinedProgress(oldPlan.challenge, 20),
         purchaseCost: 0, materialValue: 200, searchComplete: true } });
     old.contribution = { batchPlan, material: [{ groupIndex: 0, item }], dispatched: true };
   }
@@ -62,20 +63,119 @@ async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch 
       createTransport: async () => ({ request: async (_action, target, before) => {
         await beforeDispatch?.(); await before(); mutations(target.itemIds);
         f.state.players = f.state.players.filter(item => !target.itemIds.includes(item.id));
-        Object.assign(f.replies.rows[0], { submittedScore: 200, timesCompleted: 1, status: 'COMPLETED' });
-        f.replies.set = { ...f.set, totalSubmittedScore: 200, timesCompleted: 1, challengesCompletedCount: 1 };
+        Object.assign(f.replies.rows[0], { submittedScore: score, timesCompleted: 1, status: 'COMPLETED' });
+        f.replies.set = { ...f.set, totalSubmittedScore: score, timesCompleted: 1, challengesCompletedCount: 1 };
         return { success: true, status: 200, response: { setId: 31, challengeId: 61,
-          submittedScore: 200, grantedChallengeAwards: [{ type: 'pack' }] } };
+          submittedScore: score, grantedChallengeAwards: [{ type: 'pack' }] } };
       } }) }),
   });
   const current = () => ({ ...f.input.challenge, submittedScore: f.challenge.submittedScore,
-    remainingScore: 200 - f.challenge.submittedScore });
+    remainingScore: score - f.challenge.submittedScore });
   const session = createFc27StreamlinedSession({ get, set, createExecution, diagnosticLog,
     inspect: () => ({ context: plan.context, challenge: current() }),
     readInputs: () => ({ ...f.input, challenge: current(), inventory: f.input.inventory.filter(item => !consumed.includes(item.id)) }) });
   set.mockClear();
   return { ...f, session, memory, get, set, old, plan, mutations, createExecution, createPurchaseAdapter, diagnosticLog };
 }
+
+it('starts a fresh stock cycle without settling a disjoint old purchase marker for the same SBC', async () => {
+  const f = await setup('contribution', { sameTarget: true, completedCycle: true }), next = replacementPlan(f);
+  const before = structuredClone(f.old), execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  const result = await execution.transaction.execute(next, { approved: true, fingerprint: next.fingerprint, batchIndices: [0] });
+  expect(result.status, result.reason).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledExactlyOnceWith(next.items.map(item => item.id));
+  expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(before);
+});
+
+it('restores disjoint stock work without entering a historical same-target purchase adapter', async () => {
+  const f = await setup('contribution', { sameTarget: true });
+  expect(await f.session.recover()).toMatchObject({ status: 'observed', preview: { liveExecutionEnabled: true } });
+  expect(f.createPurchaseAdapter).not.toHaveBeenCalled(); expect(f.set).not.toHaveBeenCalled();
+});
+
+it('blocks a reserved physical entity even when the historical purchase has the same SBC IDs', async () => {
+  const f = await setup('club', { sameTarget: true, reservedId: 6 }), execution = await f.createExecution(f.plan.context);
+  execution.prepare(f.plan);
+  expect(await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [1] }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED' });
+  expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('shows an already confirmed previous cycle without entering or settling its unrelated purchase history', async () => {
+  const f = await setup('contribution', { sameTarget: true, completedCycle: true }), before = structuredClone([...f.memory]);
+  expect(await f.session.recover()).toMatchObject({ status: 'completed', reason: 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED',
+    record: { submittedScore: 100 }, preview: { liveExecutionEnabled: false } });
+  expect([...f.memory]).toEqual(before); expect(f.mutations).not.toHaveBeenCalled();
+  expect(f.createPurchaseAdapter).not.toHaveBeenCalled();
+});
+
+it('keeps the real matching purchase batch in its own read-only recovery path', async () => {
+  const f = await setup('contribution', { sameTarget: true }), scope = f.old.contribution.batchPlan;
+  f.memory.delete(streamlinedJournalKey(f.plan.context));
+  await createStreamlinedJournal({ get: f.get, set: f.set }).begin(scope);
+  let check;
+  const buyer = { assertCurrent: vi.fn(), recoverContribution: vi.fn(async () => {
+    await check(scope, { refs: scope.items.map(({ id, definitionId, points, pile }) => ({ id, definitionId, points, pile })) });
+    return { confirmed: false, reason: 'FC27_STREAMLINED_RECONCILIATION_REQUIRED' };
+  }), buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  f.createPurchaseAdapter.mockResolvedValueOnce(buyer); f.set.mockClear();
+  const execution = await createFc27StreamlinedExecution(f.root, { context: f.plan.context, get: f.get, set: f.set,
+    canWrite: () => true, createPurchaseAdapter: f.createPurchaseAdapter,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) },
+    createProvider: (root, options) => { check = options.checkOtherTransactions; return createFc27StreamlinedProvider(root, options); } });
+  expect(await execution.recoverPurchase(f.input.challenge)).toMatchObject({ status: 'recovery-required',
+    reason: 'FC27_STREAMLINED_RECONCILIATION_REQUIRED' });
+  expect(f.createPurchaseAdapter).toHaveBeenCalledOnce(); expect(buyer.recoverContribution).toHaveBeenCalledOnce();
+  expect(buyer.buy).not.toHaveBeenCalled(); expect(buyer.move).not.toHaveBeenCalled(); expect(buyer.contribute).not.toHaveBeenCalled();
+  expect(f.set).not.toHaveBeenCalled(); expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(f.old);
+});
+
+it('does not let an independent stock click impersonate the historical purchase batch', async () => {
+  const f = await setup('contribution', { sameTarget: true }), scope = f.old.contribution.batchPlan;
+  f.memory.delete(streamlinedJournalKey(f.plan.context));
+  const execution = await f.createExecution(f.plan.context); execution.prepare(scope);
+  expect(await execution.transaction.execute(scope, { approved: true, fingerprint: scope.fingerprint, batchIndices: [0], allowPartial: true }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_BLOCKED' });
+  expect(f.mutations).not.toHaveBeenCalled(); expect(f.createPurchaseAdapter).not.toHaveBeenCalled();
+  expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(f.old);
+});
+
+it('does not discard an overlapping same-target marker when replacing a confirmed stock cycle', async () => {
+  const f = await setup('contribution', { sameTarget: true, completedCycle: true, reservedId: 1 }), next = replacementPlan(f);
+  const before = structuredClone([...f.memory]), execution = await f.createExecution(f.plan.context); execution.prepare(next);
+  expect(await execution.transaction.execute(next, { approved: true, fingerprint: next.fingerprint, batchIndices: [0] }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED', mismatch: 'purchase-history-overlap' });
+  expect(f.diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ phase: 'contribution-preflight', mismatch: 'purchase-history-overlap' }));
+  expect([...f.memory]).toEqual(before); expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('rechecks same-target historical reservations in the native dispatch callback', async () => {
+  const changed = await setup('contribution', { sameTarget: true, reservedId: 6 });
+  const f = await setup('contribution', { sameTarget: true, beforeDispatch: () =>
+    f.memory.set(streamlinedPurchaseKey(f.plan.context), structuredClone(changed.old)) });
+  expect((await f.session.recover()).preview.liveExecutionEnabled).toBe(true);
+  expect(await f.session.contribute({ fingerprint: f.plan.fingerprint, batchIndices: [1] }))
+    .toMatchObject({ status: 'rejected', reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED' });
+  expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it.each(['missing-scope', 'missing-receipt', 'unconfirmed-completion'])('does not infer a previous-cycle success from %s', async scenario => {
+  const f = await setup('contribution', { sameTarget: true, completedCycle: true }), key = streamlinedJournalKey(f.plan.context);
+  if (scenario === 'missing-scope') delete f.memory.get(streamlinedPurchaseKey(f.plan.context)).contribution.batchPlan;
+  if (scenario === 'missing-receipt') delete f.memory.get(key).batches[0].receipt;
+  if (scenario === 'unconfirmed-completion') f.memory.get(key).batches[0].receipt.challengeCompleted = false;
+  const before = structuredClone([...f.memory]);
+  expect((await f.session.recover()).status).toBe('recovery-required');
+  expect([...f.memory]).toEqual(before); expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('does not treat a repeatable NOT_STARTED page as permission to initiate a new cycle', async () => {
+  const f = await setup('club', { sameTarget: true, completedCycle: true });
+  f.challenge.status = 'NOT_STARTED';
+  const next = replacementPlan(f), execution = await f.createExecution(f.plan.context), before = structuredClone([...f.memory]);
+  expect(() => execution.prepare(next)).toThrow('INITIATION_UNVERIFIED');
+  expect([...f.memory]).toEqual(before); expect(f.mutations).not.toHaveBeenCalled();
+});
 
 it.each(['waiting', 'rejected', 'consumed'])('restores the current partial contribution past settled foreign %s history', async state => {
   const f = await setup(state);

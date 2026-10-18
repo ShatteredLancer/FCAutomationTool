@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.43
+// @version      27.0.44
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.43", at: Date.now(), status: 'started',
+    state = { version: "27.0.44", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27734,6 +27734,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_UNVERIFIED: "\u65E7\u4EFB\u52A1\u7684\u7CBE\u786E\u6750\u6599\u8303\u56F4\u5C1A\u672A\u6838\u9A8C\uFF0C\u6682\u4E0D\u6295\u5165\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4E0E\u65E7\u8BB0\u5F55\u4FDD\u7559\u3002",
       FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
       FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED: "\u4E0A\u4E00\u8F6E\u8D21\u732E\u5DF2\u786E\u8BA4\u5B8C\u6210\uFF0C\u5F53\u524D\u9875\u9762\u79EF\u5206\u5DF2\u56DE\u5230\u65B0\u4E00\u8F6E\uFF1B\u4E0D\u662F\u4E0A\u6B21\u63D0\u4EA4\u5931\u8D25\u3002\u5DF2\u786E\u8BA4\u8BB0\u5F55\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u6295\u3002\u8BF7\u901A\u8FC7 EA \u539F\u751F\u5165\u53E3\u5F00\u59CB\u672C\u8F6E\uFF0C\u518D\u751F\u6210\u65B0\u65B9\u6848\u3002",
       FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
     };
     return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
@@ -28275,6 +28276,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     const showOutcome = (result) => {
       const confirmed = streamlinedConfirmedContribution(result);
+      const previousCycle = result.reason === "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED";
       if (executionProgress) {
         executionProgress.active = false;
         executionProgress.endedAt = now();
@@ -28282,7 +28284,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const record = result.record;
         if (record) {
           const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number2(record.spent)} / ${number2(record.budget)} \u91D1\u5E01` : "";
-          node("final-progress").textContent = `\u5DF2\u786E\u8BA4 ${number2(confirmed?.submittedScore ?? record.submittedScore)} / ${number2(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} \u5206${spent}`;
+          node("final-progress").textContent = `${previousCycle ? "\u4E0A\u4E00\u8F6E\u5DF2\u786E\u8BA4" : "\u5DF2\u786E\u8BA4"} ${number2(confirmed?.submittedScore ?? record.submittedScore)} / ${number2(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} \u5206${spent}`;
           node("final-progress").hidden = false;
           const bar = shadow.querySelector("progress");
           bar.max = record.plan?.challenge.targetScore || 1;
@@ -28304,7 +28306,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (result.warning?.reason === "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED") {
         node("status").textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
       }
-      if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${number2(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number2(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
+      if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${previousCycle ? "\u4E0A\u4E00\u8F6E " : ""}${number2(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number2(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
     };
     on("contribute", async () => {
       if (busy || !contributionReady()) return;
@@ -29670,6 +29672,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const current2 = capture();
       if (!same25(current2, origin)) fail28("CONTEXT_CHANGED");
     };
+    const confirmedCompletion = (record) => record?.submittedScore >= record?.plan?.challenge.targetScore && Array.isArray(record.batches) && record.batches.length > 0 && record.batches.every((batch) => batch.state === "confirmed" && batch.receipt?.status === "accepted") && record.batches.some((batch) => batch.receipt.challengeCompleted === true && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
     return Object.freeze({
       async readSettings(global = false) {
         const origin = capture();
@@ -30287,9 +30290,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               );
               const current3 = capture(), record2 = contribution.record;
               if (!same25(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
-              const ownRecord = record2 && same25(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId;
+              const ownRecord = record2 && same25(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
+              const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
               let isolationReason;
-              if (ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
+              if (!completedHistory && ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
                 try {
                   if (await activeExecution.inspectInventoryRecovery(record2) === true) {
                     warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
@@ -30306,8 +30310,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               };
               log({
                 event: "recovery",
-                status: warning ? "observed" : result2.status,
-                reason: warning?.reason ?? result2.reason,
+                status: completedHistory || warning ? "observed" : result2.status,
+                reason: completedHistory ? current3.challenge.submittedScore < record2.submittedScore ? "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" : "FC27_STREAMLINED_COMPLETED" : warning?.reason ?? result2.reason,
                 setId: purchase.recovery?.setId,
                 challengeId: purchase.recovery?.challengeId,
                 pendingWriteCount: purchase.recovery?.pendingWriteCount,
@@ -30317,10 +30321,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 currentScore: ownRecord ? record2.submittedScore : void 0,
                 targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
               });
-              if (!warning) return result2;
+              if (!warning && !completedHistory) return result2;
               purchaseRecovery = purchase;
               purchase = { status: "absent" };
-              log({
+              if (warning) log({
                 event: "recovery-isolation",
                 status: "verified",
                 reason: warning.reason,
@@ -30338,7 +30342,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             { setId: origin.challenge.setId, challengeId: origin.challenge.id }
           );
           let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
-          if (warning) result = { ...result, warning, purchaseRecovery };
+          if (purchaseRecovery) result = { ...result, ...warning ? { warning } : {}, purchaseRecovery };
           if (materialization.status !== "absent") {
             result = { ...result, materializationRecovery: materialization };
             if (result.status === "absent" && materialization.status === "recovered") {
@@ -30347,6 +30351,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           const current2 = capture();
           if (!same25(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
+          if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
+            result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
+          }
           log({
             event: "recovery",
             status: result.status,
@@ -32581,7 +32588,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
       if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
       if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
-      if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
+      if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict", "purchase-history-overlap"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
       for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer15(error2?.[key], 0, 1e9)) detail[key] = error2[key];
       return detail;
     };
@@ -33626,12 +33633,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/streamlined/recovery-isolation.js
+  var isStreamlinedStockPlan = (plan) => Array.isArray(plan?.items) && plan.items.length > 0 && !plan.execution?.purchaseScope && (!plan.route || Array.isArray(plan.route.groups) && plan.route.groups.every((group) => group.source !== "market")) && plan.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt);
+  function streamlinedPurchaseContributionPlan(purchase) {
+    if (!purchase?.contribution) return null;
+    const { batchPlan, material } = purchase.contribution;
+    try {
+      assertStreamlinedPlan(batchPlan);
+    } catch {
+      fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    }
+    if (!same25(batchPlan.context, purchase.context) || batchPlan.challenge.setId !== purchase.challenge.setId || batchPlan.challenge.id !== purchase.challenge.id || batchPlan.challenge.targetScore !== purchase.challenge.targetScore || batchPlan.challenge.submittedScore !== purchase.submittedScore || !same25(batchPlan.items, material.map((row) => row.item))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    return batchPlan;
+  }
   function assertStreamlinedRecoveryIsolation(plan, refs3, purchase) {
     assertStreamlinedPlan(plan);
     if (!purchase) return true;
     validateStreamlinedPurchase(purchase, plan.context);
     if (!streamlinedPurchaseNeedsRecovery(purchase)) return true;
-    if (purchase.challenge.setId === plan.challenge.setId && purchase.challenge.id === plan.challenge.id || plan.execution?.purchaseScope || plan.route && (!Array.isArray(plan.route.groups) || plan.route.groups.some((group) => group.source === "market")) || plan.items.some((item2) => item2.source !== "inventory" || !["club", "storage"].includes(item2.pile) || item2.purchaseReceipt)) {
+    if (!isStreamlinedStockPlan(plan)) {
       fail28("FOREIGN_PURCHASE_SCOPE_BLOCKED");
     }
     const planned2 = new Map(plan.items.map((item2) => [item2.id, item2]));
@@ -33646,13 +33665,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       reserved.add(entry.itemId);
     }
     if (purchase.contribution) {
-      const { batchPlan, material } = purchase.contribution;
-      try {
-        assertStreamlinedPlan(batchPlan);
-      } catch {
-        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
-      }
-      if (!same25(batchPlan.context, purchase.context) || batchPlan.challenge.setId !== purchase.challenge.setId || batchPlan.challenge.id !== purchase.challenge.id || batchPlan.challenge.targetScore !== purchase.challenge.targetScore || batchPlan.challenge.submittedScore !== purchase.submittedScore || !same25(batchPlan.items, material.map((row) => row.item))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      const batchPlan = streamlinedPurchaseContributionPlan(purchase);
+      if (batchPlan.fingerprint === plan.fingerprint) fail28("FOREIGN_PURCHASE_SCOPE_BLOCKED");
       for (const item2 of batchPlan.items) reserved.add(item2.id);
     }
     if (refs3.some((ref) => reserved.has(ref.id))) fail28("FOREIGN_PURCHASE_MATERIAL_RESERVED");
@@ -33666,7 +33680,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     validateStreamlinedJournal(previous, previous.context);
     const marker = purchase.contribution, old = previous.plan.challenge;
     if (old.setId !== purchase.challenge.setId || old.id !== purchase.challenge.id) return null;
-    if (marker.batchPlan?.fingerprint !== previous.plan.fingerprint || previous.batches.length !== 1 || !same25(previous.plan.items, marker.material.map((row) => row.item)) || old.submittedScore !== purchase.submittedScore || old.targetScore !== purchase.challenge.targetScore) {
+    const bound = streamlinedPurchaseContributionPlan(purchase);
+    if (bound.fingerprint !== previous.plan.fingerprint) {
+      const reserved = /* @__PURE__ */ new Set([...bound.items.map((item2) => item2.id), ...purchase.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId)]);
+      if (previous.plan.items.some((item2) => reserved.has(item2.id))) {
+        const error2 = Error("FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+        error2.mismatch = "purchase-history-overlap";
+        throw error2;
+      }
+      return null;
+    }
+    if (previous.batches.length !== 1 || !same25(previous.plan.items, marker.material.map((row) => row.item)) || old.submittedScore !== purchase.submittedScore || old.targetScore !== purchase.challenge.targetScore) {
       fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
     }
     const next = structuredClone(purchase), batch = previous.batches[0];
@@ -33746,7 +33770,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       await assertStreamlinedOtherTransactions(get, context);
       await materializationJournal.assertSettled();
       const saved = await marketJournal.read(context);
-      if (saved && (saved.challenge.setId !== plan2.challenge.setId || saved.challenge.id !== plan2.challenge.id)) {
+      if (saved && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan2.fingerprint)) {
         assertStreamlinedRecoveryIsolation(plan2, batch.refs, saved);
       }
     };
@@ -33880,7 +33904,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       async recoverPurchase(challenge) {
         const saved = await marketJournal.read(context);
         if (!saved) return { status: "absent" };
-        if (saved.challenge.setId !== challenge.setId || saved.challenge.id !== challenge.id) {
+        const current2 = await persistence.journal.read(context);
+        const sameTarget3 = saved.challenge.setId === challenge.setId && saved.challenge.id === challenge.id;
+        const independentStock = sameTarget3 && current2 && current2.plan.challenge.setId === challenge.setId && current2.plan.challenge.id === challenge.id && isStreamlinedStockPlan(current2.plan) && streamlinedPurchaseContributionPlan(saved)?.fingerprint !== current2.plan.fingerprint;
+        if (!sameTarget3 || saved.challenge.targetScore !== challenge.targetScore || independentStock) {
           const pending2 = streamlinedPurchaseNeedsRecovery(saved), audit = streamlinedPurchaseAudit(saved);
           const recovery = {
             kind: "streamlined-purchase",
@@ -33893,7 +33920,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             Promise.resolve(diagnosticLog2?.record?.({
               area: "streamlined",
               event: "purchase-recovery-state",
-              phase: pending2 ? "other-target-pending" : "settled-history",
+              phase: pending2 ? independentStock ? "same-target-history" : "other-target-pending" : "settled-history",
               status: pending2 ? "recovery-required" : "ignored",
               setId: recovery.setId,
               challengeId: recovery.challengeId,
@@ -34006,7 +34033,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.43" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.44" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34324,8 +34351,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.43"}`,
-    version: "27.0.43",
+    title: `FC Automation Tool ${"27.0.44"}`,
+    version: "27.0.44",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

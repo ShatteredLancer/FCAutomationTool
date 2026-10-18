@@ -18,7 +18,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     if (typeof error?.methodPath === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error.methodPath)) detail.methodPath = error.methodPath;
     if (typeof error?.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(error.observedHash) || error.observedHash === 'oversized')) detail.observedHash = error.observedHash;
     if (typeof error?.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(error.expectedHash)) detail.expectedHash = error.expectedHash;
-    if (['completion-score-below-target', 'cycle-count-conflict', 'cycle-state-conflict'].includes(error?.mismatch)) detail.mismatch = error.mismatch;
+    if (['completion-score-below-target', 'cycle-count-conflict', 'cycle-state-conflict', 'purchase-history-overlap'].includes(error?.mismatch)) detail.mismatch = error.mismatch;
     for (const key of ['cycleCountBefore', 'cycleCountAfter']) if (integer(error?.[key], 0, 1e9)) detail[key] = error[key];
     return detail;
   };

@@ -158,6 +158,7 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_UNVERIFIED: '旧任务的精确材料范围尚未核验，暂不投入；已确认积分与旧记录保留。',
     FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未核对的外部卡移动记录（${recovery?.pendingCount ?? '?'} 张）。请先点击“核对并恢复”；这里只检查是否已进入 Club，不会重复移动、购买或贡献。`,
     FC27_STREAMLINED_COMPLETED: '所选目标已达成，无需再次贡献。',
+    FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED: '上一轮贡献已确认完成，当前页面积分已回到新一轮；不是上次提交失败。已确认记录保留，不会重投。请通过 EA 原生入口开始本轮，再生成新方案。',
     FC27_STREAMLINED_PURCHASE_PENDING: '此路线含待购材料；先完成购买并核对真实实体，才能贡献。',
   };
   return messages[reason] ?? reason ?? '请重新生成方案或核对执行结果。';
@@ -533,12 +534,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   });
   const showOutcome = result => {
     const confirmed = streamlinedConfirmedContribution(result);
+    const previousCycle = result.reason === 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED';
     if (executionProgress) {
       executionProgress.active = false; executionProgress.endedAt = now(); refreshClock();
       const record = result.record;
       if (record) {
         const spent = Number.isSafeInteger(record.spent) ? ` · 已花费 ${number(record.spent)} / ${number(record.budget)} 金币` : '';
-        node('final-progress').textContent = `已确认 ${number(confirmed?.submittedScore ?? record.submittedScore)} / ${number(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} 分${spent}`;
+        node('final-progress').textContent = `${previousCycle ? '上一轮已确认' : '已确认'} ${number(confirmed?.submittedScore ?? record.submittedScore)} / ${number(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} 分${spent}`;
         node('final-progress').hidden = false;
         const bar = shadow.querySelector('progress'); bar.max = record.plan?.challenge.targetScore || 1;
         if (confirmed || Number.isSafeInteger(record.submittedScore)) bar.value = confirmed?.submittedScore ?? record.submittedScore; else bar.removeAttribute('value');
@@ -552,7 +554,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     if (result.warning?.reason === 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED') {
       node('status').textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
     }
-    if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${number(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
+    if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${previousCycle ? '上一轮 ' : ''}${number(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
   };
   on('contribute', async () => {
     if (busy || !contributionReady()) return;

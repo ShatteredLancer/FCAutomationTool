@@ -15,7 +15,7 @@ import { createFc27StreamlinedPurchaseAdapter } from '../ea/fc27-streamlined-pur
 import { createStreamlinedProcurement } from '../../streamlined/procurement.js';
 import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streamlined-materialize.js';
 import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
-import { assertStreamlinedRecoveryIsolation } from '../../streamlined/recovery-isolation.js';
+import { assertStreamlinedRecoveryIsolation, isStreamlinedStockPlan, streamlinedPurchaseContributionPlan } from '../../streamlined/recovery-isolation.js';
 import { projectStreamlinedPurchaseHandoff } from '../../streamlined/purchase-handoff.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
@@ -50,7 +50,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     await assertStreamlinedOtherTransactions(get, context);
     await materializationJournal.assertSettled();
     const saved = await marketJournal.read(context);
-    if (saved && (saved.challenge.setId !== plan.challenge.setId || saved.challenge.id !== plan.challenge.id)) {
+    if (saved && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan.fingerprint)) {
       assertStreamlinedRecoveryIsolation(plan, batch.refs, saved);
     }
   };
@@ -117,7 +117,12 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     async recoverPurchase(challenge) {
       const saved = await marketJournal.read(context);
       if (!saved) return { status: 'absent' };
-      if (saved.challenge.setId !== challenge.setId || saved.challenge.id !== challenge.id) {
+      const current = await persistence.journal.read(context);
+      const sameTarget = saved.challenge.setId === challenge.setId && saved.challenge.id === challenge.id;
+      const independentStock = sameTarget && current && current.plan.challenge.setId === challenge.setId
+        && current.plan.challenge.id === challenge.id && isStreamlinedStockPlan(current.plan)
+        && streamlinedPurchaseContributionPlan(saved)?.fingerprint !== current.plan.fingerprint;
+      if (!sameTarget || saved.challenge.targetScore !== challenge.targetScore || independentStock) {
         // Completion is not the settlement predicate: a stopped, fully settled
         // run can remain incomplete. Leave its history untouched. Unknown buys,
         // moves, contributions and unconsumed purchases still need recovery.
@@ -125,7 +130,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         const recovery = { kind: 'streamlined-purchase', setId: saved.challenge.setId,
           challengeId: saved.challenge.id, name: saved.challenge.name, ...audit };
         try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'purchase-recovery-state',
-          phase: pending ? 'other-target-pending' : 'settled-history', status: pending ? 'recovery-required' : 'ignored',
+          phase: pending ? independentStock ? 'same-target-history' : 'other-target-pending' : 'settled-history', status: pending ? 'recovery-required' : 'ignored',
           setId: recovery.setId, challengeId: recovery.challengeId, ...audit })).catch(() => {}); } catch { /* diagnostic only */ }
         if (!pending) return { status: 'absent' };
         return { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',

@@ -1,6 +1,7 @@
 import { validateStreamlinedPurchase } from './purchase-journal.js';
 import { validateStreamlinedJournal, isUnsentStreamlinedJournal } from './journal.js';
 import { same, integer, fail } from './contract.js';
+import { streamlinedPurchaseContributionPlan } from './recovery-isolation.js';
 
 // Before replacing the single contribution journal, finish any matching outer
 // purchase bookkeeping from its durable inner result. Otherwise a crash between
@@ -12,7 +13,17 @@ export function projectStreamlinedPurchaseHandoff(purchase, previous) {
   validateStreamlinedJournal(previous, previous.context);
   const marker = purchase.contribution, old = previous.plan.challenge;
   if (old.setId !== purchase.challenge.setId || old.id !== purchase.challenge.id) return null;
-  if (marker.batchPlan?.fingerprint !== previous.plan.fingerprint || previous.batches.length !== 1
+  const bound = streamlinedPurchaseContributionPlan(purchase);
+  if (bound.fingerprint !== previous.plan.fingerprint) {
+    const reserved = new Set([...bound.items.map(item => item.id), ...purchase.entries
+      .filter(entry => ['ready', 'buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state)).map(entry => entry.itemId)]);
+    if (previous.plan.items.some(item => reserved.has(item.id))) {
+      const error = Error('FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');
+      error.mismatch = 'purchase-history-overlap'; throw error;
+    }
+    return null; // A disjoint stock cycle is not this marker's missing receipt.
+  }
+  if (previous.batches.length !== 1
       || !same(previous.plan.items, marker.material.map(row => row.item))
       || old.submittedScore !== purchase.submittedScore || old.targetScore !== purchase.challenge.targetScore) {
     fail('PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED');

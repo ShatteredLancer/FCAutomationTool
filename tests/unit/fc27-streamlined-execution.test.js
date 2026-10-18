@@ -289,10 +289,9 @@ it.each(['absent', 'completed', 'other-target', 'changed-target', 'unknown', 'sa
     lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) } });
   const challenge = { ...plan.challenge, ...(scenario === 'other-target' ? { id: 999 } : {}),
     ...(scenario === 'changed-target' ? { targetScore: 999 } : {}) };
-  if (scenario === 'changed-target') await expect(execution.recoverPurchase(challenge)).rejects.toThrow('CONTEXT_CHANGED');
-  else { const outcome = await execution.recoverPurchase(challenge);
+  { const outcome = await execution.recoverPurchase(challenge);
     expect(outcome.status, outcome.reason).toBe({ absent: 'absent', completed: 'completed',
-      'other-target': 'recovery-required', unknown: 'recovery-required', 'same-target': 'recovered' }[scenario]); }
+      'other-target': 'recovery-required', 'changed-target': 'recovery-required', unknown: 'recovery-required', 'same-target': 'recovered' }[scenario]); }
   if (['absent', 'completed', 'other-target', 'changed-target'].includes(scenario)) expect(createPurchaseAdapter).not.toHaveBeenCalled();
   if (scenario === 'same-target') {
     createPurchaseAdapter.mock.calls[0][1].onEvent({ stage: 'contribution-readback', status: 'blocked',

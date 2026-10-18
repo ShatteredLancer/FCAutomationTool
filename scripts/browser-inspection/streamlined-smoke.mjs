@@ -215,6 +215,22 @@ export async function exerciseStreamlined(context) {
     assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isDisabled(), true);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2, 'Recovery never dispatches a new or historical contribution');
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-historical-isolation.png') });
+    // A previous, independently confirmed repeatable cycle is history, not
+    // current-cycle progress or permission to initiate/contribute again.
+    await page.evaluate(() => {
+      const plan = globalThis.streamlinedEvidence.lastPlan;
+      globalThis.streamlinedEvidence.recoveryOutcome = { status: 'observed', record: { context: plan.context,
+        plan, submittedScore: plan.challenge.targetScore, batches: plan.batches.map((_, index) => ({ state: 'confirmed',
+          receipt: { status: 'accepted', challengeCompleted: index === plan.batches.length - 1, submittedScore: plan.challenge.targetScore } })) } };
+    });
+    await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-recover]').disabled);
+    assert.match(await page.locator('[data-status]').innerText(), /上一轮贡献已确认完成.*不是上次提交失败.*原生入口/);
+    assert.match(await page.locator('[data-final-progress]').innerText(), /上一轮已确认 2,500 \/ 2,500 分/);
+    assert.match(await page.locator('[data-target]').innerText(), /上一轮/);
+    assert.equal(await contribute.isDisabled(), true);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-previous-cycle-completed.png') });
     // A successful EA contribution with unfinished local synchronization is
     // not an unknown contribution and must never leave the writer enabled.
     await page.evaluate(() => {

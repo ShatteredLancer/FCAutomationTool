@@ -40,6 +40,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
   };
   const capture = () => { const value = inspect(); if (!value?.context || !value.challenge) fail('PAGE_UNAVAILABLE'); return value; };
   const unchanged = origin => { const current = capture(); if (!same(current, origin)) fail('CONTEXT_CHANGED'); };
+  const confirmedCompletion = record => record?.submittedScore >= record?.plan?.challenge.targetScore
+    && Array.isArray(record.batches) && record.batches.length > 0
+    && record.batches.every(batch => batch.state === 'confirmed' && batch.receipt?.status === 'accepted')
+    && record.batches.some(batch => batch.receipt.challengeCompleted === true
+      && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
   return Object.freeze({
     async readSettings(global = false) { const origin = capture(); const value = await settings.read(origin.context, global ? null : origin.challenge.id); unchanged(origin); return { ...origin, settings: value }; },
     async saveSettings(value, global = false) { const origin = capture(); const result = await settings.save(origin.context, global ? null : origin.challenge.id, value); unchanged(origin); return result; },
@@ -411,9 +416,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
                 || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
             const ownRecord = record && same(record.context, origin.context)
-              && record.plan?.challenge.id === origin.challenge.id && record.plan.challenge.setId === origin.challenge.setId;
+              && record.plan?.challenge.id === origin.challenge.id && record.plan.challenge.setId === origin.challenge.setId
+              && record.plan.challenge.targetScore === origin.challenge.targetScore;
+            const completedHistory = ownRecord && ['observed', 'recovered'].includes(contribution.status) && confirmedCompletion(record);
             let isolationReason;
-            if (ownRecord && ['observed', 'recovered'].includes(contribution.status)
+            if (!completedHistory && ownRecord && ['observed', 'recovered'].includes(contribution.status)
                 && typeof activeExecution.inspectInventoryRecovery === 'function') {
               try {
                 if (await activeExecution.inspectInventoryRecovery(record) === true) {
@@ -423,16 +430,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             }
             const result = { ...purchase, ...(isolationReason ? { reason: isolationReason } : {}),
               contributionRecovery: contribution, ...(ownRecord ? { record } : {}) };
-            log({ event: 'recovery', status: warning ? 'observed' : result.status, reason: warning?.reason ?? result.reason,
+            log({ event: 'recovery', status: completedHistory || warning ? 'observed' : result.status, reason: completedHistory
+              ? current.challenge.submittedScore < record.submittedScore ? 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' : 'FC27_STREAMLINED_COMPLETED'
+              : warning?.reason ?? result.reason,
               setId: purchase.recovery?.setId, challengeId: purchase.recovery?.challengeId,
               pendingWriteCount: purchase.recovery?.pendingWriteCount,
               unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
               contributedCount: purchase.recovery?.contributedCount, purchasesSettled: purchase.recovery?.purchasesSettled,
               currentScore: ownRecord ? record.submittedScore : undefined,
               targetScore: ownRecord ? record.plan.challenge.targetScore : undefined });
-            if (!warning) return result;
+            if (!warning && !completedHistory) return result;
             purchaseRecovery = purchase; purchase = { status: 'absent' };
-            log({ event: 'recovery-isolation', status: 'verified', reason: warning.reason,
+            if (warning) log({ event: 'recovery-isolation', status: 'verified', reason: warning.reason,
               setId: origin.challenge.setId, challengeId: origin.challenge.id, currentScore: record.submittedScore });
           } else {
             log({ event: 'recovery', status: purchase.status, reason: purchase.reason });
@@ -443,7 +452,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           { setId: origin.challenge.setId, challengeId: origin.challenge.id });
         let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
           ? contribution : { ...purchase, contributionRecovery: contribution };
-        if (warning) result = { ...result, warning, purchaseRecovery };
+        if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery };
         if (materialization.status !== 'absent') {
           result = { ...result, materializationRecovery: materialization };
           if (result.status === 'absent' && materialization.status === 'recovered') {
@@ -453,6 +462,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const current = capture();
         if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
             || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
+        if (!['recovery-required', 'replan-required', 'blocked'].includes(result.status) && confirmedCompletion(result.record)
+            && result.record.plan.challenge.targetScore === current.challenge.targetScore
+            && current.challenge.submittedScore < result.record.submittedScore) {
+          result = { ...result, status: 'completed', reason: 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' };
+        }
         log({ event: 'recovery', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
           targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
           setId: origin.challenge.setId, challengeId: origin.challenge.id });
