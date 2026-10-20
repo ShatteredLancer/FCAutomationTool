@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.45
+// @version      27.0.46
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.45", at: Date.now(), status: 'started',
+    state = { version: "27.0.46", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -34246,7 +34246,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             budget: approval.budget ?? runPlan.route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0),
             attempts: runPlan.execution?.purchaseAttempts ?? 3,
             idleMs: runPlan.execution?.partialWaitMs ?? 6e4,
-            expiresAt: approval.expiresAt ?? now() + 6e5
+            expiresAt: approval.expiresAt ?? now() + 30 * 60 * 1e3
           }, callbacks);
         } finally {
           activeProcurement = null;
@@ -34312,7 +34312,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.45" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.46" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34630,8 +34630,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.45"}`,
-    version: "27.0.45",
+    title: `FC Automation Tool ${"27.0.46"}`,
+    version: "27.0.46",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -205,7 +205,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
             + group.quantity * Math.max(...group.items.map(item => item.purchaseMaxBuy ?? item.price)), 0),
           attempts: runPlan.execution?.purchaseAttempts ?? 3,
           idleMs: runPlan.execution?.partialWaitMs ?? 60000,
-          expiresAt: approval.expiresAt ?? now() + 600000 }, callbacks);
+          expiresAt: approval.expiresAt ?? now() + 30 * 60 * 1000 }, callbacks);
       } finally { activeProcurement = null; }
     },
     prepare(plan) {

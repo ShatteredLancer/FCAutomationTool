@@ -13,6 +13,68 @@ import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
 
 afterEach(() => vi.useRealTimers());
 
+async function approvalWindow({ elapsed, explicitExpiry, budget = 750, offerPrice = null, findElapsed = null }) {
+  const f = streamlinedRuntime(), memory = new Map(), started = 1000;
+  let at = started;
+  f.root.crypto.randomUUID = () => 'approval-window';
+  const market = { ...f.plan.items[0], source: 'market', id: null, key: 'market:101:0', price: 200, purchaseMaxBuy: 250 };
+  // Exercise production approval wiring and procurement; no native writes.
+  const plan = { ...f.plan, route: { groups: [{ source: 'market', quantity: 1, item: market, items: [market] }] } };
+  delete plan.schema; delete plan.fingerprint;
+  const buyer = { assertCurrent: vi.fn(), readState: vi.fn(async record => {
+    at = started + elapsed;
+    return { submittedScore: record.submittedScore, freeSlots: 30, heldDefinitions: [] };
+  }), materialize: vi.fn(async () => []), find: vi.fn(async () => {
+    if (findElapsed !== null) at = started + findElapsed;
+    return offerPrice === null ? null : { definitionId: market.definitionId, itemId: 401, tradeId: '501', price: offerPrice };
+  }), buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  const execution = await createFc27StreamlinedExecution(f.root, { context: plan.context, now: () => at,
+    get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true,
+    createPurchaseAdapter: async () => buyer,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) } });
+  const result = await execution.purchase(plan, { approved: true, fingerprint: JSON.stringify(plan), budget,
+    ...(explicitExpiry !== undefined ? { expiresAt: started + explicitExpiry } : {}) });
+  return { f, buyer, result };
+}
+
+it.each([11 * 60000, 30 * 60000 - 1])('keeps the default purchase approval active after %i ms without raising budget or version cap', async elapsed => {
+  const { f, buyer, result } = await approvalWindow({ elapsed });
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: { budget: 750, spent: 0 } });
+  expect(buyer.find).toHaveBeenCalledOnce(); expect(buyer.find.mock.calls[0][1]).toBe(250);
+  for (const key of ['buy', 'move', 'contribute']) expect(buyer[key]).not.toHaveBeenCalled();
+  expect(f.calls).toHaveLength(0);
+});
+
+it.each([30 * 60000, 30 * 60000 + 1])('stops at the fixed 30-minute deadline after %i ms', async elapsed => {
+  const { buyer, result } = await approvalWindow({ elapsed });
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED', record: { budget: 750, spent: 0 } });
+  for (const key of ['find', 'buy', 'move', 'contribute']) expect(buyer[key]).not.toHaveBeenCalled();
+});
+
+it('retains an explicitly shorter approval deadline', async () => {
+  const { buyer, result } = await approvalWindow({ elapsed: 10 * 60000, explicitExpiry: 10 * 60000 });
+  expect(result.reason).toBe('FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED'); expect(buyer.find).not.toHaveBeenCalled();
+});
+
+it('does not renew approval when an active search crosses the 30-minute deadline', async () => {
+  const { buyer, result } = await approvalWindow({ elapsed: 20 * 60000, findElapsed: 30 * 60000, offerPrice: 200 });
+  expect(result.reason).toBe('FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED'); expect(buyer.find).toHaveBeenCalledOnce();
+  expect(buyer.buy).not.toHaveBeenCalled(); expect(result.record.entries).toEqual([]);
+});
+
+it('still rejects an above-cap offer during the extended window', async () => {
+  const { buyer, result } = await approvalWindow({ elapsed: 11 * 60000, offerPrice: 251 });
+  expect(result).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED', record: { budget: 750, spent: 0 } });
+  expect(buyer.find.mock.calls[0][1]).toBe(250); expect(buyer.buy).not.toHaveBeenCalled();
+});
+
+it('still lowers the search cap to the unchanged remaining budget during the extended window', async () => {
+  const { buyer, result } = await approvalWindow({ elapsed: 11 * 60000, budget: 200 });
+  expect(result).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: { budget: 200, spent: 0 } });
+  expect(buyer.find.mock.calls[0][1]).toBe(200); expect(buyer.buy).not.toHaveBeenCalled();
+});
+
 it.each(['non-expiring', 'rebased-expiry', 'invalid-hub', 'reset-count-unchanged', 'reset-count-missing', 'reset-count-conflict'])('settles mixed Storage/Club with public native contracts: %s', async scenario => {
   const at = Math.floor(Date.now() / 1000) * 1000, endTime = scenario === 'non-expiring' ? 0 : observedSet(at).endTime;
   const f = streamlinedRuntime({ targetScore: 100, mixedStorage: true, endTime }), memory = new Map();
