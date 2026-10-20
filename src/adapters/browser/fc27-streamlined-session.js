@@ -7,7 +7,7 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/
 import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuote, fatalStreamlinedQuoteFailure, STREAMLINED_QUOTE_BUDGET_MS } from '../../streamlined/quotes.js';
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 import { createStreamlinedPurchaseScope } from '../../streamlined/purchase-scope.js';
-import { streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
+import { streamlinedPurchaseAudit, createStreamlinedPurchaseJournal } from '../../streamlined/purchase-journal.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -16,6 +16,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
   now = () => Date.now(), schedule, createExecution = null } = {}) {
   const settings = createStreamlinedSettings({ get, set });
   let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
+  let history = null;
+  const purchaseJournal = createStreamlinedPurchaseJournal({ get });
   const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_EXECUTION_UNAVAILABLE';
   const executionEvidence = error => {
     if (!error || typeof error !== 'object') return {};
@@ -53,7 +55,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       if (typeof activeExecution?.stop === 'function') activeExecution.stop();
       else activeExecution?.transaction?.stop?.();
     },
-    clearPreview() { preview = null; routePreview = null; },
+    clearPreview() { preview = null; routePreview = null; history = null; },
     resolveDisplayItem(ref) {
       if (!preview) return null;
       if (!preview.items.some(item => item.key === ref?.key && item.source === ref?.source
@@ -64,11 +66,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     async plan(value, { onProgress = () => {} } = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       busy = true; stopRequested = false; preview = null; routePreview = null;
+      history = null;
       const run = ++planningRun;
       const progress = row => { try { onProgress(row); } catch { /* display only */ } };
       try {
         const config = normalizeStreamlinedSettings(value), origin = capture();
-        const input = readInputs(config); input.assertCurrent();
+        const rawInput = readInputs(config); rawInput.assertCurrent();
+        await purchaseJournal.assertAvailable(origin.context, origin.challenge);
+        const reserved = new Set(await purchaseJournal.reservedIds(origin.context));
+        const input = { ...rawInput, inventory: rawInput.inventory.filter(item => !reserved.has(item.id)) };
+        unchanged(origin); input.assertCurrent();
+        if (input.inventory.length !== rawInput.inventory.length) log({ event: 'inventory-exclusion', phase: 'history-reserved',
+          count: rawInput.inventory.length - input.inventory.length });
         const quoteDeadlineAt = now() + STREAMLINED_QUOTE_BUDGET_MS;
         const check = () => { unchanged(origin); input.assertCurrent(); if (stopRequested || run !== planningRun) fail('CANCELLED'); };
         // Wait locally: shared quote requests remain owned by the price service.
@@ -367,10 +376,25 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       const selected = preview;
       try {
         unchanged(selected.origin); activeExecution = selected.execution;
-        const result = selected.plan.route?.groups?.some(group => group.source === 'market') && typeof activeExecution.purchase === 'function'
+        let result = selected.plan.route?.groups?.some(group => group.source === 'market') && typeof activeExecution.purchase === 'function'
           ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...(budget !== undefined ? { budget } : {}) }, callbacks)
           : await activeExecution.transaction.execute(selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial }, callbacks);
+        const oldTarget = result.record?.challenge;
+        if (result.reason === 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' && oldTarget
+            && (oldTarget.id !== selected.plan.challenge.id || oldTarget.setId !== selected.plan.challenge.setId)
+            && typeof activeExecution.recoverPurchase === 'function') {
+          // A foreign journal is not this plan's progress/budget. Inspect its
+          // local history branch directly; do not display old spend as new.
+          unchanged(selected.origin);
+          const blocked = await activeExecution.recoverPurchase(selected.plan.challenge);
+          unchanged(selected.origin);
+          if (blocked.reason === 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED') {
+            result = blocked;
+            if (blocked.historyAction?.canArchive === true) history = { origin: selected.origin, execution: activeExecution };
+            preview = null; routePreview = null;
+          }
+        }
         if (preview === selected) {
           // Keep the same frozen plan for remaining batches, but acknowledge
           // progress changed by our own verified transaction for the next click.
@@ -391,7 +415,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     },
     async recover() {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
-      preview = null; routePreview = null;
+      preview = null; routePreview = null; history = null;
       if (typeof createExecution !== 'function') return { status: 'blocked', reason: 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED' };
       busy = true;
       try {
@@ -405,6 +429,9 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         let contribution, warning, purchaseRecovery;
         let purchase = typeof activeExecution.recoverPurchase === 'function'
           ? await activeExecution.recoverPurchase(origin.challenge) : { status: 'absent' };
+        if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === 'function') {
+          history = { origin, execution: activeExecution };
+        }
         if (['recovery-required', 'blocked', 'replan-required'].includes(purchase.status)) {
           if (purchase.reason === 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED') {
             // Recover this target independently. A separate exact-identity
@@ -452,7 +479,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           { setId: origin.challenge.setId, challengeId: origin.challenge.id });
         let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
           ? contribution : { ...purchase, contributionRecovery: contribution };
-        if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery };
+        if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery,
+          ...(history ? { historyAction: { canArchive: true } } : {}) };
         if (materialization.status !== 'absent') {
           result = { ...result, materializationRecovery: materialization };
           if (result.status === 'absent' && materialization.status === 'recovered') {
@@ -490,6 +518,19 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         return result;
       }
       finally { activeExecution = null; busy = false; }
+    },
+    async archiveHistory() {
+      if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
+      if (!history) return { status: 'blocked', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' };
+      busy = true;
+      try {
+        const saved = history; unchanged(saved.origin);
+        const result = await saved.execution.archivePurchaseHistory(saved.origin.challenge);
+        unchanged(saved.origin); preview = null; routePreview = null; history = null;
+        log({ event: 'purchase-recovery-state', phase: 'history-archived', status: result.status, reason: result.reason });
+        return result;
+      } catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
+      finally { busy = false; }
     },
   });
 }

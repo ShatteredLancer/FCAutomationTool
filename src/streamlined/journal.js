@@ -62,7 +62,7 @@ export function validateStreamlinedJournal(record, context) {
   return record;
 }
 
-export function createStreamlinedJournal({ get, set, now = () => Date.now() } = {}) {
+export function createStreamlinedJournal({ get, set, now = () => Date.now(), canReplaceArchived = async () => false } = {}) {
   let tail = Promise.resolve();
   const read = async context => {
     let record;
@@ -90,7 +90,8 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now() } = 
       && canReplaceStreamlinedRemainder(prior, plan);
     if (replaceRemainder && !replacement) fail('RECOVERY_REQUIRED');
     if (prior && !isUnsentStreamlinedJournal(prior)
-        && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state)) && !replacement) fail('RECOVERY_REQUIRED');
+        && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state)) && !replacement
+        && !await canReplaceArchived(prior)) fail('RECOVERY_REQUIRED');
     if (replacement) {
       const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
       try {

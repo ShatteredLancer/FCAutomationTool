@@ -130,7 +130,14 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: '本次执行授权已到期。已发生的交易保留；无未决回执时可再次点击继续。',
     FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: '公共报价已过期且未能更新。已购材料保留；请重新生成方案，不使用过期报价。',
     FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: '购买或入库结果尚未确认，请核对并恢复；不会重复买入。',
+    FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED: '旧任务已退出并归档，不再阻止其他 SBC 的新采购。旧回执和已确认积分保留，未核对材料仍按实体隔离，不会重买或重跑旧任务。请重新生成当前方案并确认新预算。',
+    FC27_STREAMLINED_PURCHASE_HISTORY_RETIRED: '旧任务已归档，不再继续执行。请重新生成当前方案。',
+    FC27_STREAMLINED_HISTORY_TARGET_UNRESOLVED: '这个 SBC 的旧贡献结果仍待核对，暂不在同一 SBC 开新任务。其他 SBC 可重新生成方案；旧材料保持隔离。',
+    FC27_STREAMLINED_PURCHASE_ARCHIVE_INVALID: '旧任务归档数据校验未通过，记录保留，请导出诊断。',
+    FC27_STREAMLINED_PURCHASE_ARCHIVE_CONFLICT: '旧记录在核对后发生变化，请重新核对，不会覆盖记录。',
+    FC27_STREAMLINED_PURCHASE_ARCHIVE_FULL: '归档数量已达上限，未删除任何交易证据，请导出诊断。',
     FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: '本批贡献结果尚未确认，请核对并恢复；不会重复贡献。',
+    FC27_STREAMLINED_PURCHASE_REMAINDER_RECOVERY_REQUIRED: '当前贡献记录还有已确认批次和未执行余批，请先核对恢复并完成库存余批，再执行含补卡的新路线。本次尚未买卡或移动材料。',
     FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: '购买记录读取失败，请重试恢复或导出诊断。',
     FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: '购买记录保存失败，请核对并恢复后继续。',
     FC27_STREAMLINED_PROGRESS_CHANGED: '当前积分与方案不一致，已停止，请核对并恢复。',
@@ -199,7 +206,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     <small>库存遵循 FSU 材料保护；补卡按当前购买报价来源规划。路线估价不保证市场供应，选择路线不会购买或贡献。</small><button data-save>保存设置</button></section>
     <section data-result></section></div>
     <footer><output data-status aria-live="polite"></output><progress aria-label="执行进度" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <div class="actions"><button data-review-stock hidden>查看库存卡</button><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></div></footer></dialog>`;
+      <small data-history-note hidden>确认已不再执行这项历史任务时，可将它退出活动队列。完整记录仍保留，不会把未知请求算作成功；其材料继续隔离。此操作不买卡、不移动、不贡献。</small>
+      <div class="actions"><button data-review-stock hidden>查看库存卡</button><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-archive-history hidden>退出并归档旧任务</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></div></footer></dialog>`;
   const node = key => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector('dialog');
   let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
   const rendered = new Set();
@@ -234,12 +242,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     && (shown.plan.route?.groups?.some(g => g.source === 'market')
     ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore
     : selected.size > 0);
-  const clearRendered = () => { renderGeneration++; for (const node of rendered) { try { node.__fcatDealloc?.(); } catch { /* UI disposal only. */ } node.remove(); } rendered.clear(); };
+  const clearRendered = () => { node('archive-history').hidden = true; node('history-note').hidden = true;
+    renderGeneration++; for (const node of rendered) { try { node.__fcatDealloc?.(); } catch { /* UI disposal only. */ } node.remove(); } rendered.clear(); };
   const read = () => { try { return readTarget(); } catch { return null; } };
   const same = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
   const setBusy = value => {
     busy = value; entry.disabled = value;
-    for (const control of shadow.querySelectorAll('[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover]')) control.disabled = value;
+    for (const control of shadow.querySelectorAll('[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover],[data-archive-history]')) control.disabled = value;
     for (const control of shadow.querySelectorAll('[data-result] input')) control.disabled = value || control.dataset.settled === 'true';
     node('contribute').disabled = value || !contributionReady();
     node('stop').hidden = !value; shadow.querySelector('progress').hidden = !value && !executionProgress;
@@ -533,6 +542,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     finally { setBusy(false); }
   });
   const showOutcome = result => {
+    const canArchive = result.historyAction?.canArchive === true && typeof session.archiveHistory === 'function';
+    node('archive-history').hidden = !canArchive; node('history-note').hidden = !canArchive;
+    if (canArchive) {
+      const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
+      const name = typeof old?.name === 'string' ? `「${old.name.slice(0, 160)}」` : '';
+      node('history-note').textContent = `确认不再执行历史任务${name}（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）时，可退出活动队列。完整记录仍保留，不会把未知请求算作成功；其材料继续隔离。此操作不买卡、不移动、不贡献。`;
+    }
     const confirmed = streamlinedConfirmedContribution(result);
     const previousCycle = result.reason === 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED';
     if (executionProgress) {
@@ -605,6 +621,20 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     try {
       const outcome = await session.recover(); if (serial !== opened) return;
       if (outcome.preview) renderResult(outcome.preview);
+      showOutcome(outcome);
+    } catch (error) { if (serial === opened) showOutcome({ reason: safeReason(error) }); }
+    finally { setBusy(false); }
+  });
+  on('archive-history', async () => {
+    if (busy || node('archive-history').hidden) return;
+    const serial = opened; setBusy(true);
+    try {
+      const outcome = await session.archiveHistory(); if (serial !== opened) return;
+      if (outcome.status === 'archived') {
+        shown = null; selected.clear(); clearRendered(); node('result').replaceChildren();
+        node('contribute').hidden = true; node('review-stock').hidden = true; resetProgress();
+        shadow.querySelector('progress').hidden = true;
+      }
       showOutcome(outcome);
     } catch (error) { if (serial === opened) showOutcome({ reason: safeReason(error) }); }
     finally { setBusy(false); }

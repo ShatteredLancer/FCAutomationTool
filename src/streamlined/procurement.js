@@ -38,7 +38,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       if (reconcileOnly && !record) return { status: 'absent' };
       let replace = false;
       if (record && record.fingerprint !== fingerprint) {
-        if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record)) fail('PURCHASE_RECOVERY_REQUIRED');
+        if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record) && !await journal.isRetired?.(record)) fail('PURCHASE_RECOVERY_REQUIRED');
         // A plan with no dispatched writes is not an unresolved trade. Archive
         // it durably before replacing it under a new explicit approval.
         await journal.archive(record); replace = true;
@@ -66,6 +66,8 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       const check = async ({ recovery = false } = {}) => {
         if (stopped && !recovery) throw stoppedError();
         if (!recovery && now() >= approval.expiresAt) fail('PURCHASE_APPROVAL_EXPIRED');
+        if (await journal.isRetired?.(record)) fail('PURCHASE_HISTORY_RETIRED');
+        await journal.assertAvailable?.(record.context, record.challenge, record.entries);
         await adapter.assertCurrent(record);
       };
       await check({ recovery: true });

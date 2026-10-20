@@ -32,6 +32,29 @@ const baseAdapter = (rows, overrides = {}) => ({
 const approval = plan => ({ approved: true, fingerprint: plan.fingerprint ?? JSON.stringify(plan), budget: 5000, attempts: 2, expiresAt: Date.now() + 60000 });
 const lock = { acquire: vi.fn(async () => () => {}) };
 
+it('buys only the freshly approved target after a retired stopped run, preserving its original spend', async () => {
+  const oldPlan = planFor({ market: [item(0, 201, 20, 'market')] }), { journal, values } = setup();
+  let oldDriver;
+  const oldBuyer = baseAdapter([], { find: vi.fn(async () => ({ definitionId: 201, itemId: 401, tradeId: '501', price: 200 })),
+    buy: vi.fn(async entry => { oldDriver.stop(); return { ...entry, status: 'bought' }; }) });
+  oldDriver = createStreamlinedProcurement({ journal, lock, adapter: oldBuyer, operationId: () => 'old-run' });
+  const stopped = await oldDriver.execute(oldPlan, approval(oldPlan)), old = structuredClone(stopped.record);
+  expect(old.entries[0].state).toBe('bought');
+  const nextPlan = planFor({ market: [item(0, 202, 20, 'market')] }); nextPlan.challenge.id = 3;
+  const buyer = baseAdapter([item(402, 202)], {
+    find: vi.fn(async () => ({ definitionId: 202, itemId: 402, tradeId: '502', price: 200 })),
+    buy: vi.fn(async entry => ({ ...entry, status: 'bought' })),
+  });
+  const next = createStreamlinedProcurement({ journal, lock, adapter: buyer, operationId: () => 'new-run' });
+  expect(await next.execute(nextPlan, approval(nextPlan))).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
+  await journal.retire(old);
+  expect(await next.execute(nextPlan, approval(nextPlan))).toMatchObject({ status: 'completed', record: { spent: 200, consumedIds: [402] } });
+  expect((await journal.readRetired(context))[0].record).toEqual(old);
+  expect(buyer.buy).toHaveBeenCalledOnce(); expect(oldBuyer.buy).toHaveBeenCalledOnce();
+  expect(oldBuyer.move).not.toHaveBeenCalled(); expect(oldBuyer.contribute).not.toHaveBeenCalled();
+  expect(values.get(`${streamlinedPurchaseKey(context)}:history:old-run:${old.revision}`)).toEqual(old);
+});
+
 it('preserves confirmed contribution display evidence across purchase recovery without settling or resending', async () => {
   const stock = item(1, 201), plan = planFor({ inventory: [stock] }), { journal } = setup();
   const confirmation = { submittedScore: 20, targetScore: 20, completed: true, finalizationPending: true };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.44
+// @version      27.0.45
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.44", at: Date.now(), status: 'started',
+    state = { version: "27.0.45", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27706,7 +27706,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF1B\u65E0\u672A\u51B3\u56DE\u6267\u65F6\u53EF\u518D\u6B21\u70B9\u51FB\u7EE7\u7EED\u3002",
       FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF0C\u4E0D\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u3002",
       FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
+      FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED: "\u65E7\u4EFB\u52A1\u5DF2\u9000\u51FA\u5E76\u5F52\u6863\uFF0C\u4E0D\u518D\u963B\u6B62\u5176\u4ED6 SBC \u7684\u65B0\u91C7\u8D2D\u3002\u65E7\u56DE\u6267\u548C\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u672A\u6838\u5BF9\u6750\u6599\u4ECD\u6309\u5B9E\u4F53\u9694\u79BB\uFF0C\u4E0D\u4F1A\u91CD\u4E70\u6216\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u5E76\u786E\u8BA4\u65B0\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_HISTORY_RETIRED: "\u65E7\u4EFB\u52A1\u5DF2\u5F52\u6863\uFF0C\u4E0D\u518D\u7EE7\u7EED\u6267\u884C\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u3002",
+      FC27_STREAMLINED_HISTORY_TARGET_UNRESOLVED: "\u8FD9\u4E2A SBC \u7684\u65E7\u8D21\u732E\u7ED3\u679C\u4ECD\u5F85\u6838\u5BF9\uFF0C\u6682\u4E0D\u5728\u540C\u4E00 SBC \u5F00\u65B0\u4EFB\u52A1\u3002\u5176\u4ED6 SBC \u53EF\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u65E7\u6750\u6599\u4FDD\u6301\u9694\u79BB\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_INVALID: "\u65E7\u4EFB\u52A1\u5F52\u6863\u6570\u636E\u6821\u9A8C\u672A\u901A\u8FC7\uFF0C\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_CONFLICT: "\u65E7\u8BB0\u5F55\u5728\u6838\u5BF9\u540E\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6838\u5BF9\uFF0C\u4E0D\u4F1A\u8986\u76D6\u8BB0\u5F55\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_FULL: "\u5F52\u6863\u6570\u91CF\u5DF2\u8FBE\u4E0A\u9650\uFF0C\u672A\u5220\u9664\u4EFB\u4F55\u4EA4\u6613\u8BC1\u636E\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
       FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_REMAINDER_RECOVERY_REQUIRED: "\u5F53\u524D\u8D21\u732E\u8BB0\u5F55\u8FD8\u6709\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u672A\u6267\u884C\u4F59\u6279\uFF0C\u8BF7\u5148\u6838\u5BF9\u6062\u590D\u5E76\u5B8C\u6210\u5E93\u5B58\u4F59\u6279\uFF0C\u518D\u6267\u884C\u542B\u8865\u5361\u7684\u65B0\u8DEF\u7EBF\u3002\u672C\u6B21\u5C1A\u672A\u4E70\u5361\u6216\u79FB\u52A8\u6750\u6599\u3002",
       FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
       FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
       FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
@@ -27789,7 +27796,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
     <section data-result></section></div>
     <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <div class="actions"><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
+      <small data-history-note hidden>\u786E\u8BA4\u5DF2\u4E0D\u518D\u6267\u884C\u8FD9\u9879\u5386\u53F2\u4EFB\u52A1\u65F6\uFF0C\u53EF\u5C06\u5B83\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002</small>
+      <div class="actions"><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-archive-history hidden>\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
     const node = (key) => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector("dialog");
     let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
     const rendered = /* @__PURE__ */ new Set();
@@ -27834,6 +27842,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
     const clearRendered = () => {
+      node("archive-history").hidden = true;
+      node("history-note").hidden = true;
       renderGeneration++;
       for (const node2 of rendered) {
         try {
@@ -27855,7 +27865,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const setBusy = (value) => {
       busy = value;
       entry.disabled = value;
-      for (const control of shadow.querySelectorAll("[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover]")) control.disabled = value;
+      for (const control of shadow.querySelectorAll("[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover],[data-archive-history]")) control.disabled = value;
       for (const control of shadow.querySelectorAll("[data-result] input")) control.disabled = value || control.dataset.settled === "true";
       node("contribute").disabled = value || !contributionReady();
       node("stop").hidden = !value;
@@ -28275,6 +28285,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const showOutcome = (result) => {
+      const canArchive = result.historyAction?.canArchive === true && typeof session2.archiveHistory === "function";
+      node("archive-history").hidden = !canArchive;
+      node("history-note").hidden = !canArchive;
+      if (canArchive) {
+        const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
+        const name = typeof old?.name === "string" ? `\u300C${old.name.slice(0, 160)}\u300D` : "";
+        node("history-note").textContent = `\u786E\u8BA4\u4E0D\u518D\u6267\u884C\u5386\u53F2\u4EFB\u52A1${name}\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u65F6\uFF0C\u53EF\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002`;
+      }
       const confirmed = streamlinedConfirmedContribution(result);
       const previousCycle = result.reason === "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED";
       if (executionProgress) {
@@ -28379,6 +28397,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const outcome = await session2.recover();
         if (serial !== opened) return;
         if (outcome.preview) renderResult(outcome.preview);
+        showOutcome(outcome);
+      } catch (error2) {
+        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
+      } finally {
+        setBusy(false);
+      }
+    });
+    on("archive-history", async () => {
+      if (busy || node("archive-history").hidden) return;
+      const serial = opened;
+      setBusy(true);
+      try {
+        const outcome = await session2.archiveHistory();
+        if (serial !== opened) return;
+        if (outcome.status === "archived") {
+          shown = null;
+          selected.clear();
+          clearRendered();
+          node("result").replaceChildren();
+          node("contribute").hidden = true;
+          node("review-stock").hidden = true;
+          resetProgress();
+          shadow.querySelector("progress").hidden = true;
+        }
         showOutcome(outcome);
       } catch (error2) {
         if (serial === opened) showOutcome({ reason: safeReason9(error2) });
@@ -29499,9 +29541,208 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return failure;
   }
 
+  // src/streamlined/contribution.js
+  function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same25(receipt.itemIds, itemIds) || !integer15(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer15(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer15(receipt.challengeAwardCount, 0, 100) || !integer15(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer15(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail28("RECEIPT_INVALID");
+    return deepFreeze({
+      schema: 1,
+      status: "accepted",
+      code: receipt.code,
+      transportWarning: receipt.transportWarning,
+      setId,
+      challengeId,
+      itemIds: [...itemIds],
+      submittedScore: receipt.submittedScore,
+      ...receipt.previousTimesCompleted !== void 0 ? { previousTimesCompleted: receipt.previousTimesCompleted } : {},
+      challengeCompleted: receipt.challengeCompleted,
+      challengeAwardCount: receipt.challengeAwardCount,
+      setAwardCount: receipt.setAwardCount,
+      objectiveUpdatesPresent: receipt.objectiveUpdatesPresent,
+      rewardConfirmed: false
+    });
+  }
+  function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
+    if (!integer15(expected.challengeId, 1) || !integer15(expected.setId, 1) || !integer15(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer15(id12, 1))) fail28("CONTRIBUTION_INPUT_INVALID");
+    const response = reply?.response, code2 = integer15(reply?.status, 100, 599) ? reply.status : null;
+    const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
+    const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
+    const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
+    const hasProgress = integer15(response?.submittedScore, expected.previousScore + 1, 1e9);
+    if (reply?.success === false || conflict) {
+      if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
+      if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
+        return deepFreeze({ status: "rejected", reason: conflict ? "EA_SQUAD_CONFLICT" : "EA_CONTRIBUTION_REJECTED", code: code2 });
+      }
+      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
+    }
+    if (reply?.success !== true || response?.challengeId !== expected.challengeId || response?.setId !== expected.setId || !hasProgress || response.squads !== void 0 || !Array.isArray(challengeAwards) || !Array.isArray(setAwards) || [challengeAwards, setAwards].some((rows) => rows.length > 100 || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row)))) {
+      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
+    }
+    return deepFreeze({
+      schema: 1,
+      status: "accepted",
+      code: code2,
+      transportWarning: code2 !== 200,
+      setId: expected.setId,
+      challengeId: expected.challengeId,
+      itemIds: [...expected.itemIds],
+      submittedScore: response.submittedScore,
+      ...integer15(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
+      challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
+      challengeAwardCount: challengeAwards.length,
+      setAwardCount: setAwards.length,
+      // Raw dynamicObjectivesUpdates and transformed objectiveUpdates stay out of
+      // the Journal. Presence is observational, not proof of reward delivery.
+      objectiveUpdatesPresent: response.dynamicObjectivesUpdates != null || response.objectiveUpdates != null,
+      rewardConfirmed: false
+    });
+  }
+
+  // src/streamlined/journal.js
+  var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
+  function canReplaceStreamlinedRemainder(record, plan) {
+    const stock = (candidate) => candidate.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some((group) => group.source === "market");
+    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
+    const consumed = new Set(confirmed.flatMap((batch) => batch.refs.map((ref) => ref.id)));
+    return !!record && same25(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
+  }
+  var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
+  var refOf = (item2) => ({
+    id: item2.id,
+    definitionId: item2.definitionId,
+    points: item2.points,
+    pile: item2.pile,
+    ...item2.executionPile ? { executionPile: item2.executionPile } : {}
+  });
+  function streamlinedJournalKey(context) {
+    return contextKey(context, "streamlined-contribution");
+  }
+  function validateStreamlinedJournal(record, context) {
+    if (record?.schema !== 1 || !same25(record.context, createSeasonContext(context)) || !integer15(record.revision, 1) || !integer15(record.updatedAt) || !integer15(record.submittedScore) || !Array.isArray(record.batches) || !integer15(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail28("JOURNAL_INVALID");
+    assertStreamlinedPlan(record.plan);
+    if (!same25(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same25(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail28("JOURNAL_INVALID");
+    let previousScore = record.plan.challenge.submittedScore;
+    for (const batch of record.batches) {
+      if (batch.startingScore !== void 0 && (!integer15(
+        batch.startingScore,
+        record.plan.challenge.submittedScore,
+        record.submittedScore
+      ) || batch.state === "waiting")) fail28("JOURNAL_INVALID");
+      const start = batch.startingScore ?? previousScore;
+      const maxScore = start + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
+      if (batch.receipt !== void 0) {
+        const projected2 = projectStreamlinedReceipt(batch.receipt, {
+          challengeId: record.plan.challenge.id,
+          setId: record.plan.challenge.setId,
+          previousScore: start,
+          maxScore,
+          itemIds: batch.refs.map((ref) => ref.id)
+        });
+        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same25(projected2, batch.receipt)) fail28("JOURNAL_INVALID");
+      }
+      if (batch.state === "confirmed") previousScore = batch.receipt?.submittedScore ?? maxScore;
+    }
+    return record;
+  }
+  function createStreamlinedJournal({ get, set, now = () => Date.now(), canReplaceArchived = async () => false } = {}) {
+    let tail = Promise.resolve();
+    const read = async (context) => {
+      let record;
+      try {
+        record = await get(streamlinedJournalKey(context), null);
+      } catch {
+        fail28("JOURNAL_READ_FAILED");
+      }
+      return record == null ? null : structuredClone(validateStreamlinedJournal(record, context));
+    };
+    const write = (context, record, previousRevision = 0) => {
+      const task = tail.then(async () => {
+        const current2 = await read(context);
+        if ((current2?.revision ?? 0) !== previousRevision) fail28("JOURNAL_CHANGED");
+        const next = validateStreamlinedJournal({ ...structuredClone(record), revision: previousRevision + 1, updatedAt: now() }, context);
+        try {
+          await set(streamlinedJournalKey(context), next);
+          if (!same25(await get(streamlinedJournalKey(context), null), next)) fail28("JOURNAL_READBACK_FAILED");
+        } catch {
+          fail28("JOURNAL_WRITE_FAILED");
+        }
+        return structuredClone(next);
+      });
+      tail = task.catch(() => {
+      });
+      return task;
+    };
+    return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
+      assertStreamlinedPlan(plan);
+      if (plan.items.some((item2) => item2.source !== "inventory")) fail28("PURCHASE_PENDING");
+      const prior = await read(plan.context);
+      const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
+      if (replaceRemainder && !replacement) fail28("RECOVERY_REQUIRED");
+      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail28("RECOVERY_REQUIRED");
+      if (replacement) {
+        const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
+        try {
+          const saved = await get(key, null);
+          if (saved != null && !same25(saved, prior)) fail28("JOURNAL_ARCHIVE_CONFLICT");
+          if (saved == null) await set(key, structuredClone(prior));
+          if (!same25(await get(key, null), prior)) fail28("JOURNAL_ARCHIVE_FAILED");
+        } catch {
+          fail28("JOURNAL_ARCHIVE_FAILED");
+        }
+      }
+      return write(plan.context, {
+        schema: 1,
+        context: plan.context,
+        plan,
+        submittedScore: plan.challenge.submittedScore,
+        rewardState: "unknown",
+        batches: plan.batches.map((batch, index) => ({
+          index,
+          state: "waiting",
+          refs: batch.map(refOf)
+        }))
+      }, prior?.revision ?? 0);
+    } });
+  }
+
   // src/streamlined/purchase-journal.js
   var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
   var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
+  var streamlinedRetiredPurchaseKey = (context) => `${streamlinedPurchaseKey(context)}:retired`;
+  function streamlinedPurchaseReservedIds(record) {
+    validateStreamlinedPurchase(record, record.context);
+    const inventoryEntries = new Map(record.entries.filter((entry) => entry.source === "inventory").map((entry) => [entry.itemId, entry]));
+    for (const [groupIndex, group] of record.route.groups.entries()) {
+      if (group.source !== "inventory") continue;
+      if (group.items.length < group.quantity || group.items.slice(0, group.quantity).some((item2) => {
+        const entry = inventoryEntries.get(item2.id);
+        return !entry || entry.groupIndex !== groupIndex || entry.definitionId !== item2.definitionId;
+      })) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    }
+    const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
+    if (ids2.some((id12) => !integer15(id12, 1))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (record.contribution) {
+      const { batchPlan, material } = record.contribution;
+      try {
+        assertStreamlinedPlan(batchPlan);
+      } catch {
+        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      }
+      if (!same25(batchPlan.context, record.context) || batchPlan.challenge.id !== record.challenge.id || batchPlan.challenge.setId !== record.challenge.setId || batchPlan.challenge.targetScore !== record.challenge.targetScore || batchPlan.challenge.submittedScore !== record.submittedScore || !same25(batchPlan.items, material.map((row) => row.item))) {
+        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      }
+      ids2.push(...batchPlan.items.map((item2) => item2.id));
+    }
+    return [...new Set(ids2)];
+  }
+  function canRetireStreamlinedPurchase(record, contribution = null) {
+    streamlinedPurchaseReservedIds(record);
+    if (record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) return false;
+    if (!contribution) return true;
+    validateStreamlinedJournal(contribution, record.context);
+    if (!contribution.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) return true;
+    return contribution.plan.fingerprint === record.contribution?.batchPlan?.fingerprint;
+  }
   function streamlinedPurchaseAudit(record) {
     if (!Array.isArray(record?.entries) || !Array.isArray(record.consumedIds) || record.entries.some((entry) => !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry?.state))) return {};
     const pendingWriteCount = Number(!!record.contribution) + record.entries.filter((entry) => ["buy-pending", "move-pending"].includes(entry.state)).length;
@@ -29551,6 +29792,58 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
   } }) {
+    const readRetired = async (context) => {
+      let rows;
+      try {
+        rows = await get(streamlinedRetiredPurchaseKey(context), []);
+      } catch {
+        fail28("PURCHASE_JOURNAL_READ_FAILED");
+      }
+      rows ??= [];
+      if (!Array.isArray(rows) || rows.length > 50) fail28("PURCHASE_ARCHIVE_INVALID");
+      const operations = /* @__PURE__ */ new Set();
+      for (const row of rows) {
+        if (row?.reason !== "user-abandoned" || !integer15(row.at) || !row.record || operations.has(row.record.operationId)) fail28("PURCHASE_ARCHIVE_INVALID");
+        validateStreamlinedPurchase(row.record, context);
+        streamlinedPurchaseReservedIds(row.record);
+        if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail28("PURCHASE_ARCHIVE_INVALID");
+        if (row.contributionJournal) {
+          validateStreamlinedJournal(row.contributionJournal, context);
+          if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail28("PURCHASE_ARCHIVE_INVALID");
+        }
+        operations.add(row.record.operationId);
+      }
+      return structuredClone(rows);
+    };
+    const isRetired = async (record) => {
+      const row = (await readRetired(record.context)).find((row2) => row2.record.operationId === record.operationId);
+      if (row && !same25(row.record, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+      return !!row;
+    };
+    const reservedFor = (row) => [
+      ...streamlinedPurchaseReservedIds(row.record),
+      ...row.contributionJournal?.batches.filter((batch) => ["waiting", "pending", "unknown"].includes(batch.state)).flatMap((batch) => batch.refs.map((ref) => ref.id)) ?? []
+    ];
+    const reservedIds = async (context) => [...new Set((await readRetired(context)).flatMap(reservedFor))];
+    const isRetiredContribution = async (record) => {
+      const row = (await readRetired(record.context)).find((row2) => row2.contributionJournal?.plan.fingerprint === record.plan.fingerprint);
+      if (row && !same25(row.contributionJournal, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+      return !!row;
+    };
+    const assertAvailable = async (context, challenge, refs3 = []) => {
+      for (const row of await readRetired(context)) {
+        const { record } = row;
+        if ((record.contribution || row.contributionJournal?.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail28("HISTORY_TARGET_UNRESOLVED");
+        const reserved = new Set(reservedFor(row));
+        if (refs3.some((ref) => reserved.has(ref.id ?? ref.itemId))) fail28("FOREIGN_PURCHASE_MATERIAL_RESERVED");
+      }
+    };
+    const assertPlanAvailable = async (plan) => {
+      for (const row of await readRetired(plan.context)) {
+        if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint].includes(plan.fingerprint)) fail28("PURCHASE_HISTORY_RETIRED");
+      }
+      await assertAvailable(plan.context, plan.challenge, plan.items);
+    };
     const read = async (context) => {
       let record;
       try {
@@ -29565,6 +29858,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const old = await read(record.context);
       if ((old?.revision ?? 0) !== previousRevision) fail28("PURCHASE_JOURNAL_CHANGED");
       const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
+      if ((await readRetired(record.context)).some((row) => row.record.operationId === next.operationId)) fail28("PURCHASE_HISTORY_RETIRED");
+      await assertAvailable(next.context, next.challenge, next.entries);
       try {
         assertHeld();
         await set(streamlinedPurchaseKey(record.context), next);
@@ -29578,10 +29873,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const archive = async (record) => {
       assertHeld();
       validateStreamlinedPurchase(record, record.context);
-      if (streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+      if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
       if (!same25(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
       const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
       try {
+        const prior = await get(key, null);
+        if (prior !== null && !same25(prior, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
         assertHeld();
         await set(key, structuredClone(record));
         assertHeld();
@@ -29590,7 +29887,41 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         fail28("PURCHASE_JOURNAL_WRITE_FAILED");
       }
     };
-    return Object.freeze({ read, write, archive });
+    const retire = async (record, contributionJournal = null) => {
+      assertHeld();
+      validateStreamlinedPurchase(record, record.context);
+      if (!same25(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
+      const rows = await readRetired(record.context);
+      if (rows.some((row) => row.record.operationId === record.operationId)) {
+        if (!await isRetired(record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+        return;
+      }
+      if (rows.length >= 50) fail28("PURCHASE_ARCHIVE_FULL");
+      if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail28("PURCHASE_RECOVERY_REQUIRED");
+      if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail28("PURCHASE_ARCHIVE_INVALID");
+      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      try {
+        const prior = await get(key, null);
+        if (prior !== null && !same25(prior, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+        assertHeld();
+        await set(key, structuredClone(record));
+        assertHeld();
+        if (!same25(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        rows.push({
+          reason: "user-abandoned",
+          at: Date.now(),
+          record: structuredClone(record),
+          ...contributionJournal ? { contributionJournal: structuredClone(contributionJournal) } : {}
+        });
+        assertHeld();
+        await set(streamlinedRetiredPurchaseKey(record.context), rows);
+        assertHeld();
+        if (!same25(rows, await readRetired(record.context))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+    };
+    return Object.freeze({ read, write, archive, retire, readRetired, isRetired, isRetiredContribution, reservedIds, assertAvailable, assertPlanAvailable });
   }
   async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
     const proof = item2?.purchaseReceipt;
@@ -29618,6 +29949,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   } = {}) {
     const settings = createStreamlinedSettings({ get, set });
     let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
+    let history = null;
+    const purchaseJournal = createStreamlinedPurchaseJournal({ get });
     const safeReason10 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_EXECUTION_UNAVAILABLE";
     const executionEvidence = (error2) => {
       if (!error2 || typeof error2 !== "object") return {};
@@ -29694,6 +30027,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       clearPreview() {
         preview = null;
         routePreview = null;
+        history = null;
       },
       resolveDisplayItem(ref) {
         if (!preview) return null;
@@ -29712,6 +30046,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stopRequested = false;
         preview = null;
         routePreview = null;
+        history = null;
         const run = ++planningRun;
         const progress = (row) => {
           try {
@@ -29721,8 +30056,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         };
         try {
           const config = normalizeStreamlinedSettings(value), origin = capture();
-          const input = readInputs(config);
+          const rawInput = readInputs(config);
+          rawInput.assertCurrent();
+          await purchaseJournal.assertAvailable(origin.context, origin.challenge);
+          const reserved = new Set(await purchaseJournal.reservedIds(origin.context));
+          const input = { ...rawInput, inventory: rawInput.inventory.filter((item2) => !reserved.has(item2.id)) };
+          unchanged(origin);
           input.assertCurrent();
+          if (input.inventory.length !== rawInput.inventory.length) log({
+            event: "inventory-exclusion",
+            phase: "history-reserved",
+            count: rawInput.inventory.length - input.inventory.length
+          });
           const quoteDeadlineAt = now() + STREAMLINED_QUOTE_BUDGET_MS;
           const check = () => {
             unchanged(origin);
@@ -30234,11 +30579,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         try {
           unchanged(selected.origin);
           activeExecution = selected.execution;
-          const result = selected.plan.route?.groups?.some((group) => group.source === "market") && typeof activeExecution.purchase === "function" ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...budget !== void 0 ? { budget } : {} }, callbacks) : await activeExecution.transaction.execute(
+          let result = selected.plan.route?.groups?.some((group) => group.source === "market") && typeof activeExecution.purchase === "function" ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...budget !== void 0 ? { budget } : {} }, callbacks) : await activeExecution.transaction.execute(
             selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial },
             callbacks
           );
+          const oldTarget = result.record?.challenge;
+          if (result.reason === "FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED" && oldTarget && (oldTarget.id !== selected.plan.challenge.id || oldTarget.setId !== selected.plan.challenge.setId) && typeof activeExecution.recoverPurchase === "function") {
+            unchanged(selected.origin);
+            const blocked11 = await activeExecution.recoverPurchase(selected.plan.challenge);
+            unchanged(selected.origin);
+            if (blocked11.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
+              result = blocked11;
+              if (blocked11.historyAction?.canArchive === true) history = { origin: selected.origin, execution: activeExecution };
+              preview = null;
+              routePreview = null;
+            }
+          }
           if (preview === selected) {
             const current2 = capture();
             if (same25(current2.context, selected.origin.context) && current2.challenge.id === selected.plan.challenge.id && current2.challenge.setId === selected.plan.challenge.setId) selected.origin = current2;
@@ -30269,6 +30626,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         preview = null;
         routePreview = null;
+        history = null;
         if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
         busy = true;
         try {
@@ -30282,6 +30640,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           let contribution, warning, purchaseRecovery;
           let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
+          if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === "function") {
+            history = { origin, execution: activeExecution };
+          }
           if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
             if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
               contribution = await activeExecution.transaction.recover(
@@ -30342,7 +30703,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             { setId: origin.challenge.setId, challengeId: origin.challenge.id }
           );
           let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
-          if (purchaseRecovery) result = { ...result, ...warning ? { warning } : {}, purchaseRecovery };
+          if (purchaseRecovery) result = {
+            ...result,
+            ...warning ? { warning } : {},
+            purchaseRecovery,
+            ...history ? { historyAction: { canArchive: true } } : {}
+          };
           if (materialization.status !== "absent") {
             result = { ...result, materializationRecovery: materialization };
             if (result.status === "absent" && materialization.status === "recovered") {
@@ -30390,6 +30756,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return result;
         } finally {
           activeExecution = null;
+          busy = false;
+        }
+      },
+      async archiveHistory() {
+        if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
+        if (!history) return { status: "blocked", reason: "FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED" };
+        busy = true;
+        try {
+          const saved = history;
+          unchanged(saved.origin);
+          const result = await saved.execution.archivePurchaseHistory(saved.origin.challenge);
+          unchanged(saved.origin);
+          preview = null;
+          routePreview = null;
+          history = null;
+          log({ event: "purchase-recovery-state", phase: "history-archived", status: result.status, reason: result.reason });
+          return result;
+        } catch (error2) {
+          return { status: "blocked", reason: safeReason10(error2) };
+        } finally {
           busy = false;
         }
       }
@@ -30750,170 +31136,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
-  // src/streamlined/contribution.js
-  function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same25(receipt.itemIds, itemIds) || !integer15(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer15(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer15(receipt.challengeAwardCount, 0, 100) || !integer15(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer15(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail28("RECEIPT_INVALID");
-    return deepFreeze({
-      schema: 1,
-      status: "accepted",
-      code: receipt.code,
-      transportWarning: receipt.transportWarning,
-      setId,
-      challengeId,
-      itemIds: [...itemIds],
-      submittedScore: receipt.submittedScore,
-      ...receipt.previousTimesCompleted !== void 0 ? { previousTimesCompleted: receipt.previousTimesCompleted } : {},
-      challengeCompleted: receipt.challengeCompleted,
-      challengeAwardCount: receipt.challengeAwardCount,
-      setAwardCount: receipt.setAwardCount,
-      objectiveUpdatesPresent: receipt.objectiveUpdatesPresent,
-      rewardConfirmed: false
-    });
-  }
-  function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
-    if (!integer15(expected.challengeId, 1) || !integer15(expected.setId, 1) || !integer15(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer15(id12, 1))) fail28("CONTRIBUTION_INPUT_INVALID");
-    const response = reply?.response, code2 = integer15(reply?.status, 100, 599) ? reply.status : null;
-    const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
-    const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
-    const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
-    const hasProgress = integer15(response?.submittedScore, expected.previousScore + 1, 1e9);
-    if (reply?.success === false || conflict) {
-      if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
-      if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
-        return deepFreeze({ status: "rejected", reason: conflict ? "EA_SQUAD_CONFLICT" : "EA_CONTRIBUTION_REJECTED", code: code2 });
-      }
-      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
-    }
-    if (reply?.success !== true || response?.challengeId !== expected.challengeId || response?.setId !== expected.setId || !hasProgress || response.squads !== void 0 || !Array.isArray(challengeAwards) || !Array.isArray(setAwards) || [challengeAwards, setAwards].some((rows) => rows.length > 100 || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row)))) {
-      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
-    }
-    return deepFreeze({
-      schema: 1,
-      status: "accepted",
-      code: code2,
-      transportWarning: code2 !== 200,
-      setId: expected.setId,
-      challengeId: expected.challengeId,
-      itemIds: [...expected.itemIds],
-      submittedScore: response.submittedScore,
-      ...integer15(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
-      challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
-      challengeAwardCount: challengeAwards.length,
-      setAwardCount: setAwards.length,
-      // Raw dynamicObjectivesUpdates and transformed objectiveUpdates stay out of
-      // the Journal. Presence is observational, not proof of reward delivery.
-      objectiveUpdatesPresent: response.dynamicObjectivesUpdates != null || response.objectiveUpdates != null,
-      rewardConfirmed: false
-    });
-  }
-
-  // src/streamlined/journal.js
-  var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
-  function canReplaceStreamlinedRemainder(record, plan) {
-    const stock = (candidate) => candidate.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some((group) => group.source === "market");
-    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
-    const consumed = new Set(confirmed.flatMap((batch) => batch.refs.map((ref) => ref.id)));
-    return !!record && same25(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
-  }
-  var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
-  var refOf = (item2) => ({
-    id: item2.id,
-    definitionId: item2.definitionId,
-    points: item2.points,
-    pile: item2.pile,
-    ...item2.executionPile ? { executionPile: item2.executionPile } : {}
-  });
-  function streamlinedJournalKey(context) {
-    return contextKey(context, "streamlined-contribution");
-  }
-  function validateStreamlinedJournal(record, context) {
-    if (record?.schema !== 1 || !same25(record.context, createSeasonContext(context)) || !integer15(record.revision, 1) || !integer15(record.updatedAt) || !integer15(record.submittedScore) || !Array.isArray(record.batches) || !integer15(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail28("JOURNAL_INVALID");
-    assertStreamlinedPlan(record.plan);
-    if (!same25(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same25(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail28("JOURNAL_INVALID");
-    let previousScore = record.plan.challenge.submittedScore;
-    for (const batch of record.batches) {
-      if (batch.startingScore !== void 0 && (!integer15(
-        batch.startingScore,
-        record.plan.challenge.submittedScore,
-        record.submittedScore
-      ) || batch.state === "waiting")) fail28("JOURNAL_INVALID");
-      const start = batch.startingScore ?? previousScore;
-      const maxScore = start + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
-      if (batch.receipt !== void 0) {
-        const projected2 = projectStreamlinedReceipt(batch.receipt, {
-          challengeId: record.plan.challenge.id,
-          setId: record.plan.challenge.setId,
-          previousScore: start,
-          maxScore,
-          itemIds: batch.refs.map((ref) => ref.id)
-        });
-        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same25(projected2, batch.receipt)) fail28("JOURNAL_INVALID");
-      }
-      if (batch.state === "confirmed") previousScore = batch.receipt?.submittedScore ?? maxScore;
-    }
-    return record;
-  }
-  function createStreamlinedJournal({ get, set, now = () => Date.now() } = {}) {
-    let tail = Promise.resolve();
-    const read = async (context) => {
-      let record;
-      try {
-        record = await get(streamlinedJournalKey(context), null);
-      } catch {
-        fail28("JOURNAL_READ_FAILED");
-      }
-      return record == null ? null : structuredClone(validateStreamlinedJournal(record, context));
-    };
-    const write = (context, record, previousRevision = 0) => {
-      const task = tail.then(async () => {
-        const current2 = await read(context);
-        if ((current2?.revision ?? 0) !== previousRevision) fail28("JOURNAL_CHANGED");
-        const next = validateStreamlinedJournal({ ...structuredClone(record), revision: previousRevision + 1, updatedAt: now() }, context);
-        try {
-          await set(streamlinedJournalKey(context), next);
-          if (!same25(await get(streamlinedJournalKey(context), null), next)) fail28("JOURNAL_READBACK_FAILED");
-        } catch {
-          fail28("JOURNAL_WRITE_FAILED");
-        }
-        return structuredClone(next);
-      });
-      tail = task.catch(() => {
-      });
-      return task;
-    };
-    return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
-      assertStreamlinedPlan(plan);
-      if (plan.items.some((item2) => item2.source !== "inventory")) fail28("PURCHASE_PENDING");
-      const prior = await read(plan.context);
-      const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
-      if (replaceRemainder && !replacement) fail28("RECOVERY_REQUIRED");
-      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement) fail28("RECOVERY_REQUIRED");
-      if (replacement) {
-        const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
-        try {
-          const saved = await get(key, null);
-          if (saved != null && !same25(saved, prior)) fail28("JOURNAL_ARCHIVE_CONFLICT");
-          if (saved == null) await set(key, structuredClone(prior));
-          if (!same25(await get(key, null), prior)) fail28("JOURNAL_ARCHIVE_FAILED");
-        } catch {
-          fail28("JOURNAL_ARCHIVE_FAILED");
-        }
-      }
-      return write(plan.context, {
-        schema: 1,
-        context: plan.context,
-        plan,
-        submittedScore: plan.challenge.submittedScore,
-        rewardState: "unknown",
-        batches: plan.batches.map((batch, index) => ({
-          index,
-          state: "waiting",
-          refs: batch.map(refOf)
-        }))
-      }, prior?.revision ?? 0);
-    } });
-  }
-
   // src/adapters/browser/fc27-streamlined-persistence.js
   function createFc27StreamlinedPersistence({
     context,
@@ -30923,6 +31145,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     readContext = () => context,
     now = () => Date.now(),
     beforeReplace = async () => {
+    },
+    isArchivedContribution = async () => false,
+    beforeBegin = async () => {
     }
   } = {}) {
     const bound = createSeasonContext(context), scope2 = traditionalJournalScope(bound);
@@ -30937,6 +31162,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const raw = createStreamlinedJournal({
       now,
+      canReplaceArchived: isArchivedContribution,
       get: async (key, fallback) => {
         assertContext(bound);
         const value = await get(key, fallback);
@@ -30961,17 +31187,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const journal = Object.freeze({
       read: (requested) => {
         assertContext(requested);
-        return raw.read(bound);
+        return (async () => {
+          const record = await raw.read(bound);
+          return record && await isArchivedContribution(record) ? null : record;
+        })();
       },
       write: (requested, record, revision) => {
         assertContext(requested);
         assertHeld();
-        return raw.write(bound, record, revision);
+        return (async () => {
+          const prior = await raw.read(bound);
+          if (prior && await isArchivedContribution(prior)) fail28("PURCHASE_HISTORY_RETIRED");
+          return raw.write(bound, record, revision);
+        })();
       },
       begin: (plan, options) => {
         assertContext(plan.context);
         assertHeld();
         return (async () => {
+          await beforeBegin(plan);
+          assertHeld();
           const previous = await raw.read(bound);
           if (previous && previous.plan.fingerprint !== plan.fingerprint) {
             await beforeReplace(previous, plan);
@@ -33261,7 +33496,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (reconcileOnly && !record) return { status: "absent" };
         let replace = false;
         if (record && record.fingerprint !== fingerprint) {
-          if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+          if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record) && !await journal.isRetired?.(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
           await journal.archive(record);
           replace = true;
         }
@@ -33309,6 +33544,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const check = async ({ recovery = false } = {}) => {
           if (stopped && !recovery) throw stoppedError();
           if (!recovery && now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
+          if (await journal.isRetired?.(record)) fail28("PURCHASE_HISTORY_RETIRED");
+          await journal.assertAvailable?.(record.context, record.challenge, record.entries);
           await adapter.assertCurrent(record);
         };
         await check({ recovery: true });
@@ -33748,8 +33985,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       lockManager,
       readContext: () => readFc27Context(root),
       now,
+      isArchivedContribution: (record) => marketJournal.isRetiredContribution(record),
+      beforeBegin: (plan2) => marketJournal.assertPlanAvailable(plan2),
       beforeReplace: async (previous) => {
-        const saved = await marketJournal.read(context), settled2 = projectStreamlinedPurchaseHandoff(saved, previous);
+        const saved = await marketJournal.read(context);
+        if (saved && await marketJournal.isRetired(saved)) return;
+        const settled2 = projectStreamlinedPurchaseHandoff(saved, previous);
         if (settled2) await marketJournal.write(settled2, saved.revision);
       }
     });
@@ -33769,8 +34010,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const checkOtherTransactions = async (plan2, batch) => {
       await assertStreamlinedOtherTransactions(get, context);
       await materializationJournal.assertSettled();
+      await marketJournal.assertAvailable(context, plan2.challenge, batch.refs);
       const saved = await marketJournal.read(context);
-      if (saved && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan2.fingerprint)) {
+      if (saved && !await marketJournal.isRetired(saved) && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan2.fingerprint)) {
         assertStreamlinedRecoveryIsolation(plan2, batch.refs, saved);
       }
     };
@@ -33783,6 +34025,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     );
     let marketPurchase = null;
     let activeProcurement = null;
+    let historyToArchive = null;
     const adapter = createProvider(root, {
       journal: persistence.journal,
       canWrite,
@@ -33823,7 +34066,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!plan2?.route?.groups?.some((group) => group.source === "market")) return null;
       await materializationJournal.assertSettled();
       const contribution = { adapter, journal: persistence.journal };
-      return createPurchaseAdapter(root, {
+      const native = await createPurchaseAdapter(root, {
         plan: plan2,
         persistence,
         canWrite,
@@ -33870,6 +34113,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
       });
+      return Object.freeze({ ...native, async assertCurrent(record) {
+        const current2 = await persistence.journal.read(context);
+        if (current2 && current2.plan.fingerprint !== streamlinedPurchaseContributionPlan(record)?.fingerprint && !isUnsentStreamlinedJournal(current2)) {
+          if (current2.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail28("RECOVERY_REQUIRED");
+          if (current2.batches.some((batch) => batch.state === "waiting")) fail28("PURCHASE_REMAINDER_RECOVERY_REQUIRED");
+        }
+        await native.assertCurrent(record);
+      } });
     };
     return Object.freeze({
       transaction,
@@ -33882,7 +34133,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (record.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail28("RECOVERY_REQUIRED");
           const refs3 = record.batches.filter((batch) => batch.state === "waiting").flatMap((batch) => batch.refs);
           if (!refs3.length) fail28("RECOVERY_REQUIRED");
-          return assertStreamlinedRecoveryIsolation(record.plan, refs3, await marketJournal.read(context));
+          await marketJournal.assertAvailable(context, record.plan.challenge, refs3);
+          const saved = await marketJournal.read(context);
+          return saved && await marketJournal.isRetired(saved) ? true : assertStreamlinedRecoveryIsolation(record.plan, refs3, saved);
         } finally {
           await release();
         }
@@ -33902,8 +34155,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       },
       async recoverPurchase(challenge) {
+        historyToArchive = null;
         const saved = await marketJournal.read(context);
-        if (!saved) return { status: "absent" };
+        if (!saved || await marketJournal.isRetired(saved)) return { status: "absent" };
         const current2 = await persistence.journal.read(context);
         const sameTarget3 = saved.challenge.setId === challenge.setId && saved.challenge.id === challenge.id;
         const independentStock = sameTarget3 && current2 && current2.plan.challenge.setId === challenge.setId && current2.plan.challenge.id === challenge.id && isStreamlinedStockPlan(current2.plan) && streamlinedPurchaseContributionPlan(saved)?.fingerprint !== current2.plan.fingerprint;
@@ -33930,10 +34184,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           } catch {
           }
           if (!pending2) return { status: "absent" };
+          let canArchive = false;
+          try {
+            canArchive = !sameTarget3 && canRetireStreamlinedPurchase(saved, current2);
+          } catch {
+          }
+          if (canArchive) historyToArchive = { saved: structuredClone(saved), current: structuredClone(current2) };
           return {
             status: "recovery-required",
             reason: "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED",
-            recovery
+            recovery,
+            historyAction: { canArchive }
           };
         }
         if (saved.challenge.targetScore !== challenge.targetScore) fail28("CONTEXT_CHANGED");
@@ -33947,6 +34208,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return await driver.execute(saved.plan, null, { reconcileOnly: true });
         } finally {
           activeProcurement = null;
+        }
+      },
+      async archivePurchaseHistory(challenge) {
+        if (!historyToArchive) fail28("PURCHASE_RECOVERY_REQUIRED");
+        const release = await persistence.lock.acquire(context);
+        if (typeof release !== "function") fail28("BUSY");
+        try {
+          await assertStreamlinedOtherTransactions(get, context);
+          await materializationJournal.assertSettled();
+          const current2 = await persistence.journal.read(context), { saved, current: expected } = historyToArchive;
+          if (!same25(current2, expected)) fail28("JOURNAL_CHANGED");
+          if (saved.challenge.id === challenge.id && saved.challenge.setId === challenge.setId || !canRetireStreamlinedPurchase(saved, current2)) fail28("RECOVERY_REQUIRED");
+          const ownInner = current2?.plan.challenge.id === saved.challenge.id && current2?.plan.challenge.setId === saved.challenge.setId;
+          await marketJournal.retire(saved, ownInner ? current2 : null);
+          historyToArchive = null;
+          return { status: "archived", reason: "FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED" };
+        } finally {
+          await release();
         }
       },
       async purchase(plan2, approval = {}, callbacks = {}) {
@@ -34033,7 +34312,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.44" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.45" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34351,8 +34630,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.44"}`,
-    version: "27.0.44",
+    title: `FC Automation Tool ${"27.0.45"}`,
+    version: "27.0.45",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

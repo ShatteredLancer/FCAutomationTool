@@ -10,13 +10,14 @@ import { maintainFc27PuzzlePurchases } from './fc27-puzzle-buy-lifecycle.js';
 import { galleryPurchasePendingKey } from '../../gallery/purchase-session.js';
 import { assertGalleryRelistSettled } from '../../gallery/relist-recovery.js';
 import { createStreamlinedPurchaseJournal, verifyStreamlinedPurchasedItem, streamlinedPurchaseNeedsRecovery,
-  streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
+  streamlinedPurchaseAudit, canRetireStreamlinedPurchase } from '../../streamlined/purchase-journal.js';
 import { createFc27StreamlinedPurchaseAdapter } from '../ea/fc27-streamlined-purchase.js';
 import { createStreamlinedProcurement } from '../../streamlined/procurement.js';
 import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streamlined-materialize.js';
 import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
 import { assertStreamlinedRecoveryIsolation, isStreamlinedStockPlan, streamlinedPurchaseContributionPlan } from '../../streamlined/recovery-isolation.js';
 import { projectStreamlinedPurchaseHandoff } from '../../streamlined/purchase-handoff.js';
+import { isUnsentStreamlinedJournal } from '../../streamlined/journal.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
   const scope = traditionalJournalScope(context), raw = await get(scope, null);
@@ -34,8 +35,12 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   if (!same(readFc27Context(root), context)) fail('CONTEXT_CHANGED');
   const persistence = createFc27StreamlinedPersistence({ context, get, set, lockManager,
     readContext: () => readFc27Context(root), now,
+    isArchivedContribution: record => marketJournal.isRetiredContribution(record),
+    beforeBegin: plan => marketJournal.assertPlanAvailable(plan),
     beforeReplace: async previous => {
-      const saved = await marketJournal.read(context), settled = projectStreamlinedPurchaseHandoff(saved, previous);
+      const saved = await marketJournal.read(context);
+      if (saved && await marketJournal.isRetired(saved)) return;
+      const settled = projectStreamlinedPurchaseHandoff(saved, previous);
       if (settled) await marketJournal.write(settled, saved.revision);
     } });
   const materializationStorage = { get, set: async (key, value) => {
@@ -49,8 +54,10 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   const checkOtherTransactions = async (plan, batch) => {
     await assertStreamlinedOtherTransactions(get, context);
     await materializationJournal.assertSettled();
+    await marketJournal.assertAvailable(context, plan.challenge, batch.refs);
     const saved = await marketJournal.read(context);
-    if (saved && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan.fingerprint)) {
+    if (saved && !await marketJournal.isRetired(saved)
+        && (!activeProcurement || streamlinedPurchaseContributionPlan(saved)?.fingerprint !== plan.fingerprint)) {
       assertStreamlinedRecoveryIsolation(plan, batch.refs, saved);
     }
   };
@@ -60,6 +67,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     { id: currentPlan?.challenge?.id ?? 0, setId: currentPlan?.challenge?.setId ?? 0, targetScore: currentPlan?.challenge?.targetScore ?? 0 });
   let marketPurchase = null;
   let activeProcurement = null;
+  let historyToArchive = null;
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
     materializationStorage,
     checkOtherTransactions, purchaseVerifier });
@@ -77,7 +85,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     if (!plan?.route?.groups?.some(group => group.source === 'market')) return null;
     await materializationJournal.assertSettled();
     const contribution = { adapter, journal: persistence.journal };
-    return createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution,
+    const native = await createPurchaseAdapter(root, { plan, persistence, canWrite, get, set, now, prices, contributionAdapter: contribution,
       onEvent: row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined',
         event: row.stage?.startsWith('contribution-') ? 'contribution-transaction' : 'purchase-native',
         phase: row.stage, status: row.status, currentScore: row.currentScore, targetScore: row.targetScore,
@@ -91,6 +99,15 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         foreignCount: row.foreignCount, unknownCount: row.unknownCount, offset: row.offset, reason: row.reason,
         localReason: row.localReason ?? (Number.isSafeInteger(row.errorCode) ? `FC27_NATIVE_ERROR_${row.errorCode}` : undefined),
         httpStatus: row.httpStatus, count: row.count, skippedCount: row.skippedCount })).catch(() => {}); } catch { /* diagnostic only */ } } });
+    return Object.freeze({ ...native, async assertCurrent(record) {
+      const current = await persistence.journal.read(context);
+      if (current && current.plan.fingerprint !== streamlinedPurchaseContributionPlan(record)?.fingerprint
+          && !isUnsentStreamlinedJournal(current)) {
+        if (current.batches.some(batch => ['pending', 'unknown'].includes(batch.state))) fail('RECOVERY_REQUIRED');
+        if (current.batches.some(batch => batch.state === 'waiting')) fail('PURCHASE_REMAINDER_RECOVERY_REQUIRED');
+      }
+      await native.assertCurrent(record);
+    } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
     async inspectInventoryRecovery(record) {
@@ -101,7 +118,9 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
         if (record.batches.some(batch => ['pending', 'unknown'].includes(batch.state))) fail('RECOVERY_REQUIRED');
         const refs = record.batches.filter(batch => batch.state === 'waiting').flatMap(batch => batch.refs);
         if (!refs.length) fail('RECOVERY_REQUIRED');
-        return assertStreamlinedRecoveryIsolation(record.plan, refs, await marketJournal.read(context));
+        await marketJournal.assertAvailable(context, record.plan.challenge, refs);
+        const saved = await marketJournal.read(context);
+        return saved && await marketJournal.isRetired(saved) ? true : assertStreamlinedRecoveryIsolation(record.plan, refs, saved);
       } finally { await release(); }
     },
     async recoverMaterialization() {
@@ -115,8 +134,9 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       } finally { await release(); }
     },
     async recoverPurchase(challenge) {
+      historyToArchive = null;
       const saved = await marketJournal.read(context);
-      if (!saved) return { status: 'absent' };
+      if (!saved || await marketJournal.isRetired(saved)) return { status: 'absent' };
       const current = await persistence.journal.read(context);
       const sameTarget = saved.challenge.setId === challenge.setId && saved.challenge.id === challenge.id;
       const independentStock = sameTarget && current && current.plan.challenge.setId === challenge.setId
@@ -133,8 +153,15 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
           phase: pending ? independentStock ? 'same-target-history' : 'other-target-pending' : 'settled-history', status: pending ? 'recovery-required' : 'ignored',
           setId: recovery.setId, challengeId: recovery.challengeId, ...audit })).catch(() => {}); } catch { /* diagnostic only */ }
         if (!pending) return { status: 'absent' };
+        // Explicit retirement is only for another target, never an in-flight
+        // buy/move or an unrelated unresolved inner contribution. A precisely
+        // matching old contribution may be archived as unknown, never settled.
+        let canArchive = false;
+        try { canArchive = !sameTarget && canRetireStreamlinedPurchase(saved, current); }
+        catch { /* Incomplete evidence must not offer retirement. */ }
+        if (canArchive) historyToArchive = { saved: structuredClone(saved), current: structuredClone(current) };
         return { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
-          recovery };
+          recovery, historyAction: { canArchive } };
       }
       if (saved.challenge.targetScore !== challenge.targetScore) fail('CONTEXT_CHANGED');
       if (!saved.plan) fail('PURCHASE_JOURNAL_INVALID');
@@ -147,6 +174,21 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       activeProcurement = driver;
       try { return await driver.execute(saved.plan, null, { reconcileOnly: true }); }
       finally { activeProcurement = null; }
+    },
+    async archivePurchaseHistory(challenge) {
+      if (!historyToArchive) fail('PURCHASE_RECOVERY_REQUIRED');
+      const release = await persistence.lock.acquire(context);
+      if (typeof release !== 'function') fail('BUSY');
+      try {
+        await assertStreamlinedOtherTransactions(get, context); await materializationJournal.assertSettled();
+        const current = await persistence.journal.read(context), { saved, current: expected } = historyToArchive;
+        if (!same(current, expected)) fail('JOURNAL_CHANGED');
+        if (saved.challenge.id === challenge.id && saved.challenge.setId === challenge.setId
+            || !canRetireStreamlinedPurchase(saved, current)) fail('RECOVERY_REQUIRED');
+        const ownInner = current?.plan.challenge.id === saved.challenge.id && current?.plan.challenge.setId === saved.challenge.setId;
+        await marketJournal.retire(saved, ownInner ? current : null); historyToArchive = null;
+        return { status: 'archived', reason: 'FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED' };
+      } finally { await release(); }
     },
     async purchase(plan, approval = {}, callbacks = {}) {
       // A purchase adapter owns request cancellation state. Recreate it for

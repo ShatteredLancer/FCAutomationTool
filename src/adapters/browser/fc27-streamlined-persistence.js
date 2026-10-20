@@ -7,7 +7,8 @@ import { same, fail } from '../../streamlined/contract.js';
 // Share the existing cross-tab mutation lock with traditional SBC, Puzzle and
 // Gallery. The transaction owns it through receipt persistence and reconciliation.
 export function createFc27StreamlinedPersistence({ context, get, set, lockManager,
-  readContext = () => context, now = () => Date.now(), beforeReplace = async () => {} } = {}) {
+  readContext = () => context, now = () => Date.now(), beforeReplace = async () => {}, isArchivedContribution = async () => false,
+  beforeBegin = async () => {} } = {}) {
   const bound = createSeasonContext(context), scope = traditionalJournalScope(bound);
   const exclusive = createTraditionalExclusive({ context: bound, lockManager });
   const pending = new Set();
@@ -18,7 +19,7 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
     assertContext(bound);
     if (!exclusive.hasExclusiveAccess(scope)) fail('EXCLUSIVE_ACCESS_REQUIRED');
   };
-  const raw = createStreamlinedJournal({ now,
+  const raw = createStreamlinedJournal({ now, canReplaceArchived: isArchivedContribution,
     get: async (key, fallback) => {
       assertContext(bound);
       const value = await get(key, fallback);
@@ -32,11 +33,16 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
     },
   });
   const journal = Object.freeze({
-    read: requested => { assertContext(requested); return raw.read(bound); },
-    write: (requested, record, revision) => { assertContext(requested); assertHeld(); return raw.write(bound, record, revision); },
+    read: requested => { assertContext(requested); return (async () => { const record = await raw.read(bound);
+      return record && await isArchivedContribution(record) ? null : record; })(); },
+    write: (requested, record, revision) => { assertContext(requested); assertHeld(); return (async () => {
+      const prior = await raw.read(bound);
+      if (prior && await isArchivedContribution(prior)) fail('PURCHASE_HISTORY_RETIRED');
+      return raw.write(bound, record, revision); })(); },
     begin: (plan, options) => {
       assertContext(plan.context); assertHeld();
       return (async () => {
+        await beforeBegin(plan); assertHeld();
         const previous = await raw.read(bound);
         if (previous && previous.plan.fingerprint !== plan.fingerprint) {
           await beforeReplace(previous, plan); assertHeld();

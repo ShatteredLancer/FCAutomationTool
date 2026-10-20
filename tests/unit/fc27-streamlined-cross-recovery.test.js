@@ -5,7 +5,7 @@ import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-st
 import { createFc27StreamlinedProvider } from '../../src/adapters/ea/fc27-streamlined-provider.js';
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal, streamlinedJournalKey } from '../../src/streamlined/journal.js';
-import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.js';
+import { streamlinedPurchaseKey, streamlinedRetiredPurchaseKey, createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
 import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 import { streamlinedExecutionMessage } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 import { assertStreamlinedRecoveryIsolation } from '../../src/streamlined/recovery-isolation.js';
@@ -73,10 +73,178 @@ async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch 
     remainingScore: score - f.challenge.submittedScore });
   const session = createFc27StreamlinedSession({ get, set, createExecution, diagnosticLog,
     inspect: () => ({ context: plan.context, challenge: current() }),
-    readInputs: () => ({ ...f.input, challenge: current(), inventory: f.input.inventory.filter(item => !consumed.includes(item.id)) }) });
+    readInputs: () => ({ ...f.input, assertCurrent: () => {}, challenge: current(), inventory: f.input.inventory.filter(item => !consumed.includes(item.id)) }) });
   set.mockClear();
   return { ...f, session, memory, get, set, old, plan, mutations, createExecution, createPurchaseAdapter, diagnosticLog };
 }
+
+it('can explicitly retire unrelated stale purchase history without pretending its contribution succeeded', async () => {
+  const f = await setup('contribution'), before = structuredClone(f.old);
+  const outcome = await f.session.recover();
+  expect(outcome.historyAction?.canArchive).toBe(true);
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+  expect(f.memory.get(streamlinedPurchaseKey(f.plan.context))).toEqual(before);
+  expect(f.mutations).not.toHaveBeenCalled(); expect(f.createPurchaseAdapter).not.toHaveBeenCalled();
+  expect((await f.session.recover()).purchaseRecovery).toBeUndefined();
+});
+
+function mixedPlan(f) {
+  const inventory = f.input.inventory.slice(5, 9).map(item => ({ ...item, price: 200 }));
+  const market = { ...inventory[0], source: 'market', id: null, key: `market:${inventory[0].definitionId}:0`, purchaseMaxBuy: 250 };
+  const items = [...inventory, market], challenge = { ...f.input.challenge, submittedScore: f.challenge.submittedScore,
+    remainingScore: f.input.challenge.targetScore - f.challenge.submittedScore };
+  return createStreamlinedPlan({ context: f.plan.context, challenge, policy: f.plan.policy, result: {
+    status: 'ready', items, batches: [items], score: 100, progress: streamlinedProgress(challenge, 100),
+    purchaseCost: 200, materialValue: 800, searchComplete: true,
+    route: { groups: [{ source: 'inventory', quantity: 4, item: inventory[0], items: inventory },
+      { source: 'market', quantity: 1, item: market, items: [market] }] },
+  } });
+}
+
+it('starts a newly budgeted mixed run after explicit retirement, not the stale 190-coin remainder', async () => {
+  const f = await setup('contribution', { completedCycle: true }), plan = mixedPlan(f);
+  f.root.crypto.randomUUID = () => 'new-run';
+  const buyer = { assertCurrent: vi.fn(), readState: vi.fn(async () => { throw Error('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'); }),
+    find: vi.fn(), buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  f.createPurchaseAdapter.mockResolvedValue(buyer);
+  const execution = await f.createExecution(f.plan.context);
+  const approval = { approved: true, fingerprint: plan.fingerprint, budget: 500 };
+  expect(await execution.purchase(plan, approval)).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' });
+  await f.session.recover();
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+  const result = await execution.purchase(plan, approval);
+  expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED',
+    record: { budget: 500, spent: 0, challenge: { id: 61, setId: 31 }, contribution: null } });
+  expect(f.memory.get(streamlinedRetiredPurchaseKey(f.plan.context))[0].record).toEqual(f.old);
+  for (const method of ['find', 'buy', 'move', 'contribute']) expect(buyer[method]).not.toHaveBeenCalled();
+});
+
+it.each(['buy-pending', 'move-pending'])('never offers to archive an unsettled %s write', async state => {
+  const f = await setup(state);
+  expect((await f.session.recover()).historyAction?.canArchive).not.toBe(true);
+  const before = structuredClone([...f.memory]);
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'blocked' });
+  expect([...f.memory]).toEqual(before); expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it.each(['changed-record', 'pending-inner', 'unknown-inner', 'archive-write-failed', 'index-write-failed', 'context-changed'])
+  ('does not retire history after %s', async scenario => {
+    const f = await setup('contribution'); await f.session.recover();
+    if (scenario === 'changed-record') f.memory.get(streamlinedPurchaseKey(f.plan.context)).revision++;
+    if (['pending-inner', 'unknown-inner'].includes(scenario)) f.memory.get(streamlinedJournalKey(f.plan.context)).batches[1].state = scenario.split('-')[0];
+    if (scenario === 'context-changed') f.challenge.submittedScore++;
+    if (scenario.endsWith('write-failed')) f.set.mockImplementation(async (key, value) => {
+      if (scenario === 'archive-write-failed' && key.includes(':history:')
+          || scenario === 'index-write-failed' && key.endsWith(':retired')) throw Error('disk');
+      f.memory.set(key, structuredClone(value));
+    });
+    expect((await f.session.archiveHistory()).status).toBe('blocked');
+    expect(f.memory.has(streamlinedRetiredPurchaseKey(f.plan.context))).toBe(false);
+    expect(f.memory.get(streamlinedPurchaseKey(f.plan.context)).contribution).toEqual(f.old.contribution);
+    expect(f.mutations).not.toHaveBeenCalled();
+  });
+
+it('persists quarantine across restart, excluding exact entities but not other copies of their version', async () => {
+  const f = await setup('club', { reservedId: 6, copyOfId: 7 }); await f.session.recover(); await f.session.archiveHistory();
+  const journal = createStreamlinedPurchaseJournal({ get: f.get, set: f.set });
+  expect(await journal.reservedIds(f.plan.context)).toEqual([6]);
+  await expect(journal.assertAvailable(f.plan.context, f.plan.challenge, [{ id: 6 }])).rejects.toThrow('MATERIAL_RESERVED');
+  await expect(journal.assertAvailable(f.plan.context, f.plan.challenge, [{ id: 7 }])).resolves.toBeUndefined();
+  await expect(journal.write(f.old)).rejects.toThrow('HISTORY_RETIRED');
+});
+
+it('prevents replay of an archived unresolved contribution on its original target', async () => {
+  const f = await setup('contribution'); await f.session.recover(); await f.session.archiveHistory();
+  const journal = createStreamlinedPurchaseJournal({ get: f.get, set: f.set });
+  await expect(journal.assertAvailable(f.plan.context, f.old.challenge, [{ id: 1001 }])).rejects.toThrow('HISTORY_TARGET_UNRESOLVED');
+  expect((await journal.readRetired(f.plan.context))[0].record).toEqual(f.old);
+});
+
+it('excludes quarantined cards while planning instead of showing a plan that must fail at submission', async () => {
+  const f = await setup('club', { reservedId: 6 }); await f.session.recover(); await f.session.archiveHistory();
+  const result = await f.session.plan({ objective: 'inventory-first', mode: 'inventory', sources: ['club'] });
+  expect(result.items.length).toBeGreaterThan(0); expect(result.items.some(item => item.id === 6)).toBe(false);
+  expect(f.diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'inventory-exclusion', phase: 'history-reserved', count: 1 }));
+  expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it.each(['pending', 'unknown', 'waiting'])('archives the exact old inner %s record without settling or replaying it', async state => {
+  const f = await setup('contribution', { completedCycle: true }), raw = createStreamlinedJournal({ get: f.get, set: f.set });
+  f.memory.delete(streamlinedJournalKey(f.plan.context));
+  const inner = await raw.begin(f.old.contribution.batchPlan);
+  if (state !== 'waiting') { inner.batches[0].state = state; inner.batches[0].startingScore = 0;
+    await raw.write(inner.context, inner, inner.revision); }
+  const before = await raw.read(f.plan.context);
+  expect((await f.session.recover()).historyAction?.canArchive).toBe(true);
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+  expect((await raw.read(f.plan.context))).toEqual(before);
+  const retired = f.memory.get(streamlinedRetiredPurchaseKey(f.plan.context))[0];
+  expect(retired.contributionJournal).toEqual(before); expect(retired.record).toEqual(f.old);
+  const execution = await f.createExecution(f.plan.context), next = replacementPlan(f); execution.prepare(next);
+  expect(await execution.journal.read(f.plan.context)).toBeNull();
+  expect(await execution.transaction.execute(next, { approved: true, fingerprint: next.fingerprint, batchIndices: [0] }))
+    .toMatchObject({ status: 'completed' });
+  expect(f.mutations).toHaveBeenCalledExactlyOnceWith(next.items.map(item => item.id));
+  expect(f.createPurchaseAdapter).not.toHaveBeenCalled();
+  expect(f.memory.get(streamlinedRetiredPurchaseKey(f.plan.context))[0]).toEqual(retired);
+});
+
+it('rechecks retired exact reservations inside the native contribution dispatch callback', async () => {
+  const f = await setup('club', { beforeDispatch: async () => {
+    const rows = f.memory.get(streamlinedRetiredPurchaseKey(f.plan.context));
+    rows[0].record.entries[0].itemId = 6;
+  } });
+  await f.session.recover(); await f.session.archiveHistory();
+  const execution = await f.createExecution(f.plan.context); execution.prepare(f.plan);
+  const result = await execution.transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [1] });
+  expect(result).toMatchObject({ status: 'rejected', reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED' });
+  expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('rejects an archived inner fingerprint before beginning a stale plan or changing its durable revision', async () => {
+  const f = await setup('contribution', { completedCycle: true }), raw = createStreamlinedJournal({ get: f.get, set: f.set });
+  f.memory.delete(streamlinedJournalKey(f.plan.context));
+  const old = await raw.begin(f.old.contribution.batchPlan); old.batches[0].state = 'unknown'; old.batches[0].startingScore = 0;
+  await raw.write(old.context, old, old.revision); await f.session.recover(); await f.session.archiveHistory();
+  const before = structuredClone([...f.memory]), execution = await f.createExecution(f.plan.context), plan = f.old.contribution.batchPlan;
+  expect((await execution.transaction.execute(plan, { approved: true, fingerprint: plan.fingerprint, batchIndices: [0], allowPartial: true })).status).toBe('blocked');
+  expect([...f.memory]).toEqual(before);
+  expect(await execution.journal.read(f.plan.context)).toBeNull(); expect(f.mutations).not.toHaveBeenCalled();
+});
+
+it('checks a new unresolved contribution before spending any coins for a new purchase run', async () => {
+  const f = await setup('contribution', { completedCycle: true }); f.root.crypto.randomUUID = () => 'new-run';
+  await f.session.recover(); await f.session.archiveHistory();
+  f.memory.get(streamlinedJournalKey(f.plan.context)).batches[0].state = 'unknown';
+  const buyer = { assertCurrent: vi.fn(), readState: vi.fn(async () => { throw Error('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'); }),
+    buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  f.createPurchaseAdapter.mockResolvedValue(buyer);
+  const execution = await f.createExecution(f.plan.context), plan = mixedPlan(f);
+  expect(await execution.purchase(plan, { approved: true, fingerprint: plan.fingerprint, budget: 500 }))
+    .toMatchObject({ reason: 'FC27_STREAMLINED_RECOVERY_REQUIRED' });
+  for (const method of ['readState', 'buy', 'move', 'contribute']) expect(buyer[method]).not.toHaveBeenCalled();
+});
+
+it('checks non-replaceable confirmed and waiting stock batches before spending on a market route', async () => {
+  const f = await setup('contribution'); f.root.crypto.randomUUID = () => 'new-run';
+  await f.session.recover(); await f.session.archiveHistory();
+  const buyer = { assertCurrent: vi.fn(), readState: vi.fn(async () => { throw Error('FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED'); }),
+    buy: vi.fn(), move: vi.fn(), contribute: vi.fn() };
+  f.createPurchaseAdapter.mockResolvedValue(buyer);
+  const execution = await f.createExecution(f.plan.context), plan = mixedPlan(f);
+  expect(await execution.purchase(plan, { approved: true, fingerprint: plan.fingerprint, budget: 500 }))
+    .toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_REMAINDER_RECOVERY_REQUIRED' });
+  for (const method of ['readState', 'buy', 'move', 'contribute']) expect(buyer[method]).not.toHaveBeenCalled();
+});
+
+it('does not retire a history record missing a selected inventory entity from its entry ledger', async () => {
+  const f = await setup('contribution'), saved = f.memory.get(streamlinedPurchaseKey(f.plan.context));
+  const inventory = { ...f.plan.items[5] };
+  saved.route.groups.push({ source: 'inventory', quantity: 1, item: inventory, items: [inventory] });
+  saved.fulfilled.push(0); saved.plan.route = structuredClone(saved.route); saved.fingerprint = JSON.stringify(saved.plan);
+  expect((await f.session.recover()).historyAction?.canArchive).not.toBe(true);
+  expect((await f.session.archiveHistory()).status).toBe('blocked'); expect(f.mutations).not.toHaveBeenCalled();
+});
 
 it('starts a fresh stock cycle without settling a disjoint old purchase marker for the same SBC', async () => {
   const f = await setup('contribution', { sameTarget: true, completedCycle: true }), next = replacementPlan(f);

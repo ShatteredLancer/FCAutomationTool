@@ -28,7 +28,13 @@ export async function exerciseStreamlined(context) {
       const session = a.createFc27StreamlinedSession({
         createExecution: async () => {
           if (!globalThis.streamlinedEvidence.executionEnabled) throw Error('FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED');
-          return { prepare: () => true, transaction: {
+          return { prepare: () => true,
+            recoverPurchase: async () => globalThis.streamlinedEvidence.purchaseRecoveryOutcome ?? { status: 'absent' },
+            archivePurchaseHistory: async () => {
+              globalThis.streamlinedEvidence.archives = (globalThis.streamlinedEvidence.archives ?? 0) + 1;
+              globalThis.streamlinedEvidence.purchaseRecoveryOutcome = { status: 'absent' };
+              return { status: 'archived', reason: 'FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED' };
+            }, transaction: {
             stop: () => { globalThis.streamlinedEvidence.stopped = true; },
             async recover() {
               if (globalThis.streamlinedEvidence.recoveryThrows) throw Error('FC27_STREAMLINED_CONTEXT_CHANGED');
@@ -215,6 +221,26 @@ export async function exerciseStreamlined(context) {
     assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isDisabled(), true);
     assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2, 'Recovery never dispatches a new or historical contribution');
     await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-historical-isolation.png') });
+    // A separate trusted action retires another target's local execution only.
+    // It must invalidate the old executable preview, never dispatch EA writes.
+    await page.evaluate(() => {
+      globalThis.streamlinedEvidence.purchaseRecoveryOutcome = { status: 'recovery-required',
+        reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
+        recovery: { name: 'Gold Re-Roll', setId: 9, challengeId: 24, pendingWriteCount: 1, unconsumedPurchaseCount: 2 },
+        historyAction: { canArchive: true } };
+    });
+    await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+    const archive = page.getByRole('button', { name: '退出并归档旧任务', exact: true });
+    await archive.waitFor({ state: 'visible' });
+    assert.match(await page.locator('[data-history-note]').innerText(), /不会把未知请求算作成功.*材料继续隔离/);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-history-retirement.png') });
+    await archive.click();
+    await page.waitForFunction(() => globalThis.streamlinedEvidence.archives === 1);
+    assert.match(await page.locator('[data-status]').innerText(), /旧任务已退出并归档.*重新生成当前方案并确认新预算/);
+    assert.equal(await contribute.isVisible(), false); assert.equal(await archive.isVisible(), false);
+    assert.equal(await page.getByRole('button', { name: '生成方案', exact: true }).isEnabled(), true);
+    assert.equal(await page.evaluate(() => globalThis.streamlinedEvidence.writes), 2);
+    await page.screenshot({ path: path.join(root, 'artifacts/fc27-browser/streamlined-history-retired.png') });
     // A previous, independently confirmed repeatable cycle is history, not
     // current-cycle progress or permission to initiate/contribute again.
     await page.evaluate(() => {

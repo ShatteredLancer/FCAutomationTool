@@ -242,6 +242,26 @@ function setup(overrides = {}) {
   return { session, input, prices, inspect, store };
 }
 
+it('offers retirement at a foreign market blocker without presenting historical spend as current-plan progress', async () => {
+  const purchase = vi.fn(async () => ({ status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED',
+    record: { challenge: { setId: 9, id: 24, targetScore: 1250 }, submittedScore: 430, budget: 1840, spent: 1650 } }));
+  const recoverPurchase = vi.fn(async () => ({ status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED',
+    recovery: { name: 'Gold Re-Roll', setId: 9, challengeId: 24, pendingWriteCount: 1, unconsumedPurchaseCount: 2 }, historyAction: { canArchive: true } }));
+  const archivePurchaseHistory = vi.fn(async () => ({ status: 'archived', reason: 'FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED' }));
+  const f = setup({ readMarketCandidates: async () => ({ pricePolicy: { source: 'futbin' }, market: [safeItem({ source: 'market',
+    definitionId: 201, points: 40, price: 300, purchaseMaxBuy: 300,
+    quote: { source: 'futbin', definitionId: 201, price: 300, fetchedAt: 10, expiresAt: 100 } })] }),
+  createExecution: async () => ({ prepare() {}, purchase, recoverPurchase, archivePurchaseHistory }) });
+  f.input.inventory = [];
+  const result = await f.session.plan({ objective: 'lowest-value', mode: 'market' });
+  const outcome = await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 500, acknowledgeQuoteCoverage: true });
+  expect(outcome).toMatchObject({ reason: 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED', historyAction: { canArchive: true } });
+  expect(outcome.record).toBeUndefined(); expect(recoverPurchase).toHaveBeenCalledOnce();
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+  expect(archivePurchaseHistory).toHaveBeenCalledOnce();
+  expect((await f.session.contribute({ fingerprint: result.plan.fingerprint })).reason).toBe('FC27_STREAMLINED_PLAN_CHANGED');
+});
+
 it.each([undefined, 'record-identity'])('logs the actual budget and offer mismatch=%s without inferring it from estimates', async mismatch => {
   const diagnosticLog = { record: vi.fn() }, purchase = vi.fn(async (plan, approval) => ({ status: 'paused',
     reason: mismatch ? 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED' : 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', mismatch,

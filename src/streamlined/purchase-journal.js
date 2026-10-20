@@ -2,11 +2,50 @@ import { contextKey } from '../fc27/prelaunch-contract.js';
 import { integer, same, fail } from './contract.js';
 import { assertStreamlinedPlan } from './plan.js';
 import { approvedStreamlinedPurchaseRoute } from './purchase-scope.js';
+import { validateStreamlinedJournal } from './journal.js';
 
 export const streamlinedPurchaseNeedsRecovery = record => !!record?.contribution
   || record?.entries?.some(entry => ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state));
 
 export const streamlinedPurchaseKey = context => contextKey(context, 'streamlined-market-run');
+export const streamlinedRetiredPurchaseKey = context => `${streamlinedPurchaseKey(context)}:retired`;
+
+// Retirement ends local execution, not the unknown transaction. Keep its full
+// evidence and quarantine exact entities; never turn an unknown into a receipt.
+export function streamlinedPurchaseReservedIds(record) {
+  validateStreamlinedPurchase(record, record.context);
+  const inventoryEntries = new Map(record.entries.filter(entry => entry.source === 'inventory').map(entry => [entry.itemId, entry]));
+  for (const [groupIndex, group] of record.route.groups.entries()) {
+    if (group.source !== 'inventory') continue;
+    if (group.items.length < group.quantity || group.items.slice(0, group.quantity).some(item => {
+      const entry = inventoryEntries.get(item.id);
+      return !entry || entry.groupIndex !== groupIndex || entry.definitionId !== item.definitionId;
+    })) fail('FOREIGN_PURCHASE_SCOPE_UNVERIFIED');
+  }
+  const ids = record.entries.filter(entry => ['ready', 'buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state))
+    .map(entry => entry.itemId);
+  if (ids.some(id => !integer(id, 1))) fail('FOREIGN_PURCHASE_SCOPE_UNVERIFIED');
+  if (record.contribution) {
+    const { batchPlan, material } = record.contribution;
+    try { assertStreamlinedPlan(batchPlan); } catch { fail('FOREIGN_PURCHASE_SCOPE_UNVERIFIED'); }
+    if (!same(batchPlan.context, record.context) || batchPlan.challenge.id !== record.challenge.id
+        || batchPlan.challenge.setId !== record.challenge.setId || batchPlan.challenge.targetScore !== record.challenge.targetScore
+        || batchPlan.challenge.submittedScore !== record.submittedScore || !same(batchPlan.items, material.map(row => row.item))) {
+      fail('FOREIGN_PURCHASE_SCOPE_UNVERIFIED');
+    }
+    ids.push(...batchPlan.items.map(item => item.id));
+  }
+  return [...new Set(ids)];
+}
+
+export function canRetireStreamlinedPurchase(record, contribution = null) {
+  streamlinedPurchaseReservedIds(record);
+  if (record.entries.some(entry => ['buy-pending', 'move-pending'].includes(entry.state))) return false;
+  if (!contribution) return true;
+  validateStreamlinedJournal(contribution, record.context);
+  if (!contribution.batches.some(batch => ['pending', 'unknown'].includes(batch.state))) return true;
+  return contribution.plan.fingerprint === record.contribution?.batchPlan?.fingerprint;
+}
 
 // Redacted audit only. Missing legacy/foreign fields stay unknown, not zero.
 export function streamlinedPurchaseAudit(record) {
@@ -92,6 +131,57 @@ export function validateStreamlinedPurchase(record, context) {
 }
 
 export function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {} }) {
+  const readRetired = async context => {
+    let rows;
+    try { rows = await get(streamlinedRetiredPurchaseKey(context), []); } catch { fail('PURCHASE_JOURNAL_READ_FAILED'); }
+    rows ??= [];
+    if (!Array.isArray(rows) || rows.length > 50) fail('PURCHASE_ARCHIVE_INVALID');
+    const operations = new Set();
+    for (const row of rows) {
+      if (row?.reason !== 'user-abandoned' || !integer(row.at) || !row.record
+          || operations.has(row.record.operationId)) fail('PURCHASE_ARCHIVE_INVALID');
+      validateStreamlinedPurchase(row.record, context); streamlinedPurchaseReservedIds(row.record);
+      if (row.record.entries.some(entry => ['buy-pending', 'move-pending'].includes(entry.state))) fail('PURCHASE_ARCHIVE_INVALID');
+      if (row.contributionJournal) {
+        validateStreamlinedJournal(row.contributionJournal, context);
+        if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id
+            || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId
+            || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail('PURCHASE_ARCHIVE_INVALID');
+      }
+      operations.add(row.record.operationId);
+    }
+    return structuredClone(rows);
+  };
+  const isRetired = async record => {
+    const row = (await readRetired(record.context)).find(row => row.record.operationId === record.operationId);
+    if (row && !same(row.record, record)) fail('PURCHASE_ARCHIVE_CONFLICT');
+    return !!row;
+  };
+  const reservedFor = row => [...streamlinedPurchaseReservedIds(row.record),
+    ...(row.contributionJournal?.batches.filter(batch => ['waiting', 'pending', 'unknown'].includes(batch.state))
+      .flatMap(batch => batch.refs.map(ref => ref.id)) ?? [])];
+  const reservedIds = async context => [...new Set((await readRetired(context)).flatMap(reservedFor))];
+  const isRetiredContribution = async record => {
+    const row = (await readRetired(record.context)).find(row => row.contributionJournal?.plan.fingerprint === record.plan.fingerprint);
+    if (row && !same(row.contributionJournal, record)) fail('PURCHASE_ARCHIVE_CONFLICT');
+    return !!row;
+  };
+  const assertAvailable = async (context, challenge, refs = []) => {
+    for (const row of await readRetired(context)) {
+      const { record } = row;
+      if ((record.contribution || row.contributionJournal?.batches.some(batch => ['pending', 'unknown'].includes(batch.state)))
+          && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail('HISTORY_TARGET_UNRESOLVED');
+      const reserved = new Set(reservedFor(row));
+      if (refs.some(ref => reserved.has(ref.id ?? ref.itemId))) fail('FOREIGN_PURCHASE_MATERIAL_RESERVED');
+    }
+  };
+  const assertPlanAvailable = async plan => {
+    for (const row of await readRetired(plan.context)) {
+      if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint]
+        .includes(plan.fingerprint)) fail('PURCHASE_HISTORY_RETIRED');
+    }
+    await assertAvailable(plan.context, plan.challenge, plan.items);
+  };
   const read = async context => {
     let record;
     try { record = await get(streamlinedPurchaseKey(context), null); } catch { fail('PURCHASE_JOURNAL_READ_FAILED'); }
@@ -102,6 +192,8 @@ export function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => 
     const old = await read(record.context);
     if ((old?.revision ?? 0) !== previousRevision) fail('PURCHASE_JOURNAL_CHANGED');
     const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
+    if ((await readRetired(record.context)).some(row => row.record.operationId === next.operationId)) fail('PURCHASE_HISTORY_RETIRED');
+    await assertAvailable(next.context, next.challenge, next.entries);
     try {
       assertHeld(); await set(streamlinedPurchaseKey(record.context), next); assertHeld();
       if (!same(next, await get(streamlinedPurchaseKey(record.context), null))) fail('PURCHASE_JOURNAL_WRITE_FAILED');
@@ -110,15 +202,41 @@ export function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => 
   };
   const archive = async record => {
     assertHeld(); validateStreamlinedPurchase(record, record.context);
-    if (streamlinedPurchaseNeedsRecovery(record)) fail('PURCHASE_RECOVERY_REQUIRED');
+    if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail('PURCHASE_RECOVERY_REQUIRED');
     if (!same(record, await read(record.context))) fail('PURCHASE_JOURNAL_CHANGED');
     const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
     try {
+      const prior = await get(key, null);
+      if (prior !== null && !same(prior, record)) fail('PURCHASE_ARCHIVE_CONFLICT');
       assertHeld(); await set(key, structuredClone(record)); assertHeld();
       if (!same(record, await get(key, null))) fail('PURCHASE_JOURNAL_WRITE_FAILED');
     } catch { fail('PURCHASE_JOURNAL_WRITE_FAILED'); }
   };
-  return Object.freeze({ read, write, archive });
+  const retire = async (record, contributionJournal = null) => {
+    assertHeld(); validateStreamlinedPurchase(record, record.context);
+    if (!same(record, await read(record.context))) fail('PURCHASE_JOURNAL_CHANGED');
+    const rows = await readRetired(record.context);
+    if (rows.some(row => row.record.operationId === record.operationId)) {
+      if (!await isRetired(record)) fail('PURCHASE_ARCHIVE_CONFLICT');
+      return;
+    }
+    if (rows.length >= 50) fail('PURCHASE_ARCHIVE_FULL');
+    if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail('PURCHASE_RECOVERY_REQUIRED');
+    if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id
+        || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail('PURCHASE_ARCHIVE_INVALID');
+    const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+    try {
+      const prior = await get(key, null);
+      if (prior !== null && !same(prior, record)) fail('PURCHASE_ARCHIVE_CONFLICT');
+      assertHeld(); await set(key, structuredClone(record)); assertHeld();
+      if (!same(record, await get(key, null))) fail('PURCHASE_JOURNAL_WRITE_FAILED');
+      rows.push({ reason: 'user-abandoned', at: Date.now(), record: structuredClone(record),
+        ...(contributionJournal ? { contributionJournal: structuredClone(contributionJournal) } : {}) });
+      assertHeld(); await set(streamlinedRetiredPurchaseKey(record.context), rows); assertHeld();
+      if (!same(rows, await readRetired(record.context))) fail('PURCHASE_JOURNAL_WRITE_FAILED');
+    } catch { fail('PURCHASE_JOURNAL_WRITE_FAILED'); }
+  };
+  return Object.freeze({ read, write, archive, retire, readRetired, isRetired, isRetiredContribution, reservedIds, assertAvailable, assertPlanAvailable });
 }
 
 export async function verifyStreamlinedPurchasedItem(get, context, item, challenge = null) {
