@@ -29,7 +29,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
       const pageChallenge = page && projectFc27StreamlinedChallenge(page, plan.context);
       let fresh = null;
       if (typeof readProgress === 'function') {
-        fresh = await readProgress(plan.challenge);
+        fresh = await readProgress(plan.challenge, { onProgress, stopped });
         if (fresh?.fresh !== true || !integer(fresh.observedAt) || fresh.observedAt > now()
             || now() - fresh.observedAt > 15000 || !same(fresh.challenge, expectedChallenge)) fail('PROGRESS_CHANGED');
         if (!same(pageChallenge, { ...expectedChallenge, submittedScore: pageChallenge.submittedScore,

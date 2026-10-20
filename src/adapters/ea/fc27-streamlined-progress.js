@@ -5,6 +5,10 @@ import { integer, same, fail } from '../../streamlined/contract.js';
 
 export const FC27_STREAMLINED_PROGRESS_HASH = '238c93154b271b36affb9e95eb5696d05471cc8d533294a0d0d8848c55e3b693';
 const transientReadStatuses = new Set([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+// Observed on this reviewed GET, followed by successful read-only recovery.
+// This is not a global interpretation of EA codes or permission to retry writes.
+const observedReadStatuses = new Set([426, 512]);
+const retryableRead = code => transientReadStatuses.has(code) || observedReadStatuses.has(code);
 const method = (object, key) => {
   for (let depth = 0; object && depth < 8; depth++, object = Object.getPrototypeOf(object)) {
     const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -16,9 +20,9 @@ const method = (object, key) => {
 // The reviewed DAO GET creates local Challenge entities. Unlike Service reads,
 // it neither installs them into the repository nor initiates the Challenge.
 // Set repeat/expiry and selection-limit metadata remain explicitly page-sourced.
-export function createFc27StreamlinedProgressReader(root, { now = () => Date.now(), requirePage = true } = {}) {
+export function createFc27StreamlinedProgressReader(root, { now = () => Date.now(), requirePage = true, onDiagnostic = () => {} } = {}) {
   let busy = false;
-  return Object.freeze({ async read(expected) {
+  return Object.freeze({ async read(expected, { onProgress = () => {}, stopped = () => false } = {}) {
     if (busy) fail('BUSY');
     busy = true;
     try {
@@ -36,6 +40,7 @@ export function createFc27StreamlinedProgressReader(root, { now = () => Date.now
       const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
       if (hash !== FC27_STREAMLINED_PROGRESS_HASH) fail('PROGRESS_READ_UNVERIFIED');
       const assert = () => {
+        if (stopped()) fail('CANCELLED');
         const current = locateFc27StreamlinedPage(root);
         if (requirePage && (!current || current.controller !== page.controller || current.setId !== expected.setId || current.challengeId !== expected.id)
             || !same(readFc27Context(root), context) || root.services?.SBC?.sbcDAO !== dao
@@ -53,13 +58,14 @@ export function createFc27StreamlinedProgressReader(root, { now = () => Date.now
           ...(integer(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}),
         });
         const finish = (error, value) => {
-          if (done) return; done = true; clearTimeout(timer); clearTimeout(retryTimer); release();
+          if (done) return; done = true; clearTimeout(timer); clearTimeout(retryTimer); clearInterval(stopTimer); release();
           if (error) reject(error); else resolve(value);
         };
         // One shared deadline, not a fresh 15 seconds for each retry. Only
-        // explicit transient read failures retry; never auth, rate limits,
+        // explicit transient/observed read failures retry; never auth, rate limits,
         // malformed metadata, missing identities, or any contribution request.
         const timer = setTimeout(() => finish(readError('PROGRESS_READ_TIMEOUT')), 15000);
+        const stopTimer = setInterval(() => { try { assert(); } catch (error) { finish(error); } }, 100);
         const request = () => {
           if (done) return;
           const attempt = ++attempts; let settled = false;
@@ -73,9 +79,14 @@ export function createFc27StreamlinedProgressReader(root, { now = () => Date.now
                 assert();
                 const status = ownData(reply, 'status'), nativeCode = ownData(ownData(reply, 'error'), 'code');
                 if (ownData(reply, 'success') !== true || status !== 200) {
-                  if (attempts < 3 && transientReadStatuses.has(status)
-                      && (nativeCode == null || transientReadStatuses.has(nativeCode))) {
-                    release(); retryTimer = setTimeout(request, 1500 * attempts); return;
+                  if (attempts < 3 && retryableRead(status) && (nativeCode == null || retryableRead(nativeCode))) {
+                    const waitMs = (observedReadStatuses.has(status) || observedReadStatuses.has(nativeCode) ? 3000 : 1500) * attempts;
+                    const row = { phase: 'progress-backoff', status: 'waiting', httpStatus: status, attempt: attempts, attemptLimit: 3, waitMs,
+                      ...(integer(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}) };
+                    release();
+                    try { onProgress(row); } catch { /* Display only. */ }
+                    try { Promise.resolve(onDiagnostic(row)).catch(() => {}); } catch { /* Diagnostic only. */ }
+                    retryTimer = setTimeout(request, waitMs); return;
                   }
                   finish(readError('PROGRESS_READ_FAILED', status, nativeCode)); return;
                 }

@@ -279,7 +279,12 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         await check();
         const result = await adapter.contribute(batchPlan, {
           onProgress: progress => report(progress?.phase ?? 'contribution', progress),
+          stopped: () => stopped,
         });
+        if (result?.notDispatched === true) {
+          record.contribution = null; await save();
+          if (stopped || result.stopped) return { status: 'stopped', record };
+        }
         if (!result?.confirmed) return unsettledContribution(result);
         await settleContribution(result);
       }

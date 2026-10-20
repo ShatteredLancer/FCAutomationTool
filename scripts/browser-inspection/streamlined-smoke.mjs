@@ -301,8 +301,49 @@ export async function exerciseStreamlined(context) {
     await exerciseStreamlinedRollingExpiry(page);
     await exerciseStreamlinedBatchedInventory(page);
     await exerciseStreamlinedProtectionBlocked(page);
+    await exerciseStreamlinedReadBackoff(page);
     console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, market routes, frozen settings, partial progress, stop/recover, unavailable supply, completion, responsive dialog, no EA writes.');
   } finally { await page.close(); }
+}
+
+async function exerciseStreamlinedReadBackoff(page) {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.evaluate(() => {
+    globalThis.streamlinedMount.dispose();
+    const a = globalThis.StreamlinedSmoke, c = a.challenge({ scoreRequirement: 40, selectionLimit: 1 });
+    const inventory = [a.safeItem({ id: 1, definitionId: 101 }), a.safeItem({ id: 2, definitionId: 102 })];
+    const evidence = { writes: 0, release: null }; globalThis.readBackoffSmoke = evidence;
+    const session = a.createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+      readInputs: () => ({ context: c.context, challenge: c, policy: a.policy, eligibility: a.eligibility, inventory, assertCurrent() {} }),
+      get: async (_key, fallback) => fallback, set: async () => {},
+      createExecution: async () => ({ prepare() {}, transaction: { async execute(plan, _approval, callbacks) {
+        callbacks.onProgress({ phase: 'batch-cooldown', waitMs: 3000, submittedScore: 20, targetScore: 40, index: 1, total: 2 });
+        await new Promise(resolve => { evidence.release = resolve; });
+        callbacks.onProgress({ phase: 'progress-backoff', waitMs: 6000, attempt: 1, attemptLimit: 3,
+          submittedScore: 20, targetScore: 40, index: 1, total: 2 });
+        await new Promise(resolve => { evidence.release = resolve; });
+        return { status: 'stopped', record: { plan, submittedScore: 20, batches: [{ state: 'confirmed' }, { state: 'waiting' }] } };
+      } } }) });
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+      readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
+  });
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.getByRole('button', { name: '贡献所选批次', exact: true }).click();
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-status]').textContent.includes('批次间冷却'));
+  await page.locator('[data-status]').scrollIntoViewIfNeeded();
+  assert.match(await page.locator('[data-status]').innerText(), /20 \/ 40/);
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-batch-cooldown.png' });
+  await page.evaluate(() => globalThis.readBackoffSmoke.release());
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-status]').textContent.includes('退避后重试'));
+  assert.match(await page.locator('[data-status]').innerText(), /第 2 \/ 3 次读取/);
+  assert.match(await page.locator('[data-clock]').innerText(), /读取等待剩余/);
+  assert.equal(await page.locator('progress').getAttribute('max'), '40');
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-progress-backoff.png' });
+  await page.evaluate(() => globalThis.readBackoffSmoke.release());
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-status]').textContent.includes('已停止'));
+  assert.equal(await page.getByRole('checkbox', { name: '选择第 1 批' }).isDisabled(), true);
+  assert.equal(await page.evaluate(() => globalThis.readBackoffSmoke.writes), 0);
 }
 
 async function exerciseStreamlinedProtectionBlocked(page) {

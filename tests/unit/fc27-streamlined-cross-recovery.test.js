@@ -21,7 +21,8 @@ async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch 
     result: { status: 'ready', items: selected, batches: completedCycle ? [selected] : [selected.slice(0, 5), selected.slice(5)], score,
       progress: streamlinedProgress(f.input.challenge, score),
       purchaseCost: 0, materialValue: null, searchComplete: true } });
-  const journal = createStreamlinedJournal({ get, set });
+  // This fixture is historical confirmed work, not the pacing test seam.
+  const journal = createStreamlinedJournal({ get, set, now: () => Date.now() - 3001 });
   let record = await journal.begin(plan);
   Object.assign(record.batches[0], { state: 'confirmed', startingScore: 0,
     receipt: normalizeStreamlinedContributionReply({ success: true, status: 200,

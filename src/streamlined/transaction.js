@@ -72,9 +72,10 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     confirmation: { submittedScore: evidence.submittedScore, targetScore: record.plan.challenge.targetScore,
       completed: evidence.submittedScore >= record.plan.challenge.targetScore, finalizationPending: true },
   });
-  const execute = async (plan, approval, { onProgress = () => {} } = {}) => {
+  const execute = async (plan, approval, { onProgress = () => {}, stopped = () => false } = {}) => {
     if (running) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
     running = true; stopping = false;
+    const shouldStop = () => stopping || stopped();
     let release, record, activeBatch, phase = 'preflight';
     const report = (phase, index) => { try { onProgress({ phase, index, total: approval.batchIndices.length,
       submittedScore: record?.submittedScore ?? plan.challenge.submittedScore }); } catch { /* display only */ } };
@@ -102,15 +103,15 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         activeBatch = batch;
         if (batch.state === 'confirmed') continue;
         if (batch.state !== 'waiting') fail('REPLAN_REQUIRED');
-        if (stopping || record.submittedScore >= plan.challenge.targetScore) break;
+        if (shouldStop() || record.submittedScore >= plan.challenge.targetScore) break;
         // verify must check exact current entities, guards, native rules, account,
         // expiry and progress after every batch. No save-squad operation exists.
         phase = 'validation';
         report('validation', index);
         if (await adapter.verify(plan, batch, record.submittedScore, {
-          stopped: () => stopping, onProgress: row => { try { onProgress({ ...row, index, total: approval.batchIndices.length }); } catch { /* display only */ } },
+          stopped: shouldStop, onProgress: row => { try { onProgress({ ...row, index, total: approval.batchIndices.length }); } catch { /* display only */ } },
         }) !== true) fail('MATERIAL_CHANGED');
-        if (stopping) break;
+        if (shouldStop()) break;
         phase = 'checkpoint';
         record.batches[index].state = 'pending';
         record.batches[index].startingScore = record.submittedScore;
@@ -182,8 +183,9 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           return { status: 'replan-required', reason: 'FC27_STREAMLINED_PROGRESS_CHANGED', record };
         }
       }
-      return { status: stopping ? 'stopped' : record.submittedScore >= plan.challenge.targetScore ? 'completed' : 'partial', record };
+      return { status: shouldStop() ? 'stopped' : record.submittedScore >= plan.challenge.targetScore ? 'completed' : 'partial', record };
     } catch (error) {
+      if (shouldStop() && phase === 'validation' && error?.message === 'FC27_STREAMLINED_CANCELLED') return { status: 'stopped', record };
       diagnose(phase, 'blocked', record, activeBatch, () => failureDetail(error));
       return { status: 'blocked', ...failureDetail(error),
         ...(phase === 'validation' && ['FC27_STREAMLINED_PROGRESS_READ_FAILED', 'FC27_STREAMLINED_PROGRESS_READ_TIMEOUT'].includes(error?.message)

@@ -4,6 +4,14 @@ import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarket
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
   streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
+it.each(['batch-cooldown', 'progress-backoff'])('shows %s as a bounded wait rather than a stopped run', phase => {
+  const text = streamlinedExecutionProgress({ phase, waitMs: 6000, attempt: 1, attemptLimit: 3, submittedScore: 100, targetScore: 200 });
+  expect(text).toContain(phase === 'batch-cooldown' ? '批次间冷却' : '退避后重试');
+  expect(text).toContain('100 / 200');
+  expect(text).not.toContain('未知 张');
+  expect(streamlinedExecutionClock({ phase, waitMs: 6000 }, 10000, 2000, true)).toContain('读取等待剩余 4 秒');
+});
+
 it('explains a genuine completion-state conflict without telling the user to buy or contribute again', () => {
   const message = streamlinedExecutionMessage('FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED');
   expect(message).toContain('EA 已返回本批完成回执');

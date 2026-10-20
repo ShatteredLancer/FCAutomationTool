@@ -6,6 +6,28 @@ import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
 import { readFc27StreamlinedPolicy } from '../../src/adapters/ea/fc27-streamlined-read.js';
 
+it('paces a fresh provider from durable confirmed history before issuing the next batch reads', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = streamlinedRuntime(), selected = f.input.inventory.slice(0, 10), memory = new Map();
+    const plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
+      result: { status: 'ready', items: selected, batches: [selected.slice(0, 5), selected.slice(5)], score: 200,
+        progress: { target: 200, submitted: 0, added: 200, total: 200, remaining: 0, excess: 0, reached: true },
+        purchaseCost: 0, materialValue: null, searchComplete: true } });
+    const journal = createStreamlinedJournal({ get: key => structuredClone(memory.get(key)),
+      set: (key, value) => memory.set(key, structuredClone(value)) });
+    let record = await journal.begin(plan); record.batches[0].state = 'confirmed'; record.submittedScore = 100;
+    record = await journal.write(plan.context, record, record.revision);
+    const provider = createFc27StreamlinedProvider(f.root, { journal }), events = [];
+    const pending = provider.verify(plan, record.batches[1], 100, { onProgress: row => events.push(row) });
+    await vi.advanceTimersByTimeAsync(2999); expect(f.calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1); expect(await pending).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({ phase: 'batch-cooldown', waitMs: 3000 }));
+    expect(f.calls.every(row => ['progress', 'request'].includes(row.kind))).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 it('rechecks locks after validation and before an irreversible contribution', async () => {
   const f = await setup();
   await f.provider.verify(f.plan, f.batch, 0);

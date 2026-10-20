@@ -70,11 +70,12 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   let historyToArchive = null;
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
     materializationStorage,
+    onDiagnostic: row => contributionDiagnostic(row),
     checkOtherTransactions, purchaseVerifier });
   const contributionDiagnostic = row => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'contribution-transaction',
       phase: `contribution-${row.phase}`, status: row.status, reason: row.reason,
-      localReason: row.localReason, attempt: row.attempt, attemptLimit: row.attemptLimit,
+      localReason: row.localReason, attempt: row.attempt, attemptLimit: row.attemptLimit, waitMs: row.waitMs,
       methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
       mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
       httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }

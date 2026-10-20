@@ -3,6 +3,50 @@ import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
 import { createFc27StreamlinedProgressReader } from '../../src/adapters/ea/fc27-streamlined-progress.js';
 
 afterEach(() => vi.useRealTimers());
+it.each([426, 512])('backs off the observed read-only status %s without treating it as a contribution retry', async status => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime(), events = [];
+  f.replies.progressReplies = [{ success: false, status, error: { code: status } },
+    { success: false, status, error: { code: status } }, {}];
+  const pending = createFc27StreamlinedProgressReader(f.root).read(f.input.challenge, { onProgress: row => events.push(row) });
+  const result = expect(pending).resolves.toMatchObject({ fresh: true, attempts: 3 });
+  await vi.advanceTimersByTimeAsync(2999); expect(f.calls).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1); expect(f.calls).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(5999); expect(f.calls).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1); await result;
+  expect(f.calls).toEqual(Array.from({ length: 3 }, () => ({ kind: 'progress', setId: 31 })));
+  expect(events.map(row => row.waitMs)).toEqual([3000, 6000]);
+  expect(f.unobserve).toHaveBeenCalledTimes(3); expect(vi.getTimerCount()).toBe(0);
+});
+
+it('keeps the shared deadline and ignores a late success after an observed-code retry', async () => {
+  vi.useFakeTimers(); const f = streamlinedRuntime(); f.replies.hold = true;
+  f.replies.progressReplies = [{ success: false, status: 512 }, {}];
+  const pending = createFc27StreamlinedProgressReader(f.root).read(f.input.challenge);
+  const failure = expect(pending).rejects.toMatchObject({ message: 'FC27_STREAMLINED_PROGRESS_READ_TIMEOUT', attempt: 2 });
+  await vi.advanceTimersByTimeAsync(1); f.replies.deliver();
+  await vi.advanceTimersByTimeAsync(3000); const late = f.replies.deliver;
+  await vi.advanceTimersByTimeAsync(11999); await failure; late();
+  expect(f.calls).toHaveLength(2); expect(f.unobserve).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+});
+
+it('cancels during observed-code backoff without issuing another GET', async () => {
+  vi.useFakeTimers(); const f = streamlinedRuntime(); let stop = false;
+  f.replies.progressReplies = [{ success: false, status: 426 }];
+  const reader = createFc27StreamlinedProgressReader(f.root);
+  const pending = reader.read(f.input.challenge, { stopped: () => stop });
+  const failure = expect(pending).rejects.toThrow('CANCELLED');
+  await vi.advanceTimersByTimeAsync(1); stop = true;
+  await vi.advanceTimersByTimeAsync(100); await failure;
+  await vi.advanceTimersByTimeAsync(20000); expect(f.calls).toHaveLength(1); expect(vi.getTimerCount()).toBe(0);
+  stop = false; await expect(reader.read(f.input.challenge)).resolves.toMatchObject({ fresh: true });
+});
+
+it.each([401, 403, 429, 461, 'private-code'])('does not retry observed HTTP 512 with conflicting native code %s', async code => {
+  const f = streamlinedRuntime(); f.replies.progressReplies = [{ success: false, status: 512, error: { code } }];
+  await expect(createFc27StreamlinedProgressReader(f.root).read(f.input.challenge)).rejects.toMatchObject({ attempt: 1, httpStatus: 512 });
+  expect(f.calls).toHaveLength(1);
+});
 it.each([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524])('retries transient GET status %s once and accepts only fresh success', async status => {
   vi.useFakeTimers();
   const f = streamlinedRuntime();

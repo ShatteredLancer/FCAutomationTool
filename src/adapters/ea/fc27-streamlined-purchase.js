@@ -7,6 +7,7 @@ import { createStreamlinedTransaction } from '../../streamlined/transaction.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
 import { galleryReferenceQuote, purchasePriceCap } from '../../gallery/public-price-policy.js';
 import { approvedStreamlinedPurchaseRoute } from '../../streamlined/purchase-scope.js';
+import { isUnsentStreamlinedJournal } from '../../streamlined/journal.js';
 
 // Streamlined market execution is isolated from Gallery/Puzzle records. It
 // reuses the reviewed native search/bid/move adapter and sends contribution
@@ -118,6 +119,15 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
       lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).execute(batchPlan,
       { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }, callbacks);
+    if (result.status === 'stopped' && result.record?.plan.fingerprint === batchPlan.fingerprint) {
+      if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
+      // A STOP after dispatch is deferred through durable receipt/readback.
+      // Return the confirmed result so the outer journal settles exactly once.
+      if (result.record.batches.length === 1 && result.record.batches[0].state === 'confirmed'
+          && integer(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
+        return { confirmed: true, submittedScore: result.record.submittedScore };
+      }
+    }
     return result.status === 'completed' || result.status === 'partial' ? { confirmed: true, submittedScore: result.record.submittedScore }
       : { confirmed: false, reason: result.reason, ...(result.confirmation ? { confirmation: result.confirmation } : {}) };
   };

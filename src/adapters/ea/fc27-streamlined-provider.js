@@ -9,6 +9,8 @@ import { validateStreamlinedJournal } from '../../streamlined/journal.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
 import { createFc27StreamlinedMaterializer } from './fc27-streamlined-materialize.js';
 
+const confirmedCooldown = new WeakMap();
+
 // Production composition for the transaction driver.
 // Callers cannot dispatch by supplying a plan alone: a fresh validation lease,
 // the matching durable pending batch and explicit write capability are required.
@@ -17,11 +19,12 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
   createValidator = createFc27StreamlinedValidator, createProgress = createFc27StreamlinedProgressReader,
   createTransport = createFc27StreamlinedContributionTransport, createReconciler = createFc27StreamlinedReconciler,
   createMaterializer = createFc27StreamlinedMaterializer, materializationStorage = {}, maintenance = null,
-  checkOtherTransactions = async () => {}, purchaseVerifier = null } = {}) {
+  checkOtherTransactions = async () => {}, purchaseVerifier = null, onDiagnostic = () => {} } = {}) {
   let lease = null, busy = false;
-  const progress = createProgress(root, { now });
-  const validator = createValidator(root, { now, readProgress: expected => progress.read(expected), nativeReauth: true, purchaseVerifier });
-  const reconciler = createReconciler(root, { now, nativeReauth: true });
+  const progress = createProgress(root, { now, onDiagnostic });
+  const validator = createValidator(root, { now, readProgress: (expected, options) => progress.read(expected, options), nativeReauth: true, purchaseVerifier });
+  const reconciler = createReconciler(root, { now, nativeReauth: true,
+    createProgress: (root, options) => createProgress(root, { ...options, onDiagnostic }) });
   const binding = () => {
     const page = locateFc27StreamlinedPage(root);
     if (!page) fail('PAGE_UNAVAILABLE');
@@ -43,6 +46,23 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
       try {
         if (plan.challenge.status !== 'IN_PROGRESS') fail('INITIATION_UNVERIFIED');
         const origin = binding(); unchanged(origin, plan);
+        const prior = await journal?.read?.(plan.context), recent = confirmedCooldown.get(root), at = now();
+        const times = [same(recent?.context, plan.context) ? recent.at : null,
+          same(prior?.context, plan.context) && prior.batches.some(row => row.state === 'confirmed') ? prior.updatedAt : null]
+          .filter(time => integer(time) && time <= at);
+        const waitMs = times.length ? Math.max(0, Math.max(...times) + 3000 - at) : 0;
+        if (waitMs > 0) {
+          try { onProgress({ phase: 'batch-cooldown', waitMs, submittedScore, targetScore: plan.challenge.targetScore }); } catch { /* Display only. */ }
+          const check = () => { unchanged(origin, plan); if (stopped()) fail('CANCELLED'); };
+          check();
+          await new Promise((resolve, reject) => {
+            let timer, poll;
+            const finish = error => { clearTimeout(timer); clearInterval(poll); if (error) reject(error); else resolve(); };
+            poll = setInterval(() => { try { check(); } catch (error) { finish(error); } }, 100);
+            timer = setTimeout(() => { try { check(); finish(); } catch (error) { finish(error); } }, waitMs);
+          });
+          unchanged(origin, plan);
+        }
         await checkOtherTransactions(plan, batch); unchanged(origin, plan);
         await maintenance?.prepare?.(batch.refs);
         if (batch.refs.some(ref => ['unassigned', 'transfer'].includes(ref.pile))) {
@@ -59,7 +79,8 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
           await materializer.prepare(batch.refs);
           unchanged(origin, plan);
         }
-        const evidence = await validator.verify(plan, batch, submittedScore, { onProgress, stopped });
+        const evidence = await validator.verify(plan, batch, submittedScore, {
+          onProgress: row => onProgress({ ...row, submittedScore, targetScore: plan.challenge.targetScore }), stopped });
         unchanged(origin, plan);
         if (evidence?.fresh !== true || !integer(evidence.observedAt) || now() < evidence.observedAt
             || now() - evidence.observedAt > 15000 || evidence.count !== batch.refs.length
@@ -106,8 +127,8 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
     },
     reconcile(record, batch) { lease = null; return reconciler.reconcile(record, batch); },
     async finalize(record, batch, evidence) {
-      if (!maintenance) return true;
-      if (await maintenance.apply(record, batch, evidence) !== true) fail('FINALIZATION_REQUIRED');
+      if (maintenance && await maintenance.apply(record, batch, evidence) !== true) fail('FINALIZATION_REQUIRED');
+      confirmedCooldown.set(root, { context: record.context, at: now() });
       return true;
     },
   });

@@ -19,6 +19,45 @@ async function setup(options = {}) {
   return { f, plan, candidate, buyer, adapter };
 }
 
+it.each(['batch-cooldown', 'progress-backoff', 'post-dispatch'])('propagates purchase STOP at %s without resending or losing a confirmed batch', async phase => {
+  const memory = new Map(), get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);
+  const set = async (key, value) => memory.set(key, structuredClone(value));
+  const journal = createStreamlinedJournal({ get, set }); let driver;
+  const writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async (_plan, _batch, _score, callbacks) => {
+    if (phase !== 'post-dispatch') {
+      callbacks.onProgress({ phase, waitMs: 3000 });
+      if (callbacks.stopped()) throw Error('FC27_STREAMLINED_CANCELLED');
+    }
+    return true;
+  }), contribute: vi.fn(async (plan, batch) => normalizeStreamlinedContributionReply({ success: true, status: 200,
+    response: { setId: plan.challenge.setId, challengeId: plan.challenge.id, submittedScore: 100 } },
+  { setId: plan.challenge.setId, challengeId: plan.challenge.id, previousScore: 0, itemIds: batch.refs.map(ref => ref.id) })),
+  reconcile: vi.fn(async (record, batch) => {
+    if (phase === 'post-dispatch') driver.stop();
+    return { fresh: true, context: record.context, observedAt: 1000, setId: record.plan.challenge.setId,
+      challengeId: record.plan.challenge.id, absent: batch.refs, submittedScore: 100, operationConfirmed: true };
+  }) };
+  const { f, adapter, plan } = await setup({ contributionAdapter: { adapter: writer, journal } });
+  delete plan.schema; delete plan.fingerprint;
+  const market = { ...plan.route.groups[0].item, id: null, key: 'market:101:0', price: 200, purchaseMaxBuy: 250 };
+  plan.route.groups[0] = { source: 'market', quantity: 1, item: market, items: [market] };
+  plan.route.groups.unshift({ source: 'inventory', quantity: 5, item: f.plan.items[0], items: f.plan.items });
+  const purchase = createStreamlinedPurchaseJournal({ get, set });
+  const native = { ...adapter, assertCurrent: async () => {}, readState: async record => ({ submittedScore: record.submittedScore, freeSlots: 0, heldDefinitions: [] }),
+    materialize: async entries => entries.map(entry => ({ groupIndex: entry.groupIndex, item: f.plan.items.find(item => item.id === entry.itemId) })) };
+  driver = createStreamlinedProcurement({ journal: purchase, lock: { acquire: async () => () => {} }, adapter: native, operationId: () => 'stop-bridge', now: () => 1000 });
+  const result = await driver.execute(plan, { approved: true, fingerprint: JSON.stringify(plan), budget: 250, attempts: 1, expiresAt: 10000 },
+    { onProgress: row => { if (row.phase === phase && phase !== 'post-dispatch') driver.stop(); } });
+  expect(result.status, result.reason).toBe('stopped'); expect(result.record.contribution).toBeNull();
+  if (phase === 'post-dispatch') {
+    expect(writer.contribute).toHaveBeenCalledOnce(); expect(result.record.submittedScore).toBe(100);
+    expect(result.record.consumedIds).toEqual(f.plan.items.map(item => item.id));
+  } else {
+    expect(writer.contribute).not.toHaveBeenCalled(); expect(writer.reconcile).not.toHaveBeenCalled();
+    expect(result.record.consumedIds).toEqual([]); expect(result.record.entries.every(entry => entry.state === 'ready')).toBe(true);
+  }
+});
+
 it('traces a settled first batch and unknown second batch through the production purchase bridge without repeat contribution', async () => {
   const memory = new Map(), onEvent = vi.fn();
   const journal = createStreamlinedJournal({ now: () => 1000,

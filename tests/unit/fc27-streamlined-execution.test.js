@@ -218,8 +218,9 @@ it('does not let a valid Puzzle purchase marker block an unrelated contribution'
   expect(reads).not.toContain(foreign);
 });
 
-it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without resending the settled first batch: %s', async failure => {
-  if (failure === 'transient-read') vi.useFakeTimers();
+it.each(['none', 'transient-read', 'rate-limit', 'read-426', 'read-512', 'read-exhausted', 'readback-426', 'readback-512', 'readback-stop', 'cooldown-stop', 'cooldown-context'])('composes two batches without resending the settled first batch: %s', async failure => {
+  const timed = failure === 'transient-read' || failure.startsWith('read') || failure.startsWith('cooldown-');
+  if (timed) vi.useFakeTimers();
   const f = streamlinedRuntime(), selected = f.input.inventory.slice(0, 10), memory = new Map();
   const plan = createStreamlinedPlan({ context: f.input.context, challenge: f.input.challenge, policy: f.input.policy,
     result: { status: 'ready', items: selected, batches: [selected.slice(0, 5), selected.slice(5)], score: 200,
@@ -229,8 +230,14 @@ it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without 
   const get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);
   const set = vi.fn(async (key, value) => { expect(held).toBe(true); memory.set(key, structuredClone(value)); });
   f.replies.rows[0].submittedScore = 0;
-  if (failure !== 'none') f.replies.progressReplies = [{}, {}, { success: false, status: failure === 'transient-read' ? 503 : 429 }];
-  const writes = [], progress = [], diagnosticLog = { record: vi.fn(async () => true) };
+  const status = failure === 'transient-read' ? 503 : failure.endsWith('-426') ? 426 : failure.startsWith('read') ? 512 : 429;
+  if (failure !== 'none' && !failure.startsWith('cooldown-')) f.replies.progressReplies = [
+    ...Array.from({ length: failure.startsWith('readback-') ? 1 : 2 }, () => ({})),
+    ...Array.from({ length: failure === 'read-exhausted' ? 3 : 1 }, () => ({ success: false, status }))];
+  const writes = [], writeTimes = [], progress = [], diagnosticLog = { record: vi.fn(async row => {
+    if (failure === 'readback-stop' && row.phase === 'contribution-progress-backoff') execution.transaction.stop();
+    return true;
+  }) };
   const options = { context: f.plan.context, get, set, canWrite: () => true, diagnosticLog,
     lockManager: { request: async (name, options, task) => {
       if (held) return task(null);
@@ -239,7 +246,7 @@ it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without 
     createProvider: (root, options) => createFc27StreamlinedProvider(root, { ...options,
       createTransport: async () => ({ request: async (_action, target, before) => {
         await before(); expect(held).toBe(true); expect(f.root.info.base.clubCache.localDirty).toBe(true);
-        writes.push(target.itemIds);
+        writes.push(target.itemIds); writeTimes.push(Date.now());
         f.state.players = f.state.players.filter(item => !target.itemIds.includes(item.id));
         f.replies.rows[0].submittedScore += target.itemIds.length * 20;
         const complete = f.replies.rows[0].submittedScore === 200;
@@ -255,16 +262,32 @@ it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without 
   execution.prepare(plan);
   expect(writes).toHaveLength(0); expect(set).not.toHaveBeenCalled();
   const approval = { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1] };
-  const pending = execution.transaction.execute(plan, approval, { onProgress: p => progress.push(p) });
-  if (failure === 'transient-read') await vi.advanceTimersByTimeAsync(1501);
+  const pending = execution.transaction.execute(plan, approval, { onProgress: p => {
+    progress.push(p);
+    if (p.phase === 'batch-cooldown' && failure === 'cooldown-stop') execution.transaction.stop();
+    if (p.phase === 'batch-cooldown' && failure === 'cooldown-context') f.user.selectedPersona = 444;
+  } });
+  if (timed) await vi.advanceTimersByTimeAsync(failure === 'transient-read' ? 4501 : failure === 'read-exhausted' ? 12001 : 6001);
   let result = await pending;
-  if (failure === 'rate-limit') {
-    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: 429,
+  if (failure === 'readback-stop') {
+    expect(result).toMatchObject({ status: 'stopped', record: { submittedScore: 100 } });
+    expect(writes).toHaveLength(1); expect(result.record.batches.map(batch => batch.state)).toEqual(['confirmed', 'waiting']);
+    expect(f.calls.filter(row => row.kind === 'progress')).toHaveLength(3); expect(vi.getTimerCount()).toBe(0); return;
+  }
+  if (failure.startsWith('cooldown-')) {
+    expect(result).toMatchObject(failure === 'cooldown-stop' ? { status: 'stopped' }
+      : { status: 'blocked', reason: expect.stringMatching(/^FC27_(STREAMLINED_CONTEXT_CHANGED|CONTEXT_UNAVAILABLE)$/) });
+    expect(writes).toHaveLength(1); expect(f.calls.filter(row => row.kind === 'progress')).toHaveLength(2);
+    const record = memory.get(contextKey(plan.context, 'streamlined-contribution'));
+    expect(record.batches.map(batch => batch.state)).toEqual(['confirmed', 'waiting']); return;
+  }
+  if (failure === 'rate-limit' || failure === 'read-exhausted') {
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: status,
       record: { submittedScore: 100, batches: [{ state: 'confirmed' }, { state: 'waiting' }] } });
     expect(writes).toHaveLength(1);
-    expect(f.calls.filter(row => row.kind === 'progress')).toHaveLength(3);
+    expect(f.calls.filter(row => row.kind === 'progress')).toHaveLength(failure === 'read-exhausted' ? 5 : 3);
     expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ phase: 'contribution-validation',
-      reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: 429, attempt: 1, attemptLimit: 3, currentScore: 100 }));
+      reason: 'FC27_STREAMLINED_PROGRESS_READ_FAILED', httpStatus: status, attempt: failure === 'read-exhausted' ? 3 : 1, attemptLimit: 3, currentScore: 100 }));
     const resumed = await createFc27StreamlinedExecution(f.root, options);
     result = await resumed.transaction.execute(plan, approval, { onProgress: p => progress.push(p) });
   }
@@ -278,6 +301,8 @@ it.each(['none', 'transient-read', 'rate-limit'])('composes two batches without 
   expect((await restarted.transaction.recover(plan.context)).status).toBe('observed');
   expect((await restarted.transaction.execute(plan, approval)).status).toBe('completed');
   expect(writes).toHaveLength(2);
+  expect(progress).toContainEqual(expect.objectContaining({ phase: 'batch-cooldown' }));
+  expect(writeTimes[1] - writeTimes[0]).toBeGreaterThanOrEqual(3000);
   expect(writes.filter(ids => ids.includes(1))).toHaveLength(1);
 });
 

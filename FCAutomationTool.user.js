@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.46
+// @version      27.0.47
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.46", at: Date.now(), status: 'started',
+    state = { version: "27.0.47", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -27621,6 +27621,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       reconciliation: "\u6838\u5BF9\u56DE\u6267",
       confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4",
       recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55",
+      "batch-cooldown": "\u5DF2\u786E\u8BA4\u4E0A\u4E00\u6279\uFF0C\u6279\u6B21\u95F4\u51B7\u5374",
+      "progress-backoff": "\u8BFB\u53D6\u8FDB\u5EA6\u6682\u672A\u6210\u529F\uFF0C\u9000\u907F\u540E\u91CD\u8BD5",
       replanning: "\u9009\u62E9\u6388\u6743\u8303\u56F4\u5185\u7684\u6700\u4F4E\u6210\u672C\u66FF\u4EE3\u65B9\u6848",
       "waiting-supply": "\u7B49\u5F85\u540E\u91CD\u8BD5\u5E02\u573A\u4F9B\u5E94",
       "search-result": "\u672C\u6B21\u641C\u7D22\u5B8C\u6210",
@@ -27635,13 +27637,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (p.purchaseTarget !== void 0) text5 += `
 \u5DF2\u8D2D ${number2(p.purchased)} / ${number2(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number2(p.spent)} / ${number2(p.budget)} \u91D1\u5E01`;
     text5 += `
-\u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 \u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
+${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contributed)} \u5F20 \xB7 ` : ""}\u5DF2\u786E\u8BA4 ${number2(p.submittedScore)} / ${number2(p.targetScore)} \u5206`;
     if (p.readyCount !== void 0) text5 += `
 \u672C\u6279\u5C31\u7EEA ${number2(p.readyCount)} / ${number2(p.selectionLimit)} \u5F20 \xB7 ${number2(p.readyPoints)} \u5206`;
     if (p.phase === "materialize") text5 += `
 \u5916\u90E8\u5361 ${number2(p.completed)} / ${number2(p.materialTotal)} \u5F20`;
     if (p.phase === "waiting-supply") text5 += `
 \u4F9B\u5E94\u91CD\u8BD5 ${number2(p.attempt)} / ${number2(p.attemptLimit)}`;
+    if (p.phase === "progress-backoff") text5 += `
+\u51C6\u5907\u7B2C ${number2(p.attempt + 1)} / ${number2(p.attemptLimit)} \u6B21\u8BFB\u53D6 \xB7 \u7B49\u5F85 ${number2(Math.ceil(p.waitMs / 1e3))} \u79D2`;
     return text5;
   }
   function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
@@ -27653,6 +27657,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
       text5 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+    }
+    if (active && ["batch-cooldown", "progress-backoff"].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
+      text5 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     return text5;
   }
@@ -28352,7 +28359,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
               confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
             }[p.stage];
-            if (marketRun) {
+            if (marketRun || ["batch-cooldown", "progress-backoff"].includes(p.phase)) {
               node("status").textContent = streamlinedExecutionProgress(p);
               const bar2 = shadow.querySelector("progress");
               bar2.max = p.targetScore || 1;
@@ -31681,7 +31688,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const pageChallenge = page && projectFc27StreamlinedChallenge(page, plan.context);
         let fresh = null;
         if (typeof readProgress === "function") {
-          fresh = await readProgress(plan.challenge);
+          fresh = await readProgress(plan.challenge, { onProgress, stopped });
           if (fresh?.fresh !== true || !integer15(fresh.observedAt) || fresh.observedAt > now() || now() - fresh.observedAt > 15e3 || !same25(fresh.challenge, expectedChallenge)) fail28("PROGRESS_CHANGED");
           if (!same25(pageChallenge, {
             ...expectedChallenge,
@@ -31823,6 +31830,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/ea/fc27-streamlined-progress.js
   var FC27_STREAMLINED_PROGRESS_HASH = "238c93154b271b36affb9e95eb5696d05471cc8d533294a0d0d8848c55e3b693";
   var transientReadStatuses = /* @__PURE__ */ new Set([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+  var observedReadStatuses = /* @__PURE__ */ new Set([426, 512]);
+  var retryableRead = (code2) => transientReadStatuses.has(code2) || observedReadStatuses.has(code2);
   var method5 = (object, key) => {
     for (let depth = 0; object && depth < 8; depth++, object = Object.getPrototypeOf(object)) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
@@ -31830,9 +31839,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     return void 0;
   };
-  function createFc27StreamlinedProgressReader(root, { now = () => Date.now(), requirePage = true } = {}) {
+  function createFc27StreamlinedProgressReader(root, { now = () => Date.now(), requirePage = true, onDiagnostic = () => {
+  } } = {}) {
     let busy = false;
-    return Object.freeze({ async read(expected) {
+    return Object.freeze({ async read(expected, { onProgress = () => {
+    }, stopped = () => false } = {}) {
       if (busy) fail28("BUSY");
       busy = true;
       try {
@@ -31853,6 +31864,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
         if (hash !== FC27_STREAMLINED_PROGRESS_HASH) fail28("PROGRESS_READ_UNVERIFIED");
         const assert = () => {
+          if (stopped()) fail28("CANCELLED");
           const current2 = locateFc27StreamlinedPage(root);
           if (requirePage && (!current2 || current2.controller !== page.controller || current2.setId !== expected.setId || current2.challengeId !== expected.id) || !same25(readFc27Context(root), context) || root.services?.SBC?.sbcDAO !== dao || method5(dao, "getChallengesForSet") !== read) fail28("CONTEXT_CHANGED");
         };
@@ -31879,11 +31891,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             done = true;
             clearTimeout(timer);
             clearTimeout(retryTimer);
+            clearInterval(stopTimer);
             release();
             if (error2) reject(error2);
             else resolve(value);
           };
           const timer = setTimeout(() => finish(readError("PROGRESS_READ_TIMEOUT")), 15e3);
+          const stopTimer = setInterval(() => {
+            try {
+              assert();
+            } catch (error2) {
+              finish(error2);
+            }
+          }, 100);
           const request = () => {
             if (done) return;
             const attempt = ++attempts;
@@ -31899,9 +31919,28 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   assert();
                   const status = ownData(reply, "status"), nativeCode = ownData(ownData(reply, "error"), "code");
                   if (ownData(reply, "success") !== true || status !== 200) {
-                    if (attempts < 3 && transientReadStatuses.has(status) && (nativeCode == null || transientReadStatuses.has(nativeCode))) {
+                    if (attempts < 3 && retryableRead(status) && (nativeCode == null || retryableRead(nativeCode))) {
+                      const waitMs = (observedReadStatuses.has(status) || observedReadStatuses.has(nativeCode) ? 3e3 : 1500) * attempts;
+                      const row = {
+                        phase: "progress-backoff",
+                        status: "waiting",
+                        httpStatus: status,
+                        attempt: attempts,
+                        attemptLimit: 3,
+                        waitMs,
+                        ...integer15(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
+                      };
                       release();
-                      retryTimer = setTimeout(request, 1500 * attempts);
+                      try {
+                        onProgress(row);
+                      } catch {
+                      }
+                      try {
+                        Promise.resolve(onDiagnostic(row)).catch(() => {
+                        });
+                      } catch {
+                      }
+                      retryTimer = setTimeout(request, waitMs);
                       return;
                     }
                     finish(readError("PROGRESS_READ_FAILED", status, nativeCode));
@@ -32472,6 +32511,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/ea/fc27-streamlined-provider.js
+  var confirmedCooldown = /* @__PURE__ */ new WeakMap();
   function createFc27StreamlinedProvider(root, {
     journal,
     canWrite = () => false,
@@ -32485,12 +32525,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     maintenance = null,
     checkOtherTransactions = async () => {
     },
-    purchaseVerifier = null
+    purchaseVerifier = null,
+    onDiagnostic = () => {
+    }
   } = {}) {
     let lease = null, busy = false;
-    const progress = createProgress(root, { now });
-    const validator2 = createValidator(root, { now, readProgress: (expected) => progress.read(expected), nativeReauth: true, purchaseVerifier });
-    const reconciler = createReconciler(root, { now, nativeReauth: true });
+    const progress = createProgress(root, { now, onDiagnostic });
+    const validator2 = createValidator(root, { now, readProgress: (expected, options) => progress.read(expected, options), nativeReauth: true, purchaseVerifier });
+    const reconciler = createReconciler(root, {
+      now,
+      nativeReauth: true,
+      createProgress: (root2, options) => createProgress(root2, { ...options, onDiagnostic })
+    });
     const binding = () => {
       const page = locateFc27StreamlinedPage(root);
       if (!page) fail28("PAGE_UNAVAILABLE");
@@ -32516,6 +32562,48 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (plan.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
           const origin = binding();
           unchanged(origin, plan);
+          const prior = await journal?.read?.(plan.context), recent = confirmedCooldown.get(root), at10 = now();
+          const times = [
+            same25(recent?.context, plan.context) ? recent.at : null,
+            same25(prior?.context, plan.context) && prior.batches.some((row) => row.state === "confirmed") ? prior.updatedAt : null
+          ].filter((time2) => integer15(time2) && time2 <= at10);
+          const waitMs = times.length ? Math.max(0, Math.max(...times) + 3e3 - at10) : 0;
+          if (waitMs > 0) {
+            try {
+              onProgress({ phase: "batch-cooldown", waitMs, submittedScore, targetScore: plan.challenge.targetScore });
+            } catch {
+            }
+            const check = () => {
+              unchanged(origin, plan);
+              if (stopped()) fail28("CANCELLED");
+            };
+            check();
+            await new Promise((resolve, reject) => {
+              let timer, poll;
+              const finish = (error2) => {
+                clearTimeout(timer);
+                clearInterval(poll);
+                if (error2) reject(error2);
+                else resolve();
+              };
+              poll = setInterval(() => {
+                try {
+                  check();
+                } catch (error2) {
+                  finish(error2);
+                }
+              }, 100);
+              timer = setTimeout(() => {
+                try {
+                  check();
+                  finish();
+                } catch (error2) {
+                  finish(error2);
+                }
+              }, waitMs);
+            });
+            unchanged(origin, plan);
+          }
           await checkOtherTransactions(plan, batch);
           unchanged(origin, plan);
           await maintenance?.prepare?.(batch.refs);
@@ -32539,7 +32627,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             await materializer.prepare(batch.refs);
             unchanged(origin, plan);
           }
-          const evidence = await validator2.verify(plan, batch, submittedScore, { onProgress, stopped });
+          const evidence = await validator2.verify(plan, batch, submittedScore, {
+            onProgress: (row) => onProgress({ ...row, submittedScore, targetScore: plan.challenge.targetScore }),
+            stopped
+          });
           unchanged(origin, plan);
           if (evidence?.fresh !== true || !integer15(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail28("MATERIAL_CHANGED");
           lease = {
@@ -32604,8 +32695,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return reconciler.reconcile(record, batch);
       },
       async finalize(record, batch, evidence) {
-        if (!maintenance) return true;
-        if (await maintenance.apply(record, batch, evidence) !== true) fail28("FINALIZATION_REQUIRED");
+        if (maintenance && await maintenance.apply(record, batch, evidence) !== true) fail28("FINALIZATION_REQUIRED");
+        confirmedCooldown.set(root, { context: record.context, at: now() });
         return true;
       }
     });
@@ -32880,10 +32971,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const execute = async (plan, approval, { onProgress = () => {
-    } } = {}) => {
+    }, stopped = () => false } = {}) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
       running = true;
       stopping = false;
+      const shouldStop = () => stopping || stopped();
       let release, record, activeBatch, phase = "preflight";
       const report = (phase2, index) => {
         try {
@@ -32915,11 +33007,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           activeBatch = batch;
           if (batch.state === "confirmed") continue;
           if (batch.state !== "waiting") fail28("REPLAN_REQUIRED");
-          if (stopping || record.submittedScore >= plan.challenge.targetScore) break;
+          if (shouldStop() || record.submittedScore >= plan.challenge.targetScore) break;
           phase = "validation";
           report("validation", index);
           if (await adapter.verify(plan, batch, record.submittedScore, {
-            stopped: () => stopping,
+            stopped: shouldStop,
             onProgress: (row) => {
               try {
                 onProgress({ ...row, index, total: approval.batchIndices.length });
@@ -32927,7 +33019,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               }
             }
           }) !== true) fail28("MATERIAL_CHANGED");
-          if (stopping) break;
+          if (shouldStop()) break;
           phase = "checkpoint";
           record.batches[index].state = "pending";
           record.batches[index].startingScore = record.submittedScore;
@@ -32999,8 +33091,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             return { status: "replan-required", reason: "FC27_STREAMLINED_PROGRESS_CHANGED", record };
           }
         }
-        return { status: stopping ? "stopped" : record.submittedScore >= plan.challenge.targetScore ? "completed" : "partial", record };
+        return { status: shouldStop() ? "stopped" : record.submittedScore >= plan.challenge.targetScore ? "completed" : "partial", record };
       } catch (error2) {
+        if (shouldStop() && phase === "validation" && error2?.message === "FC27_STREAMLINED_CANCELLED") return { status: "stopped", record };
         diagnose(phase, "blocked", record, activeBatch, () => failureDetail(error2));
         return {
           status: "blocked",
@@ -33206,6 +33299,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
         callbacks
       );
+      if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
+        if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
+        if (result.record.batches.length === 1 && result.record.batches[0].state === "confirmed" && integer15(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
+          return { confirmed: true, submittedScore: result.record.submittedScore };
+        }
+      }
       return result.status === "completed" || result.status === "partial" ? { confirmed: true, submittedScore: result.record.submittedScore } : { confirmed: false, reason: result.reason, ...result.confirmation ? { confirmation: result.confirmation } : {} };
     };
     return Object.freeze({
@@ -33802,8 +33901,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           report("contribution");
           await check();
           const result = await adapter.contribute(batchPlan, {
-            onProgress: (progress) => report(progress?.phase ?? "contribution", progress)
+            onProgress: (progress) => report(progress?.phase ?? "contribution", progress),
+            stopped: () => stopped
           });
+          if (result?.notDispatched === true) {
+            record.contribution = null;
+            await save();
+            if (stopped || result.stopped) return { status: "stopped", record };
+          }
           if (!result?.confirmed) return unsettledContribution(result);
           await settleContribution(result);
         }
@@ -34032,6 +34137,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       now,
       maintenance,
       materializationStorage,
+      onDiagnostic: (row) => contributionDiagnostic(row),
       checkOtherTransactions,
       purchaseVerifier
     });
@@ -34046,6 +34152,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           localReason: row.localReason,
           attempt: row.attempt,
           attemptLimit: row.attemptLimit,
+          waitMs: row.waitMs,
           methodPath: row.methodPath,
           observedHash: row.observedHash,
           expectedHash: row.expectedHash,
@@ -34312,7 +34419,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.46" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.47" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34630,8 +34737,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.46"}`,
-    version: "27.0.46",
+    title: `FC Automation Tool ${"27.0.47"}`,
+    version: "27.0.47",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
