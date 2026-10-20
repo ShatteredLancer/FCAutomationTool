@@ -20,6 +20,14 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     if (typeof error?.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(error.expectedHash)) detail.expectedHash = error.expectedHash;
     if (['completion-score-below-target', 'cycle-count-conflict', 'cycle-state-conflict', 'purchase-history-overlap'].includes(error?.mismatch)) detail.mismatch = error.mismatch;
     for (const key of ['cycleCountBefore', 'cycleCountAfter']) if (integer(error?.[key], 0, 1e9)) detail[key] = error[key];
+    if (detail.reason === 'FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED'
+        && error?.evidence?.phase === 'selected-club-read') {
+      detail.mismatch = 'selected-club-read';
+      for (const [source, target] of [['rows', 'responseCount'], ['unexpectedVersion', 'foreignCount'],
+        ['wrongPile', 'wrongPileCount'], ['identityMismatch', 'identityMismatchCount'], ['factoryMismatch', 'factoryMismatchCount']]) {
+        if (integer(error.evidence[source], 0, 250)) detail[target] = error.evidence[source];
+      }
+    }
     return detail;
   };
   const diagnose = (phase, status, record, batch, detail = {}) => {

@@ -10,8 +10,73 @@ import { streamlinedPurchaseKey } from '../../src/streamlined/purchase-journal.j
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime.js';
 import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
+import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
+import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 
 afterEach(() => vi.useRealTimers());
+
+it.each(['unrelated', 'selected'])('checks only selected piles across five stock batches and never repeats confirmed writes: %s', async conflict => {
+  vi.useFakeTimers();
+  const f = streamlinedRuntime({ targetScore: 2820 }), memory = new Map(), diagnosticMemory = new Map();
+  // Same 30/30/30/30/21 shape as the incident, with synthetic identities/scores.
+  f.state.players = Array.from({ length: 141 }, (_, i) => ({ id: i + 1, resourceId: i + 101 }));
+  f.root.repositories.Item.club.items._collection = Object.fromEntries(f.state.players.map(data => [data.id, f.root.factories.Item.createItem(data)]));
+  const input = readFc27StreamlinedInputs(f.root), selected = input.inventory;
+  const batches = Array.from({ length: 5 }, (_, i) => selected.slice(i * 30, i * 30 + 30));
+  const plan = createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy,
+    result: { status: 'ready', items: selected, batches, score: 2820,
+      progress: { target: 2820, submitted: 0, added: 2820, total: 2820, remaining: 0, excess: 0, reached: true },
+      purchaseCost: 0, materialValue: null, searchComplete: true } });
+  f.replies.rows[0].submittedScore = 0;
+  const writes = [];
+  const diagnosticLog = createFcatDiagnosticLog({
+    gmGetValue: async key => diagnosticMemory.get(key), gmSetValue: async (key, value) => diagnosticMemory.set(key, value) });
+  const options = { context: plan.context, get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)), canWrite: () => true, diagnosticLog,
+    lockManager: { request: async (name, options, task) => task({ name, mode: options.mode }) },
+    createProvider: (root, options) => createFc27StreamlinedProvider(root, { ...options,
+      createTransport: async () => ({ request: async (_action, target, before) => {
+        await before(); writes.push([...target.itemIds]);
+        f.state.players = f.state.players.filter(item => !target.itemIds.includes(item.id));
+        f.replies.rows[0].submittedScore += target.itemIds.length * 20;
+        if (writes.length === 4) {
+          f.state.players.push({ id: 999, resourceId: 1001 });
+          f.state.playerFactsById = { [conflict === 'selected' ? 121 : 999]: { utasPile: 9 } };
+          f.state.clubQueryMode = 'bulk-extra';
+        }
+        const complete = f.replies.rows[0].submittedScore === 2820;
+        if (complete) {
+          f.replies.rows[0].status = 'COMPLETED'; f.replies.rows[0].timesCompleted = 1;
+          f.replies.set = { ...f.set, totalSubmittedScore: 2820, timesCompleted: 1, challengesCompletedCount: 1 };
+        }
+        return { success: true, status: 200, response: { setId: 31, challengeId: 61,
+          submittedScore: f.replies.rows[0].submittedScore, grantedChallengeAwards: complete ? [{ type: 'pack' }] : null } };
+      } }) }) };
+  const execute = async () => {
+    const execution = await createFc27StreamlinedExecution(f.root, options);
+    execution.prepare(plan);
+    const pending = execution.transaction.execute(plan, { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1, 2, 3, 4] });
+    await vi.advanceTimersByTimeAsync(15000);
+    return pending;
+  };
+  let result = await execute();
+  if (conflict === 'selected') {
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED' });
+    expect(writes).toHaveLength(4);
+    const saved = memory.get(contextKey(plan.context, 'streamlined-contribution'));
+    expect(saved.submittedScore).toBe(2400);
+    expect(saved.batches.map(row => row.state)).toEqual(['confirmed', 'confirmed', 'confirmed', 'confirmed', 'waiting']);
+    expect((await diagnosticLog.exportPayload()).transactionResults.at(-1)).toMatchObject({
+      mismatch: 'selected-club-read', responseCount: 22, foreignCount: 1,
+      wrongPileCount: 1, identityMismatchCount: 0, factoryMismatchCount: 0 });
+    f.state.playerFactsById = { 999: { utasPile: 9 } };
+    result = await execute();
+  }
+  expect(result.status, result.reason).toBe('completed');
+  expect(writes.map(ids => ids.length)).toEqual([30, 30, 30, 30, 21]);
+  expect(new Set(writes.flat()).size).toBe(141); expect(writes.flat()).not.toContain(999);
+  expect(result.record.submittedScore).toBe(2820);
+});
 
 async function approvalWindow({ elapsed, explicitExpiry, budget = 750, offerPrice = null, findElapsed = null }) {
   const f = streamlinedRuntime(), memory = new Map(), started = 1000;

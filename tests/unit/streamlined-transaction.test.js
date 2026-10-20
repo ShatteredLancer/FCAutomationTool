@@ -80,6 +80,21 @@ it('drops arbitrary failure metadata instead of exporting it with read diagnosti
   expect(f.adapter.contribute).not.toHaveBeenCalled();
 });
 
+it('keeps only bounded Club identity failure counts, never raw entity evidence', async () => {
+  const onDiagnostic = vi.fn(), f = setup({ onDiagnostic });
+  f.adapter.verify.mockRejectedValue(Object.assign(Error('FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED'), {
+    evidence: { phase: 'selected-club-read', rows: 25, unexpectedVersion: 3, wrongPile: 1,
+      identityMismatch: -1, factoryMismatch: 251, raw: { itemId: 987654, token: 'private-token' } },
+  }));
+  expect(await f.tx.execute(f.plan, f.approval)).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED', mismatch: 'selected-club-read',
+    responseCount: 25, foreignCount: 3, wrongPileCount: 1 });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'validation',
+    mismatch: 'selected-club-read', responseCount: 25, foreignCount: 3, wrongPileCount: 1 }));
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/identityMismatchCount|factoryMismatchCount|private-|987654|itemId|raw/);
+  expect(f.adapter.contribute).not.toHaveBeenCalled();
+});
+
 it.each([
   ['unknown', 'EA_CONTRIBUTION_RESPONSE_CONFLICT', 200],
   ['unknown', 'EA_CONTRIBUTION_RESPONSE_UNVERIFIED', 521],

@@ -82,14 +82,24 @@ it('does not read without a receipt or when journal batch identity differs', asy
   expect(createTransport).not.toHaveBeenCalled();
 });
 
-it('classifies malformed, duplicate, wrong-version and wrong-pile readback without inferring absence', async () => {
+it('classifies malformed, duplicate and wrong-version readback without inferring absence', async () => {
   for (const rows of [[null], [{ id: 1, definitionId: 999, pile: 'club' }],
-    [{ id: 900, definitionId: 101, pile: 'storage' }],
     [{ id: 900, definitionId: 101, pile: 'club' }, { id: 900, definitionId: 101, pile: 'club' }]]) {
     const f = await setup();
     const createTransport = async () => ({ readPage: async () => rows, getRequestCount: () => 1 });
     await expect(createFc27StreamlinedReconciler(f.root, { createTransport }).reconcile(f.record, f.batch))
       .rejects.toThrow('FRESH_ENTITY_UNVERIFIED');
+  }
+});
+
+it.each([null, 'storage', 'club'])('requires the exact consumed entity to be absent regardless of returned pile %s', async pile => {
+  for (const originalPresent of [true, false]) {
+    const f = await setup();
+    const createTransport = async () => ({ readPage: async () => [
+      { id: originalPresent ? 1 : 900, definitionId: 101, pile }], getRequestCount: () => 1 });
+    const result = createFc27StreamlinedReconciler(f.root, { createTransport }).reconcile(f.record, f.batch);
+    if (originalPresent) await expect(result).rejects.toThrow('MATERIAL_STILL_PRESENT');
+    else await expect(result).resolves.toMatchObject({ operationConfirmed: true, absent: f.batch.refs });
   }
 });
 

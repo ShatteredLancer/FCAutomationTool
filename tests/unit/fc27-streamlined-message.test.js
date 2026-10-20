@@ -4,6 +4,12 @@ import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarket
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
   streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
+it('explains FSU readiness before solving without claiming a 5x80+ recipe failure', () => {
+  const message = streamlinedExecutionMessage('FC27_STREAMLINED_FSU_NOT_READY');
+  expect(message).toContain('已暂停后续操作'); expect(message).toContain('FSU 增强脚本');
+  expect(message).toContain('库存加载完成'); expect(message).toContain('已确认的贡献记录保留');
+});
+
 it.each(['batch-cooldown', 'progress-backoff'])('shows %s as a bounded wait rather than a stopped run', phase => {
   const text = streamlinedExecutionProgress({ phase, waitMs: 6000, attempt: 1, attemptLimit: 3, submittedScore: 100, targetScore: 200 });
   expect(text).toContain(phase === 'batch-cooldown' ? '批次间冷却' : '退避后重试');

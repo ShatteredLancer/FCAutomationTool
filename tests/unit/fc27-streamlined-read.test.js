@@ -35,6 +35,17 @@ function zeroSquadRuntime() {
   return { ...f, squad };
 }
 
+it('does not plan 5x80+ when the FSU season, initialization or Club cache is not ready', () => {
+  for (const issue of ['season', 'initializing', 'cache']) {
+    const f = runtime(); f.challenge.name = '5x 80+ Upgrade'; f.challenge.scoreRequirement = 6750;
+    if (issue === 'season') f.root.info.base.year = 26;
+    if (issue === 'initializing') f.root.info.base.initialized = false;
+    if (issue === 'cache') f.root.info.base.clubCache.status = 'loading';
+    expect(() => readFc27StreamlinedInputs(f.root)).toThrow('FSU_NOT_READY');
+    expect(f.calls).toEqual([]);
+  }
+});
+
 it('accepts a complete, explicitly active native squad with ID zero and protects starters, bench, reserves and manual locks', () => {
   const f = zeroSquadRuntime(), input = readFc27StreamlinedInputs(f.root);
   expect(input.policy).toMatchObject({ activeSquadId: 0, protectFsuLockedPlayers: true, protectActiveSquad: true });

@@ -52,6 +52,7 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
         entities.set(entity.id, entity);
       };
       const effectivePile = ref => ref.executionPile ?? ref.pile;
+      const selectedById = new Map(batch.refs.map(ref => [ref.id, ref]));
       const clubRefs = batch.refs.filter(ref => effectivePile(ref) === 'club');
       const transport = clubRefs.length ? await createTransport(root, { nativeReauth, onEntity }) : null;
       const ids = [...new Set(clubRefs.map(ref => ref.definitionId))];
@@ -64,15 +65,20 @@ export function createFc27StreamlinedValidator(root, { now = () => Date.now(),
           const rows = await transport.readPage({ start, count: 250, definitionIds });
           check();
           if (!Array.isArray(rows) || rows.length > 250) fail('FRESH_ENTITY_UNVERIFIED');
-          // EA may return another version alongside requested definitions.
-          // Validate its identity, but never use it as a selected entity.
+          // A targeted Club query may return additional physical copies/versions.
+          // Keep response/factory identity checks for every row, but only a
+          // selected entity's pile can authorize or veto this frozen batch.
+          const wrongSelectedPile = row => selectedById.has(row?.id)
+            && (row.pile !== 'club' || effectivePile(selectedById.get(row.id)) !== 'club');
           if (rows.some(row => !row || !integer(row.id, 1) || !integer(row.definitionId, 1)
-              || batch.refs.some(ref => ref.id === row.id && ref.definitionId !== row.definitionId)
-              || row.pile !== 'club' || entities.get(row.id)?.definitionId !== row.definitionId)) {
+              || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId
+              || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
             const error = Error('FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED');
             error.evidence = { phase: 'selected-club-read', rows: rows.length,
               unexpectedVersion: rows.filter(row => !definitionIds.includes(row?.definitionId)).length,
-              wrongPile: rows.filter(row => row?.pile !== 'club').length,
+              wrongPile: rows.filter(wrongSelectedPile).length,
+              identityMismatch: rows.filter(row => !row || !integer(row.id, 1) || !integer(row.definitionId, 1)
+                || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
               factoryMismatch: rows.filter(row => entities.get(row?.id)?.definitionId !== row?.definitionId).length };
             throw error;
           }

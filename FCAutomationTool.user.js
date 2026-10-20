@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.47
+// @version      27.0.48
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.47", at: Date.now(), status: 'started',
+    state = { version: "27.0.48", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26695,6 +26695,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "eaScoreCount",
     "catalogScoreCount",
     "responseBytes",
+    "wrongPileCount",
+    "identityMismatchCount",
+    "factoryMismatchCount",
     "cheapestPrice",
     "cheapestScore",
     "bestPrice",
@@ -27664,6 +27667,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     return text5;
   }
   function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+    if (reason === "FC27_STREAMLINED_FSU_NOT_READY") {
+      return "FSU \u7684\u5F53\u524D\u8D5B\u5B63\u3001\u521D\u59CB\u5316\u6216\u5E93\u5B58\u7F13\u5B58\u5C1A\u672A\u5C31\u7EEA\uFF0C\u5DF2\u6682\u505C\u540E\u7EED\u64CD\u4F5C\u3002\u8BF7\u786E\u8BA4 FSU \u589E\u5F3A\u811A\u672C\u5DF2\u542F\u7528\u4E14\u65E0\u91CD\u590D\u7248\u672C\uFF0C\u5237\u65B0 EA \u9875\u9762\u5E76\u7B49\u5E93\u5B58\u52A0\u8F7D\u5B8C\u6210\u540E\u91CD\u8BD5\uFF1B\u6301\u7EED\u51FA\u73B0\u65F6\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002\u5DF2\u786E\u8BA4\u7684\u8D21\u732E\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u52FF\u624B\u52A8\u91CD\u590D\u6295\u5165\u3002";
+    }
     if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
       const evidence = normalizeStreamlinedProtectionFailure(protection);
       const labels = {
@@ -28002,8 +28008,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
           add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
           if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
         } else if (result.reason) {
-          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
-          if (result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
+          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason) ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          if (["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason)) add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
         }
         return;
       }
@@ -28283,7 +28289,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
           node("status").textContent = stage ? `${stage} ${number2(p.completed)} / ${number2(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number2(p.nodes)} / ${number2(p.maxNodes)} \xB7 \u5019\u9009 ${number2(p.candidates)} \xB7 ${number2(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status;
+        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_FSU_NOT_READY" ? "FSU \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u6309\u4E0A\u65B9\u63D0\u793A\u68C0\u67E5\u540E\u91CD\u8BD5\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status;
         renderResult(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
@@ -31712,6 +31718,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
           entities.set(entity.id, entity);
         };
         const effectivePile = (ref) => ref.executionPile ?? ref.pile;
+        const selectedById = new Map(batch.refs.map((ref) => [ref.id, ref]));
         const clubRefs = batch.refs.filter((ref) => effectivePile(ref) === "club");
         const transport = clubRefs.length ? await createTransport(root, { nativeReauth, onEntity }) : null;
         const ids2 = [...new Set(clubRefs.map((ref) => ref.definitionId))];
@@ -31724,13 +31731,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
             const rows = await transport.readPage({ start, count: 250, definitionIds });
             check();
             if (!Array.isArray(rows) || rows.length > 250) fail28("FRESH_ENTITY_UNVERIFIED");
-            if (rows.some((row) => !row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId) || row.pile !== "club" || entities.get(row.id)?.definitionId !== row.definitionId)) {
+            const wrongSelectedPile = (row) => selectedById.has(row?.id) && (row.pile !== "club" || effectivePile(selectedById.get(row.id)) !== "club");
+            if (rows.some((row) => !row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
               const error2 = Error("FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED");
               error2.evidence = {
                 phase: "selected-club-read",
                 rows: rows.length,
                 unexpectedVersion: rows.filter((row) => !definitionIds.includes(row?.definitionId)).length,
-                wrongPile: rows.filter((row) => row?.pile !== "club").length,
+                wrongPile: rows.filter(wrongSelectedPile).length,
+                identityMismatch: rows.filter((row) => !row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
                 factoryMismatch: rows.filter((row) => entities.get(row?.id)?.definitionId !== row?.definitionId).length
               };
               throw error2;
@@ -32152,7 +32161,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
             assert();
             if (!Array.isArray(rows) || rows.length > 250) fail28("FRESH_ENTITY_UNVERIFIED");
             for (const row of rows) {
-              if (!row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || row.pile !== "club" || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail28("FRESH_ENTITY_UNVERIFIED");
+              if (!row || !integer15(row.id, 1) || !integer15(row.definitionId, 1) || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail28("FRESH_ENTITY_UNVERIFIED");
               seen.add(row.id);
               if (batch.refs.some((ref) => ref.id === row.id)) fail28("MATERIAL_STILL_PRESENT");
             }
@@ -32916,6 +32925,18 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
       if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
       if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict", "purchase-history-overlap"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
       for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer15(error2?.[key], 0, 1e9)) detail[key] = error2[key];
+      if (detail.reason === "FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED" && error2?.evidence?.phase === "selected-club-read") {
+        detail.mismatch = "selected-club-read";
+        for (const [source, target] of [
+          ["rows", "responseCount"],
+          ["unexpectedVersion", "foreignCount"],
+          ["wrongPile", "wrongPileCount"],
+          ["identityMismatch", "identityMismatchCount"],
+          ["factoryMismatch", "factoryMismatchCount"]
+        ]) {
+          if (integer15(error2.evidence[source], 0, 250)) detail[target] = error2.evidence[source];
+        }
+      }
       return detail;
     };
     const diagnose = (phase, status, record, batch, detail = {}) => {
@@ -34159,6 +34180,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
           mismatch: row.mismatch,
           cycleCountBefore: row.cycleCountBefore,
           cycleCountAfter: row.cycleCountAfter,
+          responseCount: row.responseCount,
+          foreignCount: row.foreignCount,
+          wrongPileCount: row.wrongPileCount,
+          identityMismatchCount: row.identityMismatchCount,
+          factoryMismatchCount: row.factoryMismatchCount,
           httpStatus: row.httpStatus,
           count: row.count,
           currentScore: row.currentScore,
@@ -34419,7 +34445,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.47" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.48" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34737,8 +34763,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.47"}`,
-    version: "27.0.47",
+    title: `FC Automation Tool ${"27.0.48"}`,
+    version: "27.0.48",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

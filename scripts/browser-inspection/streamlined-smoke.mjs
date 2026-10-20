@@ -378,6 +378,24 @@ async function exerciseStreamlinedProtectionBlocked(page) {
     const e = globalThis.protectionSmoke; return { writes: e.writes, quoteReads: e.quoteReads, execution: e.execution, phases: e.logs.map(row => row.phase) };
   }), { writes: 0, quoteReads: 0, execution: 0, phases: ['protection-lock-list', 'protection-slot-list', 'protection-active-state'] });
   await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-protection-blocked.png' });
+  await page.evaluate(() => {
+    globalThis.streamlinedMount.dispose();
+    const a = globalThis.StreamlinedSmoke, c = { ...a.challenge(), name: '5x 80+ Upgrade', targetScore: 6750, remainingScore: 6750 };
+    const session = a.createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }),
+      readInputs: () => { throw Error('FC27_STREAMLINED_FSU_NOT_READY'); }, get: async () => null,
+      set: async () => { throw Error('readiness must not write'); },
+      prices: { load: async () => { throw Error('readiness must not quote'); } },
+      createExecution: async () => { throw Error('readiness must not create execution'); } });
+    globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session,
+      readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
+  });
+  await page.getByRole('button', { name: 'FCAT 积分解题', exact: true }).click();
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
+  assert.match(await page.locator('[data-result]').innerText(), /FSU 增强脚本/);
+  assert.match(await page.locator('[data-status]').innerText(), /请按上方提示检查后重试/);
+  assert.equal(await page.locator('[data-contribute]').isVisible(), false);
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-fsu-not-ready.png' });
 }
 
 async function exerciseStreamlinedBatchedInventory(page) {

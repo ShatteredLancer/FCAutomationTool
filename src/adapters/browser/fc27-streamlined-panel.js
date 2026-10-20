@@ -91,6 +91,9 @@ export function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, 
 }
 
 export function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+  if (reason === 'FC27_STREAMLINED_FSU_NOT_READY') {
+    return 'FSU 的当前赛季、初始化或库存缓存尚未就绪，已暂停后续操作。请确认 FSU 增强脚本已启用且无重复版本，刷新 EA 页面并等库存加载完成后重试；持续出现时请导出诊断日志。已确认的贡献记录保留，请勿手动重复投入。';
+  }
   if (reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') {
     const evidence = normalizeStreamlinedProtectionFailure(protection);
     const labels = {
@@ -320,9 +323,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           add(output, 'div', streamlinedMarketMessage(result)).className = 'result-summary';
           if (result.marketError) add(output, 'small', `补卡候选读取失败：${result.marketError}`);
         } else if (result.reason) {
-          add(output, 'div', `未生成方案：${result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+          add(output, 'div', `未生成方案：${['FC27_STREAMLINED_PROTECTION_UNVERIFIED', 'FC27_STREAMLINED_FSU_NOT_READY'].includes(result.reason)
             ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = 'result-summary';
-          if (result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED') add(output, 'small', `${result.reason}${result.protectionFailure?.phase ? ` · ${result.protectionFailure.phase}` : ''}`);
+          if (['FC27_STREAMLINED_PROTECTION_UNVERIFIED', 'FC27_STREAMLINED_FSU_NOT_READY'].includes(result.reason)) add(output, 'small', `${result.reason}${result.protectionFailure?.phase ? ` · ${result.protectionFailure.phase}` : ''}`);
         }
         return;
       }
@@ -539,8 +542,10 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       if (serial !== opened) return;
       node('status').textContent = result.status === 'cancelled' ? '已停止。'
         : result.plan?.execution?.quoteLimited === true ? '部分报价可用：请核对库存消耗和价格，再确认是否执行。'
-        : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
-          ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason
+        : result.reason === 'FC27_STREAMLINED_FSU_NOT_READY'
+          ? 'FSU 尚未就绪，请按上方提示检查后重试。'
+          : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+            ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason
             ?? { ready: '方案已生成，尚未购买或贡献。', partial: '部分方案已生成，请核对材料与剩余需求。', blocked: '未生成可执行方案。' }[result.status] ?? result.status;
       renderResult(result);
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }

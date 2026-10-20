@@ -278,3 +278,45 @@ it('ignores extra returned versions but still requires every exact selected item
   await expect(createFc27StreamlinedValidator(f.root, { createTransport }).verify(f.plan, f.batch, 0))
     .resolves.toMatchObject({ fresh: true, count: 5 });
 });
+
+it.each(['other-version', 'same-version'])('ignores the pile of an unselected %s returned by the owned Club query', async version => {
+  const f = setup(), before = structuredClone(f.root.repositories.Item.club.items._collection);
+  f.state.players.push({ id: 999, resourceId: version === 'same-version' ? 101 : 1001 });
+  f.state.playerFactsById = { 999: { utasPile: 9 } };
+  f.state.clubQueryMode = 'bulk-extra';
+  await expect(createFc27StreamlinedValidator(f.root).verify(f.plan, f.batch, 0))
+    .resolves.toMatchObject({ fresh: true, count: 5, points: 100 });
+  expect(f.root.repositories.Item.club.items._collection).toEqual(before);
+});
+
+it.each(['wrong-pile', 'wrong-version', 'missing', 'factory-mismatch', 'duplicate'])('still rejects %s evidence when broader Club results are returned', async scenario => {
+  const f = setup(), original = transportFor(f);
+  const createTransport = async (root, options) => {
+    const transport = await original(root, options);
+    return { ...transport, async readPage(query) {
+      const rows = await transport.readPage(query);
+      const unrelated = { id: 999, definitionId: 101, pile: null };
+      options.onEntity(unrelated);
+      if (scenario === 'wrong-pile') rows[0].pile = null;
+      if (scenario === 'wrong-version') rows[0].definitionId = 777;
+      if (scenario === 'factory-mismatch') unrelated.definitionId = 777;
+      if (scenario === 'factory-mismatch') rows.push({ ...unrelated, definitionId: 778 });
+      if (scenario === 'duplicate') options.onEntity(unrelated);
+      return [...rows, unrelated];
+    } };
+  };
+  // The missing case must not be satisfied by another physical copy of the same version.
+  if (scenario === 'missing') {
+    const createMissing = async (_root, { onEntity }) => ({ getRequestCount: () => 1, async readPage() {
+      const rows = f.selected.slice(1).map(item => {
+        const raw = structuredClone(f.root.repositories.Item.club.items._collection[item.id]); onEntity(raw);
+        return { id: raw.id, definitionId: raw.definitionId, pile: 'club' };
+      });
+      onEntity({ id: 999, definitionId: 101 });
+      return [...rows, { id: 999, definitionId: 101, pile: null }];
+    } });
+    await expect(createFc27StreamlinedValidator(f.root, { createTransport: createMissing }).verify(f.plan, f.batch, 0))
+      .rejects.toThrow('MATERIAL_MISSING');
+  } else await expect(createFc27StreamlinedValidator(f.root, { createTransport }).verify(f.plan, f.batch, 0))
+    .rejects.toThrow(scenario === 'duplicate' ? 'IDENTITY_CONFLICT' : 'FRESH_ENTITY_UNVERIFIED');
+});

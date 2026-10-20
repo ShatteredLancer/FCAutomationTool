@@ -10,6 +10,19 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains material failure counts through export and reload without raw entity evidence', async () => {
+  const t = harness();
+  await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-validation',
+    status: 'blocked', reason: 'FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED', mismatch: 'selected-club-read',
+    responseCount: 21, foreignCount: 3, wrongPileCount: 1, identityMismatchCount: 0, factoryMismatchCount: 0,
+    evidence: { id: 987654 }, token: 'private-token' });
+  const restored = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await restored.exportPayload();
+  expect(payload.transactionResults.at(-1)).toMatchObject({ mismatch: 'selected-club-read',
+    responseCount: 21, foreignCount: 3, wrongPileCount: 1, identityMismatchCount: 0, factoryMismatchCount: 0 });
+  expect(JSON.stringify(payload)).not.toMatch(/evidence|987654|private-token/);
+});
+
 it('retains bounded cycle counters and proof class, never raw completion or account data', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-readback',

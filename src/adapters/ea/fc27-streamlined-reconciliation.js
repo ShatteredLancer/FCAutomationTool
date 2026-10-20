@@ -42,7 +42,10 @@ export function createFc27StreamlinedReconciler(root, { now = () => Date.now(),
           assert();
           if (!Array.isArray(rows) || rows.length > 250) fail('FRESH_ENTITY_UNVERIFIED');
           for (const row of rows) {
-            if (!row || !integer(row.id, 1) || !integer(row.definitionId, 1) || row.pile !== 'club' || seen.has(row.id)
+            // Extra query results cannot veto exact consumed-ID absence by
+            // pile alone. Any selected ID still present, in any returned pile,
+            // blocks confirmation below; malformed/conflicting IDs still stop.
+            if (!row || !integer(row.id, 1) || !integer(row.definitionId, 1) || seen.has(row.id)
                 || batch.refs.some(ref => ref.id === row.id && ref.definitionId !== row.definitionId)) fail('FRESH_ENTITY_UNVERIFIED');
             seen.add(row.id);
             if (batch.refs.some(ref => ref.id === row.id)) fail('MATERIAL_STILL_PRESENT');

@@ -78,6 +78,8 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       localReason: row.localReason, attempt: row.attempt, attemptLimit: row.attemptLimit, waitMs: row.waitMs,
       methodPath: row.methodPath, observedHash: row.observedHash, expectedHash: row.expectedHash,
       mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
+      responseCount: row.responseCount, foreignCount: row.foreignCount, wrongPileCount: row.wrongPileCount,
+      identityMismatchCount: row.identityMismatchCount, factoryMismatchCount: row.factoryMismatchCount,
       httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
     catch { /* Diagnostic only. */ }
   };
