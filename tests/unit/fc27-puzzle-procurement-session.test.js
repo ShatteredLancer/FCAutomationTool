@@ -4,6 +4,8 @@ import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procur
 import * as procurement from '../../src/fc27/puzzle-procurement.js';
 import clubAffinity from '../fixtures/fc27-puzzle-club-affinity-2026-10-09.json';
 import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
+import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
+import { createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
 function fixture() {
   const input = puzzleFillFixture(); input.challenge.rawRequirements[1].pairs[0].values = [33];
@@ -30,6 +32,102 @@ function publicPrices(x, priceOf) {
         fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null,
       }])) }])) }));
 }
+
+it.each([250, 251, 256, 257])('bounds %i owned definitions to the real 250-ID public loader contract', async count => {
+  const x = fixture(); x.input.inventory.items[10].positions = [5];
+  const template = x.input.inventory.items[0];
+  x.input.inventory.items = Array.from({ length: count }, (_, index) => ({ ...template, id: index + 1, definitionId: index + 101 }));
+  const preview = previewFc27PuzzleSquad(x.input);
+  const reader = createGalleryReferencePrices({ now: () => x.now,
+    readFutgg: async ids => ids.map(definitionId => ({ definitionId, price: 200 })) });
+  const loadPublicPrices = vi.fn((ids, options) => reader.load(ids, { ...options, platform: 'pc', sources: ['futgg'], policy: { source: 'futgg' } }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).optimizeOwned(x.input, preview);
+  expect(result).toMatchObject({ materialValue: 2200 });
+  expect(result.valueQuotedCount).toBe(250);
+  expect(result.valueCoverageComplete).toBe(count === 250);
+  expect(loadPublicPrices.mock.calls[0][0]).toHaveLength(250);
+  expect(x.transport.readCatalogPage).not.toHaveBeenCalled();
+});
+
+it.each(['missing', 'failed', 'expired'])('preserves a cash-feasible plan when owned values are %s', async mode => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const ordinary = publicPrices(x, id => id === 101 && mode === 'missing' ? null : 200);
+  let calls = 0;
+  const loadPublicPrices = vi.fn(async (...args) => {
+    calls++;
+    if (calls === 1 && mode === 'failed') throw Error('FC27_PUBLIC_PRICE_UNAVAILABLE');
+    const snapshot = await ordinary(...args);
+    if (calls === 1 && mode === 'expired') for (const quote of Object.values(snapshot.references[101].quotes)) {
+      quote.fetchedAt = x.now - 300001; quote.expiresAt = x.now - 1;
+    }
+    return snapshot;
+  });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices })
+    .plan(x.input, { optimizeMaterialValue: true });
+  expect(result.status).toBe('suggested');
+  expect(result.plans[0]).toMatchObject({ purchaseCount: 1, estimatedCost: 200, materialValue: null,
+    valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' });
+  expect(result.diagnostics).toMatchObject({ objective: 'additional-coins', scopeTruncated: true });
+  expect(result.diagnostics.unknownCount).toBeGreaterThan(0);
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('retains a feasible plan without a stale total when owned values expire during catalog discovery', async () => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const read = x.transport.readCatalogPage.getMockImplementation();
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    const result = await read(query); x.now += 300001; return result;
+  });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, now: () => x.now,
+    loadPublicPrices: publicPrices(x, () => 200) }).plan(x.input, { optimizeMaterialValue: true });
+  expect(result).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1, estimatedCost: 200,
+    materialValue: null, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' }],
+    diagnostics: { scopeTruncated: true, objective: 'unverified-material-value', optimalWithinPool: false } });
+  expect(result.plans[0].purchases[0].priceReference.quotes.futgg.expiresAt).toBeGreaterThan(x.now);
+});
+
+it('optimizes total material value while preserving the separately priced cash purchase plan', async () => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const template = (await x.transport.readCatalogPage({})).entries[0];
+  x.transport.readCatalogPage.mockClear();
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27',
+    source: 'ea-defid', query, observedAt: x.now, entries: [901, 902, 903].map(definitionId => ({ ...template, definitionId })) }));
+  const session = createFc27PuzzleProcurementSession({ ...x.options,
+    loadPublicPrices: publicPrices(x, id => id === 101 ? 10000 : 200) });
+  const result = await session.plan(x.input, { optimizeMaterialValue: true, quoteCeiling: 300 });
+  expect(result.status).toBe('suggested');
+  const plan = result.plans[0];
+  expect(plan.materialValue).toBe(2200);
+  expect(plan.selectedOwned.some(item => item.definitionId === 101)).toBe(false);
+  expect(plan.estimatedCost).toBe(plan.purchaseCount * 200);
+  expect(plan.estimatedCost + plan.inventoryValue).toBe(plan.materialValue);
+  expect(plan.purchases.every(item => item.estimatedUnitPrice <= 300)).toBe(true);
+  expect(result.diagnostics.objective).toBe('material-value');
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+});
+
+it('uses the third linked quality page and fully validates an all-market squad with no owned candidates', async () => {
+  const x = fixture(); x.input.inventory.items = []; x.input.policy.maxRating = 82;
+  x.input.challenge.rawRequirements = [
+    { count: -1, scope: 0, pairs: [{ key: 3, values: [2] }] },
+    { count: 6, scope: 0, pairs: [{ key: 17, values: [3] }] },
+    { count: -1, scope: 0, pairs: [{ key: 35, values: [22] }] },
+  ];
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27',
+    source: 'ea-defid', query, observedAt: x.now,
+    entries: Array.from({ length: query.league ? 5 : 20 }, (_, i) => ({ definitionId: (query.league ? 3000 : query.level === 'gold' ? 2000 : 1000) + i,
+      rating: query.level === 'gold' ? 78 : 70, rarity: 0, teamId: i + 1, nationId: query.league || query.level === 'gold' ? 1 : i + 100,
+      leagueId: query.league || (query.level === 'gold' ? 99 : i + 100), positions: [query.league || query.level === 'gold' ? 5 : 6],
+      groups: [], special: false, evolution: false, cosmetic: false })) }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options,
+    loadPublicPrices: publicPrices(x, () => 200) }).plan(x.input, { optimizeMaterialValue: true });
+  expect(result.status).toBe('suggested');
+  expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(3);
+  expect(x.transport.readCatalogPage.mock.calls[2][0]).toEqual({ start: 0, count: 20, level: 'silver', league: 99 });
+  expect(result.plans[0]).toMatchObject({ purchaseCount: 11, selectedOwned: [], estimatedCost: 2200, materialValue: 2200 });
+  expect(result.plans[0].teamFacts.chemistry).toBeGreaterThanOrEqual(22);
+  expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
+});
 
 it('replays the linked-club 10-bronze/1-silver shortage through public pricing and cache reuse', async () => {
   const x = fixture();

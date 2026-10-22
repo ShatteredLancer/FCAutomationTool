@@ -1,5 +1,6 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
-  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates } from './puzzle-procurement.js';
+  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
+  puzzleOwnedValueCandidates, refineFc27PuzzleOwnedValue } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
@@ -71,8 +72,47 @@ const failureDetails = (reason, value) => {
 // The caller holds the account lock across this operation.
 export function createFc27PuzzleProcurementSession({ createTransport, get, set, loadPublicPrices = null, now = Date.now } = {}) {
   let busy = false;
-  return Object.freeze({ async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
-    onProgress = null } = {}) {
+  const ownedValues = async (input, { assertCurrent, onProgress, preferred = [] }) => {
+    const safe = puzzleOwnedValueCandidates(input);
+    const byDefinition = new Map([...safe.filter(item => preferred.includes(item.id)), ...safe]
+      .map(item => [item.definitionId, item]));
+    const rows = [...byDefinition.values()].slice(0, 250);
+    if (!rows.length) return { prices: new Map(), approval: null, candidateCount: safe.length };
+    const snapshot = await loadPublicPrices(rows.map(item => item.definitionId), { purpose: 'puzzle', rows, deadlineAt: now() + 90000,
+      isCurrent: () => { assertCurrent(); return true; }, onProgress });
+    assertCurrent();
+    const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? 'console' : null;
+    const approval = createPurchasePriceApproval({ scope: traditionalJournalScope(input.context), season: '27', platform,
+      definitionIds: rows.map(item => item.definitionId), policy: snapshot.policy, references: snapshot.references, now: now() });
+    return { prices: new Map(approval.rows.filter(row => row.estimate !== null).map(row => [row.definitionId, row.estimate])),
+      approval, candidateCount: safe.length };
+  };
+  return Object.freeze({
+  async optimizeOwned(input, preview, { assertCurrent = () => {}, onProgress = null } = {}) {
+    if (!loadPublicPrices || preview?.status !== 'preview' || busy) return preview;
+    busy = true;
+    try {
+      assertCurrent();
+      const valued = await ownedValues(input, { assertCurrent,
+        onProgress: value => onProgress?.({ phase: 'quote-read', quoteCompleted: value.index, quoteTotal: value.total }),
+        preferred: preview.selected.map(item => item.id) });
+      const result = await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
+      assertCurrent();
+      if (valued.approval?.rows.some(row => row.estimate !== null && row.quotes[valued.approval.policy.source].expiresAt <= now())) {
+        return { ...preview, materialValue: null, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' };
+      }
+      return { ...result, priceSource: valued.approval?.policy.source ?? null,
+        valueExpiresAt: valued.prices.size ? Math.min(...valued.approval.rows.filter(row => row.estimate !== null)
+          .map(row => row.quotes[valued.approval.policy.source].expiresAt)) : null,
+        valueQuotedCount: valued.prices.size,
+        valueCoverageComplete: valued.prices.size === new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size };
+    } catch (error) {
+      assertCurrent();
+      return { ...preview, materialValue: null, valueReason: safeReason(error) };
+    } finally { busy = false; }
+  },
+  async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
+    onProgress = null, optimizeMaterialValue = false, materialCeiling = null } = {}) {
     if (busy) return stop('FC27_PURCHASE_BUSY');
     busy = true;
     let requests = 0; let cacheHits = 0; let transport;
@@ -96,6 +136,9 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
     const finish = result => ({ ...result, quoteCeiling, requests, cacheHits, diagnostics: { ...diagnostics, cacheHits } });
     try {
       if (!isPuzzleQuoteCeiling(quoteCeiling)) return finish(stop('FC27_PURCHASE_PRICE_LIMIT_INVALID'));
+      if (materialCeiling !== null && (!id(materialCeiling) || materialCeiling > 11 * MAX_PUZZLE_QUOTE_PRICE)) {
+        return finish(stop('FC27_MARKET_POLICY_INVALID'));
+      }
       const scope = traditionalJournalScope(input.context);
       assertCurrent();
       reportProgress();
@@ -166,15 +209,64 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const searchBudget = seed.status === 'ready' ? 20000 : 50000;
       const unavailable = new Set(); let hadPlans = false;
       const references = new Map(); let publicPolicy = null;
+      const valueRequested = optimizeMaterialValue === true && typeof loadPublicPrices === 'function';
+      let totalValueMode = valueRequested;
+      const jointSearch = totalValueMode || seed.status !== 'ready';
+      let materialPrices = null;
+      if (totalValueMode) {
+        diagnostics.stage = 'quote-read'; diagnostics.objective = 'material-value';
+        try {
+          const valued = await ownedValues(input, { assertCurrent, onProgress: value => {
+            quoteCompleted = value.index; quoteTotal = value.total; reportProgress();
+          } });
+          const allOwned = new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size;
+          diagnostics.unknownCount = allOwned - valued.prices.size;
+          totalValueMode = diagnostics.unknownCount === 0;
+          materialPrices = totalValueMode ? valued.prices : null;
+          if (valued.approval) {
+            publicPolicy = valued.approval.policy;
+            for (const row of valued.approval.rows) references.set(row.definitionId, row);
+          }
+        } catch (error) {
+          assertCurrent(); totalValueMode = false; materialPrices = null;
+          diagnostics.unknownCount = new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size;
+          diagnostics.localReason = safeReason(error);
+        }
+        diagnostics.scopeTruncated = !totalValueMode;
+        diagnostics.objective = totalValueMode ? 'material-value' : 'additional-coins';
+      }
+      const planCost = plan => totalValueMode ? plan.materialValue : plan.estimatedCost;
+      const refinementPlan = plan => !totalValueMode ? plan : { ...plan, purchases: [...plan.purchases,
+        ...plan.selectedOwned.map(ref => ({ ...puzzleOwnedValueCandidates(input).find(item => item.id === ref.id),
+          estimatedUnitPrice: materialPrices.get(ref.definitionId) }))] };
+      if (jointSearch) diagnostics.route = 'joint';
       const finishIncumbent = () => {
         assertCurrent();
         if (loadPublicPrices && incumbent.some(plan => plan.purchases.some(card => {
           const quote = references.get(card.definitionId)?.quotes?.[publicPolicy.source];
           return !quote || quote.fetchedAt > now() || quote.expiresAt <= now();
         }))) throw new Error('FC27_BUY_REFERENCE_PRICE_EXPIRED');
+        if (totalValueMode) {
+          const expired = new Set(incumbent.flatMap(plan => plan.selectedOwned).filter(card => {
+            const quote = references.get(card.definitionId)?.quotes?.[publicPolicy.source];
+            return !quote || quote.fetchedAt > now() || quote.expiresAt <= now();
+          }).map(card => card.definitionId));
+          if (expired.size) {
+            totalValueMode = false; diagnostics.scopeTruncated = true;
+            diagnostics.unknownCount = expired.size; diagnostics.objective = 'unverified-material-value';
+            diagnostics.localReason = 'FC27_BUY_REFERENCE_PRICE_EXPIRED';
+            diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
+            incumbent = incumbent.map(plan => ({ ...plan, materialValue: null, inventoryValue: null,
+              valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' }));
+          }
+        }
         diagnostics.estimatedCost = incumbent[0].estimatedCost;
+        diagnostics.materialValue = incumbent[0].materialValue ?? null;
+        diagnostics.inventoryValue = incumbent[0].inventoryValue ?? null;
         return finish({ status: 'suggested', reason: 'FC27_PURCHASE_PLAN_PRICED', executable: false,
           liveExecutionEnabled: false, plans: incumbent.slice(0, 3).map(plan => ({ ...plan,
+            ...(valueRequested && !totalValueMode ? { materialValue: null, inventoryValue: null,
+              valueReason: plan.valueReason ?? 'FC27_PUZZLE_VALUE_INCOMPLETE' } : {}),
             conceptPlan: prepareFc27PuzzleConceptPlan({ challenge: input.challenge, plan: { ...plan, status: 'preview',
               setId: input.challenge.setId, challengeId: input.challenge.id } }) })), queries: usedQueries,
           seedChemistry: seed.teamFacts?.chemistry ?? null, requiredChemistry: seed.requiredChemistry ?? null,
@@ -246,15 +338,15 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           // a deterministic share; the final lane gets the remainder.
           const remainingLanes = Math.max(1, 4 - usedQueries.length);
           const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / remainingLanes));
-          const searchOptions = loadPublicPrices ? { costCeiling: incumbent?.[0].estimatedCost ?? null,
-            ...(seed.status === 'ready' ? { maxChecks: passBudget } : { maxNodes: passBudget }) } : {};
+          const searchOptions = loadPublicPrices ? { costCeiling: incumbent ? planCost(incumbent[0]) : totalValueMode ? materialCeiling : null,
+            ...(jointSearch ? { maxNodes: passBudget, materialPrices } : { maxChecks: passBudget }) } : {};
           const refining = incumbent !== null;
           if (refining) diagnostics.refinementPasses++;
           const searchProgress = value => reportProgress(loadPublicPrices ? { ...value,
             nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget,
             ...(seed.status === 'ready' ? { checks: searchSpent + (value.checks ?? 0) } : {}) } : value);
           reportProgress();
-          const suggestion = seed.status === 'ready' ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
+          const suggestion = !jointSearch ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
             ...searchOptions, assertCurrent, prices, onProgress: searchProgress })
             : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent, prices,
               priceSource: publicPolicy?.source ?? null,
@@ -324,12 +416,12 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
                 priceReference: references.get(item.definitionId), priceSource: publicPolicy.source }
                 : { observedBuyNow: quotes.get(item.definitionId).price }), quotedAt: quotes.get(item.definitionId).observedAt })),
             estimatedCost: plan.purchases.reduce((sum, item) => sum + quotes.get(item.definitionId).price, 0) }))
-            .sort((a, b) => a.estimatedCost - b.estimatedCost || a.purchaseCount - b.purchaseCount);
+            .sort((a, b) => planCost(a) - planCost(b) || a.estimatedCost - b.estimatedCost || a.purchaseCount - b.purchaseCount);
           if (priced.length) {
             diagnostics.initialEstimatedCost ??= priced[0].estimatedCost;
-            if (!incumbent || priced[0].estimatedCost < incumbent[0].estimatedCost) incumbent = priced;
+            if (!incumbent || planCost(priced[0]) < planCost(incumbent[0])) incumbent = priced;
             diagnostics.estimatedCost = incumbent[0].estimatedCost;
-            if (!loadPublicPrices || !refinementCards(incumbent[0]).length) return finishIncumbent();
+            if (!loadPublicPrices || !refinementCards(refinementPlan(incumbent[0])).length) return finishIncumbent();
             break;
           }
           if (!removed) break;
@@ -341,7 +433,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
             return finishIncumbent();
           }
-          pendingQueries = [...refinementQueries(incumbent[0], pages, usedQueries), ...pendingQueries]
+          pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries), ...pendingQueries]
             .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
               && all.findIndex(other => same(other, candidate)) === index);
         } else if (seed.status !== 'ready' && usedQueries.length < 3) {

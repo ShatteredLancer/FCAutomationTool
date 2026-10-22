@@ -21,7 +21,7 @@ const fsuBuyBody = fsuSource.slice(fsuBuyStart, fsuSource.indexOf('events.buyPla
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1000000); });
 afterEach(() => vi.useRealTimers());
 
-function fixture({ bricks = [], gold = false, marquee = false, diagnosticLog } = {}) {
+function fixture({ bricks = [], gold = false, marquee = false, diagnosticLog, publicPrices } = {}) {
   const x = executionRuntime(); const { root, state, challenge } = x;
   state.players = state.players.slice(0, 11 - bricks.length);
   root.repositories.Item.club.items._collection = {};
@@ -86,7 +86,7 @@ function fixture({ bricks = [], gold = false, marquee = false, diagnosticLog } =
     currentController: { currentController: controller },
   } }) });
   const data = new Map();
-  const restart = () => createFc27AcceptanceSession({ root, liveEnabled: true, diagnosticLog,
+  const restart = () => createFc27AcceptanceSession({ root, liveEnabled: true, diagnosticLog, publicPrices,
     gmRequest: options => options.onload({ status: 200, responseText: JSON.stringify({ data:
       Array.from({ length: 32 }, (_, i) => ({ resource_id: 901 + i, ID: 101 + i, Player_Resource: 901 + i, LCPrice: 200 })) }) }),
     gmGetValue: async (key, fallback) => structuredClone(data.get(key) ?? fallback),
@@ -112,19 +112,52 @@ it('runs the real page reader, planner, session and provider with one selected-C
   expect([...x.data.values()].find(value => value?.kind === 'puzzle-fill')).toMatchObject({ phase: 'saved', submitted: false });
 });
 
+it('keeps the native owned save contract and reports total material value after public-price refinement', async () => {
+  const publicPrices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId, season: '27', platform: 'pc',
+      quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source,
+        definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: Date.now(),
+        sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
+  const x = fixture({ publicPrices });
+  expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false,
+    materialValue: 2200, inventoryValue: 2200 });
+  expect(publicPrices.load.mock.calls.length).toBeGreaterThanOrEqual(1);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.some(call => call.kind === 'bid')).toBe(false);
+});
+
+it('does not display an expired owned baseline value after a failed market comparison', async () => {
+  let loads = 0;
+  const publicPrices = { load: vi.fn(async ids => {
+    if (++loads === 2) vi.setSystemTime(Date.now() + 300001);
+    return { policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId, {
+      definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, {
+        schema: 2, source, definitionId, season: '27', platform: 'pc', price: 200,
+        fetchedAt: Date.now(), sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) };
+  }) };
+  const x = fixture({ publicPrices });
+  const result = await x.fill();
+  expect(loads).toBeGreaterThanOrEqual(2);
+  expect(result).toMatchObject({ status: 'filled', saved: true, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' });
+  expect(result.materialValue).toBeUndefined();
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+});
+
 it('exports native Puzzle search and pre-request market failures without raw inventory or account data', async () => {
   const store = new Map();
   const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
     gmSetValue: (key, value) => store.set(key, value), version: '27.0.4' });
   const x = fixture({ diagnosticLog });
   const removed = x.state.players.pop(); delete x.root.repositories.Item.club.items._collection[removed.id];
+  x.root.info.lock = [x.state.players[0].id];
   x.root.UTHttpRequest = function unreviewedRequest() { throw new Error('must not run'); };
   expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_METHOD_0_CHANGED',
     purchaseSuggestion: { reason: 'FC27_MARKET_METHOD_0_CHANGED', requests: 0 } });
   const payload = await diagnosticLog.exportPayload();
   expect(payload.entries).toEqual(expect.arrayContaining([
     expect.objectContaining({ area: 'puzzle', event: 'solve-result', setId: 4, challengeId: 16,
-      reason: 'FC27_MARKET_METHOD_0_CHANGED', safeCandidates: 10 }),
+      reason: 'FC27_MARKET_METHOD_0_CHANGED', safeCandidates: 9, inventoryCount: 10, filteredInventoryCount: 1 }),
+    expect.objectContaining({ area: 'puzzle', event: 'inventory-filter', source: 'locked-or-unknown', count: 1 }),
     expect.objectContaining({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_MARKET_METHOD_0_CHANGED',
       source: 'transport', requests: 0, catalogAttempts: 0, quoteAttempts: 0 }),
   ]));

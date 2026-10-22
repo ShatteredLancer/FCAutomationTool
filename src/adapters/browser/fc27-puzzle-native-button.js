@@ -29,7 +29,7 @@ const sameTarget = (a, b) => !!(a && b && a.setId === b.setId && a.challengeId =
 const resultText = result => {
   if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
   if (result?.reason === 'FC27_BUY_DRAFT_ACTIVE') return '此阵容已有确认购买的卡；可继续批量购买剩余概念卡，或在原生页面提交已完成的阵容。';
-  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。尚未购买或提交 SBC；该建议不保证全市场最低价。`;
+  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。${Number.isSafeInteger(result.materialValue) ? `整套材料估值 ${result.materialValue} 金币，其中现有卡 ${result.inventoryValue} 金币；按材料总价值优化。` : result.valueReason ? '库存估值不完整，本方案仅列新增购卡支出，不把未知市值视为0。' : ''}尚未购买或提交 SBC；该建议不保证全市场最低价。`;
   const purchase = result?.purchaseSuggestion;
   if (purchase?.reason === 'FC27_PURCHASE_CACHE_EXPIRED') return '补卡资料或报价已过期，本次未采用旧价格、未再次请求或购买；需要更新补卡资料。';
   if (purchase?.reason === 'FC27_MARKET_HTTP_429') return 'EA 市场请求限流，本次已停止并记录，不会自动重试或购买。';
@@ -39,7 +39,7 @@ const resultText = result => {
     return `补卡建议：${cards}。共 ${plan.purchaseCount} 张，预计新增购卡支出 ${plan.estimatedCost} 金币（不含现有卡市值，不保证全市场最低价）；补卡方案化学 ${plan.teamFacts.chemistry}，本地复核满足全部条件。尚未购买，需批准购买及使用这些卡后重新验阵。`;
   }
   if (result?.status === 'filled' && result.restored === true) return '已恢复之前保存的阵容，未重复保存或提交 SBC。';
-  if (result?.status === 'filled' && result.saved === true) return '阵容已保存，未提交 SBC。';
+  if (result?.status === 'filled' && result.saved === true) return `阵容已保存，未提交 SBC。${Number.isSafeInteger(result.materialValue) ? `整套库存材料估值 ${result.materialValue} 金币；新增购卡支出 0；已进行有界成本优化，不保证全市场最低价。` : result.valueReason ? '材料估值不完整，本次保留原合规方案，未按零估值选材。' : ''}`;
   if (result?.httpStatus === 429 || result?.reason === 'FC27_CLUB_HTTP_429') return 'EA 请求限流，本次已停止，没有自动重试。';
   if (result?.reason === 'FC27_CATALOG_READ_UNCONFIRMED' || result?.reason === 'FC27_CATALOG_CACHE_UNVERIFIED') {
     return 'SBC 需求记录不可用，请进入目标子阵后使用解题填充。';

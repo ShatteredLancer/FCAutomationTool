@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchases,
-  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchases } from '../../src/fc27/puzzle-procurement.js';
+  planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchases, refineFc27PuzzleOwnedValue } from '../../src/fc27/puzzle-procurement.js';
+import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { marketFixture, marketRow } from '../helpers/fc27-market-fixture.js';
 import { puzzleCostFixture } from '../helpers/fc27-puzzle-cost-fixture.js';
 
@@ -35,6 +36,56 @@ function fixture() {
     positions:[5],groups:[],special:false,evolution:false,cosmetic:false};
   return {input,card};
 }
+
+it('compares owned market value plus added spend instead of treating a valuable owned card as free', () => {
+  const input = marketFixture();
+  const prices = new Map(input.catalog.entries.map(item => [item.definitionId, 200]));
+  const materialPrices = new Map([[101, 10000], [102, 200]]);
+  const result = suggestFc27PuzzleJointPurchases(input, input.catalog.entries, { prices, materialPrices });
+  expect(result.status).toBe('suggested');
+  expect(result.materialValue).toBe(600);
+  expect(result.plans[0].selectedOwned.some(item => item.definitionId === 101)).toBe(false);
+  expect(result.estimatedCost).toBe(result.plans[0].purchaseCount * 200);
+  expect(result.materialValue).toBe(result.estimatedCost + result.plans[0].inventoryValue);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(suggestFc27PuzzleJointPurchases(input, input.catalog.entries, { prices }).estimatedCost).toBe(200);
+  materialPrices.delete(101);
+  const missing = suggestFc27PuzzleJointPurchases(input, input.catalog.entries, { prices, materialPrices });
+  expect(missing.plans[0].selectedOwned.some(item => item.definitionId === 101)).toBe(false);
+  expect(missing.materialValue).toBe(600);
+});
+
+it('refines an owned-only feasible squad by material value without introducing purchases', async () => {
+  const input = puzzleFillFixture();
+  input.inventory.items.push({ ...input.inventory.items[0], id: 80, definitionId: 180 });
+  const preview = previewFc27PuzzleSquad(input);
+  const values = new Map(input.inventory.items.map(item => [item.definitionId, item.id === 1 ? 10000 : 200]));
+  const result = await refineFc27PuzzleOwnedValue(input, preview, values);
+  expect(result.status).toBe('preview');
+  expect(result.initialMaterialValue).toBe(12000);
+  expect(result.materialValue).toBe(2200);
+  expect(result.selected).toHaveLength(11);
+  expect(result.selected.every(item => !item.catalogRef && item.id !== 1)).toBe(true);
+  expect(result.estimatedCost).toBeUndefined();
+  values.delete(preview.selected[0].definitionId);
+  expect(await refineFc27PuzzleOwnedValue(input, preview, values)).toMatchObject({
+    selected: preview.selected, materialValue: null, valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' });
+});
+
+it('uses public league links for a third mixed-quality lane when no owned card is eligible', () => {
+  const { input, card } = fixture();
+  input.policy.maxRating = 82;
+  input.inventory.items = [];
+  input.challenge.rawRequirements = [marketRow(3, 2), marketRow(17, 3, 6), marketRow(35, 22)];
+  const usedQueries = ['silver', 'gold'].map(level => ({ start: 0, count: 20, level }));
+  const entries = Array.from({ length: 40 }, (_, index) => ({ ...card,
+    definitionId: 2000 + index, rating: index < 20 ? 70 : 78,
+    leagueId: index < 20 ? 100 + index : index < 28 ? 99 : 200 + index }));
+  const route = planFc27PuzzleShortageQueries(input, entries, { usedQueries });
+  expect(route.queries).toHaveLength(3);
+  expect(route.queries).toContainEqual({ start: 0, count: 20, level: 'silver', league: 99 });
+  expect(input.inventory.items).toEqual([]);
+});
 
 it.each([false, true])('accepts only strictly cheaper plans under an incumbent cost ceiling (joint=%s)', joint => {
   const { input, card } = fixture();

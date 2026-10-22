@@ -78,6 +78,14 @@ it('labels a concept estimate as incremental purchases, not full material value'
   expect(message).toContain('不保证全市场最低价');
 });
 
+it('shows total material value separately from additional purchases and existing inventory', () => {
+  const message = formatFc27PuzzleNativeResult({ status: 'concept-filled', purchaseCount: 2, estimatedCost: 400,
+    inventoryValue: 1800, materialValue: 2200 });
+  expect(message).toContain('新增购卡支出 400');
+  expect(message).toContain('整套材料估值 2200');
+  expect(message).toContain('现有卡 1800');
+});
+
 it.each(['cache', 'request'])('explains a %s 401 and the user-triggered recovery without claiming login expired', source => {
   const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE', purchaseSuggestion: {
     status: 'blocked', reason: 'FC27_MARKET_HTTP_401', diagnostics: {
