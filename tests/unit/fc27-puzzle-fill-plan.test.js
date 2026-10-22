@@ -40,6 +40,16 @@ it('revalidates the fixed eleven without trusting cached preview success or expo
   expect(x.plan.items[0].rating).toBe(60);
 });
 
+it('rejects a newly protected member before save without replacing the frozen selection', () => {
+  const x = fixture();
+  x.input.policy.lockedItemIds = []; x.input.policy.activeSquadItemIds = [];
+  const protectedPlan = prepareFc27PuzzleFillPlan(x.input, x.preview);
+  expect(protectedPlan.status).toBe('prepared');
+  x.input.policy.activeSquadItemIds = [protectedPlan.selected[0].id];
+  expect(validateFc27PuzzleFillPlan(protectedPlan, x.input, x.fresh).reason)
+    .toBe('FC27_PUZZLE_FILL_INPUTS_CHANGED');
+});
+
 it.each(['missing', 'version', 'substitute', 'duplicate', 'position', 'nation', 'rarity', 'tradeable', 'evolution', 'protected', 'state'])
 ('rejects changed %s before saving even if another local solution exists', kind => {
   const x = fixture();

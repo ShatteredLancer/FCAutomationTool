@@ -27,6 +27,7 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
     resolveDir: root, sourcefile: 'streamlined-inspection.js' }, bundle: true, write: false,
     metafile: true, format: 'iife', globalName: 'FC27StreamlinedRead', target: 'chrome120' });
   const allowed = new Set(['streamlined-inspection.js', 'src/adapters/ea/fc27-streamlined-read.js',
+    'src/adapters/ea/fc27-protection-read.js',
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js',
     'src/adapters/ea/fc27-club-read.js', 'src/fc27/prelaunch-contract.js',
     'src/domain/player-rarity.js',

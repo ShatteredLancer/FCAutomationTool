@@ -29,14 +29,14 @@ const sameTarget = (a, b) => !!(a && b && a.setId === b.setId && a.challengeId =
 const resultText = result => {
   if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
   if (result?.reason === 'FC27_BUY_DRAFT_ACTIVE') return '此阵容已有确认购买的卡；可继续批量购买剩余概念卡，或在原生页面提交已完成的阵容。';
-  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡，观察总价 ${result.estimatedCost} 金币。尚未购买或提交 SBC；FCAT 批量购买接线尚未完成。`;
+  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。尚未购买或提交 SBC；该建议不保证全市场最低价。`;
   const purchase = result?.purchaseSuggestion;
   if (purchase?.reason === 'FC27_PURCHASE_CACHE_EXPIRED') return '补卡资料或报价已过期，本次未采用旧价格、未再次请求或购买；需要更新补卡资料。';
   if (purchase?.reason === 'FC27_MARKET_HTTP_429') return 'EA 市场请求限流，本次已停止并记录，不会自动重试或购买。';
   if (purchase?.status === 'suggested' && purchase.plans?.length) {
     const plan = purchase.plans[0];
     const cards = plan.purchases.map(item => `${item.displayName && /[\p{L}\p{N}]/u.test(item.displayName) ? item.displayName : '球员'}（${item.rating} 分，版本 ${item.definitionId}），观察价 ${item.observedBuyNow}`).join('；');
-    return `补卡建议：${cards}。共 ${plan.purchaseCount} 张，约 ${plan.estimatedCost} 金币；补卡方案化学 ${plan.teamFacts.chemistry}，本地复核满足全部条件。尚未购买，需批准购买及使用这些卡后重新验阵。`;
+    return `补卡建议：${cards}。共 ${plan.purchaseCount} 张，预计新增购卡支出 ${plan.estimatedCost} 金币（不含现有卡市值，不保证全市场最低价）；补卡方案化学 ${plan.teamFacts.chemistry}，本地复核满足全部条件。尚未购买，需批准购买及使用这些卡后重新验阵。`;
   }
   if (result?.status === 'filled' && result.restored === true) return '已恢复之前保存的阵容，未重复保存或提交 SBC。';
   if (result?.status === 'filled' && result.saved === true) return '阵容已保存，未提交 SBC。';

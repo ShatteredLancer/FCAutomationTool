@@ -23,6 +23,18 @@ it('validates a mixed draft without fabricating owned identities or weakening On
   expect(validateFc27PuzzleConceptDraft(plan, input, input.inventory.items).status).toBe('verified');
 });
 
+it('rejects owned main-squad material and invalidates a saved draft when protection changes', () => {
+  const { input, suggestion } = fixture();
+  input.policy.lockedItemIds = []; input.policy.activeSquadItemIds = [suggestion.selectedOwned[0].id];
+  expect(prepareFc27PuzzleConceptDraft(input, suggestion).status).toBe('blocked');
+  input.policy.activeSquadItemIds = [];
+  const plan = prepareFc27PuzzleConceptDraft(input, suggestion);
+  expect(plan.status).toBe('prepared');
+  input.policy.lockedItemIds = [suggestion.selectedOwned[0].id];
+  expect(validateFc27PuzzleConceptDraft(plan, input, input.inventory.items).reason)
+    .toBe('FC27_CONCEPT_INPUTS_CHANGED');
+});
+
 it.each(['tradeable', 'protected', 'evolution', 'locked'])('rejects protected owned material: %s', field => {
   const { input, suggestion } = fixture(); input.inventory.items[0][field] = true;
   expect(prepareFc27PuzzleConceptDraft(input, suggestion).status).toBe('blocked');

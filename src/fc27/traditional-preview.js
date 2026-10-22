@@ -55,6 +55,17 @@ export function collectSafeTraditionalCandidates({ context, challenge, inventory
       || policy.goldRange.some(value => !integer(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1]
       || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200
       || policy.excludedLeagueIds.some(id => !identity(id))) return stop('PROTECTION_POLICY_UNVERIFIED');
+  // Puzzle uses the verified native/FSU item-ID lists, not the Club cache's
+  // unknown per-item flags. Traditional synthetic callers without lists keep
+  // their existing explicit per-item protection contract.
+  const lists = [policy.lockedItemIds, policy.activeSquadItemIds];
+  if (lists.some(value => value !== undefined) && (lists.some(value => !Array.isArray(value) || value.length > 20000
+      || value.some(id => !identity(id)) || new Set(value).size !== value.length)
+      || policy.protectFsuLockedPlayers !== true || policy.protectActiveSquad !== true)) {
+    return stop('PROTECTION_POLICY_UNVERIFIED');
+  }
+  const lockedIds = Array.isArray(policy.lockedItemIds) ? new Set(policy.lockedItemIds) : null;
+  const activeIds = Array.isArray(policy.activeSquadItemIds) ? new Set(policy.activeSquadItemIds) : null;
   if (inventory.schema !== 1 || inventory.kind !== 'normalized-inventory'
       || !['ready', 'provisional'].includes(inventory.status)
       || !Array.isArray(inventory.items) || inventory.items.length > 20000) return stop('INVENTORY_UNVERIFIED');
@@ -79,8 +90,10 @@ export function collectSafeTraditionalCandidates({ context, challenge, inventory
       ['protected-or-unknown', item.protected === false],
       ['tradeable-or-unknown', typeof item.tradeable === 'boolean' && (!policy.onlyUntradeable || item.tradeable === false)],
       ['league-excluded-or-unknown', identity(item.leagueId) && !policy.excludedLeagueIds.includes(item.leagueId)],
-      ['locked-or-unknown', !policy.protectFsuLockedPlayers || item.locked === false],
-      ['active-squad-or-unknown', !policy.protectActiveSquad || item.activeSquad === false],
+      ['locked-or-unknown', !policy.protectFsuLockedPlayers || (lockedIds
+        ? !lockedIds.has(item.id) && item.locked !== true : item.locked === false)],
+      ['active-squad-or-unknown', !policy.protectActiveSquad || (activeIds
+        ? !activeIds.has(item.id) && item.activeSquad !== true : item.activeSquad === false)],
     ];
     // Count only the first rejection; overlapping guards must not inflate the excluded total.
     const rejection = checks.find(([, passed]) => !passed)?.[0];

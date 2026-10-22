@@ -4,24 +4,27 @@ import { listFc27InProgressChallenges, normalizeFc27TraditionalChallenge } from 
 import { inspectFc27ChallengeCatalog } from './fc27-challenge-catalog.js';
 import { inspectInProgressSquad } from './fc27-sbc-read.js';
 import { previewTraditionalSquad } from '../../fc27/traditional-preview.js';
+import { readFc27StreamlinedProtection } from './fc27-protection-read.js';
 export { inspectFc27ChallengeCatalog } from './fc27-challenge-catalog.js';
 export { inspectFc27FsuSupport, inspectFc27FsuSettings, validateFc27FsuSample } from './fc27-fsu-diagnostics.js';
 
 export function readFc27RunnerPolicy(root, maxRating = 74) {
   if (![74, 83].includes(maxRating)) throw new Error('FC27_PREVIEW_POLICY_UNAPPROVED');
-  return readFc27PuzzlePolicy(root, maxRating);
+  return readFc27PuzzlePolicy(root, maxRating, { protectRoster: false });
 }
 
 // Puzzle has its own explicit saved cap. Traditional submission retains its
 // existing 74/83 contract; neither path raises the cap to satisfy a Challenge.
-export function readFc27PuzzlePolicy(root, maxRating = 82) {
+export function readFc27PuzzlePolicy(root, maxRating = 82, { protectRoster = true } = {}) {
   if (!Number.isSafeInteger(maxRating) || maxRating < 1 || maxRating > 99) throw new Error('FC27_PUZZLE_POLICY_INVALID');
   const report = inspectFc27RunnerInputs(root);
   if (report.status !== 'observed') throw new Error(report.reason);
   const leagues = ownData(ownData(ownData(root, 'info'), 'set'), 'shield_league');
+  const protection = protectRoster ? readFc27StreamlinedProtection(root) : null;
   return { schema: 1, context: readFc27Context(root), reviewed: true,
     maxRating: Math.min(maxRating, report.fsu.policy.goldRange[1]), onlyUntradeable: true,
-    protectFsuLockedPlayers: false, protectActiveSquad: false, storageFirst: report.fsu.policy.storageFirst,
+    protectFsuLockedPlayers: protectRoster, protectActiveSquad: protectRoster, storageFirst: report.fsu.policy.storageFirst,
+    ...(protection ?? {}),
     goldRange: report.fsu.policy.goldRange,
     excludedLeagueIds: report.fsu.policy.excludeDesignatedLeagues
       ? Array.from({ length: leagues.length }, (_, index) => ownData(leagues, String(index))) : [] };

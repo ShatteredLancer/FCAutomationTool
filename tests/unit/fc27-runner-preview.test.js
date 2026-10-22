@@ -22,14 +22,18 @@ function fixture() {
     AuctionTradeStateEnum: { INACTIVE: 'inactive', ACTIVE: 'active' },
     SBCEligibilityKey: { PLAYER_MIN_OVR: 26, PLAYER_MAX_OVR: 28, PLAYER_QUALITY: 3 },
     SBCEligibilityScope: { GREATER: 0, EXACT: 2 }, SBCEligibilityQualityType: { BRONZE: 1, SILVER: 2, GOLD: 3 },
+    UTSquadEntity: { TOTAL_PLAYERS: 23 },
     services: { User: { currentUserId: 901, repository: { _collection: { 901: user } } },
+      Squad: { activeSquad: 7 },
       SBC: { repository: { sets: { _collection: {} } }, saveChallenge: forbidden, submitChallenge: forbidden } },
-    repositories: { TeamConfig: { teamLinks: new Map() }, Item: { club: { items: { _collection: {
+    repositories: { Squad: { squads: { _collection: { 902: { _collection: { 7: { _id: 7,
+      _players: Array.from({ length: 23 }, (_, index) => ({ index, _item: { id: 0 } })) } } } } } },
+      TeamConfig: { teamLinks: new Map() }, Item: { club: { items: { _collection: {
       101: player, 102: { ...player, id: 102, definitionId: 202, _rating: 62 },
     } } } } },
     info: { base: { year: 27, initialized: true, state: false, clubCache: { status: 'trusted-provisional' } },
       build: { untradeable: true, academy: false, league: true, firststorage: true },
-      set: { goldenrange: 83, shield_league: [20] } },
+      set: { goldenrange: 83, shield_league: [20] }, lock: [], squad: [] },
     events: { validateClubPlayers: forbidden, oneFillCreationGF: forbidden, playerListFillSquad: forbidden } };
   return { root, player, forbidden };
 }
@@ -53,6 +57,20 @@ it('uses a separate Puzzle read adapter without broadening the live contract or 
   expect(JSON.stringify(result)).not.toMatch(/901|902|101|201|accountScope|definitionId/);
   expect(forbidden).not.toHaveBeenCalled();
   expect(inspectInProgressSquad).toHaveBeenCalledOnce();
+});
+
+it('excludes FSU locks and every active-squad member and stops when the selected squad has no verified roster', async () => {
+  const { root, forbidden } = fixture(); root.SBCEligibilityScope.LOWER = 1;
+  root.info.lock = [101];
+  root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item.id = 102;
+  const report = await inspectFc27PuzzlePlan(root, { setId: 4, challengeId: 16 });
+  expect(report).toMatchObject({ status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE',
+    plan: { excludedByReason: { 'locked-or-unknown': 1, 'active-squad-or-unknown': 1 } } });
+  expect(forbidden).not.toHaveBeenCalled();
+  root.services.Squad.activeSquad = 8;
+  expect((await inspectFc27PuzzlePlan(root, { setId: 4, challengeId: 16 })).reason)
+    .toBe('FC27_STREAMLINED_PROTECTION_UNVERIFIED');
+  expect(forbidden).not.toHaveBeenCalled();
 });
 
 it('does not initialize unstarted Puzzle challenges or accept changed enum meanings', async () => {

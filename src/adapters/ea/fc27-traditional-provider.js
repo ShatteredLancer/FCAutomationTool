@@ -1,6 +1,6 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context, readFc27CachedClub, snapshotFc27ClubPlayer } from './fc27-local-read.js';
-import { readFc27RunnerPolicy } from './fc27-fsu-read.js';
+import { readFc27RunnerPolicy, readFc27PuzzlePolicy } from './fc27-fsu-read.js';
 import { readFc27SbcContract } from './fc27-sbc-contract.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27TransactionTransport, verifyFc27Methods } from './fc27-transaction-transport.js';
@@ -206,12 +206,13 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
   const readInputs = async plan => {
     assert();
     const maxRating = plan.policy?.maxRating ?? plan.maxRating ?? 74;
-    const before = readFc27RunnerPolicy(root, maxRating);
+    const readPolicy = /^puzzle-/.test(plan?.kind ?? '') ? readFc27PuzzlePolicy : readFc27RunnerPolicy;
+    const before = readPolicy(root, maxRating);
     const result = await readFc27SbcContract(root, { setId: plan.set?.id ?? plan.setId });
     assert();
     if (result.status !== 'observed' || !result.methods.saveChallenge || !result.methods.submitChallenge) return fail('FC27_PROVIDER_CONTRACT_UNVERIFIED');
     const unassignedClear = await unassigned();
-    const policy = readFc27RunnerPolicy(root, maxRating);
+    const policy = readPolicy(root, maxRating);
     if (!same(before, policy)) return fail('FC27_ATTEMPT_INPUTS_CHANGED');
     return { contract: result.contract, policy, unassignedClear };
   };

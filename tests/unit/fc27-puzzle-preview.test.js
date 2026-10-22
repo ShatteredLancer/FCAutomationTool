@@ -128,6 +128,19 @@ it('creates a deterministic puzzle plan, shares existing protections and does no
   expect(input).toEqual(before);
 });
 
+it('uses verified item-ID protection lists when Club snapshots have unknown per-item flags', () => {
+  const input = fixture();
+  input.policy.lockedItemIds = [1]; input.policy.activeSquadItemIds = [2];
+  input.inventory.items.forEach(item => { item.locked = null; item.activeSquad = null; });
+  input.inventory.items.push({ ...input.inventory.items[0], id: 5, definitionId: 105, teamId: 5 });
+  input.inventory.items.push({ ...input.inventory.items[0], id: 6, definitionId: 106, teamId: 6 });
+  const result = previewFc27PuzzleSquad(input);
+  expect(result.status).toBe('preview');
+  expect(result.selected.every(item => ![1, 2].includes(item.id))).toBe(true);
+  input.policy.activeSquadItemIds = null;
+  expect(previewFc27PuzzleSquad(input).reason).toBe('PROTECTION_POLICY_UNVERIFIED');
+});
+
 it('backtracks instead of accepting the first low-rating squad that violates puzzle rules', () => {
   const input = fixture(); input.inventory.items[2].teamId = 1;
   expect(previewFc27PuzzleSquad(input).selected.map(item => item.id)).toEqual([2, 3, 4]);

@@ -71,6 +71,13 @@ it('preserves the verified save message', () => {
   expect(formatFc27PuzzleNativeResult({ status: 'filled', saved: true })).toBe('阵容已保存，未提交 SBC。');
 });
 
+it('labels a concept estimate as incremental purchases, not full material value', () => {
+  const message = formatFc27PuzzleNativeResult({ status: 'concept-filled', purchaseCount: 5, estimatedCost: 2850 });
+  expect(message).toContain('预计新增购卡支出 2850 金币');
+  expect(message).toContain('不含现有卡市值');
+  expect(message).toContain('不保证全市场最低价');
+});
+
 it.each(['cache', 'request'])('explains a %s 401 and the user-triggered recovery without claiming login expired', source => {
   const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE', purchaseSuggestion: {
     status: 'blocked', reason: 'FC27_MARKET_HTTP_401', diagnostics: {

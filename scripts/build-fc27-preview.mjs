@@ -16,6 +16,7 @@ export async function buildFc27Preview() {
     'src/fc27/prelaunch-contract.js', 'src/adapters/browser/fc27-inspection.js',
     'src/fc27/runner-panel.js', 'src/adapters/browser/fc27-runner-panel.js',
     'src/adapters/ea/fc27-fsu-read.js', 'src/adapters/ea/fc27-local-read.js',
+    'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/adapters/ea/fc27-sbc-read.js', 'src/adapters/ea/fc27-challenge-catalog.js',
     'src/fc27/traditional-preview.js', 'src/domain/player-rarity.js']);

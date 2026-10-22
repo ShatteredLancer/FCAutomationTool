@@ -26,6 +26,7 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
     'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-market-read.js', 'src/adapters/ea/fc27-club-read.js',
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js',
+    'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js',
     'src/domain/player-rarity.js', 'src/fc27/prelaunch-contract.js', 'src/fc27/sbc-requirements.js',

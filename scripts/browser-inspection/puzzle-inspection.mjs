@@ -18,6 +18,7 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
     bundle: true, write: false, metafile: true, format: 'iife', globalName: 'FC27PuzzleRead', target: 'chrome120' });
   const allowed = new Set(['puzzle-exact-inspection.js', 'src/adapters/ea/fc27-puzzle-read.js', 'src/adapters/ea/fc27-local-read.js',
     'src/adapters/ea/fc27-fsu-read.js', 'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',
+    'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js', 'src/domain/player-rarity.js',
     'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-preview.js', 'src/fc27/sbc-requirements.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-evaluator.js',
     'src/adapters/ea/fc27-club-read.js', 'src/adapters/ea/fc27-puzzle-verify.js', 'src/fc27/puzzle-fill-plan.js',
