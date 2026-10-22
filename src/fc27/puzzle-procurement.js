@@ -70,12 +70,28 @@ export function planFc27PuzzleRepairQueries(input, seed) {
   const level = ({ 1: 'bronze', 2: 'silver', 3: 'gold' })[tier];
   const clubs = count(item => resolveClub?.(item.teamId));
   const leagues = count(item => item.leagueId);
+  // A near-solution can be repaired by replacing a card in the minority
+  // quality tier. Sampling only the largest tier (e.g. six gold vs five
+  // silver) makes those legal repairs invisible. Reserve one of the same
+  // three read-only pages for the weakest non-dominant tier and its league.
+  const slotChemistry = seed.teamFacts?.slotChemistry ?? [];
+  const otherTier = count(item => quality(item.rating)).filter(([candidate]) => candidate !== tier)
+    .map(([candidate]) => ({ candidate, slots: seed.squad.flatMap((item, slot) => item && quality(item.rating) === candidate
+      ? [{ item, slot, chemistry: slotChemistry[slot] ?? 3 }] : []) }))
+    .sort((a, b) => Math.min(...a.slots.map(value => value.chemistry))
+      - Math.min(...b.slots.map(value => value.chemistry)) || b.slots.length - a.slots.length)[0];
+  const weakest = otherTier?.slots.sort((a, b) => a.chemistry - b.chemistry || a.slot - b.slot)[0];
+  const secondary = weakest && positive(weakest.item.leagueId)
+    && !input.policy.excludedLeagueIds.includes(weakest.item.leagueId)
+    ? { start: 0, count: 20,
+      level: ({ 1: 'bronze', 2: 'silver', 3: 'gold' })[otherTier.candidate], league: weakest.item.leagueId } : null;
   const queries = [];
   if (positive(clubs[0]?.[0]) && clubs[0][1] >= 2) queries.push({ start: 0, count: 20, level, team: clubs[0][0] });
   for (const [league] of leagues) {
-    if (queries.length >= 3) break;
+    if (queries.length >= (secondary ? 2 : 3)) break;
     if (positive(league) && !input.policy.excludedLeagueIds.includes(league)) queries.push({ start: 0, count: 20, level, league });
   }
+  if (secondary) queries.push(secondary);
   return { status: 'ready', executable: false, queries, complete: false };
 }
 

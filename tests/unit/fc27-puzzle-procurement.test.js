@@ -87,6 +87,32 @@ it('queries only bounded connected lanes and rejects stale or tampered seeds',()
   expect(suggestFc27PuzzlePurchases(input,seed,[card]).status).toBe('blocked');
 });
 
+it('reserves a silver repair lane when a 5-silver/6-gold chemistry seed needs an in-position silver', () => {
+  const input = puzzleFillFixture();
+  input.policy.maxRating = 82;
+  input.challenge.formation.positions = Array(11).fill(5);
+  input.challenge.rawRequirements = [marketRow(5, 4, -1, 1), marketRow(4, 3), marketRow(8, 3),
+    marketRow(3, 2), marketRow(17, 3, 6), marketRow(35, 22)];
+  const base = input.inventory.items[0];
+  input.inventory.items = Array.from({ length: 11 }, (_, index) => ({ ...base,
+    id: index + 1, definitionId: 101 + index, rating: index < 5 ? 70 : 78,
+    nationId: 1, leagueId: index < 4 ? 1 : index < 8 ? 2 : 3,
+    teamId: 100 + index, positions: index < 4 ? [0] : [5],
+  }));
+  const seed = findFc27PuzzleRepairSeed(input);
+  expect(seed).toMatchObject({ status: 'ready', teamFacts: { chemistry: 21 } });
+  const silver = { ...base, id: undefined, definitionId: 901, rating: 70,
+    nationId: 1, leagueId: 1, teamId: 901, positions: [5] };
+  expect(suggestFc27PuzzlePurchases(input, seed, [silver])).toMatchObject({
+    status: 'suggested', plans: [{ purchaseCount: 1, teamFacts: { chemistry: 24 } }],
+  });
+  const route = planFc27PuzzleRepairQueries(input, seed);
+  expect(route.queries).toHaveLength(3);
+  expect(route.queries.filter(query => query.level === 'silver')).toEqual([
+    { start: 0, count: 20, level: 'silver', league: 1 },
+  ]);
+});
+
 it('plans missing bronze materials without requiring a complete owned near-solution', () => {
   const { input, card } = fixture();
   input.inventory.items.pop();

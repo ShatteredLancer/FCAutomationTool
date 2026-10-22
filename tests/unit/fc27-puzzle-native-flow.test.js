@@ -191,7 +191,10 @@ async function missingFixture(missing = 1, options = {}) {
 }
 
 it('continues from filtered internal routes into cached procurement on repeated native clicks without writes', async () => {
-  const x = fixture();
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.50' });
+  const x = fixture({ diagnosticLog });
   x.challenge.eligibilityRequirements[1].kvPairs._collection[35] = [33];
   x.challenge.eligibilityRequirements[1].scope = 2;
   x.state.players = Array.from({ length: 70 }, (_, i) => ({ id: i + 1, resourceId: i + 101 }));
@@ -225,6 +228,13 @@ it('continues from filtered internal routes into cached procurement on repeated 
   expect(x.calls).toEqual([]);
   expect(x.state.saved).toBeNull();
   expect([...x.data.values()].some(value => value?.phase === 'save-pending')).toBe(false);
+  const payload = await diagnosticLog.exportPayload();
+  const lastSolve = payload.entries.filter(entry => entry.area === 'puzzle' && entry.event === 'solve-result').at(-1);
+  expect(lastSolve).toMatchObject({ reason: 'FC27_PUZZLE_SEARCH_LIMIT', evaluations: 50000,
+    combinationNodes: expect.any(Number), placementNodes: expect.any(Number),
+    evaluationNodes: expect.any(Number), boundNodes: expect.any(Number), strategyAttempts: expect.any(Number) });
+  expect(lastSolve.combinationNodes + lastSolve.placementNodes + lastSolve.evaluationNodes + lastSolve.boundNodes)
+    .toBe(50000);
 }, 30000);
 
 async function buyingFixture(count = 1, options = {}) {

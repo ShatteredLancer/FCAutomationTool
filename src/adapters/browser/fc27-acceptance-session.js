@@ -820,7 +820,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       // copy the private journal, raw inventory, account scope or credentials.
       try {
         const searchEvidence = log.preview ?? {};
-        const search = searchEvidence.search ?? {};
+        // The EA inspection report nests the detached solver result under
+        // `plan`; reading the outer report dropped every search-phase count.
+        const search = searchEvidence.plan?.search ?? searchEvidence.search ?? {};
         await diagnosticLog?.record?.({ area: 'puzzle', event: 'solve-result', setId: target.setId, challengeId: target.challengeId,
           status: result?.status, reason: result?.reason, source: log.catalogSource,
           methodPath: result?.methodPath ?? log.methodPath,
@@ -831,7 +833,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
           combinationNodes: search.combinationNodes, placementNodes: search.placementNodes,
           evaluationNodes: search.evaluations, boundNodes: search.bounds,
-          strategyAttempts: searchEvidence.strategyAttempts,
+          strategyAttempts: searchEvidence.plan?.strategyAttempts ?? searchEvidence.strategyAttempts,
           searchComplete: searchEvidence.searchComplete,
           optimalWithinPool: searchEvidence.optimalWithinPool,
           durationMs: log.finishedAt - log.startedAt });

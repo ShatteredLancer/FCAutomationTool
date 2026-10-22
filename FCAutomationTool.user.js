@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.49
+// @version      27.0.50
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.49", at: Date.now(), status: 'started',
+    state = { version: "27.0.50", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -4512,6 +4512,7 @@
           selectedCount: plan.selected?.length ?? 0,
           deficits: plan.deficits ?? [],
           nodes: plan.nodes ?? 0,
+          strategyAttempts: plan.strategyAttempts ?? null,
           search: plan.search ?? null,
           teamFacts: plan.teamFacts ?? null,
           evaluatorReason: plan.evaluatorReason ?? null,
@@ -5239,12 +5240,22 @@
     const level = { 1: "bronze", 2: "silver", 3: "gold" }[tier];
     const clubs = count2((item2) => resolveClub?.(item2.teamId));
     const leagues = count2((item2) => item2.leagueId);
+    const slotChemistry = seed.teamFacts?.slotChemistry ?? [];
+    const otherTier = count2((item2) => quality(item2.rating)).filter(([candidate]) => candidate !== tier).map(([candidate]) => ({ candidate, slots: seed.squad.flatMap((item2, slot) => item2 && quality(item2.rating) === candidate ? [{ item: item2, slot, chemistry: slotChemistry[slot] ?? 3 }] : []) })).sort((a, b) => Math.min(...a.slots.map((value) => value.chemistry)) - Math.min(...b.slots.map((value) => value.chemistry)) || b.slots.length - a.slots.length)[0];
+    const weakest = otherTier?.slots.sort((a, b) => a.chemistry - b.chemistry || a.slot - b.slot)[0];
+    const secondary = weakest && positive7(weakest.item.leagueId) && !input.policy.excludedLeagueIds.includes(weakest.item.leagueId) ? {
+      start: 0,
+      count: 20,
+      level: { 1: "bronze", 2: "silver", 3: "gold" }[otherTier.candidate],
+      league: weakest.item.leagueId
+    } : null;
     const queries = [];
     if (positive7(clubs[0]?.[0]) && clubs[0][1] >= 2) queries.push({ start: 0, count: 20, level, team: clubs[0][0] });
     for (const [league] of leagues) {
-      if (queries.length >= 3) break;
+      if (queries.length >= (secondary ? 2 : 3)) break;
       if (positive7(league) && !input.policy.excludedLeagueIds.includes(league)) queries.push({ start: 0, count: 20, level, league });
     }
+    if (secondary) queries.push(secondary);
     return { status: "ready", executable: false, queries, complete: false };
   }
   var suggestFc27PuzzlePurchasesCooperatively = (input, seed, entries2, options) => finishPuzzleSearchCooperatively(iteratePurchases(input, seed, entries2, options), options);
@@ -10659,7 +10670,7 @@
         await persistLog();
         try {
           const searchEvidence = log.preview ?? {};
-          const search = searchEvidence.search ?? {};
+          const search = searchEvidence.plan?.search ?? searchEvidence.search ?? {};
           await diagnosticLog2?.record?.({
             area: "puzzle",
             event: "solve-result",
@@ -10678,7 +10689,7 @@
             placementNodes: search.placementNodes,
             evaluationNodes: search.evaluations,
             boundNodes: search.bounds,
-            strategyAttempts: searchEvidence.strategyAttempts,
+            strategyAttempts: searchEvidence.plan?.strategyAttempts ?? searchEvidence.strategyAttempts,
             searchComplete: searchEvidence.searchComplete,
             optimalWithinPool: searchEvidence.optimalWithinPool,
             durationMs: log.finishedAt - log.startedAt
@@ -34448,7 +34459,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.49" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.50" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34766,8 +34777,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.49"}`,
-    version: "27.0.49",
+    title: `FC Automation Tool ${"27.0.50"}`,
+    version: "27.0.50",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

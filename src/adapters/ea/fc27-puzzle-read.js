@@ -228,6 +228,7 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
       plan: { required: layout.requiredPlayerCount, safeCandidates: plan.safeCandidates ?? null,
         excluded: plan.excluded ?? null, excludedByReason: plan.excludedByReason ?? null,
         selectedCount: plan.selected?.length ?? 0, deficits: plan.deficits ?? [], nodes: plan.nodes ?? 0,
+        strategyAttempts: plan.strategyAttempts ?? null,
         search: plan.search ?? null, teamFacts: plan.teamFacts ?? null, evaluatorReason: plan.evaluatorReason ?? null,
         ratings: (plan.selected ?? []).map(item => item.rating), slots: (plan.selected ?? []).map(item => item.slot),
         exactValidation: plan.exactValidation ?? null, fillPreflight: plan.fillPreflight ?? null },
