@@ -71,7 +71,15 @@ export function createFc27PuzzlePartialChemistryBound({ candidates, slots, forma
   const profiles = profilesOf(chemistry);
   const resolveClub = createFc27ClubResolver(chemistry.links);
   if (parameters?.size !== 3 || !profiles || !resolveClub
-      || chemistry.profilesEnabled && profiles.some(profile => !ordinaryProfile(profile))) return null;
+      || typeof chemistry.profilesEnabled !== 'boolean') return null;
+  // Special-card profiles may coexist in EA's complete snapshot, but the safe
+  // candidate pool contains only normal rarities. Match the evaluator's exact
+  // per-rarity profile selection rather than rejecting unrelated profiles.
+  if (chemistry.profilesEnabled && [...new Set(candidates.map(item => item?.rarity))].some(rarity => {
+    const profile = profiles.find(value => value.applicableRarityIds.includes(rarity))
+      ?? profiles.find(value => value.id === 1);
+    return !ordinaryProfile(profile);
+  })) return null;
   const identities = chemistry.identities;
   const excluded = [identities?.legendClubId, identities?.heroClubId, identities?.hallOfFutClubId];
   if (!excluded.every(positive) || !positive(identities?.legendLeagueId)

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.51
+// @version      27.0.52
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.51", at: Date.now(), status: 'started',
+    state = { version: "27.0.52", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3468,7 +3468,11 @@
     const parameters = parametersOf(chemistry.parameters);
     const profiles = profilesOf(chemistry);
     const resolveClub = createFc27ClubResolver(chemistry.links);
-    if (parameters?.size !== 3 || !profiles || !resolveClub || chemistry.profilesEnabled && profiles.some((profile) => !ordinaryProfile(profile))) return null;
+    if (parameters?.size !== 3 || !profiles || !resolveClub || typeof chemistry.profilesEnabled !== "boolean") return null;
+    if (chemistry.profilesEnabled && [...new Set(candidates.map((item2) => item2?.rarity))].some((rarity) => {
+      const profile = profiles.find((value) => value.applicableRarityIds.includes(rarity)) ?? profiles.find((value) => value.id === 1);
+      return !ordinaryProfile(profile);
+    })) return null;
     const identities = chemistry.identities;
     const excluded = [identities?.legendClubId, identities?.heroClubId, identities?.hallOfFutClubId];
     if (!excluded.every(positive4) || !positive4(identities?.legendLeagueId) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.some((rarity) => !integer5(rarity, 0, 1e4))) return null;
@@ -34516,7 +34520,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.51" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.52" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34834,8 +34838,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.51"}`,
-    version: "27.0.51",
+    title: `FC Automation Tool ${"27.0.52"}`,
+    version: "27.0.52",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

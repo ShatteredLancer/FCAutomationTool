@@ -48,8 +48,14 @@ it('finds a high-chemistry 5-silver/6-gold squad under a four-per-league cap', (
   expect(result.nodes).toBeLessThan(50000);
 }, 30000);
 
-it('reaches a legal 22-chemistry squad behind same-slot decoys before the 50000-node cap', () => {
+it.each([false, true])('reaches a legal 22-chemistry squad behind same-slot decoys with profiles enabled=%s', profilesEnabled => {
   const input = puzzleFillFixture();
+  if (profilesEnabled) input.chemistry = { ...input.chemistry, profilesEnabled: true,
+    profiles: { complete: true, entries: [
+      { id: 1, maxChem: false, applicableRarityIds: [], rules: [1, 2, 3].map(parameterId =>
+        ({ parameterId, calculationType: 1, contribution: 1 })) },
+      { id: 2, maxChem: true, applicableRarityIds: [69], rules: [] },
+    ] } };
   input.policy.maxRating = 82;
   input.challenge.formation.positions = [5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18];
   input.challenge.rawRequirements = [marketRow(5, 4, -1, 1), marketRow(4, 3), marketRow(8, 3),

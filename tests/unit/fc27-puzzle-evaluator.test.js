@@ -46,6 +46,11 @@ it('computes an optimistic chemistry bound without changing cards or actual posi
 it('never underestimates complete chemistry through any partial selection depth', () => {
   const layout = { positions: Array.from({ length: 11 }, (_, index) => index) };
   const slots = Array.from({ length: 11 }, (_, index) => index);
+  const base = { id: 1, maxChem: false, applicableRarityIds: [], rules: [1, 2, 3].map(parameterId =>
+    ({ parameterId, calculationType: 1, contribution: 1 })) };
+  const withProfiles = { ...chemistry, profilesEnabled: true,
+    profiles: { complete: true, entries: [base,
+      { id: 2, maxChem: true, applicableRarityIds: [69], rules: [] }] } };
   for (let seed = 0; seed < 24; seed++) {
     const candidates = slots.map(index => player(index + 1, 60, {
       nationId: 1 + (seed + index) % 4, leagueId: 1 + (seed * 3 + index) % 3,
@@ -56,8 +61,13 @@ it('never underestimates complete chemistry through any partial selection depth'
     expect(actual.status).toBe('observed');
     const bound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: layout, chemistry });
     expect(bound).toBeTypeOf('function');
+    const profiledBound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: layout,
+      chemistry: withProfiles });
+    expect(profiledBound).toBeTypeOf('function');
     for (let chosen = 0; chosen <= 11; chosen++) {
       expect(bound(candidates.slice(0, chosen), chosen, 11 - chosen), `seed ${seed} depth ${chosen}`)
+        .toBeGreaterThanOrEqual(actual.chemistry);
+      expect(profiledBound(candidates.slice(0, chosen), chosen, 11 - chosen), `profile seed ${seed} depth ${chosen}`)
         .toBeGreaterThanOrEqual(actual.chemistry);
     }
   }
@@ -70,6 +80,20 @@ it('skips partial chemistry pruning when the ordinary chemistry model is incompl
     chemistry: { ...chemistry, parameters: [parameters[0]] } })).toBeNull();
   expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation,
     chemistry: { ...chemistry, profilesEnabled: true } })).toBeNull();
+});
+
+it('uses ordinary candidate profiles while ignoring unrelated special-card profiles', () => {
+  const candidates = [player(1)]; const slots = [0];
+  const base = { id: 1, maxChem: false, applicableRarityIds: [], rules: [1, 2, 3].map(parameterId =>
+    ({ parameterId, calculationType: 1, contribution: 1 })) };
+  const special = { id: 2, maxChem: true, applicableRarityIds: [69], rules: [] };
+  const withProfiles = { ...chemistry, profilesEnabled: true,
+    profiles: { complete: true, entries: [base, special] } };
+  expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry: withProfiles }))
+    .toBeTypeOf('function');
+  const nonordinary = { ...special, applicableRarityIds: [0] };
+  expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation,
+    chemistry: { ...withProfiles, profiles: { complete: true, entries: [base, nonordinary] } } })).toBeNull();
 });
 
 it('uses nation parameter 1 and club parameter 3 even when the parameter list is reordered', () => {
