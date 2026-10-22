@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.48
+// @version      27.0.49
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.48", at: Date.now(), status: 'started',
+    state = { version: "27.0.49", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3787,7 +3787,10 @@
     }
     let candidates = filterUnaryCandidates(pool.candidates, itemRules, required2, groupMatcher, resolveClub);
     let traversalScores = null;
-    if (searchHint?.strategy !== "low-rating" && parsed.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0)) {
+    const chemistryTarget = searchHint?.strategy !== "low-rating" && parsed.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0);
+    const openPositions = chemistryTarget && Array.isArray(challenge.formation?.positions) && Array.isArray(challenge.brickIndices) ? challenge.formation.positions.filter((_position, index) => !challenge.brickIndices.includes(index)) : null;
+    const positionFit = (item2) => Array.isArray(openPositions) && Array.isArray(item2.positions) && item2.positions.some((position) => openPositions.includes(position));
+    if (chemistryTarget) {
       const fields4 = [
         (item2) => item2.nationId,
         (item2) => item2.leagueId,
@@ -3805,11 +3808,11 @@
       });
       const scores = new Map(candidates.map((item2) => [item2, fields4.reduce((sum2, read, index) => sum2 + Math.min(required2, frequencies[index].get(read(item2))?.size ?? 0), 0)]));
       traversalScores = scores;
-      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || scores.get(b) - scores.get(a) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
+      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(positionFit(b)) - Number(positionFit(a)) || scores.get(b) - scores.get(a) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
     }
     if (["nation", "league", "club"].includes(searchHint?.strategy)) {
       const group = (item2) => hintGroup(searchHint, item2, resolveClub);
-      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId));
+      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId) || Number(positionFit(b)) - Number(positionFit(a)));
     }
     const scarce = itemRules.filter((rule) => rule.mode !== "max" && rule.count > 0).map((rule) => ({
       minimum: rule.count,
@@ -3851,7 +3854,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -34445,7 +34448,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.48" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.49" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34763,8 +34766,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.48"}`,
-    version: "27.0.48",
+    title: `FC Automation Tool ${"27.0.49"}`,
+    version: "27.0.49",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

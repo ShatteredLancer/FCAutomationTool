@@ -309,7 +309,16 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   }
   let candidates = filterUnaryCandidates(pool.candidates, itemRules, required, groupMatcher, resolveClub);
   let traversalScores = null;
-  if (searchHint?.strategy !== 'low-rating' && parsed.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)) {
+  // A high chemistry target needs in-position players. This is only an
+  // ordering hint: off-position cards remain eligible and the detached EA
+  // evaluator still decides whether the complete squad meets every rule.
+  const chemistryTarget = searchHint?.strategy !== 'low-rating'
+    && parsed.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0);
+  const openPositions = chemistryTarget && Array.isArray(challenge.formation?.positions) && Array.isArray(challenge.brickIndices)
+    ? challenge.formation.positions.filter((_position, index) => !challenge.brickIndices.includes(index)) : null;
+  const positionFit = item => Array.isArray(openPositions) && Array.isArray(item.positions)
+    && item.positions.some(position => openPositions.includes(position));
+  if (chemistryTarget) {
     // A traversal heuristic only: prefer connected groups, never filter by
     // this score or infer feasibility from it. Keep the configured pile order.
     const fields = [item => item.nationId, item => item.leagueId,
@@ -329,6 +338,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     traversalScores = scores;
     candidates = candidates.slice().sort((a, b) =>
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || Number(positionFit(b)) - Number(positionFit(a))
       || scores.get(b) - scores.get(a) || a.rating - b.rating
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
@@ -340,7 +350,8 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     // Storage priority, safety gates and the full final validator remain intact.
     candidates = candidates.slice().sort((a, b) =>
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
-      || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId));
+      || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId)
+      || Number(positionFit(b)) - Number(positionFit(a)));
   }
   // Put scarce compulsory groups first so skipping a required member is
   // rejected by suffix bounds immediately, rather than near the leaf.
@@ -404,6 +415,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
       || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
+      || Number(positionFit(b)) - Number(positionFit(a))
       || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
       || quoted.get(a) - quoted.get(b)
       || originalOrder.get(a) - originalOrder.get(b));
