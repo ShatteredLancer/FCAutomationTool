@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.52
+// @version      27.0.53
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.52", at: Date.now(), status: 'started',
+    state = { version: "27.0.53", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3477,24 +3477,38 @@
     const excluded = [identities?.legendClubId, identities?.heroClubId, identities?.hallOfFutClubId];
     if (!excluded.every(positive4) || !positive4(identities?.legendLeagueId) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.some((rarity) => !integer5(rarity, 0, 1e4))) return null;
     const fields4 = [(item2) => item2.nationId, (item2) => item2.leagueId, (item2) => resolveClub(item2.teamId)];
-    const counts = fields4.map(() => /* @__PURE__ */ new Map());
-    for (const item2 of candidates) {
+    const groups = fields4.map(() => /* @__PURE__ */ new Map());
+    const keys2 = /* @__PURE__ */ new Map();
+    for (const [candidateIndex, item2] of candidates.entries()) {
       if (!positive4(item2?.definitionId) || !positive4(item2.nationId) || !positive4(item2.leagueId) || !positive4(item2.teamId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((position) => !integer5(position, 0, 27)) || ![0, 1].includes(item2.rarity) || excluded.includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return null;
-      for (const [index, read] of fields4.entries()) {
-        const key = read(item2);
+      const itemKeys = fields4.map((read) => read(item2));
+      keys2.set(item2, itemKeys);
+      for (const [index, key] of itemKeys.entries()) {
         if (!positive4(key)) return null;
-        if (!counts[index].has(key)) counts[index].set(key, /* @__PURE__ */ new Set());
-        counts[index].get(key).add(item2.definitionId);
+        if (!groups[index].has(key)) groups[index].set(key, { definitions: /* @__PURE__ */ new Set(), indices: [] });
+        const group = groups[index].get(key);
+        group.definitions.add(item2.definitionId);
+        group.indices.push(candidateIndex);
       }
     }
+    const suffixCount = (indices, start) => {
+      let low = 0;
+      let high = indices.length;
+      while (low < high) {
+        const middle = low + high >>> 1;
+        if (indices[middle] < start) low = middle + 1;
+        else high = middle;
+      }
+      return indices.length - low;
+    };
+    const pointsFor = (itemKeys, countOf) => Math.min(3, itemKeys.reduce((sum2, key, index) => {
+      const count2 = countOf(index, key);
+      return sum2 + parameters.get(index + 1).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
+    }, 0));
     const caps = /* @__PURE__ */ new Map();
     const compatible = /* @__PURE__ */ new Map();
     for (const item2 of candidates) {
-      const cap = Math.min(3, fields4.reduce((sum2, read, index) => {
-        const count2 = counts[index].get(read(item2)).size;
-        return sum2 + parameters.get(index + 1).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
-      }, 0));
-      caps.set(item2, cap);
+      caps.set(item2, pointsFor(keys2.get(item2), (index, key) => groups[index].get(key).definitions.size));
       compatible.set(item2, slots.flatMap((slot, index) => item2.positions.includes(formation.positions[slot]) ? [index] : []));
     }
     const suffix = Array.from({ length: candidates.length + 1 }, () => Array(slots.length).fill(0));
@@ -3505,14 +3519,34 @@
     return (chosen, start, remaining) => {
       const singleton = Array(slots.length).fill(0);
       let selected = 0;
+      const selectedGroups = fields4.map(() => /* @__PURE__ */ new Map());
+      for (const item2 of chosen) keys2.get(item2)?.forEach((key, index) => {
+        const counts = selectedGroups[index];
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      });
       for (const item2 of chosen) {
         const fits = compatible.get(item2);
-        if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], caps.get(item2));
-        else if (fits?.length > 1) selected += caps.get(item2);
+        const cap = pointsFor(keys2.get(item2), (index, key) => (selectedGroups[index].get(key) ?? 0) + Math.min(remaining, suffixCount(groups[index].get(key).indices, start)));
+        if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], cap);
+        else if (fits?.length > 1) selected += cap;
       }
       selected += singleton.reduce((sum2, score2) => sum2 + score2, 0);
       const future = suffix[start].slice().sort((a, b) => b - a).slice(0, remaining).reduce((sum2, score2) => sum2 + score2, 0);
-      return selected + future;
+      const assigned = Array(slots.length).fill(-1);
+      const augment = (itemIndex, visited) => {
+        for (const slot of compatible.get(chosen[itemIndex]) ?? []) {
+          if (visited[slot]) continue;
+          visited[slot] = true;
+          if (assigned[slot] === -1 || augment(assigned[slot], visited)) {
+            assigned[slot] = itemIndex;
+            return true;
+          }
+        }
+        return false;
+      };
+      let matched = 0;
+      for (let index = 0; index < chosen.length; index++) if (augment(index, Array(slots.length).fill(false))) matched++;
+      return Math.min(selected + future, 3 * (matched + remaining));
     };
   }
   function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating } = {}) {
@@ -3962,7 +3996,15 @@
     const chemistryTarget = searchHint?.strategy !== "low-rating" && parsed.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0);
     const openPositions = chemistryTarget && Array.isArray(challenge.formation?.positions) && Array.isArray(challenge.brickIndices) ? challenge.formation.positions.filter((_position, index) => !challenge.brickIndices.includes(index)) : null;
     const positionFit = (item2) => Array.isArray(openPositions) && Array.isArray(item2.positions) && item2.positions.some((position) => openPositions.includes(position));
+    let positionScarcity = null;
     if (chemistryTarget) {
+      if (searchHint === null) {
+        const support = openPositions?.map((position) => new Set(candidates.filter((item2) => Array.isArray(item2.positions) && item2.positions.includes(position)).map((item2) => item2.definitionId)).size) ?? [];
+        positionScarcity = new Map(candidates.map((item2) => [item2, Math.max(
+          0,
+          ...(openPositions ?? []).map((position, index) => Array.isArray(item2.positions) && item2.positions.includes(position) && support[index] ? 1 / support[index] : 0)
+        )]));
+      }
       const fields4 = [
         (item2) => item2.nationId,
         (item2) => item2.leagueId,
@@ -3980,7 +4022,7 @@
       });
       const scores = new Map(candidates.map((item2) => [item2, fields4.reduce((sum2, read, index) => sum2 + Math.min(required2, frequencies[index].get(read(item2))?.size ?? 0), 0)]));
       traversalScores = scores;
-      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(positionFit(b)) - Number(positionFit(a)) || scores.get(b) - scores.get(a) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
+      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || scores.get(b) - scores.get(a) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
     }
     if (["nation", "league", "club"].includes(searchHint?.strategy)) {
       const group = (item2) => hintGroup(searchHint, item2, resolveClub);
@@ -4026,7 +4068,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -34520,7 +34562,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.52" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.53" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34838,8 +34880,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.52"}`,
-    version: "27.0.52",
+    title: `FC Automation Tool ${"27.0.53"}`,
+    version: "27.0.53",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -58,10 +58,10 @@ function ordinaryProfile(profile) {
 }
 
 // Necessary (not sufficient) chemistry bound for a partial card combination.
-// A field's count cannot exceed the number of distinct eligible definitions
-// in the entire safe pool. Ignore slot conflicts for flexible cards and let
-// every remaining slot take its best suffix card independently. Both relaxations
-// can only overestimate achievable chemistry; no card is filtered from search.
+// A selected field's count cannot exceed its already selected cards plus the
+// remaining candidates in that group. Ignore position eligibility for group
+// counts, physical duplicates in the suffix, and slot conflicts for flexible
+// cards; these relaxations can only overestimate achievable chemistry.
 export function createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry } = {}) {
   if (!Array.isArray(candidates) || !Array.isArray(slots) || !Array.isArray(formation?.positions)
       || formation.positions.length !== 11 || formation.positions.some(position => !integer(position, 0, 27))
@@ -86,28 +86,41 @@ export function createFc27PuzzlePartialChemistryBound({ candidates, slots, forma
       || !Array.isArray(chemistry.superChemRarityIds)
       || chemistry.superChemRarityIds.some(rarity => !integer(rarity, 0, 10000))) return null;
   const fields = [item => item.nationId, item => item.leagueId, item => resolveClub(item.teamId)];
-  const counts = fields.map(() => new Map());
-  for (const item of candidates) {
+  const groups = fields.map(() => new Map());
+  const keys = new Map();
+  for (const [candidateIndex, item] of candidates.entries()) {
     if (!positive(item?.definitionId) || !positive(item.nationId) || !positive(item.leagueId)
         || !positive(item.teamId) || !Array.isArray(item.positions) || !item.positions.length
         || item.positions.some(position => !integer(position, 0, 27))
         || ![0, 1].includes(item.rarity) || excluded.includes(item.teamId)
         || item.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item.rarity)) return null;
-    for (const [index, read] of fields.entries()) {
-      const key = read(item);
+    const itemKeys = fields.map(read => read(item));
+    keys.set(item, itemKeys);
+    for (const [index, key] of itemKeys.entries()) {
       if (!positive(key)) return null;
-      if (!counts[index].has(key)) counts[index].set(key, new Set());
-      counts[index].get(key).add(item.definitionId);
+      if (!groups[index].has(key)) groups[index].set(key, { definitions: new Set(), indices: [] });
+      const group = groups[index].get(key);
+      group.definitions.add(item.definitionId);
+      group.indices.push(candidateIndex);
     }
   }
+  const suffixCount = (indices, start) => {
+    let low = 0; let high = indices.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (indices[middle] < start) low = middle + 1;
+      else high = middle;
+    }
+    return indices.length - low;
+  };
+  const pointsFor = (itemKeys, countOf) => Math.min(3, itemKeys.reduce((sum, key, index) => {
+    const count = countOf(index, key);
+    return sum + parameters.get(index + 1).reduce((points, threshold) =>
+      points + (count >= threshold.requirement ? threshold.points : 0), 0);
+  }, 0));
   const caps = new Map(); const compatible = new Map();
   for (const item of candidates) {
-    const cap = Math.min(3, fields.reduce((sum, read, index) => {
-      const count = counts[index].get(read(item)).size;
-      return sum + parameters.get(index + 1).reduce((points, threshold) =>
-        points + (count >= threshold.requirement ? threshold.points : 0), 0);
-    }, 0));
-    caps.set(item, cap);
+    caps.set(item, pointsFor(keys.get(item), (index, key) => groups[index].get(key).definitions.size));
     compatible.set(item, slots.flatMap((slot, index) => item.positions.includes(formation.positions[slot]) ? [index] : []));
   }
   const suffix = Array.from({ length: candidates.length + 1 }, () => Array(slots.length).fill(0));
@@ -118,15 +131,37 @@ export function createFc27PuzzlePartialChemistryBound({ candidates, slots, forma
   return (chosen, start, remaining) => {
     const singleton = Array(slots.length).fill(0);
     let selected = 0;
+    const selectedGroups = fields.map(() => new Map());
+    for (const item of chosen) keys.get(item)?.forEach((key, index) => {
+      const counts = selectedGroups[index]; counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
     for (const item of chosen) {
       const fits = compatible.get(item);
-      if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], caps.get(item));
-      else if (fits?.length > 1) selected += caps.get(item);
+      const cap = pointsFor(keys.get(item), (index, key) => (selectedGroups[index].get(key) ?? 0)
+        + Math.min(remaining, suffixCount(groups[index].get(key).indices, start)));
+      if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], cap);
+      else if (fits?.length > 1) selected += cap;
     }
     selected += singleton.reduce((sum, score) => sum + score, 0);
     const future = suffix[start].slice().sort((a, b) => b - a).slice(0, remaining)
       .reduce((sum, score) => sum + score, 0);
-    return selected + future;
+    // Even flexible cards cannot all score when their compatible positions
+    // overlap. Each future card may add at most one new occupied slot; matching
+    // only the already selected cards therefore remains an optimistic bound.
+    const assigned = Array(slots.length).fill(-1);
+    const augment = (itemIndex, visited) => {
+      for (const slot of compatible.get(chosen[itemIndex]) ?? []) {
+        if (visited[slot]) continue;
+        visited[slot] = true;
+        if (assigned[slot] === -1 || augment(assigned[slot], visited)) {
+          assigned[slot] = itemIndex; return true;
+        }
+      }
+      return false;
+    };
+    let matched = 0;
+    for (let index = 0; index < chosen.length; index++) if (augment(index, Array(slots.length).fill(false))) matched++;
+    return Math.min(selected + future, 3 * (matched + remaining));
   };
 }
 

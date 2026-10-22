@@ -319,9 +319,23 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     ? challenge.formation.positions.filter((_position, index) => !challenge.brickIndices.includes(index)) : null;
   const positionFit = item => Array.isArray(openPositions) && Array.isArray(item.positions)
     && item.positions.some(position => openPositions.includes(position));
+  let positionScarcity = null;
   if (chemistryTarget) {
     // A traversal heuristic only: prefer connected groups, never filter by
-    // this score or infer feasibility from it. Keep the configured pile order.
+    // this score or infer feasibility from it. Prefer cards covering scarce
+    // formation slots before highly connected cards that all fit the same
+    // common slot; keep the configured pile order.
+    // Caller-selected hints retain their established deterministic traversal.
+    // Scarcity is a default-route improvement, not a reinterpretation of an
+    // explicit strategy or its bounded-node behavior.
+    if (searchHint === null) {
+      const support = openPositions?.map(position => new Set(candidates.filter(item =>
+        Array.isArray(item.positions) && item.positions.includes(position)).map(item => item.definitionId)).size) ?? [];
+      positionScarcity = new Map(candidates.map(item => [item, Math.max(0,
+        ...(openPositions ?? []).map((position, index) => Array.isArray(item.positions)
+          && item.positions.includes(position) && support[index]
+          ? 1 / support[index] : 0))]));
+    }
     const fields = [item => item.nationId, item => item.leagueId,
       item => resolveClub?.(item.teamId ?? item.clubId)];
     const frequencies = fields.map(read => {
@@ -340,6 +354,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     candidates = candidates.slice().sort((a, b) =>
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
       || Number(positionFit(b)) - Number(positionFit(a))
+      || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
       || scores.get(b) - scores.get(a) || a.rating - b.rating
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
@@ -417,6 +432,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
       || Number(positionFit(b)) - Number(positionFit(a))
+      || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
       || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
       || quoted.get(a) - quoted.get(b)
       || originalOrder.get(a) - originalOrder.get(b));

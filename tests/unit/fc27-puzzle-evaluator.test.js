@@ -96,6 +96,52 @@ it('uses ordinary candidate profiles while ignoring unrelated special-card profi
     chemistry: { ...withProfiles, profiles: { complete: true, entries: [base, nonordinary] } } })).toBeNull();
 });
 
+it('does not credit a complete squad with chemistry from unused pool cards', () => {
+  const chosen = Array.from({ length: 11 }, (_, index) => player(index + 1, 60,
+    { nationId: 100 + index, leagueId: 200 + index, teamId: 300 + index }));
+  const support = chosen.flatMap((item, index) => Array.from({ length: 7 }, (_, copy) => player(100 + index * 7 + copy, 60,
+    { nationId: item.nationId, leagueId: item.leagueId, teamId: item.teamId })));
+  const candidates = [...chosen, ...support];
+  const slots = Array.from({ length: 11 }, (_, index) => index);
+  const bound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry });
+  expect(bound).toBeTypeOf('function');
+  expect(evaluateFc27PuzzleSquad({ squad: chosen, formation, chemistry }).chemistry).toBe(0);
+  expect(bound(chosen, chosen.length, 0)).toBe(0);
+});
+
+it('keeps the suffix-aware bound above actual chemistry for sparse ordered selections', () => {
+  const layout = { positions: Array.from({ length: 11 }, (_, index) => index) };
+  const slots = layout.positions;
+  const selectedIndices = [0, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15];
+  for (let seed = 0; seed < 24; seed++) {
+    const candidates = Array.from({ length: 16 }, (_, index) => {
+      const selectedSlot = selectedIndices.indexOf(index);
+      return player(index + 1, 60, { nationId: 1 + (index + seed) % 4,
+        leagueId: 1 + (index * 2 + seed) % 3, teamId: 1 + (index + seed * 3) % 5,
+        positions: [selectedSlot < 0 ? index % 11 : selectedSlot] });
+    });
+    const chosen = selectedIndices.map(index => candidates[index]);
+    const actual = evaluateFc27PuzzleSquad({ squad: chosen, formation: layout, chemistry });
+    expect(actual.status).toBe('observed');
+    const bound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: layout, chemistry });
+    for (let depth = 0; depth <= 11; depth++) {
+      const start = depth ? selectedIndices[depth - 1] + 1 : 0;
+      expect(bound(chosen.slice(0, depth), start, 11 - depth), `seed ${seed} depth ${depth}`)
+        .toBeGreaterThanOrEqual(actual.chemistry);
+    }
+  }
+});
+
+it('limits selected flexible cards by the number of distinct positions they can cover', () => {
+  const layout = { positions: [5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18] };
+  const candidates = Array.from({ length: 11 }, (_, index) => player(index + 1, 60,
+    { positions: index < 6 ? [5, 7] : [layout.positions[index]] }));
+  const slots = Array.from({ length: 11 }, (_, index) => index);
+  const bound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: layout, chemistry });
+  expect(bound).toBeTypeOf('function');
+  expect(bound(candidates.slice(0, 6), 6, 5)).toBeLessThanOrEqual(21);
+});
+
 it('uses nation parameter 1 and club parameter 3 even when the parameter list is reordered', () => {
   const squad = Array.from({ length: 11 }, (_, i) => player(i + 1, 60,
     { nationId: 100 + i, leagueId: 200 + i, teamId: i < 4 ? 1 : 300 + i }));

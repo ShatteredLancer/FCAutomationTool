@@ -48,7 +48,9 @@ it('finds a high-chemistry 5-silver/6-gold squad under a four-per-league cap', (
   expect(result.nodes).toBeLessThan(50000);
 }, 30000);
 
-it.each([false, true])('reaches a legal 22-chemistry squad behind same-slot decoys with profiles enabled=%s', profilesEnabled => {
+it.each([
+  [false, [5]], [true, [5]], [true, [5, 7]],
+])('reaches a legal 22-chemistry squad with profiles enabled=%s and decoy positions=%j', (profilesEnabled, decoyPositions) => {
   const input = puzzleFillFixture();
   if (profilesEnabled) input.chemistry = { ...input.chemistry, profilesEnabled: true,
     profiles: { complete: true, entries: [
@@ -66,7 +68,7 @@ it.each([false, true])('reaches a legal 22-chemistry squad behind same-slot deco
     leagueId: index < 112 ? 1 : 2 + Math.floor((index - 112) / 4),
     nationId: index < 112 ? 1 : 2 + Math.floor((index - 112) / 3),
     teamId: index < 112 ? 1 : 100 + index,
-    positions: index < 112 ? [5] : [input.challenge.formation.positions[index - 112]],
+    positions: index < 112 ? decoyPositions : [input.challenge.formation.positions[index - 112]],
   }));
   input.boundSquad = squad => boundFc27PuzzleChemistry({ squad,
     formation: input.challenge.formation, chemistry: input.chemistry, rating: input.chemistry.rating });
