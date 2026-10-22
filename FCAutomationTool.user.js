@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.50
+// @version      27.0.51
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.50", at: Date.now(), status: 'started',
+    state = { version: "27.0.51", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3416,10 +3416,176 @@
     return [];
   }
 
+  // src/fc27/puzzle-evaluator.js
+  var integer5 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var positive4 = (value) => integer5(value, 1, Number.MAX_SAFE_INTEGER);
+  var fail8 = (reason) => ({ status: "blocked", reason, chemistry: null, teamRating: null });
+  function evaluateFc27PuzzleRating({ squad, rating } = {}) {
+    if (!Array.isArray(squad) || !squad.length || squad.length > 11 || Array.from(squad).some((item2) => !integer5(item2?.rating, 1, 99))) return fail8("FC27_PUZZLE_RATING_ITEMS_UNAVAILABLE");
+    if (typeof rating?.floatCalculationEnabled !== "boolean") return fail8("FC27_PUZZLE_RATING_CONFIG_UNAVAILABLE");
+    let total = squad.reduce((sum2, item2) => sum2 + item2.rating, 0);
+    const average = Math.min(rating.floatCalculationEnabled ? total / 11 : Math.floor(total / 11), 99);
+    for (const item2 of squad) if (item2.rating > average) total += item2.rating - average;
+    if (rating.floatCalculationEnabled) total = Math.round(total);
+    return {
+      status: "observed",
+      teamRating: Math.min(Math.max(Math.floor(total / 11), 0), 99),
+      ratingMode: rating.floatCalculationEnabled ? "float" : "integer"
+    };
+  }
+  function parametersOf(parameters) {
+    if (!Array.isArray(parameters) || parameters.length !== 3) return null;
+    const map = /* @__PURE__ */ new Map();
+    for (const parameter of parameters) {
+      if (!integer5(parameter?.id, 1, 3) || map.has(parameter.id) || !Array.isArray(parameter.thresholds) || !parameter.thresholds.length || parameter.thresholds.length > 8) return null;
+      const thresholds = Array.from(parameter.thresholds);
+      if (thresholds.some((value) => !integer5(value?.requirement, 1, 99) || !integer5(value?.points, 0, 3)) || thresholds.some((value, index) => index && value.requirement <= thresholds[index - 1].requirement)) return null;
+      map.set(parameter.id, thresholds);
+    }
+    return map;
+  }
+  function profilesOf(chemistry) {
+    if (chemistry.profilesEnabled === false) return [];
+    const snapshot = chemistry.profiles;
+    if (snapshot?.complete !== true || !Array.isArray(snapshot.entries) || !snapshot.entries.length || snapshot.entries.length > 128) return null;
+    const ids2 = /* @__PURE__ */ new Set();
+    const rarities = /* @__PURE__ */ new Set();
+    for (const profile of snapshot.entries) {
+      if (!positive4(profile?.id) || ids2.has(profile.id) || !Array.isArray(profile.applicableRarityIds) || profile.applicableRarityIds.length > 10001) return null;
+      ids2.add(profile.id);
+      for (const rarity of profile.applicableRarityIds) {
+        if (!integer5(rarity, 0, 1e4) || rarities.has(rarity)) return null;
+        rarities.add(rarity);
+      }
+    }
+    return ids2.has(1) ? snapshot.entries : null;
+  }
+  function ordinaryProfile(profile) {
+    return profile?.maxChem === false && Array.isArray(profile.rules) && profile.rules.length === 3 && new Set(profile.rules.map((rule) => rule?.parameterId)).size === 3 && profile.rules.every((rule) => integer5(rule?.parameterId, 1, 3) && rule.calculationType === 1 && rule.contribution === 1);
+  }
+  function createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry } = {}) {
+    if (!Array.isArray(candidates) || !Array.isArray(slots) || !Array.isArray(formation?.positions) || formation.positions.length !== 11 || formation.positions.some((position) => !integer5(position, 0, 27)) || slots.some((slot) => !integer5(slot, 0, 10)) || new Set(slots).size !== slots.length || chemistry?.maxChemistryPerPlayer !== 3) return null;
+    const parameters = parametersOf(chemistry.parameters);
+    const profiles = profilesOf(chemistry);
+    const resolveClub = createFc27ClubResolver(chemistry.links);
+    if (parameters?.size !== 3 || !profiles || !resolveClub || chemistry.profilesEnabled && profiles.some((profile) => !ordinaryProfile(profile))) return null;
+    const identities = chemistry.identities;
+    const excluded = [identities?.legendClubId, identities?.heroClubId, identities?.hallOfFutClubId];
+    if (!excluded.every(positive4) || !positive4(identities?.legendLeagueId) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.some((rarity) => !integer5(rarity, 0, 1e4))) return null;
+    const fields4 = [(item2) => item2.nationId, (item2) => item2.leagueId, (item2) => resolveClub(item2.teamId)];
+    const counts = fields4.map(() => /* @__PURE__ */ new Map());
+    for (const item2 of candidates) {
+      if (!positive4(item2?.definitionId) || !positive4(item2.nationId) || !positive4(item2.leagueId) || !positive4(item2.teamId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((position) => !integer5(position, 0, 27)) || ![0, 1].includes(item2.rarity) || excluded.includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return null;
+      for (const [index, read] of fields4.entries()) {
+        const key = read(item2);
+        if (!positive4(key)) return null;
+        if (!counts[index].has(key)) counts[index].set(key, /* @__PURE__ */ new Set());
+        counts[index].get(key).add(item2.definitionId);
+      }
+    }
+    const caps = /* @__PURE__ */ new Map();
+    const compatible = /* @__PURE__ */ new Map();
+    for (const item2 of candidates) {
+      const cap = Math.min(3, fields4.reduce((sum2, read, index) => {
+        const count2 = counts[index].get(read(item2)).size;
+        return sum2 + parameters.get(index + 1).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
+      }, 0));
+      caps.set(item2, cap);
+      compatible.set(item2, slots.flatMap((slot, index) => item2.positions.includes(formation.positions[slot]) ? [index] : []));
+    }
+    const suffix = Array.from({ length: candidates.length + 1 }, () => Array(slots.length).fill(0));
+    for (let index = candidates.length - 1; index >= 0; index--) {
+      suffix[index] = suffix[index + 1].slice();
+      for (const slot of compatible.get(candidates[index])) suffix[index][slot] = Math.max(suffix[index][slot], caps.get(candidates[index]));
+    }
+    return (chosen, start, remaining) => {
+      const singleton = Array(slots.length).fill(0);
+      let selected = 0;
+      for (const item2 of chosen) {
+        const fits = compatible.get(item2);
+        if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], caps.get(item2));
+        else if (fits?.length > 1) selected += caps.get(item2);
+      }
+      selected += singleton.reduce((sum2, score2) => sum2 + score2, 0);
+      const future = suffix[start].slice().sort((a, b) => b - a).slice(0, remaining).reduce((sum2, score2) => sum2 + score2, 0);
+      return selected + future;
+    };
+  }
+  function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating } = {}) {
+    if (!Array.isArray(squad) || !Array.isArray(formation?.positions) || squad.length !== 11 || formation.positions.length !== 11) return fail8("FC27_PUZZLE_FORMATION_UNAVAILABLE");
+    const actual = evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating });
+    if (actual.status !== "observed") return actual;
+    const optimistic = { ...formation, positions: squad.map((item2, index) => item2 === null ? formation.positions[index] : item2.positions[0]) };
+    const result = evaluateFc27PuzzleSquad({ squad, formation: optimistic, chemistry, rating });
+    if (result.status !== "observed") return result;
+    const playable = squad.flatMap((item2, index) => item2 === null ? [] : [index]);
+    let scores = /* @__PURE__ */ new Map([[0, 0]]);
+    squad.forEach((item2, index) => {
+      if (item2 === null || result.slotChemistry[index] === 0) return;
+      const compatible = playable.filter((slot) => item2.positions.includes(formation.positions[slot]));
+      const next = new Map(scores);
+      for (const [mask, score2] of scores) for (const slot of compatible) {
+        const bit = 1 << slot;
+        if (mask & bit) continue;
+        const value = score2 + result.slotChemistry[index];
+        if (value > (next.get(mask | bit) ?? -1)) next.set(mask | bit, value);
+      }
+      scores = next;
+    });
+    return { status: "observed", maxChemistry: Math.max(...scores.values()) };
+  }
+  function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } = {}) {
+    if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some((item2) => item2 === void 0)) return fail8("FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE");
+    if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || Array.from(formation.positions).some((position) => !integer5(position, 0, 27))) return fail8("FC27_PUZZLE_FORMATION_UNAVAILABLE");
+    if (typeof chemistry?.profilesEnabled !== "boolean") return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
+    const resolveClub = createFc27ClubResolver(chemistry.links);
+    const parameters = parametersOf(chemistry.parameters);
+    const profiles = profilesOf(chemistry);
+    const identities = chemistry.identities;
+    const identityKeys = ["legendClubId", "legendLeagueId", "heroClubId", "hallOfFutClubId"];
+    if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key) => positive4(identities?.[key])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer5(value, 0, 1e4))) return fail8("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
+    if (!profiles) return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
+    const players = squad.filter((item2) => item2 !== null);
+    for (const item2 of players) {
+      if (!item2 || item2.type !== "player" || !integer5(item2.rating, 1, 99) || !positive4(item2.nationId) || !positive4(item2.teamId) || !positive4(item2.leagueId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.length > 28 || Array.from(item2.positions).some((value) => !integer5(value, 0, 27)) || ![0, 1].includes(item2.rarity) || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false) return fail8("FC27_PUZZLE_POSITION_OR_ITEM_FACTS_UNAVAILABLE");
+      if ([identities.legendClubId, identities.heroClubId, identities.hallOfFutClubId].includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return fail8("FC27_PUZZLE_SPECIAL_CHEMISTRY_UNSUPPORTED");
+      if (chemistry.profilesEnabled) {
+        const profile = profiles.find((value) => value.applicableRarityIds.includes(item2.rarity)) ?? profiles.find((value) => value.id === 1);
+        if (!ordinaryProfile(profile)) return fail8("FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED");
+      }
+    }
+    const fields4 = [
+      { id: 1, value: (item2) => item2.nationId },
+      { id: 2, value: (item2) => item2.leagueId },
+      { id: 3, value: (item2) => resolveClub(item2.teamId) }
+    ];
+    const counts = fields4.map(() => /* @__PURE__ */ new Map());
+    const eligible = squad.map((item2, slot) => item2 !== null && item2.positions.includes(formation.positions[slot]));
+    squad.forEach((item2, slot) => {
+      if (eligible[slot]) fields4.forEach((field, index) => {
+        const id12 = field.value(item2);
+        counts[index].set(id12, (counts[index].get(id12) ?? 0) + 1);
+      });
+    });
+    const slotChemistry = squad.map((item2, slot) => eligible[slot] ? Math.min(3, fields4.reduce((total, field, index) => {
+      const count2 = counts[index].get(field.value(item2)) ?? 0;
+      return total + parameters.get(field.id).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
+    }, 0)) : 0);
+    const ratingResult = evaluateFc27PuzzleRating({ squad: players, rating });
+    return {
+      status: "observed",
+      reason: "FC27_PUZZLE_FACTS_EVALUATED",
+      chemistry: slotChemistry.reduce((sum2, value) => sum2 + value, 0),
+      slotChemistry,
+      teamRating: ratingResult.teamRating,
+      ratingMode: ratingResult.ratingMode ?? null
+    };
+  }
+
   // src/fc27/puzzle-preview.js
   var DEFAULT_MAX_NODES = 5e4;
   var MAX_PUZZLE_QUOTE_PRICE = 15e6;
-  var integer5 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+  var integer6 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
   var blocked2 = (reason, extra = {}) => ({ status: "blocked", reason, liveExecutionEnabled: false, selected: [], ...extra });
   function finishPuzzleSearch(iterator) {
     let step;
@@ -3612,7 +3778,7 @@
   var hintGroup = (hint, item2, resolveClub) => hint.strategy === "club" ? resolveClub?.(item2.teamId ?? item2.clubId) : item2[hint.strategy === "nation" ? "nationId" : "leagueId"];
   function isFc27PuzzleSearchHintValid(hint, candidates, clubLinks) {
     if (hint === null) return true;
-    if (!hint || Object.keys(hint).sort().join(",") !== "groupId,strategy" || !["balanced", "low-rating", "nation", "league", "club"].includes(hint.strategy) || !integer5(hint.groupId, 0, Number.MAX_SAFE_INTEGER)) return false;
+    if (!hint || Object.keys(hint).sort().join(",") !== "groupId,strategy" || !["balanced", "low-rating", "nation", "league", "club"].includes(hint.strategy) || !integer6(hint.groupId, 0, Number.MAX_SAFE_INTEGER)) return false;
     if (["balanced", "low-rating"].includes(hint.strategy)) return hint.groupId === 0;
     const resolveClub = createFc27ClubResolver(clubLinks);
     return hint.groupId > 0 && candidates.some((item2) => hintGroup(hint, item2, resolveClub) === hint.groupId);
@@ -3635,11 +3801,12 @@
     boundSquad,
     groupMatcher,
     clubLinks,
+    chemistry,
     maxNodes = DEFAULT_MAX_NODES,
     searchHint = null,
     onProgress = null
   } = {}) {
-    if (!integer5(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
+    if (!integer6(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     if (challenge?.mechanism !== "traditional-puzzle") return blocked2("CHALLENGE_UNVERIFIED");
     const required2 = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
     const pool = collectSafeTraditionalCandidates({ context, inventory, policy, challenge: {
@@ -3648,7 +3815,7 @@
       requirements: [{ kind: "player-count", count: required2 }]
     } });
     if (pool.status !== "candidates") return pool;
-    const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, pool };
+    const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
     return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
   }
   function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
@@ -3670,7 +3837,7 @@
     for (const [strategy, field] of [["league", "leagueId"], ["nation", "nationId"]]) {
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of hintCandidates) {
-        if (!integer5(item2[field], 1, Number.MAX_SAFE_INTEGER)) continue;
+        if (!integer6(item2[field], 1, Number.MAX_SAFE_INTEGER)) continue;
         if (!groups.has(item2[field])) groups.set(item2[field], /* @__PURE__ */ new Set());
         groups.get(item2[field]).add(item2.definitionId);
       }
@@ -3764,15 +3931,16 @@
     boundSquad,
     groupMatcher,
     clubLinks,
+    chemistry,
     maxNodes = DEFAULT_MAX_NODES,
     searchHint = null,
     pool,
     procurement = null,
     onProgress = null
   } = {}) {
-    if (!integer5(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
+    if (!integer6(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
-    if (procurement && (!integer5(procurement.budget, 0, 11 * MAX_PUZZLE_QUOTE_PRICE) || !integer5(procurement.maxPurchases, 0, 11) || typeof procurement.costOf !== "function")) return blocked2("FC27_MARKET_POLICY_INVALID");
+    if (procurement && (!integer6(procurement.budget, 0, 11 * MAX_PUZZLE_QUOTE_PRICE) || !integer6(procurement.maxPurchases, 0, 11) || typeof procurement.costOf !== "function")) return blocked2("FC27_MARKET_POLICY_INVALID");
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required2);
     if (parsed.status === "unsupported") return blocked2("FC27_REQUIREMENT_UNSUPPORTED", { unsupported: parsed.unsupported });
     if (parsed.status !== "observed") return blocked2(parsed.reason);
@@ -3800,7 +3968,7 @@
         const groups = /* @__PURE__ */ new Map();
         for (const item2 of candidates) {
           const key = read(item2);
-          if (!integer5(key, 1, Number.MAX_SAFE_INTEGER)) continue;
+          if (!integer6(key, 1, Number.MAX_SAFE_INTEGER)) continue;
           if (!groups.has(key)) groups.set(key, /* @__PURE__ */ new Set());
           groups.get(key).add(item2.definitionId);
         }
@@ -3849,7 +4017,7 @@
     }
     const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
     let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
-    if (costs.some((cost) => !integer5(cost, 0, MAX_PUZZLE_QUOTE_PRICE))) return blocked2("FC27_MARKET_QUOTE_INVALID");
+    if (costs.some((cost) => !integer6(cost, 0, MAX_PUZZLE_QUOTE_PRICE))) return blocked2("FC27_MARKET_QUOTE_INVALID");
     if (procurement?.priceAware) {
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
@@ -3864,7 +4032,7 @@
       matches: candidates.map((item2) => matchFc27SbcItemRule(rule, item2, groupMatcher, resolveClub))
     }));
     const relations = parsed.rules.filter((rule) => /^(same|distinct)-/.test(rule.kind));
-    if (counted.some(({ matches: matches2 }) => matches2.includes(null)) || relations.some((rule) => candidates.some((item2) => !integer5(relationValue(rule, item2, resolveClub), 1, Number.MAX_SAFE_INTEGER)))) {
+    if (counted.some(({ matches: matches2 }) => matches2.includes(null)) || relations.some((rule) => candidates.some((item2) => !integer6(relationValue(rule, item2, resolveClub), 1, Number.MAX_SAFE_INTEGER)))) {
       return blocked2("FC27_REQUIREMENT_VALUE_UNAVAILABLE", metrics);
     }
     const groupCaps = new Map(relations.filter((rule) => rule.kind.startsWith("distinct-") && rule.mode !== "min").map((rule) => [rule, groupSuffixIndex(rule, candidates, resolveClub)]));
@@ -3944,6 +4112,12 @@
     const needsFacts = ruleNeedsTeamFacts(parsed.rules);
     const searchPositions = parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"));
     const minimumChemistry = Math.max(0, ...parsed.rules.filter((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind)).map((rule) => rule.value));
+    const partialChemistry = minimumChemistry > 0 ? createFc27PuzzlePartialChemistryBound({
+      candidates,
+      slots,
+      formation: challenge.formation,
+      chemistry
+    }) : null;
     const visit = function* (start) {
       if (finished() || unavailable || exhausted || !takeNode("combinationNodes")) return;
       yield;
@@ -3967,6 +4141,7 @@
         if (rule.mode !== "min" && actual > rule.value || rule.mode !== "max" && actual + remaining < rule.value) return;
         if (groupCaps.has(rule) && remainingGroupCapacity(groupCaps.get(rule), counts, start, rule.value - counts.size) < remaining) return;
       }
+      if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
       if (chosen.length === required2) {
         const validate2 = (facts2) => matchFc27SbcRequirements({
           requirements: parsed.rules,
@@ -3990,7 +4165,7 @@
               unavailable = "FC27_PUZZLE_BOUND_UNAVAILABLE";
               return;
             }
-            if (bound?.status !== "observed" || !integer5(bound.maxChemistry, 0, 33)) {
+            if (bound?.status !== "observed" || !integer6(bound.maxChemistry, 0, 33)) {
               unavailable = "FC27_PUZZLE_BOUND_UNAVAILABLE";
               return;
             }
@@ -4082,124 +4257,6 @@
         optimalWithinPool: !exhausted && !deferredPlacements
       } : {},
       pending: ["EXACT_ITEM_REVALIDATION", "MARKET_RECEIPT_IF_NEEDED", "EXPLICIT_TRANSACTION_APPROVAL"]
-    };
-  }
-
-  // src/fc27/puzzle-evaluator.js
-  var integer6 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
-  var positive4 = (value) => integer6(value, 1, Number.MAX_SAFE_INTEGER);
-  var fail8 = (reason) => ({ status: "blocked", reason, chemistry: null, teamRating: null });
-  function evaluateFc27PuzzleRating({ squad, rating } = {}) {
-    if (!Array.isArray(squad) || !squad.length || squad.length > 11 || Array.from(squad).some((item2) => !integer6(item2?.rating, 1, 99))) return fail8("FC27_PUZZLE_RATING_ITEMS_UNAVAILABLE");
-    if (typeof rating?.floatCalculationEnabled !== "boolean") return fail8("FC27_PUZZLE_RATING_CONFIG_UNAVAILABLE");
-    let total = squad.reduce((sum2, item2) => sum2 + item2.rating, 0);
-    const average = Math.min(rating.floatCalculationEnabled ? total / 11 : Math.floor(total / 11), 99);
-    for (const item2 of squad) if (item2.rating > average) total += item2.rating - average;
-    if (rating.floatCalculationEnabled) total = Math.round(total);
-    return {
-      status: "observed",
-      teamRating: Math.min(Math.max(Math.floor(total / 11), 0), 99),
-      ratingMode: rating.floatCalculationEnabled ? "float" : "integer"
-    };
-  }
-  function parametersOf(parameters) {
-    if (!Array.isArray(parameters) || parameters.length !== 3) return null;
-    const map = /* @__PURE__ */ new Map();
-    for (const parameter of parameters) {
-      if (!integer6(parameter?.id, 1, 3) || map.has(parameter.id) || !Array.isArray(parameter.thresholds) || !parameter.thresholds.length || parameter.thresholds.length > 8) return null;
-      const thresholds = Array.from(parameter.thresholds);
-      if (thresholds.some((value) => !integer6(value?.requirement, 1, 99) || !integer6(value?.points, 0, 3)) || thresholds.some((value, index) => index && value.requirement <= thresholds[index - 1].requirement)) return null;
-      map.set(parameter.id, thresholds);
-    }
-    return map;
-  }
-  function profilesOf(chemistry) {
-    if (chemistry.profilesEnabled === false) return [];
-    const snapshot = chemistry.profiles;
-    if (snapshot?.complete !== true || !Array.isArray(snapshot.entries) || !snapshot.entries.length || snapshot.entries.length > 128) return null;
-    const ids2 = /* @__PURE__ */ new Set();
-    const rarities = /* @__PURE__ */ new Set();
-    for (const profile of snapshot.entries) {
-      if (!positive4(profile?.id) || ids2.has(profile.id) || !Array.isArray(profile.applicableRarityIds) || profile.applicableRarityIds.length > 10001) return null;
-      ids2.add(profile.id);
-      for (const rarity of profile.applicableRarityIds) {
-        if (!integer6(rarity, 0, 1e4) || rarities.has(rarity)) return null;
-        rarities.add(rarity);
-      }
-    }
-    return ids2.has(1) ? snapshot.entries : null;
-  }
-  function ordinaryProfile(profile) {
-    return profile?.maxChem === false && Array.isArray(profile.rules) && profile.rules.length === 3 && new Set(profile.rules.map((rule) => rule?.parameterId)).size === 3 && profile.rules.every((rule) => integer6(rule?.parameterId, 1, 3) && rule.calculationType === 1 && rule.contribution === 1);
-  }
-  function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating } = {}) {
-    if (!Array.isArray(squad) || !Array.isArray(formation?.positions) || squad.length !== 11 || formation.positions.length !== 11) return fail8("FC27_PUZZLE_FORMATION_UNAVAILABLE");
-    const actual = evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating });
-    if (actual.status !== "observed") return actual;
-    const optimistic = { ...formation, positions: squad.map((item2, index) => item2 === null ? formation.positions[index] : item2.positions[0]) };
-    const result = evaluateFc27PuzzleSquad({ squad, formation: optimistic, chemistry, rating });
-    if (result.status !== "observed") return result;
-    const playable = squad.flatMap((item2, index) => item2 === null ? [] : [index]);
-    let scores = /* @__PURE__ */ new Map([[0, 0]]);
-    squad.forEach((item2, index) => {
-      if (item2 === null || result.slotChemistry[index] === 0) return;
-      const compatible = playable.filter((slot) => item2.positions.includes(formation.positions[slot]));
-      const next = new Map(scores);
-      for (const [mask, score2] of scores) for (const slot of compatible) {
-        const bit = 1 << slot;
-        if (mask & bit) continue;
-        const value = score2 + result.slotChemistry[index];
-        if (value > (next.get(mask | bit) ?? -1)) next.set(mask | bit, value);
-      }
-      scores = next;
-    });
-    return { status: "observed", maxChemistry: Math.max(...scores.values()) };
-  }
-  function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } = {}) {
-    if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some((item2) => item2 === void 0)) return fail8("FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE");
-    if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || Array.from(formation.positions).some((position) => !integer6(position, 0, 27))) return fail8("FC27_PUZZLE_FORMATION_UNAVAILABLE");
-    if (typeof chemistry?.profilesEnabled !== "boolean") return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
-    const resolveClub = createFc27ClubResolver(chemistry.links);
-    const parameters = parametersOf(chemistry.parameters);
-    const profiles = profilesOf(chemistry);
-    const identities = chemistry.identities;
-    const identityKeys = ["legendClubId", "legendLeagueId", "heroClubId", "hallOfFutClubId"];
-    if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key) => positive4(identities?.[key])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer6(value, 0, 1e4))) return fail8("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
-    if (!profiles) return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
-    const players = squad.filter((item2) => item2 !== null);
-    for (const item2 of players) {
-      if (!item2 || item2.type !== "player" || !integer6(item2.rating, 1, 99) || !positive4(item2.nationId) || !positive4(item2.teamId) || !positive4(item2.leagueId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.length > 28 || Array.from(item2.positions).some((value) => !integer6(value, 0, 27)) || ![0, 1].includes(item2.rarity) || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false) return fail8("FC27_PUZZLE_POSITION_OR_ITEM_FACTS_UNAVAILABLE");
-      if ([identities.legendClubId, identities.heroClubId, identities.hallOfFutClubId].includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return fail8("FC27_PUZZLE_SPECIAL_CHEMISTRY_UNSUPPORTED");
-      if (chemistry.profilesEnabled) {
-        const profile = profiles.find((value) => value.applicableRarityIds.includes(item2.rarity)) ?? profiles.find((value) => value.id === 1);
-        if (!ordinaryProfile(profile)) return fail8("FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED");
-      }
-    }
-    const fields4 = [
-      { id: 1, value: (item2) => item2.nationId },
-      { id: 2, value: (item2) => item2.leagueId },
-      { id: 3, value: (item2) => resolveClub(item2.teamId) }
-    ];
-    const counts = fields4.map(() => /* @__PURE__ */ new Map());
-    const eligible = squad.map((item2, slot) => item2 !== null && item2.positions.includes(formation.positions[slot]));
-    squad.forEach((item2, slot) => {
-      if (eligible[slot]) fields4.forEach((field, index) => {
-        const id12 = field.value(item2);
-        counts[index].set(id12, (counts[index].get(id12) ?? 0) + 1);
-      });
-    });
-    const slotChemistry = squad.map((item2, slot) => eligible[slot] ? Math.min(3, fields4.reduce((total, field, index) => {
-      const count2 = counts[index].get(field.value(item2)) ?? 0;
-      return total + parameters.get(field.id).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
-    }, 0)) : 0);
-    const ratingResult = evaluateFc27PuzzleRating({ squad: players, rating });
-    return {
-      status: "observed",
-      reason: "FC27_PUZZLE_FACTS_EVALUATED",
-      chemistry: slotChemistry.reduce((sum2, value) => sum2 + value, 0),
-      slotChemistry,
-      teamRating: ratingResult.teamRating,
-      ratingMode: ratingResult.ratingMode ?? null
     };
   }
 
@@ -34459,7 +34516,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.50" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.51" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -34777,8 +34834,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.50"}`,
-    version: "27.0.50",
+    title: `FC Automation Tool ${"27.0.51"}`,
+    version: "27.0.51",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

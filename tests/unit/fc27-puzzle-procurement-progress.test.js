@@ -47,7 +47,9 @@ it('does not run four full searches for a repair seed and preserves the native r
   const { input } = shortageFixture(); const original = structuredClone(input.challenge);
   const progress = [];
   await findFc27PuzzleRepairSeedCooperatively(input, value => progress.push(value));
-  expect(progress.filter(value => value.nodes === 50000)).toHaveLength(1);
+  expect(progress.length).toBeGreaterThan(0);
+  expect(Math.max(...progress.map(value => value.nodes))).toBeLessThanOrEqual(50000);
+  expect(progress.every(value => value.maxNodes === 50000)).toBe(true);
   expect(input.challenge).toEqual(original);
 });
 

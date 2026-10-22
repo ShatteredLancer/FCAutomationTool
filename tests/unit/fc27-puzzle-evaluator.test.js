@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { evaluateFc27PuzzleSquad, evaluateFc27PuzzleRating, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
+import { evaluateFc27PuzzleSquad, evaluateFc27PuzzleRating, boundFc27PuzzleChemistry,
+  createFc27PuzzlePartialChemistryBound } from '../../src/fc27/puzzle-evaluator.js';
 
 const links = { schema: 1, complete: true, links: [[101, 1], [102, 2]] };
 const parameters = [
@@ -40,6 +41,35 @@ it('computes an optimistic chemistry bound without changing cards or actual posi
   expect(evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating }).chemistry).toBeLessThanOrEqual(bound.maxChemistry);
   expect(squad).toEqual(before);
   expect(boundFc27PuzzleChemistry({ squad, formation, chemistry: null }).status).toBe('blocked');
+});
+
+it('never underestimates complete chemistry through any partial selection depth', () => {
+  const layout = { positions: Array.from({ length: 11 }, (_, index) => index) };
+  const slots = Array.from({ length: 11 }, (_, index) => index);
+  for (let seed = 0; seed < 24; seed++) {
+    const candidates = slots.map(index => player(index + 1, 60, {
+      nationId: 1 + (seed + index) % 4, leagueId: 1 + (seed * 3 + index) % 3,
+      teamId: 1 + (seed + 2 * index) % 5,
+      positions: index % 3 === 0 ? [index, (index + 1) % 11] : [index],
+    }));
+    const actual = evaluateFc27PuzzleSquad({ squad: candidates, formation: layout, chemistry, rating });
+    expect(actual.status).toBe('observed');
+    const bound = createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: layout, chemistry });
+    expect(bound).toBeTypeOf('function');
+    for (let chosen = 0; chosen <= 11; chosen++) {
+      expect(bound(candidates.slice(0, chosen), chosen, 11 - chosen), `seed ${seed} depth ${chosen}`)
+        .toBeGreaterThanOrEqual(actual.chemistry);
+    }
+  }
+});
+
+it('skips partial chemistry pruning when the ordinary chemistry model is incomplete', () => {
+  const candidates = [player(1)]; const slots = [0];
+  expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry: null })).toBeNull();
+  expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation,
+    chemistry: { ...chemistry, parameters: [parameters[0]] } })).toBeNull();
+  expect(createFc27PuzzlePartialChemistryBound({ candidates, slots, formation,
+    chemistry: { ...chemistry, profilesEnabled: true } })).toBeNull();
 });
 
 it('uses nation parameter 1 and club parameter 3 even when the parameter list is reordered', () => {

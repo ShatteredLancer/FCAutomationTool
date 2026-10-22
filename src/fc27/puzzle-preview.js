@@ -1,6 +1,7 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
 
 const DEFAULT_MAX_NODES = 50000;
 // EA amount domain only; keep the detached solver independent of procurement
@@ -187,7 +188,7 @@ export const previewFc27PuzzleSquad = input => finishPuzzleSearch(iterateFc27Puz
 export const previewFc27PuzzleSquadCooperatively = (input, options) =>
   finishPuzzleSearchCooperatively(iterateFc27PuzzleSquad(input), options);
 
-export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
+export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   if (challenge?.mechanism !== 'traditional-puzzle') return blocked('CHALLENGE_UNVERIFIED');
@@ -198,7 +199,7 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
     ...challenge, mechanism: 'traditional', requirements: [{ kind: 'player-count', count: required }],
   } });
   if (pool.status !== 'candidates') return pool;
-  const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, pool };
+  const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
   return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
 }
 
@@ -285,7 +286,7 @@ export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES
 // is an executable transaction; callers must preserve that distinction.
 export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc27PuzzleCandidates(input));
 
-export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks,
+export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
@@ -492,6 +493,8 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   const searchPositions = parsed.rules.some(rule => rule.kind.endsWith('-chemistry'));
   const minimumChemistry = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind))
     .map(rule => rule.value));
+  const partialChemistry = minimumChemistry > 0 ? createFc27PuzzlePartialChemistryBound({
+    candidates, slots, formation: challenge.formation, chemistry }) : null;
   const visit = function* (start) {
     if (finished() || unavailable || exhausted || !takeNode('combinationNodes')) return;
     yield;
@@ -515,6 +518,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       // before enumerating their combinations or expensive chemistry layouts.
       if (groupCaps.has(rule) && remainingGroupCapacity(groupCaps.get(rule), counts, start, rule.value - counts.size) < remaining) return;
     }
+    if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
     if (chosen.length === required) {
       const validate = facts => matchFc27SbcRequirements({ requirements: parsed.rules, squad: chosen,
         chemistry: facts?.chemistry, teamRating: facts?.teamRating, groupMatcher, clubLinks });

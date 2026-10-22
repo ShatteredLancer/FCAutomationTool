@@ -413,6 +413,7 @@ it('matches exhaustive combination feasibility for small deterministic synthetic
 it('keeps the Puzzle core free from runtime adapters, legacy workflows and transaction writers', async () => {
   const result = await build({ entryPoints: ['src/fc27/puzzle-preview.js'], bundle: true, write: false, metafile: true });
   expect(Object.keys(result.metafile.inputs).map(name => name.replaceAll('\\', '/')).sort()).toEqual([
-    'src/fc27/prelaunch-contract.js', 'src/fc27/puzzle-material-policy.js', 'src/fc27/puzzle-preview.js', 'src/fc27/sbc-requirements.js', 'src/fc27/traditional-preview.js',
+    'src/fc27/prelaunch-contract.js', 'src/fc27/puzzle-evaluator.js', 'src/fc27/puzzle-material-policy.js',
+    'src/fc27/puzzle-preview.js', 'src/fc27/sbc-requirements.js', 'src/fc27/traditional-preview.js',
   ]);
 });

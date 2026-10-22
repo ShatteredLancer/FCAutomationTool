@@ -47,3 +47,32 @@ it('finds a high-chemistry 5-silver/6-gold squad under a four-per-league cap', (
   expect(result.selected.filter(item => item.rating >= 75)).toHaveLength(6);
   expect(result.nodes).toBeLessThan(50000);
 }, 30000);
+
+it('reaches a legal 22-chemistry squad behind same-slot decoys before the 50000-node cap', () => {
+  const input = puzzleFillFixture();
+  input.policy.maxRating = 82;
+  input.challenge.formation.positions = [5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18];
+  input.challenge.rawRequirements = [marketRow(5, 4, -1, 1), marketRow(4, 3), marketRow(8, 3),
+    marketRow(3, 2), marketRow(17, 3, 6), marketRow(35, 22)];
+  const base = input.inventory.items[0];
+  input.inventory.items = Array.from({ length: 123 }, (_, index) => ({ ...base,
+    id: index + 1, definitionId: index + 1001, rating: index < 112 ? index % 2 ? 70 : 78 : index - 112 < 5 ? 70 : 78,
+    leagueId: index < 112 ? 1 : 2 + Math.floor((index - 112) / 4),
+    nationId: index < 112 ? 1 : 2 + Math.floor((index - 112) / 3),
+    teamId: index < 112 ? 1 : 100 + index,
+    positions: index < 112 ? [5] : [input.challenge.formation.positions[index - 112]],
+  }));
+  input.boundSquad = squad => boundFc27PuzzleChemistry({ squad,
+    formation: input.challenge.formation, chemistry: input.chemistry, rating: input.chemistry.rating });
+  const known = input.inventory.items.slice(112);
+  const knownFacts = evaluateFc27PuzzleSquad({ squad: known.map((item, slot) => ({ ...item, slot })),
+    formation: input.challenge.formation, chemistry: input.chemistry, rating: input.chemistry.rating });
+  expect(knownFacts.chemistry).toBe(22);
+  expect(matchFc27SbcRequirements({ requirements: parseFc27SbcRequirements(input.challenge.rawRequirements, 11).rules,
+    squad: known, chemistry: knownFacts.chemistry }).status).toBe('satisfied');
+
+  const result = previewFc27PuzzleSquad(input);
+  expect(result.status, JSON.stringify({ reason: result.reason, search: result.search })).toBe('preview');
+  expect(result.teamFacts.chemistry).toBeGreaterThanOrEqual(22);
+  expect(result.nodes).toBeLessThan(50000);
+}, 30000);

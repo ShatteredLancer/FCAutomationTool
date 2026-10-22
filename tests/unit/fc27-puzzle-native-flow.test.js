@@ -193,7 +193,7 @@ async function missingFixture(missing = 1, options = {}) {
 it('continues from filtered internal routes into cached procurement on repeated native clicks without writes', async () => {
   const store = new Map();
   const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
-    gmSetValue: (key, value) => store.set(key, value), version: '27.0.50' });
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.51' });
   const x = fixture({ diagnosticLog });
   x.challenge.eligibilityRequirements[1].kvPairs._collection[35] = [33];
   x.challenge.eligibilityRequirements[1].scope = 2;
@@ -220,7 +220,7 @@ it('continues from filtered internal routes into cached procurement on repeated 
   });
   for (let click = 0; click < 2; click++) {
     const result = await x.fill();
-    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT',
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_NO_PLAN_FOUND',
       purchaseSuggestion: { reason: 'FC27_PURCHASE_REPAIR_NO_PLAN', requests: 0,
         diagnostics: { usableCandidates: 0, nodes: 0, truncated: false } } });
     expect(result.purchaseSuggestion.cacheHits).toBeGreaterThan(0);
@@ -230,11 +230,13 @@ it('continues from filtered internal routes into cached procurement on repeated 
   expect([...x.data.values()].some(value => value?.phase === 'save-pending')).toBe(false);
   const payload = await diagnosticLog.exportPayload();
   const lastSolve = payload.entries.filter(entry => entry.area === 'puzzle' && entry.event === 'solve-result').at(-1);
-  expect(lastSolve).toMatchObject({ reason: 'FC27_PUZZLE_SEARCH_LIMIT', evaluations: 50000,
+  expect(lastSolve).toMatchObject({ reason: 'FC27_PUZZLE_NO_PLAN_FOUND',
+    evaluations: expect.any(Number),
     combinationNodes: expect.any(Number), placementNodes: expect.any(Number),
     evaluationNodes: expect.any(Number), boundNodes: expect.any(Number), strategyAttempts: expect.any(Number) });
   expect(lastSolve.combinationNodes + lastSolve.placementNodes + lastSolve.evaluationNodes + lastSolve.boundNodes)
-    .toBe(50000);
+    .toBe(lastSolve.evaluations);
+  expect(lastSolve.evaluations).toBeLessThan(50000);
 }, 30000);
 
 async function buyingFixture(count = 1, options = {}) {

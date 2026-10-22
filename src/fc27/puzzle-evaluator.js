@@ -57,6 +57,71 @@ function ordinaryProfile(profile) {
     && profile.rules.every(rule => integer(rule?.parameterId, 1, 3) && rule.calculationType === 1 && rule.contribution === 1);
 }
 
+// Necessary (not sufficient) chemistry bound for a partial card combination.
+// A field's count cannot exceed the number of distinct eligible definitions
+// in the entire safe pool. Ignore slot conflicts for flexible cards and let
+// every remaining slot take its best suffix card independently. Both relaxations
+// can only overestimate achievable chemistry; no card is filtered from search.
+export function createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry } = {}) {
+  if (!Array.isArray(candidates) || !Array.isArray(slots) || !Array.isArray(formation?.positions)
+      || formation.positions.length !== 11 || formation.positions.some(position => !integer(position, 0, 27))
+      || slots.some(slot => !integer(slot, 0, 10)) || new Set(slots).size !== slots.length
+      || chemistry?.maxChemistryPerPlayer !== 3) return null;
+  const parameters = parametersOf(chemistry.parameters);
+  const profiles = profilesOf(chemistry);
+  const resolveClub = createFc27ClubResolver(chemistry.links);
+  if (parameters?.size !== 3 || !profiles || !resolveClub
+      || chemistry.profilesEnabled && profiles.some(profile => !ordinaryProfile(profile))) return null;
+  const identities = chemistry.identities;
+  const excluded = [identities?.legendClubId, identities?.heroClubId, identities?.hallOfFutClubId];
+  if (!excluded.every(positive) || !positive(identities?.legendLeagueId)
+      || !Array.isArray(chemistry.superChemRarityIds)
+      || chemistry.superChemRarityIds.some(rarity => !integer(rarity, 0, 10000))) return null;
+  const fields = [item => item.nationId, item => item.leagueId, item => resolveClub(item.teamId)];
+  const counts = fields.map(() => new Map());
+  for (const item of candidates) {
+    if (!positive(item?.definitionId) || !positive(item.nationId) || !positive(item.leagueId)
+        || !positive(item.teamId) || !Array.isArray(item.positions) || !item.positions.length
+        || item.positions.some(position => !integer(position, 0, 27))
+        || ![0, 1].includes(item.rarity) || excluded.includes(item.teamId)
+        || item.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item.rarity)) return null;
+    for (const [index, read] of fields.entries()) {
+      const key = read(item);
+      if (!positive(key)) return null;
+      if (!counts[index].has(key)) counts[index].set(key, new Set());
+      counts[index].get(key).add(item.definitionId);
+    }
+  }
+  const caps = new Map(); const compatible = new Map();
+  for (const item of candidates) {
+    const cap = Math.min(3, fields.reduce((sum, read, index) => {
+      const count = counts[index].get(read(item)).size;
+      return sum + parameters.get(index + 1).reduce((points, threshold) =>
+        points + (count >= threshold.requirement ? threshold.points : 0), 0);
+    }, 0));
+    caps.set(item, cap);
+    compatible.set(item, slots.flatMap((slot, index) => item.positions.includes(formation.positions[slot]) ? [index] : []));
+  }
+  const suffix = Array.from({ length: candidates.length + 1 }, () => Array(slots.length).fill(0));
+  for (let index = candidates.length - 1; index >= 0; index--) {
+    suffix[index] = suffix[index + 1].slice();
+    for (const slot of compatible.get(candidates[index])) suffix[index][slot] = Math.max(suffix[index][slot], caps.get(candidates[index]));
+  }
+  return (chosen, start, remaining) => {
+    const singleton = Array(slots.length).fill(0);
+    let selected = 0;
+    for (const item of chosen) {
+      const fits = compatible.get(item);
+      if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], caps.get(item));
+      else if (fits?.length > 1) selected += caps.get(item);
+    }
+    selected += singleton.reduce((sum, score) => sum + score, 0);
+    const future = suffix[start].slice().sort((a, b) => b - a).slice(0, remaining)
+      .reduce((sum, score) => sum + score, 0);
+    return selected + future;
+  };
+}
+
 // Ordinary profiles only add nonnegative contributions from in-position players.
 // Each player's chemistry with everyone in position is an upper bound. Combine
 // those weights with an injective matching to actual positions: two players
