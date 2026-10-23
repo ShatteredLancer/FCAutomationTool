@@ -89,6 +89,41 @@ it('does not change a confirmed listing when terminal diagnostics throw', async 
   expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
 });
 
+it('reports the exact readback mismatch without leaking entity, auction or account identifiers', async () => {
+  const f = fixture(), diagnosticLog = { record: vi.fn(async () => true) }, inspect = f.adapter.inspectListingItem;
+  f.adapter.inspectListingItem = ref => {
+    const result = inspect(ref);
+    if (ref.pile === 'transfer' && result.candidate?.auction?.state === 'active') result.candidate.auction.buyNowPrice++;
+    return result;
+  };
+  const service = createFc27GalleryListing({ ...f.deps, diagnosticLog });
+  await service.prepare(); const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'partial', pending: 1, accepted: 0, entries: [{ status: 'unknown' }] });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'listing-result',
+    acceptedCount: 0, unknownCount: 1 }));
+  const checks = diagnosticLog.record.mock.calls.map(([row]) => row).filter(row => row.phase === 'readback' && row.event === 'bulk-list');
+  expect(checks).toEqual([expect.objectContaining({ mismatch: 'buy-now', status: 'unconfirmed', attempt: 1, attemptLimit: 3 })]);
+  expect(JSON.stringify(checks)).not.toMatch(/accountScope|itemId|tradeId|fingerprint/);
+  expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
+it('records a closed, acknowledged listing as listed rather than inventing a sale', async () => {
+  const f = fixture(), inspect = f.adapter.inspectListingItem;
+  f.adapter.inspectListingItem = ref => {
+    const value = inspect(ref);
+    if (ref.pile === 'transfer' && value.candidate?.auction?.state === 'active') value.candidate.auction.state = 'closed';
+    return value;
+  };
+  const accounting = { recordListings: vi.fn(async () => ({ status: 'observed' })), recordSales: vi.fn() };
+  const service = createFc27GalleryListing({ ...f.deps, accounting });
+  await service.prepare(); const plan = service.plan({ selectedIds: [11], settings: f.settings });
+  expect(await service.execute({ approved: true, plan, settings: f.settings, isCurrent: () => true }))
+    .toMatchObject({ status: 'completed', accepted: 1 });
+  expect(accounting.recordListings).toHaveBeenCalledWith([expect.objectContaining({ listingState: 'closed', status: 'accepted' })]);
+  expect(accounting.recordSales).not.toHaveBeenCalled(); expect(f.adapter.listItem).toHaveBeenCalledTimes(1);
+});
+
 it('writes only read-back-confirmed accepted listings to the accounting adapter', async () => {
   const f = fixture(), accounting = { recordListings: vi.fn(async entries => ({ status: 'observed', entries })) };
   const service = createFc27GalleryListing({ ...f.deps, accounting });

@@ -101,6 +101,8 @@ if (help) {
       await exercisePurchaseResults(context, root);
       const { exerciseGalleryTradeStyles } = await import('./gallery-trade-styles-smoke.mjs');
       await exerciseGalleryTradeStyles(context, out);
+      const { exerciseGalleryListingReadback } = await import('./gallery-listing-readback-smoke.mjs');
+      await exerciseGalleryListingReadback(context, out);
       const { exerciseGalleryCatalog } = await import('./gallery-catalog-smoke.mjs');
       await exerciseGalleryCatalog(context, out);
       const { exerciseGalleryJoint } = await import('./gallery-joint-smoke.mjs');

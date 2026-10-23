@@ -226,11 +226,11 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
     FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED: '上一批挂牌仍有未核对结果，请点击“核对并继续”恢复该批次。',
     FC27_GALLERY_BULK_LIST_JOURNAL_INVALID: '旧挂牌记录格式异常，无法确定所属批次，未开始挂牌；请保留记录并导出诊断日志。',
     FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED: '读取旧挂牌记录失败，未开始挂牌；请重试，仍失败请导出诊断日志。',
-    FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED: '旧挂牌结果仍无法核对，未重复挂牌或继续后续卡；记录已保留，请检查 Transfer List 并导出诊断日志。',
+    FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED: '有限次只读核对后，旧挂牌结果仍未确认；未重复挂牌或继续后续卡，记录已保留。请检查 Transfer List 并导出诊断日志。',
     FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED: '上一批挂牌记录属于其他账号或会话，未继续挂牌；请切换回原账号恢复。',
     FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED: '挂牌记录无法可靠保存，未继续发送挂牌请求；请导出诊断日志。',
     FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED: '写入或归档挂牌记录失败，未发送后续挂牌请求；请检查存储并导出诊断日志。',
-    FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: '挂牌回执无法确认，未自动重试；请点击“核对并继续”。',
+    FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: '有限次只读核对后仍未确认，未重复挂牌；请稍后点击“核对并继续”。',
     FC27_GALLERY_LISTING_QUOTE_EXPIRED: '基准源报价已过期，未开始挂牌；请重新打开读取报价。',
     'market-price-unavailable': '基准源无报价',
     'market-price-expired': '基准源报价已过期，请重新打开',
@@ -352,7 +352,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
       if (!row) { const tr = add(body, 'tr'); add(tr, 'td'); add(tr, 'td', entry.name || String(entry.item.definitionId));
         add(tr, 'td', '—'); add(tr, 'td', String(entry.buyNow)); add(tr, 'td', '—'); add(tr, 'td', '—');
         row = { tr, state: add(tr.children[3], 'small') }; rows.set(entry.item.id, row); }
-      row.state.textContent = `${label(entry.status)}${entry.reason ? ` · ${entry.reason}` : ''}`;
+      row.state.textContent = `${entry.status === 'accepted' && entry.listingState === 'closed' ? '已挂牌（拍卖已结束）' : label(entry.status)}${entry.reason ? ` · ${entry.reason}` : ''}`;
       const line = add(execution, 'div'); line.style.cssText = 'padding:8px 0;border-bottom:1px solid #46515b;overflow-wrap:anywhere';
       add(line, 'strong', `${entry.name || entry.item.definitionId} · ${entry.buyNow} 🪙`);
       add(line, 'span', ` · ${row.state.textContent}`);
@@ -369,6 +369,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
           if (!current()) return;
           progress.max = value.total || 1; progress.value = value.completed;
           output.textContent = `${value.index}/${value.total} · 已挂牌 ${value.accepted} · 失败 ${value.rejected} · 跳过 ${value.skipped}`;
+          if (value.phase === 'readback') output.textContent += ` · 只读核对 ${value.attempt}/${value.attemptLimit}，不会重复挂牌`;
           showEntries(value.entries);
         } });
       if (!current()) return;

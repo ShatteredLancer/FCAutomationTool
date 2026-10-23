@@ -1,3 +1,5 @@
+import { reconcileGalleryListings } from './listing-readback.js';
+
 const TERMINAL = new Set(['accepted', 'rejected', 'skipped']);
 const MUTATING = new Set(['list-pending', 'unknown']);
 const DURATIONS = new Set([3600, 10800, 21600, 43200, 86400, 259200]);
@@ -31,6 +33,7 @@ export function normalizeGalleryBulkListJournal(input) {
     || input.entries.some(e => !validRef(e?.item) || !validPurchase(e.purchaseTradeId, input.source) || !validPrices(e)
       || !['pending', 'list-pending', 'unknown', 'accepted', 'rejected', 'skipped'].includes(e.status)
       || e.action !== undefined && e.action !== 'transfer'
+      || e.listingState !== undefined && !['active', 'closed'].includes(e.listingState)
       || e.status === 'accepted' && e.action !== 'transfer' && !tradeId(e.listingTradeId))) return null;
   return clone(input);
 }
@@ -47,45 +50,27 @@ export async function assertNoGalleryListingPending(get, scope, recoveryOptions 
   }
 }
 
-const confirmActiveListing = (entry, seen) => {
-  const candidate = seen?.candidate, auction = candidate?.auction;
-  if (entry.action === 'transfer') {
-    if (seen?.status !== 'loaded' || candidate?.item?.id !== entry.item.id
-      || candidate.item.definitionId !== entry.item.definitionId || candidate.item.pile !== 'transfer'
-      || !['none', 'inactive'].includes(auction?.state)) return false;
-    entry.status = 'accepted'; entry.reason = null; return true;
-  }
-  if (seen?.status !== 'loaded' || candidate.item?.id !== entry.item.id
-    || candidate.item?.definitionId !== entry.item.definitionId || candidate.item?.pile !== 'transfer'
-    || auction?.state !== 'active' || auction.startingBid !== entry.startPrice || auction.buyNowPrice !== entry.buyNow
-    || !tradeId(String(auction.tradeId ?? ''))) return false;
-  entry.listingTradeId = String(auction.tradeId); entry.status = 'accepted'; entry.reason = null;
-  return true;
-};
-
 // Caller must hold the account transaction lock. No listing/buying/moving is
-// performed; only exact active-auction evidence or a durable explicit rejection
-// can settle an old intent. Missing/expired auctions are not proof of failure.
-async function reconcileGalleryListingPending({ get, set, scope, context, assertCurrent, createAdapter }) {
+// performed; closed auctions additionally require the durable positive listing
+// acknowledgement. Missing auctions are never proof of failure or permission to retry.
+async function reconcileGalleryListingPending({ get, set, scope, context, assertCurrent, createAdapter, sleep, shouldStop, onCheck }) {
   assertCurrent();
   const key = galleryBulkListKey(scope), raw = await get(key, null);
   const record = normalizeGalleryBulkListJournal(raw);
   if (!record || record.scope !== scope || !same(record.context, context)) fail('FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED');
   assertCurrent();
-  let adapter = null, fresh = null, changed = false;
+  let changed = false;
   for (const entry of record.entries.filter(e => MUTATING.has(e.status))) {
     if (entry.reason === 'FC27_GALLERY_LISTING_SERVICE_STOP' && entry.response?.success === false
         && [401, 403, 427, 429].includes(entry.response.status)) {
       entry.status = 'rejected'; entry.reason = 'FC27_GALLERY_LISTING_REJECTED'; changed = true;
       continue;
     }
-    if (!adapter) {
-      adapter = createAdapter();
-      fresh = await adapter.refreshTransferItems(); assertCurrent();
-    }
-    if (fresh?.status === 'completed') {
-      changed = confirmActiveListing(entry, adapter.inspectListingItem({ ...entry.item, pile: 'transfer' })) || changed;
-    }
+  }
+  const pending = record.entries.filter(e => MUTATING.has(e.status));
+  if (pending.length) {
+    const result = await reconcileGalleryListings(pending, { adapter: createAdapter(), assertCurrent, sleep, shouldStop, onCheck });
+    changed ||= result.confirmed > 0;
   }
   assertCurrent();
   if (changed) {
@@ -166,14 +151,13 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
     if (!normalizeGalleryBulkListJournal(record)) fail('FC27_GALLERY_BULK_LIST_JOURNAL_INVALID');
     await storeConfirmed(key, record);
   };
-  const report = (record, phase, index) => {
-    try { onProgress({ phase, index, ...summary(record), entries: clone(record.entries) }); } catch { /* Presentation only. */ }
+  const report = (record, phase, index, detail = {}) => {
+    try { onProgress({ phase, index, ...summary(record), entries: clone(record.entries), ...detail }); } catch { /* Presentation only. */ }
   };
-  const reconcile = async entry => {
-    assertCurrent();
-    const fresh = await tradeAdapter.refreshTransferItems(); assertCurrent();
-    const seen = fresh?.status === 'completed' ? tradeAdapter.inspectListingItem({ ...entry.item, pile: 'transfer' }) : null;
-    return confirmActiveListing(entry, seen);
+  const reconcile = async (entry, record, index) => {
+    const result = await reconcileGalleryListings([entry], { adapter: tradeAdapter, assertCurrent, shouldStop, sleep,
+      onCheck: detail => report(record, 'readback', index, detail) });
+    return result.complete;
   };
   return Object.freeze({
     async inspect() {
@@ -235,7 +219,7 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
                 entry.status = 'rejected'; entry.reason = 'FC27_GALLERY_LISTING_REJECTED';
                 await write(record); report(record, 'rejected', index + 1); continue;
               }
-              if (!await reconcile(entry)) fail('FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED');
+              if (!await reconcile(entry, record, index + 1)) fail('FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED');
               await write(record); report(record, 'accepted', index + 1); continue;
             }
             if (shouldStop()) { record.lastReason = 'FC27_GALLERY_BULK_LIST_STOPPED'; break; }
@@ -279,7 +263,7 @@ export function createGalleryBulkListSession({ scope, context, get, set, exclusi
               status: Number(result.response.status) || null, code: Number(result.response.code) || null } : null;
             if (result?.status === 'accepted' || entry.action === 'transfer' && result?.status === 'completed') {
               await write(record);
-              if (!await reconcile(entry)) {
+              if (!await reconcile(entry, record, index + 1)) {
                 entry.status = 'unknown'; entry.reason = record.lastReason = 'FC27_GALLERY_LISTING_READBACK_UNCONFIRMED';
               }
             } else if (mustStop(result)) {

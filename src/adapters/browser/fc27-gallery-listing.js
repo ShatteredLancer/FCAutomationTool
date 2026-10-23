@@ -107,7 +107,10 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
         onProgress(progress);
         try { Promise.resolve(diagnosticLog?.record?.({ area: 'gallery', event: 'bulk-list', phase: progress.phase,
           count: progress.completed, batchSize: progress.total, requestedCount: progress.total,
-          quotedCount: progress.accepted })).catch(() => {}); } catch { /* Diagnostics only. */ }
+          quotedCount: progress.accepted, ...(progress.phase === 'readback' ? {
+            status: progress.status, mismatch: progress.mismatch, attempt: progress.attempt,
+            attemptLimit: progress.attemptLimit, httpStatus: progress.httpStatus,
+          } : {}) })).catch(() => {}); } catch { /* Diagnostics only. */ }
       } });
     return { context, scope, persistence, assertCurrent, adapter, session, checkOtherTransactions, inventory, assertSource };
   };

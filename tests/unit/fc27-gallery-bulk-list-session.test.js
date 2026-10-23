@@ -203,6 +203,75 @@ describe('FC27 Gallery bulk list session', () => {
     expect(inspect.entries[0].status).toBe('unknown');
   });
 
+  it('waits for delayed Transfer visibility using read-only retries, without listing the same card twice', async () => {
+    const waits = [], h = harness({ sleep: async ms => waits.push(ms) });
+    const inspect = h.adapter.inspectListingItem;
+    h.adapter.inspectListingItem = ref => ref.pile === 'transfer' && h.calls.refresh < 2
+      ? { status: 'not-found', candidate: null } : inspect(ref);
+    const result = await h.session.execute({ approved: true, binding: 'b', entries: [entry(1), entry(2)] });
+    expect(result).toMatchObject({ status: 'completed', accepted: 2 });
+    expect(h.calls.list).toBe(2); expect(h.calls.refresh).toBe(3);
+    expect(waits.some(ms => ms > 0 && ms < 3000)).toBe(true);
+    expect(await h.session.execute({ approved: true, resume: true, expectedRunId: result.runId }))
+      .toMatchObject({ status: 'completed', accepted: 2 });
+    expect(h.calls.list).toBe(2);
+  });
+
+  it('recognizes an already closed auction after an accepted listing without relisting it', async () => {
+    const h = harness(), inspect = h.adapter.inspectListingItem;
+    h.adapter.inspectListingItem = ref => {
+      const seen = inspect(ref);
+      if (ref.pile === 'transfer') seen.candidate.auction.state = 'closed';
+      return seen;
+    };
+    const result = await h.session.execute({ approved: true, binding: 'b', entries: [entry(1)] });
+    expect(result).toMatchObject({ status: 'completed', accepted: 1 });
+    expect(h.calls.list).toBe(1);
+    expect(await h.session.execute({ approved: true, resume: true, expectedRunId: result.runId }))
+      .toMatchObject({ status: 'completed', accepted: 1 });
+    expect(h.calls.list).toBe(1);
+  });
+
+  it('keeps an old ambiguous closed listing unresolved instead of treating expiry as permission to relist', async () => {
+    const h = harness({ listResults: [{ status: 'unknown' }] }), inspect = h.adapter.inspectListingItem;
+    const first = await h.session.execute({ approved: true, binding: 'b', entries: [entry(1), entry(2)] });
+    h.adapter.inspectListingItem = ref => {
+      const result = inspect(ref); if (ref.pile === 'transfer') result.candidate.auction.state = 'closed'; return result;
+    };
+    const before = structuredClone([...h.values]);
+    for (let i = 0; i < 2; i++) expect(await h.session.execute({ approved: true, resume: true, expectedRunId: first.runId }))
+      .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED' });
+    expect(h.calls.list).toBe(1); expect([...h.values]).toEqual(before);
+  });
+
+  it.each(['acknowledgement', 'confirmation'])('recovers a failed %s write without repeating the dispatched listing', async stage => {
+    const h = harness(), key = 'fcat-fc27-gallery-bulk-list-v1:s:a', progress = [];
+    let failWrite = true;
+    const create = () => createGalleryBulkListSession({ scope: 's:a', context: { account: 'a' },
+      get: async (key, fallback) => structuredClone(h.values.get(key) ?? fallback),
+      set: async (key, value) => {
+        const first = value.entries[0];
+        if (failWrite && (stage === 'acknowledgement' ? first.status === 'list-pending' && first.response?.success === true
+          : first.status === 'accepted')) throw Error('storage full');
+        h.values.set(key, structuredClone(value));
+      },
+      exclusive: async (_scope, task) => task(), tradeAdapter: h.adapter,
+      sleep: async () => {}, operationId: () => 'write-failure-run', onProgress: row => progress.push(row),
+    });
+    expect(await create().execute({ approved: true, binding: 'b', entries: [entry(1), entry(2)] }))
+      .toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED' });
+    expect(h.calls.list).toBe(1);
+    expect(h.values.get(key).entries.map(row => row.status)).toEqual(['list-pending', 'pending']);
+    expect(progress.some(row => row.phase === 'accepted' || row.accepted > 0)).toBe(false);
+    failWrite = false;
+    expect(await create().execute({ approved: true, resume: true, expectedRunId: 'write-failure-run' }))
+      .toMatchObject({ status: 'completed', accepted: 2 });
+    expect(h.calls.list).toBe(2);
+    expect(await create().execute({ approved: true, resume: true, expectedRunId: 'write-failure-run' }))
+      .toMatchObject({ status: 'completed', accepted: 2 });
+    expect(h.calls.list).toBe(2);
+  });
+
   it('stops when the context changes before a mutation', async () => {
     const h = harness();
     const guarded = createGalleryBulkListSession({ scope: 's:a', context: { account: 'a' },

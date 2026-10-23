@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.56
+// @version      27.0.57
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.56", at: Date.now(), status: 'started',
+    state = { version: "27.0.57", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7025,9 +7025,9 @@
           for (const row of rows) {
             const item2 = ownData(row, "itemData");
             if (ownData(item2, "resourceId") !== query.definitionId) throw error("DEFINITION_MISMATCH");
-            const tradeId3 = ownData(row, "tradeId");
-            if (!(valid(tradeId3, 1, Number.MAX_SAFE_INTEGER) || typeof tradeId3 === "string" && /^[1-9]\d{0,19}$/.test(tradeId3)) || ids2.has(String(tradeId3))) throw error("AUCTION_IDENTITY_UNVERIFIED");
-            ids2.add(String(tradeId3));
+            const tradeId4 = ownData(row, "tradeId");
+            if (!(valid(tradeId4, 1, Number.MAX_SAFE_INTEGER) || typeof tradeId4 === "string" && /^[1-9]\d{0,19}$/.test(tradeId4)) || ids2.has(String(tradeId4))) throw error("AUCTION_IDENTITY_UNVERIFIED");
+            ids2.add(String(tradeId4));
             const price2 = ownData(row, "buyNowPrice");
             if (ownData(row, "tradeState") === "active" && valid(ownData(row, "expires"), 1, 604800) && valid(price2, 150, query.maxBuy ?? MAX_PUZZLE_QUOTE_PRICE2) && ownData(row, "tradeOwner") === false && ownData(item2, "untradeable") === false) {
               prices.push(price2);
@@ -8632,11 +8632,11 @@
         if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
         const selected = items[items.length - 1];
         const auction = selected.getAuctionData();
-        const tradeId3 = String(auction.tradeId);
-        if (!/^[1-9]\d{0,19}$/.test(tradeId3)) fail17("FC27_BUY_QUOTE_UNVERIFIED");
-        auctions.set(tradeId3, selected);
-        auctionCaps.set(tradeId3, { definitionId, itemId: selected.id, maxBuy, fresh });
-        return { definitionId, itemId: selected.id, tradeId: tradeId3, price: auction.buyNowPrice };
+        const tradeId4 = String(auction.tradeId);
+        if (!/^[1-9]\d{0,19}$/.test(tradeId4)) fail17("FC27_BUY_QUOTE_UNVERIFIED");
+        auctions.set(tradeId4, selected);
+        auctionCaps.set(tradeId4, { definitionId, itemId: selected.id, maxBuy, fresh });
+        return { definitionId, itemId: selected.id, tradeId: tradeId4, price: auction.buyNowPrice };
       },
       async buy(entry) {
         await verifyCurrent(currentRecord);
@@ -9713,6 +9713,85 @@
     });
   }
 
+  // src/gallery/listing-readback.js
+  var RETRY_MS = [1e3, 2e3];
+  var tradeId = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
+  var retryable = /* @__PURE__ */ new Set(["transfer-refresh", "item-unavailable", "item-pile", "auction-none", "auction-inactive", "auction-unknown", "trade-id"]);
+  function galleryListingEvidence(entry, seen) {
+    const candidate = seen?.candidate, auction = candidate?.auction;
+    if (seen?.status !== "loaded" || !candidate) return { mismatch: "item-unavailable" };
+    if (candidate.item?.id !== entry.item.id || candidate.item.definitionId !== entry.item.definitionId) return { mismatch: "item-identity" };
+    if (candidate.item.pile !== "transfer") return { mismatch: "item-pile" };
+    if (entry.action === "transfer") return ["none", "inactive"].includes(auction?.state) ? { matched: true } : { mismatch: "transfer-not-idle" };
+    const closedAcknowledged = auction?.state === "closed" && entry.response?.success === true && Number.isSafeInteger(entry.response.status) && entry.response.status >= 200 && entry.response.status < 300;
+    if (auction?.state !== "active" && !closedAcknowledged) return {
+      mismatch: ["none", "inactive", "closed", "unknown"].includes(auction?.state) ? `auction-${auction.state}` : "auction-unknown"
+    };
+    if (auction.startingBid !== entry.startPrice) return { mismatch: "starting-bid" };
+    if (auction.buyNowPrice !== entry.buyNow) return { mismatch: "buy-now" };
+    if (typeof auction.tradeId === "number" && !Number.isSafeInteger(auction.tradeId) || !tradeId(String(auction.tradeId ?? ""))) return { mismatch: "trade-id" };
+    return { matched: true, listingTradeId: String(auction.tradeId), listingState: auction.state };
+  }
+  async function reconcileGalleryListings(entries2, {
+    adapter,
+    assertCurrent = () => {
+    },
+    shouldStop = () => false,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    onCheck = () => {
+    }
+  } = {}) {
+    const pending2 = new Set(entries2);
+    let confirmed = 0;
+    for (let attempt = 1; pending2.size && attempt <= 3; attempt++) {
+      if (attempt > 1) {
+        if (shouldStop()) break;
+        await sleep(RETRY_MS[attempt - 2]);
+        assertCurrent();
+        if (shouldStop()) break;
+      }
+      assertCurrent();
+      let fresh;
+      try {
+        fresh = await adapter.refreshTransferItems();
+      } catch (error2) {
+        if (/^FC27_/.test(error2?.message ?? "")) throw error2;
+        fresh = { status: "error", error: { code: Number(error2?.status ?? error2?.code) || null } };
+      }
+      assertCurrent();
+      const httpStatus = Number(fresh?.error?.code ?? fresh?.response?.status) || null;
+      const hardStop = fresh?.status === "unsupported" || httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 || ["rate-limit", "session-expired", "permission-denied", "auction-operation-blocked", "captcha", "stopped-by-user"].includes(fresh?.error?.kind);
+      const readable = fresh?.status === "completed" && !hardStop && !(httpStatus >= 400) && fresh?.response?.success !== false;
+      let canRetry = false;
+      for (const entry of pending2) {
+        const evidence = readable ? galleryListingEvidence(entry, adapter.inspectListingItem({ ...entry.item, pile: "transfer" })) : { mismatch: "transfer-refresh" };
+        assertCurrent();
+        try {
+          onCheck({
+            attempt,
+            attemptLimit: 3,
+            status: evidence.matched ? "success" : "unconfirmed",
+            mismatch: evidence.mismatch ?? "matched",
+            ...httpStatus ? { httpStatus } : {}
+          });
+        } catch {
+        }
+        if (evidence.matched) {
+          if (entry.action !== "transfer") {
+            entry.listingTradeId = evidence.listingTradeId;
+            entry.listingState = evidence.listingState;
+          }
+          entry.status = "accepted";
+          entry.reason = null;
+          pending2.delete(entry);
+          confirmed++;
+        } else canRetry ||= retryable.has(evidence.mismatch);
+      }
+      if (hardStop || !canRetry || shouldStop()) break;
+    }
+    return { complete: pending2.size === 0, confirmed };
+  }
+
   // src/gallery/bulk-list-session.js
   var TERMINAL = /* @__PURE__ */ new Set(["accepted", "rejected", "skipped"]);
   var MUTATING = /* @__PURE__ */ new Set(["list-pending", "unknown"]);
@@ -9721,7 +9800,7 @@
   var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sameItem = (a, b) => a?.id === b?.id && a?.definitionId === b?.definitionId && a?.pile === b?.pile;
   var id8 = (value) => Number.isSafeInteger(value) && value > 0;
-  var tradeId = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
+  var tradeId2 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var fail18 = (reason) => {
     throw new Error(reason);
   };
@@ -9732,9 +9811,9 @@
   var validRef = (ref) => id8(ref?.id) && id8(ref?.definitionId) && ["club", "unassigned", "transfer"].includes(ref.pile);
   var validDelay = (value) => Array.isArray(value) && value.length === 2 && value.every((v) => Number.isFinite(v) && v >= 1 && v <= 15) && value[0] <= value[1];
   var validSetSource = (source) => source?.kind === "set" && typeof source.setId === "string" && /^(futgg|fodder):[a-zA-Z0-9/_-]+$/.test(source.setId) && source.setId.length <= 240;
-  var validPurchase = (value, source) => validSetSource(source) ? value === null : tradeId(value);
+  var validPurchase = (value, source) => validSetSource(source) ? value === null : tradeId2(value);
   function normalizeGalleryBulkListJournal(input) {
-    if (!input || input.schema !== 1 || typeof input.scope !== "string" || !input.scope || !input.context || typeof input.runId !== "string" || !input.runId || typeof input.binding !== "string" || !input.binding || !["active", "completed", "recovery-required"].includes(input.status) || !validDelay(input.delaySeconds) || !Array.isArray(input.entries) || !input.entries.length || input.entries.length > 256 || new Set(input.entries.map((e) => e?.item?.id)).size !== input.entries.length || input.source !== void 0 && (!validSetSource(input.source) || input.binding !== `set:${input.source.setId}`) || input.entries.some((e) => !validRef(e?.item) || !validPurchase(e.purchaseTradeId, input.source) || !validPrices(e) || !["pending", "list-pending", "unknown", "accepted", "rejected", "skipped"].includes(e.status) || e.action !== void 0 && e.action !== "transfer" || e.status === "accepted" && e.action !== "transfer" && !tradeId(e.listingTradeId))) return null;
+    if (!input || input.schema !== 1 || typeof input.scope !== "string" || !input.scope || !input.context || typeof input.runId !== "string" || !input.runId || typeof input.binding !== "string" || !input.binding || !["active", "completed", "recovery-required"].includes(input.status) || !validDelay(input.delaySeconds) || !Array.isArray(input.entries) || !input.entries.length || input.entries.length > 256 || new Set(input.entries.map((e) => e?.item?.id)).size !== input.entries.length || input.source !== void 0 && (!validSetSource(input.source) || input.binding !== `set:${input.source.setId}`) || input.entries.some((e) => !validRef(e?.item) || !validPurchase(e.purchaseTradeId, input.source) || !validPrices(e) || !["pending", "list-pending", "unknown", "accepted", "rejected", "skipped"].includes(e.status) || e.action !== void 0 && e.action !== "transfer" || e.listingState !== void 0 && !["active", "closed"].includes(e.listingState) || e.status === "accepted" && e.action !== "transfer" && !tradeId2(e.listingTradeId))) return null;
     return clone2(input);
   }
   async function assertNoGalleryListingPending(get, scope2, recoveryOptions = null) {
@@ -9748,27 +9827,13 @@
       fail18("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
     }
   }
-  var confirmActiveListing = (entry, seen) => {
-    const candidate = seen?.candidate, auction = candidate?.auction;
-    if (entry.action === "transfer") {
-      if (seen?.status !== "loaded" || candidate?.item?.id !== entry.item.id || candidate.item.definitionId !== entry.item.definitionId || candidate.item.pile !== "transfer" || !["none", "inactive"].includes(auction?.state)) return false;
-      entry.status = "accepted";
-      entry.reason = null;
-      return true;
-    }
-    if (seen?.status !== "loaded" || candidate.item?.id !== entry.item.id || candidate.item?.definitionId !== entry.item.definitionId || candidate.item?.pile !== "transfer" || auction?.state !== "active" || auction.startingBid !== entry.startPrice || auction.buyNowPrice !== entry.buyNow || !tradeId(String(auction.tradeId ?? ""))) return false;
-    entry.listingTradeId = String(auction.tradeId);
-    entry.status = "accepted";
-    entry.reason = null;
-    return true;
-  };
-  async function reconcileGalleryListingPending({ get, set, scope: scope2, context, assertCurrent, createAdapter }) {
+  async function reconcileGalleryListingPending({ get, set, scope: scope2, context, assertCurrent, createAdapter, sleep, shouldStop, onCheck }) {
     assertCurrent();
     const key = galleryBulkListKey(scope2), raw = await get(key, null);
     const record = normalizeGalleryBulkListJournal(raw);
     if (!record || record.scope !== scope2 || !same19(record.context, context)) fail18("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
     assertCurrent();
-    let adapter = null, fresh = null, changed = false;
+    let changed = false;
     for (const entry of record.entries.filter((e) => MUTATING.has(e.status))) {
       if (entry.reason === "FC27_GALLERY_LISTING_SERVICE_STOP" && entry.response?.success === false && [401, 403, 427, 429].includes(entry.response.status)) {
         entry.status = "rejected";
@@ -9776,14 +9841,11 @@
         changed = true;
         continue;
       }
-      if (!adapter) {
-        adapter = createAdapter();
-        fresh = await adapter.refreshTransferItems();
-        assertCurrent();
-      }
-      if (fresh?.status === "completed") {
-        changed = confirmActiveListing(entry, adapter.inspectListingItem({ ...entry.item, pile: "transfer" })) || changed;
-      }
+    }
+    const pending2 = record.entries.filter((e) => MUTATING.has(e.status));
+    if (pending2.length) {
+      const result = await reconcileGalleryListings(pending2, { adapter: createAdapter(), assertCurrent, sleep, shouldStop, onCheck });
+      changed ||= result.confirmed > 0;
     }
     assertCurrent();
     if (changed) {
@@ -9883,18 +9945,21 @@
       if (!normalizeGalleryBulkListJournal(record)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
       await storeConfirmed(key, record);
     };
-    const report = (record, phase, index) => {
+    const report = (record, phase, index, detail = {}) => {
       try {
-        onProgress({ phase, index, ...summary2(record), entries: clone2(record.entries) });
+        onProgress({ phase, index, ...summary2(record), entries: clone2(record.entries), ...detail });
       } catch {
       }
     };
-    const reconcile = async (entry) => {
-      assertCurrent();
-      const fresh = await tradeAdapter.refreshTransferItems();
-      assertCurrent();
-      const seen = fresh?.status === "completed" ? tradeAdapter.inspectListingItem({ ...entry.item, pile: "transfer" }) : null;
-      return confirmActiveListing(entry, seen);
+    const reconcile = async (entry, record, index) => {
+      const result = await reconcileGalleryListings([entry], {
+        adapter: tradeAdapter,
+        assertCurrent,
+        shouldStop,
+        sleep,
+        onCheck: (detail) => report(record, "readback", index, detail)
+      });
+      return result.complete;
     };
     return Object.freeze({
       async inspect() {
@@ -9982,7 +10047,7 @@
                   report(record, "rejected", index + 1);
                   continue;
                 }
-                if (!await reconcile(entry)) fail18("FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED");
+                if (!await reconcile(entry, record, index + 1)) fail18("FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED");
                 await write(record);
                 report(record, "accepted", index + 1);
                 continue;
@@ -10054,7 +10119,7 @@
               } : null;
               if (result?.status === "accepted" || entry.action === "transfer" && result?.status === "completed") {
                 await write(record);
-                if (!await reconcile(entry)) {
+                if (!await reconcile(entry, record, index + 1)) {
                   entry.status = "unknown";
                   entry.reason = record.lastReason = "FC27_GALLERY_LISTING_READBACK_UNCONFIRMED";
                 }
@@ -15562,11 +15627,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED: "\u4E0A\u4E00\u6279\u6302\u724C\u4ECD\u6709\u672A\u6838\u5BF9\u7ED3\u679C\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D\u6062\u590D\u8BE5\u6279\u6B21\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_INVALID: "\u65E7\u6302\u724C\u8BB0\u5F55\u683C\u5F0F\u5F02\u5E38\uFF0C\u65E0\u6CD5\u786E\u5B9A\u6240\u5C5E\u6279\u6B21\uFF0C\u672A\u5F00\u59CB\u6302\u724C\uFF1B\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED: "\u8BFB\u53D6\u65E7\u6302\u724C\u8BB0\u5F55\u5931\u8D25\uFF0C\u672A\u5F00\u59CB\u6302\u724C\uFF1B\u8BF7\u91CD\u8BD5\uFF0C\u4ECD\u5931\u8D25\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
-      FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED: "\u65E7\u6302\u724C\u7ED3\u679C\u4ECD\u65E0\u6CD5\u6838\u5BF9\uFF0C\u672A\u91CD\u590D\u6302\u724C\u6216\u7EE7\u7EED\u540E\u7EED\u5361\uFF1B\u8BB0\u5F55\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u68C0\u67E5 Transfer List \u5E76\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
+      FC27_GALLERY_BULK_LIST_RECOVERY_UNCONFIRMED: "\u6709\u9650\u6B21\u53EA\u8BFB\u6838\u5BF9\u540E\uFF0C\u65E7\u6302\u724C\u7ED3\u679C\u4ECD\u672A\u786E\u8BA4\uFF1B\u672A\u91CD\u590D\u6302\u724C\u6216\u7EE7\u7EED\u540E\u7EED\u5361\uFF0C\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002\u8BF7\u68C0\u67E5 Transfer List \u5E76\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
       FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED: "\u4E0A\u4E00\u6279\u6302\u724C\u8BB0\u5F55\u5C5E\u4E8E\u5176\u4ED6\u8D26\u53F7\u6216\u4F1A\u8BDD\uFF0C\u672A\u7EE7\u7EED\u6302\u724C\uFF1B\u8BF7\u5207\u6362\u56DE\u539F\u8D26\u53F7\u6062\u590D\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED: "\u6302\u724C\u8BB0\u5F55\u65E0\u6CD5\u53EF\u9760\u4FDD\u5B58\uFF0C\u672A\u7EE7\u7EED\u53D1\u9001\u6302\u724C\u8BF7\u6C42\uFF1B\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
       FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED: "\u5199\u5165\u6216\u5F52\u6863\u6302\u724C\u8BB0\u5F55\u5931\u8D25\uFF0C\u672A\u53D1\u9001\u540E\u7EED\u6302\u724C\u8BF7\u6C42\uFF1B\u8BF7\u68C0\u67E5\u5B58\u50A8\u5E76\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002",
-      FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: "\u6302\u724C\u56DE\u6267\u65E0\u6CD5\u786E\u8BA4\uFF0C\u672A\u81EA\u52A8\u91CD\u8BD5\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D\u3002",
+      FC27_GALLERY_LISTING_READBACK_UNCONFIRMED: "\u6709\u9650\u6B21\u53EA\u8BFB\u6838\u5BF9\u540E\u4ECD\u672A\u786E\u8BA4\uFF0C\u672A\u91CD\u590D\u6302\u724C\uFF1B\u8BF7\u7A0D\u540E\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u7EE7\u7EED\u201D\u3002",
       FC27_GALLERY_LISTING_QUOTE_EXPIRED: "\u57FA\u51C6\u6E90\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u672A\u5F00\u59CB\u6302\u724C\uFF1B\u8BF7\u91CD\u65B0\u6253\u5F00\u8BFB\u53D6\u62A5\u4EF7\u3002",
       "market-price-unavailable": "\u57FA\u51C6\u6E90\u65E0\u62A5\u4EF7",
       "market-price-expired": "\u57FA\u51C6\u6E90\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00",
@@ -15731,7 +15796,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           row = { tr, state: add2(tr.children[3], "small") };
           rows.set(entry.item.id, row);
         }
-        row.state.textContent = `${label(entry.status)}${entry.reason ? ` \xB7 ${entry.reason}` : ""}`;
+        row.state.textContent = `${entry.status === "accepted" && entry.listingState === "closed" ? "\u5DF2\u6302\u724C\uFF08\u62CD\u5356\u5DF2\u7ED3\u675F\uFF09" : label(entry.status)}${entry.reason ? ` \xB7 ${entry.reason}` : ""}`;
         const line = add2(execution, "div");
         line.style.cssText = "padding:8px 0;border-bottom:1px solid #46515b;overflow-wrap:anywhere";
         add2(line, "strong", `${entry.name || entry.item.definitionId} \xB7 ${entry.buyNow} \u{1FA99}`);
@@ -15757,6 +15822,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             progress.max = value.total || 1;
             progress.value = value.completed;
             output.textContent = `${value.index}/${value.total} \xB7 \u5DF2\u6302\u724C ${value.accepted} \xB7 \u5931\u8D25 ${value.rejected} \xB7 \u8DF3\u8FC7 ${value.skipped}`;
+            if (value.phase === "readback") output.textContent += ` \xB7 \u53EA\u8BFB\u6838\u5BF9 ${value.attempt}/${value.attemptLimit}\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6302\u724C`;
             showEntries(value.entries);
           }
         });
@@ -23352,10 +23418,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function isBulkRelistEligible(input = {}) {
     const auction = input.auction || input;
-    const tradeId3 = safeNumber(auction.tradeId);
+    const tradeId4 = safeNumber(auction.tradeId);
     const startingBid = safeNumber(auction.startingBid);
     const buyNowPrice = safeNumber(auction.buyNowPrice);
-    return String(auction.state || "unknown") === "inactive" && tradeId3 !== null && tradeId3 > 0 && startingBid !== null && startingBid > 0 && buyNowPrice !== null && buyNowPrice >= startingBid;
+    return String(auction.state || "unknown") === "inactive" && tradeId4 !== null && tradeId4 > 0 && startingBid !== null && startingBid > 0 && buyNowPrice !== null && buyNowPrice >= startingBid;
   }
   function normalizeBulkRelistSnapshot(input = {}) {
     const items = (Array.isArray(input.items) ? input.items : []).slice(0, TRADE_BULK_RELIST_ITEM_LIMIT).map(safeItem).filter(isBulkRelistEligible);
@@ -24297,8 +24363,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     function marketItemKey(ref = {}) {
       const id12 = Number(ref.id || 0);
-      const tradeId3 = Number(ref.tradeId ?? ref.auction?.tradeId ?? 0);
-      return id12 > 0 && tradeId3 > 0 ? `${id12}:${tradeId3}` : null;
+      const tradeId4 = Number(ref.tradeId ?? ref.auction?.tradeId ?? 0);
+      return id12 > 0 && tradeId4 > 0 ? `${id12}:${tradeId4}` : null;
     }
     function rememberMarketItem(item2) {
       const auction = auctionSnapshot(item2);
@@ -24966,11 +25032,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         const receipts = items.map((item2) => {
           const auction = item2.getAuctionData?.();
-          const tradeId3 = auction?.tradeId ?? auction?.id;
+          const tradeId4 = auction?.tradeId ?? auction?.id;
           return {
             itemId: Number(item2.id),
             definitionId: Number(item2.definitionId),
-            listingTradeId: tradeId3 == null ? null : String(tradeId3),
+            listingTradeId: tradeId4 == null ? null : String(tradeId4),
             sold: predicate(auction, "isSold"),
             expired: predicate(auction, "isExpired"),
             state: predicate(auction, "isActiveTrade") === true ? "active" : "unknown",
@@ -25160,7 +25226,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var TYPES = /* @__PURE__ */ new Set(["once", "daily", "interval", "window"]);
   var DURATIONS2 = /* @__PURE__ */ new Set([3600, 10800, 21600, 43200, 86400, 259200]);
   var id10 = (value) => Number.isSafeInteger(value) && value > 0;
-  var tradeId2 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
+  var tradeId3 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var clone3 = (value) => structuredClone(value);
   var same24 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail24 = (reason) => {
@@ -25185,7 +25251,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return true;
   }
   function validEntry(entry) {
-    return id10(entry?.item?.id) && id10(entry?.item?.definitionId) && entry.item.pile === "club" && tradeId2(entry.purchaseTradeId) && Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150 && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15e6 && DURATIONS2.has(entry.durationSeconds);
+    return id10(entry?.item?.id) && id10(entry?.item?.definitionId) && entry.item.pile === "club" && tradeId3(entry.purchaseTradeId) && Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150 && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15e6 && DURATIONS2.has(entry.durationSeconds);
   }
   function normalizeGalleryListingSchedule(input) {
     const entries2 = Array.isArray(input?.entries) ? input.entries : null;
@@ -25612,7 +25678,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               count: progress.completed,
               batchSize: progress.total,
               requestedCount: progress.total,
-              quotedCount: progress.accepted
+              quotedCount: progress.accepted,
+              ...progress.phase === "readback" ? {
+                status: progress.status,
+                mismatch: progress.mismatch,
+                attempt: progress.attempt,
+                attemptLimit: progress.attemptLimit,
+                httpStatus: progress.httpStatus
+              } : {}
             })).catch(() => {
             });
           } catch {
@@ -35101,7 +35174,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.56" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.57" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35438,8 +35511,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.56"}`,
-    version: "27.0.56",
+    title: `FC Automation Tool ${"27.0.57"}`,
+    version: "27.0.57",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
