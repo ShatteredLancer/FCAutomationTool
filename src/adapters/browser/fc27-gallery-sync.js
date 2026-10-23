@@ -2,10 +2,10 @@
 // approved local substitute for Enhancer's private progress backend.
 import { createGalleryMappingCache } from '../../gallery/mapping-cache.js';
 
-export function createFc27GallerySync({ provider, reader, diagnosticLog, gmGetValue, gmSetValue,
+export function createFc27GallerySync({ provider, reader, diagnosticLog, gmGetValue, gmSetValue, gmListValues,
   now = () => Date.now(), wait = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const pools = new Map();
-  const mappings = createGalleryMappingCache({ get: gmGetValue, set: gmSetValue, now });
+  const mappings = createGalleryMappingCache({ get: gmGetValue, set: gmSetValue, list: gmListValues, now });
   let task = null, mappedScope = null, progressState = null, poolsNeedRefresh = false;
   const covered = detail => detail?.status === 'observed' && !detail.stale && detail.progress?.complete === true;
   const matches = (state, set, catalog, pool) => {

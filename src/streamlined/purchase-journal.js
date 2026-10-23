@@ -3,6 +3,7 @@ import { integer, same, fail } from './contract.js';
 import { assertStreamlinedPlan } from './plan.js';
 import { approvedStreamlinedPurchaseRoute } from './purchase-scope.js';
 import { validateStreamlinedJournal } from './journal.js';
+import { createCompactStorage } from '../runtime/compact-storage.js';
 
 export const streamlinedPurchaseNeedsRecovery = record => !!record?.contribution
   || record?.entries?.some(entry => ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state));
@@ -131,6 +132,7 @@ export function validateStreamlinedPurchase(record, context) {
 }
 
 export function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {} }) {
+  ({ get, set } = createCompactStorage({ get, set }));
   const readRetired = async context => {
     let rows;
     try { rows = await get(streamlinedRetiredPurchaseKey(context), []); } catch { fail('PURCHASE_JOURNAL_READ_FAILED'); }

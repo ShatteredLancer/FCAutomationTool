@@ -89,11 +89,13 @@ export async function exerciseTraditionalPersistence(context, directory) {
       const { held } = await navigator.locks.query();
       return !held.some(lock => lock.name === name);
     }, FC27_TRADITIONAL_WEB_LOCK, { timeout: 10000 });
-    const afterClose = await second.evaluate(async () => {
+    // A query snapshot is not a cross-process lock-acquisition barrier. Poll a
+    // read-only acquisition within the original deadline; never resend a write.
+    await second.waitForFunction(async () => {
       const state = globalThis.persistenceSmoke;
-      return state.provider.exclusive(state.scope, async () => (await state.provider.journal.read(state.scope)).phase);
-    });
-    assert.equal(afterClose, 'save-pending');
+      const phase = await state.provider.exclusive(state.scope, async () => (await state.provider.journal.read(state.scope)).phase);
+      return phase === 'save-pending';
+    }, {}, { timeout: 10000 });
     assert.equal(values.size, 1);
     assert.equal(externalRequests, 0);
     await writeFile(path.join(directory, 'traditional-persistence-self-test.json'), JSON.stringify({ schema: 1,

@@ -12,6 +12,8 @@ import { installObservedStorage } from '../helpers/fc27-observed-storage-runtime
 import { observedSet } from '../helpers/fc27-observed-set-runtime.js';
 import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
+import { finishNativeIo } from '../helpers/native-io-timers.js';
+import { decodeStoredValue } from '../../src/runtime/compact-storage.js';
 
 afterEach(() => vi.useRealTimers());
 
@@ -56,14 +58,13 @@ it.each(['unrelated', 'selected'])('checks only selected piles across five stock
     const execution = await createFc27StreamlinedExecution(f.root, options);
     execution.prepare(plan);
     const pending = execution.transaction.execute(plan, { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1, 2, 3, 4] });
-    await vi.advanceTimersByTimeAsync(15000);
-    return pending;
+    return finishNativeIo(pending);
   };
   let result = await execute();
   if (conflict === 'selected') {
     expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED' });
     expect(writes).toHaveLength(4);
-    const saved = memory.get(contextKey(plan.context, 'streamlined-contribution'));
+    const saved = await decodeStoredValue(memory.get(contextKey(plan.context, 'streamlined-contribution')));
     expect(saved.submittedScore).toBe(2400);
     expect(saved.batches.map(row => row.state)).toEqual(['confirmed', 'confirmed', 'confirmed', 'confirmed', 'waiting']);
     expect((await diagnosticLog.exportPayload()).transactionResults.at(-1)).toMatchObject({

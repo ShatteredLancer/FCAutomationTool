@@ -1,7 +1,9 @@
 // Presentation cache only. Neither a saved score nor a cache hit authorizes EA writes.
+import { storedJsonBytes } from '../runtime/compact-storage.js';
+import { boundGalleryCache, createGalleryCacheStorage, GALLERY_DERIVED_MAX_BYTES } from './cache-budget.js';
 const schema = 1;
 const engine = 1;
-const maxBytes = 2000000;
+const maxBytes = GALLERY_DERIVED_MAX_BYTES;
 const validScope = scope => typeof scope === 'string' && scope.length > 0 && scope.length <= 2048
   && !/[\u0000-\u001f]/.test(scope);
 const clone = value => structuredClone(value);
@@ -10,7 +12,8 @@ const valid = row => row && typeof row.id === 'string' && typeof row.key === 'st
   && Array.isArray(row.summary.lineup) && row.summary.lineup.length <= 256
   && [row.summary.low?.total, row.summary.high?.total].every(value => Number.isSafeInteger(value) && value >= 0);
 
-export function createGalleryScoreCache({ get, set } = {}) {
+export function createGalleryScoreCache({ get, set, list } = {}) {
+  ({ get, set } = createGalleryCacheStorage({ get, set, list }));
   const buckets = new Map();
   let tail = Promise.resolve();
   const storageKey = scope => `fcat-fc27-gallery-score:${JSON.stringify(scope)}`;
@@ -21,7 +24,7 @@ export function createGalleryScoreCache({ get, set } = {}) {
         try {
           const value = await get(storageKey(scope), null);
           if (!value || value.schema !== schema || value.engine !== engine || value.scope !== scope
-            || !Array.isArray(value.entries) || value.entries.length > 256 || JSON.stringify(value).length > maxBytes
+            || !Array.isArray(value.entries) || value.entries.length > 256 || storedJsonBytes(value) > maxBytes
             || !value.entries.every(valid)) return new Map();
           return new Map(value.entries.map(row => [row.id, clone(row)]));
         } catch { return new Map(); }
@@ -43,9 +46,7 @@ export function createGalleryScoreCache({ get, set } = {}) {
           if (!bucket) return false;
           for (const row of rows) if (valid(row)) { bucket.delete(row.id); bucket.set(row.id, clone(row)); }
           const record = { schema, engine, scope, entries: [...bucket.values()] };
-          while (record.entries.length > 256 || JSON.stringify(record).length > maxBytes) {
-            const first = record.entries.shift(); if (!first) break; bucket.delete(first.id);
-          }
+          for (const first of boundGalleryCache(record, 'entries', 256)) bucket.delete(first.id);
           await set(storageKey(scope), record); return true;
         } catch { return false; }
       });

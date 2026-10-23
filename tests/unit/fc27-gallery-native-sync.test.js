@@ -6,6 +6,7 @@ import { summarizeGalleryScore } from '../../src/gallery/scoring.js';
 import { GalleryItemEntity, galleryEntityFromDto } from '../helpers/fc27-gallery-entity.js';
 import { createFc27GalleryNativeRenderer } from '../../src/adapters/ea/fc27-gallery-card.js';
 import { decodeGalleryCollectionCache } from '../../src/adapters/browser/fc27-gallery-cache-codec.js';
+import { finishNativeIo } from '../helpers/native-io-timers.js';
 
 afterEach(() => vi.useRealTimers());
 function fixture() {
@@ -45,7 +46,7 @@ function fixture() {
   const reader = () => createFc27GalleryProgressReader(root, options);
   return { root, user, club, pool, calls, store, options, reader, factory, control, events };
 }
-async function finish(task) { await vi.runAllTimersAsync(); return task; }
+const finish = finishNativeIo;
 
 it('discovers Fodder compound pools using club queries, overlap and native collection evidence', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader();

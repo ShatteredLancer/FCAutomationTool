@@ -13,11 +13,19 @@ export async function exerciseCacheCompression(context, out, root = process.cwd(
     import * as codec from './src/adapters/browser/fc27-gallery-cache-codec.js';
     import { compactGalleryPublicCaches } from './src/adapters/browser/fc27-gallery-public-cache-migration.js';
     import { futggGalleryPool } from './tests/fixtures/fc27-gallery.js';
-    globalThis.cacheCompressionTest = { ...codec, compactGalleryPublicCaches, futggGalleryPool };
+    import { compactFc27Storage } from './src/adapters/browser/fc27-storage-maintenance.js';
+    import { decodeStoredValue } from './src/runtime/compact-storage.js';
+    import { createStreamlinedJournal, streamlinedJournalKey } from './src/streamlined/journal.js';
+    import { testPlan } from './tests/helpers/streamlined.js';
+    import { FC27_TRADITIONAL_WEB_LOCK } from './src/fc27/traditional-lock.js';
+    globalThis.cacheCompressionTest = { ...codec, compactGalleryPublicCaches, futggGalleryPool,
+      compactFc27Storage, decodeStoredValue, createStreamlinedJournal, streamlinedJournalKey, testPlan, FC27_TRADITIONAL_WEB_LOCK };
   `, resolveDir: root }, bundle: true, format: 'iife', write: false });
   const page = await context.newPage();
   try {
-    await page.setContent('<!doctype html><title>Offline lossless cache test</title>');
+    const url = 'https://fcat-offline.invalid/storage';
+    await page.route(url, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Offline lossless cache test</title>' }));
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.addScriptTag({ content: artifact.outputFiles[0].text });
     await page.addScriptTag({ content: fsu.slice(start, end) + '\nglobalThis.fsuCodec = createFsuClubCacheCodec();' });
     const report = await page.evaluate(async () => {
@@ -49,6 +57,34 @@ export async function exerciseCacheCompression(context, out, root = process.cwd(
       const poolMigration = await api.compactGalleryPublicCaches({ list: () => [...pools.keys()],
         get: (key, fallback) => pools.get(key) ?? fallback, set: (key, val) => pools.set(key, val) });
       const copy = await api.decodeGalleryCacheValue(pools.get(`${base}:set:30`));
+      const nativeStore = new Map(), nativeIo = { list: () => [...nativeStore.keys()],
+        get: (key, fallback) => nativeStore.get(key) ?? fallback, set: (key, value) => nativeStore.set(key, value) };
+      const plan = api.testPlan(), journal = api.createStreamlinedJournal(nativeIo);
+      const record = await journal.begin(plan);
+      record.batches[0].state = 'unknown'; record.completeEvidence = payload;
+      const durable = await journal.write(plan.context, record, record.revision);
+      const reloaded = await api.createStreamlinedJournal(nativeIo).read(plan.context);
+      let unknownStillBlocks = false;
+      try { await api.createStreamlinedJournal(nativeIo).begin(plan); } catch (error) {
+        unknownStillBlocks = error.message.includes('RECOVERY_REQUIRED');
+      }
+      const key = api.streamlinedJournalKey(plan.context), compressedJournal = nativeStore.get(key);
+      nativeStore.set(key, durable); nativeStore.set('lock_26', 'preserved');
+      let releaseLock, acquired;
+      const ready = new Promise(resolve => { acquired = resolve; });
+      const holding = navigator.locks.request(api.FC27_TRADITIONAL_WEB_LOCK, async () => {
+        acquired(); await new Promise(resolve => { releaseLock = resolve; });
+      });
+      await ready;
+      const busyMigration = await api.compactFc27Storage({ ...nativeIo, locks: navigator.locks });
+      const busyRetained = JSON.stringify(nativeStore.get(key)) === JSON.stringify(durable);
+      releaseLock(); await holding;
+      const journalMigration = await api.compactFc27Storage({ ...nativeIo, locks: navigator.locks });
+      const journalRoundtrip = JSON.stringify(await api.decodeStoredValue(nativeStore.get(key))) === JSON.stringify(durable)
+        && JSON.stringify(reloaded) === JSON.stringify(durable);
+      nativeStore.set(key, { ...compressedJournal, bytes: 1 });
+      let corruptJournalBlocked = false;
+      try { await api.createStreamlinedJournal(nativeIo).read(plan.context); } catch { corruptJournalBlocked = true; }
       let corruptRejected = false;
       try { await globalThis.fsuCodec.decode('{"format":"fsu-club-gzip-v1","data":"corrupt"}'); }
       catch { corruptRejected = true; }
@@ -57,13 +93,19 @@ export async function exerciseCacheCompression(context, out, root = process.cwd(
         losslessGallery: JSON.stringify(restored) === JSON.stringify(value),
         legacyPoolRetainedFields: JSON.stringify(copy.payload) === JSON.stringify(poolPayload),
         aggregateCleared: pools.get(base) === null, checkedUntouched: pools.get(`${base}:set:30:checked`).untouched,
-        fsuMigration, poolMigration, corruptRejected, times, eaRequests: 0, syntheticOnly: true };
+        fsuMigration, poolMigration, corruptRejected, times, journalMigration, journalRoundtrip,
+        busyRetained, busyMigration, nativeWebLocks: true,
+        unknownStillBlocks, corruptJournalBlocked, lockUntouched: nativeStore.get('lock_26') === 'preserved',
+        eaRequests: 0, syntheticOnly: true };
     });
-    for (const flag of ['losslessFsu', 'losslessGallery', 'legacyPoolRetainedFields', 'aggregateCleared', 'checkedUntouched', 'corruptRejected']) assert.equal(report[flag], true, flag);
+    for (const flag of ['losslessFsu', 'losslessGallery', 'legacyPoolRetainedFields', 'aggregateCleared', 'checkedUntouched', 'corruptRejected',
+      'journalRoundtrip', 'unknownStillBlocks', 'corruptJournalBlocked', 'lockUntouched', 'busyRetained']) assert.equal(report[flag], true, flag);
     assert.equal(report.fsuMigration.compacted, 2); assert.equal(report.fsuMigration.failed, 0);
     assert.equal(report.poolMigration.migrated, 1); assert.equal(report.poolMigration.failed, 0);
+    assert.equal(report.journalMigration.compacted, 1); assert.equal(report.journalMigration.failed, 0);
+    assert.equal(report.busyMigration.deferred, 1); assert.equal(report.busyMigration.compacted, 0);
     await writeFile(path.join(out, 'cache-compression-smoke.json'), `${JSON.stringify(report, null, 2)}\n`);
-    console.log('Chrome lossless cache smoke passed: FSU slots, raw/gzip, corrupt data, full Gallery DTO, aggregate migration; no EA calls.');
+    console.log('Chrome lossless cache smoke passed: FSU/Gallery, full journals, unknown recovery, corruption/migration; no EA calls.');
     return report;
   } finally { await page.close(); }
 }

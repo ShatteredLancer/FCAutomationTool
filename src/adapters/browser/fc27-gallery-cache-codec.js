@@ -1,6 +1,6 @@
 const FORMAT = 'fcat-gallery-gzip-v1';
 const MAX_BYTES = 32 * 1024 * 1024;
-const MIN_BYTES = 128 * 1024;
+const MIN_BYTES = 32 * 1024;
 
 async function collect(stream) {
   const reader = stream.getReader(), chunks = [];

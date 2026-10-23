@@ -3,6 +3,13 @@ import { encodeGalleryCollectionCache, decodeGalleryCollectionCache } from '../.
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('also compacts medium per-set snapshots instead of accumulating uncompressed 32-128 KiB records', async () => {
+  const value = { schema: 1, payload: 'complete public pool;'.repeat(2500) };
+  const packed = await encodeGalleryCollectionCache(value);
+  expect(packed.schema).toBe(4);
+  expect(await decodeGalleryCollectionCache(packed)).toEqual(value);
+});
+
 it('preserves small and legacy collection cache records', async () => {
   const value = { schema: 3, concepts: [{ definitionId: 1, isCollected: true, gradingScore: 50 }] };
   expect(await encodeGalleryCollectionCache(value)).toBe(value);

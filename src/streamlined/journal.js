@@ -2,6 +2,7 @@ import { contextKey, createSeasonContext } from '../fc27/prelaunch-contract.js';
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
+import { createCompactStorage } from '../runtime/compact-storage.js';
 
 export const STREAMLINED_JOURNAL_SCHEMA = 1;
 // A waiting-only journal is a reservation created before any contribution
@@ -63,6 +64,7 @@ export function validateStreamlinedJournal(record, context) {
 }
 
 export function createStreamlinedJournal({ get, set, now = () => Date.now(), canReplaceArchived = async () => false } = {}) {
+  ({ get, set } = createCompactStorage({ get, set }));
   let tail = Promise.resolve();
   const read = async context => {
     let record;

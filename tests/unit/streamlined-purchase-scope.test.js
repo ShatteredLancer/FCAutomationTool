@@ -6,6 +6,7 @@ import { createStreamlinedPurchaseScope, approvedStreamlinedPurchaseRoute } from
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal, validateStreamlinedPurchase } from '../../src/streamlined/purchase-journal.js';
 import { streamlinedPurchaseBudgetPreview } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+import { decodeStoredValue } from '../../src/runtime/compact-storage.js';
 
 const card = (id, points, price) => ({ ...safeItem({ source: 'market', definitionId: id, points, price,
   quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 10000 } }), purchaseMaxBuy: price });
@@ -104,7 +105,7 @@ it('replaces the settled tight-budget run through a regenerated explicit approva
     market: [card(201, 830, 1100), card(202, 830, 1200)] });
   expect(await f.driver.execute(next.plan, { ...next.approval, budget: streamlinedPurchaseBudgetPreview(next.plan).budget }))
     .toMatchObject({ status: 'completed', record: { spent: 45600, submittedScore: 34030, budget: 48070 } });
-  const history = [...f.values].filter(([key]) => key.includes(':history:')).map(([, record]) => record);
+  const history = await Promise.all([...f.values].filter(([key]) => key.includes(':history:')).map(([, record]) => decodeStoredValue(record)));
   expect(history).toContainEqual(expect.objectContaining({ budget: 41800, consumedIds: [11], submittedScore: 2490 }));
   expect(f.adapter.contribute.mock.calls.filter(([batch]) => batch.material.some(row => row.item.id === 11))).toHaveLength(1);
 });

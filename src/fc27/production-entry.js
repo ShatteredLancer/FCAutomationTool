@@ -34,6 +34,7 @@ import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '..
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
 import { compactGalleryCollectionCaches } from '../adapters/browser/fc27-gallery-cache-migration.js';
 import { compactGalleryPublicCaches } from '../adapters/browser/fc27-gallery-public-cache-migration.js';
+import { compactFc27Storage } from '../adapters/browser/fc27-storage-maintenance.js';
 import { createFc27GallerySync } from '../adapters/browser/fc27-gallery-sync.js';
 import { createFc27GalleryPurchase } from '../adapters/browser/fc27-gallery-purchase.js';
 import { createFc27GalleryAccounting } from '../adapters/browser/fc27-gallery-accounting.js';
@@ -190,6 +191,14 @@ const galleryPrices = id => readCachedGalleryPrice(unsafeWindow, id);
 const galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
 const publicPrices = createFc27PublicPrices({ root: unsafeWindow, get: GM_getValue, set: GM_setValue, gmRequest: GM_xmlhttpRequest,
   transport: galleryTransport, diagnosticLog });
+let storageMaintenancePending = true;
+void compactFc27Storage({ list: typeof GM_listValues === 'function' ? GM_listValues : null,
+  get: GM_getValue, set: GM_setValue, locks: unsafeWindow.navigator.locks,
+  onProgress: report => { unsafeWindow.__FCAT_STORAGE_MAINTENANCE__ = report; },
+}).then(report => {
+  storageMaintenancePending = false;
+  try { console.info('[FCAT_STORAGE_MAINTENANCE]', JSON.stringify(report)); } catch { /* Counts only. */ }
+}).catch(() => { storageMaintenancePending = false; });
 const galleryCacheMigration = compactGalleryCollectionCaches({
   list: typeof GM_listValues === 'function' ? GM_listValues : null, get: GM_getValue, set: GM_setValue,
   locks: unsafeWindow.navigator.locks,
@@ -212,7 +221,7 @@ const galleryProgress = createFc27GalleryProgressReader(unsafeWindow, { gmGetVal
   diagnosticLog, cacheMigration: galleryCacheMigration });
 const galleryCatalog = withFodderGalleryPools(publicGalleryCatalog, galleryProgress);
 const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: galleryProgress, diagnosticLog,
-  gmGetValue: GM_getValue, gmSetValue: GM_setValue });
+  gmGetValue: GM_getValue, gmSetValue: GM_setValue, gmListValues: typeof GM_listValues === 'function' ? GM_listValues : null });
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
@@ -320,7 +329,8 @@ const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePa
   galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
-  galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue }),
+  galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue,
+    list: typeof GM_listValues === 'function' ? GM_listValues : null }),
   galleryAccounting, galleryTradePreferences, galleryPlanningSettings,
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
@@ -409,6 +419,9 @@ const streamlinedPanel = safeBoot('streamlined-panel', () => mountFc27Streamline
 const streamlinedRecoveryAccounts = new Set();
 const streamlinedRecoveryTimer = unsafeWindow.setInterval(() => {
   try {
+    // Maintenance must not consume this account's one startup recovery attempt
+    // merely because its own storage migration still holds the mutation lock.
+    if (storageMaintenancePending) return;
     if (unsafeWindow.info?.base?.initialized !== true
         || !['ready', 'trusted-provisional'].includes(unsafeWindow.info?.base?.clubCache?.status)) return;
     const context = readFc27Context(unsafeWindow), key = JSON.stringify(context);
