@@ -8,6 +8,7 @@ import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuot
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 import { createStreamlinedPurchaseScope } from '../../streamlined/purchase-scope.js';
 import { streamlinedPurchaseAudit, createStreamlinedPurchaseJournal } from '../../streamlined/purchase-journal.js';
+import { readStreamlinedExternalRows, planStreamlinedExternalSelection } from '../../streamlined/external-selection.js';
 
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
@@ -16,7 +17,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
   now = () => Date.now(), schedule, createExecution = null } = {}) {
   const settings = createStreamlinedSettings({ get, set });
   let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
-  let history = null;
+  let history = null, externalView = null;
   const purchaseJournal = createStreamlinedPurchaseJournal({ get });
   const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_EXECUTION_UNAVAILABLE';
   const executionEvidence = error => {
@@ -55,18 +56,75 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       if (typeof activeExecution?.stop === 'function') activeExecution.stop();
       else activeExecution?.transaction?.stop?.();
     },
-    clearPreview() { preview = null; routePreview = null; history = null; },
+    clearPreview() { preview = null; routePreview = null; history = null; externalView = null; },
     resolveDisplayItem(ref) {
-      if (!preview) return null;
-      if (!preview.items.some(item => item.key === ref?.key && item.source === ref?.source
+      const view = preview ?? (externalView && { ...externalView, items: externalView.snapshot.rows.map(row => row.item) });
+      if (!view) return null;
+      if (!view.items.some(item => item.key === ref?.key && item.source === ref?.source
           && item.id === ref?.id && item.definitionId === ref?.definitionId)) return null;
-      try { unchanged(preview.origin); return preview.input.resolveDisplayItem?.(ref) ?? null; }
+      try { unchanged(view.origin); return view.input.resolveDisplayItem?.(ref) ?? null; }
       catch { return null; }
+    },
+    async readExternalInventory(value) {
+      if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
+      busy = true; stopRequested = false; preview = null; routePreview = null; history = null; externalView = null;
+      const run = ++planningRun;
+      try {
+        const config = { ...normalizeStreamlinedSettings(value), sources: ['club', 'transfer', 'unassigned'] }, origin = capture();
+        const input = readInputs(config); input.assertCurrent();
+        const reservedIds = await purchaseJournal.reservedIds(origin.context);
+        unchanged(origin); input.assertCurrent();
+        if (stopRequested || run !== planningRun) fail('CANCELLED');
+        if (!same(input.context, origin.context) || !same(input.challenge, origin.challenge)) fail('CONTEXT_CHANGED');
+        const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
+        if (snapshot.status === 'observed') externalView = { origin, config, input, snapshot };
+        return snapshot;
+      } catch (error) { return { status: 'blocked', reason: safeReason(error), liveExecutionEnabled: false }; }
+      finally { busy = false; }
+    },
+    async planExternalSelection(keys) {
+      if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
+      const saved = externalView;
+      if (!saved) return { status: 'blocked', reason: 'FC27_STREAMLINED_EXTERNAL_SELECTION_CHANGED' };
+      busy = true; stopRequested = false; preview = null; externalView = null;
+      const run = ++planningRun;
+      try {
+        unchanged(saved.origin);
+        const input = readInputs(saved.config); input.assertCurrent();
+        await purchaseJournal.assertAvailable(saved.origin.context, saved.origin.challenge);
+        const reservedIds = await purchaseJournal.reservedIds(saved.origin.context);
+        const check = () => {
+          unchanged(saved.origin); input.assertCurrent();
+          if (stopRequested || run !== planningRun) fail('CANCELLED');
+        };
+        check();
+        const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
+        const before = new Map(saved.snapshot.rows.map(row => [row.item.key, row]));
+        const after = new Map(snapshot.rows?.map(row => [row.item.key, row]) ?? []);
+        if (!same(input.context, saved.origin.context) || !same(snapshot.policy, saved.snapshot.policy) || !same(snapshot.challenge, saved.snapshot.challenge)
+            || !Array.isArray(keys) || keys.some(key => !before.has(key) || !same(before.get(key), after.get(key)))) fail('EXTERNAL_SELECTION_CHANGED');
+        const result = planStreamlinedExternalSelection(snapshot, keys);
+        if (!['ready', 'partial'].includes(result.status)) return result;
+        const plan = createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy,
+          result, objective: 'inventory-first' });
+        let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null;
+        if (typeof createExecution === 'function') {
+          try { execution = await createExecution(saved.origin.context, plan); check(); execution.prepare(plan); executionReason = null; }
+          catch (error) { execution = null; executionReason = safeReason(error); executionRecovery = error?.recovery ?? null; }
+          check();
+        }
+        preview = { origin: saved.origin, input, items: result.items, plan, execution, externalSelection: true };
+        log({ phase: 'external-selection', status: result.status, count: result.items.length,
+          currentScore: result.score, targetScore: input.challenge.targetScore });
+        return { ...result, plan, policy: input.policy, inventoryStats: input.inventoryStats,
+          executionReason, executionRecovery, liveExecutionEnabled: !!execution };
+      } catch (error) { return { status: 'blocked', reason: safeReason(error), liveExecutionEnabled: false }; }
+      finally { busy = false; }
     },
     async plan(value, { onProgress = () => {} } = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       busy = true; stopRequested = false; preview = null; routePreview = null;
-      history = null;
+      history = null; externalView = null;
       const run = ++planningRun;
       const progress = row => { try { onProgress(row); } catch { /* display only */ } };
       try {
@@ -369,6 +427,14 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     async contribute({ fingerprint, batchIndices, budget, allowPartial = false, acknowledgeQuoteCoverage = false } = {}, callbacks = {}) {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
       if (!preview?.execution || preview.plan.fingerprint !== fingerprint) return { status: 'blocked', reason: 'FC27_STREAMLINED_PLAN_CHANGED' };
+      // This explicit selection includes Club prerequisites. Approve the whole
+      // frozen sequence; the transaction itself skips independently confirmed
+      // batches on continuation, so no predecessor can be deselected.
+      if (preview.externalSelection && (!Array.isArray(batchIndices)
+          || batchIndices.length !== preview.plan.batches.length
+          || batchIndices.some((index, i) => index !== i))) {
+        return { status: 'blocked', reason: 'FC27_STREAMLINED_EXTERNAL_BATCH_ORDER' };
+      }
       if (preview.plan.execution?.quoteLimited === true && acknowledgeQuoteCoverage !== true) {
         return { status: 'blocked', reason: 'FC27_STREAMLINED_QUOTE_CONFIRMATION_REQUIRED' };
       }
@@ -415,7 +481,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     },
     async recover() {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
-      preview = null; routePreview = null; history = null;
+      preview = null; routePreview = null; history = null; externalView = null;
       if (typeof createExecution !== 'function') return { status: 'blocked', reason: 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED' };
       busy = true;
       try {
@@ -504,11 +570,17 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
               || current.challenge.setId !== record.plan.challenge.setId) fail('CONTEXT_CHANGED');
           const completed = record.submittedScore >= record.plan.challenge.targetScore;
           if (!completed) activeExecution.prepare(record.plan);
+          // Manual external plans use the existing inventory-first objective
+          // without an economic route. Recover the ordering rule from frozen
+          // contents without adding fields to the durable Journal schema.
+          const externalSelection = record.plan.objective === 'inventory-first' && !record.plan.route
+            && record.plan.items.some(item => ['transfer', 'unassigned'].includes(item.pile));
           const input = readInputs({ maxRating: record.plan.policy.maxRating,
-            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating });
-          preview = completed ? null : { origin: current, input, items: record.plan.items, plan: record.plan, execution: activeExecution };
+            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+            ...(externalSelection ? { sources: ['club', 'transfer', 'unassigned'] } : {}) });
+          preview = completed ? null : { origin: current, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
           return { ...result, preview: { ...record.plan, plan: record.plan, liveExecutionEnabled: !completed,
-            quoteSource: record.plan.items.find(item => item.quote)?.quote?.source ?? 'unknown', record } };
+            quoteSource: record.plan.items.find(item => item.quote)?.quote?.source ?? 'unknown', externalSelection, record } };
         }
         return result;
       } catch (error) {

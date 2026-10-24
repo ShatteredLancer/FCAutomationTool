@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import path from 'node:path';
+import { exerciseStreamlinedExternal } from './streamlined-external-smoke.mjs';
 
 export async function exerciseStreamlined(context) {
   const page = await context.newPage();
@@ -302,6 +303,7 @@ export async function exerciseStreamlined(context) {
     await exerciseStreamlinedBatchedInventory(page);
     await exerciseStreamlinedProtectionBlocked(page);
     await exerciseStreamlinedReadBackoff(page);
+    await exerciseStreamlinedExternal(page);
     console.log('Streamlined offline browser passed: native entry, settings, 30+30+20, market routes, frozen settings, partial progress, stop/recover, unavailable supply, completion, responsive dialog, no EA writes.');
   } finally { await page.close(); }
 }

@@ -1,4 +1,5 @@
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
+import { renderStreamlinedExternalSelection } from './fc27-streamlined-external-view.js';
 
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
@@ -123,6 +124,9 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     return `当前账号有待核对的 Puzzle 购卡记录${target}${phase ? `: ${phase}` : ''}. ${counts.length ? `记录状态：${counts.join(', ')}. ` : ''}请先回对应 SBC 的批量购买窗口核对并恢复；若该 SBC 已下架，请保留记录并导出诊断。本次未投入材料。`;
   }
   const messages = {
+    FC27_STREAMLINED_EXTERNAL_SELECTION_CHANGED: '所选卡、Club 前置卡或材料设置已变化，请刷新列表后重新选择；未移动或贡献。',
+    FC27_STREAMLINED_EXTERNAL_SELECTION_INVALID: '请选择当前列表中可用的外部卡。',
+    FC27_STREAMLINED_EXTERNAL_BATCH_ORDER: '外部卡须按完整批次顺序执行，先确认 Club 前置卡消耗；已确认批次会自动跳过。',
     FC27_STREAMLINED_STOPPED: '已停止；已确认成交保留。有未决回执时先核对，否则可直接继续。',
     FC27_STREAMLINED_NO_AFFORDABLE_CARDS: '当前方案没有可执行的限价内候选，已暂停。已确认购入的材料保留。',
     FC27_STREAMLINED_PURCHASE_NO_SUPPLY: '有限重试后仍无授权范围内的限价候选，已暂停。已购材料保留，可稍后重试或生成新方案；普通缺货不需要核对交易回执。',
@@ -188,6 +192,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   const entry = document.createElement('button'); entry.id = 'fcat-streamlined-entry'; entry.type = 'button';
   entry.textContent = 'FCAT 积分解题'; entry.className = 'btn-standard call-to-action';
   entry.style.cssText = 'margin:8px;min-height:38px';
+  const externalBar = document.createElement('div'); externalBar.id = 'fcat-streamlined-external-bar';
+  externalBar.style.cssText = 'display:flex;justify-content:center;flex-shrink:0;padding:8px';
+  const externalEntry = document.createElement('button'); externalEntry.id = 'fcat-streamlined-external-entry';
+  externalEntry.type = 'button'; externalEntry.className = 'btn-standard'; externalEntry.textContent = 'Transfer / Unassigned';
+  externalBar.append(externalEntry);
   const host = document.createElement('div'); host.id = 'fcat-streamlined-panel'; document.body.append(host);
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `<style>
@@ -205,6 +214,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     footer output{margin:0 0 6px;max-height:10em;overflow:auto;font-size:13px}footer small{margin:4px 0 8px;font-size:12px}footer progress{display:block;margin:6px 0}
     .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
     .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
+    .external-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}.external-row{display:grid;grid-template-columns:104px minmax(0,1fr);align-items:center;gap:12px;padding:8px 0;border-top:1px solid #364956}.external-choice{display:flex;align-items:center;gap:8px}.external-choice input{flex-shrink:0}.external-row .player-text span{white-space:normal;overflow-wrap:anywhere}
     @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
   </style><dialog aria-label="FCAT 积分解题"><div class="panel-body"><header><strong>FCAT 积分解题</strong><button data-close aria-label="关闭">×</button></header>
     <div data-target></div><div class="tabs"><button data-local aria-pressed="true">当前 SBC</button><button data-global aria-pressed="false">全局设置</button></div>
@@ -215,12 +225,13 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     <section data-result></section></div>
     <footer><output data-status aria-live="polite"></output><progress aria-label="执行进度" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
       <small data-history-note hidden>确认已不再执行这项历史任务时，可将它退出活动队列。完整记录仍保留，不会把未知请求算作成功；其材料继续隔离。此操作不买卡、不移动、不贡献。</small>
-      <div class="actions"><button data-review-stock hidden>查看库存卡</button><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-archive-history hidden>退出并归档旧任务</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></div></footer></dialog>`;
+      <div class="actions"><button data-external-refresh hidden>刷新列表</button><button data-external-prepare class="primary" hidden disabled>准备贡献预览</button><button data-review-stock hidden>查看库存卡</button><button data-stop hidden>停止</button><button data-recover>核对并恢复</button><button data-archive-history hidden>退出并归档旧任务</button><button data-solve class="primary">生成方案</button><button data-contribute disabled hidden>贡献所选批次</button></div></footer></dialog>`;
   const node = key => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector('dialog');
   let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
   const rendered = new Set();
   let renderGeneration = 0;
   let shown = null, selected = new Set();
+  let externalMode = false, externalList = null;
   let executionProgress = null;
   const resetProgress = () => { executionProgress = null; node('clock').hidden = true; node('final-progress').hidden = true; };
   const refreshClock = () => {
@@ -251,21 +262,48 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore
     : selected.size > 0);
   const clearRendered = () => { node('archive-history').hidden = true; node('history-note').hidden = true;
-    renderGeneration++; for (const node of rendered) { try { node.__fcatDealloc?.(); } catch { /* UI disposal only. */ } node.remove(); } rendered.clear(); };
+    externalList?.dispose(); externalList = null;
+    renderGeneration++; for (const dispose of rendered) dispose(); rendered.clear(); };
+  const renderCard = (parent, item, generation = renderGeneration) => {
+    const card = add(parent, 'div'); card.className = 'player-card';
+    const fallback = add(card, 'span', number(item.rating)); fallback.title = '卡面不可用';
+    const slot = add(card, 'slot'); slot.name = `streamlined-card-${generation}-${item.key}`;
+    let native = null, failed = false, retired = false;
+    const release = () => {
+      if (native) { try { native.__fcatDealloc?.(); } catch { /* UI disposal only. */ } native.remove(); native = null; }
+    };
+    const dispose = () => { retired = true; rendered.delete(dispose); release(); };
+    const unavailable = () => { if (retired) return; failed = true; release(); rendered.delete(dispose);
+      if (generation === renderGeneration && !disposed) { fallback.hidden = false; slot.remove(); }
+    };
+    try {
+      const raw = session.resolveDisplayItem?.(item);
+      if (raw) native = (item.source === 'market' ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({ parent: host, raw, slot: slot.name,
+        label: item.name ?? `版本 ${item.definitionId}`, onUnavailable: unavailable });
+    } catch { unavailable(); }
+    if (native && !failed) { rendered.add(dispose); fallback.hidden = true; }
+    else unavailable();
+    return dispose;
+  };
   const read = () => { try { return readTarget(); } catch { return null; } };
   const same = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
   const setBusy = value => {
-    busy = value; entry.disabled = value;
+    busy = value; entry.disabled = value; externalEntry.disabled = value;
     for (const control of shadow.querySelectorAll('[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover],[data-archive-history]')) control.disabled = value;
     for (const control of shadow.querySelectorAll('[data-result] input')) control.disabled = value || control.dataset.settled === 'true';
     node('contribute').disabled = value || !contributionReady();
+    node('external-refresh').disabled = value; node('external-prepare').disabled = value || !externalList?.keys().length;
+    externalList?.setBusy();
     node('stop').hidden = !value; shadow.querySelector('progress').hidden = !value && !executionProgress;
   };
   const close = () => { opened++; session.stop(); resetProgress(); clearRendered(); session.clearPreview?.(); dialog.close(); origin = null; };
   const update = () => {
     target = read();
-    if (!target?.anchor?.isConnected) entry.remove();
-    else if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
+    if (!target?.anchor?.isConnected) { entry.remove(); externalBar.remove(); }
+    else {
+      if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
+      if (externalBar.parentNode !== target.anchor) target.anchor.append(externalBar);
+    }
     if (origin && !same(origin, target)) close();
     refreshClock();
   };
@@ -286,6 +324,12 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     maxRating: Number(node('rating').value), marketMaxRating: Number(node('market-rating').value), partialWaitMs: Number(node('wait').value) * 1000,
     sources: ['club', 'storage', 'unassigned', 'transfer'].filter(key => node(key).checked) });
   const on = (key, handler) => node(key).addEventListener('click', event => { if (event.isTrusted) void handler(); });
+  const setExternalMode = value => {
+    externalMode = value; node('settings').hidden = value; shadow.querySelector('.tabs').hidden = value;
+    node('solve').hidden = value; node('external-refresh').hidden = !value; node('external-prepare').hidden = !value;
+    node('review-stock').hidden = true;
+    shadow.querySelector('header strong').textContent = value ? 'Transfer / Unassigned' : 'FCAT 积分解题';
+  };
   on('close', close); dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
   on('local', () => loadScope(false)); on('global', () => loadScope(true)); on('stop', () => session.stop());
   on('review-stock', () => {
@@ -295,6 +339,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   entry.addEventListener('click', async event => {
     if (!event.isTrusted || disposed || busy) return;
     update(); if (!target) return;
+    setExternalMode(false); shown = null; resetProgress(); session.clearPreview?.();
     origin = target; const serial = ++opened; dialog.showModal(); node('status').textContent = '读取当前需求…'; node('result').replaceChildren(); node('contribute').hidden = true; clearRendered();
     setBusy(true);
     try {
@@ -306,6 +351,28 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }
     finally { setBusy(false); }
   });
+  const readExternal = async () => {
+    const serial = opened; setBusy(true); clearRendered(); session.clearPreview?.(); resetProgress();
+    shown = null; node('result').replaceChildren(); node('contribute').hidden = true; node('external-prepare').hidden = false;
+    node('status').textContent = '读取当前外部库存…';
+    try {
+      const result = await session.readSettings(); if (serial !== opened) return;
+      const c = result.challenge;
+      node('target').textContent = `${c.name ?? 'Streamlined SBC'} · ${number(c.submittedScore)} / ${number(c.targetScore)} · 剩余 ${number(c.remainingScore)}`;
+      const snapshot = await session.readExternalInventory(result.settings); if (serial !== opened) return;
+      if (snapshot.status !== 'observed') { node('status').textContent = streamlinedExecutionMessage(snapshot.reason); return; }
+      externalList = renderStreamlinedExternalSelection({ document, parent: node('result'), snapshot, renderCard,
+        isBusy: () => busy, onSelection: keys => { node('external-prepare').disabled = busy || !keys.length; } });
+      node('status').textContent = '选择球员后查看完整贡献顺序；此处不移动、不购买、不贡献。';
+    } catch (error) { if (serial === opened) node('status').textContent = streamlinedExecutionMessage(safeReason(error)); }
+    finally { setBusy(false); }
+  };
+  externalEntry.addEventListener('click', async event => {
+    if (!event.isTrusted || disposed || busy) return;
+    update(); if (!target) return;
+    origin = target; ++opened; setExternalMode(true); dialog.showModal(); await readExternal();
+  });
+  on('external-refresh', () => { if (!busy && origin && same(origin, read())) return readExternal(); });
   on('save', async () => {
     if (busy) return; setBusy(true);
     try { await session.saveSettings(config(), global); node('status').textContent = global ? '全局默认设置已保存。当前 SBC 独立设置优先。' : '当前 SBC 设置已保存。'; }
@@ -331,7 +398,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       }
       shown = result;
       const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
-      node('contribute').textContent = marketRun ? '按方案购买并贡献' : '贡献所选批次';
+      const orderedExternal = result.externalSelection === true;
+      node('contribute').textContent = marketRun ? '按方案购买并贡献' : orderedExternal ? '按顺序贡献' : '贡献所选批次';
       const output = node('result'), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add(output, 'section'); warning.className = 'inventory-warning';
@@ -410,7 +478,10 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const inventoryFirst = result.plan.objective === 'inventory-first';
       const quoteLabel = inventoryFirst && !marketRun ? '库存优先 · 未查询市场报价' : String(result.quoteSource).toUpperCase();
       add(output, 'small', `总材料价值 ${number(total)} 金币 · 待购 ${number(result.purchaseCost)} 金币 · 已有材料估值 ${number(result.materialValue)} · ${quoteLabel} · ${number(result.items.length)} 张 / ${number(result.batches.length)} 批`);
-      if (inventoryFirst) add(output, 'small', '先用合规 SBC Storage，再用 Club 材料；库存不足才补卡，原材料保护不变。');
+      if (orderedExternal) {
+        add(output, 'small', '按下方顺序执行整份选卡计划：先贡献 Club 同版本并确认消耗，再将外部卡逐批移入 Club 后贡献；已确认批次自动跳过。');
+        if (result.selectedCount !== undefined) add(output, 'small', `选中外部卡 ${number(result.selectedCount)} 张 · Club 前置 ${number(result.prerequisiteCount)} 张${result.omittedExternalCount ? ` · 达标后不再投入的外部卡 ${number(result.omittedExternalCount)} 张` : ''}`);
+      } else if (inventoryFirst) add(output, 'small', '先用合规 SBC Storage，再用 Club 材料；库存不足才补卡，原材料保护不变。');
       if (result.policy) {
         const stats = result.inventoryStats;
         const pileLabels = { club: 'Club', storage: 'SBC 仓库', unassigned: '未分配', transfer: '转会列表' };
@@ -451,11 +522,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         const summary = add(details, 'summary'), choice = add(summary, 'input'); choice.type = 'checkbox'; choice.checked = !settled(index);
         // Market routes are frozen as one complete purchase/contribution plan;
         // projected batches are informational and cannot be approved alone.
-        if (marketRun) choice.hidden = true;
+        if (marketRun || orderedExternal) choice.hidden = true;
         choice.dataset.settled = String(settled(index)); choice.disabled = busy || settled(index);
         choice.setAttribute('aria-label', `选择第 ${index + 1} 批`);
         choice.addEventListener('click', event => event.stopPropagation());
-        choice.addEventListener('change', () => { if (marketRun) return; if (choice.checked) selected.add(index); else selected.delete(index); updateSelection(); });
+        choice.addEventListener('change', () => { if (marketRun || orderedExternal) return; if (choice.checked) selected.add(index); else selected.delete(index); updateSelection(); });
         const pending = batch.filter(item => item.source === 'market');
         summary.append(document.createTextNode(` 第 ${index + 1} 批 · ${number(batch.length)} 张（库存 ${batch.length - pending.length} / 待购 ${pending.length}) · ${number(batch.reduce((sum, i) => sum + i.points, 0))} 分 · 待购 ${number(pending.reduce((sum, item) => sum + item.price, 0))} 金币`));
         let populated = false;
@@ -465,9 +536,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           const list = add(details, 'div'); list.className = 'player-list';
           for (const item of batch) {
             const row = add(list, 'div'); row.className = 'player-row';
-            const card = add(row, 'div'); card.className = 'player-card';
-            const fallback = add(card, 'span', number(item.rating)); fallback.title = '卡面不可用';
-            const slot = add(card, 'slot'); slot.name = `streamlined-card-${generation}-${item.key}`;
+            renderCard(row, item, generation);
             const text = add(row, 'div'); text.className = 'player-text';
             add(text, 'strong', item.name ?? `版本 ${item.definitionId}`);
             add(text, 'span', `${number(item.rating)} OVR · ${number(item.points)} 分`);
@@ -480,19 +549,6 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
             const price = add(row, 'span', item.price == null ? '估值未知' : `${number(item.price)} 金币`);
             price.className = 'player-price'; price.title = item.source === 'market' ? '待购估价' : '库存材料估值';
             if (item.source === 'market') add(price, 'small', `上限 ${number(item.purchaseMaxBuy)}`);
-            let native = null, failed = false;
-            const unavailable = () => {
-              failed = true;
-              if (native) { rendered.delete(native); try { native.__fcatDealloc?.(); } catch { /* UI disposal only. */ } native.remove(); }
-              if (generation === renderGeneration && !disposed) { fallback.hidden = false; slot.remove(); }
-            };
-            try {
-              const raw = session.resolveDisplayItem?.(item);
-              if (raw) native = (item.source === 'market' ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({ parent: host, raw, slot: slot.name,
-                label: item.name ?? `版本 ${item.definitionId}`, onUnavailable: unavailable });
-            } catch { unavailable(); }
-            if (native && !failed) { rendered.add(native); fallback.hidden = true; }
-            else unavailable();
           }
         };
         details.addEventListener('toggle', populate); populate();
@@ -521,9 +577,22 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       }
       add(output, 'small', streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? (marketRun
         ? '点击后按当前路线逐批搜卡、买断、入 Club 并贡献；实际成交不超过每张卡的冻结上限。'
+        : orderedExternal ? '点击后按顺序永久消耗 Club 前置及所选外部卡；独立确认前批后才移入下一批。达到目标即停止，停止按钮会等待当前批次核对完成。'
         : '点击贡献将永久消耗所选批次的卡片；可以分批贡献，停止会等待当前批次核对完成。')
         : `当前不能贡献：${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`)); node('contribute').hidden = false;
   };
+  on('external-prepare', async () => {
+    if (busy || !externalList?.keys().length || !origin || !same(origin, read())) return;
+    const keys = externalList.keys(), serial = opened; setBusy(true);
+    try {
+      const result = await session.planExternalSelection(keys); if (serial !== opened) return;
+      node('external-prepare').hidden = true;
+      renderResult(result);
+      node('status').textContent = result.plan ? '贡献预览已生成，尚未移动或消耗。请核对 Club 前置及所选外部卡。'
+        : streamlinedExecutionMessage(result.reason);
+    } catch (error) { if (serial === opened) node('status').textContent = streamlinedExecutionMessage(safeReason(error)); }
+    finally { setBusy(false); }
+  });
   on('solve', async () => {
     if (busy || !origin || !same(origin, read())) return;
     resetProgress(); node('review-stock').hidden = true;
@@ -584,7 +653,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   };
   on('contribute', async () => {
     if (busy || !contributionReady()) return;
-    const serial = opened, result = shown, indices = [...selected].sort((a, b) => a - b);
+    const serial = opened, result = shown, indices = result.externalSelection
+      ? result.batches.map((_, index) => index) : [...selected].sort((a, b) => a - b);
     const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
     setBusy(true);
     beginProgress(result);
@@ -624,6 +694,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     // Recovery can return absence, another target or an error. None of those
     // outcomes may leave the previous preview enabled for contribution.
     shown = null; selected.clear(); session.clearPreview?.(); clearRendered();
+    if (externalMode) node('external-prepare').hidden = true;
     node('review-stock').hidden = true;
     node('result').replaceChildren(); node('contribute').hidden = true;
     setBusy(true);
@@ -650,5 +721,5 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     finally { setBusy(false); }
   });
   update(); const timer = schedule(update, 900);
-  return Object.freeze({ dispose: () => { disposed = true; close(); unschedule(timer); entry.remove(); host.remove(); } });
+  return Object.freeze({ dispose: () => { disposed = true; close(); unschedule(timer); entry.remove(); externalBar.remove(); host.remove(); } });
 }
