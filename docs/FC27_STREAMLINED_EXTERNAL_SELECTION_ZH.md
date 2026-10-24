@@ -51,3 +51,24 @@
 真实账号仍未操作。需安装精确 27.0.59 构建后验收：原生底部入口布局、真实卡面/不可选原因；先 Club 后外部移入/贡献；目标达到提前停止；手动停止与核对恢复。真实交易/贡献由用户点击。旧 Journal 原样保留，未知回执仍先只读恢复，不能重新选卡覆盖。
 
 当前恢复点：main 27.0.58 / 66675d8 上实现，最终再次 fetch 并确认远程无新增；完整自动检查通过，提交推送 27.0.59。未使用真实账号浏览器、未买卡/移卡/贡献。下一步按上文真实账号场景验收；后续不必为重复自动检查要求用户登录。用户追问的 SBC Storage 为 EA 原生入口，本次保留。
+
+## 27.0.60 验收反馈修正
+
+用户反馈外部入口单独占一行、Transfer 中已到期未售出卡不可选。基线 27.0.59 / b5d5f23，工作区干净。
+
+已核对匿名 EA 11414 公开源码：WorkArea 底部为 `.ut-one-click-sbc-work-area-view--tabs .menu-container`，原生按钮使用 `.ea-filter-bar-item-view`；`isExpired()` 精确判断 EXPIRED，`isSold()` 为 tradeOwner + CLOSED，原生 UNSOLD 区包括 expired 或有效 inactive。现有共享快照仅将 inactive + free 映射为 activeTrade=false，因此 expired 在 Streamlined 被误拦；截图本身未导出实际实体字段，不把代码复现当作现场逐字段证明。
+
+计划：入口移至原生菜单容器并沿用原生按钮类，不注册伪 EA tab、不修改 Club/Storage 选择；只在 Streamlined 的 Transfer 投影认可明确 EXPIRED、本人拥有、无出价且 free 的实体，准备/移动前复用同一投影复核。未知/已售/仍挂牌继续停止，Only Untradeable、保护、Journal 与贡献顺序不改。
+
+验收矩阵补充：原生三个入口同排/同高（桌面、窄屏、底部菜单重建及导航清理）；expired 未售出从读取→选择→预览→Club 前置贡献→移入→贡献贯通；预览后变 active/closed/unknown、有出价、所有权/枚举/state 缺失均不移动；普通 Puzzle/Gallery 共享快照行为不改。先失败复现再修正，完整 verify/FC27 离线 Chrome 后提交推送；真实账号按钮和移卡贡献由用户验收，本轮不发真实写请求。
+
+实现与证据：
+
+- 修正前 3 个回归失败（读取 activeTrade=null、materializer 不能移入、外部选卡生产链不能生成有效计划），其余边界通过；`artifacts/external-feedback-red.log`。不是用账号库存推断结果。
+- `fc27-streamlined-read.js` 仅在 Streamlined Transfer 投影补明确到期未售出；材料物化复用此投影，未修改共享快照或写 Adapter。`fc27-streamlined-panel.js` 删除独占行容器，把原生 CSS 类按钮放入原生 menu-container。
+- 三文件定向 70 项通过后，补 Only Untradeable/其他 pile 不豁免场景；完整 `npm run verify` 通过：428 文件、5,189 项，含 lint/架构/构建、27.0.60 root/dist 一致性及 FSU 26.09.10 原资产检查，日志 `artifacts/external-feedback-full-verify.log`。
+- Streamlined 定向离线 Chrome 通过，含 1280/390 宽下三个按钮同排同高、菜单重建、可信点击及原贡献/市场/恢复界面回归；`artifacts/external-feedback-browser.log`。目视核对 `artifacts/fc27-browser/streamlined-external-native-tabs.png`，使用公开 EA CSS 的合成页面，不冒称真实登录页面。
+- 公开原生 auction 方法及合成 expired 行保存在 `tests/fixtures/fc27-streamlined-expired-transfer-2026-10-24.json`；未知/有出价/非本人/非 free 仍不能借此选卡。用户启用 Only Untradeable 时，可交易卡显示对应禁选原因，不自动改变设置。
+- FC27 专项 `node scripts/verify-fc27-prelaunch.mjs --browser` 通过：87 文件 / 1,549 项及全部离线 Chrome；`artifacts/external-feedback-fc27-verify.log`。root/dist SHA256 一致：`5ae3cfc92fd9bee5503de7f9cb4512cb7fba7c74e1a66a95599174704c237b35`；`git diff --check` 通过，FSU 源码/资产无变化。
+
+恢复点：代码、完整 verify、FC27 专项及全部离线浏览器完成；fetch 后远程无新提交，提交推送 27.0.60。实际账号布局及截图卡是否具备全部字段仍待更新验收；未登录账号或移动/贡献真实卡。旧 Journal 不清空，未知结果仍先核对恢复。

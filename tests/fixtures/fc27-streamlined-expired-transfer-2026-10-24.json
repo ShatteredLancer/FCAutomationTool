@@ -1,0 +1,26 @@
+{
+  "description": "Anonymous EA web-app build 11414 public auction predicates; synthetic owned expired Transfer row, no account data.",
+  "publicSource": "https://www.ea.com/ea-sports-fc/ultimate-team/web-app/js/ocompiled.js?_=11414",
+  "observedAt": "2026-10-24",
+  "enums": {
+    "ACTIVE": "active",
+    "INACTIVE": "inactive",
+    "EXPIRED": "expired",
+    "CLOSED": "closed",
+    "INVALID": "invalid"
+  },
+  "sources": {
+    "isExpired": "function(){var _0x2c7c12=_0x23b357;return this[\"tradeState\"]===AuctionTradeStateEnum[\"EXPIRED\"];}",
+    "isSold": "function(){var _0x5d27d6=_0x23b357;return this[\"tradeOwner\"]&&this[\"isClosedTrade\"]();}",
+    "isClosedTrade": "function(){var _0x25cec3=_0x23b357;return this[\"tradeState\"]===AuctionTradeStateEnum[\"CLOSED\"];}",
+    "isActiveTrade": "function(){var _0x21be78=_0x23b357;return this[\"tradeState\"]===AuctionTradeStateEnum[\"ACTIVE\"];}"
+  },
+  "item": {
+    "state": "free",
+    "_auction": {
+      "_tradeState": "expired",
+      "tradeOwner": true,
+      "currentBid": 0
+    }
+  }
+}

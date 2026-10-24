@@ -192,11 +192,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   const entry = document.createElement('button'); entry.id = 'fcat-streamlined-entry'; entry.type = 'button';
   entry.textContent = 'FCAT 积分解题'; entry.className = 'btn-standard call-to-action';
   entry.style.cssText = 'margin:8px;min-height:38px';
-  const externalBar = document.createElement('div'); externalBar.id = 'fcat-streamlined-external-bar';
-  externalBar.style.cssText = 'display:flex;justify-content:center;flex-shrink:0;padding:8px';
   const externalEntry = document.createElement('button'); externalEntry.id = 'fcat-streamlined-external-entry';
-  externalEntry.type = 'button'; externalEntry.className = 'btn-standard'; externalEntry.textContent = 'Transfer / Unassigned';
-  externalBar.append(externalEntry);
+  externalEntry.type = 'button'; externalEntry.className = 'ea-filter-bar-item-view';
+  externalEntry.textContent = 'Transfer / Unassigned'; externalEntry.setAttribute('aria-haspopup', 'dialog');
   const host = document.createElement('div'); host.id = 'fcat-streamlined-panel'; document.body.append(host);
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `<style>
@@ -299,10 +297,16 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
   const close = () => { opened++; session.stop(); resetProgress(); clearRendered(); session.clearPreview?.(); dialog.close(); origin = null; };
   const update = () => {
     target = read();
-    if (!target?.anchor?.isConnected) { entry.remove(); externalBar.remove(); }
+    if (!target?.anchor?.isConnected) { entry.remove(); externalEntry.remove(); }
     else {
       if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
-      if (externalBar.parentNode !== target.anchor) target.anchor.append(externalBar);
+      // Same native container and CSS as Club/Storage, without registering an
+      // unsupported EA tab or changing the native selected tab. Reattach after
+      // native menu reconstruction; wait for the menu rather than add a row.
+      const menu = target.anchor.querySelector('.ut-one-click-sbc-work-area-view--tabs > .menu-container');
+      if (menu && externalEntry.parentNode !== menu) {
+        menu.querySelector('#fcat-streamlined-external-entry')?.remove(); menu.append(externalEntry);
+      } else if (!menu) externalEntry.remove();
     }
     if (origin && !same(origin, target)) close();
     refreshClock();
@@ -721,5 +725,5 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     finally { setBusy(false); }
   });
   update(); const timer = schedule(update, 900);
-  return Object.freeze({ dispose: () => { disposed = true; close(); unschedule(timer); entry.remove(); externalBar.remove(); host.remove(); } });
+  return Object.freeze({ dispose: () => { disposed = true; close(); unschedule(timer); entry.remove(); externalEntry.remove(); host.remove(); } });
 }

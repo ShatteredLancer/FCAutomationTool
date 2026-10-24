@@ -6,11 +6,13 @@ import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.
 import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamlined-read.js';
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { splitStreamlinedBatches } from '../../src/streamlined/planner.js';
+import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
 
-async function setup(pile = 'unassigned') {
+async function setup(pile = 'unassigned', sourceChanges = {}) {
   const f = streamlinedRuntime({ targetScore: 20 }), memory = new Map(), club = [];
+  Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
   const source = { ...f.root.repositories.Item.club.items._collection[1], id: 901, definitionId: 1901,
-    pile: pile === 'transfer' ? 5 : 1, utasPile: pile === 'transfer' ? 5 : 1 };
+    pile: pile === 'transfer' ? 5 : 1, utasPile: pile === 'transfer' ? 5 : 1, ...sourceChanges };
   f.root.repositories.Item.getUnassignedItems = () => pile === 'unassigned' ? [source] : [];
   f.root.repositories.Item.getTransferItems = () => pile === 'transfer' ? [source] : [];
   const state = { reply: { success: true, data: { itemIds: [source.id] } }, moved: true,
@@ -54,6 +56,25 @@ it.each(['unassigned', 'transfer'])('moves exact %s material and uses durable in
   expect(progress).toHaveBeenCalledWith(expect.objectContaining({ phase: 'materialize', completed: 1 }));
   await (await f.create()).prepare(f.refs);
   expect(f.move).toHaveBeenCalledTimes(1);
+});
+
+it('moves a verified expired unsold Transfer card and independently confirms its exact Club arrival', async () => {
+  const f = await setup('transfer', structuredClone(expiredTransfer.item));
+  expect(f.plan.items[0].activeTrade).toBe(false);
+  expect(await (await f.create()).prepare(f.refs)).toMatchObject({ status: 'materialized', moved: [901] });
+  expect(f.move).toHaveBeenCalledOnce();
+});
+
+it.each(['active', 'closed', 'unknown', 'bid', 'owner', 'state'])
+('does not move a previously expired unsold Transfer card after %s drift', async change => {
+  const f = await setup('transfer', structuredClone(expiredTransfer.item));
+  if (['active', 'closed', 'unknown'].includes(change)) f.source._auction._tradeState = change;
+  if (change === 'bid') f.source._auction.currentBid = 650;
+  if (change === 'owner') delete f.source._auction.tradeOwner;
+  if (change === 'state') f.source.state = 'invalid';
+  await expect((await f.create()).prepare(f.refs)).rejects.toThrow('MATERIALIZE_');
+  expect(f.move).not.toHaveBeenCalled();
+  expect(f.state.writes).toBe(0);
 });
 
 it.each(['active', 'protected', 'rating', 'tradeable', 'duplicate', 'version'])('blocks changed %s material before moving', async kind => {

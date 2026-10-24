@@ -8,14 +8,17 @@ import { readStreamlinedExternalRows, planStreamlinedExternalSelection } from '.
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
+import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
 
 // Real selection -> splitter -> transaction -> provider -> materializer -> fresh
 // validator/reconciler. Only native network responses and the shared lock are synthetic.
-function fixture() {
+function fixture({ expired = false } = {}) {
   const f = streamlinedRuntime({ targetScore: 100 }), memory = new Map(), events = [];
+  Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
   let clock = 1000;
   const club = f.root.repositories.Item.club.items._collection;
-  const transfer = [{ ...club[1], id: 901, pile: 5, utasPile: 5, duplicateId: 1 }];
+  const transfer = [{ ...club[1], id: 901, pile: 5, utasPile: 5, duplicateId: 1,
+    ...(expired ? structuredClone(expiredTransfer.item) : {}) }];
   const unassigned = [{ ...club[1], id: 902, pile: 1, utasPile: 1, duplicateId: 1 }];
   f.root.repositories.Item.getTransferItems = () => transfer;
   f.root.repositories.Item.getUnassignedItems = () => unassigned;
@@ -70,8 +73,8 @@ function fixture() {
   return { ...f, state, events, move, request, plan, journal, createTransaction, approval, consume, onProgress };
 }
 
-it('independently confirms Club consumption before moving and contributing each exact external duplicate', async () => {
-  const f = fixture();
+it.each([false, true])('independently confirms Club before each external duplicate (expired Transfer: %s)', async expired => {
+  const f = fixture({ expired });
   expect(f.plan.batches.map(batch => batch.map(item => item.id))).toEqual([[1], [901], [902]]);
   expect(f.events).toEqual([]);
   const tx = f.createTransaction();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.59
+// @version      27.0.60
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.59", at: Date.now(), status: 'started',
+    state = { version: "27.0.60", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -28350,7 +28350,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var labels = {
     "history-reserved": "\u65E7\u4EFB\u52A1\u9884\u7559\uFF0C\u9700\u5148\u6838\u5BF9\u8BB0\u5F55",
     "duplicate-unverified": "Club \u540C\u7248\u672C\u5C1A\u672A\u6838\u5B9E\uFF0C\u8BF7\u5148\u5728\u539F\u751F\u9875\u9762\u52A0\u8F7D\u5E93\u5B58",
-    trade: "\u5DF2\u6302\u724C\u3001\u5DF2\u552E\u51FA\u6216\u4EA4\u6613\u72B6\u6001\u672A\u6838\u5B9E",
+    trade: "\u6B63\u5728\u6302\u724C\u3001\u5DF2\u552E\u51FA\u6216\u4EA4\u6613\u72B6\u6001\u672A\u6838\u5B9E",
     untradeable: "\u5F53\u524D\u4EC5\u5141\u8BB8\u4E0D\u53EF\u4EA4\u6613\u5361",
     locked: "FSU \u9501\u5361\u4FDD\u62A4",
     "active-squad": "\u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4",
@@ -28695,15 +28695,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     entry.textContent = "FCAT \u79EF\u5206\u89E3\u9898";
     entry.className = "btn-standard call-to-action";
     entry.style.cssText = "margin:8px;min-height:38px";
-    const externalBar = document.createElement("div");
-    externalBar.id = "fcat-streamlined-external-bar";
-    externalBar.style.cssText = "display:flex;justify-content:center;flex-shrink:0;padding:8px";
     const externalEntry = document.createElement("button");
     externalEntry.id = "fcat-streamlined-external-entry";
     externalEntry.type = "button";
-    externalEntry.className = "btn-standard";
+    externalEntry.className = "ea-filter-bar-item-view";
     externalEntry.textContent = "Transfer / Unassigned";
-    externalBar.append(externalEntry);
+    externalEntry.setAttribute("aria-haspopup", "dialog");
     const host = document.createElement("div");
     host.id = "fcat-streamlined-panel";
     document.body.append(host);
@@ -28873,10 +28870,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       target = read();
       if (!target?.anchor?.isConnected) {
         entry.remove();
-        externalBar.remove();
+        externalEntry.remove();
       } else {
         if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
-        if (externalBar.parentNode !== target.anchor) target.anchor.append(externalBar);
+        const menu = target.anchor.querySelector(".ut-one-click-sbc-work-area-view--tabs > .menu-container");
+        if (menu && externalEntry.parentNode !== menu) {
+          menu.querySelector("#fcat-streamlined-external-entry")?.remove();
+          menu.append(externalEntry);
+        } else if (!menu) externalEntry.remove();
       }
       if (origin && !same28(origin, target)) close();
       refreshClock();
@@ -29479,7 +29480,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       close();
       unschedule(timer);
       entry.remove();
-      externalBar.remove();
+      externalEntry.remove();
       host.remove();
     } });
   }
@@ -32669,6 +32670,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function projectFc27StreamlinedItem(item2, root, pile, protection = readFc27StreamlinedProtection(root)) {
     const base = snapshotFc27ClubPlayer(item2, root);
+    const auction = ownData(item2, "_auction"), expired = at9(root, "AuctionTradeStateEnum.EXPIRED");
+    const expiredUnsold = pile === "transfer" && base.state === "free" && expired === "expired" && ownData(auction, "_tradeState") === expired && ownData(auction, "tradeOwner") === true && ownData(auction, "currentBid") === 0;
     const staticData = ownData(item2, "_staticData");
     const ownString = (object, key) => {
       const value = ownData(object, key);
@@ -32683,6 +32686,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }
     return normalizeStreamlinedItem({
       ...base,
+      activeTrade: expiredUnsold ? false : base.activeTrade,
       pile,
       points,
       scoreVerified: integer16(points, 1),
@@ -35604,7 +35608,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.59" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.60" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35941,8 +35945,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.59"}`,
-    version: "27.0.59",
+    title: `FC Automation Tool ${"27.0.60"}`,
+    version: "27.0.60",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

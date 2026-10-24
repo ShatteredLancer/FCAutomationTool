@@ -1,7 +1,7 @@
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : '未知';
 const labels = {
   'history-reserved': '旧任务预留，需先核对记录', 'duplicate-unverified': 'Club 同版本尚未核实，请先在原生页面加载库存',
-  trade: '已挂牌、已售出或交易状态未核实', untradeable: '当前仅允许不可交易卡',
+  trade: '正在挂牌、已售出或交易状态未核实', untradeable: '当前仅允许不可交易卡',
   locked: 'FSU 锁卡保护', 'active-squad': '当前主阵容保护', rating: '超过库存评分上限',
   'fsu-gold-range': '不在 FSU 金卡评分范围', special: '特殊卡保护', evolution: '进化卡保护',
   cosmetic: '外观卡保护', academy: '进化中保护', protected: '受保护材料', league: '联赛被排除',

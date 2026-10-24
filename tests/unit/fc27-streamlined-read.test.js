@@ -6,6 +6,9 @@ import { challenge as fixtureChallenge } from '../helpers/streamlined.js';
 import { inspectStreamlined } from '../../scripts/browser-inspection/streamlined-inspection.mjs';
 import { runInNewContext } from 'node:vm';
 import { filterStreamlinedItems } from '../../src/streamlined/eligibility.js';
+import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
+import { readStreamlinedExternalRows } from '../../src/streamlined/external-selection.js';
+import { snapshotFc27ClubPlayer } from '../../src/adapters/ea/fc27-local-read.js';
 
 function runtime() {
   const f = executionRuntime(), { root } = f;
@@ -24,6 +27,53 @@ function runtime() {
   for (const item of Object.values(root.repositories.Item.club.items._collection)) item.sbsScore = 20;
   return { ...f, challenge, set, controller, anchor };
 }
+
+it('recognizes native expired unsold Transfer material without changing the shared Club snapshot', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = false;
+  Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
+  const card = { ...f.root.repositories.Item.club.items._collection[1], ...structuredClone(expiredTransfer.item),
+    id: 901, definitionId: 1901, utasPile: 5, tradable: true };
+  f.root.repositories.Item.getTransferItems = () => [card];
+  const native = Object.fromEntries(Object.entries(expiredTransfer.sources).map(([key, source]) => [key,
+    runInNewContext(`(${source})`, { _0x23b357: null, AuctionTradeStateEnum: expiredTransfer.enums })]));
+  const auction = { ...card._auction, tradeState: card._auction._tradeState, ...native };
+  expect(auction.isExpired()).toBe(true); expect(auction.isSold()).toBe(false);
+  const input = readFc27StreamlinedInputs(f.root, { sources: ['club', 'transfer'] });
+  expect(input.inventory.find(item => item.id === 901).activeTrade).toBe(false);
+  expect(snapshotFc27ClubPlayer(card, f.root).activeTrade).toBeNull();
+  expect(readStreamlinedExternalRows(input).rows[0]).toMatchObject({ selectable: true });
+  expect(f.calls).toEqual([]);
+});
+
+it.each(['active', 'closed', 'unknown', 'bid', 'owner', 'enum', 'state'])
+('does not make %s Transfer material selectable as an expired unsold card', change => {
+  const f = runtime(); f.root.info.build.untradeable = false;
+  Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
+  const card = { ...f.root.repositories.Item.club.items._collection[1], ...structuredClone(expiredTransfer.item),
+    id: 901, definitionId: 1901, utasPile: 5, tradable: true };
+  if (['active', 'closed', 'unknown'].includes(change)) card._auction._tradeState = change;
+  if (change === 'bid') card._auction.currentBid = 650;
+  if (change === 'owner') delete card._auction.tradeOwner;
+  if (change === 'enum') delete f.root.AuctionTradeStateEnum.EXPIRED;
+  if (change === 'state') card.state = 'invalid';
+  f.root.repositories.Item.getTransferItems = () => [card];
+  const input = readFc27StreamlinedInputs(f.root, { sources: ['club', 'transfer'] });
+  expect(readStreamlinedExternalRows(input).rows[0]).toMatchObject({ selectable: false, reason: 'trade' });
+  expect(f.calls).toEqual([]);
+});
+
+it('retains Only Untradeable and never treats expired cards in other piles as available Transfer material', () => {
+  const f = runtime(); Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
+  const card = { ...f.root.repositories.Item.club.items._collection[1], ...structuredClone(expiredTransfer.item),
+    id: 901, definitionId: 1901, utasPile: 5, tradable: true };
+  f.root.repositories.Item.getTransferItems = () => [card];
+  expect(readStreamlinedExternalRows(readFc27StreamlinedInputs(f.root, { sources: ['transfer'] })).rows[0])
+    .toMatchObject({ selectable: false, reason: 'untradeable' });
+  f.root.repositories.Item.getUnassignedItems = () => [card];
+  expect(readStreamlinedExternalRows(readFc27StreamlinedInputs(f.root, { sources: ['unassigned'] })).rows[0])
+    .toMatchObject({ selectable: false, reason: 'trade' });
+});
 
 function zeroSquadRuntime() {
   const f = runtime(), squads = f.root.repositories.Squad.squads._collection[902]._collection;

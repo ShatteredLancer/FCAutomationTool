@@ -6,7 +6,12 @@ export async function exerciseStreamlinedExternal(page) {
     globalThis.streamlinedMount?.dispose();
     const a = globalThis.StreamlinedSmoke, anchor = globalThis.document.querySelector('main');
     anchor.replaceChildren();
-    const native = globalThis.document.createElement('button'); native.textContent = 'SBC Storage'; anchor.append(native);
+    anchor.innerHTML = `<style>
+      .ut-one-click-sbc-work-area-view--tabs{background:#1d272f;padding-top:10px}
+      .ea-filter-bar-view{text-align:center;overflow-x:auto;overflow-y:hidden;padding-bottom:10px;white-space:nowrap;width:100%}
+      .ea-filter-bar-item-view{padding:12px 24px;background:#1d272f;border:1px solid #deded826;border-radius:10px;color:#deded8;display:inline-flex;margin:4px;font:14px Arial}
+      .ea-filter-bar-item-view.selected{border-color:#9effc6;color:#fcfcfc}
+    </style><div class="ea-filter-bar-view ut-one-click-sbc-work-area-view--tabs"><div class="menu-container"><button class="ea-filter-bar-item-view selected">Club</button><button class="ea-filter-bar-item-view">SBC Storage</button></div></div>`;
     const c = a.challenge({ scoreRequirement: 1000 });
     const inventory = [a.safeItem({ id: 1, definitionId: 100, name: 'Club prerequisite' }),
       ...Array.from({ length: 27 }, (_, index) => a.safeItem({ id: index + 2,
@@ -38,6 +43,24 @@ export async function exerciseStreamlinedExternal(page) {
   });
   assert.equal(await page.getByRole('button', { name: 'SBC Storage', exact: true }).count(), 1);
   const entry = page.getByRole('button', { name: 'Transfer / Unassigned', exact: true });
+  assert.equal(await entry.evaluate(button => button.parentNode === button.closest('.ut-one-click-sbc-work-area-view--tabs')?.querySelector('.menu-container')), true);
+  assert.equal(await entry.getAttribute('class'), 'ea-filter-bar-item-view');
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const rects = await page.locator('.ut-one-click-sbc-work-area-view--tabs button').evaluateAll(buttons => buttons.map(button => {
+      const rect = button.getBoundingClientRect(); return { y: rect.y, height: rect.height };
+    }));
+    assert.equal(rects.length, 3); assert.equal(new Set(rects.map(rect => rect.y)).size, 1);
+    assert.equal(new Set(rects.map(rect => rect.height)).size, 1);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-external-native-tabs.png' });
+  await page.evaluate(() => {
+    const bar = globalThis.document.querySelector('.ut-one-click-sbc-work-area-view--tabs');
+    bar.replaceWith(bar.cloneNode(true)); globalThis.document.getElementById('fcat-streamlined-external-entry').remove();
+  });
+  await entry.waitFor();
+  assert.equal(await entry.count(), 1, 'Native menu rebuild reattaches exactly one entry');
   await entry.evaluate(button => button.click());
   assert.equal(await page.getByRole('dialog').count(), 0, 'Synthetic entry clicks cannot start browsing');
   await entry.click();

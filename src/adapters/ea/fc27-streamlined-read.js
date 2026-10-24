@@ -96,6 +96,14 @@ export function createFc27StreamlinedMatcher(root, contract, entities) {
 
 export function projectFc27StreamlinedItem(item, root, pile, protection = readFc27StreamlinedProtection(root)) {
   const base = snapshotFc27ClubPlayer(item, root);
+  // EA's UNSOLD Transfer section includes EXPIRED auctions; the shared Club
+  // snapshot deliberately accepts only INACTIVE/free. Recognize only an owned,
+  // bid-free, explicitly expired Transfer entity here, including the identical
+  // projection used by materialization immediately before moving it to Club.
+  const auction = ownData(item, '_auction'), expired = at(root, 'AuctionTradeStateEnum.EXPIRED');
+  const expiredUnsold = pile === 'transfer' && base.state === 'free' && expired === 'expired'
+    && ownData(auction, '_tradeState') === expired && ownData(auction, 'tradeOwner') === true
+    && ownData(auction, 'currentBid') === 0;
   const staticData = ownData(item, '_staticData');
   const ownString = (object, key) => {
     const value = ownData(object, key);
@@ -114,7 +122,8 @@ export function projectFc27StreamlinedItem(item, root, pile, protection = readFc
     ?? ownString(item, 'lastName');
   // sbsScore is the native preview accessor, intentionally read (no rating formula).
   let points = null; try { points = item.sbsScore; } catch { /* Unknown remains null. */ }
-  return normalizeStreamlinedItem({ ...base, pile, points, scoreVerified: integer(points, 1),
+  return normalizeStreamlinedItem({ ...base, activeTrade: expiredUnsold ? false : base.activeTrade,
+    pile, points, scoreVerified: integer(points, 1),
     locked: protection.lockedItemIds.includes(base.id), activeSquad: protection.activeSquadItemIds.includes(base.id),
     protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
     duplicateId: ownData(item, 'duplicateId'), name, price: null, source: 'inventory' });
