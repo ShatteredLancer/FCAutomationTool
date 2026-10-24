@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-24 Puzzle 27.0.58：.57 现场 Set 59/Challenge 99 的三页都是铜卡，可用公共候选24、50k节点停住；补充截图确认整队至少75分/化学26、4联赛、同俱乐部最多4、指定两俱乐部至少2人，无品质限制。generic 查询原按低品质排序，两条身份锚点和补位占满三页，漏掉评分所需品质。只调整补卡只读查询排序：在明确品质/数量优先与个人上限内，优先覆盖可达整队最低/精确评分的品质；不把整队评分变为单卡下限，不删低品质混搭或安全库存。旧路由在同形合成 Session 中失败，新路由完整规则/评分/化学验算通过；不声称实机可买或全市场最优。FSU/锁卡/主阵容、材料总价值目标、限价/预算、三页/50k与所有交易/恢复合同不变，不清缓存/Journal，不新增持久化搜索游标；重复点击仍本地重新求解。证据及验收见 docs/FC27_PUZZLE_RATING_ROUTE_ZH.md，真实账号待升级后验收。
+
 2026-10-23 Gallery 27.0.57：成功挂牌后的回读、显式恢复和旧批次核对共用 listing-readback；暂时不可见/读异常最多三次只读刷新，退避 1/2 秒，不调用 list/move/permit。closed 仅在精确物品/definition/pile、冻结价格、有效拍卖 ID 及持久化成功 2xx 挂牌回执同时成立时确认已挂牌，不宣称售出/销售收入；无回执的 closed/缺失/冲突仍保留 unknown，不重发。保留限流/会话停止和原挂牌节奏/定价/锁/存储。增加固定 mismatch/次数/HTTP 诊断和可见只读核对进度，不暴露身份。原日志缺少具体匹配字段，两条缺陷已独立失败复现，不声称唯一账号根因。计划与验收见 docs/FC27_GALLERY_LISTING_READBACK_ZH.md，真实旧记录恢复待升级后验收。
 
 2026-10-23 Storage 27.0.56：Streamlined Journal 的完整活跃/history/retired 对象无损 gzip，所有调用通过原 Journal 读取边界解码；不删除/过期任何交易记录，不更改 pending/unknown、预算、选材或恢复语义。启动迁移复用 fca-fc27-traditional-sbc-v1 Web Lock，锁忙/不支持时延后，写前比较/写后复读。Gallery score/mapping 每键 2 MiB UTF-8、合计 8 键/8 MiB，仅淘汰可重算检查点；collection/曾拥有/首任、锁卡、设置、凭证全部排除。公开快照 gzip 阈值 32 KiB。私有备份副本 58.55→16.64 MiB，59 变更值逐字段还原、10429 值字节不变；不是精确 Chrome 消息测量。更新后其他 EA 标签也应刷新；不回退到不识别压缩格式的旧脚本。计划/验收见 docs/FC27_STORAGE_MAINTENANCE_ZH.md，实机升级验收待执行。

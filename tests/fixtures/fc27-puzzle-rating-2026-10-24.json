@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "evidence": "Requirements transcribed from the supplied Challenge Requirements screenshot using reviewed FC27 keys. Club filter IDs are from the bounded diagnostic catalog queries. Not a raw EA response; test cards, formation and prices are synthetic.",
+  "setId": 59,
+  "challengeId": 99,
+  "requirements": [
+    { "count": 2, "scope": 0, "pairs": [{ "key": 12, "values": [241, 243] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 4, "values": [3] }] },
+    { "count": -1, "scope": 1, "pairs": [{ "key": 6, "values": [4] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 8, "values": [4] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 19, "values": [75] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [26] }] }
+  ]
+}

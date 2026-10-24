@@ -25,7 +25,13 @@ export function planFc27MarketQueryRoute({ challenge, policy } = {}) {
     return Math.max(0, ...parsed.rules.filter(rule => rule.kind === 'quality-count' && rule.mode === 'min'
       && rule.qualities.includes(quality)).map(rule => rule.count));
   };
-  allowed.sort((a, b) => priority(b.level) - priority(a.level) || a.min - b.min);
+  // Cover a tier capable of the required squad rating before the three-page
+  // sample fills up with low-quality identity anchors. This is query order,
+  // NOT a per-card floor: lower tiers remain eligible for mixed cheap squads.
+  const ratingFloor = Math.max(0, ...parsed.rules.filter(rule => ['min-team-rating', 'exact-team-rating'].includes(rule.kind))
+    .map(rule => rule.value));
+  const belowFloor = tier => Number(Math.min(tier.max, policy.maxRating) < ratingFloor);
+  allowed.sort((a, b) => priority(b.level) - priority(a.level) || belowFloor(a) - belowFloor(b) || a.min - b.min);
 
   const identities = parsed.rules.filter(rule => rule.mode === 'min' && rule.count > 0
     && ['from-nations', 'from-leagues', 'from-clubs'].includes(rule.kind));

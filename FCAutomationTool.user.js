@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.57
+// @version      27.0.58
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.57", at: Date.now(), status: 'started',
+    state = { version: "27.0.58", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5361,7 +5361,9 @@
       const quality2 = level === "bronze" ? 1 : level === "silver" ? 2 : 3;
       return Math.max(0, ...parsed.rules.filter((rule) => rule.kind === "quality-count" && rule.mode === "min" && rule.qualities.includes(quality2)).map((rule) => rule.count));
     };
-    allowed.sort((a, b) => priority(b.level) - priority(a.level) || a.min - b.min);
+    const ratingFloor = Math.max(0, ...parsed.rules.filter((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind)).map((rule) => rule.value));
+    const belowFloor = (tier) => Number(Math.min(tier.max, policy.maxRating) < ratingFloor);
+    allowed.sort((a, b) => priority(b.level) - priority(a.level) || belowFloor(a) - belowFloor(b) || a.min - b.min);
     const identities = parsed.rules.filter((rule) => rule.mode === "min" && rule.count > 0 && ["from-nations", "from-leagues", "from-clubs"].includes(rule.kind));
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
     const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id12) => ({ [fields4[rule.kind]]: id12 })));
@@ -35174,7 +35176,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.57" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.58" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35511,8 +35513,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number2(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.57"}`,
-    version: "27.0.57",
+    title: `FC Automation Tool ${"27.0.58"}`,
+    version: "27.0.58",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
