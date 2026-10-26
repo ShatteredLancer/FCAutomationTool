@@ -77,11 +77,12 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, loadPlanningPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null, planningSettings = null, galleryLevel = null,
+  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null, planningSettings = null, galleryLevel = null, galleryReference = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
   let roadmap = null, roadmapTarget = null, levelPanel = null;
+  const runningPlanSurfaces = new Map();
   const roadmapProgressKeys = new WeakMap();
   const roadmapProgressKey = progress => {
     if (!progress) return null;
@@ -705,6 +706,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const renderPlan = (target, value, set, summary) => {
     if (typeof gradePlanner !== 'function' || !value?.progress || !result?.catalog) return;
+    const surfaceKey = JSON.stringify([scope(), set, result.catalog.revision,
+      galleryPlanningStateKey({ ...value, prices: {}, priceSnapshot: null })]);
+    const running = runningPlanSurfaces.get(set.id);
+    if (running?.key === surfaceKey) { target.append(running.section); return; }
+    if (running) { planningEpoch++; runningPlanSurfaces.delete(set.id); }
     const section = add(target, 'section', '', 'gallery-plan');
     add(section, 'strong', '指定等级补卡方案');
     const row = add(section, 'div', '', 'row');
@@ -733,6 +739,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       jointAdd.title = '已加入联合目标';
     });
     const output = add(section, 'div', '', 'gallery-plan-output'); output.setAttribute('aria-live', 'polite');
+    if (running) output.textContent = '收集状态或目录已更新，旧计算已停止，请重新生成。';
     const overview = add(section, 'div', '', 'gallery-grade-overview'); overview.setAttribute('aria-live', 'polite');
     const rewardText = snapshot => {
       if (!snapshot) return '请重新生成';
@@ -805,6 +812,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (plan.costAudit) add(output, 'small', `按单卡价格选取的完整组合为 ${count(plan.costAudit.totalPrice)} 金币、${count(plan.costAudit.score)} 分（目标 ${count(plan.costAudit.target)}）。`, 'gallery-unknown');
       for (const [index, candidate] of plan.plans.entries()) {
         const details = add(output, 'details');
+        details.open = index === 0;
         const scoreNote = candidate.currentScore != null
           ? `当前 ${count(candidate.currentScore)} + 新增 ${count(candidate.addedScore ?? 0)} = ${count(candidate.score)} 分`
           : `${count(candidate.score)} 分`;
@@ -835,6 +843,9 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     button.addEventListener('click', async event => {
       if (!event.isTrusted) return;
       button.disabled = true; output.replaceChildren(); add(output, 'small', '正在计算…');
+      overviewButton.disabled = true; select.disabled = true;
+      const chosenGrade = select.value, surface = { key: surfaceKey, section };
+      runningPlanSurfaces.set(set.id, surface);
       const token = ++planningEpoch, identity = scope(), revision = result;
       activePlans++;
       const current = () => !disposed && active && token === planningEpoch && identity === scope()
@@ -846,7 +857,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const maxMs = await planningTimeout(current, output);
       if (maxMs == null) return;
       const binding = planBinding(value, set);
-      const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
+      const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
         const plan = gradePlanner === planGalleryGrade
           ? await runGalleryPlan(planGalleryGradeSteps(input), { current, maxMs,
             progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } })
@@ -871,10 +882,12 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           attachPlanPrices(plan, [value.priceSnapshot]);
           savePlanCache(set, value, { binding, plan });
           show(plan);
+          output.scrollIntoView({ block: 'nearest' });
           if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
         }
       } catch { void diag({ event: 'grade-plan', phase: 'planner', status: 'failed', reason: 'FC27_GALLERY_GRADE_PLANNER_FAILED' }); if (current()) show({ status: 'unavailable', reason: 'planner-failed' }); }
-      finally { activePlans = Math.max(0, activePlans - 1); button.disabled = false; cancel.remove(); }
+      finally { activePlans = Math.max(0, activePlans - 1); button.disabled = false; overviewButton.disabled = false; select.disabled = false; cancel.remove();
+        if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id); }
     });
     overviewButton.addEventListener('click', async event => {
       if (!event.isTrusted || overviewButton.disabled) return;
@@ -1326,6 +1339,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (next === currentScope) return true;
     scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear(); planCache.clear();
     currentScope = next; selection++; selectedSetId = null; details.clear(); comparisonViews.clear();
+    runningPlanSurfaces.clear();
     roadmapTarget = null; roadmap?.close();
     levelPanel?.setActive(false); if (active) levelPanel?.setActive(true);
     if (node('gallery-accounting')) { node('gallery-accounting').hidden = true; node('gallery-accounting-summary').textContent = ''; }
@@ -2047,7 +2061,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       } });
       if (identity !== scope() || !active) return;
       applySyncDetails(outcome.details ?? await sync.peekDetails(source));
-    }, stopPrepare: () => sync?.stop(), loadPrices: loadPlanningPrices,
+    }, stopPrepare: () => sync?.stop(), loadPrices: loadPlanningPrices, referenceService: galleryReference,
     readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
     openSet: (setId, grade) => {
       if (checkScope() === false) return;

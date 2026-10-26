@@ -1,0 +1,249 @@
+{
+  "opportunities": {
+    "fills": [],
+    "upgrades": [],
+    "sets": [
+      {
+        "category": "usa",
+        "slug": "san-diego-fc",
+        "count": 0,
+        "required": 15,
+        "total": 0,
+        "full": false,
+        "grades": [
+          {
+            "grade": "D",
+            "tokens": 0,
+            "cost": 3850,
+            "ids": [
+              265734,
+              50574417,
+              268130,
+              235590,
+              217606,
+              266507,
+              279706,
+              267636,
+              73870,
+              83721,
+              73671,
+              77967,
+              80612,
+              70074,
+              277301
+            ],
+            "total": 451,
+            "prices": [
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              250,
+              250,
+              300,
+              300,
+              350,
+              600
+            ]
+          },
+          {
+            "grade": "C",
+            "tokens": 0,
+            "cost": 4350,
+            "ids": [
+              265734,
+              50574417,
+              268130,
+              235590,
+              217606,
+              266507,
+              73870,
+              279706,
+              267636,
+              83721,
+              73671,
+              80612,
+              77967,
+              70074,
+              236918
+            ],
+            "total": 585,
+            "prices": [
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              250,
+              250,
+              300,
+              300,
+              350,
+              1100
+            ]
+          },
+          {
+            "grade": "B",
+            "tokens": 5,
+            "cost": 5800,
+            "ids": [
+              265734,
+              50574417,
+              268130,
+              235590,
+              217606,
+              266507,
+              73870,
+              279706,
+              267636,
+              83721,
+              73671,
+              77495,
+              236918,
+              224067,
+              277301
+            ],
+            "total": 705,
+            "prices": [
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              250,
+              250,
+              600,
+              1100,
+              1200,
+              600
+            ]
+          },
+          {
+            "grade": "A",
+            "tokens": 8,
+            "cost": null,
+            "ids": null
+          },
+          {
+            "grade": "S",
+            "tokens": 15,
+            "cost": null,
+            "ids": null
+          }
+        ]
+      }
+    ]
+  },
+  "evidence": "Reduced public empty-collection response, 2026-10-26; no account state. Reference prices are not live purchase authority.",
+  "index": {
+    "categories": [
+      {
+        "name": "MLS",
+        "sets": [
+          {
+            "slug": "san-diego-fc",
+            "name": "San Diego FC",
+            "required": 15,
+            "clubs": [
+              131439
+            ],
+            "leagues": [],
+            "rareflags": [],
+            "holo": false,
+            "grades": [
+              {
+                "grade": "D",
+                "score": 18,
+                "tokens": 0
+              },
+              {
+                "grade": "C",
+                "score": 500,
+                "tokens": 0
+              },
+              {
+                "grade": "B",
+                "score": 700,
+                "tokens": 5
+              },
+              {
+                "grade": "A",
+                "score": 1100,
+                "tokens": 8
+              },
+              {
+                "grade": "S",
+                "score": 1500,
+                "tokens": 15
+              }
+            ],
+            "reach": {
+              "at": "2026-10-26T07:52:47.017421865Z",
+              "cards": "uav1vvfg50ec",
+              "costs": {
+                "pc": {
+                  "B": 6450,
+                  "C": 5450,
+                  "D": 5450
+                },
+                "console": {
+                  "B": 6400,
+                  "C": 5100,
+                  "D": 4500
+                }
+              },
+              "grade": "B",
+              "total": 880,
+              "cardsAt": "2026-10-26T04:52:37.420274128Z"
+            }
+          }
+        ],
+        "slug": "usa"
+      }
+    ],
+    "engine": {
+      "version": 1,
+      "goldFrom": 75,
+      "silverFrom": 65,
+      "bonusMinusOne": false
+    },
+    "tags": [
+      {
+        "id": 3,
+        "name": "Same Nation",
+        "steps": [
+          {
+            "at": 5,
+            "pct": 1
+          },
+          {
+            "at": 10,
+            "pct": 2
+          },
+          {
+            "at": 20,
+            "pct": 4
+          }
+        ],
+        "match": {
+          "by": "nation",
+          "how": "same",
+          "values": []
+        }
+      }
+    ]
+  }
+}

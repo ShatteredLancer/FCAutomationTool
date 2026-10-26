@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.63
+// @version      27.0.64
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.63", at: Date.now(), status: 'started',
+    state = { version: "27.0.64", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -42,9 +42,9 @@
 (() => {
   // src/fc27/prelaunch-contract.js
   var BRIDGE_CAPABILITIES = Object.freeze(["policy", "locks", "club", "targetedValidation"]);
-  function ownData(object, key) {
+  function ownData(object, key2) {
     try {
-      return Object.getOwnPropertyDescriptor(object, key)?.value;
+      return Object.getOwnPropertyDescriptor(object, key2)?.value;
     } catch {
       return void 0;
     }
@@ -186,12 +186,12 @@
   var identity2 = (value) => Number.isSafeInteger(value) && value > 0;
   var integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
   var boolean = (value) => typeof value === "boolean" ? value : null;
-  var at = (value, keys2) => keys2.reduce((next, key) => ownData(next, key), value);
-  var itemData = (item2, key) => {
-    const direct = ownData(item2, key);
+  var at = (value, keys2) => keys2.reduce((next, key2) => ownData(next, key2), value);
+  var itemData = (item2, key2) => {
+    const direct = ownData(item2, key2);
     if (direct !== void 0) return direct;
     for (const container of [ownData(item2, "_data"), ownData(item2, "_staticData")]) {
-      const value = ownData(container, key);
+      const value = ownData(container, key2);
       if (value !== void 0) return value;
     }
     return void 0;
@@ -228,16 +228,16 @@
   function entries(value) {
     for (let i = 0; i < 3 && ownData(value, "_collection") !== void 0; i++) value = ownData(value, "_collection");
     if (!value || typeof value !== "object" || !Array.isArray(value) && ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error("FC27_COLLECTION_UNAVAILABLE");
-    const keys2 = Object.getOwnPropertyNames(value).filter((key) => key !== "length");
+    const keys2 = Object.getOwnPropertyNames(value).filter((key2) => key2 !== "length");
     if (keys2.length > 2e4) throw new Error("FC27_COLLECTION_LIMIT");
-    return keys2.map((key) => {
-      const item2 = ownData(value, key);
+    return keys2.map((key2) => {
+      const item2 = ownData(value, key2);
       if (!item2 || typeof item2 !== "object") throw new Error("FC27_COLLECTION_UNAVAILABLE");
       return item2;
     });
   }
   function snapshotFc27ClubPlayer(item2, root) {
-    const get = (key) => ownData(item2, key);
+    const get = (key2) => ownData(item2, key2);
     const id12 = get("id");
     const definitionId = get("definitionId");
     if (!identity2(id12) || !identity2(definitionId)) throw new Error("FC27_CACHED_ITEM_IDENTITY_CONFLICT");
@@ -325,13 +325,13 @@
   function values(input, limit) {
     const raw = ownData(input, "_collection") ?? input;
     if (!raw || typeof raw !== "object") return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-    const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
+    const keys2 = Object.getOwnPropertyNames(raw).filter((key2) => key2 !== "length");
     if (keys2.length > limit) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-    return keys2.map((key) => ownData(raw, key));
+    return keys2.map((key2) => ownData(raw, key2));
   }
-  function method(object, key) {
+  function method(object, key2) {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key2);
       if (descriptor) return descriptor.value;
     }
     return void 0;
@@ -361,11 +361,11 @@
       return {
         count: ownData(rule, "count") === -1 ? -1 : number(ownData(rule, "count")),
         scope: number(ownData(rule, "scope")),
-        pairs: Object.keys(pairs).map((key) => {
-          if (!/^\d{1,6}$/.test(key)) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-          const raw = ownData(pairs, key);
+        pairs: Object.keys(pairs).map((key2) => {
+          if (!/^\d{1,6}$/.test(key2)) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
+          const raw = ownData(pairs, key2);
           if (!Array.isArray(raw) || raw.length > 32) return fail("FC27_CATALOG_SHAPE_UNVERIFIED");
-          return { key: Number(key), values: Array.from({ length: raw.length }, (_, index) => number(ownData(raw, String(index)))) };
+          return { key: Number(key2), values: Array.from({ length: raw.length }, (_, index) => number(ownData(raw, String(index)))) };
         })
       };
     });
@@ -463,10 +463,10 @@
   // src/adapters/ea/fc27-sbc-read.js
   async function inspectInProgressSquad({ setId, challengeId, includeFormation = false } = {}, root = globalThis, observedChallenge = null) {
     const stop6 = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false });
-    function data(value, key) {
+    function data(value, key2) {
       try {
         for (let depth = 0; value && depth < 5; depth++, value = Object.getPrototypeOf(value)) {
-          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          const descriptor = Object.getOwnPropertyDescriptor(value, key2);
           if (descriptor) return Object.hasOwn(descriptor, "value") ? descriptor.value : void 0;
         }
       } catch {
@@ -476,9 +476,9 @@
     function values8(value, limit) {
       for (let i = 0; i < 3 && data(value, "_collection") !== void 0; i++) value = data(value, "_collection");
       if (!value || typeof value !== "object") return [];
-      const keys2 = Object.getOwnPropertyNames(value).filter((key) => key !== "length");
+      const keys2 = Object.getOwnPropertyNames(value).filter((key2) => key2 !== "length");
       if (keys2.length > limit) return [];
-      return keys2.map((key) => data(value, key));
+      return keys2.map((key2) => data(value, key2));
     }
     function formationSnapshot(squad) {
       const formation = data(squad, "_formation");
@@ -597,7 +597,7 @@
     if (!raw || typeof raw !== "object") throw new Error("FC27_CHALLENGE_COLLECTION_UNAVAILABLE");
     const keys2 = Object.keys(raw);
     if (keys2.length > limit) throw new Error("FC27_CHALLENGE_COLLECTION_LIMIT");
-    return keys2.map((key) => ownData(raw, key));
+    return keys2.map((key2) => ownData(raw, key2));
   }
   function sets(root) {
     const repository = ownData(ownData(ownData(root, "services"), "SBC"), "repository");
@@ -682,7 +682,7 @@
       } catch {
         return stop2("CONTEXT_UNAVAILABLE");
       }
-      if (["season", "accountScope", "platform"].some((key) => other[key] !== scope2[key])) return stop2("CONTEXT_MISMATCH");
+      if (["season", "accountScope", "platform"].some((key2) => other[key2] !== scope2[key2])) return stop2("CONTEXT_MISMATCH");
     }
     if (challenge.schema !== 1 || challenge.mechanism !== "traditional" || challenge.requirementsOperation !== "AND" || !identity3(challenge.setId) || !identity3(challenge.id) || challenge.completed !== false) {
       return stop2("CHALLENGE_UNVERIFIED");
@@ -696,7 +696,7 @@
     let minRating = 1;
     let maxRating = 99;
     for (const rule of challenge.requirements) {
-      if (!rule || !["player-count", "player-min-overall", "player-max-overall"].includes(rule.kind) || rule.count !== required2 || Object.keys(rule).some((key) => !["kind", "count", "value"].includes(key))) {
+      if (!rule || !["player-count", "player-min-overall", "player-max-overall"].includes(rule.kind) || rule.count !== required2 || Object.keys(rule).some((key2) => !["kind", "count", "value"].includes(key2))) {
         return stop2("UNSUPPORTED_REQUIREMENT");
       }
       if (rule.kind === "player-count") {
@@ -712,7 +712,7 @@
     if (!integer2(slotCount, 1, 11) || !Array.isArray(brickIndices) || brickIndices.some((index) => !integer2(index, 0, slotCount - 1)) || new Set(brickIndices).size !== brickIndices.length || slotCount - brickIndices.length !== required2) {
       return stop2("SLOT_LAYOUT_UNVERIFIED");
     }
-    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id12) => !identity3(id12))) return stop2("PROTECTION_POLICY_UNVERIFIED");
+    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id12) => !identity3(id12))) return stop2("PROTECTION_POLICY_UNVERIFIED");
     const lists = [policy.lockedItemIds, policy.activeSquadItemIds];
     if (lists.some((value) => value !== void 0) && (lists.some((value) => !Array.isArray(value) || value.length > 2e4 || value.some((id12) => !identity3(id12)) || new Set(value).size !== value.length) || policy.protectFsuLockedPlayers !== true || policy.protectActiveSquad !== true)) {
       return stop2("PROTECTION_POLICY_UNVERIFIED");
@@ -831,9 +831,9 @@
     const phase = ownData(value, "phase");
     if (!phases.has(phase)) return null;
     const result = { phase };
-    for (const key of ["count", "requiredSlots", "unknownCount", "offset"]) {
-      const number4 = ownData(value, key);
-      if (Number.isSafeInteger(number4) && number4 >= 0 && number4 <= 2e4) result[key] = number4;
+    for (const key2 of ["count", "requiredSlots", "unknownCount", "offset"]) {
+      const number4 = ownData(value, key2);
+      if (Number.isSafeInteger(number4) && number4 >= 0 && number4 <= 2e4) result[key2] = number4;
     }
     const mismatch2 = ownData(value, "mismatch"), cached = ownData(value, "cached");
     if (mismatches.has(mismatch2)) result.mismatch = mismatch2;
@@ -842,7 +842,7 @@
   }
 
   // src/adapters/ea/fc27-protection-read.js
-  var at2 = (root, path) => path.split(".").reduce((v, key) => ownData(v, key), root);
+  var at2 = (root, path) => path.split(".").reduce((v, key2) => ownData(v, key2), root);
   var integer3 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
   var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var verifiedActiveSquads = /* @__PURE__ */ new WeakMap();
@@ -935,8 +935,8 @@
       if (!collection || typeof collection !== "object") throw new Error();
       const keys2 = Object.getOwnPropertyNames(collection);
       if (keys2.length > 500) throw new Error();
-      const targets = keys2.map((key) => {
-        const set = ownData(collection, key);
+      const targets = keys2.map((key2) => {
+        const set = ownData(collection, key2);
         const setId = ownData(set, "id");
         const name = ownData(set, "name");
         if (!Number.isSafeInteger(setId) || setId <= 0 || setId >= 1e9 || typeof name !== "string" || !name.trim() || name.length > 160 || /[\u0000-\u001f]/.test(name)) throw new Error();
@@ -979,7 +979,7 @@
       };
       if (![27, "27"].includes(ownData(base, "year"))) throw new Error("FC27_FSU_SEASON_MISMATCH");
       if (report.fsu.readiness === "not-ready") throw new Error("FC27_FSU_NOT_READY");
-      const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key) => ownData(build, key));
+      const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key2) => ownData(build, key2));
       const goldenMax = ownData(set, "goldenrange");
       const rawLeagues = ownData(set, "shield_league");
       const leagues = Array.isArray(rawLeagues) && rawLeagues.length <= 200 ? Array.from({ length: rawLeagues.length }, (_, index) => ownData(rawLeagues, String(index))) : null;
@@ -1019,22 +1019,22 @@
     throw new Error(reason);
   };
   var integer4 = (value) => Number.isSafeInteger(value) && value >= 0;
-  function method2(object, key) {
+  function method2(object, key2) {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key2);
       if (descriptor) return descriptor.value;
     }
   }
   function values3(input, limit) {
     const raw = ownData(input, "_collection") ?? input;
     if (!raw || typeof raw !== "object") return fail2("FC27_CONTRACT_SHAPE_UNVERIFIED");
-    const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
+    const keys2 = Object.getOwnPropertyNames(raw).filter((key2) => key2 !== "length");
     if (keys2.length > limit) return fail2("FC27_CONTRACT_SHAPE_UNVERIFIED");
-    return keys2.map((key) => ownData(raw, key));
+    return keys2.map((key2) => ownData(raw, key2));
   }
   function rewards(input, scope2) {
     return values3(input, 6).map((reward) => {
-      const result = Object.fromEntries(["type", "value", "count", "tradable"].map((key) => [key, ownData(reward, key)]));
+      const result = Object.fromEntries(["type", "value", "count", "tradable"].map((key2) => [key2, ownData(reward, key2)]));
       if (result.type !== "pack" || !integer4(result.value) || result.value <= 0 || !integer4(result.count) || result.count < 1 || result.count > 10 || typeof result.tradable !== "boolean") {
         return fail2("FC27_CONTRACT_REWARD_UNSUPPORTED");
       }
@@ -1047,21 +1047,21 @@
       const context = readFc27Context(root);
       const service = ownData(ownData(root, "services"), "SBC");
       const dao = ownData(service, "sbcDAO");
-      const functions = Object.fromEntries(Object.keys(hashes).map((key) => [key, method2(dao, key)]));
+      const functions = Object.fromEntries(Object.keys(hashes).map((key2) => [key2, method2(dao, key2)]));
       const methods = {};
-      for (const [key, fn] of Object.entries(functions)) {
-        methods[key] = false;
+      for (const [key2, fn] of Object.entries(functions)) {
+        methods[key2] = false;
         if (typeof fn !== "function" || !root.crypto?.subtle) continue;
         const source = Function.prototype.toString.call(fn);
         if (source.length > 4096) continue;
         const digest = await root.crypto.subtle.digest("SHA-256", new globalThis.TextEncoder().encode(source));
         const hash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
-        methods[key] = hash === hashes[key];
+        methods[key2] = hash === hashes[key2];
       }
       if (!methods.getSets || !methods.getChallengesForSet) return fail2("FC27_CONTRACT_READ_METHOD_UNREVIEWED");
       const unchanged = () => {
         try {
-          if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context) || ownData(ownData(root, "services"), "SBC") !== service || ownData(service, "sbcDAO") !== dao || Object.keys(functions).some((key) => method2(dao, key) !== functions[key])) return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
+          if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context) || ownData(ownData(root, "services"), "SBC") !== service || ownData(service, "sbcDAO") !== dao || Object.keys(functions).some((key2) => method2(dao, key2) !== functions[key2])) return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
         } catch {
           return fail2("FC27_CONTRACT_CONTEXT_CHANGED");
         }
@@ -1121,9 +1121,9 @@
         "repeatabilityMode",
         "startTime",
         "endTime"
-      ].map((key) => [key, ownData(sets2[0], key)]));
+      ].map((key2) => [key2, ownData(sets2[0], key2)]));
       if (set.challengesCount !== 1 || set.challengesCompletedCount !== 0) return fail2("FC27_CONTRACT_SINGLE_CHALLENGE_REQUIRED");
-      if (typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key) => !integer4(set[key])) || typeof set.repeatabilityMode !== "string" || !/^[A-Z_]{1,32}$/.test(set.repeatabilityMode)) {
+      if (typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key2) => !integer4(set[key2])) || typeof set.repeatabilityMode !== "string" || !/^[A-Z_]{1,32}$/.test(set.repeatabilityMode)) {
         return fail2("FC27_CONTRACT_SHAPE_UNVERIFIED");
       }
       const awardList = rewards(ownData(sets2[0], "awards"), "set");
@@ -1237,7 +1237,7 @@
     const reviewed = ownData(FC27_CLUB_COMPATIBLE_HASHES, path);
     return Array.isArray(reviewed) ? reviewed.includes(hash) : typeof reviewed === "string" && reviewed === hash;
   }
-  var at3 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
+  var at3 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var validId = (value) => Number.isSafeInteger(value) && value > 0;
   async function createFc27ClubReadTransport(root, { onEntity = null, nativeReauth = false } = {}) {
     const context = readFc27Context(root);
@@ -1378,7 +1378,7 @@
         const response = await request("players", body);
         const payload = ownData(response, "itemData");
         if (!Array.isArray(payload) || payload.length > count2) throw new Error("FC27_CLUB_PAYLOAD_UNVERIFIED");
-        if (!payload.length && Object.keys(response).some((key) => key !== "itemData" && Array.isArray(ownData(response, key)) && ownData(response, key).length > 0)) {
+        if (!payload.length && Object.keys(response).some((key2) => key2 !== "itemData" && Array.isArray(ownData(response, key2)) && ownData(response, key2).length > 0)) {
           throw new Error("FC27_CLUB_PAYLOAD_UNVERIFIED");
         }
         return payload.map((data) => {
@@ -1394,7 +1394,7 @@
   }
 
   // src/adapters/ea/fc27-transaction-transport.js
-  var at4 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
+  var at4 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var fail3 = (reason) => {
     throw new Error(reason);
   };
@@ -1700,7 +1700,7 @@
       const values8 = (value) => {
         const raw = ownData(value, "_collection") ?? value;
         if (!raw || typeof raw !== "object" || Object.getOwnPropertyNames(raw).length > 501) return [];
-        return Object.getOwnPropertyNames(raw).filter((key) => key !== "length").map((key) => ownData(raw, key));
+        return Object.getOwnPropertyNames(raw).filter((key2) => key2 !== "length").map((key2) => ownData(raw, key2));
       };
       const service = ownData(ownData(root, "services"), "SBC");
       const sets2 = values8(ownData(ownData(service, "repository"), "sets")).filter((set) => ownData(set, "id") === setId);
@@ -1779,7 +1779,7 @@
     throw new Error(reason);
   };
   var same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var at5 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
+  var at5 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var protectedItem = (item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false });
   var identity4 = (value) => Number.isSafeInteger(value) && value > 0;
   var count = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -1798,9 +1798,9 @@
   function values4(input, limit = 500) {
     const collection = ownData(input, "_collection") ?? input;
     if (!collection || typeof collection !== "object") return fail4("FC27_PROVIDER_RESPONSE_UNVERIFIED");
-    const keys2 = Object.getOwnPropertyNames(collection).filter((key) => key !== "length");
+    const keys2 = Object.getOwnPropertyNames(collection).filter((key2) => key2 !== "length");
     if (keys2.length > limit) return fail4("FC27_PROVIDER_RESPONSE_UNVERIFIED");
-    return keys2.map((key) => ownData(collection, key));
+    return keys2.map((key2) => ownData(collection, key2));
   }
   function success(reply) {
     if (ownData(reply, "success") !== true || ownData(reply, "status") !== 200) return fail4("FC27_PROVIDER_READ_UNCONFIRMED");
@@ -1854,10 +1854,10 @@
     const club = await createFc27ClubReadTransport(root);
     const dao = at5(root, "services.SBC.sbcDAO");
     const functions = Object.fromEntries(FC27_SBC_EXECUTION_METHODS.map(([path]) => {
-      const key = path.split(".").at(-1);
+      const key2 = path.split(".").at(-1);
       const fn = at5(root, path);
-      if (dao?.[key] !== fn) return fail4("FC27_TRANSACTION_RUNTIME_CHANGED");
-      return [key, fn];
+      if (dao?.[key2] !== fn) return fail4("FC27_TRANSACTION_RUNTIME_CHANGED");
+      return [key2, fn];
     }));
     let lastRead = -Infinity;
     let stopped = false;
@@ -1871,7 +1871,7 @@
       if (!same2(projectFc27PuzzleSquadBaseline(root, loaded, target), binding.slots)) return fail4("FC27_PUZZLE_SERVER_SQUAD_CHANGED");
     };
     const assert = () => {
-      if (stopped || !same2(context, readFc27Context(root)) || at5(root, "services.SBC.sbcDAO") !== dao || Object.keys(functions).some((key) => dao[key] !== functions[key])) return fail4("FC27_TRANSACTION_CONTEXT_CHANGED");
+      if (stopped || !same2(context, readFc27Context(root)) || at5(root, "services.SBC.sbcDAO") !== dao || Object.keys(functions).some((key2) => dao[key2] !== functions[key2])) return fail4("FC27_TRANSACTION_CONTEXT_CHANGED");
       runtime();
       cacheRuntime();
       transport.assert();
@@ -1896,7 +1896,7 @@
       repo.resetStatsCacheTimestamp();
       if (refs3.some((ref) => ownData(collection, String(ref.id)) !== void 0)) return fail4("FC27_CACHE_RECONCILIATION_UNCONFIRMED");
     };
-    const readDao = async (key, args) => {
+    const readDao = async (key2, args) => {
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, 800 - (Date.now() - lastRead))));
       assert();
       lastRead = Date.now();
@@ -1917,7 +1917,7 @@
         };
         const timer = setTimeout(() => finish(new Error("FC27_PROVIDER_READ_TIMEOUT")), 11e3);
         try {
-          observable = functions[key].apply(dao, args);
+          observable = functions[key2].apply(dao, args);
           observable.observe(owner, (_sender, reply) => {
             if (done) return;
             try {
@@ -1998,7 +1998,7 @@
       if (challenges.length !== 1 || ownData(challenges[0], "id") !== record.challengeId || ownData(challenges[0], "setId") !== record.setId) return fail4("FC27_RECONCILIATION_UNCONFIRMED");
       const awards = [["set", sets2[0]], ["challenge", challenges[0]]].flatMap(([scope2, entity]) => values4(ownData(entity, "awards"), 6).map((reward) => ({
         scope: scope2,
-        ...Object.fromEntries(["type", "value", "count", "tradable"].map((key) => [key, ownData(reward, key)]))
+        ...Object.fromEntries(["type", "value", "count", "tradable"].map((key2) => [key2, ownData(reward, key2)]))
       })));
       if (awards.length !== 1 || !same2(awards[0], record.reward)) return fail4("FC27_RECONCILIATION_UNCONFIRMED");
       const packCount = await rewardCount(record.reward);
@@ -2082,8 +2082,8 @@
           else {
             const expected = plan.purchases.find((entry) => entry.definitionId === ref.definitionId);
             const snapshot = snapshotFc27ClubPlayer(item2, root);
-            for (const key of ["rating", "rarity", "nationId", "leagueId", "teamId", "positions", "groups", "special", "evolution", "cosmetic"]) {
-              if (!same2(snapshot[key], expected?.[key])) return fail4("FC27_CONCEPT_READBACK_UNVERIFIED");
+            for (const key2 of ["rating", "rarity", "nationId", "leagueId", "teamId", "positions", "groups", "special", "evolution", "cosmetic"]) {
+              if (!same2(snapshot[key2], expected?.[key2])) return fail4("FC27_CONCEPT_READBACK_UNVERIFIED");
             }
             concepts.push({ slot: ref.slot, definitionId: ref.definitionId });
           }
@@ -2372,7 +2372,7 @@
     if (isTerminalTraditionalJournal(previous)) {
       return next.operationId !== previous.operationId && next.phase === "save-pending";
     }
-    return transitions[previous.phase]?.includes(next.phase) === true && [...keys, "setTimesCompleted"].filter((key) => !["phase", "updatedAt", "submitted"].includes(key)).every((key) => same3(previous[key], next[key]));
+    return transitions[previous.phase]?.includes(next.phase) === true && [...keys, "setTimesCompleted"].filter((key2) => !["phase", "updatedAt", "submitted"].includes(key2)).every((key2) => same3(previous[key2], next[key2]));
   }
   function createTraditionalJournal({ context, gmGetValue, gmSetValue, hasExclusiveAccess, now = Date.now } = {}) {
     const expectedScope = traditionalJournalScope(context);
@@ -2487,8 +2487,8 @@
   function createFc27TransactionPersistence({ context, gmGetValue, gmSetValue, lockManager } = {}) {
     const lock = createTraditionalExclusive({ context, lockManager });
     const pendingWrites = /* @__PURE__ */ new Set();
-    const write = async (key, value) => {
-      const pending2 = Promise.resolve().then(() => gmSetValue(key, value));
+    const write = async (key2, value) => {
+      const pending2 = Promise.resolve().then(() => gmSetValue(key2, value));
       pendingWrites.add(pending2);
       try {
         return await pending2;
@@ -2834,7 +2834,7 @@
   };
   var blocked = (reason) => ({ status: "blocked", reason, submitted: false, recoveryRequired: false });
   var clone = (value) => globalThis.structuredClone(value);
-  var pick = (value, keys2) => Object.fromEntries(keys2.map((key) => [key, value?.[key] ?? null]));
+  var pick = (value, keys2) => Object.fromEntries(keys2.map((key2) => [key2, value?.[key2] ?? null]));
   var same4 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   var refs = (items) => items.map((item2) => pick(item2, ["id", "definitionId", "pile"]));
   var safetyKeys = [
@@ -2893,7 +2893,7 @@
       "startTime",
       "endTime"
     ]);
-    if (!positive2(set.id) || set.id !== contract.challenge.setId || set.challengesCount !== 1 || set.challengesCompletedCount !== 0 || typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key) => !nonnegative2(set[key])) || !["NON_REPEATABLE", "UNLIMITED", "LIMITED"].includes(set.repeatabilityMode) || set.repeatabilityMode === "LIMITED" && set.timesCompleted >= set.repeats || set.repeatabilityMode === "NON_REPEATABLE" && set.timesCompleted !== 0 || set.startTime * 1e3 > now || set.endTime !== 0 && set.endTime * 1e3 <= now) return fail7("FC27_ATTEMPT_SET_UNVERIFIED");
+    if (!positive2(set.id) || set.id !== contract.challenge.setId || set.challengesCount !== 1 || set.challengesCompletedCount !== 0 || typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key2) => !nonnegative2(set[key2])) || !["NON_REPEATABLE", "UNLIMITED", "LIMITED"].includes(set.repeatabilityMode) || set.repeatabilityMode === "LIMITED" && set.timesCompleted >= set.repeats || set.repeatabilityMode === "NON_REPEATABLE" && set.timesCompleted !== 0 || set.startTime * 1e3 > now || set.endTime !== 0 && set.endTime * 1e3 <= now) return fail7("FC27_ATTEMPT_SET_UNVERIFIED");
     if (!Array.isArray(contract.rewards) || contract.rewards.length !== 1) return fail7("FC27_ATTEMPT_REWARD_UNVERIFIED");
     const reward = pick(contract.rewards[0], ["scope", "type", "value", "count", "tradable"]);
     if (!validReward(reward)) return fail7("FC27_ATTEMPT_REWARD_UNVERIFIED");
@@ -3254,7 +3254,7 @@
     return [0, 1, 2].includes(scope2) ? scope2 : null;
   }
   var countMode = (scope2) => scope2 === 0 ? "min" : scope2 === 1 ? "max" : "exact";
-  function relationKind(key) {
+  function relationKind(key2) {
     return {
       4: "same-nation",
       5: "same-league",
@@ -3262,13 +3262,13 @@
       7: "distinct-nations",
       8: "distinct-leagues",
       9: "distinct-clubs"
-    }[key] ?? null;
+    }[key2] ?? null;
   }
-  function relationRule(key, value, scope2, required2) {
-    const kind = relationKind(key);
+  function relationRule(key2, value, scope2, required2) {
+    const kind = relationKind(key2);
     if (!kind || !positive3(value) || normalizedScope(scope2) === null) return null;
     const mode = scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact";
-    return { kind, value, mode, count: required2, source: { key, scope: scope2, values: [value], count: -1 } };
+    return { kind, value, mode, count: required2, source: { key: key2, scope: scope2, values: [value], count: -1 } };
   }
   function requirementSource(rule, pair, required2) {
     return Object.freeze({
@@ -3306,11 +3306,11 @@
       if (!pair || !integer5(pair.key) || scope2 === null || values8.length !== (pair.values?.length ?? -1) || !values8.length || values8.length > 32 || new Set(values8).size !== values8.length) {
         parsed = unsupported(raw, pair, required2, "shape");
       } else {
-        const key = pair.key;
+        const key2 = pair.key;
         const count2 = nonnegative3(raw.count) && raw.count <= required2 ? raw.count : null;
         const mode = countMode(scope2);
         const value = values8[0];
-        switch (key) {
+        switch (key2) {
           case FC27_SBC_KEY.QUALITY: {
             const bounds = qualityBounds[value];
             if (!bounds || values8.length !== 1 || raw.count !== -1) parsed = unsupported(raw, pair, required2, "quality-shape");
@@ -3329,13 +3329,13 @@
           case FC27_SBC_KEY.MIN_OVR:
           case FC27_SBC_KEY.EXACT_OVR:
           case FC27_SBC_KEY.MAX_OVR:
-            parsed = count2 !== null && values8.length === 1 && value >= 1 && value <= 99 ? { kind: key === 26 ? "player-min-overall" : key === 27 ? "player-exact-overall" : "player-max-overall", value, count: count2, mode, source } : unsupported(raw, pair, required2, "overall-shape");
+            parsed = count2 !== null && values8.length === 1 && value >= 1 && value <= 99 ? { kind: key2 === 26 ? "player-min-overall" : key2 === 27 ? "player-exact-overall" : "player-max-overall", value, count: count2, mode, source } : unsupported(raw, pair, required2, "overall-shape");
             break;
           case FC27_SBC_KEY.NATION_ID:
           case FC27_SBC_KEY.LEAGUE_ID:
           case FC27_SBC_KEY.CLUB_ID:
             parsed = count2 !== null && values8.every(positive3) ? {
-              kind: key === 10 ? "from-nations" : key === 11 ? "from-leagues" : "from-clubs",
+              kind: key2 === 10 ? "from-nations" : key2 === 11 ? "from-leagues" : "from-clubs",
               ids: [...values8],
               count: count2,
               mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact",
@@ -3355,7 +3355,7 @@
             parsed = raw.count === -1 && values8.length === 1 && value >= 0 && value <= 33 ? { kind: `${mode}-chemistry`, value, source } : unsupported(raw, pair, required2, "chemistry-shape");
             break;
           default: {
-            const relation = raw.count === -1 && values8.length === 1 && value <= required2 ? relationRule(key, value, scope2, required2) : null;
+            const relation = raw.count === -1 && values8.length === 1 && value <= required2 ? relationRule(key2, value, scope2, required2) : null;
             parsed = relation ? { ...relation, source } : unsupported(raw, pair, required2);
           }
         }
@@ -3366,8 +3366,8 @@
     return { status: unsupportedRules.length ? "unsupported" : "observed", reason: unsupportedRules.length ? "FC27_REQUIREMENT_UNSUPPORTED" : "FC27_REQUIREMENTS_PARSED", rules, unsupported: unsupportedRules };
   }
   function itemValue(item2, keys2) {
-    for (const key of keys2) {
-      const value = item2?.[key];
+    for (const key2 of keys2) {
+      const value = item2?.[key2];
       if (integer5(value)) return value;
     }
     return null;
@@ -3599,10 +3599,10 @@
       if (!positive4(item2?.definitionId) || !positive4(item2.nationId) || !positive4(item2.leagueId) || !positive4(item2.teamId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((position) => !integer6(position, 0, 27)) || ![0, 1].includes(item2.rarity) || excluded.includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return null;
       const itemKeys = fields4.map((read) => read(item2));
       keys2.set(item2, itemKeys);
-      for (const [index, key] of itemKeys.entries()) {
-        if (!positive4(key)) return null;
-        if (!groups[index].has(key)) groups[index].set(key, { definitions: /* @__PURE__ */ new Set(), indices: [] });
-        const group = groups[index].get(key);
+      for (const [index, key2] of itemKeys.entries()) {
+        if (!positive4(key2)) return null;
+        if (!groups[index].has(key2)) groups[index].set(key2, { definitions: /* @__PURE__ */ new Set(), indices: [] });
+        const group = groups[index].get(key2);
         group.definitions.add(item2.definitionId);
         group.indices.push(candidateIndex);
       }
@@ -3617,14 +3617,14 @@
       }
       return indices.length - low;
     };
-    const pointsFor = (itemKeys, countOf) => Math.min(3, itemKeys.reduce((sum2, key, index) => {
-      const count2 = countOf(index, key);
+    const pointsFor = (itemKeys, countOf) => Math.min(3, itemKeys.reduce((sum2, key2, index) => {
+      const count2 = countOf(index, key2);
       return sum2 + parameters.get(index + 1).reduce((points, threshold) => points + (count2 >= threshold.requirement ? threshold.points : 0), 0);
     }, 0));
     const caps = /* @__PURE__ */ new Map();
     const compatible = /* @__PURE__ */ new Map();
     for (const item2 of candidates) {
-      caps.set(item2, pointsFor(keys2.get(item2), (index, key) => groups[index].get(key).definitions.size));
+      caps.set(item2, pointsFor(keys2.get(item2), (index, key2) => groups[index].get(key2).definitions.size));
       compatible.set(item2, slots.flatMap((slot, index) => item2.positions.includes(formation.positions[slot]) ? [index] : []));
     }
     const suffix = Array.from({ length: candidates.length + 1 }, () => Array(slots.length).fill(0));
@@ -3636,13 +3636,13 @@
       const singleton = Array(slots.length).fill(0);
       let selected = 0;
       const selectedGroups = fields4.map(() => /* @__PURE__ */ new Map());
-      for (const item2 of chosen) keys2.get(item2)?.forEach((key, index) => {
+      for (const item2 of chosen) keys2.get(item2)?.forEach((key2, index) => {
         const counts = selectedGroups[index];
-        counts.set(key, (counts.get(key) ?? 0) + 1);
+        counts.set(key2, (counts.get(key2) ?? 0) + 1);
       });
       for (const item2 of chosen) {
         const fits = compatible.get(item2);
-        const cap = pointsFor(keys2.get(item2), (index, key) => (selectedGroups[index].get(key) ?? 0) + Math.min(remaining, suffixCount(groups[index].get(key).indices, start)));
+        const cap = pointsFor(keys2.get(item2), (index, key2) => (selectedGroups[index].get(key2) ?? 0) + Math.min(remaining, suffixCount(groups[index].get(key2).indices, start)));
         if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], cap);
         else if (fits?.length > 1) selected += cap;
       }
@@ -3697,7 +3697,7 @@
     const profiles = profilesOf(chemistry);
     const identities = chemistry.identities;
     const identityKeys = ["legendClubId", "legendLeagueId", "heroClubId", "hallOfFutClubId"];
-    if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key) => positive4(identities?.[key])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer6(value, 0, 1e4))) return fail8("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
+    if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key2) => positive4(identities?.[key2])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer6(value, 0, 1e4))) return fail8("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
     if (!profiles) return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
     const players = squad.filter((item2) => item2 !== null);
     for (const item2 of players) {
@@ -3921,9 +3921,9 @@
   function remainingGroupCapacity(groups, used, start, freeGroups) {
     let existing = 0;
     const additional = [];
-    for (const [key, indices] of groups) {
+    for (const [key2, indices] of groups) {
       const count2 = suffixSize(indices, start);
-      if (used.has(key)) existing += count2;
+      if (used.has(key2)) existing += count2;
       else if (count2) additional.push(count2);
     }
     additional.sort((a, b) => b - a);
@@ -4008,7 +4008,7 @@
         onProgress({
           ...progress,
           nodes: nodes + progress.nodes,
-          search: Object.fromEntries(Object.keys(search).map((key) => [key, search[key] + (progress.search?.[key] ?? 0)])),
+          search: Object.fromEntries(Object.keys(search).map((key2) => [key2, search[key2] + (progress.search?.[key2] ?? 0)])),
           maxNodes,
           safeCandidates: pool.candidates.length,
           required: required2,
@@ -4031,7 +4031,7 @@
         onProgress: (progress) => reportProgress({ ...progress, attempt: index + 1 })
       });
       nodes += result.nodes ?? 0;
-      for (const key of Object.keys(search)) search[key] += result.search?.[key] ?? 0;
+      for (const key2 of Object.keys(search)) search[key2] += result.search?.[key2] ?? 0;
       if (procurementMode && result.status === "preview") {
         if (!bestResult || result.estimatedCost < bestResult.estimatedCost) bestResult = result;
         if (result.searchComplete === false) hadTruncatedRoute = true;
@@ -4129,10 +4129,10 @@
       const frequencies = fields4.map((read) => {
         const groups = /* @__PURE__ */ new Map();
         for (const item2 of candidates) {
-          const key = read(item2);
-          if (!integer7(key, 1, Number.MAX_SAFE_INTEGER)) continue;
-          if (!groups.has(key)) groups.set(key, /* @__PURE__ */ new Set());
-          groups.get(key).add(item2.definitionId);
+          const key2 = read(item2);
+          if (!integer7(key2, 1, Number.MAX_SAFE_INTEGER)) continue;
+          if (!groups.has(key2)) groups.set(key2, /* @__PURE__ */ new Set());
+          groups.get(key2).add(item2.definitionId);
         }
         return groups;
       });
@@ -4151,9 +4151,9 @@
     for (const rule of parsed.rules.filter((rule2) => rule2.kind.startsWith("same-") && rule2.mode !== "max")) {
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of candidates) {
-        const key = relationValue(rule, item2, resolveClub);
-        if (!groups.has(key)) groups.set(key, /* @__PURE__ */ new Set());
-        groups.get(key).add(item2.definitionId);
+        const key2 = relationValue(rule, item2, resolveClub);
+        if (!groups.has(key2)) groups.set(key2, /* @__PURE__ */ new Set());
+        groups.get(key2).add(item2.definitionId);
       }
       scarce.push({ minimum: rule.value, matching: candidates.filter((item2) => (groups.get(relationValue(rule, item2, resolveClub))?.size ?? 0) >= rule.value) });
     }
@@ -4201,11 +4201,11 @@
     for (const rule of relations.filter((rule2) => rule2.kind.startsWith("same-") && rule2.mode !== "max")) {
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of candidates) {
-        const key = relationValue(rule, item2, resolveClub);
-        if (!groups.has(key)) groups.set(key, /* @__PURE__ */ new Set());
-        groups.get(key).add(item2.definitionId);
+        const key2 = relationValue(rule, item2, resolveClub);
+        if (!groups.has(key2)) groups.set(key2, /* @__PURE__ */ new Set());
+        groups.get(key2).add(item2.definitionId);
       }
-      const viable = new Set([...groups].filter(([, ids2]) => ids2.size >= rule.value).map(([key]) => key));
+      const viable = new Set([...groups].filter(([, ids2]) => ids2.size >= rule.value).map(([key2]) => key2));
       counted.push({
         rule: { ...rule, count: rule.value, mode: "min" },
         matches: candidates.map((item2) => viable.has(relationValue(rule, item2, resolveClub)))
@@ -4485,7 +4485,7 @@
     for (const plan of selected) {
       const current2 = byId.get(plan?.id);
       const before = expected.get(plan?.id);
-      if (!validId13(plan?.id) || !validId13(plan?.definitionId) || plan.pile !== "club" || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key) => !Object.hasOwn(current2, key) || !Object.hasOwn(before, key) || JSON.stringify(current2[key]) !== JSON.stringify(before[key])) || current2.type !== "player" || current2.pile !== "club" || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || current2.tradeable !== false) {
+      if (!validId13(plan?.id) || !validId13(plan?.definitionId) || plan.pile !== "club" || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key2) => !Object.hasOwn(current2, key2) || !Object.hasOwn(before, key2) || JSON.stringify(current2[key2]) !== JSON.stringify(before[key2])) || current2.type !== "player" || current2.pile !== "club" || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || current2.tradeable !== false) {
         return failed2("identity");
       }
       seenIds.add(plan.id);
@@ -4515,11 +4515,11 @@
     if (!collection || typeof collection !== "object") return null;
     const keys2 = Array.isArray(collection) ? Array.from({ length: collection.length }, (_, index) => String(index)) : Object.getOwnPropertyNames(collection);
     if (keys2.length > limit) return null;
-    return keys2.map((key) => ownData(collection, key));
+    return keys2.map((key2) => ownData(collection, key2));
   }
-  function method3(object, key) {
+  function method3(object, key2) {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key2);
       if (descriptor) return descriptor.value;
     }
     return void 0;
@@ -4608,8 +4608,8 @@
     try {
       const context = readFc27Context(root);
       const policy = readFc27PuzzlePolicy(root, maxRating);
-      const signature2 = JSON.stringify({ context, policy });
-      const unchanged = () => signature2 === JSON.stringify({ context: readFc27Context(root), policy: readFc27PuzzlePolicy(root, maxRating) });
+      const signature3 = JSON.stringify({ context, policy });
+      const unchanged = () => signature3 === JSON.stringify({ context: readFc27Context(root), policy: readFc27PuzzlePolicy(root, maxRating) });
       if (!Number.isSafeInteger(challengeId) || challengeId <= 0 || challengeId >= 1e9) return blocked3("FC27_CHALLENGE_UNVERIFIED");
       const started = Date.now();
       const catalog = suppliedCatalog ?? await inspectFc27ChallengeCatalog(root, { setId });
@@ -4620,7 +4620,7 @@
       const keys2 = ownData(root, "SBCEligibilityKey");
       const scopes = ownData(root, "SBCEligibilityScope");
       const quality3 = ownData(root, "SBCEligibilityQualityType");
-      if (Object.entries({ GREATER: 0, LOWER: 1, EXACT: 2 }).some(([key, value]) => ownData(scopes, key) !== value) || Object.entries({ BRONZE: 1, SILVER: 2, GOLD: 3 }).some(([key, value]) => ownData(quality3, key) !== value) || observed.requirements.some((rule) => rule.pairs.some((pair) => enumNames[pair.key] && ownData(keys2, enumNames[pair.key]) !== pair.key))) {
+      if (Object.entries({ GREATER: 0, LOWER: 1, EXACT: 2 }).some(([key2, value]) => ownData(scopes, key2) !== value) || Object.entries({ BRONZE: 1, SILVER: 2, GOLD: 3 }).some(([key2, value]) => ownData(quality3, key2) !== value) || observed.requirements.some((rule) => rule.pairs.some((pair) => enumNames[pair.key] && ownData(keys2, enumNames[pair.key]) !== pair.key))) {
         return blocked3("FC27_PUZZLE_ENUM_CHANGED");
       }
       if (!suppliedLayout) await new Promise((resolve) => setTimeout(resolve, Math.max(0, 800 - (Date.now() - started))));
@@ -4793,7 +4793,7 @@
     clubLinks: input.clubLinks,
     chemistry: input.chemistry
   });
-  var project = (item2) => Object.fromEntries(itemFields.map((key) => [key, item2?.[key]]));
+  var project = (item2) => Object.fromEntries(itemFields.map((key2) => [key2, item2?.[key2]]));
   function assess(scope2, selected, items) {
     const { context, challenge, policy, clubLinks, chemistry } = scope2;
     if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || !Array.isArray(challenge.brickIndices) || challenge.brickIndices.length >= 11 || new Set(challenge.brickIndices).size !== challenge.brickIndices.length || challenge.brickIndices.some((index) => !Number.isInteger(index) || index < 0 || index > 10) || !positive5(challenge.formation?.id) || challenge.formation.positions?.length !== 11 || Array.from(challenge.formation.positions).some((value) => !Number.isInteger(value) || value < 0 || value > 27)) {
@@ -4808,7 +4808,7 @@
     const squad = Array(11).fill(null);
     for (const ref of selected) {
       const item2 = byId.get(ref.id);
-      if (!item2 || itemFields.some((key) => item2[key] === void 0) || item2.definitionId !== ref.definitionId || item2.pile !== ref.pile || item2.rating !== ref.rating || item2.state !== "free") {
+      if (!item2 || itemFields.some((key2) => item2[key2] === void 0) || item2.definitionId !== ref.definitionId || item2.pile !== ref.pile || item2.rating !== ref.rating || item2.state !== "free") {
         return fail9("FC27_PUZZLE_FILL_SELECTION_CHANGED");
       }
       squad[ref.slot] = { ...project(item2), slot: ref.slot };
@@ -4918,7 +4918,7 @@
           return stop6("FC27_EXACT_ITEMS_CHANGED");
         }
         const inputScope = JSON.stringify({ context: inputs.context, policy: inputs.policy });
-        const signature2 = () => {
+        const signature3 = () => {
           const context = readFc27Context(root);
           const policy = readFc27PuzzlePolicy(root, options.maxRating ?? 74);
           if (inputScope !== JSON.stringify({ context, policy })) throw new Error("FC27_RUNNER_INPUTS_CHANGED");
@@ -4932,15 +4932,15 @@
             selected: selected.map((ref) => cached.items.find((item2) => item2.id === ref.id && item2.definitionId === ref.definitionId))
           });
         };
-        const before = signature2();
+        const before = signature3();
         const transport = await createFc27ClubReadTransport(root);
-        if (signature2() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
+        if (signature3() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
         const fresh = await transport.readPage({
           start: 0,
           count: 250,
           definitionIds: selected.map((item2) => item2.definitionId)
         });
-        if (signature2() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
+        if (signature3() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
         const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems);
         if (exactValidation.status !== "verified") return stop6(exactValidation.reason);
         const fillPlan = prepareFc27PuzzleFillPlan(inputs, plan);
@@ -4966,7 +4966,7 @@
             if (!Number.isSafeInteger(ref.slot) || ref.slot < 0 || ref.slot > 10 || squad[ref.slot]) {
               throw new Error("FC27_PUZZLE_SLOT_UNVERIFIED");
             }
-            squad[ref.slot] = Object.fromEntries(fields4.map((key) => [key, plannedItems[index][key]]));
+            squad[ref.slot] = Object.fromEntries(fields4.map((key2) => [key2, plannedItems[index][key2]]));
           });
           await onVerifiedInputs(structuredClone({
             squad,
@@ -4980,7 +4980,7 @@
             fillPlan,
             fresh: structuredClone(fresh)
           });
-          if (signature2() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
+          if (signature3() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
         }
         return { ...plan, fillPreflight, exactValidation: {
           ...exactValidation,
@@ -5038,10 +5038,10 @@
     const journal = Object.freeze({
       async read(requestedScope, target = null) {
         if (!held(requestedScope)) return fail10("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
-        const key = target && positive6(target.setId) && positive6(target.challengeId) ? targetKeyOf(storageKey, target.setId, target.challengeId) : storageKey;
+        const key2 = target && positive6(target.setId) && positive6(target.challengeId) ? targetKeyOf(storageKey, target.setId, target.challengeId) : storageKey;
         let raw;
         try {
-          raw = await gmGetValue(key, null);
+          raw = await gmGetValue(key2, null);
           if (raw === null && target) raw = await gmGetValue(storageKey, null);
         } catch {
           return fail10("FC27_PUZZLE_FILL_JOURNAL_READ_UNCONFIRMED");
@@ -5096,7 +5096,7 @@
       async write(requestedScope, value) {
         if (!held(requestedScope)) return fail10("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         const next = normalize(scope2, value);
-        const key = targetKeyOf(storageKey, next.setId, next.challengeId);
+        const key2 = targetKeyOf(storageKey, next.setId, next.challengeId);
         const previous = await journal.read(scope2, { setId: next.setId, challengeId: next.challengeId });
         if (previous && next.updatedAt < previous.updatedAt) return fail10("FC27_PUZZLE_FILL_JOURNAL_TRANSITION_UNVERIFIED");
         if (!previous && next.phase !== "save-pending") return fail10("FC27_PUZZLE_FILL_JOURNAL_TRANSITION_UNVERIFIED");
@@ -5106,7 +5106,7 @@
           return fail10("FC27_PUZZLE_FILL_JOURNAL_TRANSITION_UNVERIFIED");
         }
         try {
-          await gmSetValue(key, next);
+          await gmSetValue(key2, next);
           const targets = await gmGetValue(indexKey, []);
           const nextTargets = Array.isArray(targets) ? targets.filter((target) => target?.setId !== next.setId || target?.challengeId !== next.challengeId) : [];
           nextTargets.push({ setId: next.setId, challengeId: next.challengeId });
@@ -5122,11 +5122,11 @@
         if (!held(requestedScope)) return fail10("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         normalize(scope2, expected);
         const target = { setId: expected.setId, challengeId: expected.challengeId };
-        const key = targetKeyOf(storageKey, target.setId, target.challengeId);
+        const key2 = targetKeyOf(storageKey, target.setId, target.challengeId);
         const current2 = await journal.read(scope2, target);
         if (!same6(current2, expected)) return fail10("FC27_PUZZLE_FILL_RECOVERY_REQUIRED");
         try {
-          await gmSetValue(key, null);
+          await gmSetValue(key2, null);
           const legacy = await gmGetValue(storageKey, null);
           if (same6(legacy, expected)) await gmSetValue(storageKey, null);
           const targets = await gmGetValue(indexKey, []);
@@ -5156,7 +5156,7 @@
   // src/fc27/puzzle-fill-transaction.js
   var blocked4 = (reason) => ({ status: "blocked", reason, saved: false, submitted: false });
   var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var sameApproval = (actual, expected) => actual && typeof actual === "object" && Object.keys(actual).length === Object.keys(expected).length && Object.entries(expected).every(([key, value]) => Object.hasOwn(actual, key) && actual[key] === value);
+  var sameApproval = (actual, expected) => actual && typeof actual === "object" && Object.keys(actual).length === Object.keys(expected).length && Object.entries(expected).every(([key2, value]) => Object.hasOwn(actual, key2) && actual[key2] === value);
   var safeReason2 = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_PUZZLE_FILL_UNCONFIRMED";
   var fail11 = (reason) => {
     throw new Error(reason);
@@ -5232,7 +5232,7 @@
         try {
           const { plan, created } = approved;
           alive(created);
-          if (typeof exclusive !== "function" || typeof journal?.read !== "function" || typeof journal?.write !== "function" || typeof checkOtherTransactions !== "function" || typeof createOperationId !== "function" || ["readInputs", "validateItems", "save", "readSavedSquad", "syncSavedSquad", "assertCurrent"].some((key) => typeof adapter?.[key] !== "function")) {
+          if (typeof exclusive !== "function" || typeof journal?.read !== "function" || typeof journal?.write !== "function" || typeof checkOtherTransactions !== "function" || typeof createOperationId !== "function" || ["readInputs", "validateItems", "save", "readSavedSquad", "syncSavedSquad", "assertCurrent"].some((key2) => typeof adapter?.[key2] !== "function")) {
             return blocked4("FC27_PUZZLE_FILL_ADAPTER_UNAVAILABLE");
           }
           const scope2 = traditionalJournalScope(plan.context);
@@ -5531,8 +5531,8 @@
     const count2 = (read) => {
       const counts = /* @__PURE__ */ new Map();
       for (const item2 of players) {
-        const key = read(item2);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
+        const key2 = read(item2);
+        counts.set(key2, (counts.get(key2) ?? 0) + 1);
       }
       return [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
     };
@@ -5614,9 +5614,9 @@
       if (validation.status !== "satisfied") return;
       const plan = projectSuggestion(squad, facts2, parsed.rules.length);
       if (prices && costCeiling !== null && cost(plan) >= costCeiling) return;
-      const key = plan.purchases.map((item2) => item2.definitionId).sort((a, b) => a - b).join(",");
-      if (combinations.has(key)) return;
-      combinations.add(key);
+      const key2 = plan.purchases.map((item2) => item2.definitionId).sort((a, b) => a - b).join(",");
+      if (combinations.has(key2)) return;
+      combinations.add(key2);
       plans.push(plan);
       if (prices) bestCost = Math.min(bestCost, cost(plan));
     };
@@ -5780,10 +5780,10 @@
         const fillers = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
         const groups = /* @__PURE__ */ new Map();
         for (const item2 of candidates.filter((item3) => tiers2.includes(levelOf(quality2(item3.rating))))) {
-          const key = resolveClub(item2.teamId);
-          if (!positive7(key)) continue;
-          if (!groups.has(key)) groups.set(key, { team: item2.teamId, ids: /* @__PURE__ */ new Map() });
-          groups.get(key).ids.set(item2.definitionId, quality2(item2.rating));
+          const key2 = resolveClub(item2.teamId);
+          if (!positive7(key2)) continue;
+          if (!groups.has(key2)) groups.set(key2, { team: item2.teamId, ids: /* @__PURE__ */ new Map() });
+          groups.get(key2).ids.set(item2.definitionId, quality2(item2.rating));
         }
         const coverage = (group) => fillers.map((rule) => Math.min(
           rule.count,
@@ -5997,9 +5997,9 @@
       return currentSettings(saved.policy);
     };
     return Object.freeze({ read, async save(scope2, value) {
-      const policy = currentSettings(value), key = publicPricePolicyKey(scope2);
+      const policy = currentSettings(value), key2 = publicPricePolicyKey(scope2);
       try {
-        await set(key, { schema: 1, scope: scope2, policy });
+        await set(key2, { schema: 1, scope: scope2, policy });
         if (JSON.stringify(await read(scope2)) !== JSON.stringify(policy)) throw Error();
       } catch {
         throw Error("FC27_PUBLIC_PRICE_POLICY_SAVE_FAILED");
@@ -6068,7 +6068,7 @@
   function createPurchasePriceApproval({ scope: scope2, definitionIds, references, policy, season, platform, overrides = {}, now = Date.now() }) {
     policy = normalizeGalleryPricePolicy(policy);
     if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3 || season !== "27" || !["pc", "console"].includes(platform) || !integer8(now) || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 256 || definitionIds.some((value) => !validId3(value)) || new Set(definitionIds).size !== definitionIds.length) fail12();
-    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || Object.keys(overrides).some((key) => !definitionIds.includes(Number(key)) || !validPublicPrice(overrides[key]))) fail12();
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || Object.keys(overrides).some((key2) => !definitionIds.includes(Number(key2)) || !validPublicPrice(overrides[key2]))) fail12();
     const rows = definitionIds.map((definitionId) => {
       const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform, policy);
       const price2 = projected(quotes, policy, now), overrideCap = overrides[definitionId];
@@ -6383,8 +6383,8 @@
             diagnostics.stage = kind === "catalog" ? "catalog-read" : "quote-read";
             reportProgress();
             assertCurrent();
-            const key = `fcat-fc27-puzzle-market:${scope2}:${kind}:${JSON.stringify(query)}`;
-            const stored = await get(key, null);
+            const key2 = `fcat-fc27-puzzle-market:${scope2}:${kind}:${JSON.stringify(query)}`;
+            const stored = await get(key2, null);
             assertCurrent();
             if (stored !== null) {
               if (stored?.schema !== 1 || stored.kind !== kind || !same9(stored.query, query) || !id2(stored.at) || stored.at > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
@@ -6413,8 +6413,8 @@
             }
             if (requests >= PUZZLE_MARKET_READ_LIMIT) throw new Error("FC27_PURCHASE_READ_BUDGET");
             const record = { schema: 1, kind, query, at: now(), state: "pending" };
-            await set(key, record);
-            if (!same9(await get(key, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+            await set(key2, record);
+            if (!same9(await get(key2, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
             assertCurrent();
             let attempted = false;
             try {
@@ -6425,7 +6425,7 @@
               reportProgress();
               attempted = true;
               const result = await (kind === "catalog" ? transport.readCatalogPage(query) : transport.readQuotePage(query));
-              await set(key, { ...record, state: "observed", result });
+              await set(key2, { ...record, state: "observed", result });
               assertCurrent();
               return result;
             } catch (error2) {
@@ -6435,7 +6435,7 @@
                 failureSource: attempted ? "request" : "transport",
                 retryAfterSeconds: reason === "FC27_MARKET_HTTP_401" ? AUTH_RETRY_DELAY / 1e3 : null
               });
-              await set(key, { ...record, at: now(), state: "blocked", reason, details });
+              await set(key2, { ...record, at: now(), state: "blocked", reason, details });
               throw error2;
             }
           };
@@ -6660,7 +6660,7 @@
               diagnostics.nodes = suggestion.nodes ?? null;
               if (suggestion.search) {
                 diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
-                for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += suggestion.search[key] ?? 0;
+                for (const key2 of Object.keys(diagnostics.search)) diagnostics.search[key2] += suggestion.search[key2] ?? 0;
               }
               if (loadPublicPrices) {
                 searchSpent += suggestion.nodes ?? suggestion.checks ?? 0;
@@ -6802,7 +6802,7 @@
     "Identification.prototype.handleRequest": "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291",
     "Identification.prototype.handleResponse": "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f"
   });
-  var at6 = (root, path) => path.split(".").reduce((v, key) => ownData(v, key), root);
+  var at6 = (root, path) => path.split(".").reduce((v, key2) => ownData(v, key2), root);
   var valid = (n, min, max) => Number.isSafeInteger(n) && n >= min && n <= max;
   var num = (v, min = 1, max = 1e9) => valid(v, min, max) ? v : null;
   var error = (code2) => new Error(`FC27_MARKET_${code2}`);
@@ -6812,8 +6812,8 @@
     const assetId = definitionId & mask;
     const entry = ownData(at6(root, "repositories.Item.staticData._collection"), String(assetId));
     if (ownData(entry, "id") !== assetId) return null;
-    const part = (key) => {
-      const value = ownData(entry, key);
+    const part = (key2) => {
+      const value = ownData(entry, key2);
       return typeof value === "string" && value.length <= 100 && !/[\u0000-\u001f]/.test(value) && /[\p{L}\p{N}]/u.test(value) ? value.trim() : "";
     };
     return part("commonName") || [part("firstName"), part("lastName")].filter(Boolean).join(" ") || null;
@@ -6829,14 +6829,14 @@
   function publicPlayer(entity, resourceId) {
     if (ownData(entity, "definitionId") !== resourceId) throw error("ENTITY_UNVERIFIED_DEFINITION_MISMATCH");
     if (ownData(entity, "type") !== "player") throw error("ENTITY_UNVERIFIED_TYPE_MISMATCH");
-    const get = (key) => ownData(entity, key);
+    const get = (key2) => ownData(entity, key2);
     const rarity = num(get("_rareflag"), 0, 1e4);
     const upgrades = get("upgrades");
     const cosmetics = get("cosmetics");
     const hyper = get("_hyperCosmeticDTOs");
     const staticData = get("_staticData");
-    const part = (key) => {
-      const value = ownData(staticData, key);
+    const part = (key2) => {
+      const value = ownData(staticData, key2);
       return typeof value === "string" && value.length <= 100 && !/[\u0000-\u001f]/.test(value) ? value.trim() : "";
     };
     const displayName = part("knownAs") || [part("firstName"), part("lastName")].filter(Boolean).join(" ");
@@ -6863,9 +6863,9 @@
     if (num(rawId) !== null && num(entityId) !== null && rawId !== entityId) return error("ENTITY_UNVERIFIED_ID_MISMATCH");
     return null;
   };
-  function method4(object, key) {
+  function method4(object, key2) {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
-      const d = Object.getOwnPropertyDescriptor(object, key);
+      const d = Object.getOwnPropertyDescriptor(object, key2);
       if (d) return Object.hasOwn(d, "value") ? d.value : void 0;
     }
   }
@@ -6927,11 +6927,11 @@
         assertRuntime();
         const req = new Request(auth);
         failurePhase = "request-create";
-        for (const [key, path] of [
+        for (const [key2, path] of [
           ["send", "UTHttpRequest.prototype.send"],
           ["setPath", "UTHttpRequest.prototype.setPath"],
           ["abort", "EAHttpRequest.prototype.abort"]
-        ]) if (method4(req, key) !== reviewed.get(path)) throw error("RUNTIME_CHANGED");
+        ]) if (method4(req, key2) !== reviewed.get(path)) throw error("RUNTIME_CHANGED");
         req.doRetry = false;
         req.doReauth = false;
         req.timeout = 15e3;
@@ -7151,7 +7151,7 @@
     "activeSquad",
     "protected"
   ];
-  var project2 = (item2) => Object.fromEntries(fields2.map((key) => [key, item2?.[key]]));
+  var project2 = (item2) => Object.fromEntries(fields2.map((key2) => [key2, item2?.[key2]]));
   var freeze4 = (value) => {
     if (value && typeof value === "object") {
       Object.values(value).forEach(freeze4);
@@ -7168,7 +7168,7 @@
       challenge: { ...challenge, mechanism: "traditional", requirements: [{ kind: "player-count", count: slots.filter(Boolean).length }] },
       inventory: { schema: 1, context, kind: "normalized-inventory", status: "provisional", items: owned2 }
     });
-    if (pool.status !== "candidates" || pool.candidates.length !== owned2.length || owned2.some((item2) => item2.pile !== "club" || item2.state !== "free" || fields2.some((key) => item2[key] === void 0))) {
+    if (pool.status !== "candidates" || pool.candidates.length !== owned2.length || owned2.some((item2) => item2.pile !== "club" || item2.state !== "free" || fields2.some((key2) => item2[key2] === void 0))) {
       return blocked6("FC27_CONCEPT_MATERIAL_PROTECTED");
     }
     const squad = slots.map((slot) => {
@@ -7322,9 +7322,9 @@
     now = Date.now,
     operationId
   } = {}) {
-    const store = async (key, value) => {
-      await set(key, structuredClone(value));
-      if (!same11(await get(key, null), value)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+    const store = async (key2, value) => {
+      await set(key2, structuredClone(value));
+      if (!same11(await get(key2, null), value)) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     };
     const evidence = (reply, plan) => {
       if (!reply?.fresh || !Number.isSafeInteger(reply.observedAt) || now() - reply.observedAt < 0 || now() - reply.observedAt > 15e3 || !same11(reply.context, plan.context)) fail13("FC27_CONCEPT_EVIDENCE_UNVERIFIED");
@@ -7486,15 +7486,15 @@
     for (const value of [record.attempts, record.priceOverrides, record.searchCeilings]) {
       if (value !== void 0 && (!value || typeof value !== "object" || Array.isArray(value))) fail14("FC27_BUY_ATTEMPTS_INVALID");
     }
-    for (const [key, value] of Object.entries(record.attempts ?? {})) {
-      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !value || !integer10(value.used) || !integer10(value.total) || !integer10(value.limit) || value.limit < 1 || value.used > value.limit || value.total < value.used || !integer10(value.round) || value.round < 1 || value.round >= Number.MAX_SAFE_INTEGER || typeof value.failed !== "boolean" || value.queries !== void 0 && !integer10(value.queries) || value.reason !== null && !/^FC27_[A-Z0-9_]+$/.test(value.reason)) fail14("FC27_BUY_ATTEMPTS_INVALID");
+    for (const [key2, value] of Object.entries(record.attempts ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key2)) || !value || !integer10(value.used) || !integer10(value.total) || !integer10(value.limit) || value.limit < 1 || value.used > value.limit || value.total < value.used || !integer10(value.round) || value.round < 1 || value.round >= Number.MAX_SAFE_INTEGER || typeof value.failed !== "boolean" || value.queries !== void 0 && !integer10(value.queries) || value.reason !== null && !/^FC27_[A-Z0-9_]+$/.test(value.reason)) fail14("FC27_BUY_ATTEMPTS_INVALID");
     }
-    for (const [key, cap] of Object.entries(record.searchCeilings ?? {})) {
-      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !integer10(cap) || cap < 150 || cap > 15e6) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
+    for (const [key2, cap] of Object.entries(record.searchCeilings ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key2)) || !integer10(cap) || cap < 150 || cap > 15e6) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
     }
-    for (const [key, approval] of Object.entries(record.priceOverrides ?? {})) {
-      if (!record.entries.some((entry) => entry.definitionId === Number(key)) || !record.attempts?.[key]) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
-      validatePurchasePriceApproval(approval, record.scope, [Number(key)]);
+    for (const [key2, approval] of Object.entries(record.priceOverrides ?? {})) {
+      if (!record.entries.some((entry) => entry.definitionId === Number(key2)) || !record.attempts?.[key2]) fail14("FC27_BUY_PRICE_APPROVAL_INVALID");
+      validatePurchasePriceApproval(approval, record.scope, [Number(key2)]);
     }
   }
   function beginPurchaseAttempt(record, definitionId) {
@@ -7645,9 +7645,9 @@
     onProgress = () => {
     }
   } = {}) {
-    const store = async (key, value) => {
-      await set(key, structuredClone(value));
-      if (!same12(await get(key, null), value)) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
+    const store = async (key2, value) => {
+      await set(key2, structuredClone(value));
+      if (!same12(await get(key2, null), value)) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
     };
     const check = (record) => {
       if (!record || record.schema !== 1 || record.scope !== scope2 || !same12(record.context, context) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !integer11(e.slot) || e.slot > 31 || !integer11(e.definitionId, 1) || !["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"].includes(e.state) || e.state !== "waiting" && (!integer11(e.itemId, 1) || (e.source === "owned" ? e.state !== "club" || e.tradeId !== "0" || e.price !== 0 : typeof e.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer11(e.price, 150)))) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !["ready", "save-pending", "saved"].includes(record.phase)) fail15("FC27_BUY_JOURNAL_UNCONFIRMED");
@@ -7677,10 +7677,10 @@
             assertCurrent();
             const draft = await loadDraft(target);
             if (!draft || draft.phase !== "saved" || draft.operationId !== expectedOperationId || !same12(draft.plan.context, context)) fail15("FC27_BUY_PLAN_CHANGED");
-            const key = puzzleBuyKey(scope2, target);
+            const key2 = puzzleBuyKey(scope2, target);
             const pending2 = await get(puzzleBuyPendingKey(scope2), null);
-            if (pending2 !== null && (pending2.key !== key || pending2.operationId !== draft.operationId)) fail15("FC27_BUY_RECOVERY_REQUIRED");
-            record = await get(key, null);
+            if (pending2 !== null && (pending2.key !== key2 || pending2.operationId !== draft.operationId)) fail15("FC27_BUY_RECOVERY_REQUIRED");
+            record = await get(key2, null);
             if (record) {
               check(record);
               if (record.closure) {
@@ -7730,7 +7730,7 @@
               await adapter.recoverSave(record);
               record.applied = record.entries.filter((e) => e.state === "club").map((e) => ({ ...e }));
               record.phase = "saved";
-              await store(key, record);
+              await store(key2, record);
               await store(puzzleBuyPendingKey(scope2), null);
             }
             for (const entry of record.entries.filter((e) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(e.state))) {
@@ -7739,10 +7739,10 @@
               else if (location === "purchased") entry.state = "bought";
               else fail15("FC27_BUY_RECEIPT_UNCONFIRMED");
             }
-            await store(key, record);
+            await store(key2, record);
             await adapter.verifySquad(record);
-            await store(key, record);
-            const persist = () => store(key, record);
+            await store(key2, record);
+            const persist = () => store(key2, record);
             const constraints = async () => ({
               ...await adapter.priceContext?.(),
               absoluteCap: quoteCeiling,
@@ -7759,7 +7759,7 @@
               await persist();
             }
             const mark = async () => {
-              await store(puzzleBuyPendingKey(scope2), { key, operationId: record.operationId });
+              await store(puzzleBuyPendingKey(scope2), { key: key2, operationId: record.operationId });
               await persist();
             };
             const report = (phase = "progress", entry = null, extra = {}) => {
@@ -8014,15 +8014,15 @@
       if (!same13(await get(puzzleBuyPendingKey(scope2), null), pending2) || !same13(await get(pending2.key, null), record)) fail16("JOURNAL_CHANGED");
       assertCurrent();
     };
-    const store = async (key, value) => {
+    const store = async (key2, value) => {
       assertCurrent();
       try {
-        await set(key, structuredClone(value));
+        await set(key2, structuredClone(value));
       } catch {
         fail16("JOURNAL_WRITE_FAILED");
       }
       assertCurrent();
-      if (!same13(await get(key, null), value)) fail16("JOURNAL_READBACK_FAILED");
+      if (!same13(await get(key2, null), value)) fail16("JOURNAL_READBACK_FAILED");
     };
     const historyKey = puzzleBuyHistoryKey(scope2, target), history = await get(historyKey, []);
     if (!Array.isArray(history)) fail16("HISTORY_UNCONFIRMED");
@@ -8097,8 +8097,8 @@
   async function readPuzzlePurchaseTargetState(root, target, assertCurrent) {
     const cached = puzzlePurchaseTargetState(root, target);
     if (cached !== "unknown") return cached;
-    const context = readFc27Context(root), key = JSON.stringify(context), at11 = Date.now();
-    let check = catalogueChecks.get(key);
+    const context = readFc27Context(root), key2 = JSON.stringify(context), at11 = Date.now();
+    let check = catalogueChecks.get(key2);
     if (!check || at11 - check.at >= 3e5) {
       const promise = (async () => {
         const dao = root.services?.SBC?.sbcDAO;
@@ -8143,7 +8143,7 @@
       })().catch(() => null);
       if (catalogueChecks.size >= 8) catalogueChecks.delete(catalogueChecks.keys().next().value);
       check = { at: at11, promise };
-      catalogueChecks.set(key, check);
+      catalogueChecks.set(key2, check);
     }
     const ids2 = await check.promise;
     assertCurrent();
@@ -8781,10 +8781,10 @@
     platform = platform.split(":")[0].toLowerCase();
     const apiPlatform = platform === "pc" ? "PC" : "PS";
     const prefix = platform === "pc" ? "pc_" : "ps_";
-    const key = `fcat-futbin-ids:${season}`;
+    const key2 = `fcat-futbin-ids:${season}`;
     const prices = /* @__PURE__ */ new Map();
     return async (player) => {
-      const ids2 = { ...await get(key, {}) };
+      const ids2 = { ...await get(key2, {}) };
       const recordPrice = (data2, definitionId) => {
         prices.set(Number(definitionId), data2.LCPrice ?? data2[`${prefix}LCPrice`] ?? data2.price ?? 0);
       };
@@ -8809,8 +8809,8 @@
           }
           if (!matches2) {
             delete ids2[player.definitionId];
-            if (updateIds) await updateIds(key, {}, { [player.definitionId]: cachedId });
-            else await set(key, ids2);
+            if (updateIds) await updateIds(key2, {}, { [player.definitionId]: cachedId });
+            else await set(key2, ids2);
             const position = positions[player.preferredPosition];
             url = `${base}getFilteredPlayers?platform=${apiPlatform}&nation=${player.nationId}&league=${player.leagueId}&rating=${player.rating}-${player.rating}&club=${player.teamId}&sort=rating&position=${position}&order=desc&page=1`;
             response = await request(url);
@@ -8819,8 +8819,8 @@
       } catch (error2) {
         if (!cachedId || !String(error2?.message ?? "").endsWith("_HTTP_404")) throw error2;
         delete ids2[player.definitionId];
-        if (updateIds) await updateIds(key, {}, { [player.definitionId]: cachedId });
-        else await set(key, ids2);
+        if (updateIds) await updateIds(key2, {}, { [player.definitionId]: cachedId });
+        else await set(key2, ids2);
         const position = positions[player.preferredPosition];
         url = `${base}getFilteredPlayers?platform=${apiPlatform}&nation=${player.nationId}&league=${player.leagueId}&rating=${player.rating}-${player.rating}&club=${player.teamId}&sort=rating&position=${position}&order=desc&page=1`;
         response = await request(url);
@@ -8835,8 +8835,8 @@
         } else recordPrice(row, row.Player_Resource);
       }
       if (url.includes("getFilteredPlayers?")) {
-        if (updateIds) await updateIds(key, learned);
-        else await set(key, ids2);
+        if (updateIds) await updateIds(key2, learned);
+        else await set(key2, ids2);
       }
       return prices.get(player.definitionId) ?? 0;
     };
@@ -9111,12 +9111,12 @@
     try {
       const result = await exclusive(scope2, async () => {
         assertCurrent();
-        const key = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
-        const purchase = structuredClone(await get(key, null)), marker = structuredClone(await get(pendingKey, null));
+        const key2 = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
+        const purchase = structuredClone(await get(key2, null)), marker = structuredClone(await get(pendingKey, null));
         assertCurrent();
         const source = projectGalleryListingReceipts({ purchase, scope: scope2, context, expectedOperationId, expectedBinding, pendingMarker: marker });
         if (source.status !== "observed") return source;
-        const current2 = await get(key, null), pending2 = await get(pendingKey, null);
+        const current2 = await get(key2, null), pending2 = await get(pendingKey, null);
         assertCurrent();
         if (!same17(purchase, current2) || !same17(marker, pending2)) return blocked8("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
         return source;
@@ -9167,8 +9167,8 @@
     const tier = tierFor(numeric2, tiers2, 1);
     return tier ? Math.max(minimum, Math.min(GALLERY_LISTING_MAX_PRICE, Math.round(numeric2 / tier.inc) * tier.inc)) : Math.max(numeric2, minimum);
   }
-  function readValue(map, key) {
-    return map instanceof Map ? map.get(key) : map?.[key];
+  function readValue(map, key2) {
+    return map instanceof Map ? map.get(key2) : map?.[key2];
   }
   function percentage(range, random) {
     if (!Array.isArray(range) || range.length !== 2) return null;
@@ -9424,7 +9424,7 @@
     },
     operationId = () => `gallery-${Date.now()}-${Math.random().toString(16).slice(2)}`
   } = {}) {
-    const key = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
+    const key2 = galleryPurchaseKey(scope2), pendingKey = galleryPurchasePendingKey(scope2);
     let accountingWarning = null;
     const read = async (storageKey) => {
       try {
@@ -9441,7 +9441,7 @@
         if (error2?.message === "FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED") throw error2;
         throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED");
       }
-      if (storageKey === key && typeof onPurchaseRecord === "function") {
+      if (storageKey === key2 && typeof onPurchaseRecord === "function") {
         try {
           const accounting = await onPurchaseRecord(structuredClone(value));
           accountingWarning = accounting?.status === "blocked" ? accounting.reason : null;
@@ -9454,7 +9454,7 @@
       async inspect() {
         try {
           assertCurrent();
-          const record = structuredClone(await read(key));
+          const record = structuredClone(await read(key2));
           assertCurrent();
           if (!record) return { status: "absent" };
           validate(record, scope2, context);
@@ -9481,7 +9481,7 @@
           const result = await exclusive(scope2, async () => {
             assertCurrent();
             await checkOtherTransactions();
-            const raw = await read(key);
+            const raw = await read(key2);
             let oldPending = await read(pendingKey);
             assertCurrent();
             if (raw !== null) validate(raw, scope2, context);
@@ -9501,7 +9501,7 @@
             if (record) {
               if (settleUnassignedPurchases(record)) {
                 assertCurrent();
-                await write(key, record);
+                await write(key2, record);
               }
               if (oldPending && !pending(record)) {
                 assertCurrent();
@@ -9511,7 +9511,7 @@
             }
             const changed = record && (!same18(record.binding, binding) || !same18(record.plan, plan));
             if (changed && (oldPending || pending(record))) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
-            if (changed) await write(`${key}:${record.operationId}`, record);
+            if (changed) await write(`${key2}:${record.operationId}`, record);
             if (!record || changed) {
               const previousAcquisitions = new Set((record?.entries ?? []).filter((entry) => completedStates.includes(entry.state)).map((entry) => entry.definitionId));
               const destination = await readDestination();
@@ -9534,8 +9534,8 @@
               };
             } else if (!resume) record.budget = budget;
             validate(record, scope2, context);
-            await write(key, record);
-            const failures = [], save = () => write(key, record), mark = async () => {
+            await write(key2, record);
+            const failures = [], save = () => write(key2, record), mark = async () => {
               await write(pendingKey, { schema: 1, operationId: record.operationId });
               await save();
             };
@@ -9879,7 +9879,7 @@
   }
   async function reconcileGalleryListingPending({ get, set, scope: scope2, context, assertCurrent, createAdapter, sleep, shouldStop, onCheck }) {
     assertCurrent();
-    const key = galleryBulkListKey(scope2), raw = await get(key, null);
+    const key2 = galleryBulkListKey(scope2), raw = await get(key2, null);
     const record = normalizeGalleryBulkListJournal(raw);
     if (!record || record.scope !== scope2 || !same19(record.context, context)) fail18("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
     assertCurrent();
@@ -9902,11 +9902,11 @@
       record.status = record.entries.some((e) => MUTATING.has(e.status)) ? "recovery-required" : record.entries.every((e) => TERMINAL.has(e.status)) ? "completed" : "active";
       if (record.status !== "recovery-required") record.lastReason = null;
       record.updatedAt = Date.now();
-      if (!same19(await get(key, null), raw)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same19(await get(key2, null), raw)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
       assertCurrent();
-      await set(key, clone2(record));
+      await set(key2, clone2(record));
       assertCurrent();
-      if (!same19(await get(key, null), record)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same19(await get(key2, null), record)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
     }
     if (record.entries.some((e) => MUTATING.has(e.status))) fail18("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
   }
@@ -9967,11 +9967,11 @@
     now = Date.now,
     operationId = () => `gallery-list-${Date.now()}-${Math.random().toString(16).slice(2)}`
   } = {}) {
-    const key = galleryBulkListKey(scope2);
+    const key2 = galleryBulkListKey(scope2);
     const read = async () => {
       let raw;
       try {
-        raw = await get(key, null);
+        raw = await get(key2, null);
       } catch {
         fail18("FC27_GALLERY_BULK_LIST_JOURNAL_READ_FAILED");
       }
@@ -9993,7 +9993,7 @@
     const write = async (record) => {
       record.updatedAt = now();
       if (!normalizeGalleryBulkListJournal(record)) fail18("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
-      await storeConfirmed(key, record);
+      await storeConfirmed(key2, record);
     };
     const report = (record, phase, index, detail = {}) => {
       try {
@@ -10052,7 +10052,7 @@
                 if (previous.entries.some((e) => MUTATING.has(e.status) && entries2.some((next) => next.item.id === e.item.id))) {
                   fail18("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
                 }
-                const archiveKey = `${key}:archive:${previous.runId}`;
+                const archiveKey = `${key2}:archive:${previous.runId}`;
                 await storeConfirmed(archiveKey, previous);
                 assertCurrent();
               }
@@ -10357,9 +10357,9 @@
         const challenges = ownData(set, "challenges") ?? ownData(set, "_challenges");
         const entries2 = ownData(challenges, "_collection") ?? challenges;
         if (!entries2 || typeof entries2 !== "object") return [];
-        const keys2 = Object.getOwnPropertyNames(entries2).filter((key) => key !== "length");
+        const keys2 = Object.getOwnPropertyNames(entries2).filter((key2) => key2 !== "length");
         if (keys2.length > 50) return [];
-        const ids2 = keys2.map((key) => ownData(entries2, key)?.id).filter((id12) => Number.isSafeInteger(id12) && id12 > 0);
+        const ids2 = keys2.map((key2) => ownData(entries2, key2)?.id).filter((id12) => Number.isSafeInteger(id12) && id12 > 0);
         return [...new Set(ids2)];
       } catch {
         return [];
@@ -10940,7 +10940,7 @@
       }
     };
     const setPuzzlePolicy = (changes) => run(async () => {
-      if (!changes || typeof changes !== "object" || Array.isArray(changes) || Object.keys(changes).some((key) => !["maxRating", "quoteCeiling", "queriesNumber"].includes(key))) return blocked9("FC27_PUZZLE_POLICY_INVALID");
+      if (!changes || typeof changes !== "object" || Array.isArray(changes) || Object.keys(changes).some((key2) => !["maxRating", "quoteCeiling", "queriesNumber"].includes(key2))) return blocked9("FC27_PUZZLE_POLICY_INVALID");
       return persistence.exclusive(scope2, async () => {
         const settings = { ...await readPuzzleSettings(), ...changes };
         if (!Number.isSafeInteger(settings.maxRating) || settings.maxRating < 1 || settings.maxRating > 99 || !isPuzzleQuoteCeiling(settings.quoteCeiling) || !Number.isSafeInteger(settings.queriesNumber) || settings.queriesNumber < 1) return blocked9("FC27_PUZZLE_POLICY_INVALID");
@@ -10960,12 +10960,12 @@
       }
       const plan = readFc27PuzzleBuyPlan(root, target);
       if (buy?.closure) {
-        const key = puzzleBuyKey(scope2, target), binding = JSON.stringify([buy.operationId, buy.closure, plan]);
-        if (freshBuyDrafts.get(key)?.binding !== binding) freshBuyDrafts.set(key, {
+        const key2 = puzzleBuyKey(scope2, target), binding = JSON.stringify([buy.operationId, buy.closure, plan]);
+        if (freshBuyDrafts.get(key2)?.binding !== binding) freshBuyDrafts.set(key2, {
           binding,
           draft: { phase: "saved", operationId: `fresh:${root.crypto.randomUUID()}`, closedOperationId: buy.operationId, plan }
         });
-        return freshBuyDrafts.get(key).draft;
+        return freshBuyDrafts.get(key2).draft;
       }
       return { phase: "saved", operationId: JSON.stringify(plan.slots), plan };
     };
@@ -11426,7 +11426,7 @@
               return plan;
             }
             const exact = await adapter.validateItems(plan);
-            if (exact.items.length !== plan.selected.length || !plan.selected.every((item2) => exact.items.some((current2) => current2.id === item2.id && current2.definitionId === item2.definitionId && Object.keys(item2).filter((key) => key !== "slot").every((key) => item2[key] === current2[key])))) {
+            if (exact.items.length !== plan.selected.length || !plan.selected.every((item2) => exact.items.some((current2) => current2.id === item2.id && current2.definitionId === item2.definitionId && Object.keys(item2).filter((key2) => key2 !== "slot").every((key2) => item2[key2] === current2[key2])))) {
               adapter.cancel();
               return blocked9("FC27_EXACT_ITEMS_CHANGED");
             }
@@ -11833,13 +11833,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }) {
     const tabs = FC27_WORKBENCH_TABS.map(([id12]) => shadow.getElementById(`tab-${id12}`));
     const select = (id12) => {
-      if (!FC27_WORKBENCH_TABS.some(([key]) => key === id12)) return;
-      for (const [key] of FC27_WORKBENCH_TABS) {
-        const active = key === id12;
-        const tab = shadow.getElementById(`tab-${key}`);
+      if (!FC27_WORKBENCH_TABS.some(([key2]) => key2 === id12)) return;
+      for (const [key2] of FC27_WORKBENCH_TABS) {
+        const active = key2 === id12;
+        const tab = shadow.getElementById(`tab-${key2}`);
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
-        shadow.getElementById(`page-${key}`).hidden = !active;
+        shadow.getElementById(`page-${key2}`).hidden = !active;
       }
       host.dataset.activeTab = id12;
       onSelect(id12);
@@ -11888,18 +11888,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     return value;
   };
-  var pick2 = (value, keys2) => Object.fromEntries(keys2.filter((key) => value?.[key] !== void 0).map((key) => [key, value[key]]));
+  var pick2 = (value, keys2) => Object.fromEntries(keys2.filter((key2) => value?.[key2] !== void 0).map((key2) => [key2, value[key2]]));
   function definition(value, depth = 0) {
     if (depth > 8) invalid();
     if (value === null || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value)) return value;
     if (typeof value === "string" && value.length <= 2e3) return value;
     if (Array.isArray(value)) return list(value, 256).map((row) => definition(row, depth + 1));
     if (!value || typeof value !== "object" || Object.keys(value).length > 40) return invalid();
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, definition(value[key], depth + 1)]));
+    return Object.fromEntries(Object.keys(value).sort().map((key2) => [key2, definition(value[key2], depth + 1)]));
   }
   function galleryCanonical(value) {
     if (Array.isArray(value)) return `[${value.map(galleryCanonical).join(",")}]`;
-    if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${galleryCanonical(value[key])}`).join(",")}}`;
+    if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key2) => `${JSON.stringify(key2)}:${galleryCanonical(value[key2])}`).join(",")}}`;
     return JSON.stringify(value);
   }
   function galleryCatalogRevision(catalog) {
@@ -11947,8 +11947,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         setIds.push(setId);
         let conditions = null;
         if (source === "fodder") {
-          for (const key of ["clubs", "leagues", "rareflags"]) {
-            const values8 = list(set[key], 256);
+          for (const key2 of ["clubs", "leagues", "rareflags"]) {
+            const values8 = list(set[key2], 256);
             if (!values8.every((value) => integer13(value))) invalid();
             unique(values8);
           }
@@ -12264,8 +12264,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const parsed = {};
       for (const line of String(response.responseHeaders ?? "").split(/\r?\n/)) {
         const index = line.indexOf(":");
-        const key = line.slice(0, index).trim().toLowerCase();
-        if (index > 0 && ["etag", "last-modified", "retry-after", "cache-control"].includes(key)) parsed[key] = line.slice(index + 1).trim();
+        const key2 = line.slice(0, index).trim().toLowerCase();
+        if (index > 0 && ["etag", "last-modified", "retry-after", "cache-control"].includes(key2)) parsed[key2] = line.slice(index + 1).trim();
       }
       return parsed;
     };
@@ -12281,7 +12281,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
       const requestUrl = url;
       record({ source, phase, route, status: "started" });
-      const conditional = Object.fromEntries(["If-None-Match", "If-Modified-Since"].filter((key) => validator(headers[key])).map((key) => [key, headers[key]]));
+      const conditional = Object.fromEntries(["If-None-Match", "If-Modified-Since"].filter((key2) => validator(headers[key2])).map((key2) => [key2, headers[key2]]));
       gmRequest({
         method: "GET",
         url: requestUrl,
@@ -12687,16 +12687,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const priceReads = /* @__PURE__ */ new Map(), priceLegacyReads = /* @__PURE__ */ new Map(), priceBatchInFlight = /* @__PURE__ */ new Map();
     const freshPriceBatch = (entry) => Number.isSafeInteger(entry?.fetchedAt) && entry.fetchedAt >= 0 && entry.fetchedAt <= now() && now() - entry.fetchedAt < ttlMs;
     const readPriceBatch = (batch, platform) => {
-      const key = priceKey(batch, platform);
-      if (priceReads.has(key)) return priceReads.get(key);
+      const key2 = priceKey(batch, platform);
+      if (priceReads.has(key2)) return priceReads.get(key2);
       const task = (async () => {
         if (typeof gmGetValue !== "function") return;
         try {
-          const cached = await gmGetValue(`${cacheKey}:prices:${key}`, null);
+          const cached = await gmGetValue(`${cacheKey}:prices:${key2}`, null);
           if (![1, 2].includes(cached?.schema) || cached.season !== season || cached.platform !== platform || !Array.isArray(cached.ids) || cached.ids.join(",") !== batch.join(",")) return;
           if (cached.schema === 2 && cached.fetchedAt != null && (!Number.isSafeInteger(cached.fetchedAt) || cached.fetchedAt < 0 || cached.fetchedAt > now())) return;
           const prices = parseGalleryPriceResponse(JSON.stringify({ data: batch.map((eaId) => ({ eaId, price: cached.prices?.[eaId] })) }));
-          priceMemory.set(key, {
+          priceMemory.set(key2, {
             prices,
             fetchedAt: cached.schema === 2 ? cached.fetchedAt ?? null : null,
             retryAt: Number.isSafeInteger(cached.retryAt) && cached.retryAt > now() ? cached.retryAt : null,
@@ -12705,15 +12705,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         } catch {
         }
       })();
-      priceReads.set(key, task);
+      priceReads.set(key2, task);
       return task;
     };
     const requestPriceBatch = (batch, platform) => {
-      const key = priceKey(batch, platform);
-      if (priceBatchInFlight.has(key)) return priceBatchInFlight.get(key);
+      const key2 = priceKey(batch, platform);
+      if (priceBatchInFlight.has(key2)) return priceBatchInFlight.get(key2);
       const task = (async () => {
         await readPriceBatch(batch, platform);
-        const previous = priceMemory.get(key);
+        const previous = priceMemory.get(key2);
         if (freshPriceBatch(previous) || now() < (previous?.retryAt ?? 0)) {
           record("price-cache", {
             source: "futgg",
@@ -12771,14 +12771,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           count: Object.keys(entry.prices).length,
           retryAt: entry.retryAt ?? void 0
         });
-        priceMemory.set(key, entry);
+        priceMemory.set(key2, entry);
         try {
-          await gmSetValue?.(`${cacheKey}:prices:${key}`, { schema: 2, season, platform, ids: batch, ...entry });
+          await gmSetValue?.(`${cacheKey}:prices:${key2}`, { schema: 2, season, platform, ids: batch, ...entry });
         } catch {
         }
         return entry;
-      })().finally(() => priceBatchInFlight.delete(key));
-      priceBatchInFlight.set(key, task);
+      })().finally(() => priceBatchInFlight.delete(key2));
+      priceBatchInFlight.set(key2, task);
       return task;
     };
     const loadPriceSnapshot = (ids2, { platform = "pc" } = {}) => {
@@ -12793,14 +12793,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         retryAt: null,
         expiresAt: null
       }));
-      const key = priceKey(values8, platform);
-      if (priceInFlight.has(key)) return priceInFlight.get(key);
+      const key2 = priceKey(values8, platform);
+      if (priceInFlight.has(key2)) return priceInFlight.get(key2);
       const task = (async () => {
         const batches = [];
         for (let start = 0; start < values8.length; start += FUTGG_PRICE_BATCH_SIZE) batches.push(values8.slice(start, start + FUTGG_PRICE_BATCH_SIZE));
-        if (batches.length > 1 && !priceLegacyReads.has(key)) priceLegacyReads.set(key, (async () => {
+        if (batches.length > 1 && !priceLegacyReads.has(key2)) priceLegacyReads.set(key2, (async () => {
           try {
-            const cached = await gmGetValue?.(`${cacheKey}:prices:${key}`, null);
+            const cached = await gmGetValue?.(`${cacheKey}:prices:${key2}`, null);
             if (cached?.schema !== 1 || cached.season !== season || cached.platform !== platform || cached.ids?.join(",") !== values8.join(",")) return;
             for (const batch of batches) {
               const batchKey = priceKey(batch, platform);
@@ -12814,7 +12814,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           } catch {
           }
         })());
-        await priceLegacyReads.get(key);
+        await priceLegacyReads.get(key2);
         for (const batch of batches) await readPriceBatch(batch, platform);
         for (const batch of batches) {
           const entry = await requestPriceBatch(batch, platform);
@@ -12839,8 +12839,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             else staleIds.push(id12);
           }
         }
-        if (error2) priceErrors.set(key, error2);
-        else priceErrors.delete(key);
+        if (error2) priceErrors.set(key2, error2);
+        else priceErrors.delete(key2);
         return Object.freeze({
           prices: Object.freeze(prices),
           freshPrices: Object.freeze(freshPrices),
@@ -12851,8 +12851,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           retryAt: retryAt2,
           expiresAt
         });
-      })().finally(() => priceInFlight.delete(key));
-      priceInFlight.set(key, task);
+      })().finally(() => priceInFlight.delete(key2));
+      priceInFlight.set(key2, task);
       return task;
     };
     const loadPrices = async (ids2, options) => (await loadPriceSnapshot(ids2, options)).prices;
@@ -13007,10 +13007,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function groupsOf(rows, field) {
     const groups = /* @__PURE__ */ new Map();
     for (const row of rows) {
-      const key = attribute(row, field);
-      if (key == null) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(row);
+      const key2 = attribute(row, field);
+      if (key2 == null) continue;
+      if (!groups.has(key2)) groups.set(key2, []);
+      groups.get(key2).push(row);
     }
     return [...groups.values()];
   }
@@ -13079,8 +13079,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       for (const row of group.cards.slice(0, group.tiers.at(-1).at)) candidateSet.add(row);
     }
     const candidates = [...candidateSet].sort(order), seeds2 = [base];
-    const key = (cards) => cards.map((row) => row.eaId).sort().join(",");
-    const seen = /* @__PURE__ */ new Set([key(base)]);
+    const key2 = (cards) => cards.map((row) => row.eaId).sort().join(",");
+    const seen = /* @__PURE__ */ new Set([key2(base)]);
     for (const group of groups) for (const tier of group.tiers) {
       if (group.cards.length < tier.at) break;
       const cards = group.cards.slice(0, tier.at), ids2 = new Set(cards.map((row) => row.eaId));
@@ -13091,7 +13091,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           ids2.add(row.eaId);
         }
       }
-      const identity5 = key(cards);
+      const identity5 = key2(cards);
       if (!seen.has(identity5)) {
         seen.add(identity5);
         seeds2.push(cards);
@@ -13100,9 +13100,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const totals2 = memo?.totals ?? /* @__PURE__ */ new Map();
     const rowKeys = /* @__PURE__ */ new Map();
     if (memo) for (const row of rows) {
-      const signature2 = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map((field) => row[field] ?? null)]);
-      if (!memo.signatures.has(signature2)) memo.signatures.set(signature2, memo.signatures.size);
-      rowKeys.set(row, memo.signatures.get(signature2));
+      const signature3 = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map((field) => row[field] ?? null)]);
+      if (!memo.signatures.has(signature3)) memo.signatures.set(signature3, memo.signatures.size);
+      rowKeys.set(row, memo.signatures.get(signature3));
     }
     const score2 = (cards) => {
       const identity5 = cards.map((row) => memo ? rowKeys.get(row) : row.eaId).join(",");
@@ -13245,10 +13245,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       async save(value) {
         const account = scope2(), normalized = normalizeGalleryPlanningSettings(value);
         current2(account);
-        const record = { schema: 1, scope: account, value: normalized }, key = galleryPlanningSettingsKey(account);
-        await set(key, record);
+        const record = { schema: 1, scope: account, value: normalized }, key2 = galleryPlanningSettingsKey(account);
+        await set(key2, record);
         current2(account);
-        const stored = await get(key, null);
+        const stored = await get(key2, null);
         current2(account);
         if (JSON.stringify(stored) !== JSON.stringify(record)) throw Error("FC27_GALLERY_PLANNING_SETTINGS_SAVE_FAILED");
         return normalized;
@@ -13304,7 +13304,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     "skillMoves"
   ];
   var pick3 = (value, fields4) => Object.fromEntries(fields4.map((field) => [field, value?.[field] ?? null]));
-  var stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
+  var stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key2) => [key2, stable(value[key2])])) : value;
   function createGalleryScoreQueue({
     onUpdate = () => {
     },
@@ -13382,7 +13382,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     const cancel = () => {
       epoch2++;
-      for (const [key, entry] of entries2) if (entry.pending) entries2.delete(key);
+      for (const [key2, entry] of entries2) if (entry.pending) entries2.delete(key2);
     };
     return Object.freeze({
       // Presentation-only lookup: no hashing, scheduling, cache I/O or requests.
@@ -13392,7 +13392,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const id12 = `${scope2}:${input.set.id}`;
         const catalog = input.catalog;
         const tags = (catalog.tags ?? []).map((tag) => pick3(tag, catalog.source === "fodder" ? ["id", "match", "steps"] : ["id", "rules", "tiers", "bonusType", "thresholdType"]));
-        const key = JSON.stringify(stable([
+        const key2 = JSON.stringify(stable([
           pick3(input.set, ["id", "requiredCards"]),
           input.set?.grades?.map((grade) => pick3(grade, ["name", "threshold"])),
           catalog.source,
@@ -13401,8 +13401,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           scoringKey(input)
         ]));
         let entry = entries2.get(id12);
-        if (entry?.key !== key) {
-          entry = { id: id12, key, scope: scope2, input, priority, pending: true, summary: { status: "calculating" } };
+        if (entry?.key !== key2) {
+          entry = { id: id12, key: key2, scope: scope2, input, priority, pending: true, summary: { status: "calculating" } };
           entries2.set(id12, entry);
           while (entries2.size > 256) entries2.delete(entries2.keys().next().value);
         }
@@ -13456,9 +13456,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     let sequence = 0;
     const before = (a, b) => a.cost < b.cost || a.cost === b.cost && a.sequence < b.sequence;
     const push = (indices) => {
-      const key = indices.join(",");
-      if (seen.has(key)) return;
-      seen.add(key);
+      const key2 = indices.join(",");
+      if (seen.has(key2)) return;
+      seen.add(key2);
       const node = { indices, cost: indices.reduce((sum2, i2) => sum2 + rows[i2].price, 0), sequence: sequence++ };
       let i = heap.length;
       heap.push(node);
@@ -13502,9 +13502,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     for (const price2 of new Set(rows.map((row) => row.price))) {
       groups.set(`price:${price2}`, rows.filter((row) => row.price <= price2).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.price - b.price || a.id - b.id));
     }
-    for (const row of rows) for (const key of row.diversityKeys ?? []) {
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(row);
+    for (const row of rows) for (const key2 of row.diversityKeys ?? []) {
+      if (!groups.has(key2)) groups.set(key2, []);
+      groups.get(key2).push(row);
     }
     let count2 = 0;
     if (size < 1 || size > rows.length) return;
@@ -13515,9 +13515,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (ids2.size >= size) break;
         ids2.add(row.id);
       }
-      const key = [...ids2].sort((a, b) => a - b).join(",");
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const key2 = [...ids2].sort((a, b) => a - b).join(",");
+      if (seen.has(key2)) continue;
+      seen.add(key2);
       count2++;
       yield [...ids2];
     }
@@ -13537,10 +13537,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const signatures = new Set([...picked.values()].map((row) => (row.diversityKeys ?? []).join("|")));
     for (const candidate of cheapest) {
       if (picked.size >= limit) break;
-      const signature2 = (candidate.diversityKeys ?? []).join("|");
-      if (signatures.has(signature2)) continue;
-      signatures.add(signature2);
-      for (const peer of cheapest.filter((row) => (row.diversityKeys ?? []).join("|") === signature2).slice(0, 6)) {
+      const signature3 = (candidate.diversityKeys ?? []).join("|");
+      if (signatures.has(signature3)) continue;
+      signatures.add(signature3);
+      for (const peer of cheapest.filter((row) => (row.diversityKeys ?? []).join("|") === signature3).slice(0, 6)) {
         if (picked.size >= limit) break;
         picked.set(peer.id, peer);
       }
@@ -13554,8 +13554,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function frontier(states4, width, measure) {
     const equivalent = /* @__PURE__ */ new Map();
     for (const state of states4) {
-      const key = bundleKey(state.ids);
-      if (!equivalent.has(key)) equivalent.set(key, state);
+      const key2 = bundleKey(state.ids);
+      if (!equivalent.has(key2)) equivalent.set(key2, state);
     }
     const rows = [...equivalent.values()].map((state) => ({ state, cost: costOf(state), ...measure(state) }));
     const orderings = [
@@ -13570,10 +13570,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const ordering = orderings[route];
         while (offsets[route] < ordering.length) {
           const row = ordering[offsets[route]++];
-          const key = `${row.cost}:${row.progress}:${row.diversityKey ?? ""}`;
-          if (chosen.has(row.state) || signatures.has(key)) continue;
+          const key2 = `${row.cost}:${row.progress}:${row.diversityKey ?? ""}`;
+          if (chosen.has(row.state) || signatures.has(key2)) continue;
           chosen.add(row.state);
-          signatures.add(key);
+          signatures.add(key2);
           break;
         }
       }
@@ -13648,19 +13648,19 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     for (const source of seedSources) {
       if (stopped) break;
       for (const ids2 of source) {
-        const key = bundleKey(ids2);
-        if (seen.has(key)) continue;
+        const key2 = bundleKey(ids2);
+        if (seen.has(key2)) continue;
         if (evaluations >= maxEvaluations) {
           stopped = true;
           break;
         }
-        seen.add(key);
+        seen.add(key2);
         const state = yield* evaluateSteps(evaluate2, ids2);
         evaluations++;
         if (state && Number.isFinite(state.cost) && !state.missingPrices) {
           seedStates.push(state);
           if (better(state, bestState)) bestState = state;
-          if (measure(state).reached) reached.set(key, state);
+          if (measure(state).reached) reached.set(key2, state);
         }
         if (yield { evaluations }) {
           stopped = true;
@@ -13685,17 +13685,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           }
           const ids2 = [...current2.ids];
           ids2[slot] = candidate.id;
-          const key = bundleKey(ids2);
-          if (seen.has(key)) continue;
-          seen.add(key);
+          const key2 = bundleKey(ids2);
+          if (seen.has(key2)) continue;
+          seen.add(key2);
           const state = yield* evaluateSteps(evaluate2, ids2);
           evaluations++;
           if (state && Number.isFinite(state.cost) && !state.missingPrices) {
             const value = measure(state);
             if (better(state, bestState)) bestState = state;
             if (value.reached) {
-              const previous = reached.get(key);
-              if (!previous || state.cost < previous.cost) reached.set(key, state);
+              const previous = reached.get(key2);
+              if (!previous || state.cost < previous.cost) reached.set(key2, state);
             }
             next.push(state);
           }
@@ -13732,8 +13732,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     for (const candidate of byPrice.slice(0, Math.ceil(limit / 2))) add3(candidate);
     for (const candidate of byScore.slice(0, Math.ceil(limit / 4))) add3(candidate);
     const representatives = /* @__PURE__ */ new Map();
-    for (const candidate of byPrice) for (const key of candidate.diversityKeys ?? []) {
-      if (!representatives.has(key)) representatives.set(key, candidate);
+    for (const candidate of byPrice) for (const key2 of candidate.diversityKeys ?? []) {
+      if (!representatives.has(key2)) representatives.set(key2, candidate);
     }
     for (const candidate of [...representatives.values()].sort(priceOrder)) add3(candidate);
     for (const candidate of byPrice) add3(candidate);
@@ -13817,9 +13817,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         }
         for (const row of next.value.lineup) if (!owned(target.progress.rows.find((original) => original.eaId === row.eaId))) ids2.add(row.eaId);
       }
-      const key = [...ids2].sort((a, b) => a - b).join(",");
-      if (complete && ids2.size && !seen.has(key)) {
-        seen.add(key);
+      const key2 = [...ids2].sort((a, b) => a - b).join(",");
+      if (complete && ids2.size && !seen.has(key2)) {
+        seen.add(key2);
         if (yield { ids: [...ids2], work }) return;
       }
       if (!fastSeeded) {
@@ -13828,9 +13828,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         try {
           for (const step of fast) {
             work++;
-            const key2 = step.ids?.slice().sort((a, b) => a - b).join(",");
-            const ids3 = key2 && !seen.has(key2) ? step.ids : void 0;
-            if (ids3) seen.add(key2);
+            const key3 = step.ids?.slice().sort((a, b) => a - b).join(",");
+            const ids3 = key3 && !seen.has(key3) ? step.ids : void 0;
+            if (ids3) seen.add(key3);
             if ((yield { work, ...ids3 ? { ids: ids3 } : {} }) || work >= maxWork) return;
           }
         } finally {
@@ -13864,7 +13864,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function galleryRewardIdentity(reward) {
     if (!reward || typeof reward.type !== "string" || !Number.isSafeInteger(reward.count) || reward.count < 1 || !Number.isSafeInteger(reward.value) || reward.value < 0) return null;
     const token = /^event_token_\d+$/.test(reward.type);
-    const key = token ? reward.type : JSON.stringify([
+    const key2 = token ? reward.type : JSON.stringify([
       reward.type,
       reward.itemType ?? null,
       reward.resourceId ?? null,
@@ -13876,7 +13876,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     ]);
     const quantity = token ? reward.count * reward.value : reward.count;
     if (!Number.isSafeInteger(quantity)) return null;
-    return { key, quantity, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
+    return { key: key2, quantity, label: token ? reward.type === "event_token_1" ? "Gallery Tokens" : reward.type : reward.label ?? reward.type };
   }
   function galleryRewardOptions(targets) {
     const options = /* @__PURE__ */ new Map();
@@ -13890,15 +13890,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (summary3?.full !== true || !Number.isSafeInteger(summary3.low?.total)) return null;
     return (set.grades ?? []).filter((grade) => grade.threshold <= summary3.low.total).sort((a, b) => b.threshold - a.threshold || set.grades.indexOf(b) - set.grades.indexOf(a))[0] ?? null;
   }
-  function galleryGradeRewardQuantity(grade, key) {
+  function galleryGradeRewardQuantity(grade, key2) {
     return (grade?.rewards ?? []).reduce((sum2, reward) => {
       const entry = galleryRewardIdentity(reward);
-      return sum2 + (entry?.key === key ? entry.quantity : 0);
+      return sum2 + (entry?.key === key2 ? entry.quantity : 0);
     }, 0);
   }
-  function galleryCumulativeRewardQuantity(set, score2, key) {
+  function galleryCumulativeRewardQuantity(set, score2, key2) {
     if (!Number.isSafeInteger(score2) || score2 < 0) return 0;
-    return (set.grades ?? []).filter((grade) => grade.threshold <= score2).reduce((sum2, grade) => sum2 + galleryGradeRewardQuantity(grade, key), 0);
+    return (set.grades ?? []).filter((grade) => grade.threshold <= score2).reduce((sum2, grade) => sum2 + galleryGradeRewardQuantity(grade, key2), 0);
   }
   function gallerySetRewardSummary(set, summary3) {
     const grade = galleryCatalogGrade(set, summary3);
@@ -13925,7 +13925,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       cumulative: gallerySetRewardSummary(set, { full: true, low: { total: grade.threshold } })
     };
   }
-  function galleryCatalogRewardSnapshot(results, key) {
+  function galleryCatalogRewardSnapshot(results, key2) {
     const targets = results.map(({ target, summary: summary3 }) => {
       const grade = galleryCatalogGrade(target.set, summary3);
       const unlocked = grade ? target.set.grades.filter((row) => row.threshold <= summary3.low.total) : [];
@@ -13934,7 +13934,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         name: target.set.name,
         grade: grade?.name ?? null,
         score: summary3.low?.total ?? null,
-        quantity: grade ? galleryCumulativeRewardQuantity(target.set, summary3.low.total, key) : 0,
+        quantity: grade ? galleryCumulativeRewardQuantity(target.set, summary3.low.total, key2) : 0,
         rewardsComplete: summary3.full === true && unlocked.every((row) => row.rewardsComplete === true),
         rewards: unlocked.flatMap((row) => (row.rewards ?? []).map((reward) => ({ ...reward })))
       };
@@ -14037,8 +14037,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const score2 = createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
     let scoringWork = 0, scoreDeadline = false;
     const summaryFor = function* (selected) {
-      const key = selected.map((row) => row.eaId).join(",");
-      if (!summaries.has(key)) {
+      const key2 = selected.map((row) => row.eaId).join(",");
+      if (!summaries.has(key2)) {
         if (summaries.size >= 4096) summaries.clear();
         const steps = summarize(set, catalog, existing, selected, score2);
         let next;
@@ -14052,9 +14052,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         } finally {
           steps.return();
         }
-        summaries.set(key, next.value);
+        summaries.set(key2, next.value);
       }
-      return summaries.get(key);
+      return summaries.get(key2);
     };
     const rows = progress.rows.filter((row) => validId5(row?.eaId));
     if (rows.length !== progress.rows.length) return { status: "unavailable", reason: "input-invalid" };
@@ -14326,8 +14326,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const searchComplete = !cheapestReached && unknownRows.length === 0 && !scopeTruncated && !timeExhausted && !budgetExhausted && !beamTruncated && omittedCandidates === 0 && !scoringBounded && !scoreUncertain && proofInputsKnown;
     const unique2 = /* @__PURE__ */ new Map();
     for (const state of plans.sort((a, b) => rank(a, b, threshold))) {
-      const key = state.ids.slice().sort((a, b) => a - b).join(",");
-      if (!unique2.has(key)) unique2.set(key, {
+      const key2 = state.ids.slice().sort((a, b) => a - b).join(",");
+      if (!unique2.has(key2)) unique2.set(key2, {
         ...materialize(state, targetGrade, threshold, scoreOf2(base)),
         rewards: gallerySetRewardSummary(set, state.summary)
       });
@@ -14423,8 +14423,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function* evaluate(targets, selected) {
     const results = [];
     for (const target of targets) {
-      const key = target.progress.rows.filter((row) => selected.has(row.eaId) && !isGalleryOwned(row)).map((row) => row.eaId).sort((a, b) => a - b).join(",");
-      let summary3 = target.summaries.get(key);
+      const key2 = target.progress.rows.filter((row) => selected.has(row.eaId) && !isGalleryOwned(row)).map((row) => row.eaId).sort((a, b) => a - b).join(",");
+      let summary3 = target.summaries.get(key2);
       if (!summary3) {
         summary3 = yield* target.summarize.steps({ set: target.set, catalog: target.catalog, progress: {
           ...target.progress,
@@ -14433,7 +14433,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           complete: true,
           rows: target.progress.rows.filter((row) => isGalleryOwned(row) || row.collected === false).map((row) => isGalleryOwned(row) ? { ...row, collected: true } : selected.has(row.eaId) ? { ...row, collected: true, gradingScore: score(row), firstOwned: false } : row)
         } });
-        target.summaries.set(key, summary3);
+        target.summaries.set(key2, summary3);
       }
       results.push({ target, summary: summary3, reached: summary3.full === true && summary3.low?.total >= target.threshold });
     }
@@ -14567,7 +14567,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           "weakFoot",
           "skillMoves",
           "positions"
-        ].some((key) => JSON.stringify(previous[key] ?? null) !== JSON.stringify(row[key] ?? null))) return fail21("partial", "version-facts-conflict");
+        ].some((key2) => JSON.stringify(previous[key2] ?? null) !== JSON.stringify(row[key2] ?? null))) return fail21("partial", "version-facts-conflict");
         identities.set(row.eaId, row);
         if (isGalleryOwned(row)) {
           ownedIds.add(row.eaId);
@@ -14578,14 +14578,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const existing = allCandidates.get(row.eaId);
         if (existing) {
           existing.memberships++;
-          existing.diversityKeys.push(...galleryCostSearchKeys(row, compiled.tags).map((key) => `${set.id}:${key}`));
+          existing.diversityKeys.push(...galleryCostSearchKeys(row, compiled.tags).map((key2) => `${set.id}:${key2}`));
           if (existing.price != null && price2 != null && existing.price !== price2) existing.priceConflict = true;
           existing.price = existing.priceConflict ? null : price2 ?? existing.price;
         } else allCandidates.set(row.eaId, {
           row,
           price: price2,
           memberships: 1,
-          diversityKeys: galleryCostSearchKeys(row, compiled.tags).map((key) => `${set.id}:${key}`)
+          diversityKeys: galleryCostSearchKeys(row, compiled.tags).map((key2) => `${set.id}:${key2}`)
         });
       }
       prepared.push({ ...target, grade, threshold: grade.threshold, summaries: /* @__PURE__ */ new Map(), summarize: createGalleryScoreSummarizer(catalog) });
@@ -14826,9 +14826,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const unique2 = /* @__PURE__ */ new Set();
     const output = plans.sort(compare).filter((state) => {
       if (!rewardObjective) return true;
-      const key = state.ids.slice().sort((a, b) => a - b).join(",");
-      if (unique2.has(key)) return false;
-      unique2.add(key);
+      const key2 = state.ids.slice().sort((a, b) => a - b).join(",");
+      if (unique2.has(key2)) return false;
+      unique2.add(key2);
       return true;
     }).slice(0, maxPlans).map((state) => materialize2(state, candidateMap, budget, rewardObjective));
     const costAudit = cheapestComplete ? {
@@ -14865,7 +14865,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   function createGalleryTargetStore({ get, set } = {}) {
     let tail2 = Promise.resolve();
-    const key = (scope2, source) => {
+    const key2 = (scope2, source) => {
       if (!validScope2(scope2) || !sources2.has(source)) throw new Error("FC27_GALLERY_TARGETS_SCOPE_INVALID");
       return `fcat-fc27-gallery-targets:${JSON.stringify([scope2, source])}`;
     };
@@ -14873,7 +14873,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       async load(scope2, source) {
         try {
           await tail2;
-          const stored = await get(key(scope2, source), null);
+          const stored = await get(key2(scope2, source), null);
           if (stored === null || stored === void 0) return { status: "observed", ...emptyGalleryTargets() };
           if (stored.schema !== 1 || stored.scope !== scope2 || stored.source !== source) throw new Error();
           return { status: "observed", ...normalizeGalleryTargets(stored, source) };
@@ -14884,7 +14884,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       save(scope2, source, value) {
         let record, storageKey;
         try {
-          storageKey = key(scope2, source);
+          storageKey = key2(scope2, source);
           record = { schema: 1, scope: scope2, source, ...normalizeGalleryTargets(value, source) };
         } catch {
           return Promise.resolve({ status: "unavailable", reason: "FC27_GALLERY_TARGETS_INVALID" });
@@ -16026,7 +16026,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         progress.hidden = execution.hidden = true;
         execution.replaceChildren();
         progress.value = 0;
-        for (const key of Object.keys(overrides)) delete overrides[key];
+        for (const key2 of Object.keys(overrides)) delete overrides[key2];
         generatedPrices = null;
         scheduleStatus.textContent = "\u5C1A\u65E0\u8BA1\u5212";
         scheduleValue.value = "";
@@ -16399,7 +16399,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       rows.clear();
       lastSelected = null;
       table.replaceChildren();
-      for (const key of Object.keys(overrides)) delete overrides[key];
+      for (const key2 of Object.keys(overrides)) delete overrides[key2];
       from = "market";
       adjustment = 0;
       progress.hidden = true;
@@ -17487,7 +17487,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         items: option.items,
         claimState: "unknown",
         estimated: option.estimated !== false,
-        searchComplete: option.searchComplete === true
+        searchComplete: option.searchComplete === true,
+        referenceVerified: option.referenceVerified === true
       };
     });
     for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
@@ -17516,6 +17517,51 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/gallery/verify-reference-plan.js
+  function* verifyGalleryReferenceSteps({ target, proposal, capital = null } = {}) {
+    const { progress, prices, set, catalog } = target;
+    if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
+    const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
+    if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;
+    const existing = progress.rows.filter(isGalleryOwned), selected = [], items = [];
+    if (existing.some((row) => !Number.isSafeInteger(row.gradingScore) || row.gradingScore < 0)) return null;
+    for (const id12 of proposal.ids) {
+      const row = rows.get(id12);
+      if (!row) return null;
+      if (isGalleryOwned(row)) continue;
+      const price2 = prices?.[id12], score2 = row.gradingScore ?? row.galleryScore;
+      if (row.collected !== false || !Number.isSafeInteger(price2) || price2 < 150 || price2 > 15e6 || capital !== null && price2 > capital || !Number.isSafeInteger(score2) || score2 < 0) return null;
+      selected.push({ ...row, gradingScore: score2, firstOwned: false, collected: true });
+      items.push({ ...row, price: price2, score: score2, scoreSource: row.gradingScore == null ? "catalog" : "ea" });
+    }
+    const measure = function* (picked) {
+      return yield* summarizeGalleryScoreSteps({ set, catalog, progress: {
+        ...progress,
+        rows: [...existing.map((row) => ({ ...row, collected: true })), ...picked]
+      } });
+    };
+    let summary3 = yield* measure(selected);
+    const threshold = set.grades.find((grade) => grade.name === proposal.grade)?.threshold;
+    if (!summary3?.full || summary3.low?.total < threshold || threshold == null) return null;
+    if (existing.length) for (const item2 of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
+      const trial = yield* measure(selected.filter((row) => row.eaId !== item2.eaId));
+      if (trial?.full && trial.low?.total >= threshold) {
+        selected.splice(selected.findIndex((row) => row.eaId === item2.eaId), 1);
+        items.splice(items.findIndex((row) => row.eaId === item2.eaId), 1);
+        summary3 = trial;
+      }
+      if (yield { phase: "reference-validation", cards: items.length }) break;
+    }
+    return {
+      reached: true,
+      score: summary3.low.total,
+      items,
+      totalPrice: items.reduce((sum2, row) => sum2 + row.price, 0),
+      estimated: items.some((row) => row.scoreSource !== "ea"),
+      referenceVerified: true
+    };
+  }
+
   // src/gallery/roadmap.js
   function* planGalleryRoadmapSteps({
     targets = [],
@@ -17524,9 +17570,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     resaleDiscountBps = 0,
     gradePlanner = planGalleryGradeSteps,
     previousRows = [],
-    previousSelection = []
+    previousSelection = [],
+    fastReferences = false
   } = {}) {
-    const rows = [], key = "event_token_1";
+    const rows = [], key2 = "event_token_1";
     const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
     let stopped = false, gradesChecked = 0;
     for (const [index, target] of targets.entries()) {
@@ -17565,14 +17612,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const currentGrade = galleryCatalogGrade(set, base);
       row.currentGrade = currentGrade?.name ?? null;
       row.currentScore = base.low.total;
-      row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key) : 0;
+      row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key2) : 0;
       row.collectionUnknown = !!base.collectionUnknown;
       row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
-      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key) > row.baselineTokens);
+      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
       const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
       for (const grade of grades3) {
         if (row.checkedGrades.includes(grade.name)) continue;
-        const result = yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+        const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
+        const verified = proposal ? yield* verifyGalleryReferenceSteps({ target: { ...target, progress: planningProgress }, proposal, capital }) : null;
+        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+        if (!fastReferences && verified && result.status !== "achieved" && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
+          result.status = "ready";
+          result.plans = [verified];
+          result.searchComplete = false;
+        }
         gradesChecked++;
         const candidate = result.plans?.[0];
         if (result.status === "ready" && candidate?.reached && candidate.totalPrice !== null) {
@@ -17583,8 +17637,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             requestedGrade: grade.name,
             score: candidate.score,
             items: candidate.items,
-            projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key),
+            projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key2),
             estimated: candidate.estimated,
+            referenceVerified: candidate.referenceVerified === true,
             searchComplete: result.searchComplete === true
           });
         } else row.reason = result.reason ?? "grade-proposal-unavailable";
@@ -17618,7 +17673,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     }
     const plan = yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
-    return { ...plan, rows, coverage: {
+    return { ...plan, rows, fastReferences, coverage: {
       total: targets.length,
       inspected: rows.length,
       available: rows.filter((row) => row.currentScore !== null).length,
@@ -17629,7 +17684,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/analysis-snapshot.js
-  var pick4 = (value, keys2) => Object.fromEntries(keys2.filter((key) => value?.[key] !== void 0).map((key) => [key, value[key]]));
+  var pick4 = (value, keys2) => Object.fromEntries(keys2.filter((key2) => value?.[key2] !== void 0).map((key2) => [key2, value[key2]]));
   var versionFields = [
     "eaId",
     "playerEaId",
@@ -17673,9 +17728,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const evidenceAt = Number.isSafeInteger(row.readAt) ? row.readAt : null;
         if (!existing) versions.set(row.eaId, { ...card, evidenceAt, conflictingFields: [] });
         else {
-          for (const key of accountFacts) if (existing[key] !== card[key]) {
-            existing[key] = null;
-            if (!existing.conflictingFields.includes(key)) existing.conflictingFields.push(key);
+          for (const key2 of accountFacts) if (existing[key2] !== card[key2]) {
+            existing[key2] = null;
+            if (!existing.conflictingFields.includes(key2)) existing.conflictingFields.push(key2);
           }
           existing.evidenceAt = existing.evidenceAt === evidenceAt ? evidenceAt : null;
         }
@@ -17716,7 +17771,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         candidateOnly: detail?.candidateOnly === true,
         poolSize: detail?.poolSize ?? null,
         versionIds: (detail?.rows ?? []).map((row) => row.eaId),
-        prices
+        prices,
+        publicReference: target?.publicReference ? {
+          ...pick4(target.publicReference, ["source", "basis", "platform", "fetchedAt", "expiresAt", "marketObservedAt"]),
+          grades: target.publicReference.grades.map((grade) => pick4(grade, ["grade", "cost", "ids"]))
+        } : null
       };
     }));
     return {
@@ -17747,7 +17806,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       collections,
       versions: [...versions.values()],
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt"]),
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences"]),
+        timings: pick4(plan.timings, ["referenceMs", "syncMs", "priceMs", "planningMs"]),
         route: (plan.route ?? []).map((row) => ({
           ...pick4(row, [
             "setId",
@@ -17803,6 +17863,110 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
   }
 
+  // src/gallery/fodder-planning-reference.js
+  var invalid2 = () => {
+    throw Error("FC27_FODDER_REFERENCE_INVALID");
+  };
+  var integer16 = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n >= min && n <= max;
+  var key = (category, slug2) => `${category}/${slug2}`;
+  var signature2 = (set) => JSON.stringify([
+    set.slug,
+    set.name,
+    set.requiredCards,
+    set.grades.map((grade) => [grade.name, grade.threshold, galleryCumulativeRewardQuantity(set, grade.threshold, "event_token_1")])
+  ]);
+  function normalizeFodderPlanningReference(index, input, { platform, fetchedAt } = {}) {
+    if (!["pc", "console"].includes(platform) || !integer16(fetchedAt) || !Array.isArray(input?.sets) || input.sets.length > 4096) invalid2();
+    const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
+    const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
+    for (const row of input.sets) {
+      const id12 = key(row?.category, row?.slug), set = definitions.get(id12);
+      if (!set || seen.has(id12) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
+      seen.add(id12);
+      const grades3 = [], names = /* @__PURE__ */ new Set();
+      for (const grade of row.grades) {
+        const definition2 = set.grades.find((g) => g.name === grade?.grade);
+        if (!definition2 || names.has(grade.grade) || grade.tokens !== (definition2.rewards[0]?.value ?? 0)) invalid2();
+        names.add(grade.grade);
+        if (grade.cost === null) {
+          grades3.push({ grade: grade.grade, cost: null, ids: [] });
+          continue;
+        }
+        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id13) => !integer16(id13, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6)) || grade.prices.reduce((sum2, price2) => sum2 + price2, 0) !== grade.cost) invalid2();
+        grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
+      }
+      sets2.push({ key: id12, set, grades: grades3 });
+    }
+    return {
+      source: "fodder",
+      basis: "empty-collection-public-reference",
+      platform,
+      fetchedAt,
+      expiresAt: fetchedAt + 3e5,
+      marketObservedAt: null,
+      sets: sets2
+    };
+  }
+  function attachFodderPlanningReferences(targets, snapshot, now = Date.now()) {
+    if (snapshot?.basis !== "empty-collection-public-reference" || snapshot.expiresAt <= now) return targets;
+    const groups = /* @__PURE__ */ new Map();
+    for (const row of snapshot.sets) {
+      const s = signature2(row.set);
+      groups.set(s, [...groups.get(s) ?? [], row]);
+    }
+    const localCounts = /* @__PURE__ */ new Map();
+    for (const target of targets) {
+      const s = signature2(target.set);
+      localCounts.set(s, (localCounts.get(s) ?? 0) + 1);
+    }
+    return targets.map((target) => {
+      const s = signature2(target.set), matches2 = groups.get(s);
+      return matches2?.length === 1 && localCounts.get(s) === 1 ? {
+        ...target,
+        publicReference: {
+          source: snapshot.source,
+          basis: snapshot.basis,
+          platform: snapshot.platform,
+          fetchedAt: snapshot.fetchedAt,
+          expiresAt: snapshot.expiresAt,
+          marketObservedAt: null,
+          grades: matches2[0].grades
+        }
+      } : target;
+    });
+  }
+
+  // src/adapters/browser/fc27-gallery-reference-table.js
+  function renderGalleryReferenceTable(document, parent, targets, snapshot) {
+    parent.replaceChildren();
+    const add3 = (root, tag, text5 = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      root.append(node);
+      return node;
+    };
+    const details = add3(parent, "details");
+    details.open = true;
+    add3(details, "summary", `Fodder \u516C\u5F00 D\u2013S \u53C2\u8003 \xB7 ${targets.filter((t) => t.publicReference).length}/${targets.length} \u5408\u96C6\u5DF2\u5BF9\u9F50`);
+    add3(details, "p", `\u5E73\u53F0 ${snapshot.platform === "pc" ? "PC" : "\u4E3B\u673A"} \xB7 \u8BFB\u53D6 ${new Date(snapshot.fetchedAt).toLocaleTimeString()}\u3002\u7A7A\u6536\u85CF\u91C7\u8D2D\u989D\uFF0C\u672A\u6263\u4F60\u7684\u6536\u85CF\uFF1B\u4E0D\u662F\u5468\u8F6C\u672C\u91D1\uFF0C\u4E5F\u4E0D\u662F\u8D2D\u4E70\u9650\u4EF7\u3002\u5E95\u5C42\u884C\u60C5\u65F6\u95F4\u672A\u63D0\u4F9B\u3002`);
+    const scroll = add3(details, "div");
+    scroll.className = "gallery-roadmap-table";
+    scroll.style.maxHeight = "260px";
+    const table = add3(scroll, "table"), head = add3(table, "tr");
+    for (const name of ["\u5408\u96C6", "D", "C", "B", "A", "S"]) add3(head, "th", name);
+    for (const target of targets) {
+      const tr = add3(table, "tr");
+      add3(tr, "th", target.set.name);
+      for (const name of ["D", "C", "B", "A", "S"]) {
+        const grade = target.publicReference?.grades.find((grade2) => grade2.grade === name);
+        add3(tr, "td", grade?.cost != null ? grade.cost.toLocaleString("en-US") : "\u2014");
+      }
+    }
+    return { collapse: () => {
+      details.open = false;
+    } };
+  }
+
   // src/adapters/browser/fc27-gallery-roadmap.js
   var money = (value) => value == null ? "\u5F85\u6838\u5B9E" : Number(value).toLocaleString("en-US");
   var add = (document, parent, tag, text5 = "") => {
@@ -17819,6 +17983,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     prepare: prepare2,
     stopPrepare,
     loadPrices = null,
+    referenceService = null,
     readTimeout = async () => 3e4,
     openSet,
     download = downloadFc27Diagnostics
@@ -17854,6 +18019,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     const actions = add(document, dialog, "div");
     actions.className = "row";
+    actions.style.alignItems = "center";
     const generate = add(document, actions, "button", "\u751F\u6210\u6574\u4F53\u65B9\u6848");
     generate.className = "primary";
     generate.type = "button";
@@ -17862,6 +18028,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     stop6.hidden = true;
     const exportButton = add(document, actions, "button", "\u5BFC\u51FA\u5206\u6790\u5FEB\u7167");
     exportButton.type = "button";
+    const modeLabel = add(document, actions, "label", " "), deep = add(document, modeLabel, "input");
+    deep.type = "checkbox";
+    modeLabel.style.display = referenceService ? "inline-flex" : "none";
+    modeLabel.style.alignItems = "center";
+    modeLabel.style.gap = "8px";
+    deep.style.width = "18px";
+    deep.style.height = "18px";
+    deep.style.minHeight = "0";
+    deep.style.margin = "0";
+    modeLabel.append(document.createTextNode("\u6DF1\u5EA6\u4F18\u5316\uFF08\u5B8C\u6574\u5019\u9009\u67E5\u4EF7/\u641C\u7D22\uFF0C\u66F4\u6162\uFF09"));
+    modeLabel.hidden = !referenceService;
+    if (referenceService) add(document, dialog, "small", "\u9ED8\u8BA4\u5FEB\u901F\u9996\u8F6E\uFF1A\u6838\u9A8C\u516C\u5F00\u5B8C\u6574\u7EC4\u5408\u5E76\u6263\u9664\u5DF2\u6709\u6536\u85CF\uFF1B\u672A\u8986\u76D6\u9879\u53EF\u7528\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002");
     const progress = add(document, dialog, "progress");
     progress.max = 1;
     progress.value = 0;
@@ -17870,12 +18048,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const status = add(document, dialog, "output");
     status.className = "gallery-roadmap-status";
     status.setAttribute("role", "status");
+    const timing = add(document, dialog, "small");
+    timing.setAttribute("role", "status");
+    const referenceBox = add(document, dialog, "div");
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
     let stage = "idle", stopRequested = false;
     const parse = (field) => field.value.trim() === "" ? null : Number(field.value);
-    const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value) });
+    const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
     const capture = (state) => ({
       scope: state.scope,
       revision: state.catalog?.revision,
@@ -17904,6 +18085,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       planInputs = null;
       binding = null;
       output.replaceChildren();
+      referenceBox.replaceChildren();
+      timing.textContent = "";
       generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
     };
     const render = (result) => {
@@ -17921,6 +18104,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add(document, card, "strong", money(value));
       }
       add(document, output, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
+      if (result.fastReferences) add(document, output, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u5728\u672C\u5730\u6838\u9A8C\u516C\u5F00\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF0C\u5E76\u6309\u73B0\u6709\u4EF7\u683C\u6765\u6E90\u91CD\u65B0\u8BA1\u4EF7\uFF1B\u672A\u786E\u8BA4\u9879\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u3002");
       add(document, output, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
       add(document, output, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
       if (!result.route.length) add(document, output, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
@@ -17969,7 +18153,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "collection-status-unknown": "\u90E8\u5206\u7248\u672C\u7684\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E",
           "existing-score-unknown": "\u5DF2\u6709\u6536\u85CF\u7684\u8BA1\u5206\u5F85\u6838\u5B9E",
           "search-time-exhausted": "\u672C\u8F6E\u5206\u6790\u65F6\u95F4\u5DF2\u5230\uFF0C\u53EF\u7EE7\u7EED",
-          "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848"
+          "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848",
+          "deep-analysis-pending": "\u5FEB\u901F\u9996\u8F6E\u5C1A\u672A\u786E\u8BA4\uFF0C\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5"
         };
         for (const item2 of pending2) add(document, details, "p", `${item2.name} \xB7 ${reasons2[item2.reason] ?? `\u5C1A\u672A\u786E\u8BA4\u65B9\u6848\uFF08${item2.reason}\uFF09`}${item2.capitalShortfall ? ` \xB7 \u9884\u8BA1\u8FD8\u5DEE ${money(item2.capitalShortfall)} \u91D1\u5E01\u672C\u91D1` : ""}`);
       }
@@ -17996,7 +18181,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (busy) cancel();
       epoch2++;
     });
-    for (const field of [capital, lossLimit, discount]) field.addEventListener("change", invalidate);
+    for (const field of [capital, lossLimit, discount, deep]) field.addEventListener("change", invalidate);
     button?.addEventListener("click", (event) => {
       if (!event.isTrusted) return;
       if (binding && (!same28(binding) || !quotesFresh(planInputs))) invalidate();
@@ -18018,7 +18203,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       exportButton.disabled = true;
       stop6.hidden = false;
       progress.hidden = false;
-      for (const field of [capital, lossLimit, discount]) field.disabled = true;
+      for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+      const startedAt = performance.now(), timings = {}, tick = () => {
+        timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : stage === "pricing" ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
+      };
+      let stageStarted = startedAt;
+      const ticker = document.defaultView.setInterval(tick, 500);
+      let referenceSnapshot = null, referenceView = null;
       const context = read("context").scope, current2 = () => {
         const state = read("context");
         return token === epoch2 && state.active && state.scope === context && dialog.open;
@@ -18031,23 +18222,50 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           planInputs = null;
           output.replaceChildren();
           generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
+          if (referenceService) {
+            stage = "reference";
+            status.textContent = "\u8BFB\u53D6 Fodder \u5168\u76EE\u5F55\u516C\u5F00\u7EC4\u5408\uFF08\u7A7A\u6536\u85CF\u8BF7\u6C42\uFF0C\u4E0D\u53D1\u9001\u4F60\u7684\u6536\u85CF\uFF09\u2026";
+            const at12 = performance.now();
+            stageStarted = at12;
+            try {
+              referenceSnapshot = await referenceService.load({ isCurrent: current2 });
+              if (!current2()) return;
+              const targets2 = attachFodderPlanningReferences(read().targets, referenceSnapshot);
+              referenceView = renderGalleryReferenceTable(document, referenceBox, targets2, referenceSnapshot);
+            } catch {
+              if (current2()) referenceBox.textContent = "Fodder \u53C2\u8003\u6682\u4E0D\u53EF\u7528\uFF0C\u672C\u6B21\u4FDD\u7559\u539F\u672C\u5730\u89C4\u5212\u8DEF\u5F84\u3002";
+            }
+            timings.referenceMs = Math.round(performance.now() - at12);
+          }
           stage = "preparing";
+          const at11 = performance.now();
+          stageStarted = at11;
           status.textContent = "1/3 \xB7 \u6821\u9A8C\u5168\u76EE\u5F55\u6536\u96C6\u72B6\u6001\uFF08\u4EC5\u6570\u636E\u8BFB\u53D6\uFF0C\u4E0D\u4E70\u5356\uFF09\u2026";
           await prepare2?.((value) => {
             if (current2()) status.textContent = `1/3 \xB7 \u540C\u6B65 ${value.phase ?? ""} ${value.index ?? 0}/${value.total ?? "?"} \xB7 \u5DF2\u8BFB ${value.count ?? 0}`;
           });
           if (!current2()) return;
+          timings.syncMs = Math.round(performance.now() - at11);
         }
         const state = read();
         if (!state.catalog) throw Error("\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165");
         binding = capture(state);
         const valid3 = () => current2() && same28(binding) && (stage !== "planning" || quotesFresh(targets));
         let targets = resume ? planInputs : structuredClone(state.targets);
+        if (!resume && referenceSnapshot) targets = attachFodderPlanningReferences(targets, referenceSnapshot);
+        if (!resume && referenceSnapshot) referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
+        const fastReferences = !!referenceService && !options.deep && targets.some((target) => target.publicReference);
         if (!resume && loadPrices) {
           stage = "pricing";
+          const at11 = performance.now();
+          stageStarted = at11;
           status.textContent = "2/3 \xB7 \u8BFB\u53D6\u5168\u76EE\u5F55\u5019\u9009\u7684\u516C\u5F00\u62A5\u4EF7\u2026";
           const available = targets.filter((target) => target.progress?.rows && !target.stale && !target.poolStale && target.status === "observed");
-          const priced2 = await priceGalleryPlanningTargets(available, {
+          const quoteTargets = fastReferences ? available.map((target) => {
+            const ids2 = new Set(target.publicReference?.grades.flatMap((grade) => grade.ids) ?? []);
+            return { ...target, progress: { ...target.progress, rows: target.progress.rows.filter((row) => isGalleryOwned(row) || ids2.has(row.eaId)) } };
+          }) : available;
+          const priced2 = await priceGalleryPlanningTargets(quoteTargets, {
             load: loadPrices,
             current: valid3,
             onProgress: (value) => {
@@ -18055,17 +18273,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           });
           const byId = new Map(priced2.map((target) => [target.set.id, target]));
-          targets = targets.map((target) => byId.get(target.set.id) ?? target);
+          targets = targets.map((target) => {
+            const priced3 = byId.get(target.set.id);
+            return priced3 ? { ...target, prices: priced3.prices, priceSnapshot: priced3.priceSnapshot } : target;
+          });
+          timings.priceMs = Math.round(performance.now() - at11);
         }
         if (!valid3()) return;
         if (!quotesFresh(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
         const maxMs = await readTimeout();
         stage = "planning";
+        const planStarted = performance.now();
+        stageStarted = planStarted;
         const generator = planGalleryRoadmapSteps({
           ...options,
           targets,
           previousRows: resume ? last.rows : [],
-          previousSelection: resume ? last.selectedOptions : []
+          previousSelection: resume ? last.selectedOptions : [],
+          fastReferences
         });
         const steps = { next: (finish) => generator.next(finish || stopRequested), return: () => generator.return() };
         const result = await runGalleryPlan(
@@ -18080,15 +18305,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           status.textContent = !quotesFresh(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
           return;
         }
-        last = { ...result, generatedAt: Date.now() };
+        timings.planningMs = Math.round(performance.now() - planStarted);
+        last = { ...result, generatedAt: Date.now(), timings };
         planInputs = targets;
         fingerprint = JSON.stringify(options);
         render(result);
+        referenceView?.collapse();
         status.textContent = result.coverage.stopped ? "\u5DF2\u4FDD\u7559\u672C\u8F6E\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u6863\u4F4D\uFF0C\u4E0D\u4ECE\u5934\u91CD\u7B97\u3002" : "\u6574\u4F53\u8DEF\u7EBF\u5DF2\u751F\u6210\uFF1B\u8FDB\u5165\u5177\u4F53\u5408\u96C6\u540E\u518D\u786E\u8BA4\u64CD\u4F5C\u3002";
         generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
       } catch (error2) {
         status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : error2?.message === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "\u6570\u636E\u8BFB\u53D6\u6216\u89C4\u5212\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u8BD5\u3002"}`;
       } finally {
+        document.defaultView.clearInterval(ticker);
+        const unfinishedPhase = { reference: "referenceMs", preparing: "syncMs", pricing: "priceMs", planning: "planningMs" }[stage];
+        if (unfinishedPhase && timings[unfinishedPhase] == null) timings[unfinishedPhase] = Math.round(performance.now() - stageStarted);
+        timing.textContent = `\u672C\u8F6E ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 \u516C\u5171\u53C2\u8003 ${((timings.referenceMs ?? 0) / 1e3).toFixed(1)} / \u540C\u6B65 ${((timings.syncMs ?? 0) / 1e3).toFixed(1)} / \u67E5\u4EF7 ${((timings.priceMs ?? 0) / 1e3).toFixed(1)} / \u8BA1\u7B97 ${((timings.planningMs ?? 0) / 1e3).toFixed(1)} \u79D2`;
         if (stopRequested && stage !== "planning") status.textContent = "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
         busy = false;
         stage = "idle";
@@ -18096,7 +18327,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         exportButton.disabled = false;
         stop6.hidden = true;
         progress.hidden = true;
-        for (const field of [capital, lossLimit, discount]) field.disabled = false;
+        for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
       }
     });
     exportButton.addEventListener("click", (event) => {
@@ -18336,7 +18567,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress?.complete !== false,
       progress?.candidateOnly === true,
       progress?.poolComplete !== false,
-      (progress?.rows ?? []).map((row) => fields4.map((key) => row[key] ?? null)).sort((a, b) => a[0] - b[0]),
+      (progress?.rows ?? []).map((row) => fields4.map((key2) => row[key2] ?? null)).sort((a, b) => a[0] - b[0]),
       (progress?.rows ?? []).map((row) => [row.eaId, quotes?.[row.eaId] ?? null]).sort((a, b) => a[0] - b[0])
     ]);
   }
@@ -18367,11 +18598,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     tradePreferences = null,
     planningSettings = null,
     galleryLevel: galleryLevel2 = null,
+    galleryReference: galleryReference2 = null,
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
     const node = (id12) => shadow.getElementById(id12);
     let roadmap = null, roadmapTarget = null, levelPanel = null;
+    const runningPlanSurfaces = /* @__PURE__ */ new Map();
     const roadmapProgressKeys = /* @__PURE__ */ new WeakMap();
     const roadmapProgressKey = (progress) => {
       if (!progress) return null;
@@ -19234,6 +19467,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const renderPlan = (target, value, set, summary3) => {
       if (typeof gradePlanner !== "function" || !value?.progress || !result?.catalog) return;
+      const surfaceKey = JSON.stringify([
+        scope2(),
+        set,
+        result.catalog.revision,
+        galleryPlanningStateKey({ ...value, prices: {}, priceSnapshot: null })
+      ]);
+      const running = runningPlanSurfaces.get(set.id);
+      if (running?.key === surfaceKey) {
+        target.append(running.section);
+        return;
+      }
+      if (running) {
+        planningEpoch++;
+        runningPlanSurfaces.delete(set.id);
+      }
       const section = add3(target, "section", "", "gallery-plan");
       add3(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
       const row = add3(section, "div", "", "row");
@@ -19276,6 +19524,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       const output = add3(section, "div", "", "gallery-plan-output");
       output.setAttribute("aria-live", "polite");
+      if (running) output.textContent = "\u6536\u96C6\u72B6\u6001\u6216\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002";
       const overview = add3(section, "div", "", "gallery-grade-overview");
       overview.setAttribute("aria-live", "polite");
       const rewardText = (snapshot) => {
@@ -19356,6 +19605,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (plan.costAudit) add3(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
         for (const [index, candidate] of plan.plans.entries()) {
           const details2 = add3(output, "details");
+          details2.open = index === 0;
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count2(candidate.currentScore)} + \u65B0\u589E ${count2(candidate.addedScore ?? 0)} = ${count2(candidate.score)} \u5206` : `${count2(candidate.score)} \u5206`;
           const heading = add3(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
           showRewardChange(heading, plan.currentRewards, candidate.rewards);
@@ -19404,6 +19654,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         button.disabled = true;
         output.replaceChildren();
         add3(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
+        overviewButton.disabled = true;
+        select.disabled = true;
+        const chosenGrade = select.value, surface = { key: surfaceKey, section };
+        runningPlanSurfaces.set(set.id, surface);
         const token = ++planningEpoch, identity5 = scope2(), revision = result;
         activePlans++;
         const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
@@ -19419,7 +19673,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const maxMs = await planningTimeout(current2, output);
           if (maxMs == null) return;
           const binding = planBinding(value, set);
-          const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: select.value };
+          const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
             current: current2,
             maxMs,
@@ -19459,6 +19713,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             attachPlanPrices(plan, [value.priceSnapshot]);
             savePlanCache(set, value, { binding, plan });
             show(plan);
+            output.scrollIntoView({ block: "nearest" });
             if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
           }
         } catch {
@@ -19467,7 +19722,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         } finally {
           activePlans = Math.max(0, activePlans - 1);
           button.disabled = false;
+          overviewButton.disabled = false;
+          select.disabled = false;
           cancel.remove();
+          if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id);
         }
       });
       overviewButton.addEventListener("click", async (event) => {
@@ -19599,8 +19857,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!planStore || !currentScope || !result?.source) return;
       const scopeAtStart = currentScope, source = result.source;
       if (planCache.has(set.id)) return;
-      const key = JSON.stringify([scopeAtStart, source, set.id]);
-      if (restoringPlans.has(key)) return restoringPlans.get(key);
+      const key2 = JSON.stringify([scopeAtStart, source, set.id]);
+      if (restoringPlans.has(key2)) return restoringPlans.get(key2);
       const task = Promise.resolve().then(async () => {
         try {
           const loaded = await planStore.load(scopeAtStart, source, set.id);
@@ -19612,10 +19870,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         } catch {
         } finally {
-          if (restoringPlans.get(key) === task) restoringPlans.delete(key);
+          if (restoringPlans.get(key2) === task) restoringPlans.delete(key2);
         }
       });
-      restoringPlans.set(key, task);
+      restoringPlans.set(key2, task);
       return task;
     };
     const currentGallerySet = (id12) => result?.catalog?.categories?.flatMap((category) => category.sets ?? []).find((set) => set.id === id12) ?? null;
@@ -20085,6 +20343,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       selectedSetId = null;
       details.clear();
       comparisonViews.clear();
+      runningPlanSurfaces.clear();
       roadmapTarget = null;
       roadmap?.close();
       levelPanel?.setActive(false);
@@ -20191,12 +20450,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         cardPage = 1;
       }
       const filters = add3(target, "div", "", "row gallery-card-filters");
-      for (const [key, label] of [["all", "\u5168\u90E8"], ["collected", "\u5DF2\u6536\u96C6"], ["missing", "\u672A\u6536\u96C6"], ["unknown", "\u5F85\u6838\u5B9E"], ["held", "\u6301\u6709"], ["lineup", "\u8BA1\u5206\u9635\u5BB9"], ["firstOwned", "First Owner"]]) {
+      for (const [key2, label] of [["all", "\u5168\u90E8"], ["collected", "\u5DF2\u6536\u96C6"], ["missing", "\u672A\u6536\u96C6"], ["unknown", "\u5F85\u6838\u5B9E"], ["held", "\u6301\u6709"], ["lineup", "\u8BA1\u5206\u9635\u5BB9"], ["firstOwned", "First Owner"]]) {
         const button = add3(filters, "button", label);
-        button.setAttribute("aria-pressed", String(filter === key));
+        button.setAttribute("aria-pressed", String(filter === key2));
         button.addEventListener("click", (event) => {
           if (!event.isTrusted) return;
-          filter = key;
+          filter = key2;
           cardPage = 1;
           renderSetDetail(value, set);
         });
@@ -20209,11 +20468,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       search.setAttribute("aria-label", "\u641C\u7D22\u7403\u5458");
       const order2 = document.createElement("select");
       order2.setAttribute("aria-label", "\u5361\u7247\u6392\u5E8F");
-      for (const [key, label] of [["catalog", "\u76EE\u5F55\u987A\u5E8F"], ["name", "\u540D\u79F0"], ["score", "Gallery \u5206\u6570"], ["price", "\u4EF7\u683C"]]) {
+      for (const [key2, label] of [["catalog", "\u76EE\u5F55\u987A\u5E8F"], ["name", "\u540D\u79F0"], ["score", "Gallery \u5206\u6570"], ["price", "\u4EF7\u683C"]]) {
         const option = document.createElement("option");
-        option.value = key;
+        option.value = key2;
         option.textContent = label;
-        option.selected = cardOrder === key;
+        option.selected = cardOrder === key2;
         order2.append(option);
       }
       cardTools.append(order2);
@@ -20460,7 +20719,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           compare.type = "button";
           const comparison = add3(meta, "small", "", "gallery-market-comparison");
           const compareScope = scope2(), compareSource = result?.source;
-          const key = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
+          const key2 = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
           const current2 = () => !disposed && active && !jointMode && selectedSetId === set.id && compareScope === scope2() && compareSource === result?.source && comparison.isConnected;
           const paint = (state2) => {
             if (!current2()) return;
@@ -20489,17 +20748,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               for (const listing2 of quote2.listings.slice(0, 3)) add3(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
             }
           };
-          const stored = comparisonViews.get(key);
+          const stored = comparisonViews.get(key2);
           if (stored && (stored.pending || stored.expiresAt > Date.now())) {
             stored.paint = paint;
             paint(stored);
-          } else comparisonViews.delete(key);
+          } else comparisonViews.delete(key2);
           compare.addEventListener("click", async (event) => {
-            if (!event.isTrusted || !current2() || comparisonViews.get(key)?.pending) return;
+            if (!event.isTrusted || !current2() || comparisonViews.get(key2)?.pending) return;
             const currentRow = details.get(set.id)?.progress?.rows.find((item2) => item2.eaId === row.eaId);
             if (!currentRow || isGalleryOwned(currentRow) || currentRow.collected !== false) return;
             const state2 = { pending: true, quote: null, expiresAt: 0, paint };
-            comparisonViews.set(key, state2);
+            comparisonViews.set(key2, state2);
             while (comparisonViews.size > 100) comparisonViews.delete(comparisonViews.keys().next().value);
             paint(state2);
             try {
@@ -20510,7 +20769,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             } finally {
               state2.pending = false;
               state2.expiresAt = (state2.quote?.observedAt ?? Date.now()) + 3e4;
-              if (comparisonViews.get(key) === state2) state2.paint(state2);
+              if (comparisonViews.get(key2) === state2) state2.paint(state2);
             }
           });
         }
@@ -20907,9 +21166,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       void refreshShared();
       if (active && sync && value.source === "futgg") {
         const state2 = sync.state();
-        const key = `${scope2() ?? "unknown"}:${catalog.revision ?? value.fetchedAt ?? "catalog"}:${state2.needsRefresh ? Math.floor(Date.now() / GALLERY_TTL_MS) : "baseline"}`;
-        if ((!state2.synced || state2.needsRefresh) && autoSyncKey !== key) {
-          autoSyncKey = key;
+        const key2 = `${scope2() ?? "unknown"}:${catalog.revision ?? value.fetchedAt ?? "catalog"}:${state2.needsRefresh ? Math.floor(Date.now() / GALLERY_TTL_MS) : "baseline"}`;
+        if ((!state2.synced || state2.needsRefresh) && autoSyncKey !== key2) {
+          autoSyncKey = key2;
           queueMicrotask(() => {
             if (active && result === value && !syncing) void synchronize2(null, { background: true });
           });
@@ -21068,6 +21327,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       },
       stopPrepare: () => sync?.stop(),
       loadPrices: loadPlanningPrices,
+      referenceService: galleryReference2,
       readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
       openSet: (setId, grade) => {
         if (checkScope() === false) return;
@@ -21429,6 +21689,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     galleryFirstOwnerHistory = null,
     galleryScoreCache = null,
     galleryLevel: galleryLevel2 = null,
+    galleryReference: galleryReference2 = null,
     galleryAccounting: galleryAccounting2 = null,
     galleryTradePreferences: galleryTradePreferences2 = null,
     galleryPlanningSettings: galleryPlanningSettings2 = null,
@@ -21446,7 +21707,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = fc27WorkbenchMarkup({ installationChecks: typeof checkInstallation === "function" });
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, planningSettings: galleryPlanningSettings2, galleryLevel: galleryLevel2, setFirstOwner: galleryFirstOwnerHistory });
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, planningSettings: galleryPlanningSettings2, galleryLevel: galleryLevel2, galleryReference: galleryReference2, setFirstOwner: galleryFirstOwnerHistory });
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#settings-bottom"), service: publicPrices2 });
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
     const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
@@ -21831,7 +22092,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 \u8282\u70B9 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
     const search = progress.search;
     if (search && typeof search === "object") {
-      const parts = [["combinationNodes", "\u7EC4\u5408"], ["placementNodes", "\u9635\u4F4D"], ["evaluations", "\u8BC4\u4F30"], ["bounds", "\u526A\u679D"]].filter(([key]) => Number.isSafeInteger(search[key])).map(([key, label]) => `${label} ${progressCount(search[key])}`);
+      const parts = [["combinationNodes", "\u7EC4\u5408"], ["placementNodes", "\u9635\u4F4D"], ["evaluations", "\u8BC4\u4F30"], ["bounds", "\u526A\u679D"]].filter(([key2]) => Number.isSafeInteger(search[key2])).map(([key2, label]) => `${label} ${progressCount(search[key2])}`);
       if (parts.length) lines.push(parts.join(" \xB7 "));
     }
     const candidates = progress.safeCandidates ?? progress.marketCandidates;
@@ -22171,11 +22432,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     let target = null;
     let summary3 = null;
-    let signature2 = null;
+    let signature3 = null;
     let busy = false;
     let reading = false;
     let disposed = false;
-    const key = (value) => value ? `${value.setId}:${value.challengeId}:${value.squadSignature ?? ""}` : null;
+    const key2 = (value) => value ? `${value.setId}:${value.challengeId}:${value.squadSignature ?? ""}` : null;
     const attach = (next) => {
       if (next.purchaseAnchor?.isConnected) {
         next.purchaseAnchor.prepend(box);
@@ -22191,20 +22452,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!next?.anchor?.isConnected) {
         box.remove();
         target = null;
-        signature2 = null;
+        signature3 = null;
         if (!busy) resultDialog?.close();
         return;
       }
-      const changed = key(next) !== signature2;
+      const changed = key2(next) !== signature3;
       if (!force && !changed) return;
       reading = true;
       try {
         const result = await inspect(next);
-        if (disposed || key(readTarget()) !== key(next)) return;
+        if (disposed || key2(readTarget()) !== key2(next)) return;
         if (result?.reason === "FC27_ACCEPTANCE_BUSY") return;
         const switched = !target || target.setId !== next.setId || target.challengeId !== next.challengeId;
         target = next;
-        signature2 = key(next);
+        signature3 = key2(next);
         summary3 = result;
         if (result?.status !== "ready" || result.completed) {
           if (result?.completed && !switched && button.hidden) {
@@ -22227,7 +22488,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         attach(next);
       } catch {
         output.textContent = "\u8D2D\u4E70\u6E05\u5355\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002";
-        signature2 = null;
+        signature3 = null;
       } finally {
         reading = false;
       }
@@ -22537,7 +22798,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const row of collectionHistory) history.set(row.definitionId, { ...history.get(row.definitionId), ...row });
     const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId11));
     const rows = pool.items.map((item2) => accountRow(item2, concepts.get(item2.eaId), club.get(item2.eaId), clubKnown, history.get(item2.eaId), held.has(item2.eaId)));
-    const count2 = (key) => rows.filter((row) => row[key] === true).length;
+    const count2 = (key2) => rows.filter((row) => row[key2] === true).length;
     return Object.freeze({
       schema: 1,
       source: "ea-gallery-progress",
@@ -22567,7 +22828,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/gallery/fodder-pool.js
   function fodderPoolQueries(set) {
     const value = set?.conditions;
-    if (!value || Object.keys(value).some((key) => !["clubs", "leagues", "rareflags", "holo"].includes(key)) || typeof value.holo !== "boolean" || ["clubs", "leagues", "rareflags"].some((key) => !Array.isArray(value[key]) || value[key].length > 256 || value[key].some((id12) => !Number.isSafeInteger(id12) || id12 < 0))) {
+    if (!value || Object.keys(value).some((key2) => !["clubs", "leagues", "rareflags", "holo"].includes(key2)) || typeof value.holo !== "boolean" || ["clubs", "leagues", "rareflags"].some((key2) => !Array.isArray(value[key2]) || value[key2].length > 256 || value[key2].some((id12) => !Number.isSafeInteger(id12) || id12 < 0))) {
       throw Error("FC27_GALLERY_FODDER_CONDITIONS_UNSUPPORTED");
     }
     const rarities = value.rareflags.length ? { rarities: [...value.rareflags] } : {};
@@ -22608,7 +22869,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/ea/fc27-gallery-progress.js
-  var at7 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
+  var at7 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var id9 = (value) => Number.isSafeInteger(value) && value > 0;
   var databaseId = (value) => id9(value) ? value % 16777216 : null;
   var sameDatabaseId = (left, right) => databaseId(left) === databaseId(right);
@@ -22669,15 +22930,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var nativeCardData = (raw) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const result = {};
-    for (const key of CARD_KEYS) {
-      const value = ownData(raw, key);
+    for (const key2 of CARD_KEYS) {
+      const value = ownData(raw, key2);
       if (value === void 0) continue;
-      if (["statsList", "lifetimeStats", "attributeArray", "possiblePositions", "baseTraits", "iconTraits", "plusRoles", "plusPlusRoles"].includes(key)) {
-        result[key] = arrayCopy(value);
-      } else if (key === "hyperCosmetics" && value && typeof value === "object" && !Array.isArray(value)) {
+      if (["statsList", "lifetimeStats", "attributeArray", "possiblePositions", "baseTraits", "iconTraits", "plusRoles", "plusPlusRoles"].includes(key2)) {
+        result[key2] = arrayCopy(value);
+      } else if (key2 === "hyperCosmetics" && value && typeof value === "object" && !Array.isArray(value)) {
         const entries2 = Object.entries(value).slice(0, 32).filter(([, item2]) => Number.isFinite(item2));
-        result[key] = Object.fromEntries(entries2);
-      } else if (typeof value === "boolean" || Number.isFinite(value) || typeof value === "string" && value.length <= 200) result[key] = value;
+        result[key2] = Object.fromEntries(entries2);
+      } else if (typeof value === "boolean" || Number.isFinite(value) || typeof value === "string" && value.length <= 200) result[key2] = value;
     }
     const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
     const guid = result.guidAssetId;
@@ -22709,8 +22970,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let items = at7(root, "repositories.Item.club.items");
     for (let depth = 0; depth < 3 && ownData(items, "_collection"); depth++) items = ownData(items, "_collection");
     if (!items || typeof items !== "object" || Object.keys(items).length > 2e4) return result;
-    for (const key of Object.keys(items)) {
-      const raw = ownData(items, key), definitionId = ownData(raw, "definitionId");
+    for (const key2 of Object.keys(items)) {
+      const raw = ownData(items, key2), definitionId = ownData(raw, "definitionId");
       if (ownData(raw, "type") !== "player" || ownData(raw, "concept") !== false || !id9(ownData(raw, "id"))) continue;
       const owners = ownData(raw, "owners");
       result.push({ definitionId, owners: Number.isSafeInteger(owners) && owners > 0 && owners <= 1e4 ? owners : null });
@@ -22730,8 +22991,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       source = ownData(source, "items") ?? source;
       for (let depth = 0; depth < 3 && ownData(source, "_collection"); depth++) source = ownData(source, "_collection");
       if (!source || typeof source !== "object") continue;
-      for (const key of Object.keys(source).slice(0, 2e4)) {
-        const raw = ownData(source, key), definitionId = ownData(raw, "definitionId");
+      for (const key2 of Object.keys(source).slice(0, 2e4)) {
+        const raw = ownData(source, key2), definitionId = ownData(raw, "definitionId");
         if (id9(definitionId) && id9(ownData(raw, "id")) && ownData(raw, "type") === "player" && ownData(raw, "concept") === false) result.push({ definitionId });
       }
     }
@@ -22755,9 +23016,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const stateFor = (context) => {
-      const key = contextKey(context, "gallery-collection");
-      if (!states4.has(key)) states4.set(key, {
-        key,
+      const key2 = contextKey(context, "gallery-collection");
+      if (!states4.has(key2)) states4.set(key2, {
+        key: key2,
         context,
         rows: /* @__PURE__ */ new Map(),
         firstOwnerHistory: [],
@@ -22776,7 +23037,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         heldSnapshot: null,
         displayEntities: /* @__PURE__ */ new Map()
       });
-      return states4.get(key);
+      return states4.get(key2);
     };
     const assert = (context) => {
       if (disposed || !same20(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
@@ -23043,8 +23304,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
       }
-      const state = stateFor(context), key = `${state.key}:${definitionIds?.join(",") ?? pool?.setId ?? "all"}`;
-      if (inFlight.has(key)) return inFlight.get(key);
+      const state = stateFor(context), key2 = `${state.key}:${definitionIds?.join(",") ?? pool?.setId ?? "all"}`;
+      if (inFlight.has(key2)) return inFlight.get(key2);
       const run = async () => {
         const operation = { context, stopped: false, kind: "sync", startedAt: now(), progress: null };
         running = operation;
@@ -23232,10 +23493,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (running === operation) running = null;
         }
       };
-      const task = tail2.then(run).finally(() => inFlight.delete(key));
+      const task = tail2.then(run).finally(() => inFlight.delete(key2));
       tail2 = task.catch(() => {
       });
-      inFlight.set(key, task);
+      inFlight.set(key2, task);
       return task;
     };
     const load = async (pool, { force = false, onProgress = null, missingOnly = false } = {}) => {
@@ -23277,8 +23538,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
       }
-      const state = stateFor(context), key = `${state.key}:discover:${set.id}`;
-      if (inFlight.has(key)) return inFlight.get(key);
+      const state = stateFor(context), key2 = `${state.key}:discover:${set.id}`;
+      if (inFlight.has(key2)) return inFlight.get(key2);
       const run = async () => {
         const operation = { context, stopped: false, kind: "discover", startedAt: now(), progress: null };
         running = operation;
@@ -23355,10 +23616,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (running === operation) running = null;
         }
       };
-      const task = tail2.then(run).finally(() => inFlight.delete(key));
+      const task = tail2.then(run).finally(() => inFlight.delete(key2));
       tail2 = task.catch(() => {
       });
-      inFlight.set(key, task);
+      inFlight.set(key2, task);
       return task;
     };
     install();
@@ -23448,9 +23709,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/ea/fc27-gallery-level.js
   var FC27_GALLERY_LEVEL_CATEGORIES_HASH = "bcbab0fd238e5d4b53f93c3b22fa6d9250cf7e83790b6c0b8f01db60e68d1872";
   var values6 = (object) => Object.values(ownData(object, "_collection") ?? object ?? {});
-  var method5 = (object, key) => {
+  var method5 = (object, key2) => {
     for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key2);
       if (descriptor) return descriptor.value;
     }
     return null;
@@ -23570,11 +23831,68 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
 
+  // src/adapters/browser/fc27-fodder-reference.js
+  var INDEX = "https://fodder.gg/api/gallery";
+  var OPPORTUNITIES = "https://fodder.gg/api/gallery/all/opportunities";
+  function createFc27FodderReference({ gmRequest, readContext, now = Date.now } = {}) {
+    const cache = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
+    const request = (url, platform) => new Promise((resolve, reject) => {
+      if (typeof gmRequest !== "function") {
+        reject(Error("FC27_FODDER_REFERENCE_UNAVAILABLE"));
+        return;
+      }
+      gmRequest({
+        url,
+        method: platform ? "POST" : "GET",
+        anonymous: true,
+        timeout: 15e3,
+        ...platform ? {
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          data: JSON.stringify({ platform, owned: [] })
+        } : {},
+        onload: (response) => {
+          if (response.status !== 200 || response.finalUrl && response.finalUrl !== url) {
+            reject(Error("FC27_FODDER_REFERENCE_READ_FAILED"));
+            return;
+          }
+          if (typeof response.responseText !== "string" || response.responseText.length > 3e6) {
+            reject(Error("FC27_FODDER_REFERENCE_INVALID"));
+            return;
+          }
+          try {
+            resolve(JSON.parse(response.responseText));
+          } catch {
+            reject(Error("FC27_FODDER_REFERENCE_INVALID"));
+          }
+        },
+        onerror: () => reject(Error("FC27_FODDER_REFERENCE_READ_FAILED")),
+        ontimeout: () => reject(Error("FC27_FODDER_REFERENCE_TIMEOUT"))
+      });
+    });
+    return Object.freeze({ async load({ isCurrent = () => true } = {}) {
+      const context = readContext(), identity5 = JSON.stringify(context);
+      const current2 = () => isCurrent() && JSON.stringify(readContext()) === identity5;
+      if (!current2() || !["pc", "console"].includes(context.platform)) throw Error("FC27_FODDER_REFERENCE_CONTEXT_CHANGED");
+      const old = cache.get(context.platform);
+      if (old?.expiresAt > now()) return structuredClone(old);
+      if (!pending2.has(context.platform)) {
+        const task = Promise.all([request(INDEX), request(OPPORTUNITIES, context.platform)]).then(([index, proposals]) => normalizeFodderPlanningReference(index, proposals, { platform: context.platform, fetchedAt: now() })).then((value2) => {
+          cache.set(context.platform, value2);
+          return value2;
+        }).finally(() => pending2.delete(context.platform));
+        pending2.set(context.platform, task);
+      }
+      const value = await pending2.get(context.platform);
+      if (!current2()) throw Error("FC27_FODDER_REFERENCE_CONTEXT_CHANGED");
+      return structuredClone(value);
+    } });
+  }
+
   // src/adapters/browser/fc27-gallery-cache-migration.js
-  var isCollectionKey = (key) => {
-    if (typeof key !== "string" || !key.startsWith("fcat:")) return false;
+  var isCollectionKey = (key2) => {
+    if (typeof key2 !== "string" || !key2.startsWith("fcat:")) return false;
     try {
-      const parts = JSON.parse(key.slice(5));
+      const parts = JSON.parse(key2.slice(5));
       return Array.isArray(parts) && parts.length === 5 && parts[0] === 1 && parts[1] === "27" && parts[4] === "gallery-collection";
     } catch {
       return false;
@@ -23597,16 +23915,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const selected = keys2.filter(isCollectionKey);
         report.total = selected.length;
         notify();
-        for (const key of selected) {
+        for (const key2 of selected) {
           try {
-            const saved = await get(key, null);
-            if (saved?.schema === 3 && Array.isArray(saved.concepts) && saved.concepts.length <= 1e5 && contextKey(saved.context, "gallery-collection") === key) {
+            const saved = await get(key2, null);
+            if (saved?.schema === 3 && Array.isArray(saved.concepts) && saved.concepts.length <= 1e5 && contextKey(saved.context, "gallery-collection") === key2) {
               const original = JSON.stringify(saved);
               const packed = await encodeGalleryCollectionCache(saved);
               if (packed.schema === 4) {
-                if (JSON.stringify(await get(key, null)) !== original) throw Error("changed");
-                await set(key, packed);
-                if (JSON.stringify(await get(key, null)) !== JSON.stringify(packed)) throw Error("write unverified");
+                if (JSON.stringify(await get(key2, null)) !== original) throw Error("changed");
+                await set(key2, packed);
+                if (JSON.stringify(await get(key2, null)) !== JSON.stringify(packed)) throw Error("write unverified");
                 report.compacted++;
               } else if (original.length >= 128 * 1024) throw Error("not compacted");
             }
@@ -23635,7 +23953,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-gallery-public-cache-migration.js
-  var keyParts = (key) => typeof key === "string" && !key.endsWith(":checked") ? /^fcat-fc27-gallery-(catalog|pools):27:([A-Za-z0-9:_-]{1,120}?)(?::set:([1-9]\d*))?$/.exec(key) : null;
+  var keyParts = (key2) => typeof key2 === "string" && !key2.endsWith(":checked") ? /^fcat-fc27-gallery-(catalog|pools):27:([A-Za-z0-9:_-]{1,120}?)(?::set:([1-9]\d*))?$/.exec(key2) : null;
   var validTime = (value) => Number.isSafeInteger(value) && value >= 0 && value <= Date.now();
   async function compactGalleryPublicCaches({ list: list2, get, set, locks } = {}) {
     const report = { status: "running", checked: 0, compacted: 0, migrated: 0, failed: 0 };
@@ -23643,12 +23961,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         const keys2 = await list2();
         if (!Array.isArray(keys2) || keys2.length > 1e5) throw Error("invalid keys");
-        for (const key of keys2) {
-          const parts = keyParts(key);
+        for (const key2 of keys2) {
+          const parts = keyParts(key2);
           if (!parts) continue;
           report.checked++;
           try {
-            const original = await get(key, null);
+            const original = await get(key2, null);
             if (!original) continue;
             const saved = await decodeGalleryCacheValue(original);
             if (saved.season !== "27" || saved.scope !== parts[2]) throw Error("scope");
@@ -23670,7 +23988,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 if (!validTime(row.fetchedAt) || seen.has(row.setId)) throw Error("entry");
                 seen.add(row.setId);
                 const pool = normalizeGalleryPool("futgg", row.payload, row.setId, "27");
-                const targetKey = `${key}:set:${row.setId}`;
+                const targetKey = `${key2}:set:${row.setId}`;
                 const targetRaw = await get(targetKey, null);
                 const target = await decodeGalleryCacheValue(targetRaw);
                 let validTarget2 = false;
@@ -23685,17 +24003,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 await set(targetKey, packed2);
                 if (JSON.stringify(await decodeGalleryCacheValue(await get(targetKey, null))) !== JSON.stringify(copy2)) throw Error("write");
               }
-              if (JSON.stringify(await get(key, null)) !== snapshot) throw Error("changed");
-              await set(key, null);
-              if (await get(key, null) !== null) throw Error("clear");
+              if (JSON.stringify(await get(key2, null)) !== snapshot) throw Error("changed");
+              await set(key2, null);
+              if (await get(key2, null) !== null) throw Error("clear");
               report.migrated++;
               continue;
             }
             const packed = await encodeGalleryCacheValue(saved);
             if (packed.format && !original.format) {
-              if (JSON.stringify(await get(key, null)) !== snapshot) throw Error("changed");
-              await set(key, packed);
-              if (JSON.stringify(await get(key, null)) !== JSON.stringify(packed)) throw Error("write");
+              if (JSON.stringify(await get(key2, null)) !== snapshot) throw Error("changed");
+              await set(key2, packed);
+              if (JSON.stringify(await get(key2, null)) !== JSON.stringify(packed)) throw Error("write");
               report.compacted++;
             }
           } catch {
@@ -23721,7 +24039,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var MAX_BYTES2 = 32 * 1024 * 1024;
   var MIN_BYTES2 = 32 * 1024;
   var storedJsonBytes = (value) => new globalThis.TextEncoder().encode(JSON.stringify(value)).byteLength;
-  var invalid2 = () => {
+  var invalid3 = () => {
     throw Error("FCAT_STORAGE_COMPRESSION_INVALID");
   };
   async function collect2(stream, limit) {
@@ -23732,7 +24050,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const { value, done } = await reader.read();
         if (done) break;
         length += value.byteLength;
-        if (length > limit) invalid2();
+        if (length > limit) invalid3();
         chunks.push(value);
       }
     } catch (error2) {
@@ -23762,34 +24080,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   async function decodeStoredValue(value) {
     if (!value || typeof value !== "object" || !Object.hasOwn(value, "fcatStorage")) return value;
-    if (value.fcatStorage !== FORMAT2 || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > MAX_BYTES2 || typeof value.data !== "string" || value.data.length > Math.ceil(MAX_BYTES2 / 3) * 4 || value.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data) || typeof globalThis.DecompressionStream !== "function") invalid2();
+    if (value.fcatStorage !== FORMAT2 || !Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > MAX_BYTES2 || typeof value.data !== "string" || value.data.length > Math.ceil(MAX_BYTES2 / 3) * 4 || value.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data) || typeof globalThis.DecompressionStream !== "function") invalid3();
     const binary = globalThis.atob(value.data), bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
     const unpacked = await collect2(new globalThis.Blob([bytes]).stream().pipeThrough(new globalThis.DecompressionStream("gzip")), value.bytes);
-    if (unpacked.length !== value.bytes) invalid2();
+    if (unpacked.length !== value.bytes) invalid3();
     return JSON.parse(new globalThis.TextDecoder("utf-8", { fatal: true }).decode(unpacked));
   }
   function createCompactStorage({ get, set }) {
     return Object.freeze({
-      get: async (key, fallback) => decodeStoredValue(await get(key, fallback)),
-      set: async (key, value) => set(key, await encodeStoredValue(value))
+      get: async (key2, fallback) => decodeStoredValue(await get(key2, fallback)),
+      set: async (key2, value) => set(key2, await encodeStoredValue(value))
     });
   }
 
   // src/gallery/cache-budget.js
   var GALLERY_DERIVED_MAX_BYTES = 2 * 1024 * 1024;
   var TOTAL_BYTES = 8 * 1024 * 1024;
-  function galleryDerivedCacheKey(key) {
-    if (typeof key !== "string") return null;
+  function galleryDerivedCacheKey(key2) {
+    if (typeof key2 !== "string") return null;
     const prefix = "fcat-fc27-gallery-score:";
-    if (key.startsWith(prefix)) {
+    if (key2.startsWith(prefix)) {
       try {
-        const scope2 = JSON.parse(key.slice(prefix.length));
+        const scope2 = JSON.parse(key2.slice(prefix.length));
         return typeof scope2 === "string" && scope2.length > 0 && scope2.length <= 2048 ? { kind: "score", scope: scope2 } : null;
       } catch {
         return null;
       }
     }
-    const match = /^fcat-fc27-gallery-mapping:27:(futgg|fodder):(.{1,2048})$/.exec(key);
+    const match = /^fcat-fc27-gallery-mapping:27:(futgg|fodder):(.{1,2048})$/.exec(key2);
     return match ? { kind: "mapping", source: match[1], scope: match[2] } : null;
   }
   function boundGalleryCache(record, field, maxCount) {
@@ -23810,10 +24128,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const keys2 = await list2();
     if (!Array.isArray(keys2) || keys2.length > 1e5) return 0;
     const candidates = [];
-    for (const key of keys2) {
-      const meta = galleryDerivedCacheKey(key);
+    for (const key2 of keys2) {
+      const meta = galleryDerivedCacheKey(key2);
       if (!meta) continue;
-      const raw = await get(key, null);
+      const raw = await get(key2, null);
       if (raw == null) continue;
       let value;
       try {
@@ -23822,7 +24140,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         continue;
       }
       if (value?.schema !== 1 || value.scope !== meta.scope || meta.kind === "score" && (value.engine !== 1 || !Array.isArray(value.entries)) || meta.kind === "mapping" && (value.season !== "27" || value.source !== meta.source || !Array.isArray(value.rows))) continue;
-      candidates.push({ key, raw, size: storedJsonBytes({ [key]: `o${JSON.stringify(raw)}` }) });
+      candidates.push({ key: key2, raw, size: storedJsonBytes({ [key2]: `o${JSON.stringify(raw)}` }) });
     }
     let total = candidates.reduce((sum2, row) => sum2 + row.size, 0), count2 = candidates.length, removed = 0;
     for (const row of candidates) {
@@ -23839,12 +24157,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var tail = Promise.resolve();
   function createGalleryCacheStorage({ get, set, list: list2 }) {
     const compact = createCompactStorage({ get, set });
-    return { get: compact.get, set: (key, value) => {
+    return { get: compact.get, set: (key2, value) => {
       const write = tail.catch(() => {
       }).then(async () => {
-        await compact.set(key, value);
+        await compact.set(key2, value);
         try {
-          await trimGalleryDerivedCaches({ get, set, list: list2, keepKey: key });
+          await trimGalleryDerivedCaches({ get, set, list: list2, keepKey: key2 });
         } catch {
         }
       });
@@ -23855,9 +24173,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-storage-maintenance.js
-  function streamlinedStorageKey(key) {
-    if (typeof key !== "string") return null;
-    const match = /^fcat:(\[[\s\S]*\])((?::history:[^:]+(?::[1-9]\d*)?)|:retired)?$/.exec(key);
+  function streamlinedStorageKey(key2) {
+    if (typeof key2 !== "string") return null;
+    const match = /^fcat:(\[[\s\S]*\])((?::history:[^:]+(?::[1-9]\d*)?)|:retired)?$/.exec(key2);
     if (!match) return null;
     try {
       const parts = JSON.parse(match[1]), suffix = match[2] ?? "";
@@ -23889,10 +24207,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } catch {
       }
     };
-    const compact = async (key, meta) => {
+    const compact = async (key2, meta) => {
       report.checked++;
       try {
-        const raw = await get(key, null);
+        const raw = await get(key2, null);
         if (raw == null) return;
         const value = await decodeStoredValue(raw);
         if (meta.kind ? value?.schema !== 1 || value.scope !== meta.scope || meta.kind === "score" && !Array.isArray(value.entries) || meta.kind === "mapping" && (value.season !== "27" || value.source !== meta.source || !Array.isArray(value.rows)) : meta.retired ? !Array.isArray(value) || value.some((row) => !scopedRecord(row?.record, meta) || row.contributionJournal != null && !scopedRecord(row.contributionJournal, meta)) : !scopedRecord(value, meta)) return;
@@ -23900,9 +24218,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const packed = raw?.fcatStorage ? raw : await encodeStoredValue(value);
         if (!same21(await decodeStoredValue(packed), value)) throw Error("roundtrip");
         if (!same21(raw, packed)) {
-          if (!same21(await get(key, null), raw)) throw Error("changed");
-          await set(key, packed);
-          if (!same21(await get(key, null), packed)) throw Error("write unverified");
+          if (!same21(await get(key2, null), raw)) throw Error("changed");
+          await set(key2, packed);
+          if (!same21(await get(key2, null), packed)) throw Error("write unverified");
           report.compacted++;
         }
         report.beforeBytes += beforeBytes;
@@ -23918,8 +24236,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (![list2, get, set].every((fn) => typeof fn === "function")) throw Error("unavailable");
       const keys2 = await list2();
       if (!Array.isArray(keys2) || keys2.length > 1e5) throw Error("invalid keys");
-      const journalKeys = keys2.map((key) => [key, streamlinedStorageKey(key)]).filter(([, meta]) => meta);
-      const cacheKeys = keys2.map((key) => [key, galleryDerivedCacheKey(key)]).filter(([, meta]) => meta);
+      const journalKeys = keys2.map((key2) => [key2, streamlinedStorageKey(key2)]).filter(([, meta]) => meta);
+      const cacheKeys = keys2.map((key2) => [key2, galleryDerivedCacheKey(key2)]).filter(([, meta]) => meta);
       if (journalKeys.length) {
         let entered = false;
         if (typeof locks?.request === "function") {
@@ -23927,12 +24245,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (!lock) return;
             if (entered || lock.name !== FC27_TRADITIONAL_WEB_LOCK || lock.mode !== "exclusive") throw Error("lock");
             entered = true;
-            for (const [key, meta] of journalKeys) await compact(key, meta);
+            for (const [key2, meta] of journalKeys) await compact(key2, meta);
           });
         }
         if (!entered) report.deferred = journalKeys.length;
       }
-      for (const [key, meta] of cacheKeys) await compact(key, meta);
+      for (const [key2, meta] of cacheKeys) await compact(key2, meta);
       report.cacheEvicted = await trimGalleryDerivedCaches({ list: list2, get, set });
       report.status = report.failed ? "partial" : report.deferred ? "deferred" : "completed";
     } catch {
@@ -23948,9 +24266,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function createGalleryMappingCache({ get, set, list: list2, now = () => Date.now() } = {}) {
     ({ get, set } = createGalleryCacheStorage({ get, set, list: list2 }));
     const states4 = /* @__PURE__ */ new Map();
-    const key = (scope2, source) => `fcat-fc27-gallery-mapping:27:${source}:${scope2}`;
+    const key2 = (scope2, source) => `fcat-fc27-gallery-mapping:27:${source}:${scope2}`;
     const read = (scope2, source) => {
-      const id12 = key(scope2, source);
+      const id12 = key2(scope2, source);
       if (!states4.has(id12)) states4.set(id12, (async () => {
         let saved;
         try {
@@ -23983,7 +24301,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             rows: [...state.rows.values()]
           };
           for (const first of boundGalleryCache(saved, "rows", 1e4)) state.rows.delete(first.setId);
-          await set?.(key(state.scope, state.source), saved);
+          await set?.(key2(state.scope, state.source), saved);
         } catch {
         }
       }
@@ -25638,8 +25956,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     function rememberMarketItem(item2) {
       const auction = auctionSnapshot(item2);
-      const key = marketItemKey({ id: item2?.id, tradeId: auction.tradeId });
-      if (key) marketItems.set(key, item2);
+      const key2 = marketItemKey({ id: item2?.id, tradeId: auction.tradeId });
+      if (key2) marketItems.set(key2, item2);
       return auction;
     }
     function inspectCapabilities() {
@@ -25771,9 +26089,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const id12 = Number(item2?.id || 0);
             const definitionId = Number(item2?.definitionId || 0);
             if (pile === "club" && id12 > 0 && occupiedClubItemIds.has(id12)) continue;
-            const key = id12 > 0 ? `${pile}:${id12}` : `${pile}:definition:${definitionId}:index:${sourceCount}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
+            const key2 = id12 > 0 ? `${pile}:${id12}` : `${pile}:definition:${definitionId}:index:${sourceCount}`;
+            if (seen.has(key2)) continue;
+            seen.add(key2);
             sourceCount += 1;
             if (candidates.length < limit) candidates.push(listingCandidateSnapshot(inventory, item2, pile));
           }
@@ -26015,8 +26333,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     async function buyNowItem(ref = {}, priceInput = 0, options = {}) {
       const service = runtime?.services?.Item;
       const price2 = Number(priceInput);
-      const key = marketItemKey(ref);
-      const liveItem = key ? marketItems.get(key) : null;
+      const key2 = marketItemKey(ref);
+      const liveItem = key2 ? marketItems.get(key2) : null;
       const item2 = liveItem ? {
         id: Number(liveItem.id || 0),
         definitionId: Number(liveItem.definitionId || 0),
@@ -26166,9 +26484,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (!requested.has(definitionId)) continue;
           const id12 = Number(item2?.id || 0);
           if (pile === "club" && id12 > 0 && occupiedIds.has(id12)) continue;
-          const key = id12 > 0 ? `${pile}:${id12}` : item2;
-          if (seen.has(key)) continue;
-          seen.add(key);
+          const key2 = id12 > 0 ? `${pile}:${id12}` : item2;
+          if (seen.has(key2)) continue;
+          seen.add(key2);
           ownerships[definitionId][pile] += 1;
         }
       }
@@ -26189,8 +26507,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return { status: "invalid-destination", item: null, destination, response: null, error: null };
       }
       const resolved = resolveItem(runtime, ref);
-      const key = marketItemKey(ref);
-      const liveItem = resolved?.item || (key ? marketItems.get(key) : null);
+      const key2 = marketItemKey(ref);
+      const liveItem = resolved?.item || (key2 ? marketItems.get(key2) : null);
       const item2 = liveItem ? {
         id: Number(liveItem.id || 0),
         definitionId: Number(liveItem.definitionId || 0),
@@ -26206,7 +26524,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const summary3 = responseSummary(response);
         if (summary3.success) {
           await recordPacingSuccess("purchase-route");
-          if (key) marketItems.delete(key);
+          if (key2) marketItems.delete(key2);
           return { status: "completed", item: { ...item2, pile: destination }, destination, response: summary3, error: null };
         }
         const classification = await classifyPacingResult("purchase-route", response || {});
@@ -26564,9 +26882,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function createGalleryListingScheduleStore({ get, set, scope: scope2, context, now = () => Date.now() } = {}) {
     if (typeof get !== "function" || typeof set !== "function" || typeof scope2 !== "string" || !scope2 || !context) throw new TypeError("Gallery listing schedule storage is required");
-    const key = galleryListingScheduleKey(scope2);
+    const key2 = galleryListingScheduleKey(scope2);
     const read = async () => {
-      const raw = await get(key, null);
+      const raw = await get(key2, null);
       if (raw === null) return null;
       const value = normalizeGalleryListingSchedule(raw);
       if (!value || value.scope !== scope2 || !same24(value.context, context)) fail25("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
@@ -26575,8 +26893,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const write = async (value) => {
       const normalized = normalizeGalleryListingSchedule(value);
       if (!normalized) fail25("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
-      await set(key, clone3(normalized));
-      if (!same24(await get(key, null), normalized)) fail25("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
+      await set(key2, clone3(normalized));
+      if (!same24(await get(key2, null), normalized)) fail25("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
       return normalized;
     };
     const inspect = async ({ purchase = null, at: at11 = now(), sessionReady = true } = {}) => {
@@ -26750,9 +27068,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
   function galleryListingInventoryRuntime(root, inventory) {
-    const overlay = (target, overrides) => new Proxy(target ?? {}, { get(value, key) {
-      if (Object.hasOwn(overrides, key)) return overrides[key]();
-      const result = Reflect.get(value, key, value);
+    const overlay = (target, overrides) => new Proxy(target ?? {}, { get(value, key2) {
+      if (Object.hasOwn(overrides, key2)) return overrides[key2]();
+      const result = Reflect.get(value, key2, value);
       return typeof result === "function" ? result.bind(value) : result;
     } });
     const club = { get items() {
@@ -27463,11 +27781,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-fodder-gallery.js
   function withFodderGalleryPools(provider, reader, { now = () => Date.now(), ttlMs = 3e5 } = {}) {
     const pools = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
-    const key = (scope2, set, revision) => `${scope2}:${revision}:${galleryCanonical(set)}`;
+    const key2 = (scope2, set, revision) => `${scope2}:${revision}:${galleryCanonical(set)}`;
     const resolve = async (setId, cachedOnly) => {
       const value = cachedOnly ? await provider.peek() : await provider.load();
       const set = value?.source === "fodder" ? value.catalog.categories.flatMap((category) => category.sets).find((set2) => set2.id === setId) : null;
-      return set ? { set, key: key(reader.scope(), set, value.revision) } : null;
+      return set ? { set, key: key2(reader.scope(), set, value.revision) } : null;
     };
     const loadPool = async (input = {}) => {
       if (input.source !== "fodder") return provider.loadPool(input);
@@ -27837,9 +28155,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const code2 = Number(result?.error?.code ?? result?.response?.status);
         if ([427, 429].includes(code2)) {
           const value = { schema: 1, scope: scope2, persistent: code2 === 427, retryAt: code2 === 429 ? now() + 6e4 : 0 };
-          const key = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
-          await set(key, value);
-          if (!same26(await get(key, null), value)) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+          const key2 = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
+          await set(key2, value);
+          if (!same26(await get(key2, null), value)) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
         }
       };
       return { context, scope: scope2, persistence, assert, adapter, guard, response };
@@ -28152,8 +28470,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/ea/fc27-gallery-card.js
-  var at8 = (root, path) => path.split(".").reduce((value, key) => value?.[key], root);
-  var own = (value, key) => value != null && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : void 0;
+  var at8 = (root, path) => path.split(".").reduce((value, key2) => value?.[key2], root);
+  var own = (value, key2) => value != null && Object.prototype.hasOwnProperty.call(value, key2) ? value[key2] : void 0;
   var validId12 = (value) => Number.isSafeInteger(value) && value > 0;
   function cloneCardData(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -28162,7 +28480,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (Array.isArray(value)) return value.slice(0, 128).map((item2) => item2 && typeof item2 === "object" ? clone6(item2, depth + 1) : item2);
       if (value && typeof value === "object") {
         const copy2 = {};
-        for (const [key, item2] of Object.entries(value).slice(0, 256)) copy2[key] = item2 && typeof item2 === "object" ? clone6(item2, depth + 1) : item2;
+        for (const [key2, item2] of Object.entries(value).slice(0, 256)) copy2[key2] = item2 && typeof item2 === "object" ? clone6(item2, depth + 1) : item2;
         return copy2;
       }
       return value;
@@ -28184,9 +28502,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function createFc27GalleryNativeRenderer(root, { document = root?.document, diagnosticLog: diagnosticLog2 } = {}) {
     const reported = /* @__PURE__ */ new Set();
     const record = (phase, reason, status = "failed") => {
-      const key = `${phase}:${reason ?? status}`;
-      if (reported.has(key)) return;
-      reported.add(key);
+      const key2 = `${phase}:${reason ?? status}`;
+      if (reported.has(key2)) return;
+      reported.add(key2);
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "gallery", event: "card-render", source: "ea", phase, status, ...reason ? { reason } : {} })).catch(() => {
         });
@@ -28339,9 +28657,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const save = (scope2, source, setId, value) => {
-      let record, key;
+      let record, key2;
       try {
-        key = galleryPlanKey(scope2, source, setId);
+        key2 = galleryPlanKey(scope2, source, setId);
         record = normalizeRecord({
           schema: GALLERY_PLAN_SCHEMA,
           scope: scope2,
@@ -28359,7 +28677,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const task = tail2.then(async () => {
         try {
-          await set(key, record);
+          await set(key2, record);
           return { status: "observed", record };
         } catch {
           return { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_WRITE_FAILED" };
@@ -28370,15 +28688,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return task;
     };
     const clear = (scope2, source, setId) => {
-      let key;
+      let key2;
       try {
-        key = galleryPlanKey(scope2, source, setId);
+        key2 = galleryPlanKey(scope2, source, setId);
       } catch {
         return Promise.resolve({ status: "blocked", reason: "FC27_GALLERY_PLAN_SCOPE_INVALID" });
       }
       const task = tail2.then(async () => {
         try {
-          await set(key, null);
+          await set(key2, null);
           return { status: "observed" };
         } catch {
           return { status: "blocked", reason: "FC27_GALLERY_PLAN_CACHE_WRITE_FAILED" };
@@ -28421,9 +28739,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return buckets.get(scope2);
     };
     return Object.freeze({
-      async read(scope2, id12, key) {
+      async read(scope2, id12, key2) {
         const bucket = await load(scope2), row = bucket?.get(id12);
-        return row?.key === key ? clone5(row.summary) : null;
+        return row?.key === key2 ? clone5(row.summary) : null;
       },
       write(scope2, rows) {
         const task = tail2.then(async () => {
@@ -28473,10 +28791,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }, async save(value) {
       const account = scope2(), normalized = normalizeGalleryTradePreferences(value);
       current2(account);
-      const record = { schema: 1, scope: account, value: normalized }, key = galleryTradePreferencesKey(account);
-      await set(key, record);
+      const record = { schema: 1, scope: account, value: normalized }, key2 = galleryTradePreferencesKey(account);
+      await set(key2, record);
       current2(account);
-      const stored = await get(key, null);
+      const stored = await get(key2, null);
       current2(account);
       if (JSON.stringify(stored) !== JSON.stringify(record)) throw Error("FC27_GALLERY_TRADE_SETTINGS_SAVE_FAILED");
       return normalized;
@@ -28525,7 +28843,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           identity5 = account;
           cooldownUntil = 0;
         }
-        const key = `${account}:${definitionId}`, stored = cache.get(key);
+        const key2 = `${account}:${definitionId}`, stored = cache.get(key2);
         if (stored && stored.expiresAt > now()) {
           void diag({
             event: "market-compare",
@@ -28536,7 +28854,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
           return Promise.resolve({ ...stored.result, cached: true });
         }
-        if (pending2.has(key)) return pending2.get(key);
+        if (pending2.has(key2)) return pending2.get(key2);
         const task = tail2.catch(() => {
         }).then(async () => {
           if (inspectScope() !== account) return changedScope("preflight");
@@ -28557,7 +28875,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               void diag({ event: "market-compare", phase: "response", status: "blocked", reason: "FC27_GALLERY_COMPARE_RESPONSE_UNVERIFIED" });
               return blocked12("FC27_GALLERY_COMPARE_RESPONSE_UNVERIFIED");
             }
-            cache.set(key, { result, expiresAt: now() + ttlMs });
+            cache.set(key2, { result, expiresAt: now() + ttlMs });
             while (cache.size > 100) cache.delete(cache.keys().next().value);
             void diag({ event: "market-compare", phase: "response", status: "success" });
             return { ...result, cached: false };
@@ -28565,7 +28883,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (inspectScope() !== account) return changedScope("response");
             const reason = /^FC27_(?:MARKET_[A-Z0-9_]+|CONTEXT_UNAVAILABLE)$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_COMPARE_FAILED";
             const result = blocked12(reason);
-            cache.set(key, { result, expiresAt: now() + ttlMs });
+            cache.set(key2, { result, expiresAt: now() + ttlMs });
             if (/HTTP_429$/.test(reason)) cooldownUntil = now() + ttlMs;
             void diag({
               event: "market-compare",
@@ -28577,8 +28895,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             });
             return result;
           }
-        }).finally(() => pending2.delete(key));
-        pending2.set(key, task);
+        }).finally(() => pending2.delete(key2));
+        pending2.set(key2, task);
         tail2 = task;
         return task;
       }
@@ -28600,7 +28918,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "skillMoves"
   ];
   var flags = ["collected", "held", "inClub", "firstOwned", "holographic"];
-  var integer16 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
+  var integer17 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
   var gradeName = (value) => typeof value === "string" && /^[A-S][+-]?$/.test(value);
   function createGalleryPlanReplay(input) {
     try {
@@ -28609,7 +28927,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!targets.length || targets.length > 4 || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
       const clean = targets.map((target) => {
         const { set, catalog, progress, prices = {}, targetGrade } = target;
-        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer16(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer16(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
+        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer17(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer17(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
         const tags = catalog.tags.map((tag) => {
           const rule = tag.rules[0];
           if (rule.values.length > 256 || rule.values.some((value) => !/^[A-Za-z0-9_-]{1,24}$/.test(String(value))) || tag.tiers.length > 256) throw Error("invalid");
@@ -28624,9 +28942,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         const rows = progress.rows.map((row) => {
           const clean2 = {};
-          for (const key of numeric) if (row[key] == null || integer16(row[key])) clean2[key] = row[key] ?? null;
+          for (const key2 of numeric) if (row[key2] == null || integer17(row[key2])) clean2[key2] = row[key2] ?? null;
           else throw Error("invalid");
-          for (const key of flags) if (row[key] == null || typeof row[key] === "boolean") clean2[key] = row[key] ?? null;
+          for (const key2 of flags) if (row[key2] == null || typeof row[key2] === "boolean") clean2[key2] = row[key2] ?? null;
           else throw Error("invalid");
           if (row.positions != null) {
             if (!Array.isArray(row.positions) || row.positions.length > 32 || row.positions.some((value) => !/^[A-Z0-9]{1,5}$/.test(String(value)))) throw Error("invalid");
@@ -28635,24 +28953,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return clean2;
         });
         const quotes = {};
-        for (const row of rows) if (integer16(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
+        for (const row of rows) if (integer17(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
         return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
-          if (!gradeName(grade.name) || !integer16(grade.threshold)) throw Error("invalid");
+          if (!gradeName(grade.name) || !integer17(grade.threshold)) throw Error("invalid");
           if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
           if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error("invalid");
           const rewards2 = grade.rewards.map((reward) => {
             if (!/^[a-z][a-z0-9_]{0,99}$/.test(reward.type) || !galleryRewardIdentity(reward)) throw Error("invalid");
             const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
-            for (const key of ["assetId", "teamEaId", "resourceId"]) {
-              if (reward[key] != null) {
-                if (!integer16(reward[key])) throw Error("invalid");
-                value[key] = reward[key];
+            for (const key2 of ["assetId", "teamEaId", "resourceId"]) {
+              if (reward[key2] != null) {
+                if (!integer17(reward[key2])) throw Error("invalid");
+                value[key2] = reward[key2];
               }
             }
-            for (const key of ["itemType", "itemCategory"]) {
-              if (reward[key] != null) {
-                if (!(integer16(reward[key]) || typeof reward[key] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key]))) throw Error("invalid");
-                value[key] = reward[key];
+            for (const key2 of ["itemType", "itemCategory"]) {
+              if (reward[key2] != null) {
+                if (!(integer17(reward[key2]) || typeof reward[key2] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key2]))) throw Error("invalid");
+                value[key2] = reward[key2];
               }
             }
             if (reward.untradeable != null) {
@@ -28671,7 +28989,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           rows
         }, prices: quotes, targetGrade };
       });
-      if (joint && input.budget != null && !integer16(input.budget)) return null;
+      if (joint && input.budget != null && !integer17(input.budget)) return null;
       if (rewardMode && !clean.some((target) => target.set.grades.some((grade) => grade.rewards.some((reward) => galleryRewardIdentity(reward)?.key === input.catalogRewardKey)))) return null;
       return {
         schema: 1,
@@ -28839,16 +29157,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (typeof input.methodPath === "string" && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath) || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath) || ["events.markClubCacheDirty", "call.squad.setPlayers"].includes(input.methodPath))) entry.methodPath = input.methodPath;
     if (typeof input.observedHash === "string" && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === "oversized")) entry.observedHash = input.observedHash;
     if (typeof input.expectedHash === "string" && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
-    for (const key of STRING_FIELDS) {
-      const value = key === "reason" || key === "localReason" ? typeof input[key] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null : boundedString(input[key]);
-      if (value !== null) entry[key] = value;
+    for (const key2 of STRING_FIELDS) {
+      const value = key2 === "reason" || key2 === "localReason" ? typeof input[key2] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key2]) ? input[key2] : null : boundedString(input[key2]);
+      if (value !== null) entry[key2] = value;
     }
-    for (const key of NUMBER_FIELDS) {
-      const value = input[key];
-      if (Number.isSafeInteger(value) && value >= 0) entry[key] = value;
+    for (const key2 of NUMBER_FIELDS) {
+      const value = input[key2];
+      if (Number.isSafeInteger(value) && value >= 0) entry[key2] = value;
     }
-    for (const key of BOOLEAN_FIELDS) {
-      if (typeof input[key] === "boolean") entry[key] = input[key];
+    for (const key2 of BOOLEAN_FIELDS) {
+      if (typeof input[key2] === "boolean") entry[key2] = input[key2];
     }
     if (typeof input.version === "string" && /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(input.version)) entry.version = input.version;
     if (!entry.area || !entry.event) return null;
@@ -28860,13 +29178,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function createFcatDiagnosticLog({
     gmGetValue,
     gmSetValue,
-    key = "fcat-fc27-diagnostic-log-v1",
+    key: key2 = "fcat-fc27-diagnostic-log-v1",
     version = null,
     now = () => Date.now(),
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxCriticalEntries = DEFAULT_MAX_CRITICAL_ENTRIES
   } = {}) {
-    if (typeof gmGetValue !== "function" || typeof gmSetValue !== "function" || typeof key !== "string" || !key || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 2e3) {
+    if (typeof gmGetValue !== "function" || typeof gmSetValue !== "function" || typeof key2 !== "string" || !key2 || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 2e3) {
       throw new TypeError("FCAT_DIAGNOSTIC_LOG_INVALID");
     }
     if (!Number.isSafeInteger(maxCriticalEntries) || maxCriticalEntries < 1 || maxCriticalEntries > 500) {
@@ -28883,7 +29201,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const load = () => loading ??= (async () => {
       if (loaded) return;
       try {
-        const saved = await gmGetValue(key, null);
+        const saved = await gmGetValue(key2, null);
         if (saved?.schema === 1 && Array.isArray(saved.entries)) {
           entries2 = saved.entries.slice(-maxEntries).map(validSavedEntry).filter(Boolean);
           criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : []).slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
@@ -28912,7 +29230,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
         planning: structuredClone(planning)
       };
-      return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => void 0);
+      return Promise.resolve().then(() => gmSetValue(key2, payload)).catch(() => void 0);
     };
     const record = (input) => {
       let entry, replay;
@@ -28959,7 +29277,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         performanceEntries: performanceEntries.map((entry) => ({ ...entry }))
       };
     };
-    return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key });
+    return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key: key2 });
   }
 
   // src/gallery/reference-prices.js
@@ -29003,17 +29321,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           current2();
           const missing = [];
           for (const id12 of freshIds) {
-            const key = keyOf4(source, options, id12);
-            let saved = cache.get(key);
+            const key2 = keyOf4(source, options, id12);
+            let saved = cache.get(key2);
             if (!saved) {
               try {
-                saved = await get(key, null);
+                saved = await get(key2, null);
               } catch {
               }
             }
             if (valid3(saved, source, options, id12)) saved = lifetime2(saved, duration);
             if (valid3(saved, source, options, id12) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
-              cache.set(key, saved);
+              cache.set(key2, saved);
               if (saved.error) cooldowns.set(cooldownKeyOf(source, options), { retryAt: saved.expiresAt, reason: saved.error });
             } else missing.push(id12);
           }
@@ -29095,10 +29413,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 expiresAt,
                 error: error2
               };
-              const key = keyOf4(source, options, id12);
-              cache.set(key, entry);
+              const key2 = keyOf4(source, options, id12);
+              cache.set(key2, entry);
               try {
-                await set(key, structuredClone(entry));
+                await set(key2, structuredClone(entry));
               } catch {
               }
               record({
@@ -29143,9 +29461,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         queue = task.catch(() => {
         });
         for (const id12 of freshIds) {
-          const key = keyOf4(source, options, id12);
-          const result = task.then(() => cache.get(key)).finally(() => pending2.delete(key));
-          pending2.set(key, result);
+          const key2 = keyOf4(source, options, id12);
+          const result = task.then(() => cache.get(key2)).finally(() => pending2.delete(key2));
+          pending2.set(key2, result);
         }
       }
       return Promise.all(ids2.map((id12) => pending2.get(keyOf4(source, options, id12))));
@@ -29317,7 +29635,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (let page = 1; page <= 8 && found.size < ids2.length; page++) {
       await check();
       if (deadlineAt !== null && now() >= deadlineAt) break;
-      const key = `${season}:${platform}:${rating}:${page}`, saved = cache?.get(key);
+      const key2 = `${season}:${platform}:${rating}:${page}`, saved = cache?.get(key2);
       const cached = !force && Number.isSafeInteger(saved?.fetchedAt) && saved.fetchedAt <= now() && saved.fetchedAt + quoteTtlMs > now();
       let payload, fetchedAt;
       if (cached) {
@@ -29346,7 +29664,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       if (!cached && cache) {
-        cache.set(key, { fetchedAt, rows: rows.map((row) => ({
+        cache.set(key2, { fetchedAt, rows: rows.map((row) => ({
           resource_id: row.resource_id,
           rating: row.rating,
           pc_LCPrice: parsePublicFutbinPrice(payload, row.resource_id, "pc", false).price,
@@ -29374,13 +29692,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     let mappingQueue = Promise.resolve();
-    const updateIds = (key, learned, removed = {}) => {
+    const updateIds = (key2, learned, removed = {}) => {
       const task = mappingQueue.catch(() => {
       }).then(async () => {
-        const ids2 = { ...await get(key, {}) };
+        const ids2 = { ...await get(key2, {}) };
         for (const [id12, previous] of Object.entries(removed)) if (ids2[id12] === previous) delete ids2[id12];
         Object.assign(ids2, learned);
-        await set(key, ids2);
+        await set(key2, ids2);
       });
       mappingQueue = task.catch(() => {
       });
@@ -29984,7 +30302,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
       <small data-history-note hidden>\u786E\u8BA4\u5DF2\u4E0D\u518D\u6267\u884C\u8FD9\u9879\u5386\u53F2\u4EFB\u52A1\u65F6\uFF0C\u53EF\u5C06\u5B83\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002</small>
       <div class="actions"><button data-external-refresh hidden>\u5237\u65B0\u5217\u8868</button><button data-external-prepare class="primary" hidden disabled>\u51C6\u5907\u8D21\u732E\u9884\u89C8</button><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-archive-history hidden>\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
-    const node = (key) => shadow.querySelector(`[data-${key}]`), dialog = shadow.querySelector("dialog");
+    const node = (key2) => shadow.querySelector(`[data-${key2}]`), dialog = shadow.querySelector("dialog");
     let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
     const rendered = /* @__PURE__ */ new Set();
     let renderGeneration = 0;
@@ -30140,7 +30458,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       node("rating").value = String(s.maxRating);
       node("market-rating").value = String(s.marketMaxRating ?? 99);
       node("wait").value = String(s.partialWaitMs / 1e3);
-      for (const key of ["club", "storage", "unassigned", "transfer"]) node(key).checked = s.sources.includes(key);
+      for (const key2 of ["club", "storage", "unassigned", "transfer"]) node(key2).checked = s.sources.includes(key2);
     };
     const selectScope = (value) => {
       global = value;
@@ -30169,9 +30487,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       maxRating: Number(node("rating").value),
       marketMaxRating: Number(node("market-rating").value),
       partialWaitMs: Number(node("wait").value) * 1e3,
-      sources: ["club", "storage", "unassigned", "transfer"].filter((key) => node(key).checked)
+      sources: ["club", "storage", "unassigned", "transfer"].filter((key2) => node(key2).checked)
     });
-    const on = (key, handler) => node(key).addEventListener("click", (event) => {
+    const on = (key2, handler) => node(key2).addEventListener("click", (event) => {
       if (event.isTrusted) void handler();
     });
     const setExternalMode = (value) => {
@@ -30322,8 +30640,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const warning = add3(output, "section");
         warning.className = "inventory-warning";
         add3(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
-        for (const [key, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
-          const coverage = result.quoteCoverage?.[key];
+        for (const [key2, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
+          const coverage = result.quoteCoverage?.[key2];
           if (coverage) add3(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number3(coverage.valid)} / ${number3(coverage.requested)} \xB7 \u5931\u8D25 ${number3(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number3(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
         }
         add3(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
@@ -30506,7 +30824,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         details.addEventListener("toggle", populate);
         populate();
       });
-      const skipped = Object.entries(result.excluded ?? {}).map(([key, count2]) => `${key}: ${count2}`).join(" \xB7 ");
+      const skipped = Object.entries(result.excluded ?? {}).map(([key2, count2]) => `${key2}: ${count2}`).join(" \xB7 ");
       if (skipped) {
         const details = add3(output, "details");
         add3(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
@@ -30738,7 +31056,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
 
   // src/streamlined/contract.js
-  var integer17 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
+  var integer18 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var same27 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail29 = (code2) => {
     throw Error(`FC27_STREAMLINED_${code2}`);
@@ -30753,12 +31071,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var isStreamlinedChallenge = (value) => value?.isOneClick === true;
   function normalizeStreamlinedChallenge(value = {}) {
     const context = createSeasonContext(value.context);
-    if (context.season !== "27" || !isStreamlinedChallenge(value) || !integer17(value.id, 1) || !integer17(value.setId, 1) || !integer17(value.scoreRequirement, 1, 1e9) || !integer17(value.submittedScore, 0, 1e9) || !["IN_PROGRESS", "NOT_STARTED", "COMPLETED"].includes(value.status)) fail29("CONTRACT_UNVERIFIED");
+    if (context.season !== "27" || !isStreamlinedChallenge(value) || !integer18(value.id, 1) || !integer18(value.setId, 1) || !integer18(value.scoreRequirement, 1, 1e9) || !integer18(value.submittedScore, 0, 1e9) || !["IN_PROGRESS", "NOT_STARTED", "COMPLETED"].includes(value.status)) fail29("CONTRACT_UNVERIFIED");
     if (!Array.isArray(value.eligibility) || value.eligibility.length > 32 || !["AND", "OR"].includes(value.eligibilityOperation ?? "AND")) fail29("ELIGIBILITY_UNVERIFIED");
     const eligibility = value.eligibility.map((rule) => {
-      if (!rule || !integer17(rule.count, -1, 1e3) || !integer17(rule.scope, -1, 1e3) || !Array.isArray(rule.pairs) || !rule.pairs.length || rule.pairs.length > 32) fail29("ELIGIBILITY_UNVERIFIED");
+      if (!rule || !integer18(rule.count, -1, 1e3) || !integer18(rule.scope, -1, 1e3) || !Array.isArray(rule.pairs) || !rule.pairs.length || rule.pairs.length > 32) fail29("ELIGIBILITY_UNVERIFIED");
       const pairs = rule.pairs.map((pair) => {
-        if (!integer17(pair.key, 0, 1e5) || !Array.isArray(pair.values) || !pair.values.length || pair.values.length > 128 || pair.values.some((v) => !integer17(v, 0, 1e9))) fail29("ELIGIBILITY_UNVERIFIED");
+        if (!integer18(pair.key, 0, 1e5) || !Array.isArray(pair.values) || !pair.values.length || pair.values.length > 128 || pair.values.some((v) => !integer18(v, 0, 1e9))) fail29("ELIGIBILITY_UNVERIFIED");
         return { key: pair.key, values: [...pair.values] };
       }).sort((a, b) => a.key - b.key);
       if (new Set(pairs.map((p) => p.key)).size !== pairs.length) fail29("ELIGIBILITY_UNVERIFIED");
@@ -30775,12 +31093,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       targetScore: value.scoreRequirement,
       submittedScore: value.submittedScore,
       remainingScore: Math.max(0, value.scoreRequirement - value.submittedScore),
-      selectionLimit: integer17(value.selectionLimit, 1, 1e3) ? value.selectionLimit : null,
+      selectionLimit: integer18(value.selectionLimit, 1, 1e3) ? value.selectionLimit : null,
       eligibility,
       eligibilityOperation: value.eligibilityOperation ?? "AND",
-      repeats: integer17(value.repeats) ? value.repeats : null,
+      repeats: integer18(value.repeats) ? value.repeats : null,
       repeatabilityMode: typeof value.repeatabilityMode === "string" ? value.repeatabilityMode : null,
-      endTime: integer17(value.endTime) ? value.endTime : null,
+      endTime: integer18(value.endTime) ? value.endTime : null,
       isOneClick: true,
       scoreSource: "ea-sbsScore",
       writeContractVerified: false
@@ -30788,27 +31106,27 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function normalizeStreamlinedItem(value = {}) {
     const source = value.source === "market" ? "market" : "inventory";
-    if (!integer17(value.definitionId, 1) || source === "inventory" && !integer17(value.id, 1)) return null;
+    if (!integer18(value.definitionId, 1) || source === "inventory" && !integer18(value.id, 1)) return null;
     const item2 = {
       source,
       id: source === "inventory" ? value.id : null,
       definitionId: value.definitionId,
       key: source === "inventory" ? `item:${value.id}` : `market:${value.definitionId}:${value.copy ?? 0}`,
-      points: integer17(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
+      points: integer18(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
       scoreVerified: value.scoreVerified === true,
-      rating: integer17(value.rating, 1, 99) ? value.rating : null,
+      rating: integer18(value.rating, 1, 99) ? value.rating : null,
       // Streamlined planning may see cards outside Club/Storage, but those
       // cards are only executable after the EA move-to-Club materialization
       // transaction has been confirmed.
       pile: ["club", "storage", "unassigned", "transfer"].includes(value.pile) ? value.pile : null,
-      duplicateId: integer17(value.duplicateId, 1) ? value.duplicateId : null,
+      duplicateId: integer18(value.duplicateId, 1) ? value.duplicateId : null,
       name: typeof value.name === "string" ? value.name.slice(0, 160) : null,
-      leagueId: integer17(value.leagueId, 1) ? value.leagueId : null,
-      loans: integer17(value.loans, -1) ? value.loans : null,
-      price: integer17(value.price, 1, 15e6) ? value.price : null,
+      leagueId: integer18(value.leagueId, 1) ? value.leagueId : null,
+      loans: integer18(value.loans, -1) ? value.loans : null,
+      price: integer18(value.price, 1, 15e6) ? value.price : null,
       quote: value.quote ? structuredClone(value.quote) : null
     };
-    for (const key of [
+    for (const key2 of [
       "tradeable",
       "special",
       "concept",
@@ -30821,12 +31139,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       "activeSquad",
       "protected",
       "eligible"
-    ]) item2[key] = typeof value[key] === "boolean" ? value[key] : null;
+    ]) item2[key2] = typeof value[key2] === "boolean" ? value[key2] : null;
     if (["unassigned", "transfer"].includes(item2.pile)) item2.executionPile = "club";
     return deepFreeze(item2);
   }
   function streamlinedProgress(challenge, added = 0) {
-    if (!integer17(challenge?.targetScore, 1) || !integer17(challenge?.submittedScore) || !integer17(added)) fail29("PROGRESS_UNKNOWN");
+    if (!integer18(challenge?.targetScore, 1) || !integer18(challenge?.submittedScore) || !integer18(added)) fail29("PROGRESS_UNKNOWN");
     const total = challenge.submittedScore + added;
     return {
       target: challenge.targetScore,
@@ -30854,7 +31172,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     route = null,
     execution = null
   } = {}) {
-    const keyOf5 = (item2) => typeof item2?.key === "string" ? item2.key : integer17(item2?.id, 1) ? `item:${item2.id}` : integer17(item2?.definitionId, 1) ? `definition:${item2.definitionId}` : "unknown";
+    const keyOf5 = (item2) => typeof item2?.key === "string" ? item2.key : integer18(item2?.id, 1) ? `item:${item2.id}` : integer18(item2?.definitionId, 1) ? `definition:${item2.definitionId}` : "unknown";
     return JSON.stringify({
       schema: 1,
       context: createSeasonContext(context),
@@ -30884,16 +31202,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       sources: value.sources ?? ["club", "storage"],
       partialWaitMs: value.partialWaitMs ?? 6e4
     };
-    if (!integer17(result.maxRating, 1, 99) || !integer17(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer17(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail29("SETTINGS_INVALID");
+    if (!integer18(result.maxRating, 1, 99) || !integer18(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer18(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail29("SETTINGS_INVALID");
     return deepFreeze(structuredClone(result));
   }
   function createStreamlinedSettings({ get, set }) {
-    const key = (context, challengeId) => contextKey(context, `streamlined-settings:${challengeId ?? "global"}`);
+    const key2 = (context, challengeId) => contextKey(context, `streamlined-settings:${challengeId ?? "global"}`);
     const read = async (context, challengeId = null) => {
-      if (challengeId !== null && !integer17(challengeId, 1)) fail29("SETTINGS_INVALID");
+      if (challengeId !== null && !integer18(challengeId, 1)) fail29("SETTINGS_INVALID");
       let value;
       try {
-        value = await get(key(context, challengeId), null);
+        value = await get(key2(context, challengeId), null);
       } catch {
         fail29("SETTINGS_READ_FAILED");
       }
@@ -30905,10 +31223,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       });
     };
     return Object.freeze({ read, async save(context, challengeId, value) {
-      if (challengeId !== null && !integer17(challengeId, 1)) fail29("SETTINGS_INVALID");
+      if (challengeId !== null && !integer18(challengeId, 1)) fail29("SETTINGS_INVALID");
       const settings = normalizeStreamlinedSettings(value);
       try {
-        await set(key(context, challengeId), { schema: 3, settings });
+        await set(key2(context, challengeId), { schema: 3, settings });
         if (!same27(await read(context, challengeId), settings)) fail29("SETTINGS_SAVE_FAILED");
       } catch {
         fail29("SETTINGS_SAVE_FAILED");
@@ -30933,24 +31251,24 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function filterStreamlinedItems(items, { eligibility, policy } = {}) {
     const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
     if (!Array.isArray(items) || items.length > 2e4 || !eligibility?.known) return blocked12("ELIGIBILITY_UNVERIFIED");
-    if (!policy || !integer17(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer17(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer17(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer17(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
+    if (!policy || !integer18(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer18(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer18(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer18(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
     const excluded = {}, excludedRows = [], accepted = [], keys2 = /* @__PURE__ */ new Set(), ids2 = /* @__PURE__ */ new Set();
     for (const item2 of items) {
-      if (!item2 || !integer17(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer17(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
+      if (!item2 || !integer18(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer18(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
       keys2.add(item2.key);
       if (item2.source === "inventory") ids2.add(item2.id);
       const checks = [
-        ["points-unknown", integer17(item2.points, 1, 1e9) && item2.scoreVerified === true],
+        ["points-unknown", integer18(item2.points, 1, 1e9) && item2.scoreVerified === true],
         // Frozen legacy plans without a separate procurement limit retain their
         // original ceiling. New settings explicitly supply marketMaxRating.
-        ["rating", integer17(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
-        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer17(item2.rating, ...policy.goldRange)],
+        ["rating", integer18(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
+        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer18(item2.rating, ...policy.goldRange)],
         ["special", item2.special === false],
         ["evolution", item2.evolution === false],
         ["cosmetic", item2.cosmetic === false],
         ["academy", item2.academyEnrolled === false],
         ["protected", item2.protected === false],
-        ["league", integer17(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
+        ["league", integer18(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
       ];
       if (item2.source === "inventory") checks.push(
         ["pile", ["club", "storage", "unassigned", "transfer"].includes(item2.pile)],
@@ -30976,9 +31294,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/scoring.js
   function scoreStreamlinedItems(items = []) {
-    if (!Array.isArray(items) || items.some((item2) => !integer17(item2?.points, 1))) fail29("SCORE_UNKNOWN");
+    if (!Array.isArray(items) || items.some((item2) => !integer18(item2?.points, 1))) fail29("SCORE_UNKNOWN");
     const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-    if (!integer17(total)) fail29("SCORE_UNKNOWN");
+    if (!integer18(total)) fail29("SCORE_UNKNOWN");
     return { status: "observed", total, count: items.length };
   }
   function streamlinedResourceCost(plan) {
@@ -31089,21 +31407,21 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     quoteSource = "futgg",
     quoteAt = Date.now()
   }) {
-    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer17(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer17(quoteAt)) fail29("ROUTE_INPUT_INVALID");
+    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer18(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer18(quoteAt)) fail29("ROUTE_INPUT_INVALID");
     const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
     if (filtered.status !== "observed") throw Error(filtered.reason);
     const groups = [], byKey = /* @__PURE__ */ new Map(), excluded = { ...filtered.excluded };
     for (const item2 of filtered.items) {
       const q = item2.quote;
-      if (item2.source === "market" && (!integer17(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer17(q.fetchedAt) || q.fetchedAt > quoteAt || !integer17(q.expiresAt) || q.expiresAt <= quoteAt)) {
+      if (item2.source === "market" && (!integer18(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer18(q.fetchedAt) || q.fetchedAt > quoteAt || !integer18(q.expiresAt) || q.expiresAt <= quoteAt)) {
         excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
         continue;
       }
-      const key = JSON.stringify([item2.source, item2.points, item2.rating, item2.rarity ?? null, item2.price, item2.pile]);
-      let group = byKey.get(key);
+      const key2 = JSON.stringify([item2.source, item2.points, item2.rating, item2.rarity ?? null, item2.price, item2.pile]);
+      let group = byKey.get(key2);
       if (!group) {
-        group = { key, source: item2.source, item: item2, items: [], quantity: 0 };
-        byKey.set(key, group);
+        group = { key: key2, source: item2.source, item: item2, items: [], quantity: 0 };
+        byKey.set(key2, group);
         groups.push(group);
       }
       if (group.items.some((row) => row.key === item2.key || item2.source === "market" && row.definitionId === item2.definitionId)) continue;
@@ -31120,7 +31438,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     budget = null
   } = {}) {
     const { challenge, objective = "lowest-value" } = input;
-    if (!integer17(maxNodes, 1, 5e6) || !integer17(maxStates, 1, 1e5) || !integer17(maxMs, 1, 6e4) || budget !== null && !integer17(budget) || !integer17(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail29("ROUTE_INPUT_INVALID");
+    if (!integer18(maxNodes, 1, 5e6) || !integer18(maxStates, 1, 1e5) || !integer18(maxMs, 1, 6e4) || budget !== null && !integer18(budget) || !integer18(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail29("ROUTE_INPUT_INVALID");
     const { groups, excluded } = groupStreamlinedCandidates(input);
     if (objective === "inventory-first") return yield* planInventoryFirstRoutesSteps(
       input,
@@ -31286,9 +31604,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const familyKey = (g) => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
     const families = /* @__PURE__ */ new Map();
     for (const entry of marketEntries) {
-      const key = familyKey(entry.g), family = families.get(key) ?? [];
+      const key2 = familyKey(entry.g), family = families.get(key2) ?? [];
       family.push(entry);
-      families.set(key, family);
+      families.set(key2, family);
     }
     for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
     for (const base of frontier2.slice(0, 8)) {
@@ -31305,15 +31623,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
       if (upper <= 1) continue;
       let lower = Math.ceil(base.count / challenge.selectionLimit);
-      for (const [key, count2] of demands) lower = Math.max(
+      for (const [key2, count2] of demands) lower = Math.max(
         lower,
-        Math.ceil(count2 / families.get(key).reduce((sum2, entry) => sum2 + entry.g.items.length, 0))
+        Math.ceil(count2 / families.get(key2).reduce((sum2, entry) => sum2 + entry.g.items.length, 0))
       );
       const cover = (waves) => {
         let state = owned2;
-        for (const [key, count2] of demands) {
+        for (const [key2, count2] of demands) {
           let remaining = count2;
-          for (const { g, i } of families.get(key)) {
+          for (const { g, i } of families.get(key2)) {
             const quantity = Math.min(remaining, waves * g.items.length);
             if (quantity) state = add2(state, g, i, quantity);
             remaining -= quantity;
@@ -31489,10 +31807,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
   }
   function expandStreamlinedRoute(route, challenge) {
-    if (!route || !integer17(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail29("ROUTE_INVALID");
+    if (!route || !integer18(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail29("ROUTE_INVALID");
     const items = [], copies = /* @__PURE__ */ new Map();
     for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(["unassigned", "transfer"].includes(a.item.pile)) - Number(["unassigned", "transfer"].includes(b.item.pile)))) {
-      if (!integer17(group.quantity, 1, 2e4) || !group.items?.length) fail29("ROUTE_INVALID");
+      if (!integer18(group.quantity, 1, 2e4) || !group.items?.length) fail29("ROUTE_INVALID");
       for (let n = 0; n < group.quantity; n++) {
         if (group.source === "inventory") {
           if (!group.items[n]) fail29("ROUTE_INVALID");
@@ -31530,7 +31848,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/planner.js
   function splitStreamlinedBatches(items, limit) {
-    if (!integer17(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
+    if (!integer18(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
     const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
     const batches = [], nextVersion = /* @__PURE__ */ new Map();
     let open = 0;
@@ -31562,9 +31880,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     marketComplete = false
   } = {}) {
     const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
-    if (challenge?.mechanism !== "streamlined" || !integer17(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer17(maxNodes, 1, 5e6) || !integer17(maxStates, 1, 1e5) || !integer17(maxMs, 1, 6e4) || !integer17(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
+    if (challenge?.mechanism !== "streamlined" || !integer18(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer18(maxNodes, 1, 5e6) || !integer18(maxStates, 1, 1e5) || !integer18(maxMs, 1, 6e4) || !integer18(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
     if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
-    if (!integer17(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
+    if (!integer18(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
     if (objective === "inventory-first") {
       const result = yield* planStreamlinedRoutesSteps(
         { challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
@@ -31580,7 +31898,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const candidates = filtered.items.filter((item2) => {
       if (item2.source !== "market") return true;
       const q = item2.quote;
-      const valid3 = integer17(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer17(q.fetchedAt) && q.fetchedAt <= quoteAt && integer17(q.expiresAt) && q.expiresAt > quoteAt;
+      const valid3 = integer18(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer18(q.fetchedAt) && q.fetchedAt <= quoteAt && integer18(q.expiresAt) && q.expiresAt > quoteAt;
       if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
       return valid3;
     }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
@@ -31697,11 +32015,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return validStreamlinedPurchaseScope(scope2) ? deepFreeze(scope2) : null;
   }
   function validStreamlinedPurchaseScope(scope2) {
-    if (!scope2 || scope2.schema !== 1 || !integer17(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
+    if (!scope2 || scope2.schema !== 1 || !integer18(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
     const ids2 = /* @__PURE__ */ new Set(), keys2 = /* @__PURE__ */ new Set();
-    return scope2.groups.every((group) => group.source === "market" && integer17(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same27(group.item, group.items[0]) && group.items.every((item2) => {
+    return scope2.groups.every((group) => group.source === "market" && integer18(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same27(group.item, group.items[0]) && group.items.every((item2) => {
       const q = item2.quote;
-      if (ids2.has(item2.definitionId) || !integer17(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer17(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer17(item2.price, 150, 15e6) || !integer17(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer17(q.fetchedAt, 0, scope2.quotedAt) || !integer17(q.expiresAt, scope2.quotedAt + 1)) return false;
+      if (ids2.has(item2.definitionId) || !integer18(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer18(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer18(item2.price, 150, 15e6) || !integer18(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer18(q.fetchedAt, 0, scope2.quotedAt) || !integer18(q.expiresAt, scope2.quotedAt + 1)) return false;
       ids2.add(item2.definitionId);
       return true;
     })) && ids2.size <= 2e3;
@@ -31757,16 +32075,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   // src/streamlined/plan.js
   function validPlanContents(plan) {
     const { challenge, items, batches } = plan;
-    if (plan.execution && (!integer17(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer17(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer17(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer17(plan.execution.partialWaitMs, 0, 36e5))) return false;
-    if (!challenge || challenge.mechanism !== "streamlined" || !integer17(challenge.targetScore, 1) || !integer17(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer17(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same27(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
-    if (items.some((i) => !integer17(i?.definitionId, 1) || !integer17(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer17(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer17(i.price, 1, 15e6)))) return false;
+    if (plan.execution && (!integer18(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer18(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer18(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer18(plan.execution.partialWaitMs, 0, 36e5))) return false;
+    if (!challenge || challenge.mechanism !== "streamlined" || !integer18(challenge.targetScore, 1) || !integer18(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer18(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same27(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
+    if (items.some((i) => !integer18(i?.definitionId, 1) || !integer18(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer18(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer18(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
     const inventory = items.filter((i) => i.source === "inventory");
-    const value = inventory.some((i) => !integer17(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
+    const value = inventory.some((i) => !integer18(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
     return plan.score === score2 && same27(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
   }
   function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
-    if (!same27(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer17(challenge.selectionLimit, 1, 1e3)) fail29("PLAN_UNCONFIRMED");
+    if (!same27(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer18(challenge.selectionLimit, 1, 1e3)) fail29("PLAN_UNCONFIRMED");
     const items = structuredClone(result.items), batches = structuredClone(result.batches);
     if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail29("PLAN_UNCONFIRMED");
     const route = result.route ? structuredClone(result.route) : null;
@@ -31841,7 +32159,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/contribution.js
   function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same27(receipt.itemIds, itemIds) || !integer17(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer17(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer17(receipt.challengeAwardCount, 0, 100) || !integer17(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer17(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail29("RECEIPT_INVALID");
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same27(receipt.itemIds, itemIds) || !integer18(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer18(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer18(receipt.challengeAwardCount, 0, 100) || !integer18(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer18(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail29("RECEIPT_INVALID");
     return deepFreeze({
       schema: 1,
       status: "accepted",
@@ -31860,12 +32178,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     });
   }
   function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
-    if (!integer17(expected.challengeId, 1) || !integer17(expected.setId, 1) || !integer17(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer17(id12, 1))) fail29("CONTRIBUTION_INPUT_INVALID");
-    const response = reply?.response, code2 = integer17(reply?.status, 100, 599) ? reply.status : null;
+    if (!integer18(expected.challengeId, 1) || !integer18(expected.setId, 1) || !integer18(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer18(id12, 1))) fail29("CONTRIBUTION_INPUT_INVALID");
+    const response = reply?.response, code2 = integer18(reply?.status, 100, 599) ? reply.status : null;
     const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
     const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
     const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
-    const hasProgress = integer17(response?.submittedScore, expected.previousScore + 1, 1e9);
+    const hasProgress = integer18(response?.submittedScore, expected.previousScore + 1, 1e9);
     if (reply?.success === false || conflict) {
       if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
       if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
@@ -31885,7 +32203,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       challengeId: expected.challengeId,
       itemIds: [...expected.itemIds],
       submittedScore: response.submittedScore,
-      ...integer17(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
+      ...integer18(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
       challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
       challengeAwardCount: challengeAwards.length,
       setAwardCount: setAwards.length,
@@ -31916,12 +32234,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return contextKey(context, "streamlined-contribution");
   }
   function validateStreamlinedJournal(record, context) {
-    if (record?.schema !== 1 || !same27(record.context, createSeasonContext(context)) || !integer17(record.revision, 1) || !integer17(record.updatedAt) || !integer17(record.submittedScore) || !Array.isArray(record.batches) || !integer17(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail29("JOURNAL_INVALID");
+    if (record?.schema !== 1 || !same27(record.context, createSeasonContext(context)) || !integer18(record.revision, 1) || !integer18(record.updatedAt) || !integer18(record.submittedScore) || !Array.isArray(record.batches) || !integer18(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail29("JOURNAL_INVALID");
     assertStreamlinedPlan(record.plan);
     if (!same27(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same27(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail29("JOURNAL_INVALID");
     let previousScore = record.plan.challenge.submittedScore;
     for (const batch of record.batches) {
-      if (batch.startingScore !== void 0 && (!integer17(
+      if (batch.startingScore !== void 0 && (!integer18(
         batch.startingScore,
         record.plan.challenge.submittedScore,
         record.submittedScore
@@ -31979,12 +32297,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (replaceRemainder && !replacement) fail29("RECOVERY_REQUIRED");
       if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail29("RECOVERY_REQUIRED");
       if (replacement) {
-        const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
+        const key2 = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
         try {
-          const saved = await get(key, null);
+          const saved = await get(key2, null);
           if (saved != null && !same27(saved, prior)) fail29("JOURNAL_ARCHIVE_CONFLICT");
-          if (saved == null) await set(key, structuredClone(prior));
-          if (!same27(await get(key, null), prior)) fail29("JOURNAL_ARCHIVE_FAILED");
+          if (saved == null) await set(key2, structuredClone(prior));
+          if (!same27(await get(key2, null), prior)) fail29("JOURNAL_ARCHIVE_FAILED");
         } catch {
           fail29("JOURNAL_ARCHIVE_FAILED");
         }
@@ -32019,7 +32337,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       })) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     }
     const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
-    if (ids2.some((id12) => !integer17(id12, 1))) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (ids2.some((id12) => !integer18(id12, 1))) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     if (record.contribution) {
       const { batchPlan, material } = record.contribution;
       try {
@@ -32059,26 +32377,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       assertStreamlinedPlan(record.plan);
       if (record.plan.fingerprint !== record.fingerprint || !same27(record.plan.context, context) || !same27(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same27(record.plan.challenge, record.challenge) || !same27(record.plan.policy, record.policy)) fail29("PURCHASE_JOURNAL_INVALID");
     }
-    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same27(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer17(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer17(record.budget) || !integer17(record.spent) || record.spent > record.budget || !integer17(record.submittedScore) || !integer17(record.challenge?.id, 1) || !integer17(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer17(record.confirmedBatches) || !integer17(record.challenge?.targetScore, 1) || !integer17(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer17(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer17(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer17(id12, 1))) fail29("PURCHASE_JOURNAL_INVALID");
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same27(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer18(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer18(record.budget) || !integer18(record.spent) || record.spent > record.budget || !integer18(record.submittedScore) || !integer18(record.challenge?.id, 1) || !integer18(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer18(record.confirmedBatches) || !integer18(record.challenge?.targetScore, 1) || !integer18(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer18(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer18(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer18(id12, 1))) fail29("PURCHASE_JOURNAL_INVALID");
     for (const group of record.route.groups) {
-      if (!["inventory", "market"].includes(group.source) || !integer17(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer17(group.item?.points, 1) || group.items.some((item2) => !integer17(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer17(item2.price, 150, 15e6) || !integer17(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer17(item2.id, 1))) fail29("PURCHASE_JOURNAL_INVALID");
+      if (!["inventory", "market"].includes(group.source) || !integer18(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer18(group.item?.points, 1) || group.items.some((item2) => !integer18(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer18(item2.price, 150, 15e6) || !integer18(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer18(item2.id, 1))) fail29("PURCHASE_JOURNAL_INVALID");
     }
     const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
     let spent = 0;
     for (const entry of record.entries) {
       const group = record.route.groups[entry.groupIndex];
-      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer17(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer17(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail29("PURCHASE_JOURNAL_INVALID");
+      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer18(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer18(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail29("PURCHASE_JOURNAL_INVALID");
       keys2.add(entry.key);
       if (entry.source === "inventory") {
-        if (!integer17(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
+        if (!integer18(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
         items.add(entry.itemId);
         continue;
       }
       if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
-        if (!integer17(entry.itemId, 1) || !integer17(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer17(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
+        if (!integer18(entry.itemId, 1) || !integer18(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer18(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
         items.add(entry.itemId);
         if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
-      } else if (entry.cap !== null && !integer17(entry.cap, 150, 15e6)) fail29("PURCHASE_JOURNAL_INVALID");
+      } else if (entry.cap !== null && !integer18(entry.cap, 150, 15e6)) fail29("PURCHASE_JOURNAL_INVALID");
       if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail29("PURCHASE_JOURNAL_INVALID");
     }
     if (spent !== record.spent) fail29("PURCHASE_JOURNAL_INVALID");
@@ -32103,7 +32421,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (!Array.isArray(rows) || rows.length > 50) fail29("PURCHASE_ARCHIVE_INVALID");
       const operations = /* @__PURE__ */ new Set();
       for (const row of rows) {
-        if (row?.reason !== "user-abandoned" || !integer17(row.at) || !row.record || operations.has(row.record.operationId)) fail29("PURCHASE_ARCHIVE_INVALID");
+        if (row?.reason !== "user-abandoned" || !integer18(row.at) || !row.record || operations.has(row.record.operationId)) fail29("PURCHASE_ARCHIVE_INVALID");
         validateStreamlinedPurchase(row.record, context);
         streamlinedPurchaseReservedIds(row.record);
         if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail29("PURCHASE_ARCHIVE_INVALID");
@@ -32175,14 +32493,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       validateStreamlinedPurchase(record, record.context);
       if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail29("PURCHASE_RECOVERY_REQUIRED");
       if (!same27(record, await read(record.context))) fail29("PURCHASE_JOURNAL_CHANGED");
-      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
       try {
-        const prior = await get(key, null);
+        const prior = await get(key2, null);
         if (prior !== null && !same27(prior, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
         assertHeld();
-        await set(key, structuredClone(record));
+        await set(key2, structuredClone(record));
         assertHeld();
-        if (!same27(record, await get(key, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(record, await get(key2, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       } catch {
         fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       }
@@ -32199,14 +32517,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (rows.length >= 50) fail29("PURCHASE_ARCHIVE_FULL");
       if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail29("PURCHASE_RECOVERY_REQUIRED");
       if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail29("PURCHASE_ARCHIVE_INVALID");
-      const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
       try {
-        const prior = await get(key, null);
+        const prior = await get(key2, null);
         if (prior !== null && !same27(prior, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
         assertHeld();
-        await set(key, structuredClone(record));
+        await set(key2, structuredClone(record));
         assertHeld();
-        if (!same27(record, await get(key, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(record, await get(key2, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
         rows.push({
           reason: "user-abandoned",
           at: Date.now(),
@@ -32263,10 +32581,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function planStreamlinedExternalSelection(snapshot, keys2) {
     if (snapshot?.status !== "observed" || !Array.isArray(keys2) || !keys2.length || keys2.length > 2e4 || new Set(keys2).size !== keys2.length) return blocked11("EXTERNAL_SELECTION_INVALID");
     const { challenge } = snapshot;
-    if (!integer17(challenge?.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
+    if (!integer18(challenge?.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
     if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [] };
     const byKey = new Map(snapshot.rows.map((row) => [row.item.key, row]));
-    const selected = keys2.map((key) => byKey.get(key));
+    const selected = keys2.map((key2) => byKey.get(key2));
     if (selected.some((row) => !row?.selectable)) return blocked11("EXTERNAL_SELECTION_INVALID");
     const all = /* @__PURE__ */ new Map();
     for (const row of selected) if (row.prerequisite) all.set(row.prerequisite.key, row.prerequisite);
@@ -32465,7 +32783,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
           const before = new Map(saved.snapshot.rows.map((row) => [row.item.key, row]));
           const after = new Map(snapshot.rows?.map((row) => [row.item.key, row]) ?? []);
-          if (!same27(input.context, saved.origin.context) || !same27(snapshot.policy, saved.snapshot.policy) || !same27(snapshot.challenge, saved.snapshot.challenge) || !Array.isArray(keys2) || keys2.some((key) => !before.has(key) || !same27(before.get(key), after.get(key)))) fail29("EXTERNAL_SELECTION_CHANGED");
+          if (!same27(input.context, saved.origin.context) || !same27(snapshot.policy, saved.snapshot.policy) || !same27(snapshot.challenge, saved.snapshot.challenge) || !Array.isArray(keys2) || keys2.some((key2) => !before.has(key2) || !same27(before.get(key2), after.get(key2)))) fail29("EXTERNAL_SELECTION_CHANGED");
           const result = planStreamlinedExternalSelection(snapshot, keys2);
           if (!["ready", "partial"].includes(result.status)) return result;
           const plan = createStreamlinedPlan({
@@ -32598,10 +32916,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const exclusionBuckets = /* @__PURE__ */ new Map();
           for (const row of filtered.excludedRows ?? []) {
             const item2 = inventoryByKey.get(row.key);
-            const key = JSON.stringify([row.reason, item2?.pile ?? "unknown", item2?.rating ?? null]);
-            const bucket = exclusionBuckets.get(key) ?? { reason: row.reason, pile: item2?.pile ?? "unknown", rating: item2?.rating ?? null, count: 0 };
+            const key2 = JSON.stringify([row.reason, item2?.pile ?? "unknown", item2?.rating ?? null]);
+            const bucket = exclusionBuckets.get(key2) ?? { reason: row.reason, pile: item2?.pile ?? "unknown", rating: item2?.rating ?? null, count: 0 };
             bucket.count++;
-            exclusionBuckets.set(key, bucket);
+            exclusionBuckets.set(key2, bucket);
           }
           const inventorySelection = {
             readCount: input.inventory.length,
@@ -32752,8 +33070,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           }).filter((item2) => inventoryFirst || !quoteCoverage.limited || item2.quote !== null);
           const eligibleKeys = new Set(filtered.items.map((item2) => item2.key)), buckets = /* @__PURE__ */ new Map();
           for (const item2 of [...inventory.filter((item3) => eligibleKeys.has(item3.key)), ...market]) {
-            const key = JSON.stringify([item2.source, item2.pile, item2.rating, item2.points]);
-            let bucket = buckets.get(key);
+            const key2 = JSON.stringify([item2.source, item2.pile, item2.rating, item2.points]);
+            let bucket = buckets.get(key2);
             if (!bucket) {
               bucket = {
                 event: "candidate-bucket",
@@ -32766,7 +33084,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 cheapestPrice: null,
                 bestPrice: null
               };
-              buckets.set(key, bucket);
+              buckets.set(key2, bucket);
             }
             bucket.count++;
             if (item2.price != null) {
@@ -32917,7 +33235,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             routeMaterialValue: result.materialValue,
             excludedTradeCount: excluded.trade,
             excludedPileCount: excluded.pile,
-            excludedEligibilityCount: Object.entries(excluded).filter(([key]) => key.startsWith("eligibility-")).reduce((sum2, [, count2]) => sum2 + count2, 0),
+            excludedEligibilityCount: Object.entries(excluded).filter(([key2]) => key2.startsWith("eligibility-")).reduce((sum2, [, count2]) => sum2 + count2, 0),
             excludedGoldRangeCount: filtered.excluded?.["fsu-gold-range"],
             fsuGoldMax: input.policy.goldRange?.[1],
             reason: result.reason
@@ -33281,7 +33599,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           timeout: 15e3,
           onload: (response) => {
             if (response.finalUrl && response.finalUrl !== url) return error2("REDIRECT");
-            if (response.status !== 200) return error2(integer17(response.status, 100, 599) ? `HTTP_${response.status}` : "RESPONSE_INVALID");
+            if (response.status !== 200) return error2(integer18(response.status, 100, 599) ? `HTTP_${response.status}` : "RESPONSE_INVALID");
             try {
               if (typeof response.responseText !== "string" || response.responseText.length > 3e6) return error2("RESPONSE_INVALID");
               const value = JSON.parse(response.responseText).data;
@@ -33302,7 +33620,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return Object.freeze({ async load({ challenge, context, policy, check = () => {
     }, onProgress = () => {
     } }) {
-      if (context?.season !== "27" || !integer17(challenge?.setId, 1) || !integer17(challenge.id, 1)) fail29("CATALOG_INPUT_INVALID");
+      if (context?.season !== "27" || !integer18(challenge?.setId, 1) || !integer18(challenge.id, 1)) fail29("CATALOG_INPUT_INVALID");
       const platform = /^pc:/i.test(context.platform) ? "pc" : /^(psn|xbox):/i.test(context.platform) ? "ps5" : null;
       if (!platform) fail29("CATALOG_PLATFORM_INVALID");
       check();
@@ -33317,10 +33635,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (data.setEaId !== challenge.setId || target?.scoreRequirement !== challenge.targetScore || !Array.isArray(solution?.rates) || solution.rates.length > 100) fail29("CATALOG_RULES_CHANGED");
       const marketMaxRating = policy.marketMaxRating ?? policy.maxRating;
       const routeGroups = data.routeGroups ?? [];
-      if (!Array.isArray(routeGroups) || routeGroups.length > 100 || routeGroups.some((row) => !integer17(row?.overall, 1, 99) || !integer17(row?.rarityEaId, 0, 1e4))) fail29("CATALOG_RULES_CHANGED");
-      const descriptors = [...solution.rates.filter((row) => integer17(row?.score, 1)), ...routeGroups];
+      if (!Array.isArray(routeGroups) || routeGroups.length > 100 || routeGroups.some((row) => !integer18(row?.overall, 1, 99) || !integer18(row?.rarityEaId, 0, 1e4))) fail29("CATALOG_RULES_CHANGED");
+      const descriptors = [...solution.rates.filter((row) => integer18(row?.score, 1)), ...routeGroups];
       const byGroup = /* @__PURE__ */ new Map();
-      for (const row of descriptors) if (integer17(row?.overall, 1, marketMaxRating) && integer17(row?.rarityEaId, 0, 1e4)) {
+      for (const row of descriptors) if (integer18(row?.overall, 1, marketMaxRating) && integer18(row?.rarityEaId, 0, 1e4)) {
         byGroup.set(`${row.overall}:${row.rarityEaId}`, row);
       }
       if (byGroup.size > 100) fail29("CATALOG_RULES_CHANGED");
@@ -33335,7 +33653,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         completed++;
         if (group.challengeEaId !== challenge.id || group.overall !== rate.overall || group.rarityEaId !== rate.rarityEaId || group.platform !== platform || !Array.isArray(group.players) || group.players.length > 30) fail29("CATALOG_GROUP_INVALID");
         for (const row of group.players) {
-          if (!integer17(row.player?.eaId, 1) || row.player.overall !== rate.overall) fail29("CATALOG_PLAYER_INVALID");
+          if (!integer18(row.player?.eaId, 1) || row.player.overall !== rate.overall) fail29("CATALOG_PLAYER_INVALID");
           ids2.add(row.player.eaId);
         }
       }
@@ -33407,11 +33725,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             Object.assign(criteria, { type: root.SearchType.PLAYER, category: root.SearchCategory.ANY, defId: batch, count: 250, offset });
             const reply = await request(criteria);
             assert();
-            if (reply?.success !== true || reply.status !== 200) fail29(integer17(reply?.status, 100, 599) ? `MARKET_HTTP_${reply.status}` : "MARKET_RESPONSE_INVALID");
+            if (reply?.success !== true || reply.status !== 200) fail29(integer18(reply?.status, 100, 599) ? `MARKET_HTTP_${reply.status}` : "MARKET_RESPONSE_INVALID");
             const rows = (reply.response ?? reply.data)?.items;
             if (!Array.isArray(rows) || rows.length > 250) fail29("MARKET_RESPONSE_INVALID");
             for (const entity of rows) {
-              if (!integer17(entity?.definitionId, 1)) fail29("MARKET_IDENTITY_INVALID");
+              if (!integer18(entity?.definitionId, 1)) fail29("MARKET_IDENTITY_INVALID");
               if (!batch.includes(entity.definitionId)) continue;
               if (seen.has(entity.definitionId)) fail29("MARKET_IDENTITY_INVALID");
               seen.add(entity.definitionId);
@@ -33426,7 +33744,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const projected2 = [];
         for (const entity of entities.values()) {
           const cosmetics = entity.cosmetics, hyper = entity._hyperCosmeticDTOs;
-          if (!isFc27PlayerItem(entity) || entity.concept !== true || entity.upgrades !== null || !Array.isArray(cosmetics) || !hyper || typeof hyper !== "object" || cosmetics.length || Object.keys(hyper).length || !integer17(entity.sbsScore, 1) || !integer17(entity._rareflag, 0, 1)) continue;
+          if (!isFc27PlayerItem(entity) || entity.concept !== true || entity.upgrades !== null || !Array.isArray(cosmetics) || !hyper || typeof hyper !== "object" || cosmetics.length || Object.keys(hyper).length || !integer18(entity.sbsScore, 1) || !integer18(entity._rareflag, 0, 1)) continue;
           const item2 = normalizeStreamlinedItem({
             source: "market",
             definitionId: entity.definitionId,
@@ -33592,9 +33910,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const market = [];
         for (const item2 of filtered.items) {
           const quote2 = references[item2.definitionId]?.quotes?.[pricePolicy.source];
-          if (validStreamlinedQuote(quote2, pricePolicy.source, item2.definitionId, quoteAt) && integer17(quote2.price, 150, 15e6)) {
+          if (validStreamlinedQuote(quote2, pricePolicy.source, item2.definitionId, quoteAt) && integer18(quote2.price, 150, 15e6)) {
             const authority = galleryReferenceQuote({ [pricePolicy.source]: quote2.price }, pricePolicy);
-            if (!integer17(authority.maxBuy, 150, 15e6)) continue;
+            if (!integer18(authority.maxBuy, 150, 15e6)) continue;
             const raw = entities.get(item2.definitionId);
             market.push({
               ...item2,
@@ -33644,17 +33962,17 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const raw = createStreamlinedJournal({
       now,
       canReplaceArchived: isArchivedContribution,
-      get: async (key, fallback) => {
+      get: async (key2, fallback) => {
         assertContext(bound);
-        const value = await get(key, fallback);
+        const value = await get(key2, fallback);
         assertContext(bound);
         return value;
       },
-      set: async (key, value) => {
+      set: async (key2, value) => {
         assertHeld();
         const write = Promise.resolve().then(() => {
           assertHeld();
-          return set(key, value);
+          return set(key2, value);
         });
         pending2.add(write);
         try {
@@ -33744,7 +34062,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
     const Request = root.UTHttpRequest, factory = root.factories?.Item, createItem = factory?.createItem;
     const auth = ownData(dao, "authDelegate"), game = ownData(root, "GAME_NAME"), pile = ownData(root.ItemPile, "STORAGE");
-    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game) || !integer17(pile, 1) || typeof createItem !== "function") fail29("STORAGE_RUNTIME_UNVERIFIED");
+    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game) || !integer18(pile, 1) || typeof createItem !== "function") fail29("STORAGE_RUNTIME_UNVERIFIED");
     let busy = false, stopped = false, requests = 0;
     const assert = () => {
       runtime();
@@ -33811,10 +34129,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         assert();
         if (ownData(dto, "success") !== true || ownData(dto, "status") !== 200) {
           const status = ownData(dto, "status");
-          fail29(integer17(status, 100, 599) ? `STORAGE_HTTP_${status}` : "STORAGE_RESPONSE_UNVERIFIED");
+          fail29(integer18(status, 100, 599) ? `STORAGE_HTTP_${status}` : "STORAGE_RESPONSE_UNVERIFIED");
         }
         const response = ownData(dto, "response"), data = ownData(response, "itemData");
-        if (!Array.isArray(data) || data.length > 2e4 || new Set(data.map((item2) => ownData(item2, "id"))).size !== data.length || data.some((item2) => !integer17(ownData(item2, "id"), 1) || !integer17(ownData(item2, "resourceId"), 1) || ![void 0, "player"].includes(ownData(item2, "itemType")))) fail29("STORAGE_PAYLOAD_UNVERIFIED");
+        if (!Array.isArray(data) || data.length > 2e4 || new Set(data.map((item2) => ownData(item2, "id"))).size !== data.length || data.some((item2) => !integer18(ownData(item2, "id"), 1) || !integer18(ownData(item2, "resourceId"), 1) || ![void 0, "player"].includes(ownData(item2, "itemType")))) fail29("STORAGE_PAYLOAD_UNVERIFIED");
         const rows = data.map((data2) => {
           const entity = createItem.call(factory, { ...data2 });
           if (!isFc27PlayerItem(entity) || ownData(entity, "id") !== data2.id || ownData(entity, "definitionId") !== data2.resourceId || ownData(entity, "utasPile") !== pile || ownData(entity, "concept") !== false) fail29("STORAGE_ENTITY_UNVERIFIED");
@@ -33834,13 +34152,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
 
   // src/adapters/ea/fc27-streamlined-read.js
-  var at9 = (root, path) => path.split(".").reduce((v, key) => ownData(v, key), root);
+  var at9 = (root, path) => path.split(".").reduce((v, key2) => ownData(v, key2), root);
   function values7(input, limit) {
     for (let i = 0; i < 3 && ownData(input, "_collection") !== void 0; i++) input = ownData(input, "_collection");
     if (!input || typeof input !== "object") fail29("COLLECTION_UNKNOWN");
-    const keys2 = Object.getOwnPropertyNames(input).filter((key) => key !== "length");
+    const keys2 = Object.getOwnPropertyNames(input).filter((key2) => key2 !== "length");
     if (keys2.length > limit) fail29("COLLECTION_LIMIT");
-    return keys2.map((key) => ownData(input, key));
+    return keys2.map((key2) => ownData(input, key2));
   }
   function assertFc27StreamlinedPolicy(root, expected, items = []) {
     const current2 = readFc27StreamlinedPolicy(root, expected.maxRating, expected.marketMaxRating);
@@ -33860,7 +34178,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (typeof root.UTOneClickSBCWorkAreaSplitViewController === "function" && controller instanceof root.UTOneClickSBCWorkAreaSplitViewController) {
           const work = ownData(controller, "workAreaController"), vm = ownData(work, "viewModel");
           const challenge = vm?.getChallenge?.(), set = vm?.getSet?.();
-          if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id || !integer17(challenge.id, 1) || !integer17(set.id, 1)) return null;
+          if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id || !integer18(challenge.id, 1) || !integer18(set.id, 1)) return null;
           const anchor = work.getView?.()?.getRootElement?.();
           if (!anchor?.isConnected || anchor.ownerDocument !== root.document) return null;
           return { controller, vm, challenge, set, anchor, setId: set.id, challengeId: challenge.id };
@@ -33880,7 +34198,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return {
         count: ownData(rule, "count"),
         scope: ownData(rule, "scope"),
-        pairs: Object.keys(pairs).map((key) => ({ key: Number(key), values: ownData(pairs, key) }))
+        pairs: Object.keys(pairs).map((key2) => ({ key: Number(key2), values: ownData(pairs, key2) }))
       };
     });
     return normalizeStreamlinedChallenge({
@@ -33903,7 +34221,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function createFc27StreamlinedMatcher(root, contract, entities) {
     const rules = contract.eligibility.map((rule) => {
       const pairs = new Map(rule.pairs.map((p) => [p.key, p.values]));
-      if (rule.count !== -1 || rule.scope === -1 || pairs.get(41)?.length !== 1 || !pairs.has(40) || [...pairs.keys()].some((key) => ![40, 41, 42].includes(key)) || typeof root.UTEvolutionEligibilityVO !== "function") fail29("ELIGIBILITY_UNVERIFIED");
+      if (rule.count !== -1 || rule.scope === -1 || pairs.get(41)?.length !== 1 || !pairs.has(40) || [...pairs.keys()].some((key2) => ![40, 41, 42].includes(key2)) || typeof root.UTEvolutionEligibilityVO !== "function") fail29("ELIGIBILITY_UNVERIFIED");
       const vo = new root.UTEvolutionEligibilityVO({
         attribute: pairs.get(41)[0],
         scope: rule.scope,
@@ -33925,8 +34243,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const auction = ownData(item2, "_auction"), expired = at9(root, "AuctionTradeStateEnum.EXPIRED");
     const expiredUnsold = pile === "transfer" && base.state === "free" && expired === "expired" && ownData(auction, "_tradeState") === expired && ownData(auction, "tradeOwner") === true && ownData(auction, "currentBid") === 0;
     const staticData = ownData(item2, "_staticData");
-    const ownString = (object, key) => {
-      const value = ownData(object, key);
+    const ownString = (object, key2) => {
+      const value = ownData(object, key2);
       const text5 = typeof value === "string" ? value.trim() : "";
       return text5 && text5 !== "---" ? text5 : null;
     };
@@ -33941,7 +34259,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       activeTrade: expiredUnsold ? false : base.activeTrade,
       pile,
       points,
-      scoreVerified: integer17(points, 1),
+      scoreVerified: integer18(points, 1),
       locked: protection.lockedItemIds.includes(base.id),
       activeSquad: protection.activeSquadItemIds.includes(base.id),
       protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
@@ -34027,8 +34345,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       // UI-only reference, never included in a plan/Journal or diagnostic export.
       resolveDisplayItem(ref) {
         assertCurrent();
-        const key = ref?.source === "market" ? `market:${ref.definitionId}` : ref?.id;
-        const raw = entities.get(key);
+        const key2 = ref?.source === "market" ? `market:${ref.definitionId}` : ref?.id;
+        const raw = entities.get(key2);
         if (raw?.definitionId !== ref?.definitionId) return null;
         if (ref?.source === "market") return raw?.concept === true ? raw : null;
         return raw?.concept === false ? raw : null;
@@ -34049,12 +34367,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
   }
   function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating = void 0) {
-    if (!integer17(maxRating, 1, 99) || marketMaxRating !== void 0 && !integer17(marketMaxRating, 1, 99)) fail29("POLICY_INVALID");
+    if (!integer18(maxRating, 1, 99) || marketMaxRating !== void 0 && !integer18(marketMaxRating, 1, 99)) fail29("POLICY_INVALID");
     const context = readFc27Context(root), base = at9(root, "info.base");
-    const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key) => at9(root, `info.build.${key}`));
+    const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key2) => at9(root, `info.build.${key2}`));
     const goldenMax = at9(root, "info.set.goldenrange"), leagues = at9(root, "info.set.shield_league");
     if (![27, "27"].includes(ownData(base, "year")) || ownData(base, "initialized") !== true || !["ready", "finalizing", "trusted-provisional", "validating", "validation-failed"].includes(at9(base, "clubCache.status"))) fail29("FSU_NOT_READY");
-    if (flags2.some((v) => typeof v !== "boolean") || !integer17(goldenMax, 75, 99) || !Array.isArray(leagues) || leagues.length > 200 || leagues.some((v) => !integer17(v, 1))) fail29("POLICY_UNVERIFIED");
+    if (flags2.some((v) => typeof v !== "boolean") || !integer18(goldenMax, 75, 99) || !Array.isArray(leagues) || leagues.length > 200 || leagues.some((v) => !integer18(v, 1))) fail29("POLICY_UNVERIFIED");
     return {
       schema: 1,
       context,
@@ -34099,7 +34417,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           pile: item2.pile,
           ...item2.executionPile ? { executionPile: item2.executionPile } : {}
         }));
-        if (!expected || !same27(expected, batch.refs) || !integer17(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail29("PLAN_CHANGED");
+        if (!expected || !same27(expected, batch.refs) || !integer18(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail29("PLAN_CHANGED");
         const page = locateFc27StreamlinedPage(root);
         const expectedChallenge = {
           ...plan.challenge,
@@ -34110,7 +34428,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         let fresh = null;
         if (typeof readProgress === "function") {
           fresh = await readProgress(plan.challenge, { onProgress, stopped });
-          if (fresh?.fresh !== true || !integer17(fresh.observedAt) || fresh.observedAt > now() || now() - fresh.observedAt > 15e3 || !same27(fresh.challenge, expectedChallenge)) fail29("PROGRESS_CHANGED");
+          if (fresh?.fresh !== true || !integer18(fresh.observedAt) || fresh.observedAt > now() || now() - fresh.observedAt > 15e3 || !same27(fresh.challenge, expectedChallenge)) fail29("PROGRESS_CHANGED");
           if (!same27(pageChallenge, {
             ...expectedChallenge,
             submittedScore: pageChallenge.submittedScore,
@@ -34147,14 +34465,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             check();
             if (!Array.isArray(rows) || rows.length > 250) fail29("FRESH_ENTITY_UNVERIFIED");
             const wrongSelectedPile = (row) => selectedById.has(row?.id) && (row.pile !== "club" || effectivePile(selectedById.get(row.id)) !== "club");
-            if (rows.some((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
+            if (rows.some((row) => !row || !integer18(row.id, 1) || !integer18(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
               const error2 = Error("FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED");
               error2.evidence = {
                 phase: "selected-club-read",
                 rows: rows.length,
                 unexpectedVersion: rows.filter((row) => !definitionIds.includes(row?.definitionId)).length,
                 wrongPile: rows.filter(wrongSelectedPile).length,
-                identityMismatch: rows.filter((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
+                identityMismatch: rows.filter((row) => !row || !integer18(row.id, 1) || !integer18(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
                 factoryMismatch: rows.filter((row) => entities.get(row?.id)?.definitionId !== row?.definitionId).length
               };
               throw error2;
@@ -34176,7 +34494,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           check();
           const rows = await storage.read();
           check();
-          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== "storage")))) fail29("FRESH_ENTITY_UNVERIFIED");
+          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer18(row.id, 1) || !integer18(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== "storage")))) fail29("FRESH_ENTITY_UNVERIFIED");
           if (storageRefs.some((ref) => !rows.some((row) => row.id === ref.id && row.definitionId === ref.definitionId))) fail29("MATERIAL_MISSING");
           requests += storage.getRequestCount();
           try {
@@ -34227,7 +34545,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           "locked",
           "activeSquad",
           "protected"
-        ].map((key) => [key, item2[key]]));
+        ].map((key2) => [key2, item2[key2]]));
         const plannedFacts = (item2, index) => {
           const expected2 = facts2(plan.batches[batch.index][index]);
           if (plan.policy.protectFsuLockedPlayers === false && expected2.locked === null && item2.locked === false) expected2.locked = false;
@@ -34243,7 +34561,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           points: items.reduce((sum2, item2) => sum2 + item2.points, 0),
           requests,
           contributionReady: false,
-          timesCompleted: integer17(fresh?.timesCompleted) ? fresh.timesCompleted : null
+          timesCompleted: integer18(fresh?.timesCompleted) ? fresh.timesCompleted : null
         };
       } finally {
         busy = false;
@@ -34256,9 +34574,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var transientReadStatuses = /* @__PURE__ */ new Set([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
   var observedReadStatuses = /* @__PURE__ */ new Set([426, 512]);
   var retryableRead = (code2) => transientReadStatuses.has(code2) || observedReadStatuses.has(code2);
-  var method6 = (object, key) => {
+  var method6 = (object, key2) => {
     for (let depth = 0; object && depth < 8; depth++, object = Object.getPrototypeOf(object)) {
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key2);
       if (descriptor) return descriptor.value;
     }
     return void 0;
@@ -34305,10 +34623,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
           };
           const readError = (code2, status, nativeCode) => Object.assign(Error(`FC27_STREAMLINED_${code2}`), {
-            ...integer17(status, 0, 599) ? { httpStatus: status } : {},
+            ...integer18(status, 0, 599) ? { httpStatus: status } : {},
             attempt: attempts,
             attemptLimit: 3,
-            ...integer17(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
+            ...integer18(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
           });
           const finish = (error2, value) => {
             if (done) return;
@@ -34352,7 +34670,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                         attempt: attempts,
                         attemptLimit: 3,
                         waitMs,
-                        ...integer17(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
+                        ...integer18(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
                       };
                       release();
                       try {
@@ -34373,14 +34691,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                   const value = ownData(ownData(reply, "response"), "challenges");
                   const raw = ownData(value, "_collection") ?? value;
                   if (!raw || typeof raw !== "object") fail29("PROGRESS_READ_UNVERIFIED");
-                  const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
+                  const keys2 = Object.getOwnPropertyNames(raw).filter((key2) => key2 !== "length");
                   if (keys2.length > 100) fail29("PROGRESS_READ_UNVERIFIED");
-                  const rows = keys2.map((key) => ownData(raw, key));
-                  if (rows.some((row) => !integer17(ownData(row, "id"), 1) || ownData(row, "setId") !== expected.setId) || new Set(rows.map((row) => row.id)).size !== rows.length) fail29("PROGRESS_READ_UNVERIFIED");
+                  const rows = keys2.map((key2) => ownData(raw, key2));
+                  if (rows.some((row) => !integer18(ownData(row, "id"), 1) || ownData(row, "setId") !== expected.setId) || new Set(rows.map((row) => row.id)).size !== rows.length) fail29("PROGRESS_READ_UNVERIFIED");
                   const selected = rows.find((row) => row.id === expected.id);
                   if (!selected) fail29("PROGRESS_READ_UNVERIFIED");
                   const timesCompleted = ownData(selected, "timesCompleted");
-                  if (timesCompleted != null && !integer17(timesCompleted)) fail29("PROGRESS_COUNT_UNVERIFIED");
+                  if (timesCompleted != null && !integer18(timesCompleted)) fail29("PROGRESS_COUNT_UNVERIFIED");
                   const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
                   finish(null, {
                     fresh: true,
@@ -34413,10 +34731,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     ["dao.submitPlayers", "2efe4777e8d6191db7d7058ce020b75fb4c524b3775d6dc24d860a662bb7c4a3"],
     ["dao.initiateOneClickChallenge", "ebb8bd1901f0d47a2f2afdf8ecf832e7c1a3d3f78825d9d3bb84f8c9c713df9c"]
   ]);
-  var at10 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
-  var method7 = (dao, key) => {
+  var at10 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
+  var method7 = (dao, key2) => {
     for (let value = dao, depth = 0; value && depth < 8; value = Object.getPrototypeOf(value), depth++) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key2);
       if (descriptor) return typeof descriptor.value === "function" ? descriptor.value : void 0;
     }
     return void 0;
@@ -34429,8 +34747,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const context = readFc27Context(root), dao = at10(root, "services.SBC.sbcDAO");
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
     const methods = Object.fromEntries(FC27_STREAMLINED_CONTRIBUTION_METHODS.map(([path]) => {
-      const key = path.split(".").at(-1);
-      return [key, method7(dao, key)];
+      const key2 = path.split(".").at(-1);
+      return [key2, method7(dao, key2)];
     }));
     const native = await verifyFc27Methods({ dao: methods, crypto: root.crypto }, FC27_STREAMLINED_CONTRIBUTION_METHODS);
     const Request = ownData(root, "UTHttpRequest"), auth = ownData(dao, "authDelegate"), game = ownData(root, "GAME_NAME");
@@ -34440,16 +34758,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       runtime();
       native();
       assertCurrent();
-      if (Object.entries(methods).some(([key, fn]) => method7(dao, key) !== fn)) fail29("RUNTIME_UNVERIFIED");
+      if (Object.entries(methods).some(([key2, fn]) => method7(dao, key2) !== fn)) fail29("RUNTIME_UNVERIFIED");
       if (stopped || !same27(readFc27Context(root), context) || at10(root, "services.SBC.sbcDAO") !== dao || ownData(dao, "authDelegate") !== auth || ownData(root, "GAME_NAME") !== game) fail29("CONTEXT_CHANGED");
     };
     return Object.freeze({
       async request(action, target, beforeDispatch) {
         if (busy || stopped) fail29("TRANSPORT_BLOCKED");
-        if (!["initiate", "contribute"].includes(action) || !integer17(target?.challengeId, 1) || typeof beforeDispatch !== "function" || canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
+        if (!["initiate", "contribute"].includes(action) || !integer18(target?.challengeId, 1) || typeof beforeDispatch !== "function" || canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
         const id12 = target.challengeId;
         const ids2 = action === "contribute" && Array.isArray(target?.itemIds) ? [...target.itemIds] : null;
-        if (action === "contribute" && (!Array.isArray(ids2) || !ids2.length || ids2.length > 1e3 || ids2.some((value) => !integer17(value, 1)) || new Set(ids2).size !== ids2.length)) fail29("CONTRIBUTION_INPUT_INVALID");
+        if (action === "contribute" && (!Array.isArray(ids2) || !ids2.length || ids2.length > 1e3 || ids2.some((value) => !integer18(value, 1)) || new Set(ids2).size !== ids2.length)) fail29("CONTRIBUTION_INPUT_INVALID");
         busy = true;
         try {
           const wait = Math.max(0, 800 - (Date.now() - last));
@@ -34528,9 +34846,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/completion.js
   function streamlinedResetProof(receipt, expected, current2, timesCompleted) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeCompleted !== true || receipt.challengeId !== expected?.id || receipt.setId !== expected.setId || !integer17(expected.targetScore, 1) || !integer17(receipt.submittedScore, expected.targetScore) || !integer17(receipt.challengeAwardCount, 0, 100) || !integer17(receipt.setAwardCount, 0, 100) || receipt.challengeAwardCount + receipt.setAwardCount === 0 || current2?.id !== expected.id || current2.setId !== expected.setId || current2.submittedScore !== 0 || current2.targetScore !== expected.targetScore || !same27(current2.context, expected.context) || ![receipt.previousTimesCompleted, timesCompleted].every((value) => value == null || integer17(value))) return null;
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeCompleted !== true || receipt.challengeId !== expected?.id || receipt.setId !== expected.setId || !integer18(expected.targetScore, 1) || !integer18(receipt.submittedScore, expected.targetScore) || !integer18(receipt.challengeAwardCount, 0, 100) || !integer18(receipt.setAwardCount, 0, 100) || receipt.challengeAwardCount + receipt.setAwardCount === 0 || current2?.id !== expected.id || current2.setId !== expected.setId || current2.submittedScore !== 0 || current2.targetScore !== expected.targetScore || !same27(current2.context, expected.context) || ![receipt.previousTimesCompleted, timesCompleted].every((value) => value == null || integer18(value))) return null;
     const previous = receipt.previousTimesCompleted;
-    if (integer17(previous) && integer17(timesCompleted)) {
+    if (integer18(previous) && integer18(timesCompleted)) {
       if (timesCompleted === previous + 1) return "challenge-count";
       if (timesCompleted !== previous) return null;
     }
@@ -34576,7 +34894,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             assert();
             if (!Array.isArray(rows) || rows.length > 250) fail29("FRESH_ENTITY_UNVERIFIED");
             for (const row of rows) {
-              if (!row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
+              if (!row || !integer18(row.id, 1) || !integer18(row.definitionId, 1) || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
               seen.add(row.id);
               if (batch.refs.some((ref) => ref.id === row.id)) fail29("MATERIAL_STILL_PRESENT");
             }
@@ -34591,7 +34909,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           assert();
           if (!Array.isArray(rows) || rows.length > 2e4) fail29("FRESH_ENTITY_UNVERIFIED");
           for (const row of rows) {
-            if (!row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "storage" || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
+            if (!row || !integer18(row.id, 1) || !integer18(row.definitionId, 1) || row.pile !== "storage" || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
             seen.add(row.id);
             if (batch.refs.some((ref) => ref.id === row.id)) fail29("MATERIAL_STILL_PRESENT");
           }
@@ -34599,7 +34917,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
         const progress = await createProgress(root, { now, requirePage }).read(expected);
         assert();
-        if (progress?.fresh !== true || !integer17(progress.observedAt) || now() < progress.observedAt || now() - progress.observedAt > 15e3 || !progress.challenge) fail29("PROGRESS_READ_UNVERIFIED");
+        if (progress?.fresh !== true || !integer18(progress.observedAt) || now() < progress.observedAt || now() - progress.observedAt > 15e3 || !progress.challenge) fail29("PROGRESS_READ_UNVERIFIED");
         const current2 = progress.challenge;
         const changed = { ...expected, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore };
         if (!same27(current2, changed)) fail29("PROGRESS_CHANGED");
@@ -34607,7 +34925,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const resetProof = cycleReset ? streamlinedResetProof(batch.receipt, expected, current2, progress.timesCompleted) : null;
         if (cycleReset && !resetProof) {
           throw Object.assign(Error("FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED"), {
-            mismatch: batch.receipt.submittedScore < expected.targetScore ? "completion-score-below-target" : integer17(batch.receipt.previousTimesCompleted) && integer17(progress.timesCompleted) && progress.timesCompleted !== batch.receipt.previousTimesCompleted && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? "cycle-count-conflict" : "cycle-state-conflict",
+            mismatch: batch.receipt.submittedScore < expected.targetScore ? "completion-score-below-target" : integer18(batch.receipt.previousTimesCompleted) && integer18(progress.timesCompleted) && progress.timesCompleted !== batch.receipt.previousTimesCompleted && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? "cycle-count-conflict" : "cycle-state-conflict",
             cycleCountBefore: batch.receipt.previousTimesCompleted,
             cycleCountAfter: progress.timesCompleted
           });
@@ -34652,26 +34970,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function createStreamlinedMaterializationJournal({ context, get, set, assertCurrent = () => {
   } }) {
     if (typeof get !== "function" || typeof set !== "function") fail29("MATERIALIZE_JOURNAL_UNAVAILABLE");
-    const key = contextKey(context, "streamlined-materialization");
+    const key2 = contextKey(context, "streamlined-materialization");
     const read = async () => {
       assertCurrent();
       let record;
       try {
-        record = await get(key, null);
+        record = await get(key2, null);
       } catch {
         fail29("MATERIALIZE_JOURNAL_READ_FAILED");
       }
       assertCurrent();
       if (record === null) return { schema: 1, entries: [] };
-      if (record?.schema !== 1 || !Array.isArray(record.entries) || record.entries.length > 2e4 || new Set(record.entries.map((entry) => entry?.id)).size !== record.entries.length || record.entries.some((entry) => !integer17(entry?.id, 1) || !integer17(entry?.definitionId, 1) || !["unassigned", "transfer"].includes(entry.pile) || !["pending", "confirmed", "rejected"].includes(entry.state) || !integer17(entry.setId, 1) || !integer17(entry.challengeId, 1))) fail29("MATERIALIZE_JOURNAL_INVALID");
+      if (record?.schema !== 1 || !Array.isArray(record.entries) || record.entries.length > 2e4 || new Set(record.entries.map((entry) => entry?.id)).size !== record.entries.length || record.entries.some((entry) => !integer18(entry?.id, 1) || !integer18(entry?.definitionId, 1) || !["unassigned", "transfer"].includes(entry.pile) || !["pending", "confirmed", "rejected"].includes(entry.state) || !integer18(entry.setId, 1) || !integer18(entry.challengeId, 1))) fail29("MATERIALIZE_JOURNAL_INVALID");
       return structuredClone(record);
     };
     const save = async (record) => {
       assertCurrent();
       try {
-        await set(key, record);
+        await set(key2, record);
         assertCurrent();
-        if (!same27(await get(key, null), record)) fail29("MATERIALIZE_JOURNAL_WRITE_FAILED");
+        if (!same27(await get(key2, null), record)) fail29("MATERIALIZE_JOURNAL_WRITE_FAILED");
       } catch {
         fail29("MATERIALIZE_JOURNAL_WRITE_FAILED");
       }
@@ -34696,7 +35014,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       assert();
       const rows = await transport.readPage({ start, count: 250, definitionIds: [ref.definitionId] });
       assert();
-      if (!Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer17(row?.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "club" || row.id === ref.id && row.definitionId !== ref.definitionId) || new Set([...matches2, ...rows].map((row) => row.id)).size !== matches2.length + rows.length) fail29("MATERIALIZE_READBACK_UNCONFIRMED");
+      if (!Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer18(row?.id, 1) || !integer18(row.definitionId, 1) || row.pile !== "club" || row.id === ref.id && row.definitionId !== ref.definitionId) || new Set([...matches2, ...rows].map((row) => row.id)).size !== matches2.length + rows.length) fail29("MATERIALIZE_READBACK_UNCONFIRMED");
       matches2.push(...rows);
       if (rows.length < 250) return matches2.filter((row) => row.definitionId === ref.definitionId);
     }
@@ -34857,7 +35175,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return Object.freeze({
       async prepare(refs3 = []) {
         if (busy) fail29("MATERIALIZE_BUSY");
-        if (!Array.isArray(refs3) || refs3.some((ref) => !integer17(ref?.id, 1) || !integer17(ref?.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref?.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length) fail29("MATERIALIZE_INPUT_INVALID");
+        if (!Array.isArray(refs3) || refs3.some((ref) => !integer18(ref?.id, 1) || !integer18(ref?.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref?.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length) fail29("MATERIALIZE_INPUT_INVALID");
         busy = true;
         const external2 = refs3.filter((ref) => ["unassigned", "transfer"].includes(ref.pile));
         try {
@@ -34990,7 +35308,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const times = [
             same27(recent?.context, plan.context) ? recent.at : null,
             same27(prior?.context, plan.context) && prior.batches.some((row) => row.state === "confirmed") ? prior.updatedAt : null
-          ].filter((time2) => integer17(time2) && time2 <= at11);
+          ].filter((time2) => integer18(time2) && time2 <= at11);
           const waitMs = times.length ? Math.max(0, Math.max(...times) + 3e3 - at11) : 0;
           if (waitMs > 0) {
             try {
@@ -35056,7 +35374,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             stopped
           });
           unchanged(origin, plan);
-          if (evidence?.fresh !== true || !integer17(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail29("MATERIAL_CHANGED");
+          if (evidence?.fresh !== true || !integer18(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail29("MATERIAL_CHANGED");
           lease = {
             origin,
             fingerprint: plan.fingerprint,
@@ -35064,7 +35382,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             refs: structuredClone(batch.refs),
             submittedScore,
             at: evidence.observedAt,
-            timesCompleted: integer17(evidence.timesCompleted) ? evidence.timesCompleted : null
+            timesCompleted: integer18(evidence.timesCompleted) ? evidence.timesCompleted : null
           };
           return true;
         } finally {
@@ -35155,7 +35473,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return ownData(collection ?? storage, String(id12));
     };
     const validateRefs = (refs3, { preMaterialize = false } = {}) => {
-      if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer17(ref.id, 1) || !integer17(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail29("CACHE_UNVERIFIED");
+      if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer18(ref.id, 1) || !integer18(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail29("CACHE_UNVERIFIED");
       if (!refs3.length) return;
       for (const ref of refs3) {
         const pile = ref.executionPile ?? ref.pile;
@@ -35179,7 +35497,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       apply(record, batch, evidence) {
         assert();
         validateStreamlinedJournal(record, context);
-        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state) || !batch.receipt || evidence?.fresh !== true || evidence.operationConfirmed !== true || !same27(evidence.context, context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !same27(evidence.absent, batch.refs) || !integer17(evidence.observedAt) || evidence.observedAt > now() || now() - evidence.observedAt > 15e3 || evidence.submittedScore !== batch.receipt.submittedScore) fail29("CACHE_EVIDENCE_REQUIRED");
+        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state) || !batch.receipt || evidence?.fresh !== true || evidence.operationConfirmed !== true || !same27(evidence.context, context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !same27(evidence.absent, batch.refs) || !integer18(evidence.observedAt) || evidence.observedAt > now() || now() - evidence.observedAt > 15e3 || evidence.submittedScore !== batch.receipt.submittedScore) fail29("CACHE_EVIDENCE_REQUIRED");
         validateRefs(batch.refs);
         dirty();
         methods.evict.call(service, batch.refs.map((ref) => ref.id));
@@ -35222,7 +35540,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (!same27(readFc27Context(root), context) || locateFc27StreamlinedPage(root)?.controller !== page.controller || root.services?.SBC?.sbcDAO !== dao || dao.getHub !== methods.hub || page.challenge.onDataChange?.notify !== methods.notify) fail29("PAGE_CHANGED");
     };
     const writable = (object, keys2) => {
-      if (keys2.some((key) => Object.getOwnPropertyDescriptor(object, key)?.writable !== true)) fail29("PAGE_FIELDS_UNVERIFIED");
+      if (keys2.some((key2) => Object.getOwnPropertyDescriptor(object, key2)?.writable !== true)) fail29("PAGE_FIELDS_UNVERIFIED");
     };
     const hub = () => new Promise((resolve, reject) => {
       let observer, done = false;
@@ -35249,19 +35567,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             const container = ownData(ownData(reply, "response"), "sets");
             const collection = ownData(container, "_collection") ?? container;
             if (!collection || typeof collection !== "object" || Object.keys(collection).length > 1e3) fail29("SET_READ_UNVERIFIED");
-            const matches2 = Object.keys(collection).map((key) => ownData(collection, key)).filter((row) => ownData(row, "id") === page.setId);
+            const matches2 = Object.keys(collection).map((key2) => ownData(collection, key2)).filter((row) => ownData(row, "id") === page.setId);
             if (matches2.length !== 1) fail29("SET_READ_UNVERIFIED");
             const set = matches2[0];
-            for (const key of setFields) {
-              if (!integer17(ownData(set, key))) fail29(`SET_${{
+            for (const key2 of setFields) {
+              if (!integer18(ownData(set, key2))) fail29(`SET_${{
                 totalSubmittedScore: "SCORE",
                 challengesCompletedCount: "CHALLENGE_COUNT",
                 timesCompleted: "CYCLE_COUNT"
-              }[key]}_UNVERIFIED`);
+              }[key2]}_UNVERIFIED`);
             }
-            if (["repeats", "repeatabilityMode"].some((key) => ownData(set, key) !== ownData(page.set, key))) fail29("SET_CHANGED");
-            if (!integer17(ownData(set, "endTime")) || set.endTime === 0 !== (page.set.endTime === 0)) fail29("SET_EXPIRY_UNVERIFIED");
-            finish(null, Object.fromEntries(setFields.map((key) => [key, set[key]])));
+            if (["repeats", "repeatabilityMode"].some((key2) => ownData(set, key2) !== ownData(page.set, key2))) fail29("SET_CHANGED");
+            if (!integer18(ownData(set, "endTime")) || set.endTime === 0 !== (page.set.endTime === 0)) fail29("SET_EXPIRY_UNVERIFIED");
+            finish(null, Object.fromEntries(setFields.map((key2) => [key2, set[key2]])));
           } catch (error2) {
             finish(error2);
           }
@@ -35276,7 +35594,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       writable(page.challenge, ["submittedScore", "status", "timesCompleted"]);
       writable(page.set, setFields);
       const count2 = ownData(page.challenge, "timesCompleted");
-      if (setFields.some((key) => !integer17(ownData(page.set, key))) || count2 != null && !integer17(count2)) fail29("PAGE_FIELDS_UNVERIFIED");
+      if (setFields.some((key2) => !integer18(ownData(page.set, key2))) || count2 != null && !integer18(count2)) fail29("PAGE_FIELDS_UNVERIFIED");
     };
     return Object.freeze({
       prepare: prepare2,
@@ -35285,7 +35603,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         prepare2(batch.refs);
         const current2 = projectFc27StreamlinedChallenge(page, context), fresh = evidence?.challenge;
         const completed = batch.receipt?.challengeCompleted === true;
-        if (!fresh || !same27(fresh.context, context) || !integer17(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null) || !same27(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same27({
+        if (!fresh || !same27(fresh.context, context) || !integer18(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null) || !same27(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same27({
           ...record.plan.challenge,
           status: fresh.status,
           submittedScore: fresh.submittedScore,
@@ -35301,7 +35619,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         } else {
           if (current2.submittedScore !== (batch.startingScore ?? record.submittedScore) && current2.submittedScore !== fresh.submittedScore) fail29("PAGE_PROGRESS_CHANGED");
           const total = page.set.totalSubmittedScore + fresh.submittedScore - current2.submittedScore;
-          if (!integer17(total) || total < fresh.submittedScore || evidence.timesCompleted !== page.challenge.timesCompleted) fail29("PAGE_PROGRESS_UNVERIFIED");
+          if (!integer18(total) || total < fresh.submittedScore || evidence.timesCompleted !== page.challenge.timesCompleted) fail29("PAGE_PROGRESS_UNVERIFIED");
           set = { totalSubmittedScore: total };
         }
         assert();
@@ -35310,7 +35628,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const progress = {
           submittedScore: fresh.submittedScore,
           status: fresh.status,
-          ...integer17(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}
+          ...integer18(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}
         };
         Object.assign(page.challenge, progress);
         methods.notify.call(page.challenge.onDataChange, progress);
@@ -35332,14 +35650,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     ].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason10({ message: reason });
     const failureDetail = (error2) => {
       const detail = { reason: safeReason10(error2) };
-      if (integer17(error2?.httpStatus, 0, 599)) detail.httpStatus = error2.httpStatus;
+      if (integer18(error2?.httpStatus, 0, 599)) detail.httpStatus = error2.httpStatus;
       if (typeof error2?.localReason === "string" && /^FC27_NATIVE_ERROR_\d{1,10}$/.test(error2.localReason)) detail.localReason = error2.localReason;
-      for (const key of ["attempt", "attemptLimit"]) if (integer17(error2?.[key], 1, 3)) detail[key] = error2[key];
+      for (const key2 of ["attempt", "attemptLimit"]) if (integer18(error2?.[key2], 1, 3)) detail[key2] = error2[key2];
       if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
       if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
       if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
       if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict", "purchase-history-overlap"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
-      for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer17(error2?.[key], 0, 1e9)) detail[key] = error2[key];
+      for (const key2 of ["cycleCountBefore", "cycleCountAfter"]) if (integer18(error2?.[key2], 0, 1e9)) detail[key2] = error2[key2];
       if (detail.reason === "FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED" && error2?.evidence?.phase === "selected-club-read") {
         detail.mismatch = "selected-club-read";
         for (const [source, target] of [
@@ -35349,7 +35667,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           ["identityMismatch", "identityMismatchCount"],
           ["factoryMismatch", "factoryMismatchCount"]
         ]) {
-          if (integer17(error2.evidence[source], 0, 250)) detail[target] = error2.evidence[source];
+          if (integer18(error2.evidence[source], 0, 250)) detail[target] = error2.evidence[source];
         }
       }
       return detail;
@@ -35375,7 +35693,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const receipt = batch.receipt;
         const reset = receipt?.challengeCompleted === true && receipt.submittedScore >= record.plan.challenge.targetScore && evidence?.cycleResetConfirmed === true && evidence.submittedScore === 0;
         const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
-        if (evidence?.fresh !== true || !same27(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer17(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same27(evidence.absent, batch.refs) || !integer17(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail29("RECONCILIATION_REQUIRED");
+        if (evidence?.fresh !== true || !same27(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer18(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same27(evidence.absent, batch.refs) || !integer18(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail29("RECONCILIATION_REQUIRED");
         confirmed = { ...evidence, submittedScore, finalizationReason: null };
         diagnose("readback", "verified", record, batch, {
           currentScore: submittedScore,
@@ -35427,7 +35745,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         assertStreamlinedPlan(plan);
         if (adapter?.capabilities?.contributionVerified !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
-        if (approval?.approved !== true || approval.fingerprint !== plan.fingerprint || !Array.isArray(approval.batchIndices) || !approval.batchIndices.length || new Set(approval.batchIndices).size !== approval.batchIndices.length || approval.batchIndices.some((i, n) => !integer17(i, 0, plan.batches.length - 1) || n && i <= approval.batchIndices[n - 1]) || plan.status === "partial" && approval.allowPartial !== true) fail29("APPROVAL_REQUIRED");
+        if (approval?.approved !== true || approval.fingerprint !== plan.fingerprint || !Array.isArray(approval.batchIndices) || !approval.batchIndices.length || new Set(approval.batchIndices).size !== approval.batchIndices.length || approval.batchIndices.some((i, n) => !integer18(i, 0, plan.batches.length - 1) || n && i <= approval.batchIndices[n - 1]) || plan.status === "partial" && approval.allowPartial !== true) fail29("APPROVAL_REQUIRED");
         release = await lock.acquire(plan.context);
         if (typeof release !== "function") fail29("BUSY");
         record = await journal.read(plan.context);
@@ -35472,7 +35790,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           }
           diagnose("response", "unknown", record, batch, () => ({
             status: ["accepted", "rejected", "unknown"].includes(reply?.status) ? reply.status : "unknown",
-            ...integer17(reply?.code, 100, 599) ? { httpStatus: reply.code } : {},
+            ...integer18(reply?.code, 100, 599) ? { httpStatus: reply.code } : {},
             ...reply?.reason ? { reason: responseReason(reply.reason) } : {}
           }));
           if (reply?.status === "rejected") {
@@ -35621,8 +35939,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       const page = locateFc27StreamlinedPage(root);
       if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail29("CONTEXT_CHANGED");
       const current2 = projectFc27StreamlinedChallenge(page, origin);
-      for (const key of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode", "endTime"]) {
-        if (!same27(current2[key], plan.challenge[key])) fail29("CONTEXT_CHANGED");
+      for (const key2 of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode", "endTime"]) {
+        if (!same27(current2[key2], plan.challenge[key2])) fail29("CONTEXT_CHANGED");
       }
     };
     const buyer = await createBuyer(root, {
@@ -35659,13 +35977,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const rows = await reader.readPage({ start: offset, count: 250, definitionIds });
         assertTarget();
         if (stopped()) fail29("STOPPED");
-        const invalid3 = !Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer17(row?.id, 1) || !integer17(row.definitionId, 1) || !["club", null].includes(row.pile) || contradictoryIds.has(row.id));
-        const duplicate = !invalid3 && rows.some((row) => {
+        const invalid4 = !Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer18(row?.id, 1) || !integer18(row.definitionId, 1) || !["club", null].includes(row.pile) || contradictoryIds.has(row.id));
+        const duplicate = !invalid4 && rows.some((row) => {
           if (seen.has(row.id)) return true;
           seen.add(row.id);
           return false;
         });
-        const current2 = invalid3 ? [] : rows.filter((row) => definitionIds.includes(row.definitionId));
+        const current2 = invalid4 ? [] : rows.filter((row) => definitionIds.includes(row.definitionId));
         try {
           onEvent({
             stage: "holdings-read",
@@ -35673,13 +35991,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             requestedCount: definitionIds.length,
             responseCount: Array.isArray(rows) ? rows.length : 0,
             acceptedCount: current2.length,
-            foreignCount: invalid3 ? 0 : rows.length - current2.length,
-            unknownCount: invalid3 ? 0 : current2.filter((row) => row.pile === null).length,
-            reason: invalid3 || duplicate ? "FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED" : void 0
+            foreignCount: invalid4 ? 0 : rows.length - current2.length,
+            unknownCount: invalid4 ? 0 : current2.filter((row) => row.pile === null).length,
+            reason: invalid4 || duplicate ? "FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED" : void 0
           });
         } catch {
         }
-        if (invalid3 || duplicate) fail29("PURCHASE_HOLDINGS_UNVERIFIED");
+        if (invalid4 || duplicate) fail29("PURCHASE_HOLDINGS_UNVERIFIED");
         if (itemId !== null && evolutionIds.has(itemId)) fail29("PURCHASE_MATERIAL_UNKNOWN");
         matched.push(...current2.filter((row) => itemId === null || row.id === itemId));
         if (itemId !== null && matched.length || itemId === null && definitionIds.every((id12) => matched.some((row) => row.definitionId === id12))) return matched;
@@ -35737,7 +36055,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       );
       if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
         if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
-        if (result.record.batches.length === 1 && result.record.batches[0].state === "confirmed" && integer17(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
+        if (result.record.batches.length === 1 && result.record.batches[0].state === "confirmed" && integer18(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
           return { confirmed: true, submittedScore: result.record.submittedScore };
         }
       }
@@ -35801,8 +36119,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           assertTarget();
           quote2 = snapshot.references[item2.definitionId]?.quotes?.[item2.pricePolicy.source];
         }
-        if (!integer17(quote2?.expiresAt) || quote2.expiresAt <= now()) fail29("PURCHASE_QUOTE_EXPIRED");
-        if (quote2?.definitionId !== item2.definitionId || quote2.error || !integer17(quote2.price, 150, 15e6) || !integer17(quote2.fetchedAt) || quote2.fetchedAt > now()) fail29("PURCHASE_PRICE_UNVERIFIED");
+        if (!integer18(quote2?.expiresAt) || quote2.expiresAt <= now()) fail29("PURCHASE_QUOTE_EXPIRED");
+        if (quote2?.definitionId !== item2.definitionId || quote2.error || !integer18(quote2.price, 150, 15e6) || !integer18(quote2.fetchedAt) || quote2.fetchedAt > now()) fail29("PURCHASE_PRICE_UNVERIFIED");
         const authority = item2.pricePolicy ? galleryReferenceQuote({ [quote2.source]: quote2.price }, item2.pricePolicy) : { maxBuy: cap };
         cap = purchasePriceCap({ maxBuy: authority.maxBuy, approvedCap: cap, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS });
         if (cap === null) return { unavailable: true, reason: "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED" };
@@ -35849,7 +36167,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             score: score2,
             progress,
             purchaseCost: 0,
-            materialValue: items.every((item2) => integer17(item2.price, 1, 15e6)) ? items.reduce((sum2, item2) => sum2 + item2.price, 0) : null,
+            materialValue: items.every((item2) => integer18(item2.price, 1, 15e6)) ? items.reduce((sum2, item2) => sum2 + item2.price, 0) : null,
             searchComplete: true
           }
         });
@@ -35873,7 +36191,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
         if (result.status === "recovered" || result.status === "observed") {
           const score2 = result.record?.submittedScore;
-          if (integer17(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
+          if (integer18(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
         }
         return {
           confirmed: false,
@@ -35902,7 +36220,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     freeSlots,
     blockedDefinitions = []
   } = {}) {
-    if (!Array.isArray(route?.groups) || !integer17(limit, 1, 1e3) || !integer17(submittedScore) || !integer17(targetScore, 1) || !integer17(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id12) => integer17(id12, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer17(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail29("WAVE_INPUT_INVALID");
+    if (!Array.isArray(route?.groups) || !integer18(limit, 1, 1e3) || !integer18(submittedScore) || !integer18(targetScore, 1) || !integer18(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id12) => integer18(id12, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer18(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail29("WAVE_INPUT_INVALID");
     const material = [], purchases = [], blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
     let points = submittedScore, capacity = freeSlots;
     const append = (row) => {
@@ -35915,7 +36233,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     for (const group of route.groups) {
       if (group.source !== "inventory") continue;
       for (const item2 of group.items ?? []) {
-        if (!integer17(item2?.id, 1) || consumed.has(item2.id)) continue;
+        if (!integer18(item2?.id, 1) || consumed.has(item2.id)) continue;
         if (!["club", "storage"].includes(item2.pile)) continue;
         const rows = preferredByDefinition.get(item2.definitionId) ?? [];
         rows.push(item2);
@@ -35925,7 +36243,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const orderedReady = ready.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.item?.pile)) - Number(["unassigned", "transfer"].includes(b.item?.pile)));
     for (const row of orderedReady) {
       const group = route.groups[row.groupIndex];
-      if (!group || !integer17(row.item?.id, 1) || !integer17(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail29("WAVE_RECEIPT_INVALID");
+      if (!group || !integer18(row.item?.id, 1) || !integer18(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail29("WAVE_RECEIPT_INVALID");
       if (selectedIds.has(row.item.id)) continue;
       const external2 = ["unassigned", "transfer"].includes(row.item.pile);
       const preferred = preferredByDefinition.get(row.item.definitionId) ?? [];
@@ -36023,7 +36341,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         ...result?.confirmation ? { confirmation: result.confirmation } : {}
       });
       try {
-        if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer17(approval.budget) || !integer17(approval.attempts, 1) || !integer17(approval.expiresAt) || !plan?.route?.groups?.length || !integer17(plan.challenge?.selectionLimit, 1, 1e3))) fail29("PURCHASE_APPROVAL_REQUIRED");
+        if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer18(approval.budget) || !integer18(approval.attempts, 1) || !integer18(approval.expiresAt) || !plan?.route?.groups?.length || !integer18(plan.challenge?.selectionLimit, 1, 1e3))) fail29("PURCHASE_APPROVAL_REQUIRED");
         release = await lock.acquire(plan.context);
         if (typeof release !== "function") fail29("BUSY");
         record = await journal.read(plan.context);
@@ -36205,7 +36523,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             attempted.add(candidate.definitionId);
             if (stopped) break;
             await check();
-            if (!integer17(candidate.purchaseMaxBuy, 150, 15e6)) fail29("PURCHASE_PRICE_UNVERIFIED");
+            if (!integer18(candidate.purchaseMaxBuy, 150, 15e6)) fail29("PURCHASE_PRICE_UNVERIFIED");
             const cap = Math.min(candidate.purchaseMaxBuy, record.budget - record.spent);
             if (cap < 150) {
               budgetBlocked = true;
@@ -36231,7 +36549,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 break;
               }
               const previous = record.entries.find((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId);
-              const mismatch2 = offer.definitionId !== candidate.definitionId ? "definition" : !integer17(offer.price, 150, cap) ? "price" : !integer17(offer.itemId, 1) ? "item" : typeof offer.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? "trade" : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId || previous.tradeId !== offer.tradeId || !["rejected", "consumed"].includes(previous.state)) ? "record-identity" : null;
+              const mismatch2 = offer.definitionId !== candidate.definitionId ? "definition" : !integer18(offer.price, 150, cap) ? "price" : !integer18(offer.itemId, 1) ? "item" : typeof offer.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? "trade" : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId || previous.tradeId !== offer.tradeId || !["rejected", "consumed"].includes(previous.state)) ? "record-identity" : null;
               if (mismatch2) {
                 const error2 = new Error("FC27_STREAMLINED_PURCHASE_OFFER_CHANGED");
                 error2.offerMismatch = mismatch2;
@@ -36353,7 +36671,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return { status: record.completed ? "completed" : "stopped", record };
         async function settleContribution(result) {
           const material = record.contribution.material;
-          if (!integer17(
+          if (!integer18(
             result.submittedScore,
             record.submittedScore + 1,
             record.submittedScore + material.reduce((sum2, r) => sum2 + r.item.points, 0)
@@ -36439,7 +36757,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const reserved = /* @__PURE__ */ new Set();
     for (const entry of purchase.entries) {
       if (!["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)) continue;
-      if (!integer17(entry.itemId, 1)) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      if (!integer18(entry.itemId, 1)) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
       reserved.add(entry.itemId);
     }
     if (purchase.contribution) {
@@ -36478,7 +36796,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }
     if (["pending", "unknown"].includes(batch.state)) return null;
     const maximum = purchase.submittedScore + marker.material.reduce((sum2, row) => sum2 + row.item.points, 0);
-    if (batch.state !== "confirmed" || batch.receipt?.status !== "accepted" || batch.receipt.submittedScore !== previous.submittedScore || !integer17(previous.submittedScore, purchase.submittedScore + 1, maximum)) fail29("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+    if (batch.state !== "confirmed" || batch.receipt?.status !== "accepted" || batch.receipt.submittedScore !== previous.submittedScore || !integer18(previous.submittedScore, purchase.submittedScore + 1, maximum)) fail29("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
     for (const row of marker.material) {
       const entry = next.entries.find((item2) => item2.itemId === row.item.id && item2.definitionId === row.item.definitionId);
       if (!entry || !["ready", "club"].includes(entry.state) || next.consumedIds.includes(entry.itemId)) fail29("PURCHASE_IDENTITY_CONFLICT");
@@ -36535,9 +36853,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (settled2) await marketJournal.write(settled2, saved.revision);
       }
     });
-    const materializationStorage = { get, set: async (key, value) => {
+    const materializationStorage = { get, set: async (key2, value) => {
       persistence.assertHeld();
-      await set(key, value);
+      await set(key2, value);
       persistence.assertHeld();
     } };
     const materializationJournal = createStreamlinedMaterializationJournal({
@@ -36860,7 +37178,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.63" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.64" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -36940,10 +37258,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
     },
     category: (slug2, name = "", sets2 = []) => {
-      const key = `${String(slug2 ?? "")} ${String(name ?? "")}`.toLocaleLowerCase();
-      const rarityCategory = key.includes("rarit");
+      const key2 = `${String(slug2 ?? "")} ${String(name ?? "")}`.toLocaleLowerCase();
+      const rarityCategory = key2.includes("rarit");
       if (rarityCategory) return [...new Set(sets2.flatMap((set) => galleryAssets.set(set.name, { slug: "rarities" }, set)))];
-      const ids2 = key.includes("england") || key.includes("premier") || key.includes("wsl") ? [13, 2216] : key.includes("spain") || key.includes("laliga") || key.includes("liga-f") || key.includes("la-liga") ? [53, 2222] : key.includes("germany") || key.includes("bundesliga") ? [19, 2215] : key.includes("france") || key.includes("ligue") || key.includes("arkema") ? [16, 2218] : key.includes("italy") || key.includes("serie-a") || key.includes("serie a") ? [31] : key.includes("leagues") || key === "league" ? [13, 53, 19, 2215, 16, 31] : [];
+      const ids2 = key2.includes("england") || key2.includes("premier") || key2.includes("wsl") ? [13, 2216] : key2.includes("spain") || key2.includes("laliga") || key2.includes("liga-f") || key2.includes("la-liga") ? [53, 2222] : key2.includes("germany") || key2.includes("bundesliga") ? [19, 2215] : key2.includes("france") || key2.includes("ligue") || key2.includes("arkema") ? [16, 2218] : key2.includes("italy") || key2.includes("serie-a") || key2.includes("serie a") ? [31] : key2.includes("leagues") || key2 === "league" ? [13, 53, 19, 2215, 16, 31] : [];
       return ids2.map((id12) => rarityCategory ? galleryAssets.rarity(id12) : galleryAssets.league(id12)).filter(Boolean);
     },
     set: (name, category = {}, set = {}, pool = []) => {
@@ -37086,6 +37404,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     diagnosticLog
   });
   var galleryLevel = createFc27GalleryLevelReader(unsafeWindow, { get: GM_getValue, set: GM_setValue });
+  var galleryReference = createFc27FodderReference({ gmRequest: GM_xmlhttpRequest, readContext: () => {
+    const context = readFc27Context(unsafeWindow);
+    return { scope: galleryProgress.scope(), platform: /^pc:/i.test(context.platform) ? "pc" : /^(psn|xbox):/i.test(context.platform) ? "console" : null };
+  } });
   var galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
   var galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
   var galleryPlanningSettings = createGalleryPlanningSettings({ scope: galleryProgress.scope, get: GM_getValue, set: GM_setValue });
@@ -37198,8 +37520,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.63"}`,
-    version: "27.0.63",
+    title: `FC Automation Tool ${"27.0.64"}`,
+    version: "27.0.64",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -37228,6 +37550,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     galleryTradePreferences,
     galleryPlanningSettings,
     galleryLevel,
+    galleryReference,
     exportDiagnostics: async () => {
       const payload = await diagnosticLog.exportPayload();
       const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-");
@@ -37338,9 +37661,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     try {
       if (storageMaintenancePending) return;
       if (unsafeWindow.info?.base?.initialized !== true || !["ready", "trusted-provisional"].includes(unsafeWindow.info?.base?.clubCache?.status)) return;
-      const context = readFc27Context(unsafeWindow), key = JSON.stringify(context);
-      if (streamlinedRecoveryAccounts.has(key)) return;
-      streamlinedRecoveryAccounts.add(key);
+      const context = readFc27Context(unsafeWindow), key2 = JSON.stringify(context);
+      if (streamlinedRecoveryAccounts.has(key2)) return;
+      streamlinedRecoveryAccounts.add(key2);
       void recoverFc27Streamlined(unsafeWindow, { get: GM_getValue, set: GM_setValue, lockManager: unsafeWindow.navigator.locks }).then((result) => diagnosticLog.record({ area: "streamlined", event: "recovery", ...result })).catch(() => {
       });
     } catch {

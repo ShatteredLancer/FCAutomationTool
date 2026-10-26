@@ -66,7 +66,8 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
       currentGrade: row.currentGrade, targetGrade: option.grade, currentScore: row.currentScore,
       projectedScore: option.score, baselineTokens: row.baselineTokens, projectedTokens: option.projectedTokens,
       addedTokens: option.projectedTokens - row.baselineTokens, items: option.items,
-      claimState: 'unknown', estimated: option.estimated !== false, searchComplete: option.searchComplete === true };
+      claimState: 'unknown', estimated: option.estimated !== false, searchComplete: option.searchComplete === true,
+      referenceVerified: option.referenceVerified === true };
   });
   for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
   return { status: route.length ? 'ready' : 'no-route', objective: 'low-forecast-loss-per-added-token',

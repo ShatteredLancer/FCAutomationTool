@@ -3,6 +3,9 @@ import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
 import { priceGalleryPlanningTargets } from '../../gallery/planning-prices.js';
 import { buildGalleryAnalysisSnapshot } from '../../gallery/analysis-snapshot.js';
 import { downloadFc27Diagnostics } from './fc27-diagnostic-download.js';
+import { attachFodderPlanningReferences } from '../../gallery/fodder-planning-reference.js';
+import { renderGalleryReferenceTable } from './fc27-gallery-reference-table.js';
+import { isGalleryOwned } from '../../gallery/planner.js';
 
 const money = value => value == null ? '待核实' : Number(value).toLocaleString('en-US');
 const add = (document, parent, tag, text = '') => {
@@ -12,7 +15,7 @@ const add = (document, parent, tag, text = '') => {
 // Read-only global route. Opening a club is the only handoff; buying and
 // listing remain in their original independently confirmed account flows.
 export function mountGalleryRoadmap({ document, parent, button, read, prepare, stopPrepare,
-  loadPrices = null, readTimeout = async () => 30000, openSet, download = downloadFc27Diagnostics }) {
+  loadPrices = null, referenceService = null, readTimeout = async () => 30000, openSet, download = downloadFc27Diagnostics }) {
   const dialog = add(document, parent, 'dialog'); dialog.className = 'gallery-roadmap-dialog';
   dialog.setAttribute('aria-label', '全画廊整体方案');
   const style = add(document, dialog, 'style', '.gallery-roadmap-dialog{width:min(1120px,94vw);max-width:calc(100vw - 24px);max-height:88vh;overflow:auto;box-sizing:border-box;padding:20px;font:14px/1.5 Arial,sans-serif;text-align:left}.gallery-roadmap-dialog p{margin:8px 0}.gallery-roadmap-dialog h2{margin:0}.gallery-roadmap-dialog .row{margin:12px 0}.gallery-roadmap-header,.gallery-roadmap-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.gallery-roadmap-header{justify-content:space-between}.gallery-roadmap-controls label{flex:1;min-width:180px}.gallery-roadmap-controls input,.gallery-roadmap-controls select{width:100%;box-sizing:border-box}.gallery-roadmap-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}.gallery-roadmap-metrics article{padding:12px;border:1px solid #45606b;border-radius:6px}.gallery-roadmap-metrics strong{display:block;font-size:22px}.gallery-roadmap-table{overflow:auto}.gallery-roadmap-table table{width:100%;border-collapse:collapse}.gallery-roadmap-table th,.gallery-roadmap-table td{padding:10px;text-align:left;border-bottom:1px solid #45606b}.gallery-roadmap-dialog button{min-height:40px}.gallery-roadmap-status{display:block;margin:12px 0;overflow-wrap:anywhere}');
@@ -34,18 +37,25 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   for (const [value, text] of [[0, '按买入价卖回，仅估税费'], [500, '比买入价低 5%，另扣税'], [1000, '比买入价低 10%，另扣税']]) {
     const option = add(document, discount, 'option', text); option.value = String(value);
   }
-  const actions = add(document, dialog, 'div'); actions.className = 'row';
+  const actions = add(document, dialog, 'div'); actions.className = 'row'; actions.style.alignItems = 'center';
   const generate = add(document, actions, 'button', '生成整体方案'); generate.className = 'primary'; generate.type = 'button';
   const stop = add(document, actions, 'button', '停止分析'); stop.type = 'button'; stop.hidden = true;
   const exportButton = add(document, actions, 'button', '导出分析快照'); exportButton.type = 'button';
+  const modeLabel = add(document, actions, 'label', ' '), deep = add(document, modeLabel, 'input'); deep.type = 'checkbox';
+  modeLabel.style.display = referenceService ? 'inline-flex' : 'none'; modeLabel.style.alignItems = 'center'; modeLabel.style.gap = '8px';
+  deep.style.width = '18px'; deep.style.height = '18px'; deep.style.minHeight = '0'; deep.style.margin = '0';
+  modeLabel.append(document.createTextNode('深度优化（完整候选查价/搜索，更慢）')); modeLabel.hidden = !referenceService;
+  if (referenceService) add(document, dialog, 'small', '默认快速首轮：核验公开完整组合并扣除已有收藏；未覆盖项可用深度优化继续检查，不保证全市场最低。');
   const progress = add(document, dialog, 'progress'); progress.max = 1; progress.value = 0; progress.hidden = true;
   progress.setAttribute('aria-label', '整体方案分析进度');
   const status = add(document, dialog, 'output'); status.className = 'gallery-roadmap-status'; status.setAttribute('role', 'status');
+  const timing = add(document, dialog, 'small'); timing.setAttribute('role', 'status');
+  const referenceBox = add(document, dialog, 'div');
   const output = add(document, dialog, 'div'); output.setAttribute('aria-live', 'polite');
   let epoch = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
   let stage = 'idle', stopRequested = false;
   const parse = field => field.value.trim() === '' ? null : Number(field.value);
-  const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value) });
+  const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
   const capture = state => ({ scope: state.scope, revision: state.catalog?.revision, source: state.catalog?.source,
     targets: state.targets.map(target => [target.set.id, target.progressKey ?? target.progress, target.pool?.revision,
       !!target.stale, !!target.poolStale, target.status]) });
@@ -61,7 +71,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   };
   const quotesFresh = targets => (targets ?? []).every(target => !target.progress?.rows || target.stale || target.poolStale
     || target.status !== 'observed' || target.priceSnapshot?.expiresAt == null || target.priceSnapshot.expiresAt > Date.now());
-  const invalidate = () => { epoch++; last = null; planInputs = null; binding = null; output.replaceChildren(); generate.textContent = '生成整体方案'; };
+  const invalidate = () => { epoch++; last = null; planInputs = null; binding = null; output.replaceChildren(); referenceBox.replaceChildren(); timing.textContent = ''; generate.textContent = '生成整体方案'; };
   const render = result => {
     output.replaceChildren();
     const metric = add(document, output, 'div'); metric.className = 'gallery-roadmap-metrics';
@@ -70,6 +80,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       const card = add(document, metric, 'article'); add(document, card, 'small', label); add(document, card, 'strong', money(value));
     }
     add(document, output, 'p', `覆盖 ${result.coverage.inspected}/${result.coverage.total} 个合集；可计分 ${result.coverage.available}。${result.partial ? '当前为部分分析，待核实或未完成的合集另列。' : ''}`);
+    if (result.fastReferences) add(document, output, 'p', '快速首轮已在本地核验公开组合、扣除已有卡，并按现有价格来源重新计价；未确认项可勾选深度优化继续。');
     add(document, output, 'p', '按低预计损耗 / 新增 token 优先的有界路线，不保证全市场最优。Token 为相对当前收集快照的目录增量，不是已领余额或保证可领取数量。');
     add(document, output, 'p', '本金按逐卡买入 → 确认收集 → 卖出到账 → 下一张模拟；并非要求一次买齐。回售价仅是假设，价格波动和未成交都会改变资金需求。');
     if (!result.route.length) add(document, output, 'p', !result.partial && !result.unavailable.length && !result.skipped.length
@@ -107,7 +118,8 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       const reasons = { 'capital-gap': '周转本金不足', 'loss-limit': '超出预计损耗上限', 'price-unknown': '报价待核实',
         'progress-unavailable': '收集状态或卡池尚未读取 / 已过期', 'target-unreachable': '已检查范围暂未达到目标',
         'collection-status-unknown': '部分版本的收集状态待核实', 'existing-score-unknown': '已有收藏的计分待核实',
-        'search-time-exhausted': '本轮分析时间已到，可继续', 'candidate-search-truncated': '候选范围有限，尚未确认方案' };
+        'search-time-exhausted': '本轮分析时间已到，可继续', 'candidate-search-truncated': '候选范围有限，尚未确认方案',
+        'deep-analysis-pending': '快速首轮尚未确认，可勾选深度优化继续检查' };
       for (const item of pending) add(document, details, 'p', `${item.name} · ${reasons[item.reason] ?? `尚未确认方案（${item.reason}）`}${item.capitalShortfall ? ` · 预计还差 ${money(item.capitalShortfall)} 金币本金` : ''}`);
     }
   };
@@ -119,7 +131,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   stop.addEventListener('click', event => { if (event.isTrusted) cancel(); });
   close.addEventListener('click', event => { if (event.isTrusted) { if (busy) cancel(); epoch++; dialog.close(); } });
   dialog.addEventListener('cancel', () => { if (busy) cancel(); epoch++; });
-  for (const field of [capital, lossLimit, discount]) field.addEventListener('change', invalidate);
+  for (const field of [capital, lossLimit, discount, deep]) field.addEventListener('change', invalidate);
   button?.addEventListener('click', event => {
     if (!event.isTrusted) return;
     if (binding && (!same(binding) || !quotesFresh(planInputs))) invalidate();
@@ -134,7 +146,10 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       status.textContent = '请输入非负整数金币金额。可周转金币不是累计采购上限。'; return;
     }
     const token = ++epoch; busy = true; stopRequested = false; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
-    for (const field of [capital, lossLimit, discount]) field.disabled = true;
+    for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+    const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : stage === 'pricing' ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
+    let stageStarted = startedAt;
+    const ticker = document.defaultView.setInterval(tick, 500); let referenceSnapshot = null, referenceView = null;
     const context = read('context').scope, current = () => {
       const state = read('context');
       return token === epoch && state.active && state.scope === context && dialog.open;
@@ -144,28 +159,57 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         && quotesFresh(planInputs);
       if (!resume) {
         last = null; binding = null; planInputs = null; output.replaceChildren(); generate.textContent = '生成整体方案';
+        if (referenceService) {
+          stage = 'reference'; status.textContent = '读取 Fodder 全目录公开组合（空收藏请求，不发送你的收藏）…';
+          const at = performance.now();
+          stageStarted = at;
+          try {
+            referenceSnapshot = await referenceService.load({ isCurrent: current });
+            if (!current()) return;
+            const targets = attachFodderPlanningReferences(read().targets, referenceSnapshot);
+            referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
+          } catch { if (current()) referenceBox.textContent = 'Fodder 参考暂不可用，本次保留原本地规划路径。'; }
+          timings.referenceMs = Math.round(performance.now() - at);
+        }
         stage = 'preparing';
+        const at = performance.now();
+        stageStarted = at;
         status.textContent = '1/3 · 校验全目录收集状态（仅数据读取，不买卖）…';
         await prepare?.(value => { if (current()) status.textContent = `1/3 · 同步 ${value.phase ?? ''} ${value.index ?? 0}/${value.total ?? '?'} · 已读 ${value.count ?? 0}`; });
         if (!current()) return;
+        timings.syncMs = Math.round(performance.now() - at);
       }
       const state = read(); if (!state.catalog) throw Error('目录尚未载入');
       binding = capture(state); const valid = () => current() && same(binding) && (stage !== 'planning' || quotesFresh(targets));
       let targets = resume ? planInputs : structuredClone(state.targets);
+      if (!resume && referenceSnapshot) targets = attachFodderPlanningReferences(targets, referenceSnapshot);
+      if (!resume && referenceSnapshot) referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
+      const fastReferences = !!referenceService && !options.deep && targets.some(target => target.publicReference);
       if (!resume && loadPrices) {
         stage = 'pricing';
+        const at = performance.now();
+        stageStarted = at;
         status.textContent = '2/3 · 读取全目录候选的公开报价…';
         const available = targets.filter(target => target.progress?.rows && !target.stale && !target.poolStale && target.status === 'observed');
-        const priced = await priceGalleryPlanningTargets(available, { load: loadPrices, current: valid,
+        const quoteTargets = fastReferences ? available.map(target => {
+          const ids = new Set(target.publicReference?.grades.flatMap(grade => grade.ids) ?? []);
+          return { ...target, progress: { ...target.progress, rows: target.progress.rows.filter(row => isGalleryOwned(row) || ids.has(row.eaId)) } };
+        }) : available;
+        const priced = await priceGalleryPlanningTargets(quoteTargets, { load: loadPrices, current: valid,
           onProgress: value => { status.textContent = `2/3 · 读取 ${value.source ?? ''} 报价 ${value.index}/${value.total}`; } });
-        const byId = new Map(priced.map(target => [target.set.id, target])); targets = targets.map(target => byId.get(target.set.id) ?? target);
+        const byId = new Map(priced.map(target => [target.set.id, target])); targets = targets.map(target => {
+          const priced = byId.get(target.set.id); return priced ? { ...target, prices: priced.prices, priceSnapshot: priced.priceSnapshot } : target;
+        });
+        timings.priceMs = Math.round(performance.now() - at);
       }
       if (!valid()) return;
       if (!quotesFresh(targets)) throw Error('FC27_GALLERY_ROADMAP_QUOTES_EXPIRED');
       const maxMs = await readTimeout();
       stage = 'planning';
+      const planStarted = performance.now();
+      stageStarted = planStarted;
       const generator = planGalleryRoadmapSteps({ ...options, targets, previousRows: resume ? last.rows : [],
-        previousSelection: resume ? last.selectedOptions : [] });
+        previousSelection: resume ? last.selectedOptions : [], fastReferences });
       const steps = { next: finish => generator.next(finish || stopRequested), return: () => generator.return() };
       const result = await runGalleryPlan(steps,
         { current: valid, maxMs, progress: value => {
@@ -175,16 +219,21 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         } });
       if (!result || !valid()) { status.textContent = !quotesFresh(targets) ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
         : '数据、账号或页面已变化，旧计算已停止。'; return; }
-      last = { ...result, generatedAt: Date.now() }; planInputs = targets; fingerprint = JSON.stringify(options); render(result);
+      timings.planningMs = Math.round(performance.now() - planStarted);
+      last = { ...result, generatedAt: Date.now(), timings }; planInputs = targets; fingerprint = JSON.stringify(options); render(result); referenceView?.collapse();
       status.textContent = result.coverage.stopped ? '已保留本轮结果；可继续分析剩余档位，不从头重算。' : '整体路线已生成；进入具体合集后再确认操作。';
       generate.textContent = result.coverage.stopped ? '继续分析剩余' : '重新生成整体方案';
     } catch (error) { status.textContent = stopRequested ? '数据读取已停止；未进行买卖。'
       : error?.message === 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
       : `本次分析未完成，未买卖：${/^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : '数据读取或规划暂不可用，请重试。'}`; }
     finally {
+      document.defaultView.clearInterval(ticker);
+      const unfinishedPhase = { reference: 'referenceMs', preparing: 'syncMs', pricing: 'priceMs', planning: 'planningMs' }[stage];
+      if (unfinishedPhase && timings[unfinishedPhase] == null) timings[unfinishedPhase] = Math.round(performance.now() - stageStarted);
+      timing.textContent = `本轮 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · 公共参考 ${((timings.referenceMs ?? 0) / 1000).toFixed(1)} / 同步 ${((timings.syncMs ?? 0) / 1000).toFixed(1)} / 查价 ${((timings.priceMs ?? 0) / 1000).toFixed(1)} / 计算 ${((timings.planningMs ?? 0) / 1000).toFixed(1)} 秒`;
       if (stopRequested && stage !== 'planning') status.textContent = '数据读取已停止；未进行买卖。';
       busy = false; stage = 'idle'; generate.disabled = false; exportButton.disabled = false; stop.hidden = true; progress.hidden = true;
-      for (const field of [capital, lossLimit, discount]) field.disabled = false;
+      for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
     }
   });
   exportButton.addEventListener('click', event => {

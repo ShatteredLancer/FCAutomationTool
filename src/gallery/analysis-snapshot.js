@@ -41,7 +41,9 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
       poolRevision: target?.pool?.revision ?? null, evidenceAt: target?.fetchedAt ?? null,
       progressComplete: detail?.complete === true, poolComplete: detail?.poolComplete === true,
       candidateOnly: detail?.candidateOnly === true, poolSize: detail?.poolSize ?? null,
-      versionIds: (detail?.rows ?? []).map(row => row.eaId), prices };
+      versionIds: (detail?.rows ?? []).map(row => row.eaId), prices,
+      publicReference: target?.publicReference ? { ...pick(target.publicReference, ['source', 'basis', 'platform', 'fetchedAt', 'expiresAt', 'marketObservedAt']),
+        grades: target.publicReference.grades.map(grade => pick(grade, ['grade', 'cost', 'ids'])) } : null };
   }));
   return { schema: 1, kind: 'gallery-analysis', season: '27', applicationVersion: version, exportedAt: now,
     catalog: { ...pick(catalog, ['schema', 'season', 'source', 'revision', 'tags', 'engine']), fetchedAt: catalogFetchedAt,
@@ -53,7 +55,8 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
     coverage: { total: collections.length, loaded: collections.filter(set => set.status === 'observed').length,
       complete: collections.filter(set => set.progressComplete && !set.stale).length },
     collections, versions: [...versions.values()],
-    roadmap: plan ? { ...pick(plan, ['status', 'partial', 'coverage', 'baselineTokens', 'addedTokens', 'claimState', 'tokenBasis', 'generatedAt']),
+    roadmap: plan ? { ...pick(plan, ['status', 'partial', 'coverage', 'baselineTokens', 'addedTokens', 'claimState', 'tokenBasis', 'generatedAt', 'fastReferences']),
+      timings: pick(plan.timings, ['referenceMs', 'syncMs', 'priceMs', 'planningMs']),
       route: (plan.route ?? []).map(row => ({ ...pick(row, ['setId', 'name', 'order', 'currentGrade', 'targetGrade',
         'currentScore', 'projectedScore', 'baselineTokens', 'projectedTokens', 'addedTokens', 'claimState']),
         purchaseVersionIds: row.cycles.map(cycle => cycle.eaId) })),

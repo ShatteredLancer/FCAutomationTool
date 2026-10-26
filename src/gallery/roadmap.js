@@ -2,11 +2,12 @@ import { summarizeGalleryScoreSteps } from './scoring.js';
 import { planGalleryGradeSteps, isGalleryOwned } from './planner.js';
 import { galleryCatalogGrade, galleryCumulativeRewardQuantity } from './catalog-rewards.js';
 import { selectGalleryRoadmapSteps } from './roadmap-selection.js';
+import { verifyGalleryReferenceSteps } from './verify-reference-plan.js';
 
 // Reuse the existing scorer and grade planner over every catalogue target.
 // A deadline keeps the completed rows, explicitly identifying unfinished work.
 export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLimit = null, resaleDiscountBps = 0,
-  gradePlanner = planGalleryGradeSteps, previousRows = [], previousSelection = [] } = {}) {
+  gradePlanner = planGalleryGradeSteps, previousRows = [], previousSelection = [], fastReferences = false } = {}) {
   const rows = [], key = 'event_token_1';
   const previous = new Map(previousRows.map(row => [row.setId, structuredClone(row)]));
   let stopped = false, gradesChecked = 0;
@@ -35,7 +36,15 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
       isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
     for (const grade of grades) {
       if (row.checkedGrades.includes(grade.name)) continue;
-      const result = yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+      const proposal = target.publicReference?.grades.find(row => row.grade === grade.name && row.cost != null);
+      const verified = proposal ? yield* verifyGalleryReferenceSteps({ target: { ...target, progress: planningProgress }, proposal, capital }) : null;
+      const result = fastReferences ? verified ? { status: 'ready', plans: [verified], searchComplete: false }
+        : { status: 'partial', reason: 'deep-analysis-pending', plans: [] }
+        : yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+      if (!fastReferences && verified && result.status !== 'achieved'
+          && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
+        result.status = 'ready'; result.plans = [verified]; result.searchComplete = false;
+      }
       gradesChecked++;
       const candidate = result.plans?.[0];
       if (result.status === 'ready' && candidate?.reached && candidate.totalPrice !== null) {
@@ -43,7 +52,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
         row.options = row.options.filter(option => option.requestedGrade !== grade.name);
         row.options.push({ grade: reached?.name ?? grade.name, requestedGrade: grade.name, score: candidate.score, items: candidate.items,
           projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key),
-          estimated: candidate.estimated, searchComplete: result.searchComplete === true });
+          estimated: candidate.estimated, referenceVerified: candidate.referenceVerified === true, searchComplete: result.searchComplete === true });
       } else row.reason = result.reason ?? 'grade-proposal-unavailable';
       if (!result.timeExhausted) row.checkedGrades.push(grade.name);
       row.analysisComplete = grades.every(grade => row.checkedGrades.includes(grade.name));
@@ -56,7 +65,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
       name: set.name, gradesChecked }) { stopped = true; break; }
   }
   const plan = yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
-  return { ...plan, rows, coverage: { total: targets.length, inspected: rows.length,
+  return { ...plan, rows, fastReferences, coverage: { total: targets.length, inspected: rows.length,
     available: rows.filter(row => row.currentScore !== null).length,
     missing: rows.filter(row => row.reason === 'progress-unavailable').length,
     gradesChecked: rows.reduce((sum, row) => sum + (row.checkedGrades?.length ?? 0), 0),

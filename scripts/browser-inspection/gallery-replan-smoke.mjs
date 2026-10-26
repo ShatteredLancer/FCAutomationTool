@@ -176,7 +176,7 @@ export async function exerciseGalleryReplan(context, directory) {
         await host.getByRole('button', { name: '返回集合', exact: true }).click();
         await host.locator('[data-set-id="futgg:30"]').getByRole('button', { name: '查看卡片', exact: true }).click();
         const restored = output.locator('details').first(); await restored.waitFor();
-        await restored.locator('summary').click();
+        if ((await restored.getAttribute('open')) === null) await restored.locator('summary').click();
         await restored.getByRole('button', { name: '批量购买', exact: true }).click();
       }
       for (const id of [4, 5]) {
@@ -184,7 +184,7 @@ export async function exerciseGalleryReplan(context, directory) {
         const replacement = output.locator('details').first();
         await replacement.waitFor();
         assert.match(await replacement.locator('summary').innerText(), /1 张/);
-        await replacement.locator('summary').click();
+        if ((await replacement.getAttribute('open')) === null) await replacement.locator('summary').click();
         assert.match(await replacement.innerText(), new RegExp(`Player ${id}`));
         await replacement.getByRole('button', { name: '购买替代方案', exact: true }).click();
       }

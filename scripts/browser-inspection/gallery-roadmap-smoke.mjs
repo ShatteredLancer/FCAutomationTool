@@ -30,7 +30,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
       const attach = globalThis.Element.prototype.attachShadow;
       globalThis.Element.prototype.attachShadow = function (options) { return attach.call(this, { ...options, mode: 'open' }); };
       globalThis.roadmapScope = 'fixture-account-a';
-      globalThis.roadmapKnobs = { priceTtl: 300000, holdSync: false };
+      globalThis.roadmapKnobs = { priceTtl: 300000, holdSync: false, holdQuotes: false };
       globalThis.roadmapCalls = { buys: 0, lists: 0, setReads: 0, quoteReads: 0, sync: 0, levelReads: 0 };
       const notes = new Map();
       const levelData = { status: 'observed', source: 'ea-gallery-objective-milestones', observedAt: Date.now(),
@@ -51,6 +51,14 @@ export async function exerciseGalleryRoadmap(context, directory) {
       };
       globalThis.roadmapPanel = globalThis.RoadmapFixture.mountFc27AcceptancePanel({ document: globalThis.document, targets: () => [], hostId: 'roadmap-test',
         galleryAccountScope: () => globalThis.roadmapScope,
+        galleryReference: { load: async ({ isCurrent }) => {
+          if (!isCurrent()) throw Error('Context changed');
+          return { source: 'fodder', basis: 'empty-collection-public-reference', platform: 'console',
+            fetchedAt: Date.now(), expiresAt: Date.now() + 300000,
+            sets: catalog.categories.flatMap(category => category.sets).map(set => ({ key: set.slug, set,
+              grades: set.grades.map(g => ({ grade: g.name, cost: set.id === 'futgg:30' ? 60000 : set.id === 'futgg:31' ? 50000 : 110000,
+                ids: set.id === 'futgg:30' ? [1] : set.id === 'futgg:31' ? [2] : [1,2] })) })) };
+        } },
         galleryLevel: { scope: () => globalThis.roadmapScope, peek: () => levelData,
           readNote: async () => notes.get(globalThis.roadmapScope) ?? null,
           saveNote: async level => { const note = { level, source: 'console-user-recorded', recordedAt: Date.now() }; notes.set(globalThis.roadmapScope, note); return note; },
@@ -64,6 +72,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
           peekDetails: async () => [30, 31, 32].map(detail) },
         gallerySetLoader: async ({ setId }) => { globalThis.roadmapCalls.setReads++; return detail(Number(setId.split(':')[1])); },
         galleryPlanningPrices: async ids => { globalThis.roadmapCalls.quoteReads++;
+          if (globalThis.roadmapKnobs.holdQuotes) await new Promise(resolve => { globalThis.releaseRoadmapQuotes = resolve; });
           return { source: 'public-references', policy: { source: 'futbin' }, prices, freshPrices: prices,
             references: Object.fromEntries(ids.map(id => [id, { futbin: prices[id], futgg: prices[id], maxBuy: prices[id] }])), expiresAt: Date.now() + globalThis.roadmapKnobs.priceTtl }; },
         purchaseGallery: async () => { globalThis.roadmapCalls.buys++; throw Error('No buys in offline route'); },
@@ -85,7 +94,11 @@ export async function exerciseGalleryRoadmap(context, directory) {
     await shadow.getByRole('button', { name: '整体方案', exact: true }).click();
     const dialog = shadow.getByRole('dialog', { name: '全画廊整体方案' });
     await dialog.getByLabel('可周转金币', { exact: true }).fill('80000');
+    await page.evaluate(() => { globalThis.roadmapKnobs.holdSync = true; });
     await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
+    await dialog.getByText(/Fodder 公开 D–S 参考/).waitFor();
+    assert.ok((await dialog.innerText()).includes('未扣你的收藏'), 'Public reference should appear before held EA sync completes');
+    await page.evaluate(() => { globalThis.roadmapKnobs.holdSync = false; globalThis.releaseRoadmapSync(); });
     await dialog.getByText('整体路线已生成；进入具体合集后再确认操作。', { exact: true }).waitFor();
     const text = await dialog.innerText();
     for (const expected of ['84', '60,000', '5,500', '110,000', 'Club Alpha', 'Club Beta', 'Shared League']) assert.ok(text.includes(expected), expected);
@@ -111,6 +124,13 @@ export async function exerciseGalleryRoadmap(context, directory) {
     await shadow.locator('#gallery-set-detail .gallery-plan select').waitFor();
     assert.equal(await shadow.locator('#gallery-set-detail .gallery-plan select').inputValue(), 'S');
     assert.ok((await shadow.locator('#gallery-set-detail').innerText()).includes('整体路线目标 S'));
+    await page.evaluate(() => { globalThis.roadmapKnobs.holdQuotes = true; });
+    await shadow.locator('#gallery-set-detail').getByRole('button', { name: '生成方案', exact: true }).click();
+    await page.waitForFunction(() => typeof globalThis.releaseRoadmapQuotes === 'function');
+    await shadow.locator('#gallery-set-detail .gallery-card-filters').getByRole('button', { name: '未收集', exact: true }).click();
+    await page.evaluate(() => { globalThis.roadmapKnobs.holdQuotes = false; globalThis.releaseRoadmapQuotes(); });
+    await shadow.locator('#gallery-set-detail .gallery-plan-output').getByText(/找到 .* 个候选方案/).waitFor({ timeout: 2000 });
+    assert.equal(await shadow.locator('#gallery-set-detail .gallery-plan-output details').first().getAttribute('open'), '', 'First result must be expanded');
     await shadow.getByRole('button', { name: '整体方案', exact: true }).click();
     assert.ok((await dialog.innerText()).includes('110,000'), 'A semantically identical club read must keep the overall route');
     await page.evaluate(() => { globalThis.roadmapKnobs.priceTtl = -1; });

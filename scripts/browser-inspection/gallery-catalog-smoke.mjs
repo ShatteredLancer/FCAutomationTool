@@ -346,7 +346,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     await planningHost.getByRole('button', { name: '生成方案', exact: true }).click();
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /报价未知/);
     assert.equal(await page.evaluate(() => globalThis.planningSettingsReads), 1, 'new plans read the account deadline once');
-    await planningHost.locator('.gallery-plan-output summary').first().click();
+    assert.equal(await planningHost.locator('.gallery-plan-output details').first().getAttribute('open'), '', 'First generated plan is visible without an extra click');
     assert.match(await planningHost.locator('.gallery-plan-output').innerText(), /1 张卡缺少报价/);
     // A fresh quote that expires while the detail remains open cannot leak
     // into a later local plan. No timer or new network read is necessary.

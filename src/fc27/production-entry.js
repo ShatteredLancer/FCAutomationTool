@@ -33,6 +33,7 @@ import { mountFc27WorkbenchNavigation } from '../adapters/browser/fc27-workbench
 import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '../adapters/browser/fc27-gallery-catalog.js';
 import { createFc27GalleryProgressReader } from '../adapters/ea/fc27-gallery-progress.js';
 import { createFc27GalleryLevelReader } from '../adapters/ea/fc27-gallery-level.js';
+import { createFc27FodderReference } from '../adapters/browser/fc27-fodder-reference.js';
 import { compactGalleryCollectionCaches } from '../adapters/browser/fc27-gallery-cache-migration.js';
 import { compactGalleryPublicCaches } from '../adapters/browser/fc27-gallery-public-cache-migration.js';
 import { compactFc27Storage } from '../adapters/browser/fc27-storage-maintenance.js';
@@ -226,6 +227,11 @@ const gallerySync = createFc27GallerySync({ provider: galleryCatalog, reader: ga
 const galleryComparison = createGalleryMarketComparison({ scope: galleryProgress.scope,
   createTransport: options => createFc27MarketReadTransport(unsafeWindow, options), diagnosticLog });
 const galleryLevel = createFc27GalleryLevelReader(unsafeWindow, { get: GM_getValue, set: GM_setValue });
+const galleryReference = createFc27FodderReference({ gmRequest: GM_xmlhttpRequest, readContext: () => {
+  const context = readFc27Context(unsafeWindow);
+  return { scope: galleryProgress.scope(), platform: /^pc:/i.test(context.platform) ? 'pc'
+    : /^(psn|xbox):/i.test(context.platform) ? 'console' : null };
+} });
 const galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
 const galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
 const galleryPlanningSettings = createGalleryPlanningSettings({ scope: galleryProgress.scope, get: GM_getValue, set: GM_setValue });
@@ -333,7 +339,7 @@ const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePa
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),
   galleryScoreCache: createGalleryScoreCache({ get: GM_getValue, set: GM_setValue,
     list: typeof GM_listValues === 'function' ? GM_listValues : null }),
-  galleryAccounting, galleryTradePreferences, galleryPlanningSettings, galleryLevel,
+  galleryAccounting, galleryTradePreferences, galleryPlanningSettings, galleryLevel, galleryReference,
   exportDiagnostics: async () => {
     const payload = await diagnosticLog.exportPayload();
     const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-');
