@@ -50,3 +50,31 @@ export function attachFodderPlanningReferences(targets, snapshot, now = Date.now
         fetchedAt: snapshot.fetchedAt, expiresAt: snapshot.expiresAt, marketObservedAt: null, grades: matches[0].grades } } : target;
   });
 }
+
+// Forecast-only prices. Keep them out of freshPrices, approval and per-club
+// quote stores. Conflicting observations of an exact version use the higher
+// value consistently across all sets; an unknown value is never zero.
+export function forecastFodderReferencePrices(targets, now = Date.now()) {
+  const prices = {}, conflicts = new Set(), platforms = new Set();
+  let expiresAt = Infinity, fetchedAt = Infinity;
+  for (const target of targets) {
+    const reference = target.publicReference;
+    if (reference?.basis !== 'empty-collection-public-reference' || reference.expiresAt <= now) continue;
+    platforms.add(reference.platform); expiresAt = Math.min(expiresAt, reference.expiresAt); fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
+    for (const grade of reference.grades) {
+      if (grade.cost == null) continue;
+      if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length
+          || grade.prices.some(price => !integer(price, 150, 15000000))) invalid();
+      grade.ids.forEach((id, i) => {
+        if (!integer(id, 1)) invalid();
+        if (prices[id] != null && prices[id] !== grade.prices[i]) conflicts.add(id);
+        prices[id] = Math.max(prices[id] ?? 0, grade.prices[i]);
+      });
+    }
+  }
+  if (platforms.size > 1) invalid();
+  return targets.map(target => ({ ...target, priceSnapshot: null,
+    prices: target.publicReference?.expiresAt > now ? { ...prices } : {}, forecastPriceBasis: 'fodder-public-estimate',
+    forecastPriceExpiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+    forecastPriceFetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : null, forecastPriceConflictCount: conflicts.size }));
+}

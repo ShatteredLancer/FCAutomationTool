@@ -2,8 +2,9 @@ import { summarizeGalleryScoreSteps } from './scoring.js';
 import { isGalleryOwned } from './planner.js';
 
 // Revalidate a public empty-collection lineup against the current exact local
-// versions, ownership, rules and independent fresh prices. No foreign score
-// or public cost is accepted as proof of a personal plan.
+// versions, ownership and rules. Price inputs are explicitly either forecast
+// estimates or independent quotes; neither grants spending authority. No
+// foreign score or aggregate public cost proves a personal plan.
 export function* verifyGalleryReferenceSteps({ target, proposal, capital = null } = {}) {
   const { progress, prices, set, catalog } = target;
   if (target.publicReference?.basis !== 'empty-collection-public-reference'

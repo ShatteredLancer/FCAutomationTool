@@ -5,6 +5,7 @@ const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
 const MAX_PERFORMANCE_ENTRIES = 40;
 const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', 'futbin-batch-result'].includes(entry.event)
+  || entry?.area === 'gallery' && ['roadmap-plan', 'roadmap-phase'].includes(entry.event)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 

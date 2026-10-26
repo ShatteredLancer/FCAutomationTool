@@ -10,6 +10,18 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains bounded Gallery roadmap phase and mismatch evidence without account payloads', async () => {
+  const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
+  await t.log.record({ area: 'gallery', event: 'roadmap-plan', phase: 'pricing', status: 'failed', durationMs: 74806,
+    reason: 'FC27_PUBLIC_PRICE_CONTEXT_CHANGED', localReason: 'FC27_GALLERY_ROADMAP_FRESHNESS_CHANGED',
+    priceSource: 'independent-reference-quotes', account: 'private-account', rows: [{ itemId: 'private-item' }] });
+  for (let i = 0; i < 5; i++) await t.log.record({ area: 'gallery', event: 'pool-request', status: 'success', count: i });
+  const payload = await t.log.exportPayload();
+  expect(payload.performanceEntries).toContainEqual(expect.objectContaining({ event: 'roadmap-plan', durationMs: 74806,
+    localReason: 'FC27_GALLERY_ROADMAP_FRESHNESS_CHANGED' }));
+  expect(JSON.stringify(payload)).not.toMatch(/private-account|private-item/);
+});
+
 it('retains material failure counts through export and reload without raw entity evidence', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-validation',

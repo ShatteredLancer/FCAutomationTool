@@ -1,0 +1,13 @@
+{
+  "evidence": "Reduced diagnostic timing plus screenshot, no account or card data. Specific binding mismatch was not exported by 27.0.64.",
+  "version": "27.0.64",
+  "ttlMs": 300000,
+  "durations": { "referenceMs": 2100, "syncMs": 48000, "pricingMs": 74806, "planningMs": 0 },
+  "quoteBatch": { "requestedCount": 250, "requests": 169, "status": "failed" },
+  "relativeTimeline": [
+    { "ms": 0, "event": "sync-run", "phase": "catalog", "status": "started" },
+    { "ms": 141, "event": "quote-batch", "status": "failed" },
+    { "ms": 300, "event": "catalog-request", "httpStatus": 304 }
+  ],
+  "failure": { "reason": "FC27_PUBLIC_PRICE_CONTEXT_CHANGED", "accountChanged": null, "bindingMismatch": null }
+}

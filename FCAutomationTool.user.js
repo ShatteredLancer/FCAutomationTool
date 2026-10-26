@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.64
+// @version      27.0.65
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.64", at: Date.now(), status: 'started',
+    state = { version: "27.0.65", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -17736,15 +17736,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       const quote2 = target?.priceSnapshot, prices = [];
+      const forecast = target?.forecastPriceBasis === "fodder-public-estimate";
       for (const row of detail?.rows ?? []) {
         const price2 = target?.prices?.[row.eaId];
         if (Number.isSafeInteger(price2) && price2 > 0) prices.push({
           eaId: row.eaId,
           price: price2,
-          platform: quote2?.platform ?? target?.platform ?? null,
-          source: quote2?.policy?.source ?? null,
-          expiresAt: quote2?.expiresAt ?? null,
-          fresh: quote2?.expiresAt != null && quote2.expiresAt > now
+          platform: forecast ? target.publicReference?.platform ?? null : quote2?.platform ?? target?.platform ?? null,
+          source: forecast ? "fodder" : quote2?.policy?.source ?? null,
+          expiresAt: forecast ? target.forecastPriceExpiresAt : quote2?.expiresAt ?? null,
+          fresh: !forecast && quote2?.expiresAt != null && quote2.expiresAt > now,
+          ...forecast ? { forecast: true, marketObservedAt: null, fetchedAt: target.forecastPriceFetchedAt } : {}
         });
       }
       return {
@@ -17806,7 +17808,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       collections,
       versions: [...versions.values()],
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences"]),
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis"]),
         timings: pick4(plan.timings, ["referenceMs", "syncMs", "priceMs", "planningMs"]),
         route: (plan.route ?? []).map((row) => ({
           ...pick4(row, [
@@ -17935,6 +17937,36 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } : target;
     });
   }
+  function forecastFodderReferencePrices(targets, now = Date.now()) {
+    const prices = {}, conflicts = /* @__PURE__ */ new Set(), platforms = /* @__PURE__ */ new Set();
+    let expiresAt = Infinity, fetchedAt = Infinity;
+    for (const target of targets) {
+      const reference = target.publicReference;
+      if (reference?.basis !== "empty-collection-public-reference" || reference.expiresAt <= now) continue;
+      platforms.add(reference.platform);
+      expiresAt = Math.min(expiresAt, reference.expiresAt);
+      fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
+      for (const grade of reference.grades) {
+        if (grade.cost == null) continue;
+        if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6))) invalid2();
+        grade.ids.forEach((id12, i) => {
+          if (!integer16(id12, 1)) invalid2();
+          if (prices[id12] != null && prices[id12] !== grade.prices[i]) conflicts.add(id12);
+          prices[id12] = Math.max(prices[id12] ?? 0, grade.prices[i]);
+        });
+      }
+    }
+    if (platforms.size > 1) invalid2();
+    return targets.map((target) => ({
+      ...target,
+      priceSnapshot: null,
+      prices: target.publicReference?.expiresAt > now ? { ...prices } : {},
+      forecastPriceBasis: "fodder-public-estimate",
+      forecastPriceExpiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+      forecastPriceFetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : null,
+      forecastPriceConflictCount: conflicts.size
+    }));
+  }
 
   // src/adapters/browser/fc27-gallery-reference-table.js
   function renderGalleryReferenceTable(document, parent, targets, snapshot) {
@@ -17984,6 +18016,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     stopPrepare,
     loadPrices = null,
     referenceService = null,
+    onBusyChange = () => {
+    },
+    onDiagnostic = () => {
+    },
     readTimeout = async () => 3e4,
     openSet,
     download = downloadFc27Diagnostics
@@ -18039,7 +18075,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     deep.style.margin = "0";
     modeLabel.append(document.createTextNode("\u6DF1\u5EA6\u4F18\u5316\uFF08\u5B8C\u6574\u5019\u9009\u67E5\u4EF7/\u641C\u7D22\uFF0C\u66F4\u6162\uFF09"));
     modeLabel.hidden = !referenceService;
-    if (referenceService) add(document, dialog, "small", "\u9ED8\u8BA4\u5FEB\u901F\u9996\u8F6E\uFF1A\u6838\u9A8C\u516C\u5F00\u5B8C\u6574\u7EC4\u5408\u5E76\u6263\u9664\u5DF2\u6709\u6536\u85CF\uFF1B\u672A\u8986\u76D6\u9879\u53EF\u7528\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002");
+    if (referenceService) add(document, dialog, "small", "\u9ED8\u8BA4\u5FEB\u901F\u9996\u8F6E\uFF1A\u6309 Fodder \u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u4E0D\u7B49\u5168\u76EE\u5F55\u9010\u5361\u67E5\u4EF7\uFF1B\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u5E76\u6263\u5DF2\u6709\u3002\u8FDB\u5165\u4FF1\u4E50\u90E8/\u8D2D\u4E70\u524D\u4ECD\u72EC\u7ACB\u6838\u4EF7\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u4EF7\u3002");
     const progress = add(document, dialog, "progress");
     progress.max = 1;
     progress.value = 0;
@@ -18055,6 +18091,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
     let stage = "idle", stopRequested = false;
+    let mismatchReason = null;
+    const mismatch2 = (reason) => {
+      mismatchReason ??= reason;
+      return false;
+    };
+    const diagnose = (value) => {
+      try {
+        Promise.resolve(onDiagnostic(value)).catch(() => {
+        });
+      } catch {
+      }
+    };
     const parse = (field) => field.value.trim() === "" ? null : Number(field.value);
     const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
     const capture = (state) => ({
@@ -18072,13 +18120,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     const same28 = (mark) => {
       const state = read("binding");
-      if (!state.active || state.scope !== mark.scope || state.catalog?.revision !== mark.revision || state.catalog?.source !== mark.source || state.targets.length !== mark.targets.length) return false;
+      if (!state.active) return mismatch2("PAGE");
+      if (state.scope !== mark.scope) return mismatch2("ACCOUNT");
+      if (state.catalog?.revision !== mark.revision || state.catalog?.source !== mark.source || state.targets.length !== mark.targets.length) return mismatch2("CATALOG");
       return state.targets.every((target, i) => {
         const before = mark.targets[i];
-        return target.set.id === before[0] && (target.progressKey ?? target.progress) === before[1] && target.pool?.revision === before[2] && !!target.stale === before[3] && !!target.poolStale === before[4] && target.status === before[5];
+        if (target.set.id !== before[0]) return mismatch2("CATALOG");
+        if ((target.progressKey ?? target.progress) !== before[1]) return mismatch2("MATERIAL");
+        if (target.pool?.revision !== before[2]) return mismatch2("POOL");
+        if (!!target.stale !== before[3] || !!target.poolStale !== before[4]) return mismatch2("FRESHNESS");
+        return target.status === before[5] || mismatch2("READINESS");
       });
     };
-    const quotesFresh = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || target.priceSnapshot?.expiresAt == null || target.priceSnapshot.expiresAt > Date.now());
+    const quotesFresh = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
     const invalidate = () => {
       epoch2++;
       last = null;
@@ -18104,7 +18158,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add(document, card, "strong", money(value));
       }
       add(document, output, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
-      if (result.fastReferences) add(document, output, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u5728\u672C\u5730\u6838\u9A8C\u516C\u5F00\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF0C\u5E76\u6309\u73B0\u6709\u4EF7\u683C\u6765\u6E90\u91CD\u65B0\u8BA1\u4EF7\uFF1B\u672A\u786E\u8BA4\u9879\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u3002");
+      if (result.fastReferences) add(document, output, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF1B\u91D1\u989D\u6309 Fodder \u9010\u5361\u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u884C\u60C5\u5E74\u9F84\u672A\u77E5\uFF0C\u4E0D\u662F\u5B9E\u9645\u8D2D\u4E70\u9650\u4EF7\u3002\u8FDB\u5165\u5408\u96C6/\u8D2D\u4E70\u524D\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u6838\u4EF7\uFF1B\u6DF1\u5EA6\u4F18\u5316\u53EF\u7EE7\u7EED\u6BD4\u8F83\u3002");
       add(document, output, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
       add(document, output, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
       if (!result.route.length) add(document, output, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
@@ -18199,10 +18253,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const token = ++epoch2;
       busy = true;
       stopRequested = false;
+      mismatchReason = null;
       generate.disabled = true;
       exportButton.disabled = true;
       stop6.hidden = false;
       progress.hidden = false;
+      let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
       const startedAt = performance.now(), timings = {}, tick = () => {
         timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : stage === "pricing" ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
@@ -18212,9 +18268,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       let referenceSnapshot = null, referenceView = null;
       const context = read("context").scope, current2 = () => {
         const state = read("context");
-        return token === epoch2 && state.active && state.scope === context && dialog.open;
+        if (state.scope !== context) return mismatch2("ACCOUNT");
+        return token === epoch2 && state.active && dialog.open;
       };
       try {
+        onBusyChange(true);
         const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && quotesFresh(planInputs);
         if (!resume) {
           last = null;
@@ -18233,7 +18291,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const targets2 = attachFodderPlanningReferences(read().targets, referenceSnapshot);
               referenceView = renderGalleryReferenceTable(document, referenceBox, targets2, referenceSnapshot);
             } catch {
-              if (current2()) referenceBox.textContent = "Fodder \u53C2\u8003\u6682\u4E0D\u53EF\u7528\uFF0C\u672C\u6B21\u4FDD\u7559\u539F\u672C\u5730\u89C4\u5212\u8DEF\u5F84\u3002";
+              if (current2()) referenceBox.textContent = "Fodder \u53C2\u8003\u6682\u4E0D\u53EF\u7528\uFF1B\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\uFF0C\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u67E5\u4EF7\u3002";
             }
             timings.referenceMs = Math.round(performance.now() - at12);
           }
@@ -18252,20 +18310,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         binding = capture(state);
         const valid3 = () => current2() && same28(binding) && (stage !== "planning" || quotesFresh(targets));
         let targets = resume ? planInputs : structuredClone(state.targets);
+        targetCount = targets.length;
         if (!resume && referenceSnapshot) targets = attachFodderPlanningReferences(targets, referenceSnapshot);
         if (!resume && referenceSnapshot) referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
-        const fastReferences = !!referenceService && !options.deep && targets.some((target) => target.publicReference);
-        if (!resume && loadPrices) {
+        const fastReferences = !!referenceService && !options.deep;
+        priceBasis = fastReferences ? "fodder-public-estimate" : "independent-reference-quotes";
+        if (!resume && fastReferences) targets = forecastFodderReferencePrices(targets);
+        if (!resume && loadPrices && !fastReferences) {
           stage = "pricing";
           const at11 = performance.now();
           stageStarted = at11;
           status.textContent = "2/3 \xB7 \u8BFB\u53D6\u5168\u76EE\u5F55\u5019\u9009\u7684\u516C\u5F00\u62A5\u4EF7\u2026";
           const available = targets.filter((target) => target.progress?.rows && !target.stale && !target.poolStale && target.status === "observed");
-          const quoteTargets = fastReferences ? available.map((target) => {
-            const ids2 = new Set(target.publicReference?.grades.flatMap((grade) => grade.ids) ?? []);
-            return { ...target, progress: { ...target.progress, rows: target.progress.rows.filter((row) => isGalleryOwned(row) || ids2.has(row.eaId)) } };
-          }) : available;
-          const priced2 = await priceGalleryPlanningTargets(quoteTargets, {
+          const priced2 = await priceGalleryPlanningTargets(available, {
             load: loadPrices,
             current: valid3,
             onProgress: (value) => {
@@ -18306,19 +18363,44 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return;
         }
         timings.planningMs = Math.round(performance.now() - planStarted);
-        last = { ...result, generatedAt: Date.now(), timings };
+        last = { ...result, generatedAt: Date.now(), timings, priceBasis };
         planInputs = targets;
         fingerprint = JSON.stringify(options);
-        render(result);
+        render(last);
         referenceView?.collapse();
+        completed = true;
         status.textContent = result.coverage.stopped ? "\u5DF2\u4FDD\u7559\u672C\u8F6E\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u6863\u4F4D\uFF0C\u4E0D\u4ECE\u5934\u91CD\u7B97\u3002" : "\u6574\u4F53\u8DEF\u7EBF\u5DF2\u751F\u6210\uFF1B\u8FDB\u5165\u5177\u4F53\u5408\u96C6\u540E\u518D\u786E\u8BA4\u64CD\u4F5C\u3002";
         generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
       } catch (error2) {
+        failureReason = /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_ROADMAP_FAILED";
         status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : error2?.message === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "\u6570\u636E\u8BFB\u53D6\u6216\u89C4\u5212\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u8BD5\u3002"}`;
       } finally {
         document.defaultView.clearInterval(ticker);
         const unfinishedPhase = { reference: "referenceMs", preparing: "syncMs", pricing: "priceMs", planning: "planningMs" }[stage];
         if (unfinishedPhase && timings[unfinishedPhase] == null) timings[unfinishedPhase] = Math.round(performance.now() - stageStarted);
+        const outcome = completed ? "success" : stopRequested ? "stopped" : failureReason ? "failed" : "blocked";
+        for (const [key2, phase] of [["referenceMs", "reference"], ["syncMs", "sync"], ["priceMs", "pricing"], ["planningMs", "planning"]]) {
+          if (timings[key2] != null) diagnose({
+            event: "roadmap-phase",
+            phase,
+            status: phase === "reference" ? referenceSnapshot ? "observed" : stopRequested ? "stopped" : "unavailable" : outcome,
+            reason: phase === "reference" && !referenceSnapshot && !stopRequested ? "FC27_FODDER_REFERENCE_UNAVAILABLE" : void 0,
+            durationMs: timings[key2],
+            priceSource: priceBasis,
+            count: targetCount,
+            responseCount: phase === "reference" ? referenceSnapshot?.sets?.length ?? 0 : void 0
+          });
+        }
+        diagnose({
+          event: "roadmap-plan",
+          phase: stage,
+          status: outcome,
+          priceSource: priceBasis,
+          count: targetCount,
+          durationMs: Math.round(performance.now() - startedAt),
+          reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : void 0),
+          localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : void 0
+        });
         timing.textContent = `\u672C\u8F6E ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 \u516C\u5171\u53C2\u8003 ${((timings.referenceMs ?? 0) / 1e3).toFixed(1)} / \u540C\u6B65 ${((timings.syncMs ?? 0) / 1e3).toFixed(1)} / \u67E5\u4EF7 ${((timings.priceMs ?? 0) / 1e3).toFixed(1)} / \u8BA1\u7B97 ${((timings.planningMs ?? 0) / 1e3).toFixed(1)} \u79D2`;
         if (stopRequested && stage !== "planning") status.textContent = "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
         busy = false;
@@ -18328,6 +18410,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stop6.hidden = true;
         progress.hidden = true;
         for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+        onBusyChange(false);
       }
     });
     exportButton.addEventListener("click", (event) => {
@@ -18604,6 +18687,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }) {
     const node = (id12) => shadow.getElementById(id12);
     let roadmap = null, roadmapTarget = null, levelPanel = null;
+    let roadmapBusy = false, roadmapRefreshDeferred = false;
     const runningPlanSurfaces = /* @__PURE__ */ new Map();
     const roadmapProgressKeys = /* @__PURE__ */ new WeakMap();
     const roadmapProgressKey = (progress) => {
@@ -21001,10 +21085,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const refreshShared = () => {
-      if (!sync || disposed || !active || syncing || !result || syncRefresh) return syncRefresh;
+      if (!sync || disposed || !active || syncing || !result || syncRefresh || roadmapBusy) return syncRefresh;
       const identity5 = scope2(), source = result.source;
       syncRefresh = Promise.resolve(sync.peekDetails(source)).then((values8) => {
-        if (!disposed && active && !syncing && scope2() === identity5 && result?.source === source) applySyncDetails(values8);
+        if (!disposed && active && !syncing && !roadmapBusy && scope2() === identity5 && result?.source === source) applySyncDetails(values8);
       }).catch(() => {
       }).finally(() => {
         syncRefresh = null;
@@ -21164,7 +21248,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       updateCategoryScores({ enqueue: true });
       updateSyncButton();
       void refreshShared();
-      if (active && sync && value.source === "futgg") {
+      if (active && !roadmapBusy && sync && value.source === "futgg") {
         const state2 = sync.state();
         const key2 = `${scope2() ?? "unknown"}:${catalog.revision ?? value.fetchedAt ?? "catalog"}:${state2.needsRefresh ? Math.floor(Date.now() / GALLERY_TTL_MS) : "baseline"}`;
         if ((!state2.synced || state2.needsRefresh) && autoSyncKey !== key2) {
@@ -21204,7 +21288,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const check = () => {
       checkScope();
-      if (active && visible()) void load(false);
+      if (active && visible()) {
+        if (roadmapBusy) {
+          roadmapRefreshDeferred = true;
+          return;
+        }
+        roadmapRefreshDeferred = false;
+        void load(false);
+      }
     };
     const setActive = (value) => {
       const wasActive = active;
@@ -21285,6 +21376,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       document,
       parent: shadow,
       button: node("gallery-roadmap-open"),
+      onDiagnostic: diag,
+      onBusyChange: (busy) => {
+        roadmapBusy = busy;
+        if (!busy && !disposed && active) queueMicrotask(() => {
+          if (roadmapBusy || disposed || !active) return;
+          if (roadmapRefreshDeferred) check();
+          void refreshShared();
+        });
+      },
       read: (mode = "full") => {
         checkScope();
         const context = { active: active && !disposed, scope: scope2(), catalog: result?.catalog, catalogFetchedAt: result?.fetchedAt };
@@ -29010,7 +29110,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
   var MAX_TRANSACTION_RESULTS = 40;
   var MAX_PERFORMANCE_ENTRIES = 40;
-  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
+  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
   var NUMBER_FIELDS = Object.freeze([
@@ -37178,7 +37278,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.64" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.65" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -37520,8 +37620,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.64"}`,
-    version: "27.0.64",
+    title: `FC Automation Tool ${"27.0.65"}`,
+    version: "27.0.65",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

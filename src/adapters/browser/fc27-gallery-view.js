@@ -82,6 +82,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
   let roadmap = null, roadmapTarget = null, levelPanel = null;
+  let roadmapBusy = false, roadmapRefreshDeferred = false;
   const runningPlanSurfaces = new Map();
   const roadmapProgressKeys = new WeakMap();
   const roadmapProgressKey = progress => {
@@ -1831,10 +1832,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     }
   };
   const refreshShared = () => {
-    if (!sync || disposed || !active || syncing || !result || syncRefresh) return syncRefresh;
+    if (!sync || disposed || !active || syncing || !result || syncRefresh || roadmapBusy) return syncRefresh;
     const identity = scope(), source = result.source;
     syncRefresh = Promise.resolve(sync.peekDetails(source)).then(values => {
-      if (!disposed && active && !syncing && scope() === identity && result?.source === source) applySyncDetails(values);
+      if (!disposed && active && !syncing && !roadmapBusy && scope() === identity && result?.source === source) applySyncDetails(values);
     }).catch(() => {}).finally(() => { syncRefresh = null; updateSyncButton(); });
     return syncRefresh;
   };
@@ -1963,7 +1964,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     renderSets(); updateCategoryScores({ enqueue: true });
     updateSyncButton(); void refreshShared();
     // Account collection and public pool mapping run without blocking navigation.
-    if (active && sync && value.source === 'futgg') {
+    if (active && !roadmapBusy && sync && value.source === 'futgg') {
       const state = sync.state();
       const key = `${scope() ?? 'unknown'}:${catalog.revision ?? value.fetchedAt ?? 'catalog'}:${state.needsRefresh ? Math.floor(Date.now()/GALLERY_TTL_MS) : 'baseline'}`;
       if ((!state.synced || state.needsRefresh) && autoSyncKey !== key) {
@@ -1999,7 +2000,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       .finally(() => { pending = null; node('gallery-refresh').disabled = !provider; });
     return pending;
   };
-  const check = () => { checkScope(); if (active && visible()) void load(false); };
+  const check = () => {
+    checkScope();
+    if (active && visible()) {
+      if (roadmapBusy) { roadmapRefreshDeferred = true; return; }
+      roadmapRefreshDeferred = false; void load(false);
+    }
+  };
   const setActive = value => {
     const wasActive = active;
     active = value && !disposed;
@@ -2039,6 +2046,15 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     node('gallery-progress-note').textContent = message;
   }
   roadmap = mountGalleryRoadmap({ document, parent: shadow, button: node('gallery-roadmap-open'),
+    onDiagnostic: diag,
+    onBusyChange: busy => {
+      roadmapBusy = busy;
+      if (!busy && !disposed && active) queueMicrotask(() => {
+        if (roadmapBusy || disposed || !active) return;
+        if (roadmapRefreshDeferred) check();
+        void refreshShared();
+      });
+    },
     read: (mode = 'full') => { checkScope();
       const context = { active: active && !disposed, scope: scope(), catalog: result?.catalog, catalogFetchedAt: result?.fetchedAt };
       if (mode === 'context') return context;

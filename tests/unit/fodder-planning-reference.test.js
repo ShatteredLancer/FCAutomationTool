@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { fodderGallery, futggGallery } from '../fixtures/fc27-gallery.js';
 import { normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
-import { normalizeFodderPlanningReference, attachFodderPlanningReferences } from '../../src/gallery/fodder-planning-reference.js';
+import { normalizeFodderPlanningReference, attachFodderPlanningReferences, forecastFodderReferencePrices } from '../../src/gallery/fodder-planning-reference.js';
 import { createFc27FodderReference } from '../../src/adapters/browser/fc27-fodder-reference.js';
 import observed from '../fixtures/fodder-public-reference-2026-10-26.json';
 
@@ -70,4 +70,31 @@ it('does not publish after account change, follow redirects, or retry rate limit
     } });
     await expect(failed.load()).rejects.toThrow('FC27_FODDER_REFERENCE_READ_FAILED');
   }
+});
+
+it('uses explicitly forecast-only prices without manufacturing fresh quotes or mutating stored quotes', () => {
+  const { index, proposals } = data();
+  const snapshot = normalizeFodderPlanningReference(index, proposals, { platform: 'console', fetchedAt: 1000 });
+  const targets = attachFodderPlanningReferences([{ set: snapshot.sets[0].set, priceSnapshot: { freshPrices: { 1: 999 } } }], snapshot, 1001);
+  const before = JSON.stringify(targets), [forecast] = forecastFodderReferencePrices(targets, 1001);
+  expect(forecast).toMatchObject({ forecastPriceBasis: 'fodder-public-estimate', priceSnapshot: null,
+    prices: { 1: 200, 2: 300 }, forecastPriceFetchedAt: 1000, forecastPriceExpiresAt: 301000 });
+  expect(JSON.stringify(targets)).toBe(before); expect(forecast.freshPrices).toBeUndefined();
+});
+it('unifies conflicting public observations conservatively for the same exact version across sets', () => {
+  const { index, proposals } = data();
+  const snapshot = normalizeFodderPlanningReference(index, proposals, { platform: 'pc', fetchedAt: 1000 });
+  const ref = { ...snapshot, grades: snapshot.sets[0].grades };
+  const changed = structuredClone(ref); changed.grades[0].prices[0] = 500;
+  const result = forecastFodderReferencePrices([{ publicReference: ref }, { publicReference: changed }], 1001);
+  expect(result.map(row => row.prices[1])).toEqual([500,500]);
+  expect(result[0].forecastPriceConflictCount).toBe(1);
+});
+it('does not use expired/missing estimates or mix platforms in one capital forecast', () => {
+  const { index, proposals } = data();
+  const snapshot = normalizeFodderPlanningReference(index, proposals, { platform: 'pc', fetchedAt: 1000 });
+  const ref = { ...snapshot, grades: snapshot.sets[0].grades };
+  expect(forecastFodderReferencePrices([{ publicReference: ref }], 301001)[0].prices).toEqual({});
+  expect(forecastFodderReferencePrices([{}], 1001)[0].prices).toEqual({});
+  expect(() => forecastFodderReferencePrices([{ publicReference: ref }, { publicReference: { ...ref, platform: 'console' } }], 1001)).toThrow('FC27_FODDER_REFERENCE_INVALID');
 });
