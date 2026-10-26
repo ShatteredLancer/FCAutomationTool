@@ -7,6 +7,14 @@ import { attachFodderPlanningReferences, forecastFodderReferencePrices } from '.
 import { renderGalleryReferenceTable } from './fc27-gallery-reference-table.js';
 
 const money = value => value == null ? '待核实' : Number(value).toLocaleString('en-US');
+const failureCode = error => {
+  try {
+    if (/^FC27_[A-Z0-9_]+$/.test(error?.message ?? '')) return error.message;
+    const classes = { TypeError: 'TYPE_ERROR', RangeError: 'RANGE_ERROR', ReferenceError: 'REFERENCE_ERROR', SyntaxError: 'SYNTAX_ERROR' };
+    if (Object.hasOwn(classes, error?.name)) return `FC27_GALLERY_ROADMAP_${classes[error.name]}`;
+  } catch { /* Error metadata must not prevent cleanup. */ }
+  return 'FC27_GALLERY_ROADMAP_FAILED';
+};
 const add = (document, parent, tag, text = '') => {
   const node = document.createElement(tag); node.textContent = text; parent.append(node); return node;
 };
@@ -156,6 +164,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     const token = ++epoch; busy = true; stopRequested = false; mismatchReason = null; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
     let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0;
     for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+    const completedPhases = new Set();
     const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : stage === 'pricing' ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
     let stageStarted = startedAt;
     const ticker = document.defaultView.setInterval(tick, 500); let referenceSnapshot = null, referenceView = null;
@@ -189,6 +198,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         await prepare?.(value => { if (current()) status.textContent = `1/3 · 同步 ${value.phase ?? ''} ${value.index ?? 0}/${value.total ?? '?'} · 已读 ${value.count ?? 0}`; });
         if (!current()) return;
         timings.syncMs = Math.round(performance.now() - at);
+        completedPhases.add('sync');
       }
       const state = read(); if (!state.catalog) throw Error('目录尚未载入');
       binding = capture(state); const valid = () => current() && same(binding) && (stage !== 'planning' || quotesFresh(targets));
@@ -211,6 +221,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
           const priced = byId.get(target.set.id); return priced ? { ...target, prices: priced.prices, priceSnapshot: priced.priceSnapshot } : target;
         });
         timings.priceMs = Math.round(performance.now() - at);
+        completedPhases.add('pricing');
       }
       if (!valid()) return;
       if (!quotesFresh(targets)) throw Error('FC27_GALLERY_ROADMAP_QUOTES_EXPIRED');
@@ -236,10 +247,10 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       status.textContent = result.coverage.stopped ? '已保留本轮结果；可继续分析剩余档位，不从头重算。' : '整体路线已生成；进入具体合集后再确认操作。';
       generate.textContent = result.coverage.stopped ? '继续分析剩余' : '重新生成整体方案';
     } catch (error) {
-      failureReason = /^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_GALLERY_ROADMAP_FAILED';
+      failureReason = failureCode(error);
       status.textContent = stopRequested ? '数据读取已停止；未进行买卖。'
-      : error?.message === 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
-      : `本次分析未完成，未买卖：${/^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : '数据读取或规划暂不可用，请重试。'}`; }
+      : failureReason === 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
+      : `本次分析未完成，未买卖：${failureReason}`; }
     finally {
       document.defaultView.clearInterval(ticker);
       const unfinishedPhase = { reference: 'referenceMs', preparing: 'syncMs', pricing: 'priceMs', planning: 'planningMs' }[stage];
@@ -247,7 +258,8 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       const outcome = completed ? 'success' : stopRequested ? 'stopped' : failureReason ? 'failed' : 'blocked';
       for (const [key, phase] of [['referenceMs','reference'],['syncMs','sync'],['priceMs','pricing'],['planningMs','planning']]) {
         if (timings[key] != null) diagnose({ event: 'roadmap-phase', phase,
-          status: phase === 'reference' ? referenceSnapshot ? 'observed' : stopRequested ? 'stopped' : 'unavailable' : outcome,
+          status: phase === 'reference' ? referenceSnapshot ? 'observed' : stopRequested ? 'stopped' : 'unavailable'
+            : completedPhases.has(phase) ? 'success' : outcome,
           reason: phase === 'reference' && !referenceSnapshot && !stopRequested ? 'FC27_FODDER_REFERENCE_UNAVAILABLE' : undefined,
           durationMs: timings[key], priceSource: priceBasis, count: targetCount,
           responseCount: phase === 'reference' ? referenceSnapshot?.sets?.length ?? 0 : undefined });

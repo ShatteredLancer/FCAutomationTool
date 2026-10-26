@@ -1,0 +1,74 @@
+{
+  "evidence": "Reduced 27.0.65 roadmap diagnostic. Exception class, stack and underlying account targets were not exported; CPU-slice reproduction is synthetic, not an account replay.",
+  "version": "27.0.65",
+  "events": [
+    {
+      "event": "roadmap-phase",
+      "phase": "reference",
+      "status": "observed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 3186,
+      "count": 196,
+      "responseCount": 195
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "sync",
+      "status": "failed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 169081,
+      "count": 196
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "planning",
+      "status": "failed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 78,
+      "count": 196
+    },
+    {
+      "event": "roadmap-plan",
+      "phase": "planning",
+      "status": "failed",
+      "reason": "FC27_GALLERY_ROADMAP_FAILED",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 172663,
+      "count": 196
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "reference",
+      "status": "observed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 2464,
+      "count": 196,
+      "responseCount": 195
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "sync",
+      "status": "failed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 50436,
+      "count": 196
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "planning",
+      "status": "failed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 118,
+      "count": 196
+    },
+    {
+      "event": "roadmap-plan",
+      "phase": "planning",
+      "status": "failed",
+      "reason": "FC27_GALLERY_ROADMAP_FAILED",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 53326,
+      "count": 196
+    }
+  ]
+}

@@ -9,6 +9,9 @@ export async function exerciseGalleryRoadmap(context, directory) {
   const page = await context.newPage();
   const root = path.resolve(import.meta.dirname, '../..');
   const observedContext = JSON.parse(await readFile(path.join(root, 'tests/fixtures/gallery-roadmap-context-2026-10-26.json'), 'utf8'));
+  const observedPlanning = JSON.parse(await readFile(path.join(root, 'tests/fixtures/gallery-roadmap-planning-failure-2026-10-26.json'), 'utf8'));
+  const scoringTick = Math.ceil(Math.min(...observedPlanning.events.filter(row => row.event === 'roadmap-phase'
+    && row.phase === 'planning').map(row => row.durationMs)) / 4);
   const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
     bundle: true, write: false, format: 'iife', globalName: 'RoadmapFixture', target: 'chrome120' });
   const input = futggGallery(), base = input.data.categories[0].sets[0];
@@ -49,15 +52,24 @@ export async function exerciseGalleryRoadmap(context, directory) {
         holographic: false, positions: ['ST'], skillMoves: 3, weakFoot: 3, nationEaId: 1, clubEaId: 1, leagueEaId: 1, rarityEaId: 1 });
       const detail = setId => {
         const ids = setId === 30 ? [1] : setId === 31 ? [2] : [1, 2];
+        const rows = globalThis.roadmapKnobs.scoringSlices && setId === 30
+          ? [1,3,4].map(eaId => ({ ...row(eaId), collected: true })) : ids.map(row);
         return { status: 'observed', scope: globalThis.roadmapScope, fetchedAt: Date.now(),
           pool: { source: 'futgg', setId, revision: `pool-${setId}` }, prices,
           priceSnapshot: { prices, freshPrices: prices, expiresAt: Date.now() + 300000, policy: { source: 'futbin' } },
           progress: { source: 'ea-gallery-progress', season: '27', setId, complete: true, poolComplete: true,
-            rows: ids.map(row), totals: { total: ids.length, collected: 0, missing: ids.length, unknown: 0 } } };
+            rows, totals: { total: rows.length, collected: rows.filter(row => row.collected).length,
+              missing: rows.filter(row => !row.collected).length, unknown: 0 } } };
       };
       globalThis.roadmapPanel = globalThis.RoadmapFixture.mountFc27AcceptancePanel({ document: globalThis.document, targets: () => [], hostId: 'roadmap-test',
         galleryAccountScope: () => globalThis.roadmapScope,
         galleryDiagnosticLog: { record: async value => { (globalThis.roadmapDiagnostics ??= []).push(value); } },
+        galleryPlanningSettings: { scope: () => globalThis.roadmapScope, read: async () => {
+          if (globalThis.roadmapKnobs.settingsFault === 'getter') throw Object.defineProperty({}, 'message', {
+            get() { throw Error('private-error-message'); } });
+          if (globalThis.roadmapKnobs.settingsFault) throw new TypeError('private-error-message');
+          return { timeoutMs: 30000 };
+        } },
         galleryReference: { load: async ({ isCurrent }) => {
           if (globalThis.roadmapKnobs.referenceFailed) throw Error('Public reference unavailable');
           if (!isCurrent()) throw Error('Context changed');
@@ -182,6 +194,32 @@ export async function exerciseGalleryRoadmap(context, directory) {
     assert.equal(await page.evaluate(() => globalThis.roadmapCalls.quoteReads), quotedBeforeFailure, 'Missing public forecasts must not silently start slow whole-catalog quoting');
     assert.ok(await page.evaluate(() => globalThis.roadmapDiagnostics.some(e => e.event === 'roadmap-plan' && e.priceSource === 'fodder-public-estimate')));
     await page.evaluate(() => { globalThis.roadmapKnobs.referenceFailed = false; });
+    await page.evaluate(scoringTick => {
+      globalThis.roadmapKnobs.scoringSlices = true;
+      globalThis.roadmapRealNow = globalThis.performance.now.bind(globalThis.performance);
+      let tick = globalThis.roadmapRealNow();
+      globalThis.performance.now = () => tick += scoringTick;
+    }, scoringTick);
+    await dialog.getByRole('button', { name: '重新生成整体方案', exact: true }).click();
+    await page.waitForFunction(() => !globalThis.document.querySelector('#roadmap-test').shadowRoot.querySelector('.gallery-roadmap-controls + .row button').disabled);
+    assert.ok((await dialog.innerText()).includes('整体路线已生成'), 'Collected-card scoring slices must not crash the roadmap progress callback');
+    await page.evaluate(() => {
+      globalThis.performance.now = globalThis.roadmapRealNow; globalThis.roadmapKnobs.scoringSlices = false;
+    });
+    for (const [fault, code] of [['type', 'FC27_GALLERY_ROADMAP_TYPE_ERROR'], ['getter', 'FC27_GALLERY_ROADMAP_FAILED']]) {
+      await page.evaluate(fault => { globalThis.roadmapKnobs.settingsFault = fault; }, fault);
+      await dialog.getByRole('button', { name: fault === 'type' ? '重新生成整体方案' : '生成整体方案', exact: true }).click();
+      await page.waitForFunction(() => !globalThis.document.querySelector('#roadmap-test').shadowRoot.querySelector('.gallery-roadmap-controls + .row button').disabled);
+      assert.ok((await dialog.innerText()).includes(code));
+      const evidence = await page.evaluate(() => ({
+        sync: globalThis.roadmapDiagnostics.filter(row => row.event === 'roadmap-phase' && row.phase === 'sync').at(-1),
+        plan: globalThis.roadmapDiagnostics.filter(row => row.event === 'roadmap-plan').at(-1),
+        leaked: JSON.stringify(globalThis.roadmapDiagnostics).includes('private-error-message'),
+      }));
+      assert.equal(evidence.sync.status, 'success', 'A later failure must not relabel completed synchronization as failed');
+      assert.equal(evidence.plan.reason, code); assert.equal(evidence.leaked, false);
+    }
+    await page.evaluate(() => { globalThis.roadmapKnobs.settingsFault = null; });
     await dialog.locator('input[type=checkbox]').check();
     await page.evaluate(() => { globalThis.roadmapKnobs.priceTtl = 300000; globalThis.roadmapKnobs.holdSync = true; });
     await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();

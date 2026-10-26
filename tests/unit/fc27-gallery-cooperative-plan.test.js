@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { runGalleryPlan } from '../../src/gallery/cooperative-plan.js';
 import { planGalleryGrade, planGalleryGradeSteps } from '../../src/gallery/planner.js';
 import { planGalleryJoint, planGalleryJointSteps } from '../../src/gallery/joint-planner.js';
+import { planGalleryRoadmapSteps } from '../../src/gallery/roadmap.js';
 
 const catalog = { source: 'futgg', tags: [{ id: 1, name: 'Gold', bonusType: 'ITEM_SCORE_PERCENTAGE',
   thresholdType: 'ITEM_COUNT', rules: [{ attribute: 'LEVEL', type: 'COUNT', target: 'ATTRIBUTE', values: ['gold'] }],
@@ -10,6 +11,36 @@ const set = { id: 'futgg:30', requiredCards: 3, grades: [{ name: 'C', threshold:
 const progress = { season: '27', setId: 30, complete: true, rows: [1, 2, 3, 4].map(eaId =>
   ({ eaId, overall: 80, gradingScore: eaId * 60, firstOwned: false, collected: eaId < 3 })) };
 const input = { set, catalog, progress, targetGrade: 'C', prices: {3: 200, 4: 300} };
+
+it('keeps roadmap scoring time slices cooperative without treating bare yields as progress records', async () => {
+  const target = { status: 'observed', catalog,
+    set: { ...set, requiredCards: 1, grades: [{ name: 'S', threshold: 50,
+      rewards: [{ type: 'event_token_1', count: 1, value: 15 }] }] },
+    progress: { ...progress, rows: progress.rows.map(card => ({ ...card, collected: true })) }, prices: {} };
+  let at = 0, turns = 0; const phases = [];
+  const result = await runGalleryPlan(planGalleryRoadmapSteps({ targets: [target], fastReferences: true }), {
+    now: () => at += 20, sliceMs: 12, maxMs: 30000,
+    progress: value => phases.push(value.phase), schedule: async () => { turns++; },
+  });
+  expect(result).toMatchObject({ status: 'no-route', baselineTokens: 15, coverage: { available: 1 } });
+  expect(phases).toContain('roadmap'); expect(phases.every(Boolean)).toBe(true);
+  expect(turns).toBeGreaterThan(phases.length);
+});
+
+it.each(['cancel', 'deadline'])('preserves %s at bare scoring checkpoints without inventing progress', async mode => {
+  let active = true, closed = false, turns = 0, at = 0;
+  function* steps() {
+    try { for (;;) if (yield) return { status: 'partial' }; }
+    finally { closed = true; }
+  }
+  const result = await runGalleryPlan(steps(), { current: () => active, now: () => at += 20,
+    sliceMs: 12, maxMs: mode === 'deadline' ? 1 : 30000,
+    progress: () => { throw Error('Bare checkpoint must not publish a record'); },
+    schedule: async () => { turns++; if (mode === 'cancel') active = false; },
+  });
+  expect(result).toEqual(mode === 'cancel' ? null : { status: 'partial' });
+  expect(turns).toBe(1); expect(closed).toBe(true);
+});
 
 it('cooperative grade and joint evaluation preserve synchronous results and yield to UI', async () => {
   // The cheapest 360-point seed is insufficient: this scenario must search,

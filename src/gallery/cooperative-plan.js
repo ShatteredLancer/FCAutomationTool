@@ -14,7 +14,10 @@ export async function runGalleryPlan(steps, { current = () => true, progress = (
       if (next.done) return current() ? next.value : null;
       const time = now(); finish = time - started >= maxMs;
       if (time - slice >= sliceMs || finish) {
-        progress(next.value); await schedule(); slice = now();
+        // Scoring uses bare yields solely as cooperative checkpoints. Keep
+        // scheduling/cancellation, without publishing an absent UI record.
+        if (next.value !== undefined) progress(next.value);
+        await schedule(); slice = now();
       }
     }
   } finally { steps.return(); }

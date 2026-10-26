@@ -1,4 +1,4 @@
-# Fodder 公共规划参考与生成体验（27.0.65；保留 .64 实施记录）
+# Fodder 公共规划参考与生成体验（27.0.66；保留 .64/.65 实施记录）
 
 ## 已确认需求 / 不变量
 
@@ -87,3 +87,27 @@
 - 完整verify：436文件/5206通过，39跳过；完整离线Chrome通过。新增真实形状fixture仅含截图耗时与相对事件时间，无账号/卡片数据；实际bindingMismatch保持null。
 - 最终复查记录：默认并发复跑两次分别有3/2项既有Streamlined采购测试触发10秒超时；该组单独22项全部通过。未修改生产采购逻辑或testTimeout，以VITEST_MAX_WORKERS=4完整重跑npm run verify，436文件/5206项全部通过；最终Chrome全套也通过。证据保留于忽略的context-verify-final/serial、release-scope-recheck、context-verify-4workers和context-browser-final日志。
 - 用户更新后需确认：快速全貌不再出现全目录pricing等待；若仍停，导出新诊断可区分真实账号/目录变化与其它状态变化。深度模式的网络速度仍受原价源影响，不承诺总耗时几秒；同步48秒是否复现仍待现场。
+
+## 27.0.66 续修计划（2026-10-26 18:14 诊断）
+
+- 当前main/本机均cc663de /27.0.65，工作区原本干净。新日志两轮priceSource=fodder-public-estimate，未出现新独立查价阶段；78/118ms内本地planning失败，旧169次查价记录属于16:42历史，不归因于本轮。reference分别3186/2464ms，sync分别169081/50436ms。
+- 先构建单测和生产UI离线Chrome回归：多张已收集卡超过计分阵容人数时，底层scorer有裸yield；按20ms合成时钟越过原12ms时间片，原progress回调确定抛TypeError（读取undefined.phase），UI回放显示同类泛化失败。此为代码缺陷的确定复现；现场未导出异常类型，不能证明是唯一现场原因。
+- 排查优先级：计分裸yield进入对象进度回调（已复现）→正常数据/账号变化（仍需取消）→报价/参考过期（仍需挡）；不以泛化错误证明网络故障或坏库存。
+- 实施：协作调度对裸yield继续让出UI/执行截止和取消，但不发布不存在的进度对象；正常有数据进度顺序和求解顺序不变。诊断只保留固定异常类，不输出message/stack/身份；已完成同步/报价阶段不再被后续失败标成failed。
+- 不改计分算法、参考匹配、深/快模式、原报价、预算/限价、买卖/恢复/Journal、FSU/锁卡或有效期。同步长等待仍是明确gap；本次不借修崩溃跳过EA收集核验/过期池检查。
+- 验收矩阵：①多张已收集/已卖卡正常生成；②裸yield/有对象进度/截止/Stop/账号变化组合；③快0查价、深仍查价、TTL延后后恢复；④未知异常分类不泄露原文、已成功阶段保持success；⑤全量verify（4workers、原10秒门槛）及Chrome、主线/产物校验后提交推送。
+- 初始恢复点（由下方完成状态更新）：上述单测和Chrome先失败证据已保留，当时尚未修改生产代码；下一步为最小修复并重跑。真实账号本轮异常类型、完成结果及同步总耗时仍待升级验收，未操作账号买卖/领取。
+
+### 27.0.66 实现 / 验证状态
+
+| 场景 | 验收结果 / 证据 | 副作用和差距 |
+|---|---|---|
+| 已收藏卡多于计分阵容人数，越过12ms片段 | 生产scorer→roadmap→scheduler单测及Chrome先失败（undefined.phase）、修复后通过 | 合成少量卡及20ms时钟，不冒充用户逐卡回放 |
+| 裸yield后的取消、截止与正常对象进度 | 单测通过，仍schedule并关闭iterator；原single/joint同步等价测试保持 | 不修改计分/搜索顺序或时间上限 |
+| TypeError或异常元数据getter抛错，随后再生成 | Chrome通过：固定分类/清理不漏；同步阶段保持success，原文不进诊断 | 无身份/stack输出；买卖0 |
+| 快0查价、深度核价、TTL延后/补刷、过期、Stop/切号 | 原Chrome全套和新增回归通过 | 实机仍待更新验收 |
+| 全量回归与发布产物 | 436文件/5209通过、39跳过；npm run verify使用4workers，原10秒testTimeout不变；完整Chrome通过，根dist/版本/FSU资产通过 | 无实际账户成交/提交/领取验收 |
+
+- 代码只改协作调度和整体方案的错误/阶段提示；未改同步服务、缓存TTL、计分算法、参考价/原购买价源、预算/限价、锁卡或交易恢复记录。
+- 失败与通过证据：artifacts/gallery-roadmap-bare-yield-unit-red.log、bare-yield-browser-red.log、bare-yield-unit-final.log、bare-yield-browser-final.log、gallery-roadmap-checkpoint-66-verify.log、gallery-roadmap-checkpoint-66-browser.log，均本地忽略。新fixture只保留两轮阶段/时间/数量，不含账号卡库或异常原文。
+- 现场差距仍在：.65诊断只导出泛化错误，尚未逐字段确认唯一根因；.66增加固定异常类，更新后须验证整体路线能生成，并观察收集同步169/50秒是否持续。不得宣称本次已解决同步性能或已完成真实账户全流程。

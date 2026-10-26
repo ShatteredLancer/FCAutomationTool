@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.65
+// @version      27.0.66
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.65", at: Date.now(), status: 'started',
+    state = { version: "27.0.66", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13276,7 +13276,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const time2 = now();
         finish = time2 - started >= maxMs;
         if (time2 - slice >= sliceMs || finish) {
-          progress(next.value);
+          if (next.value !== void 0) progress(next.value);
           await schedule();
           slice = now();
         }
@@ -18001,6 +18001,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/adapters/browser/fc27-gallery-roadmap.js
   var money = (value) => value == null ? "\u5F85\u6838\u5B9E" : Number(value).toLocaleString("en-US");
+  var failureCode = (error2) => {
+    try {
+      if (/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "")) return error2.message;
+      const classes = { TypeError: "TYPE_ERROR", RangeError: "RANGE_ERROR", ReferenceError: "REFERENCE_ERROR", SyntaxError: "SYNTAX_ERROR" };
+      if (Object.hasOwn(classes, error2?.name)) return `FC27_GALLERY_ROADMAP_${classes[error2.name]}`;
+    } catch {
+    }
+    return "FC27_GALLERY_ROADMAP_FAILED";
+  };
   var add = (document, parent, tag, text5 = "") => {
     const node = document.createElement(tag);
     node.textContent = text5;
@@ -18260,6 +18269,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress.hidden = false;
       let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+      const completedPhases = /* @__PURE__ */ new Set();
       const startedAt = performance.now(), timings = {}, tick = () => {
         timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : stage === "pricing" ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
       };
@@ -18304,6 +18314,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
           if (!current2()) return;
           timings.syncMs = Math.round(performance.now() - at11);
+          completedPhases.add("sync");
         }
         const state = read();
         if (!state.catalog) throw Error("\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165");
@@ -18335,6 +18346,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             return priced3 ? { ...target, prices: priced3.prices, priceSnapshot: priced3.priceSnapshot } : target;
           });
           timings.priceMs = Math.round(performance.now() - at11);
+          completedPhases.add("pricing");
         }
         if (!valid3()) return;
         if (!quotesFresh(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
@@ -18372,8 +18384,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         status.textContent = result.coverage.stopped ? "\u5DF2\u4FDD\u7559\u672C\u8F6E\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u6863\u4F4D\uFF0C\u4E0D\u4ECE\u5934\u91CD\u7B97\u3002" : "\u6574\u4F53\u8DEF\u7EBF\u5DF2\u751F\u6210\uFF1B\u8FDB\u5165\u5177\u4F53\u5408\u96C6\u540E\u518D\u786E\u8BA4\u64CD\u4F5C\u3002";
         generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
       } catch (error2) {
-        failureReason = /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_ROADMAP_FAILED";
-        status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : error2?.message === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "\u6570\u636E\u8BFB\u53D6\u6216\u89C4\u5212\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u8BD5\u3002"}`;
+        failureReason = failureCode(error2);
+        status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : failureReason === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${failureReason}`;
       } finally {
         document.defaultView.clearInterval(ticker);
         const unfinishedPhase = { reference: "referenceMs", preparing: "syncMs", pricing: "priceMs", planning: "planningMs" }[stage];
@@ -18383,7 +18395,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (timings[key2] != null) diagnose({
             event: "roadmap-phase",
             phase,
-            status: phase === "reference" ? referenceSnapshot ? "observed" : stopRequested ? "stopped" : "unavailable" : outcome,
+            status: phase === "reference" ? referenceSnapshot ? "observed" : stopRequested ? "stopped" : "unavailable" : completedPhases.has(phase) ? "success" : outcome,
             reason: phase === "reference" && !referenceSnapshot && !stopRequested ? "FC27_FODDER_REFERENCE_UNAVAILABLE" : void 0,
             durationMs: timings[key2],
             priceSource: priceBasis,
@@ -37278,7 +37290,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.65" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.66" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -37620,8 +37632,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.65"}`,
-    version: "27.0.65",
+    title: `FC Automation Tool ${"27.0.66"}`,
+    version: "27.0.66",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
