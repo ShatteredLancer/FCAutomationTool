@@ -164,7 +164,7 @@ it('reserves a silver repair lane when a 5-silver/6-gold chemistry seed needs an
   ]);
 });
 
-it('plans missing bronze materials without requiring a complete owned near-solution', () => {
+it('prioritizes missing bronze and covers required silver without requiring a complete owned near-solution', () => {
   const { input, card } = fixture();
   input.inventory.items.pop();
   input.challenge.rawRequirements = [marketRow(3, 1), marketRow(17, 2, 3), marketRow(35, 14)];
@@ -172,7 +172,8 @@ it('plans missing bronze materials without requiring a complete owned near-solut
   expect(findFc27PuzzleRepairSeed(input).status).toBe('blocked');
   const route = planFc27PuzzleShortageQueries(input);
   expect(route.status).toBe('ready');
-  expect(route.queries.every(query => query.level === 'bronze')).toBe(true);
+  expect(route.queries[0].level).toBe('bronze');
+  expect(new Set(route.queries.map(query => query.level))).toEqual(new Set(['bronze', 'silver']));
   const result = suggestFc27PuzzleJointPurchases(input, [card]);
   expect(result).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1,
     selectedOwned: expect.any(Array), purchases: [{ definitionId: 901 }] }] });

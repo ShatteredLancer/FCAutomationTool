@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.60
+// @version      27.0.61
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.60", at: Date.now(), status: 'started',
+    state = { version: "27.0.61", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5784,6 +5784,7 @@
       for (const query of generic.queries) if (tiers2.includes(query.level)) add2(query);
     } else {
       for (const rule of missing) add2({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+      for (const level of tiers2) add2({ start: 0, count: 20, level });
     }
     if (!queries.length) for (const level of tiers2) add2({ start: 0, count: 20, level });
     const baseQueries = queries.slice();
@@ -35608,7 +35609,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.60" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.61" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35945,8 +35946,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.60"}`,
-    version: "27.0.60",
+    title: `FC Automation Tool ${"27.0.61"}`,
+    version: "27.0.61",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

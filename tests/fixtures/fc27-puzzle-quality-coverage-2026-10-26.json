@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "evidence": "Requirements transcribed from the supplied six-player Challenge screenshot using reviewed FC27 keys. Formation, owned/public cards and prices in the tests are synthetic, not the exported account inventory.",
+  "setId": 73,
+  "challengeId": 113,
+  "requirements": [
+    { "count": -1, "scope": 1, "pairs": [{ "key": 5, "values": [5] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 6, "values": [2] }] },
+    { "count": -1, "scope": 1, "pairs": [{ "key": 7, "values": [4] }] },
+    { "count": 5, "scope": 0, "pairs": [{ "key": 17, "values": [3] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 3, "values": [2] }] },
+    { "count": -1, "scope": 0, "pairs": [{ "key": 35, "values": [16] }] }
+  ]
+}

@@ -373,6 +373,10 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
     for (const query of generic.queries) if (tiers.includes(query.level)) add(query);
   } else {
     for (const rule of missing) add({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+    // Headcount is not compatibility: existing gold/silver may violate other
+    // Challenge rules. Cover every required tier before affinity pages consume
+    // the remaining budget, while keeping the missing tier first.
+    for (const level of tiers) add({ start: 0, count: 20, level });
   }
   if (!queries.length) for (const level of tiers) add({ start: 0, count: 20, level });
   const baseQueries = queries.slice();
