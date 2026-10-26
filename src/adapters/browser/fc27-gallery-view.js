@@ -21,6 +21,8 @@ import { priceGalleryPlanningTargets } from '../../gallery/planning-prices.js';
 import { mountFc27PurchaseResults } from './fc27-purchase-results.js';
 import { updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
 import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from '../../gallery/planning-settings.js';
+import { mountGalleryRoadmap } from './fc27-gallery-roadmap.js';
+import { mountGalleryLevel } from './fc27-gallery-level.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -75,10 +77,18 @@ export function galleryPlanningStateKey(detail) {
 // Gallery presentation. All mutations use the injected, account-scoped buyer.
 export function mountFc27GalleryView({ document, shadow, host, provider, loadSet = null, loadPrices = null, loadPlanningPrices = null, accountScope = () => null,
   assets = null, prices = null, marketCompare = null, diagnosticLog = null, nativeRenderer = null, gradePlanner = planGalleryGrade, targetStore = null, sync = null, purchase = null, setFirstOwner = null,
-  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null, planningSettings = null,
+  planStore = null, scoreCache = null, accounting = null, listing = null, relist = null, tradePreferences = null, planningSettings = null, galleryLevel = null,
   timers = document.defaultView,
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
+  let roadmap = null, roadmapTarget = null, levelPanel = null;
+  const roadmapProgressKeys = new WeakMap();
+  const roadmapProgressKey = progress => {
+    if (!progress) return null;
+    if (!roadmapProgressKeys.has(progress)) roadmapProgressKeys.set(progress,
+      galleryPlanningStateKey({ status: 'observed', progress }));
+    return roadmapProgressKeys.get(progress);
+  };
   const planningTimeout = async (current, output) => {
     if (!planningSettings) return DEFAULT_GALLERY_PLANNING_TIMEOUT_MS;
     try {
@@ -701,7 +711,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const select = document.createElement('select');
     for (const grade of set.grades) { const option = document.createElement('option'); option.value = grade.name; option.textContent = `${grade.name} · ${count(grade.threshold)} 分`; select.append(option); }
     if (summary?.nextGrade) select.value = summary.nextGrade;
-    select.addEventListener('change', () => { select.dataset.edited = 'true'; });
+    if (roadmapTarget?.setId === set.id && set.grades.some(grade => grade.name === roadmapTarget.grade)) {
+      select.value = roadmapTarget.grade;
+      add(section, 'small', `整体路线目标 ${roadmapTarget.grade}；如需周转，可先少量买入并确认收集后再卖回，不要求一次买齐。`);
+    }
+    select.addEventListener('change', () => {
+      select.dataset.edited = 'true';
+      if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
+    });
     row.append(select);
     const button = add(row, 'button', '生成方案'); button.type = 'button';
     const overviewButton = add(row, 'button', '各档费用'); overviewButton.type = 'button';
@@ -1309,6 +1326,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (next === currentScope) return true;
     scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear(); planCache.clear();
     currentScope = next; selection++; selectedSetId = null; details.clear(); comparisonViews.clear();
+    roadmapTarget = null; roadmap?.close();
+    levelPanel?.setActive(false); if (active) levelPanel?.setActive(true);
     if (node('gallery-accounting')) { node('gallery-accounting').hidden = true; node('gallery-accounting-summary').textContent = ''; }
     selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
     foregroundSync = null; resumeBackground = false;
@@ -1970,7 +1989,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const setActive = value => {
     const wasActive = active;
     active = value && !disposed;
-    if (!active) { planningEpoch++; scoreQueue.cancel(); selection++; selectedSetId = null; categoryId = null; overviewCache.clear();
+    levelPanel?.setActive(active);
+    if (!active) { roadmap?.close(); planningEpoch++; scoreQueue.cancel(); selection++; selectedSetId = null; categoryId = null; overviewCache.clear();
       disposeNativeCards(); node('gallery-set-detail').replaceChildren(); node('gallery-set-list').replaceChildren(); showBrowseLevel(); }
     if (timer !== null) timers?.clearInterval(timer);
     if (scopeTimer !== null) timers?.clearInterval(scopeTimer);
@@ -2004,7 +2024,40 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     node('gallery-status').textContent = message;
     node('gallery-progress-note').textContent = message;
   }
+  roadmap = mountGalleryRoadmap({ document, parent: shadow, button: node('gallery-roadmap-open'),
+    read: (mode = 'full') => { checkScope();
+      const context = { active: active && !disposed, scope: scope(), catalog: result?.catalog, catalogFetchedAt: result?.fetchedAt };
+      if (mode === 'context') return context;
+      return { ...context,
+      version: host.dataset.version ?? null, galleryLevel: levelPanel?.snapshot(),
+      targets: (result?.catalog?.categories ?? []).flatMap(category => category.sets).map(set => {
+        const detail = details.get(set.id);
+        return { set, catalog: result.catalog, status: detail?.status ?? 'unloaded', progress: detail?.progress,
+          progressKey: roadmapProgressKey(detail?.progress),
+          stale: detail?.stale || result?.stale, poolStale: detail?.poolStale, fetchedAt: detail?.fetchedAt,
+          pool: detail?.pool ? { revision: detail.pool.revision } : null,
+          prices: mode === 'full' && detail ? planningPrices(detail) : {}, priceSnapshot: detail?.priceSnapshot, platform: detail?.platform };
+      }) }; },
+    prepare: async onProgress => {
+      if (!result?.catalog) await load(false);
+      const identity = scope(), source = result?.source;
+      if (!sync || !source) return;
+      const outcome = await sync.sync({ source, setId: null, force: false, onProgress: value => {
+        if (identity === scope() && active) { if (value.details?.length) applySyncDetails(value.details); onProgress(value); }
+      } });
+      if (identity !== scope() || !active) return;
+      applySyncDetails(outcome.details ?? await sync.peekDetails(source));
+    }, stopPrepare: () => sync?.stop(), loadPrices: loadPlanningPrices,
+    readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
+    openSet: (setId, grade) => {
+      if (checkScope() === false) return;
+      const set = currentGallerySet(setId); if (!set) return;
+      roadmapTarget = { setId, grade }; setJointMode(false); void loadSetDetails(set);
+    } });
+  levelPanel = mountGalleryLevel({ document, parent: node('gallery-level-panel'), service: galleryLevel, visible, timers });
   return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.(); bulkList?.dispose?.();
+    roadmap?.dispose();
+    levelPanel?.dispose();
     fodderBuy?.dispose(); purchase?.stop?.(); node('gallery-purchase-dialog').close();
     node('gallery-sync-dialog').close(); setActive(false); document.removeEventListener('visibilitychange', check);
     document.defaultView?.removeEventListener('resize', updateFooterGeometry); } });

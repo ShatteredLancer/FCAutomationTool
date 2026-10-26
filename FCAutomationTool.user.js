@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.62
+// @version      27.0.63
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.62", at: Date.now(), status: 'started',
+    state = { version: "27.0.63", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -84,9 +84,9 @@
   ]);
 
   // src/domain/player-rarity.js
-  function callBoolean(item2, method7) {
+  function callBoolean(item2, method8) {
     try {
-      const value = item2?.[method7]?.();
+      const value = item2?.[method8]?.();
       return typeof value === "boolean" ? value : null;
     } catch {
       return null;
@@ -473,7 +473,7 @@
       }
       return void 0;
     }
-    function values7(value, limit) {
+    function values8(value, limit) {
       for (let i = 0; i < 3 && data(value, "_collection") !== void 0; i++) value = data(value, "_collection");
       if (!value || typeof value !== "object") return [];
       const keys2 = Object.getOwnPropertyNames(value).filter((key) => key !== "length");
@@ -502,9 +502,9 @@
       const club = data(data(data(persona, "clubs"), "_collection"), String(sku));
       if (!Number.isSafeInteger(userId) || userId <= 0 || data(user, "id") !== userId || !Number.isSafeInteger(personaId) || personaId <= 0 || data(persona, "id") !== personaId || typeof sku !== "string" || !sku || data(club, "sku") !== sku || data(club, "year") !== 2027 || typeof data(club, "platform") !== "string") return null;
       const service = data(data(root, "services"), "SBC");
-      const sets2 = values7(data(data(service, "repository"), "sets"), 500).filter((set) => data(set, "id") === setId);
+      const sets2 = values8(data(data(service, "repository"), "sets"), 500).filter((set) => data(set, "id") === setId);
       if (sets2.length !== 1) return null;
-      const currentChallenges = values7(data(sets2[0], "challenges"), 50).filter((challenge2) => data(challenge2, "id") === challengeId);
+      const currentChallenges = values8(data(sets2[0], "challenges"), 50).filter((challenge2) => data(challenge2, "id") === challengeId);
       const currentChallenge = currentChallenges[0];
       const challenges = observedChallenge ? [observedChallenge] : currentChallenges;
       const challenge = challenges[0];
@@ -1547,27 +1547,27 @@
 
   // src/adapters/ea/fc27-puzzle-layout.js
   function projectFc27PuzzleLayout(root, squad, { setId, challengeId }) {
-    const fail29 = () => {
+    const fail30 = () => {
       throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
     };
     const slots = ownData(squad, "_players");
     const simple = ownData(squad, "simpleBrickIndices");
     const custom = ownData(squad, "customBrickIndices");
-    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail29();
+    if (ownData(ownData(root, "UTSquadEntity"), "FIELD_PLAYERS") !== 11 || !Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !Array.isArray(simple) || !Array.isArray(custom)) return fail30();
     const bricks = [...simple, ...custom];
-    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail29();
+    if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail30();
     const ids2 = Array.from({ length: slots.length }, (_, index) => {
       const slot = ownData(slots, String(index));
       const id13 = ownData(ownData(slot, "_item"), "id");
-      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id13) || id13 < -1 || (index >= 11 || simple.includes(index)) && id13 > 0) return fail29();
+      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id13) || id13 < -1 || (index >= 11 || simple.includes(index)) && id13 > 0) return fail30();
       return id13;
     });
     const formation = ownData(squad, "_formation");
     const id12 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
-    if (!Number.isSafeInteger(id12) || id12 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail29();
+    if (!Number.isSafeInteger(id12) || id12 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail30();
     const positions3 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
-    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail29();
+    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail30();
     return {
       status: "observed",
       setId,
@@ -1697,15 +1697,15 @@
     const page = locate(root);
     if (page?.setId === setId && page.challengeId === challengeId) return page.challenge;
     try {
-      const values7 = (value) => {
+      const values8 = (value) => {
         const raw = ownData(value, "_collection") ?? value;
         if (!raw || typeof raw !== "object" || Object.getOwnPropertyNames(raw).length > 501) return [];
         return Object.getOwnPropertyNames(raw).filter((key) => key !== "length").map((key) => ownData(raw, key));
       };
       const service = ownData(ownData(root, "services"), "SBC");
-      const sets2 = values7(ownData(ownData(service, "repository"), "sets")).filter((set) => ownData(set, "id") === setId);
+      const sets2 = values8(ownData(ownData(service, "repository"), "sets")).filter((set) => ownData(set, "id") === setId);
       if (sets2.length !== 1) return null;
-      const matches2 = values7(ownData(sets2[0], "challenges")).filter((challenge) => ownData(challenge, "id") === challengeId);
+      const matches2 = values8(ownData(sets2[0], "challenges")).filter((challenge) => ownData(challenge, "id") === challengeId);
       return matches2.length === 1 ? matches2[0] : null;
     } catch {
       return null;
@@ -1730,17 +1730,17 @@
     return synchronize(root, target, savedSquad, refs3, assertContext, refs3.some((ref) => ref.kind === "concept"), previousRefs);
   }
   async function synchronize(root, target, savedSquad, refs3, assertContext, concepts, previousRefs = null) {
-    const fail29 = () => {
+    const fail30 = () => {
       throw new Error("FC27_PUZZLE_PAGE_SYNC_UNCONFIRMED");
     };
     const runtime = await verifyFc27Methods(root, FC27_PUZZLE_SYNC_METHODS);
     assertContext();
     const challenge = currentChallengeEntity(root, target);
-    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail29();
+    if (!challenge || ownData(challenge, "status") !== "IN_PROGRESS") return fail30();
     const local = ownData(challenge, "squad");
     const layout = projectFc27PuzzleLayout(root, local, target);
     const savedLayout = projectFc27PuzzleLayout(root, savedSquad, target);
-    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail29();
+    if (JSON.stringify({ ...layout, squadEmpty: false }) !== JSON.stringify({ ...savedLayout, squadEmpty: false }) || layout.customBrickIndices.length || !Array.isArray(refs3) || (previousRefs === null ? refs3.length !== layout.requiredPlayerCount : refs3.length > layout.requiredPlayerCount) || new Set(refs3.map((ref) => ref.slot)).size !== refs3.length || new Set(refs3.map((ref) => ref.kind === "concept" ? `concept:${ref.definitionId}` : `owned:${ref.id}`)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return fail30();
     const matches2 = (squad) => refs3.every((ref) => {
       const item2 = ownData(ownData(squad, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (concepts && ref.kind === "concept");
@@ -1749,10 +1749,10 @@
       const item2 = ownData(ownData(local, "_players")?.[ref.slot], "_item");
       return ownData(item2, "id") === (ref.kind === "concept" ? ref.definitionId : ref.id) && ownData(item2, "definitionId") === ref.definitionId && ownData(item2, "concept") === (ref.kind === "concept");
     });
-    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail29();
-    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail29();
+    if (!matches2(savedSquad) || !layout.squadEmpty && !matches2(local) && !previousMatches()) return fail30();
+    if (local.update !== root.UTSquadEntity.prototype.update || challenge.onDataChange?.notify !== root.EAObservable.prototype.notify) return fail30();
     runtime();
-    if (currentChallengeEntity(root, target) !== challenge) return fail29();
+    if (currentChallengeEntity(root, target) !== challenge) return fail30();
     local.update(savedSquad);
     if (!matches2(local) && (layout.squadEmpty || previousMatches())) {
       const retained = ownData(ownData(ownData(root, "call"), "squad"), "setPlayers");
@@ -1761,16 +1761,16 @@
       assertContext();
       runtime();
       checkPlayers();
-      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail29();
+      if (currentChallengeEntity(root, target) !== challenge || ownData(challenge, "squad") !== local || !projectFc27PuzzleLayout(root, local, target).squadEmpty && !previousMatches() || !matches2(savedSquad)) return fail30();
       const players = ownData(savedSquad, "_players").map((slot, index) => refs3.some((ref) => ref.slot === index) ? ownData(slot, "_item") : null);
       const setPlayers = retained ?? ownData(ownData(ownData(root, "UTSquadEntity"), "prototype"), "setPlayers");
       setPlayers.call(local, players);
     }
-    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail29();
+    if (ownData(challenge, "squad") !== local || !matches2(local)) return fail30();
     challenge.onDataChange.notify({ squad: local });
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContext();
-    if (!matches2(local)) return fail29();
+    if (!matches2(local)) return fail30();
     return { status: "synchronized", selectedCount: refs3.length };
   }
 
@@ -2361,7 +2361,7 @@
     const record = normalizeTraditionalJournal(scope2, input);
     if (isTerminalTraditionalJournal(record)) return "terminal";
     if (record.schema !== 2 || evidence?.fresh !== true || traditionalJournalScope(evidence.context) !== scope2 || !nonnegative(evidence.observedAt) || now < evidence.observedAt || now - evidence.observedAt > 15e3 || evidence.setId !== record.setId || evidence.challengeId !== record.challengeId || evidence.packId !== record.reward.value || evidence.unassignedClear !== true || !Array.isArray(evidence.present)) return "unresolved";
-    const sorted = (values7) => [...values7].sort((a, b) => a.id - b.id);
+    const sorted = (values8) => [...values8].sort((a, b) => a.id - b.id);
     if (["save-pending", "saved"].includes(record.phase) && same3(sorted(evidence.present), sorted(record.itemRefs)) && evidence.setTimesCompleted === record.setTimesCompleted && evidence.packCount === record.rewardBaselineCount) return "abandoned";
     if (["submit-pending", "submitted"].includes(record.phase) && evidence.present.length === 0 && evidence.setTimesCompleted === record.setTimesCompleted + 1 && evidence.packCount === record.rewardBaselineCount + record.reward.count) return "completed";
     return "unresolved";
@@ -2526,8 +2526,8 @@
     const number4 = Number(value);
     return Number.isFinite(number4) ? number4 : null;
   }
-  function uniqueNumbers(values7 = []) {
-    return [...new Set((values7 || []).map(Number).filter((value) => Number.isFinite(value) && value > 0))];
+  function uniqueNumbers(values8 = []) {
+    return [...new Set((values8 || []).map(Number).filter((value) => Number.isFinite(value) && value > 0))];
   }
   function cloneSerializable(value) {
     return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
@@ -3300,20 +3300,20 @@
     for (const raw of rawRequirements) {
       const pair = firstPair(raw);
       const scope2 = normalizedScope(raw?.scope);
-      const values7 = valuesOf(pair);
+      const values8 = valuesOf(pair);
       const source = requirementSource(raw, pair, required2);
       let parsed = null;
-      if (!pair || !integer5(pair.key) || scope2 === null || values7.length !== (pair.values?.length ?? -1) || !values7.length || values7.length > 32 || new Set(values7).size !== values7.length) {
+      if (!pair || !integer5(pair.key) || scope2 === null || values8.length !== (pair.values?.length ?? -1) || !values8.length || values8.length > 32 || new Set(values8).size !== values8.length) {
         parsed = unsupported(raw, pair, required2, "shape");
       } else {
         const key = pair.key;
         const count2 = nonnegative3(raw.count) && raw.count <= required2 ? raw.count : null;
         const mode = countMode(scope2);
-        const value = values7[0];
+        const value = values8[0];
         switch (key) {
           case FC27_SBC_KEY.QUALITY: {
             const bounds = qualityBounds[value];
-            if (!bounds || values7.length !== 1 || raw.count !== -1) parsed = unsupported(raw, pair, required2, "quality-shape");
+            if (!bounds || values8.length !== 1 || raw.count !== -1) parsed = unsupported(raw, pair, required2, "quality-shape");
             else if (scope2 === FC27_SBC_SCOPE.EXACT) {
               parsed = { kind: "all-quality", quality: value, minRating: bounds[0], maxRating: bounds[1], count: required2, source };
             } else if (scope2 === FC27_SBC_SCOPE.GREATER) {
@@ -3324,38 +3324,38 @@
             break;
           }
           case FC27_SBC_KEY.LEVEL:
-            parsed = count2 !== null && values7.every((v) => qualityBounds[v]) ? { kind: "quality-count", qualities: [...values7], mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact", count: count2, source } : unsupported(raw, pair, required2, "quality-count-shape");
+            parsed = count2 !== null && values8.every((v) => qualityBounds[v]) ? { kind: "quality-count", qualities: [...values8], mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact", count: count2, source } : unsupported(raw, pair, required2, "quality-count-shape");
             break;
           case FC27_SBC_KEY.MIN_OVR:
           case FC27_SBC_KEY.EXACT_OVR:
           case FC27_SBC_KEY.MAX_OVR:
-            parsed = count2 !== null && values7.length === 1 && value >= 1 && value <= 99 ? { kind: key === 26 ? "player-min-overall" : key === 27 ? "player-exact-overall" : "player-max-overall", value, count: count2, mode, source } : unsupported(raw, pair, required2, "overall-shape");
+            parsed = count2 !== null && values8.length === 1 && value >= 1 && value <= 99 ? { kind: key === 26 ? "player-min-overall" : key === 27 ? "player-exact-overall" : "player-max-overall", value, count: count2, mode, source } : unsupported(raw, pair, required2, "overall-shape");
             break;
           case FC27_SBC_KEY.NATION_ID:
           case FC27_SBC_KEY.LEAGUE_ID:
           case FC27_SBC_KEY.CLUB_ID:
-            parsed = count2 !== null && values7.every(positive3) ? {
+            parsed = count2 !== null && values8.every(positive3) ? {
               kind: key === 10 ? "from-nations" : key === 11 ? "from-leagues" : "from-clubs",
-              ids: [...values7],
+              ids: [...values8],
               count: count2,
               mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact",
               source
             } : unsupported(raw, pair, required2, "identity-shape");
             break;
           case FC27_SBC_KEY.RARE:
-            parsed = count2 !== null && values7.length === 1 && value === 1 ? { kind: "rare", count: count2, mode, source } : unsupported(raw, pair, required2, "rare-shape");
+            parsed = count2 !== null && values8.length === 1 && value === 1 ? { kind: "rare", count: count2, mode, source } : unsupported(raw, pair, required2, "rare-shape");
             break;
           case FC27_SBC_KEY.RARITY_GROUP:
-            parsed = count2 !== null && values7.length === 1 && positive3(value) ? { kind: "rarity-group", groupId: value, count: count2, mode, source } : unsupported(raw, pair, required2, "group-shape");
+            parsed = count2 !== null && values8.length === 1 && positive3(value) ? { kind: "rarity-group", groupId: value, count: count2, mode, source } : unsupported(raw, pair, required2, "group-shape");
             break;
           case FC27_SBC_KEY.TEAM_RATING:
-            parsed = raw.count === -1 && values7.length === 1 && value >= 1 && value <= 99 ? { kind: `${mode}-team-rating`, value, source } : unsupported(raw, pair, required2, "team-rating-shape");
+            parsed = raw.count === -1 && values8.length === 1 && value >= 1 && value <= 99 ? { kind: `${mode}-team-rating`, value, source } : unsupported(raw, pair, required2, "team-rating-shape");
             break;
           case FC27_SBC_KEY.CHEMISTRY:
-            parsed = raw.count === -1 && values7.length === 1 && value >= 0 && value <= 33 ? { kind: `${mode}-chemistry`, value, source } : unsupported(raw, pair, required2, "chemistry-shape");
+            parsed = raw.count === -1 && values8.length === 1 && value >= 0 && value <= 33 ? { kind: `${mode}-chemistry`, value, source } : unsupported(raw, pair, required2, "chemistry-shape");
             break;
           default: {
-            const relation = raw.count === -1 && values7.length === 1 && value <= required2 ? relationRule(key, value, scope2, required2) : null;
+            const relation = raw.count === -1 && values8.length === 1 && value <= required2 ? relationRule(key, value, scope2, required2) : null;
             parsed = relation ? { ...relation, source } : unsupported(raw, pair, required2);
           }
         }
@@ -3378,10 +3378,10 @@
     if (!integer5(rating) || rating < 1 || rating > 99) return null;
     return rating <= 64 ? 1 : rating <= 74 ? 2 : 3;
   }
-  function relationResult(values7, rule) {
-    if (values7.some((value) => value === null)) return null;
+  function relationResult(values8, rule) {
+    if (values8.some((value) => value === null)) return null;
     const count2 = /* @__PURE__ */ new Map();
-    for (const value of values7) if (value !== null) count2.set(value, (count2.get(value) ?? 0) + 1);
+    for (const value of values8) if (value !== null) count2.set(value, (count2.get(value) ?? 0) + 1);
     const observed = rule.kind.startsWith("distinct-") ? count2.size : Math.max(0, ...count2.values());
     if (rule.mode === "min") return observed >= rule.value;
     if (rule.mode === "max") return observed <= rule.value;
@@ -3419,7 +3419,7 @@
       const value = itemValue(item2, keys2);
       return positive3(value) ? value : null;
     });
-    const countMatches = (values7, predicate2) => values7.some((value) => value === null) ? null : compareCount(values7.filter(predicate2).length, rule.count, rule.mode ?? "min");
+    const countMatches = (values8, predicate2) => values8.some((value) => value === null) ? null : compareCount(values8.filter(predicate2).length, rule.count, rule.mode ?? "min");
     const clubIds = () => typeof options.clubResolver === "function" ? ids2(["teamId", "clubId"]).map(options.clubResolver) : players.map(() => null);
     switch (rule.kind) {
       case "all-quality":
@@ -5368,11 +5368,11 @@
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
     const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id12) => ({ [fields4[rule.kind]]: id12 })));
     const queries = [];
-    const add2 = (query) => {
+    const add3 = (query) => {
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
     };
-    for (const anchor of anchors.slice(0, 2)) add2({ start: 0, count: 20, level: allowed[0].level, ...anchor });
-    for (const { level: level2 } of allowed) add2({ start: 0, count: 20, level: level2 });
+    for (const anchor of anchors.slice(0, 2)) add3({ start: 0, count: 20, level: allowed[0].level, ...anchor });
+    for (const { level: level2 } of allowed) add3({ start: 0, count: 20, level: level2 });
     return {
       status: "ready",
       queries,
@@ -5710,7 +5710,7 @@
     const levelOf = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
     const tiers2 = material.length ? material.filter((rule) => rule.count > 0).sort((a, b) => Number(missing.includes(b)) - Number(missing.includes(a)) || b.count - a.count).map((rule) => levelOf(rule.qualities[0])) : [...new Set(generic.queries.map((query) => query.level))];
     const queries = [];
-    const add2 = (query) => {
+    const add3 = (query) => {
       if (queries.length < 3 && !queries.some((existing) => JSON.stringify(existing) === JSON.stringify(query))) queries.push(query);
     };
     const cappedClubs = parsed.rules.some((rule) => rule.kind === "distinct-clubs" && rule.mode !== "min" && rule.value < required(input));
@@ -5730,7 +5730,7 @@
         anchors.push(...matching);
         if (new Set(matching.map((item2) => item2.definitionId)).size < rule.count) {
           const identityLevel = generic.queries.find((query) => rule.ids.includes(query.team))?.level ?? tiers2[0];
-          if (queries.length < 2) add2({ start: 0, count: 20, level: identityLevel, team: rule.ids[0] });
+          if (queries.length < 2) add3({ start: 0, count: 20, level: identityLevel, team: rule.ids[0] });
         }
       }
       const counts = /* @__PURE__ */ new Map();
@@ -5738,15 +5738,15 @@
         counts.set(item2.nationId, (counts.get(item2.nationId) ?? 0) + 1);
       }
       const nation = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
-      if (positive7(nation)) add2({ start: 0, count: 20, level: level2, nation });
+      if (positive7(nation)) add3({ start: 0, count: 20, level: level2, nation });
       const leagues2 = /* @__PURE__ */ new Map();
       for (const item2 of candidates.filter((item3) => levelOf(quality2(item3.rating)) === level2 && item3.nationId === nation)) {
         leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       }
       for (const [league] of [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
-        add2({ start: 0, count: 20, level: level2, league });
+        add3({ start: 0, count: 20, level: level2, league });
       }
-      add2({ start: 0, count: 20, level: level2 });
+      add3({ start: 0, count: 20, level: level2 });
       return { status: "ready", executable: false, queries, complete: false };
     }
     if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && nations.length) {
@@ -5755,11 +5755,11 @@
         items: pool.candidates.filter((item2) => item2.nationId === nation && tiers2.includes(levelOf(quality2(item2.rating))))
       })).sort((a, b) => b.items.filter((item2) => levelOf(quality2(item2.rating)) === tiers2[0]).length - a.items.filter((item2) => levelOf(quality2(item2.rating)) === tiers2[0]).length || b.items.length - a.items.length || a.nation - b.nation);
       const anchor = ranked[0];
-      for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2, nation: anchor.nation });
+      for (const level2 of tiers2) add3({ start: 0, count: 20, level: level2, nation: anchor.nation });
       const leagues2 = /* @__PURE__ */ new Map();
       for (const item2 of anchor.items) leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       const league = [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
-      add2({ start: 0, count: 20, level: tiers2[0], ...positive7(league) ? { league } : {} });
+      add3({ start: 0, count: 20, level: tiers2[0], ...positive7(league) ? { league } : {} });
       return { status: "ready", executable: false, queries, complete: false };
     }
     if (cappedClubs) {
@@ -5775,7 +5775,7 @@
           const lane = generic.queries.find((query2) => rule.ids.includes(query2.team));
           const level2 = lane?.level ?? tiers2[0];
           const query = rule.ids.map((team) => ({ start: 0, count: 20, level: level2, team })).find(unused);
-          if (query) add2(query);
+          if (query) add3(query);
         }
         const fillers = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
         const groups = /* @__PURE__ */ new Map();
@@ -5792,11 +5792,11 @@
         const ranked = [...groups.values()].map((group) => ({ ...group, coverage: coverage(group) })).sort((a, b) => b.coverage.reduce((n, count2) => n + count2, 0) - a.coverage.reduce((n, count2) => n + count2, 0) || b.coverage[0] - a.coverage[0] || a.team - b.team);
         if (!ranked.some((group) => group.coverage[0] > 0)) {
           const query = { start: 0, count: 20, level: levelOf(fillers[0].qualities[0]) };
-          if (unused(query)) add2(query);
+          if (unused(query)) add3(query);
         }
         for (const group of ranked) for (const rule of fillers) {
           const query = { start: 0, count: 20, level: levelOf(rule.qualities[0]), team: group.team };
-          if (unused(query)) add2(query);
+          if (unused(query)) add3(query);
         }
         return { status: "ready", executable: false, queries, complete: false };
       }
@@ -5812,18 +5812,18 @@
         return [...groups.values()].sort((a, b) => b.ids.size - a.ids.size || a.team - b.team).map(({ team }) => ({ start: 0, count: 20, level: level2, team }));
       });
       for (const query of generic.queries.filter((query2) => query2.team || query2.nation || query2.league)) {
-        if (tiers2.includes(query.level)) add2(query);
+        if (tiers2.includes(query.level)) add3(query);
       }
-      lanes.forEach((lane, index) => add2(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
-      for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add2(lane[index]);
+      lanes.forEach((lane, index) => add3(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
+      for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add3(lane[index]);
     }
     if (!missing.length) {
-      for (const query of generic.queries) if (tiers2.includes(query.level)) add2(query);
+      for (const query of generic.queries) if (tiers2.includes(query.level)) add3(query);
     } else {
-      for (const rule of missing) add2({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
-      for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2 });
+      for (const rule of missing) add3({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+      for (const level2 of tiers2) add3({ start: 0, count: 20, level: level2 });
     }
-    if (!queries.length) for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2 });
+    if (!queries.length) for (const level2 of tiers2) add3({ start: 0, count: 20, level: level2 });
     if (!cappedClubs && queries.length < 3 && pool.candidates.length && chemistryNeeded && tiers2.length > 1) {
       const affinity = planPuzzleNationalityAffinity({
         candidates: [...pool.candidates, ...marketCandidates(input, entries2)],
@@ -5832,7 +5832,7 @@
         brickIndices: input.challenge.brickIndices,
         usedQueries
       });
-      if (affinity) add2(affinity);
+      if (affinity) add3(affinity);
     }
     const baseQueries = queries.slice();
     if (!pool.candidates.length && chemistryNeeded && tiers2.length > 1) {
@@ -5855,14 +5855,14 @@
       for (const lane of lanes) {
         if (!lane.support) continue;
         const query = { start: 0, count: 20, level: lane.level, league: lane.league };
-        if (!usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) add2(query);
+        if (!usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) add3(query);
         if (queries.length === 3) break;
       }
     }
     const leagues = /* @__PURE__ */ new Map();
     for (const item2 of pool.candidates) leagues.set(item2.leagueId, (leagues.get(item2.leagueId) ?? 0) + 1);
     for (const [league] of [...leagues].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
-      for (const query of baseQueries.filter((query2) => !query2.team && !query2.league && !query2.nation)) add2({ ...query, league });
+      for (const query of baseQueries.filter((query2) => !query2.team && !query2.league && !query2.nation)) add3({ ...query, league });
       if (queries.length === 3) break;
     }
     return { status: "ready", executable: false, queries, complete: false };
@@ -5922,7 +5922,7 @@
     const squad = Array(input.challenge.slotCount).fill(null);
     for (const ref of result.selected) squad[ref.slot] = ref.catalogRef ? market.find((item2) => item2.catalogRef === ref.catalogRef) : pool.candidates.find((item2) => item2.id === ref.id);
     const addedCost = prices ? squad.filter((item2) => item2?.catalogRef).reduce((sum2, item2) => sum2 + prices.get(item2.definitionId), 0) : result.estimatedCost;
-    const values7 = materialPrices ? { materialValue: result.estimatedCost, inventoryValue: result.estimatedCost - addedCost } : {};
+    const values8 = materialPrices ? { materialValue: result.estimatedCost, inventoryValue: result.estimatedCost - addedCost } : {};
     return {
       status: "suggested",
       reason: "FC27_PURCHASE_SUGGESTIONS_READY",
@@ -5930,7 +5930,7 @@
       plans: [{
         ...projectSuggestion(squad, result.teamFacts, parsed.rules.length),
         estimatedCost: addedCost,
-        ...values7
+        ...values8
       }],
       marketCandidates: market.length,
       nodes: result.nodes,
@@ -5938,7 +5938,7 @@
       searchComplete: result.searchComplete === true,
       optimalWithinPool: result.optimalWithinPool === true,
       estimatedCost: addedCost,
-      ...values7,
+      ...values8,
       safeCandidates: result.safeCandidates ?? null,
       search: result.search ?? null,
       priceSource,
@@ -5968,10 +5968,10 @@
     return Object.freeze(policy);
   }
   var publicPriceSourceEnabled = (policy, source) => (policy.readSources == null || policy.readSources === "both" || policy.readSources === source) && (source !== "futbin" || policy.futbinEnabled !== false);
-  function galleryReferenceQuote(values7, settings = {}) {
+  function galleryReferenceQuote(values8, settings = {}) {
     const policy = normalizeGalleryPricePolicy(settings);
-    const futgg = validPublicPrice(values7?.futgg) ? values7.futgg : null;
-    const futbin = validPublicPrice(values7?.futbin) ? values7.futbin : null;
+    const futgg = validPublicPrice(values8?.futgg) ? values8.futgg : null;
+    const futbin = validPublicPrice(values8?.futbin) ? values8.futbin : null;
     const estimate = policy.source === "futgg" ? futgg : futbin;
     const maxBuy = estimate === null ? null : Math.min(15e6, Math.floor(estimate + (policy.premiumMode === "fixed" ? policy.premium : estimate * policy.premium / 100)));
     return { futgg, futbin, estimate, maxBuy, policy };
@@ -6054,11 +6054,11 @@
     }));
   }
   function projected(quotes, policy, now) {
-    const values7 = Object.fromEntries(sources.map((source) => [
+    const values8 = Object.fromEntries(sources.map((source) => [
       source,
       quotes[source].fetchedAt <= now && quotes[source].expiresAt > now && !quotes[source].error ? quotes[source].price : null
     ]));
-    const result = galleryReferenceQuote(values7, policy), selected = quotes[policy.source];
+    const result = galleryReferenceQuote(values8, policy), selected = quotes[policy.source];
     return {
       estimate: result.estimate,
       maxBuy: result.maxBuy,
@@ -6195,23 +6195,23 @@
   var matchesQuery = (card, query) => (!query.team || query.team === card.teamId) && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId) && query.level === (card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold");
   function refinementQueries(plan, pages, used) {
     const queries = [];
-    const add2 = (query) => {
+    const add3 = (query) => {
       if (!used.some((old) => same9(old, query)) && !queries.some((old) => same9(old, query))) queries.push(query);
     };
     const cards = refinementCards(plan);
     for (const card of cards) {
       for (const page of pages.filter((page2) => matchesQuery(card, page2.query) || page2.entries.some((entry) => entry.definitionId === card.definitionId))) {
         if (page.pageEndObserved === false && page.entries.length === page.query.count) {
-          add2({ ...page.query, start: page.query.start + page.query.count });
+          add3({ ...page.query, start: page.query.start + page.query.count });
         }
       }
     }
     if (queries.length) return queries;
     for (const card of cards) {
       const level2 = card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold";
-      add2({ start: 0, count: 20, level: level2, nation: card.nationId, league: card.leagueId });
-      add2({ start: 0, count: 20, level: level2, nation: card.nationId });
-      add2({ start: 0, count: 20, level: level2, league: card.leagueId });
+      add3({ start: 0, count: 20, level: level2, nation: card.nationId, league: card.leagueId });
+      add3({ start: 0, count: 20, level: level2, nation: card.nationId });
+      add3({ start: 0, count: 20, level: level2, league: card.leagueId });
     }
     return queries;
   }
@@ -8508,8 +8508,8 @@
     const confirmedMoves = /* @__PURE__ */ new Set();
     let closed = false;
     let currentRecord = null;
-    const diagnostic = (stage, values7 = {}) => {
-      onEvent({ stage, ...values7 });
+    const diagnostic = (stage, values8 = {}) => {
+      onEvent({ stage, ...values8 });
     };
     const pin = (pgid) => root.services.PIN.sendData(root.PINEventType.PAGE_VIEW, { type: root.PIN_PAGEVIEW_EVT_TYPE, pgid });
     const assertAccount = () => {
@@ -11793,8 +11793,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       </section>
       <section id="page-gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
         <nav id="gallery-browse-nav" class="gallery-browse-nav" aria-label="Gallery \u5BFC\u822A" hidden><button id="gallery-back" type="button" aria-label="\u8FD4\u56DE\u96C6\u5408" title="\u8FD4\u56DE\u96C6\u5408">\u2190</button><strong id="gallery-browse-title"></strong></nav>
-        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div></div></div>
-        <div class="gallery-meta"><div id="gallery-accounting" hidden><output id="gallery-accounting-summary" role="status"></output><button id="gallery-accounting-refresh" type="button" aria-label="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4" title="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\uFF0C\u4E0D\u6302\u724C\u3001\u4E0D\u6E05\u9664\u5DF2\u552E\u5361">\u21BB</button></div><span id="gallery-sync-time"></span><details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details></div>
+        <div class="gallery-header"><h2>Gallery</h2><div class="row gallery-toolbar"><button id="gallery-roadmap-open" class="primary" type="button" title="\u5148\u770B\u5168\u753B\u5ECA\u5347\u7EA7\u8DEF\u7EBF\uFF0C\u518D\u8FDB\u5165\u4FF1\u4E50\u90E8\u64CD\u4F5C">\u6574\u4F53\u65B9\u6848</button><button id="gallery-refresh" aria-label="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55" title="\u66F4\u65B0\u96C6\u5408\u76EE\u5F55">\u21BB</button><button id="gallery-sync" hidden>\u540C\u6B65\u6536\u96C6</button><button id="gallery-purchase-resume" hidden>\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70</button><button id="gallery-list-purchased" hidden>\u6302\u724C\u5DF2\u8D2D\u5361</button><div id="gallery-relist-controls" hidden><select id="gallery-relist-range" aria-label="\u81EA\u52A8\u91CD\u6302\u8303\u56F4"><option value="batch">\u672C\u6279</option><option value="all">\u5168\u90E8\u672A\u552E</option></select><select id="gallery-relist-minutes" aria-label="\u91CD\u6302\u68C0\u67E5\u95F4\u9694"><option value="1">\u6BCF 1 \u5206\u949F</option><option value="5">\u6BCF 5 \u5206\u949F</option><option value="10" selected>\u6BCF 10 \u5206\u949F</option></select><button id="gallery-relist-start" title="\u4FDD\u7559\u539F\u8D77\u62CD/\u4E00\u53E3\u4EF7\uFF1B\u6700\u591A 2 \u8F6E\uFF0C24 \u5C0F\u65F6\u6709\u6548\uFF0C\u9700\u4FDD\u6301\u9875\u9762\u5728\u7EBF">\u81EA\u52A8\u91CD\u6302</button><button id="gallery-relist-stop" hidden>\u505C\u6B62</button><button id="gallery-relist-recover" hidden>\u6838\u5BF9\u7ED3\u679C</button></div></div></div>
+        <section id="gallery-level-panel" hidden aria-label="\u753B\u5ECA\u7B49\u7EA7\u4E0E\u5956\u52B1"></section><div class="gallery-meta"><div id="gallery-accounting" hidden><output id="gallery-accounting-summary" role="status"></output><button id="gallery-accounting-refresh" type="button" aria-label="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4" title="\u6838\u5BF9\u51FA\u552E\u6210\u4EA4\uFF0C\u4E0D\u6302\u724C\u3001\u4E0D\u6E05\u9664\u5DF2\u552E\u5361">\u21BB</button></div><span id="gallery-sync-time"></span><details class="gallery-source-details"><summary><span id="gallery-source">\u5C1A\u672A\u540C\u6B65\u76EE\u5F55</span></summary><span id="gallery-status" role="status">\u9996\u6B21\u6253\u5F00 Gallery \u65F6\u8BFB\u53D6\u516C\u5F00\u96C6\u5408\u76EE\u5F55\u3002</span></details></div>
         <div class="gallery-notices"><output id="gallery-purchase-journal-status" hidden role="status"></output><output id="gallery-relist-status" hidden role="status"></output><small id="gallery-source-error" class="gallery-unknown" role="status"></small><small id="gallery-progress-note"></small></div>
         <progress id="gallery-background-progress" class="gallery-background-progress" hidden max="1" value="0" aria-label="Gallery \u6536\u96C6\u540C\u6B65\u8FDB\u5EA6"></progress>
         <dialog id="gallery-sync-dialog"><div class="dialog-header"><strong>\u540C\u6B65\u6536\u96C6</strong><button id="gallery-sync-stop" aria-label="\u505C\u6B62\u540C\u6B65" title="\u505C\u6B62\u540C\u6B65">\u505C\u6B62</button></div><progress id="gallery-sync-progress" max="1" value="0" style="width:100%"></progress><output id="gallery-sync-message" role="status"></output></dialog>
@@ -11878,8 +11878,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!Array.isArray(value) || value.length > max || nonempty && !value.length) invalid();
     return Array.from(value);
   };
-  var unique = (values7) => {
-    if (new Set(values7).size !== values7.length) invalid();
+  var unique = (values8) => {
+    if (new Set(values8).size !== values8.length) invalid();
   };
   var freeze5 = (value) => {
     if (value && typeof value === "object") {
@@ -11948,9 +11948,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         let conditions = null;
         if (source === "fodder") {
           for (const key of ["clubs", "leagues", "rareflags"]) {
-            const values7 = list(set[key], 256);
-            if (!values7.every((value) => integer13(value))) invalid();
-            unique(values7);
+            const values8 = list(set[key], 256);
+            if (!values8.every((value) => integer13(value))) invalid();
+            unique(values8);
           }
           if (typeof set.holo !== "boolean") invalid();
           conditions = definition(pick2(set, ["clubs", "leagues", "rareflags", "holo"]));
@@ -12271,12 +12271,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     const request = (url, headers = {}, phase = "catalog", source = "futgg") => new Promise((resolve, reject) => {
       const route = "direct";
-      const fail29 = (reason) => {
+      const fail30 = (reason) => {
         record({ source, phase, route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail29("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail30("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
       const requestUrl = url;
@@ -12291,24 +12291,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         onload: (response) => {
           const parsed = parseResponseHeaders(response);
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail29("FC27_GALLERY_REDIRECT");
+            fail30("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source, phase, route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parsed });
         },
-        onerror: () => fail29("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail29("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail30("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail30("FC27_GALLERY_TIMEOUT")
       });
     });
     const postJson = (url, payload) => new Promise((resolve, reject) => {
       const route = "direct";
-      const fail29 = (reason) => {
+      const fail30 = (reason) => {
         record({ source: "futgg", phase: "price-sign", route, status: "failed", reason });
         reject(new Error(reason));
       };
       if (typeof gmRequest !== "function") {
-        fail29("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
+        fail30("FC27_GALLERY_TRANSPORT_UNAVAILABLE");
         return;
       }
       const requestUrl = url;
@@ -12322,14 +12322,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         data: JSON.stringify(payload),
         onload: (response) => {
           if (response.finalUrl && response.finalUrl !== requestUrl) {
-            fail29("FC27_GALLERY_REDIRECT");
+            fail30("FC27_GALLERY_REDIRECT");
             return;
           }
           record({ source: "futgg", phase: "price-sign", route, status: "received", httpStatus: response.status });
           resolve({ status: response.status, text: response.responseText, headers: parseResponseHeaders(response) });
         },
-        onerror: () => fail29("FC27_GALLERY_NETWORK_FAILED"),
-        ontimeout: () => fail29("FC27_GALLERY_TIMEOUT")
+        onerror: () => fail30("FC27_GALLERY_NETWORK_FAILED"),
+        ontimeout: () => fail30("FC27_GALLERY_TIMEOUT")
       });
     });
     return Object.freeze({
@@ -12344,11 +12344,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         return request(FUTGG_POOL_URL(setId), headers, "pool");
       },
       getPrices: async (ids2, { platform = "pc" } = {}) => {
-        const values7 = [...new Set((ids2 ?? []).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))];
-        if (!values7.length || values7.length > FUTGG_PRICE_BATCH_SIZE || !["pc", "console"].includes(platform)) {
+        const values8 = [...new Set((ids2 ?? []).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))];
+        if (!values8.length || values8.length > FUTGG_PRICE_BATCH_SIZE || !["pc", "console"].includes(platform)) {
           return Promise.reject(new Error("FC27_GALLERY_PRICE_IDS_INVALID"));
         }
-        const target = new URL(FUTGG_PRICE_URL(values7, platform === "console" ? "ps5" : platform));
+        const target = new URL(FUTGG_PRICE_URL(values8, platform === "console" ? "ps5" : platform));
         const relative = `${target.pathname}${target.search}`;
         const signed = await postJson(FUTGG_PRICE_SIGN_URL, { url: relative });
         if (signed.status !== 200) return signed;
@@ -12782,26 +12782,26 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       return task;
     };
     const loadPriceSnapshot = (ids2, { platform = "pc" } = {}) => {
-      const values7 = priceIds(ids2);
-      if (!values7.length || values7.length > 250 || !["pc", "console"].includes(platform)) return Promise.resolve(Object.freeze({
+      const values8 = priceIds(ids2);
+      if (!values8.length || values8.length > 250 || !["pc", "console"].includes(platform)) return Promise.resolve(Object.freeze({
         prices: Object.freeze({}),
         freshPrices: Object.freeze({}),
-        missingIds: values7,
+        missingIds: values8,
         staleIds: [],
         stale: true,
         error: "FC27_GALLERY_PRICE_IDS_INVALID",
         retryAt: null,
         expiresAt: null
       }));
-      const key = priceKey(values7, platform);
+      const key = priceKey(values8, platform);
       if (priceInFlight.has(key)) return priceInFlight.get(key);
       const task = (async () => {
         const batches = [];
-        for (let start = 0; start < values7.length; start += FUTGG_PRICE_BATCH_SIZE) batches.push(values7.slice(start, start + FUTGG_PRICE_BATCH_SIZE));
+        for (let start = 0; start < values8.length; start += FUTGG_PRICE_BATCH_SIZE) batches.push(values8.slice(start, start + FUTGG_PRICE_BATCH_SIZE));
         if (batches.length > 1 && !priceLegacyReads.has(key)) priceLegacyReads.set(key, (async () => {
           try {
             const cached = await gmGetValue?.(`${cacheKey}:prices:${key}`, null);
-            if (cached?.schema !== 1 || cached.season !== season || cached.platform !== platform || cached.ids?.join(",") !== values7.join(",")) return;
+            if (cached?.schema !== 1 || cached.season !== season || cached.platform !== platform || cached.ids?.join(",") !== values8.join(",")) return;
             for (const batch of batches) {
               const batchKey = priceKey(batch, platform);
               if (!priceMemory.has(batchKey)) priceMemory.set(batchKey, {
@@ -12857,8 +12857,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     };
     const loadPrices = async (ids2, options) => (await loadPriceSnapshot(ids2, options)).prices;
     const priceError = (ids2, { platform = "pc" } = {}) => {
-      const values7 = [...new Set((ids2 ?? []).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))].sort((a, b) => a - b);
-      return priceErrors.get(`${platform}:${values7.join(",")}`) ?? null;
+      const values8 = [...new Set((ids2 ?? []).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))].sort((a, b) => a - b);
+      return priceErrors.get(`${platform}:${values8.join(",")}`) ?? null;
     };
     const refresh = async (force) => {
       await read();
@@ -12938,17 +12938,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (!field || !Number.isSafeInteger(tag.id) || seen.has(tag.id) || !["is", "any", "atLeast", "same", "different"].includes(match.how) || !Array.isArray(match.values ?? []) || !Array.isArray(tag.steps) || !tag.steps.length) return fail20("unknown-rule");
         const tiers2 = tag.steps.map((step) => ({ at: step.at, pct: step.pct })).sort((a, b) => a.at - b.at);
         if (tiers2.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0 || tier.pct > 1e5 || i > 0 && tier.at === tiers2[i - 1].at)) return fail20("tiers-invalid");
-        const values7 = (match.values ?? []).map(String);
-        if (["is", "any", "atLeast"].includes(match.how) && !values7.length) return fail20("unknown-values");
-        if (match.how === "atLeast" && (values7.length !== 1 || !Number.isFinite(Number(values7[0])))) return fail20("unknown-values");
+        const values8 = (match.values ?? []).map(String);
+        if (["is", "any", "atLeast"].includes(match.how) && !values8.length) return fail20("unknown-values");
+        if (match.how === "atLeast" && (values8.length !== 1 || !Number.isFinite(Number(values8[0])))) return fail20("unknown-values");
         seen.add(tag.id);
         result2.push({
           id: tag.id,
           name: tag.name,
           field,
           mode: ["same", "different"].includes(match.how) ? match.how : match.how === "atLeast" ? "minimum" : "match",
-          values: values7,
-          threshold: match.how === "atLeast" ? Number(values7[0]) : null,
+          values: values8,
+          threshold: match.how === "atLeast" ? Number(values8[0]) : null,
           tiers: tiers2,
           fodder: true,
           goldFrom: engine2.goldFrom ?? 75,
@@ -12964,8 +12964,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (!Number.isSafeInteger(tag?.id) || ids2.has(tag.id) || !rule || !fields3[rule.attribute] || tag.bonusType !== "ITEM_SCORE_PERCENTAGE" || tag.thresholdType !== "ITEM_COUNT" || rule.target !== (rule.attribute === "BASE_DEF_ID" ? "BASE_DEF_ID" : "ATTRIBUTE") || !Array.isArray(rule.values) || !rule.values.length) return fail20("unknown-rule");
       const isGroup = grouped.has(rule.attribute), isMinimum = ["WEAK_FOOT", "SKILL_MOVES"].includes(rule.attribute);
       if (isGroup ? !["MAX_COUNT_ALL_SAME", "COUNT_DIFF"].includes(rule.type) : isMinimum ? rule.type !== "MIN_COUNT" : !["COUNT", "COUNT_ANY"].includes(rule.type)) return fail20("unknown-rule");
-      const values7 = rule.values.map(String);
-      if (isMinimum && (values7.length !== 1 || !/^\d+$/.test(values7[0])) || isGroup && (values7.length !== 1 || values7[0] !== "0") || rule.attribute === "FIRST_OWNED" && (values7.length !== 1 || values7[0] !== "1") || rule.attribute === "HYPER_COSMETIC_TYPE" && (values7.length !== 2 || !values7.includes("0") || !values7.includes("1")) || rule.attribute === "LEVEL" && values7.some((value) => !["gold", "silver", "bronze"].includes(value))) return fail20("unknown-values");
+      const values8 = rule.values.map(String);
+      if (isMinimum && (values8.length !== 1 || !/^\d+$/.test(values8[0])) || isGroup && (values8.length !== 1 || values8[0] !== "0") || rule.attribute === "FIRST_OWNED" && (values8.length !== 1 || values8[0] !== "1") || rule.attribute === "HYPER_COSMETIC_TYPE" && (values8.length !== 2 || !values8.includes("0") || !values8.includes("1")) || rule.attribute === "LEVEL" && values8.some((value) => !["gold", "silver", "bronze"].includes(value))) return fail20("unknown-values");
       if (!Array.isArray(tag.tiers) || !tag.tiers.length) return fail20("tiers-unavailable");
       const tiers2 = tag.tiers.map((tier) => ({ at: tier.minItems, pct: tier.bonus })).sort((a, b) => a.at - b.at);
       if (tiers2.some((tier, i) => !Number.isSafeInteger(tier.at) || tier.at < 1 || !Number.isFinite(tier.pct) || tier.pct < 0 || tier.pct > 1e5 || i > 0 && (tier.at === tiers2[i - 1].at || tier.pct < tiers2[i - 1].pct))) return fail20("tiers-invalid");
@@ -12975,8 +12975,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         name: tag.name,
         field: fields3[rule.attribute],
         mode: isGroup ? rule.type === "COUNT_DIFF" ? "different" : "same" : isMinimum ? "minimum" : "match",
-        values: values7,
-        threshold: isMinimum ? Number(values7[0]) + (rule.attribute === "SKILL_MOVES" ? 1 : 0) : null,
+        values: values8,
+        threshold: isMinimum ? Number(values8[0]) + (rule.attribute === "SKILL_MOVES" ? 1 : 0) : null,
         tiers: tiers2
       });
     }
@@ -13097,7 +13097,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         seeds2.push(cards);
       }
     }
-    const totals = memo?.totals ?? /* @__PURE__ */ new Map();
+    const totals2 = memo?.totals ?? /* @__PURE__ */ new Map();
     const rowKeys = /* @__PURE__ */ new Map();
     if (memo) for (const row of rows) {
       const signature2 = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map((field) => row[field] ?? null)]);
@@ -13106,10 +13106,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     const score2 = (cards) => {
       const identity5 = cards.map((row) => memo ? rowKeys.get(row) : row.eaId).join(",");
-      if (totals.has(identity5)) return totals.get(identity5);
+      if (totals2.has(identity5)) return totals2.get(identity5);
       const total = evaluateGalleryLineup(cards, compiled).total;
-      if (totals.size >= 8192) totals.clear();
-      totals.set(identity5, total);
+      if (totals2.size >= 8192) totals2.clear();
+      totals2.set(identity5, total);
       return total;
     };
     const scoredSeeds = [];
@@ -13724,20 +13724,20 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function selectGalleryCandidatePool(candidates, limit) {
     if (!Array.isArray(candidates) || !Number.isSafeInteger(limit) || limit < 1) return [];
     const selected = /* @__PURE__ */ new Map();
-    const add2 = (candidate) => {
+    const add3 = (candidate) => {
       if (selected.size < limit) selected.set(candidate.id, candidate);
     };
     const byPrice = candidates.slice().sort(priceOrder);
     const byScore = candidates.slice().sort(scoreOrder);
-    for (const candidate of byPrice.slice(0, Math.ceil(limit / 2))) add2(candidate);
-    for (const candidate of byScore.slice(0, Math.ceil(limit / 4))) add2(candidate);
+    for (const candidate of byPrice.slice(0, Math.ceil(limit / 2))) add3(candidate);
+    for (const candidate of byScore.slice(0, Math.ceil(limit / 4))) add3(candidate);
     const representatives = /* @__PURE__ */ new Map();
     for (const candidate of byPrice) for (const key of candidate.diversityKeys ?? []) {
       if (!representatives.has(key)) representatives.set(key, candidate);
     }
-    for (const candidate of [...representatives.values()].sort(priceOrder)) add2(candidate);
-    for (const candidate of byPrice) add2(candidate);
-    for (const candidate of byScore) add2(candidate);
+    for (const candidate of [...representatives.values()].sort(priceOrder)) add3(candidate);
+    for (const candidate of byPrice) add3(candidate);
+    for (const candidate of byScore) add3(candidate);
     return [...selected.values()];
   }
 
@@ -15098,7 +15098,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   function replanableGalleryFailures(outcome = {}) {
     if (!isGalleryPurchaseReplanSafe(outcome)) return [];
-    return outcome.failures.map((row) => row.definitionId).filter((id12, index, values7) => values7.indexOf(id12) === index);
+    return outcome.failures.map((row) => row.definitionId).filter((id12, index, values8) => values8.indexOf(id12) === index);
   }
   function* planGalleryRemainderSteps({
     targets,
@@ -15204,26 +15204,26 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
 
   // src/adapters/browser/fc27-listing-range.js
   function mountListingRange({ document, parent, label, labels: labels2, min, max, value, onValueChange, enabled }) {
-    const add2 = (parent2, tag, className, text5 = "") => {
+    const add3 = (parent2, tag, className, text5 = "") => {
       const node = document.createElement(tag);
       node.className = className;
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const root = add2(parent, "div", "listing-range");
+    const root = add3(parent, "div", "listing-range");
     root.dataset.slot = "slider";
-    add2(root, "strong", "", label);
-    const box = add2(root, "div", "listing-range-box"), control = add2(box, "div", "listing-range-control");
-    const track = add2(control, "div", "listing-range-track");
+    add3(root, "strong", "", label);
+    const box = add3(root, "div", "listing-range-box"), control = add3(box, "div", "listing-range-control");
+    const track = add3(control, "div", "listing-range-track");
     track.dataset.slot = "slider-track";
-    const indicator = add2(track, "div", "listing-range-indicator");
+    const indicator = add3(track, "div", "listing-range-indicator");
     indicator.dataset.slot = "slider-range";
-    const values7 = add2(box, "div", "listing-range-values");
-    values7.dataset.slot = "slider-values";
-    const ends = add2(root, "div", "listing-range-ends");
-    add2(ends, "span", "", String(min));
-    add2(ends, "span", "", String(max));
+    const values8 = add3(box, "div", "listing-range-values");
+    values8.dataset.slot = "slider-values";
+    const ends = add3(root, "div", "listing-range-ends");
+    add3(ends, "span", "", String(min));
+    add3(ends, "span", "", String(max));
     let current2 = [...value];
     const numbers3 = [], thumbs = [], tips = [];
     const render = () => {
@@ -15252,16 +15252,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       onValueChange([...current2]);
     };
     for (let index = 0; index < 2; index++) {
-      const thumb = add2(control, "input", "listing-range-thumb");
+      const thumb = add3(control, "input", "listing-range-thumb");
       thumb.type = "range";
       thumb.min = String(min);
       thumb.max = String(max);
       thumb.step = "1";
       thumb.dataset.slot = "slider-thumb";
       thumb.setAttribute("aria-label", `${labels2[index]}\u6ED1\u5757`);
-      const tip = add2(control, "span", "listing-range-tooltip");
+      const tip = add3(control, "span", "listing-range-tooltip");
       tip.hidden = true;
-      const input = add2(values7, "input", "");
+      const input = add3(values8, "input", "");
       input.type = "number";
       input.step = "1";
       input.setAttribute("aria-label", labels2[index]);
@@ -15333,17 +15333,17 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!service) return { open() {
     }, dispose() {
     } };
-    const add2 = (parent2, tag, text5 = "") => {
+    const add3 = (parent2, tag, text5 = "") => {
       const e = document.createElement(tag);
       e.textContent = text5;
       parent2.append(e);
       return e;
     };
-    const dialog = add2(parent, "dialog");
+    const dialog = add3(parent, "dialog");
     dialog.id = "gallery-bulk-list-dialog";
     dialog.setAttribute("aria-label", "Bulk List");
     dialog.style.cssText = "width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden;box-sizing:border-box";
-    const style = add2(dialog, "style");
+    const style = add3(dialog, "style");
     style.textContent = `
     #gallery-bulk-list-dialog{background:#151a20;color:#f2f4f6;border:1px solid #46525d;border-radius:10px;padding:16px;width:min(760px,94vw);max-width:min(760px,94vw);max-height:88vh;min-height:0;overflow-y:auto!important;overflow-x:hidden!important;box-sizing:border-box;box-shadow:0 18px 55px #000b;scrollbar-gutter:stable}
     #gallery-bulk-list-dialog[open]{display:block}
@@ -15441,34 +15441,34 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     #gallery-bulk-list-dialog .list-pagebar{justify-content:flex-end;margin:26px 0 12px}
     #gallery-bulk-list-dialog .list-profit[data-sign=positive]{color:#00da55}#gallery-bulk-list-dialog .list-profit[data-sign=negative]{color:#ff9696}
   `;
-    const header = add2(dialog, "div");
+    const header = add3(dialog, "div");
     header.className = "dialog-header";
-    add2(header, "strong", "Bulk List");
-    const close = add2(header, "button", "\xD7");
+    add3(header, "strong", "Bulk List");
+    const close = add3(header, "button", "\xD7");
     close.type = "button";
     close.setAttribute("aria-label", "\u5173\u95ED");
-    const source = add2(dialog, "small", "\u62A5\u4EF7\u6765\u6E90\u8BFB\u53D6\u8BBE\u7F6E\u4E2D\u7684\u6765\u6E90 \xB7 \u6302\u724C\u4E0D\u662F\u6210\u4EA4\uFF0C\u9700 EA \u786E\u8BA4");
+    const source = add3(dialog, "small", "\u62A5\u4EF7\u6765\u6E90\u8BFB\u53D6\u8BBE\u7F6E\u4E2D\u7684\u6765\u6E90 \xB7 \u6302\u724C\u4E0D\u662F\u6210\u4EA4\uFF0C\u9700 EA \u786E\u8BA4");
     source.className = "list-source";
-    const controls = add2(dialog, "div");
+    const controls = add3(dialog, "div");
     controls.className = "list-controls";
     const group = () => {
-      const e = add2(controls, "section");
+      const e = add3(controls, "section");
       e.className = "list-group";
       return e;
     };
     const durationGroup = group(), priceGroup = group(), delayGroup = group();
-    const durationLabel = add2(durationGroup, "label", "Duration"), duration = add2(durationLabel, "select");
+    const durationLabel = add3(durationGroup, "label", "Duration"), duration = add3(durationLabel, "select");
     duration.setAttribute("aria-label", "\u65F6\u957F");
     for (const hours of [1, 3, 6, 12, 24, 72]) {
-      const o = add2(duration, "option", `${hours} Hour${hours === 1 ? "" : "s"}`);
+      const o = add3(duration, "option", `${hours} Hour${hours === 1 ? "" : "s"}`);
       o.value = String(hours * 3600);
     }
-    add2(priceGroup, "strong", "Price");
-    const segments = add2(priceGroup, "div");
+    add3(priceGroup, "strong", "Price");
+    const segments = add3(priceGroup, "div");
     segments.className = "list-segments";
     const mode = { value: "percentage" }, modes = /* @__PURE__ */ new Map();
     for (const [value, label2] of [["fixed", "Fixed"], ["percentage", "Percentage"], ["steps", "Steps"]]) {
-      const button = add2(segments, "button", label2);
+      const button = add3(segments, "button", label2);
       button.type = "button";
       modes.set(value, button);
       button.addEventListener("click", (event) => {
@@ -15478,10 +15478,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         }
       });
     }
-    const percentFields = add2(priceGroup, "div"), fixedFields = add2(priceGroup, "div");
+    const percentFields = add3(priceGroup, "div"), fixedFields = add3(priceGroup, "div");
     fixedFields.className = "list-fields";
     const field = (parent2, label2, value, type = "number") => {
-      const wrap = add2(parent2, "label"), caption = add2(wrap, "span", label2), input = add2(wrap, "input");
+      const wrap = add3(parent2, "label"), caption = add3(wrap, "span", label2), input = add3(wrap, "input");
       input.type = type;
       input.value = String(value);
       input.setAttribute("aria-label", label2);
@@ -15524,7 +15524,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     } };
     const startControl = mountListingCurrency({
       document,
-      parent: add2(fixedFields, "label", "Start Bid"),
+      parent: add3(fixedFields, "label", "Start Bid"),
       label: "Start Bid",
       enabled: () => !busy,
       onCommit: (value) => {
@@ -15538,7 +15538,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     });
     const fixedControl = mountListingCurrency({
       document,
-      parent: add2(fixedFields, "label", "Buy Now"),
+      parent: add3(fixedFields, "label", "Buy Now"),
       label: "Buy Now",
       enabled: () => !busy,
       onCommit: (value) => {
@@ -15566,80 +15566,80 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         changeSettings(false);
       }
     });
-    const toolbar = add2(dialog, "div");
+    const toolbar = add3(dialog, "div");
     toolbar.className = "list-toolbar";
-    const selectionTools = add2(toolbar, "div");
+    const selectionTools = add3(toolbar, "div");
     selectionTools.className = "toolbar-group";
-    const all = add2(selectionTools, "button", "Select all");
+    const all = add3(selectionTools, "button", "Select all");
     all.setAttribute("aria-label", "\u5168\u9009");
-    const none = add2(selectionTools, "button", "Clear");
+    const none = add3(selectionTools, "button", "Clear");
     none.setAttribute("aria-label", "\u53D6\u6D88\u9009\u62E9");
-    const viewTools = add2(toolbar, "div");
+    const viewTools = add3(toolbar, "div");
     viewTools.className = "toolbar-group";
-    const cards = add2(viewTools, "button", "Cards");
+    const cards = add3(viewTools, "button", "Cards");
     cards.setAttribute("aria-label", "\u5361\u7247\u89C6\u56FE");
-    const tableView = add2(viewTools, "button", "Table");
+    const tableView = add3(viewTools, "button", "Table");
     tableView.setAttribute("aria-label", "\u8868\u683C\u89C6\u56FE");
-    const tableWrap = add2(dialog, "div");
+    const tableWrap = add3(dialog, "div");
     tableWrap.className = "list-table-wrap";
-    const table = add2(tableWrap, "table");
-    const heading = add2(table, "thead"), hr = add2(heading, "tr");
-    for (const text5 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add2(hr, "th", text5);
-    const body = add2(table, "tbody");
-    const footer = add2(add2(table, "tfoot"), "tr");
-    const totalLabel = add2(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
+    const table = add3(tableWrap, "table");
+    const heading = add3(table, "thead"), hr = add3(heading, "tr");
+    for (const text5 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add3(hr, "th", text5);
+    const body = add3(table, "tbody");
+    const footer = add3(add3(table, "tfoot"), "tr");
+    const totalLabel = add3(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
     totalLabel.colSpan = 5;
-    const totalProfit = add2(footer, "td");
+    const totalProfit = add3(footer, "td");
     totalProfit.className = "list-profit";
-    const pages = add2(dialog, "div");
+    const pages = add3(dialog, "div");
     pages.className = "list-toolbar";
-    const selectionCount = add2(pages, "span");
+    const selectionCount = add3(pages, "span");
     selectionCount.className = "list-selection";
-    const previous = add2(pages, "button", "Previous");
+    const previous = add3(pages, "button", "Previous");
     previous.setAttribute("aria-label", "\u4E0A\u4E00\u9875");
-    const pageStatus = add2(pages, "span");
+    const pageStatus = add3(pages, "span");
     pages.classList.add("list-pagebar");
-    const next = add2(pages, "button", "Next");
+    const next = add3(pages, "button", "Next");
     next.setAttribute("aria-label", "\u4E0B\u4E00\u9875");
-    const progress = add2(dialog, "progress");
+    const progress = add3(dialog, "progress");
     progress.style.width = "100%";
     progress.max = 1;
     progress.value = 0;
     progress.hidden = true;
-    const execution = add2(dialog, "div");
+    const execution = add3(dialog, "div");
     execution.hidden = true;
-    const output = add2(dialog, "output");
+    const output = add3(dialog, "output");
     output.setAttribute("role", "status");
-    const actions = add2(dialog, "div");
+    const actions = add3(dialog, "div");
     actions.className = "list-footer";
-    const cancel = add2(actions, "button", "Cancel");
+    const cancel = add3(actions, "button", "Cancel");
     cancel.type = "button";
     cancel.setAttribute("aria-label", "\u53D6\u6D88");
-    const submit = add2(actions, "button", "Bulk List");
+    const submit = add3(actions, "button", "Bulk List");
     submit.className = "primary";
-    const stop6 = add2(actions, "button", "Stop");
+    const stop6 = add3(actions, "button", "Stop");
     stop6.hidden = true;
     stop6.setAttribute("aria-label", "\u505C\u6B62");
-    const scheduleBox = add2(dialog, "details");
+    const scheduleBox = add3(dialog, "details");
     scheduleBox.id = "gallery-listing-schedule";
     const scheduleCapability = service.scheduleCapability?.() ?? { enabled: false };
     scheduleBox.hidden = !scheduleCapability.enabled;
-    add2(scheduleBox, "summary", "\u5B9A\u65F6\u6302\u724C\u672C\u6279\u6B21");
-    const scheduleControls = add2(scheduleBox, "div");
+    add3(scheduleBox, "summary", "\u5B9A\u65F6\u6302\u724C\u672C\u6279\u6B21");
+    const scheduleControls = add3(scheduleBox, "div");
     scheduleControls.className = "settings-grid";
-    const scheduleLabel = add2(scheduleControls, "label", "\u6302\u724C\u65F6\u95F4");
-    const scheduleValue = add2(scheduleLabel, "input");
+    const scheduleLabel = add3(scheduleControls, "label", "\u6302\u724C\u65F6\u95F4");
+    const scheduleValue = add3(scheduleLabel, "input");
     scheduleValue.type = "datetime-local";
     scheduleValue.setAttribute("aria-label", "\u6302\u724C\u65F6\u95F4");
-    const scheduleSave = add2(scheduleControls, "button", "\u4FDD\u5B58\u8BA1\u5212");
+    const scheduleSave = add3(scheduleControls, "button", "\u4FDD\u5B58\u8BA1\u5212");
     scheduleSave.type = "button";
-    const scheduleArm = add2(scheduleControls, "button", "\u542F\u7528\u5B9A\u65F6");
+    const scheduleArm = add3(scheduleControls, "button", "\u542F\u7528\u5B9A\u65F6");
     scheduleArm.type = "button";
     scheduleArm.disabled = true;
-    const scheduleCancel = add2(scheduleControls, "button", "\u53D6\u6D88\u5B9A\u65F6");
+    const scheduleCancel = add3(scheduleControls, "button", "\u53D6\u6D88\u5B9A\u65F6");
     scheduleCancel.type = "button";
     scheduleCancel.disabled = true;
-    const scheduleStatus = add2(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
+    const scheduleStatus = add3(scheduleBox, "output", "\u5C1A\u65E0\u8BA1\u5212");
     scheduleStatus.setAttribute("role", "status");
     dialog.append(actions);
     const selected = /* @__PURE__ */ new Set(), overrides = {}, rows = /* @__PURE__ */ new Map();
@@ -15743,10 +15743,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         row.name.hidden = show && !!row.native;
         row.reference.replaceChildren();
         row.quoteLine.textContent = "";
-        add2(row.reference, "span", (viewMode === "table" ? row.quote : row.previousPrice) ?? "N/A");
+        add3(row.reference, "span", (viewMode === "table" ? row.quote : row.previousPrice) ?? "N/A");
         if (row.quotes) for (const source2 of ["futgg", "futbin"]) {
           const value = row.quotes[source2];
-          if (value != null) add2(row.quoteLine, "span", `${source2 === "futgg" ? "GG" : "BIN"} ${value}`);
+          if (value != null) add3(row.quoteLine, "span", `${source2 === "futgg" ? "GG" : "BIN"} ${value}`);
         }
         if (!show) {
           row.native?.__fcatDealloc?.();
@@ -15836,21 +15836,21 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       for (const entry of entries2 ?? []) {
         let row = rows.get(entry.item.id);
         if (!row) {
-          const tr = add2(body, "tr");
-          add2(tr, "td");
-          add2(tr, "td", entry.name || String(entry.item.definitionId));
-          add2(tr, "td", "\u2014");
-          add2(tr, "td", String(entry.buyNow));
-          add2(tr, "td", "\u2014");
-          add2(tr, "td", "\u2014");
-          row = { tr, state: add2(tr.children[3], "small") };
+          const tr = add3(body, "tr");
+          add3(tr, "td");
+          add3(tr, "td", entry.name || String(entry.item.definitionId));
+          add3(tr, "td", "\u2014");
+          add3(tr, "td", String(entry.buyNow));
+          add3(tr, "td", "\u2014");
+          add3(tr, "td", "\u2014");
+          row = { tr, state: add3(tr.children[3], "small") };
           rows.set(entry.item.id, row);
         }
         row.state.textContent = `${entry.status === "accepted" && entry.listingState === "closed" ? "\u5DF2\u6302\u724C\uFF08\u62CD\u5356\u5DF2\u7ED3\u675F\uFF09" : label(entry.status)}${entry.reason ? ` \xB7 ${entry.reason}` : ""}`;
-        const line = add2(execution, "div");
+        const line = add3(execution, "div");
         line.style.cssText = "padding:8px 0;border-bottom:1px solid #46515b;overflow-wrap:anywhere";
-        add2(line, "strong", `${entry.name || entry.item.definitionId} \xB7 ${entry.buyNow} \u{1FA99}`);
-        add2(line, "span", ` \xB7 ${row.state.textContent}`);
+        add3(line, "strong", `${entry.name || entry.item.definitionId} \xB7 ${entry.buyNow} \u{1FA99}`);
+        add3(line, "span", ` \xB7 ${row.state.textContent}`);
       }
     };
     const run = async () => {
@@ -16078,15 +16078,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             const names = (result.requestedSources ?? ["futgg"]).map((value) => value === "futgg" ? "FUT.GG" : "FUTBIN");
             source.textContent = `${names.join(" + ")} \xB7 \u57FA\u51C6 ${result.source ?? "FUT.GG"}`;
             for (const e of result.candidates) {
-              const tr = add2(body, "tr"), check = add2(add2(tr, "td"), "input");
+              const tr = add3(body, "tr"), check = add3(add3(tr, "td"), "input");
               check.type = "checkbox";
               check.setAttribute("aria-label", `\u9009\u62E9 ${e.name}`);
-              const player = add2(tr, "td"), card = add2(player, "div"), slot = document.createElement("slot"), name = add2(player, "span", e.name);
+              const player = add3(tr, "td"), card = add3(player, "div"), slot = document.createElement("slot"), name = add3(player, "span", e.name);
               card.className = "list-card";
               slot.name = `gallery-bulk-card-${String(e.item.id).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
               card.append(slot);
-              const reference = add2(tr, "td");
-              const priceCell = add2(tr, "td");
+              const reference = add3(tr, "td");
+              const priceCell = add3(tr, "td");
               const currency = mountListingCurrency({
                 document,
                 parent: priceCell,
@@ -16101,13 +16101,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
                 }
               });
               const price2 = currency.input;
-              const quoteLine = add2(priceCell, "small");
+              const quoteLine = add3(priceCell, "small");
               const purchasePrice = e.boughtFor ?? e.purchase?.purchasePrice;
-              const cost = add2(tr, "td", purchasePrice > 0 ? String(purchasePrice) : e.boughtForSource === "first-owner" ? "N/A" : "\u672A\u77E5");
+              const cost = add3(tr, "td", purchasePrice > 0 ? String(purchasePrice) : e.boughtForSource === "first-owner" ? "N/A" : "\u672A\u77E5");
               cost.title = purchasePrice > 0 ? e.boughtForSource === "ea" ? "EA \u8BB0\u5F55\u7684\u8D2D\u5165\u4EF7\u683C" : "\u5DF2\u786E\u8BA4\u6210\u4EA4\u4EF7\u683C" : e.boughtForSource === "first-owner" ? "\u4E00\u624B\u5361\uFF0C\u65E0\u8D2D\u5165\u4EF7\u683C" : "\u672A\u8BFB\u53D6\u5230\u8D2D\u5165\u4EF7\u683C\uFF0C\u4E0D\u80FD\u636E\u6B64\u8BA4\u5B9A\u4E3A\u4E00\u624B\u5361";
-              const profitCell = add2(tr, "td");
+              const profitCell = add3(tr, "td");
               profitCell.className = "list-profit";
-              const state = add2(priceCell, "small");
+              const state = add3(priceCell, "small");
               const quoteKnown = Number.isFinite(Number(result.prices?.[e.item.definitionId])) && Number(result.prices[e.item.definitionId]) > 0;
               check.checked = quoteKnown;
               if (quoteKnown) selected.add(e.item.id);
@@ -16184,29 +16184,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return node;
   };
   function createFodderDialog(document, parent, id12, title) {
-    const add2 = (parent2, tag, text5, cls) => fodderAdd(document, parent2, tag, text5, cls);
-    const dialog = add2(parent, "dialog", "", "fcat-fodder");
+    const add3 = (parent2, tag, text5, cls) => fodderAdd(document, parent2, tag, text5, cls);
+    const dialog = add3(parent, "dialog", "", "fcat-fodder");
     dialog.id = id12;
     dialog.setAttribute("aria-label", title);
-    add2(dialog, "style", fodderTradeStyles);
-    const header = add2(dialog, "header"), heading = add2(header, "strong", title);
-    const body = add2(dialog, "div", "", "fd-body"), footer = add2(dialog, "footer");
-    return { dialog, header, heading, body, footer, add: add2 };
+    add3(dialog, "style", fodderTradeStyles);
+    const header = add3(dialog, "header"), heading = add3(header, "strong", title);
+    const body = add3(dialog, "div", "", "fd-body"), footer = add3(dialog, "footer");
+    return { dialog, header, heading, body, footer, add: add3 };
   }
 
   // src/adapters/browser/fc27-fodder-list-view.js
   function mountFc27FodderListView({ document, parent, service, accountScope, isActive = () => true }) {
-    const { dialog, body, footer, add: add2 } = createFodderDialog(document, parent, "gallery-fodder-list-dialog", "To Transfer List");
-    add2(dialog, "style", currencyInputStyles);
+    const { dialog, body, footer, add: add3 } = createFodderDialog(document, parent, "gallery-fodder-list-dialog", "To Transfer List");
+    add3(dialog, "style", currencyInputStyles);
     const setting = (label) => {
-      const row = add2(body, "div", "", "fd-setting");
-      add2(row, "span", label);
-      return add2(row, "div", "", "fd-options");
+      const row = add3(body, "div", "", "fd-setting");
+      add3(row, "span", label);
+      return add3(row, "div", "", "fd-options");
     };
-    const duration = add2(setting("Duration"), "select");
+    const duration = add3(setting("Duration"), "select");
     duration.setAttribute("aria-label", "Duration");
     for (const h of [1, 3, 6, 12, 24, 72]) {
-      const option = add2(duration, "option", `${h} Hour${h > 1 ? "s" : ""}`);
+      const option = add3(duration, "option", `${h} Hour${h > 1 ? "s" : ""}`);
       option.value = String(h * 3600);
     }
     let from = "market", adjustment = 0, busy = false, prepared = null, identity5 = null, resumeRunId = null, targetCurrent = () => true, disposed = false, finished = false;
@@ -16214,7 +16214,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let lastSelected = null;
     const current2 = () => !disposed && dialog.open && isActive() && identity5 === accountScope() && targetCurrent();
     const button = (parent2, text5, action) => {
-      const el = add2(parent2, "button", text5);
+      const el = add3(parent2, "button", text5);
       el.type = "button";
       el.addEventListener("click", (event) => {
         if (event.isTrusted && !busy && current2()) action();
@@ -16255,39 +16255,39 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       adjustment += pct;
       render();
     });
-    const totalAdjust = add2(adjust, "span");
+    const totalAdjust = add3(adjust, "span");
     button(adjust, "\xD7", () => {
       adjustment = 0;
       render();
     }).setAttribute("aria-label", "Clear adjustment");
-    const waitRow = setting("Wait"), wait = add2(waitRow, "input");
+    const waitRow = setting("Wait"), wait = add3(waitRow, "input");
     wait.type = "range";
     wait.min = "2";
     wait.max = "15";
     wait.step = "1";
     wait.value = "5";
     wait.setAttribute("aria-label", "Wait");
-    const waitLabel = add2(waitRow, "span", "5 s");
+    const waitLabel = add3(waitRow, "span", "5 s");
     wait.addEventListener("input", () => {
       waitLabel.textContent = `${wait.value} s`;
     });
-    const head = add2(body, "div", "", "fd-row fd-head"), all = add2(head, "input");
+    const head = add3(body, "div", "", "fd-row fd-head"), all = add3(head, "input");
     all.type = "checkbox";
     all.setAttribute("aria-label", "All cards");
-    for (const label of ["OVR", "Player", "Rarity", "Buy now", "Profit"]) add2(head, "span", label);
-    const table = add2(body, "div"), progress = add2(body, "progress");
+    for (const label of ["OVR", "Player", "Rarity", "Buy now", "Profit"]) add3(head, "span", label);
+    const table = add3(body, "div"), progress = add3(body, "progress");
     progress.hidden = true;
-    const output = add2(body, "output");
+    const output = add3(body, "output");
     output.setAttribute("role", "status");
-    const net = add2(footer, "span", "", "fd-net");
-    const cancel = add2(footer, "button", "Cancel Esc");
+    const net = add3(footer, "span", "", "fd-net");
+    const cancel = add3(footer, "button", "Cancel Esc");
     cancel.addEventListener("click", () => {
       if (!busy) dialog.close();
     });
     const transfer = button(footer, "Send to Transfer List", () => run(true));
     const submit = button(footer, "List 0 cards Enter", () => run(false));
     submit.className = "primary";
-    const stop6 = add2(footer, "button", "Stop");
+    const stop6 = add3(footer, "button", "Stop");
     stop6.hidden = true;
     stop6.addEventListener("click", (event) => {
       if (event.isTrusted && busy) {
@@ -16421,14 +16421,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         prepared = value;
         for (const entry of value.candidates) {
-          const tr = add2(table, "div", "", "fd-row"), box = add2(tr, "input");
+          const tr = add3(table, "div", "", "fd-row"), box = add3(tr, "input");
           box.type = "checkbox";
           box.setAttribute("aria-label", `\u9009\u62E9 ${entry.name}`);
           const raw = service.readDisplayItem?.(entry.item);
-          add2(tr, "span", String(raw?.rating ?? raw?._rating ?? ""));
-          add2(tr, "span", entry.name, "fd-who");
-          add2(tr, "span", raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : "\u2014");
-          const price2 = add2(tr, "div"), currency = mountListingCurrency({
+          add3(tr, "span", String(raw?.rating ?? raw?._rating ?? ""));
+          add3(tr, "span", entry.name, "fd-who");
+          add3(tr, "span", raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : "\u2014");
+          const price2 = add3(tr, "div"), currency = mountListingCurrency({
             document,
             parent: price2,
             label: `${entry.name} Buy Now`,
@@ -16443,7 +16443,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               render();
             }
           });
-          const state = add2(price2, "small"), profit = add2(tr, "span", "", "fd-profit");
+          const state = add3(price2, "small"), profit = add3(tr, "span", "", "fd-profit");
           rows.set(entry.item.id, { entry, check: box, currency, state, profit });
           selected.add(entry.item.id);
           box.addEventListener("click", (event) => {
@@ -16489,14 +16489,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFodderRetryResults({ document, parent, refreshPrices, retry, resume, isCurrent }) {
     let outcome = null, context = null, references = {}, edits = /* @__PURE__ */ new Map(), selected = /* @__PURE__ */ new Set();
     let busy = false, running = false, disposed = false, errorText = "";
-    const add2 = (host, tag, text5 = "", className = "") => {
+    const add3 = (host, tag, text5 = "", className = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       if (className) node.className = className;
       host.append(node);
       return node;
     };
-    const root = add2(parent, "div", "", "fd-retry-screen");
+    const root = add3(parent, "div", "", "fd-retry-screen");
     const render = () => {
       if (disposed) return;
       root.replaceChildren();
@@ -16504,16 +16504,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const rows = outcome.results ?? [], failed2 = rows.filter(retryFailed);
       const pending2 = rows.filter((row) => row.state === "waiting" && !retryFailed(row));
       const recovery = outcome.status === "recovery-required" || outcome.recovery || rows.some(retryUncertain);
-      const head = add2(root, "div", "", "fd-retry-head");
-      add2(head, "strong", "Purchase results");
-      add2(head, "span", `${outcome.purchased ?? rows.filter(retryRecovered).length} bought \xB7 Spent ${(outcome.spent ?? 0).toLocaleString()}`);
-      const layout = add2(root, "div", "", "fd-retry-layout");
-      const table = add2(layout, "div", "", "fd-retry-table");
-      const header = add2(table, "div", "", "fd-retry-row fd-retry-head-row");
-      for (const label of ["", "OVR", "PLAYER", "STATUS", "BUY NOW"]) add2(header, "small", label);
+      const head = add3(root, "div", "", "fd-retry-head");
+      add3(head, "strong", "Purchase results");
+      add3(head, "span", `${outcome.purchased ?? rows.filter(retryRecovered).length} bought \xB7 Spent ${(outcome.spent ?? 0).toLocaleString()}`);
+      const layout = add3(root, "div", "", "fd-retry-layout");
+      const table = add3(layout, "div", "", "fd-retry-table");
+      const header = add3(table, "div", "", "fd-retry-row fd-retry-head-row");
+      for (const label of ["", "OVR", "PLAYER", "STATUS", "BUY NOW"]) add3(header, "small", label);
       for (const row of rows.filter((item2) => !retryRecovered(item2))) {
-        const line = add2(table, "div", "", "fd-retry-row");
-        const box = add2(line, "input");
+        const line = add3(table, "div", "", "fd-retry-row");
+        const box = add3(line, "input");
         box.type = "checkbox";
         box.checked = selected.has(row.definitionId);
         box.disabled = busy || !retryFailed(row);
@@ -16522,12 +16522,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           else selected.delete(row.definitionId);
           renderActions();
         });
-        add2(line, "strong", String(row.overall ?? row.rating ?? "\u2014"));
-        const who = add2(line, "div", "", "fd-retry-who");
-        add2(who, "strong", row.name || `#${row.definitionId}`);
+        add3(line, "strong", String(row.overall ?? row.rating ?? "\u2014"));
+        const who = add3(line, "div", "", "fd-retry-who");
+        add3(who, "strong", row.name || `#${row.definitionId}`);
         const active = running && outcome.definitionId === row.definitionId;
-        add2(line, "span", active ? outcome.phase ?? "Buying" : retryFailed(row) ? "Not found" : row.state === "waiting" ? "Pending" : row.state || "Pending", "fd-retry-state");
-        const input = add2(line, "input");
+        add3(line, "span", active ? outcome.phase ?? "Buying" : retryFailed(row) ? "Not found" : row.state === "waiting" ? "Pending" : row.state || "Pending", "fd-retry-state");
+        const input = add3(line, "input");
         input.type = "number";
         input.min = "150";
         input.setAttribute("aria-label", `Retry ${row.name || row.definitionId}`);
@@ -16555,19 +16555,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         });
       }
-      const side = add2(layout, "div", "", "fd-retry-side");
-      add2(side, "strong", running ? "Purchase progress" : `${failed2.length} failed \xB7 ${pending2.length} pending`);
-      const progress = add2(side, "progress");
+      const side = add3(layout, "div", "", "fd-retry-side");
+      add3(side, "strong", running ? "Purchase progress" : `${failed2.length} failed \xB7 ${pending2.length} pending`);
+      const progress = add3(side, "progress");
       progress.max = outcome.total || rows.length || 1;
       progress.value = outcome.completed || 0;
-      add2(side, "small", `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
-      if (rows.some((row) => row.state === "acquired")) add2(side, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
-      if (outcome.collection?.status === "pending") add2(side, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
-      add2(side, "small", running ? "\u6B63\u5728\u8D2D\u4E70\uFF0C\u53EF\u70B9\u51FB Stop \u505C\u6B62\u540E\u7EED\u64CD\u4F5C\u3002" : recovery ? "\u6210\u4EA4\u6216\u5165\u5E93\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u3002" : pending2.length ? "\u5C1A\u672A\u5904\u7406\u7684\u5361\u8BF7\u70B9\u51FB Continue pending\uFF0C\u6CBF\u7528\u672C\u6279\u4EF7\u683C\u8BBE\u7F6E\u3002" : "Select failed players and adjust Buy Now before retrying.");
-      if (outcome.reason) add2(side, "output", outcome.reason);
-      const totals = add2(side, "output", "", "fd-retry-total");
-      const actions = add2(root, "div", "", "fd-retry-actions");
-      const retryButton = add2(actions, "button", `Retry selected (${selected.size})`);
+      add3(side, "small", `${outcome.completed ?? 0}/${outcome.total ?? rows.length} completed`);
+      if (rows.some((row) => row.state === "acquired")) add3(side, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
+      if (outcome.collection?.status === "pending") add3(side, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
+      add3(side, "small", running ? "\u6B63\u5728\u8D2D\u4E70\uFF0C\u53EF\u70B9\u51FB Stop \u505C\u6B62\u540E\u7EED\u64CD\u4F5C\u3002" : recovery ? "\u6210\u4EA4\u6216\u5165\u5E93\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u3002" : pending2.length ? "\u5C1A\u672A\u5904\u7406\u7684\u5361\u8BF7\u70B9\u51FB Continue pending\uFF0C\u6CBF\u7528\u672C\u6279\u4EF7\u683C\u8BBE\u7F6E\u3002" : "Select failed players and adjust Buy Now before retrying.");
+      if (outcome.reason) add3(side, "output", outcome.reason);
+      const totals2 = add3(side, "output", "", "fd-retry-total");
+      const actions = add3(root, "div", "", "fd-retry-actions");
+      const retryButton = add3(actions, "button", `Retry selected (${selected.size})`);
       retryButton.className = "primary";
       retryButton.disabled = busy || !selected.size || !context || !isCurrent();
       retryButton.addEventListener("click", async (event) => {
@@ -16592,7 +16592,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      const refresh = add2(actions, "button", "Refresh prices");
+      const refresh = add3(actions, "button", "Refresh prices");
       refresh.disabled = busy || recovery || !failed2.length || !refreshPrices;
       refresh.addEventListener("click", async (event) => {
         if (!event.isTrusted || refresh.disabled || disposed || !isCurrent()) return;
@@ -16611,7 +16611,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      const resumeButton = add2(actions, "button", recovery ? "Check and continue" : `Continue pending (${pending2.length})`);
+      const resumeButton = add3(actions, "button", recovery ? "Check and continue" : `Continue pending (${pending2.length})`);
       resumeButton.hidden = !recovery && !pending2.length;
       resumeButton.disabled = busy;
       resumeButton.addEventListener("click", async (event) => {
@@ -16625,10 +16625,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           render();
         }
       });
-      if (errorText) add2(root, "p", errorText, "fd-retry-error");
+      if (errorText) add3(root, "p", errorText, "fd-retry-error");
       const update = () => {
         const total = [...selected].reduce((sum2, id12) => sum2 + (Number.isFinite(edits.get(id12)) ? edits.get(id12) : 0), 0);
-        totals.textContent = `${selected.size} selected \xB7 Maximum ${total.toLocaleString()} coins \xB7 ${context?.policy?.purchaseAttempts ?? "\u2014"} attempts/player`;
+        totals2.textContent = `${selected.size} selected \xB7 Maximum ${total.toLocaleString()} coins \xB7 ${context?.policy?.purchaseAttempts ?? "\u2014"} attempts/player`;
         retryButton.textContent = `Retry selected (${selected.size})`;
         retryButton.disabled = busy || recovery || !selected.size || !context || !isCurrent();
       };
@@ -16665,17 +16665,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function mountFc27FodderBuyView({ document, parent, purchase, accountScope, host = null, nativeRenderer = null, readCard = () => null, isActive = () => true, onChanged = () => {
   } }) {
-    const { dialog, body, footer, add: add2 } = createFodderDialog(document, parent, "gallery-fodder-buy-dialog", "Gallery \xB7 Buy Players");
+    const { dialog, body, footer, add: add3 } = createFodderDialog(document, parent, "gallery-fodder-buy-dialog", "Gallery \xB7 Buy Players");
     dialog.style.width = "960px";
-    const layout = add2(body, "div", "", "fd-buy-layout"), table = add2(layout, "div"), side = add2(layout, "div", "", "fd-buy-options");
+    const layout = add3(body, "div", "", "fd-buy-layout"), table = add3(layout, "div"), side = add3(layout, "div", "", "fd-buy-options");
     const field = (label) => {
-      const row = add2(side, "div", "", "fd-setting");
-      add2(row, "span", label);
-      return add2(row, "div", "", "fd-options");
+      const row = add3(side, "div", "", "fd-setting");
+      add3(row, "span", label);
+      return add3(row, "div", "", "fd-options");
     };
-    const range = field("Price range"), rangeText = add2(range, "strong"), track = add2(range, "div", "", "fd-dual-range"), inputs = [];
+    const range = field("Price range"), rangeText = add3(range, "strong"), track = add3(range, "div", "", "fd-dual-range"), inputs = [];
     for (const label of ["Lowest price %", "Highest price %"]) {
-      const el = add2(track, "input");
+      const el = add3(track, "input");
       el.type = "range";
       el.min = "75";
       el.max = "200";
@@ -16688,7 +16688,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const current2 = () => !disposed && isActive() && accountScope() === identity5 && dialog.open;
     const buttons = [], choices = field("Attempts per player");
     for (let n = 1; n <= 5; n++) {
-      const button = add2(choices, "button", String(n));
+      const button = add3(choices, "button", String(n));
       button.type = "button";
       buttons.push(button);
       button.addEventListener("click", (event) => {
@@ -16698,18 +16698,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       });
     }
-    const progress = add2(side, "progress");
+    const progress = add3(side, "progress");
     progress.max = 1;
     progress.value = 0;
-    const bought = add2(side, "strong", "0 bought"), spent = add2(side, "div", "Spent 0");
-    const ledger = add2(side, "div", "", "fd-ledger");
-    const totals = add2(side, "output", "", "fd-totals"), notice = add2(side, "output");
+    const bought = add3(side, "strong", "0 bought"), spent = add3(side, "div", "Spent 0");
+    const ledger = add3(side, "div", "", "fd-ledger");
+    const totals2 = add3(side, "output", "", "fd-totals"), notice = add3(side, "output");
     notice.setAttribute("role", "status");
-    const retryRoot = add2(body, "div");
+    const retryRoot = add3(body, "div");
     retryRoot.hidden = true;
-    const close = add2(footer, "button", "Close Esc"), start = add2(footer, "button", "Auto-buy 0 players Enter");
+    const close = add3(footer, "button", "Close Esc"), start = add3(footer, "button", "Auto-buy 0 players Enter");
     start.className = "primary";
-    const stop6 = add2(footer, "button", "Stop");
+    const stop6 = add3(footer, "button", "Stop");
     stop6.hidden = true;
     const options = () => ({ minPct: Number(inputs[0].value), maxPct: Number(inputs[1].value), tries });
     const nativeCards = /* @__PURE__ */ new Set();
@@ -16739,14 +16739,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           priceTiers: preview.priceTiers
         }) ?? 0);
       }, 0);
-      totals.replaceChildren();
+      totals2.replaceChildren();
       for (const [label, value] of [["Players", preview.items.length], ["Minimum total", sum2(1)], ["Maximum total", sum2(tries)]]) {
-        const line = add2(totals, "div");
-        add2(line, "span", label);
-        add2(line, "strong", value.toLocaleString());
+        const line = add3(totals2, "div");
+        add3(line, "span", label);
+        add3(line, "strong", value.toLocaleString());
       }
       const missing = preview.approval.rows.filter((row) => row.maxBuy == null).length;
-      if (missing) add2(totals, "small", `${missing} \u5F20\u7F3A\u4EF7\uFF0C\u5408\u8BA1\u4E0D\u5B8C\u6574\uFF1B\u8FD9\u4E9B\u5361\u4E0D\u4F1A\u4E0B\u5355\u3002`);
+      if (missing) add3(totals2, "small", `${missing} \u5F20\u7F3A\u4EF7\uFF0C\u5408\u8BA1\u4E0D\u5B8C\u6574\uFF1B\u8FD9\u4E9B\u5361\u4E0D\u4F1A\u4E0B\u5355\u3002`);
       notice.textContent = `Destination ${preview.destination === "unassigned" ? "Unassigned" : "Club"} \xB7 ${preview.approval.policy.source.toUpperCase()} \xB7 \u5B9E\u9645\u4E0A\u9650\u53D6\u672C\u6279\u533A\u95F4\u4E0E\u5DF2\u6279\u51C6\u4E0A\u9650\u4E2D\u7684\u8F83\u4F4E\u503C`;
       start.textContent = `Auto-buy ${preview.items.length} players Enter`;
     };
@@ -16766,11 +16766,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       clearCards();
       rows.clear();
       table.replaceChildren();
-      const head = add2(table, "div", "", "fd-buy-row");
-      for (const text5 of ["", "OVR", "Player", "Source", "Price"]) add2(head, "small", text5);
+      const head = add3(table, "div", "", "fd-buy-row");
+      for (const text5 of ["", "OVR", "Player", "Source", "Price"]) add3(head, "small", text5);
       for (const item2 of items) {
-        const line = add2(table, "div", "", "fd-buy-row"), art = add2(line, "div", "", "fd-mini-card");
-        const raw = readCard(item2.definitionId), slot = add2(art, "slot");
+        const line = add3(table, "div", "", "fd-buy-row"), art = add3(line, "div", "", "fd-mini-card");
+        const raw = readCard(item2.definitionId), slot = add3(art, "slot");
         slot.name = `gallery-fodder-buy-${item2.definitionId}`;
         let card = null;
         const fallback = () => {
@@ -16784,13 +16784,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (card) nativeCards.add(card);
         else fallback();
-        const paid = add2(art, "small", "", "fd-paid");
-        add2(line, "strong", String(item2.overall ?? item2.rating ?? raw?.rating ?? raw?._rating ?? ""));
-        const who = add2(line, "div");
-        add2(who, "strong", item2.name || `#${item2.definitionId}`);
-        add2(who, "small", item2.version ?? (raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : ""));
-        const state = add2(who, "small");
-        const source = add2(line, "span", "Market", "fd-source"), price2 = add2(
+        const paid = add3(art, "small", "", "fd-paid");
+        add3(line, "strong", String(item2.overall ?? item2.rating ?? raw?.rating ?? raw?._rating ?? ""));
+        const who = add3(line, "div");
+        add3(who, "strong", item2.name || `#${item2.definitionId}`);
+        add3(who, "small", item2.version ?? (raw?.rareflag === 0 ? "Common" : raw?.rareflag === 1 ? "Rare" : ""));
+        const state = add3(who, "small");
+        const source = add3(line, "span", "Market", "fd-source"), price2 = add3(
           line,
           "span",
           (item2.priceReference?.estimate ?? item2.reference?.estimate)?.toLocaleString() ?? "\u2014",
@@ -16816,9 +16816,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           cell.state.textContent = row.reason ?? "";
         }
         if (row.price > 0) {
-          const line = add2(ledger, "div");
-          add2(line, "span", row.name || String(row.definitionId));
-          add2(line, "span", row.price.toLocaleString());
+          const line = add3(ledger, "div");
+          add3(line, "span", row.name || String(row.definitionId));
+          add3(line, "span", row.price.toLocaleString());
         }
       }
       notice.textContent = `${value.phase ?? value.status ?? ""}${value.reason ? ` \xB7 ${value.reason}` : ""}${value.collection?.status === "pending" ? " \xB7 \u6536\u96C6\u8FDB\u5EA6\u5F85 EA \u786E\u8BA4" : ""}`;
@@ -16851,10 +16851,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!rows.size) renderPlayers(outcome?.results ?? []);
         if (outcome) show(outcome);
         const caps = override.retry?.items ?? (outcome?.results ?? []).filter((row) => row.state === "waiting" && !retryFailed(row)).map((row) => ({ definitionId: row.definitionId, maxBuy: row.reference?.maxBuy }));
-        totals.replaceChildren();
-        const line = add2(totals, "div");
-        add2(line, "span", "Players");
-        add2(line, "strong", String(caps.length));
+        totals2.replaceChildren();
+        const line = add3(totals2, "div");
+        add3(line, "span", "Players");
+        add3(line, "strong", String(caps.length));
         for (const item2 of caps) {
           const cell = rows.get(item2.definitionId);
           if (cell) {
@@ -16945,7 +16945,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress.value = 0;
       bought.textContent = "0 bought";
       spent.textContent = "Spent 0";
-      totals.textContent = "";
+      totals2.textContent = "";
       notice.textContent = "Loading\u2026";
       dialog.showModal();
       lock(true);
@@ -17038,15 +17038,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let running = false;
     const expanded = /* @__PURE__ */ new Set();
     let edits = /* @__PURE__ */ new Map(), references = {}, selected = /* @__PURE__ */ new Set(), actionError = "";
-    const add2 = (container, tag, text5 = "") => {
+    const add3 = (container, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       container.append(node);
       return node;
     };
-    const root = add2(parent, "div");
+    const root = add3(parent, "div");
     root.className = "fcat-purchase-results";
-    const style = add2(root, "style");
+    const style = add3(root, "style");
     style.textContent = ".fcat-purchase-results{font:14px/1.5 Arial,sans-serif;text-align:left;color:inherit}.fcat-purchase-results *{box-sizing:border-box}.fcat-purchase-results .purchase-row{padding:10px 0;border-bottom:1px solid #68766a;overflow-wrap:anywhere}.fcat-purchase-results label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fcat-purchase-results input[type=checkbox]{width:18px;height:18px;min-width:18px;margin:0}.fcat-purchase-results input[type=number]{width:120px;min-width:0;height:32px}.fcat-purchase-results .purchase-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0}.fcat-purchase-results button{height:auto;min-height:36px;margin:0;padding:6px 12px}.fcat-purchase-results small{display:block}.fcat-purchase-results [hidden]{display:none!important}.fcat-purchase-results .purchase-error{color:#ffb9aa;overflow-wrap:anywhere}";
     style.textContent += currencyInputStyles;
     style.textContent += `.fcat-purchase-results button,.fcat-purchase-results input,.fcat-purchase-results select{font:inherit;color:#edf1f4;background:#202d36;border:1px solid #46545d;border-radius:5px;max-width:100%}
@@ -17060,8 +17060,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     .fcat-purchase-results small{margin:2px 0;font:12px/1.5 Arial,sans-serif;color:#b3c5cd}
     .fcat-purchase-results .purchase-error:empty,.fcat-purchase-results .purchase-actions:empty{display:none}
     .fcat-purchase-results .purchase-row>label:not(:first-child){margin-top:6px}`;
-    const content = add2(root, "div");
-    let totals, error2, retryButton;
+    const content = add3(root, "div");
+    let totals2, error2, retryButton;
     const valid3 = () => {
       let total = 0, reason = "";
       if (!Number.isSafeInteger(context?.balance) || context.balance < 0) reason = "\u5F53\u524D\u4F59\u989D\u65E0\u6CD5\u786E\u8BA4\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u8D2D\u4E70\u7ED3\u679C\u3002";
@@ -17077,15 +17077,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return { items, total, reason };
     };
     const updateTotals = () => {
-      if (!totals) return;
+      if (!totals2) return;
       const value = valid3();
-      totals.textContent = `\u5DF2\u9009 ${value.items.length} \u5F20 \xB7 \u672C\u6B21\u6700\u591A ${amount(value.total)} \u91D1\u5E01 \xB7 \u6BCF\u5361\u6700\u591A ${context?.policy.purchaseAttempts ?? "\u2014"} \u6B21`;
+      totals2.textContent = `\u5DF2\u9009 ${value.items.length} \u5F20 \xB7 \u672C\u6B21\u6700\u591A ${amount(value.total)} \u91D1\u5E01 \xB7 \u6BCF\u5361\u6700\u591A ${context?.policy.purchaseAttempts ?? "\u2014"} \u6B21`;
       error2.textContent = actionError || value.reason;
       retryButton.textContent = `\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361\uFF08${value.items.length}\uFF09`;
       retryButton.disabled = busy || !context || !!value.reason || !value.items.length || !isCurrent();
     };
     const button = (container, label, action) => {
-      const node = add2(container, "button", label);
+      const node = add3(container, "button", label);
       node.type = "button";
       node.className = "btn-standard";
       node.disabled = busy;
@@ -17113,14 +17113,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return node;
     };
     const rowView = (container, row, editable) => {
-      const line = add2(container, "div");
+      const line = add3(container, "div");
       line.className = "purchase-row";
       line.dataset.definitionId = row.definitionId;
       line.dataset.active = String(running && outcome?.definitionId === row.definitionId);
-      const label = add2(line, "label");
+      const label = add3(line, "label");
       label.className = "purchase-row-title";
       if (editable) {
-        const box = add2(label, "input");
+        const box = add3(label, "input");
         box.type = "checkbox";
         box.checked = selected.has(row.definitionId);
         box.disabled = busy;
@@ -17140,39 +17140,39 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         } catch {
         }
       }
-      add2(label, "strong", name || `\u7403\u5458 #${row.definitionId}`);
-      add2(label, "span", state).className = "purchase-state";
+      add3(label, "strong", name || `\u7403\u5458 #${row.definitionId}`);
+      add3(label, "span", state).className = "purchase-state";
       const reference = references[row.definitionId] ?? row.reference;
-      add2(label, "span", `${row.price == null ? "" : `\u6210\u4EA4 ${amount(row.price)} \xB7 `}\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`).className = "purchase-price";
-      const info = add2(line, "div");
+      add3(label, "span", `${row.price == null ? "" : `\u6210\u4EA4 ${amount(row.price)} \xB7 `}\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`).className = "purchase-price";
+      const info = add3(line, "div");
       info.className = "purchase-row-info";
-      if (row.reason) add2(info, "small", messages[row.reason] ?? row.reason);
-      const detail = add2(info, "details");
+      if (row.reason) add3(info, "small", messages[row.reason] ?? row.reason);
+      const detail = add3(info, "details");
       detail.className = "purchase-quote-details";
       detail.open = expanded.has(row.definitionId);
-      add2(detail, "summary", "\u62A5\u4EF7\u4E0E\u5C1D\u8BD5\u8BE6\u60C5");
+      add3(detail, "summary", "\u62A5\u4EF7\u4E0E\u5C1D\u8BD5\u8BE6\u60C5");
       detail.addEventListener("toggle", () => {
         if (detail.isConnected) {
           if (detail.open) expanded.add(row.definitionId);
           else expanded.delete(row.definitionId);
         }
       });
-      add2(detail, "small", `\u7248\u672C ${row.definitionId}`);
-      if (row.attempt) add2(detail, "small", `\u672C\u8F6E ${row.attempt.used}/${row.attempt.limit} \u6B21 \xB7 \u7D2F\u8BA1 ${row.attempt.total} \u6B21 \xB7 \u7B2C ${row.attempt.round} \u8F6E \xB7 \u5E02\u573A\u67E5\u8BE2 ${row.attempt.queries ?? 0} \u6B21`);
+      add3(detail, "small", `\u7248\u672C ${row.definitionId}`);
+      if (row.attempt) add3(detail, "small", `\u672C\u8F6E ${row.attempt.used}/${row.attempt.limit} \u6B21 \xB7 \u7D2F\u8BA1 ${row.attempt.total} \u6B21 \xB7 \u7B2C ${row.attempt.round} \u8F6E \xB7 \u5E02\u573A\u67E5\u8BE2 ${row.attempt.queries ?? 0} \u6B21`);
       if (reference) {
         for (const source of ["futgg", "futbin"]) {
           const quote2 = reference.quotes?.[source];
           if (["FC27_PUBLIC_PRICE_SOURCE_NOT_REQUESTED", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED"].includes(quote2?.error)) {
-            add2(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} \xB7 \u672A\u8BFB\u53D6`);
+            add3(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} \xB7 \u672A\u8BFB\u53D6`);
             continue;
           }
-          add2(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} ${amount(quote2?.price)} \xB7 \u6293\u53D6 ${time(quote2?.fetchedAt)} \xB7 \u6E90\u7AD9\u66F4\u65B0 ${time(quote2?.sourceUpdatedAt)}`);
+          add3(detail, "small", `${source === "futgg" ? "FUT.GG" : "FUTBIN"} ${amount(quote2?.price)} \xB7 \u6293\u53D6 ${time(quote2?.fetchedAt)} \xB7 \u6E90\u7AD9\u66F4\u65B0 ${time(quote2?.sourceUpdatedAt)}`);
         }
-        add2(detail, "small", `\u91C7\u7528 ${context?.policy.source ?? reference.policy?.source ?? "\u2014"} \xB7 \u4E0A\u6B21\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`);
+        add3(detail, "small", `\u91C7\u7528 ${context?.policy.source ?? reference.policy?.source ?? "\u2014"} \xB7 \u4E0A\u6B21\u4E0A\u9650 ${amount(row.reference?.maxBuy)}`);
       }
       if (editable) {
-        const edit = add2(line, "label", "\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650");
-        const input = add2(edit, "input");
+        const edit = add3(line, "label", "\u672C\u6B21\u91CD\u8BD5\u4E0A\u9650");
+        const input = add3(edit, "input");
         input.type = "number";
         input.min = "150";
         input.value = edits.get(row.definitionId) ?? "";
@@ -17202,29 +17202,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const render = () => {
       content.replaceChildren();
-      totals = error2 = retryButton = null;
+      totals2 = error2 = retryButton = null;
       const rows = outcome?.results ?? [];
       if (!outcome) return;
-      add2(content, "p", `\u7D2F\u8BA1\u5DF2\u652F\u51FA ${amount(outcome.spent ?? 0)} \u91D1\u5E01 \xB7 \u5269\u4F59\u9884\u7B97 ${context?.remainingBudget == null ? "\u6309\u53EF\u7528\u4F59\u989D" : amount(context.remainingBudget)}`);
+      add3(content, "p", `\u7D2F\u8BA1\u5DF2\u652F\u51FA ${amount(outcome.spent ?? 0)} \u91D1\u5E01 \xB7 \u5269\u4F59\u9884\u7B97 ${context?.remainingBudget == null ? "\u6309\u53EF\u7528\u4F59\u989D" : amount(context.remainingBudget)}`);
       const recovery = outcome.status === "recovery-required" || outcome.recovery || outcome.replacementPending || rows.some(uncertain);
       const canRetry = !busy && !recovery && !!context;
       if (!busy && rows.some(recovered)) {
-        const done = add2(content, "details");
+        const done = add3(content, "details");
         done.className = "purchase-completed";
-        add2(done, "summary", `\u5DF2\u5B8C\u6210 ${rows.filter(recovered).length} \u5F20`);
+        add3(done, "summary", `\u5DF2\u5B8C\u6210 ${rows.filter(recovered).length} \u5F20`);
         rows.filter(recovered).forEach((row) => rowView(done, row, false));
       }
       rows.filter((row) => busy || !recovered(row)).forEach((row) => rowView(content, row, canRetry && failed(row)));
-      const actions = add2(content, "div");
+      const actions = add3(content, "div");
       actions.className = "purchase-actions";
       if (!recovery && rows.some(failed) && context) {
-        const mode = add2(actions, "select");
+        const mode = add3(actions, "select");
         mode.disabled = busy;
         for (const [value, text5] of [["fixed", "\u52A0\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u52A0\u767E\u5206\u6BD4"]]) {
-          const option = add2(mode, "option", text5);
+          const option = add3(mode, "option", text5);
           option.value = value;
         }
-        const premium = add2(actions, "input");
+        const premium = add3(actions, "input");
         premium.type = "number";
         premium.min = "0";
         premium.value = "0";
@@ -17250,7 +17250,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           busy = false;
           render();
         });
-        totals = add2(content, "p");
+        totals2 = add3(content, "p");
         retryButton = button(content, "\u91CD\u8BD5\u6240\u9009\u5931\u8D25\u5361", () => {
           const value = valid3();
           if (value.reason || !value.items.length) throw Error("FC27_BUY_RETRY_CAP_INVALID");
@@ -17266,9 +17266,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!busy && (recovery || rows.some((row) => row.state === "waiting" && !row.attempt?.failed))) {
         button(content, recovery ? "\u6838\u5BF9\u5E76\u7EE7\u7EED" : "\u7EE7\u7EED\u672A\u5904\u7406", () => resume());
       }
-      if (rows.some((row) => row.state === "acquired")) add2(content, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
-      if (outcome?.collection?.status === "pending") add2(content, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
-      error2 = add2(content, "p");
+      if (rows.some((row) => row.state === "acquired")) add3(content, "small", "\u4E70\u5165\u5DF2\u786E\u8BA4\uFF1B\u90E8\u5206\u5361\u5F53\u524D\u4E0D\u5728 Club/Unassigned\uFF0C\u672A\u5BA3\u79F0\u5DF2\u5165\u5E93\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u4E70\u3002");
+      if (outcome?.collection?.status === "pending") add3(content, "small", "\u753B\u5ECA\u8BA1\u5206\u5F85 EA \u540C\u6B65\uFF0C\u4E0D\u5F71\u54CD\u5DF2\u786E\u8BA4\u6210\u4EA4\u3002");
+      error2 = add3(content, "p");
       error2.className = "purchase-error";
       error2.setAttribute("role", "status");
       updateTotals();
@@ -17294,6 +17294,984 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         root.remove();
       }
     });
+  }
+
+  // src/gallery/turnover-budget.js
+  var integer15 = (value, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= 0 && value <= max;
+  var validPrice5 = (value) => integer15(value, 15e6) && value > 0;
+  var fail22 = (reason, extra = {}) => ({ status: "unavailable", reason, feasible: null, ...extra });
+  var totals = (cycles) => {
+    let loss = 0, required2 = 0;
+    for (const cycle of cycles) {
+      required2 = Math.max(required2, loss + cycle.price);
+      loss += cycle.price - cycle.expectedSaleNet;
+    }
+    return { requiredCapital: Math.max(0, required2), expectedNetLoss: loss };
+  };
+  function forecastGalleryTurnover({
+    steps = [],
+    capital = null,
+    taxBps = GALLERY_MARKET_TAX_BPS,
+    resaleDiscountBps = 0,
+    optimizeOrder = true
+  } = {}) {
+    if (!Array.isArray(steps) || steps.length > 4096 || capital !== null && !integer15(capital, 1e9) || !integer15(taxBps, 1e4) || !integer15(resaleDiscountBps, 1e4) || typeof optimizeOrder !== "boolean") return fail22("input-invalid");
+    const versions = /* @__PURE__ */ new Map(), memberships = /* @__PURE__ */ new Map(), prepared = [];
+    for (const step of steps) {
+      if (typeof step?.setId !== "string" || !step.setId || !Array.isArray(step.items) || step.items.length > 2e3) return fail22("input-invalid");
+      const seen = /* @__PURE__ */ new Set(), cycles = [];
+      for (const item2 of step.items) {
+        if (!integer15(item2?.eaId) || !item2.eaId || seen.has(item2.eaId)) return fail22("version-invalid");
+        seen.add(item2.eaId);
+        if (item2.price == null) return { ...fail22("price-unknown"), status: "partial", requiredCapital: null };
+        if (!validPrice5(item2.price)) return fail22("price-invalid");
+        const resalePrice = Object.hasOwn(item2, "resalePrice") ? item2.resalePrice : Math.floor(item2.price * (1e4 - resaleDiscountBps) / 1e4);
+        if (resalePrice == null) return { ...fail22("resale-price-unknown"), status: "partial", requiredCapital: null };
+        if (!integer15(resalePrice, 15e6)) return fail22("price-invalid");
+        const expectedSaleNet2 = Math.floor(resalePrice * (1e4 - taxBps) / 1e4);
+        const cycle = {
+          eaId: item2.eaId,
+          price: item2.price,
+          resalePrice,
+          expectedSaleNet: expectedSaleNet2,
+          expectedTax: resalePrice - expectedSaleNet2,
+          requiresCollectionConfirmation: true,
+          requiresSaleReceipt: true
+        };
+        const previous = versions.get(item2.eaId);
+        if (previous && (previous.price !== cycle.price || previous.resalePrice !== cycle.resalePrice)) return fail22("version-price-conflict");
+        versions.set(item2.eaId, cycle);
+        cycles.push(cycle);
+        memberships.set(item2.eaId, (memberships.get(item2.eaId) ?? 0) + 1);
+      }
+      if (optimizeOrder) cycles.sort((a, b) => b.expectedSaleNet - a.expectedSaleNet || a.eaId - b.eaId);
+      prepared.push({ setId: step.setId, cycles, ...totals(cycles) });
+    }
+    if (optimizeOrder) prepared.sort((a, b) => b.requiredCapital - b.expectedNetLoss - (a.requiredCapital - a.expectedNetLoss) || a.setId.localeCompare(b.setId));
+    const acquired = /* @__PURE__ */ new Set(), resultSteps = [];
+    let loss = 0, requiredCapital = 0, totalPurchase = 0, expectedSaleNet = 0, expectedTax = 0, firstFundingGap = null;
+    for (const step of prepared) {
+      const cycles = [], reusedIds = [];
+      for (const source of step.cycles) {
+        if (acquired.has(source.eaId)) {
+          reusedIds.push(source.eaId);
+          continue;
+        }
+        acquired.add(source.eaId);
+        const expectedOpeningBalance = capital === null ? null : capital - loss;
+        requiredCapital = Math.max(requiredCapital, loss + source.price);
+        if (expectedOpeningBalance !== null && source.price > expectedOpeningBalance && !firstFundingGap) {
+          firstFundingGap = { setId: step.setId, eaId: source.eaId, shortfall: source.price - expectedOpeningBalance };
+        }
+        totalPurchase += source.price;
+        expectedSaleNet += source.expectedSaleNet;
+        expectedTax += source.expectedTax;
+        loss += source.price - source.expectedSaleNet;
+        cycles.push({ ...source, expectedOpeningBalance, expectedClosingBalance: capital === null ? null : capital - loss });
+      }
+      resultSteps.push({ setId: step.setId, cycles, reusedIds, expectedClosingBalance: capital === null ? null : capital - loss });
+    }
+    requiredCapital = Math.max(0, requiredCapital);
+    return {
+      status: "estimated",
+      saleBasis: "forecast-not-receipts",
+      actualSaleIncome: null,
+      capital,
+      taxBps,
+      resaleDiscountBps,
+      totalPurchase,
+      expectedSaleNet,
+      expectedTax,
+      expectedNetLoss: loss,
+      requiredCapital,
+      feasible: capital === null ? null : capital >= requiredCapital,
+      capitalShortfall: capital === null ? null : Math.max(0, requiredCapital - capital),
+      expectedRemaining: capital === null ? null : capital - loss,
+      firstFundingGap,
+      uniqueCards: acquired.size,
+      sharedCards: [...memberships.values()].filter((count2) => count2 > 1).length,
+      orderOptimal: false,
+      steps: resultSteps
+    };
+  }
+
+  // src/gallery/roadmap-selection.js
+  function* selectGalleryRoadmapSteps({
+    rows = [],
+    capital = null,
+    lossLimit = null,
+    resaleDiscountBps = 0,
+    previousSelection = []
+  } = {}) {
+    if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
+      return { status: "unavailable", reason: "input-invalid", route: [] };
+    }
+    const selected = /* @__PURE__ */ new Map(), unavailable = [], skipped = /* @__PURE__ */ new Map();
+    let funding = forecastGalleryTurnover({ capital, resaleDiscountBps }), gain = 0;
+    if (funding.status !== "estimated") return { status: "unavailable", reason: funding.reason, route: [] };
+    for (const saved of previousSelection) {
+      const row = rows.find((row2) => row2.setId === saved.setId);
+      const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
+      if (option) selected.set(row.setId, { row, option });
+    }
+    if (selected.size) {
+      funding = forecastGalleryTurnover({
+        capital,
+        resaleDiscountBps,
+        steps: [...selected].map(([setId, entry]) => ({ setId, items: entry.option.items }))
+      });
+      if (funding.status !== "estimated" || funding.feasible === false || lossLimit !== null && funding.expectedNetLoss > lossLimit) {
+        return { status: "unavailable", reason: "resume-input-invalid", route: [] };
+      }
+      gain = [...selected.values()].reduce((sum2, entry) => sum2 + entry.option.projectedTokens - entry.row.baselineTokens, 0);
+    }
+    let selectionStopped = false, comparisons = 0;
+    for (; ; ) {
+      let best = null;
+      search: for (const row of rows) for (const option of row.options ?? []) {
+        const current2 = selected.get(row.setId);
+        const added = option.projectedTokens - (current2?.option.projectedTokens ?? row.baselineTokens);
+        if (!(added > 0) || !Array.isArray(option.items)) continue;
+        const trial = new Map(selected);
+        trial.set(row.setId, { row, option });
+        const estimate = forecastGalleryTurnover({
+          capital,
+          resaleDiscountBps,
+          steps: [...trial].map(([setId, entry]) => ({ setId, items: entry.option.items }))
+        });
+        if (estimate.status !== "estimated" || estimate.feasible === false || lossLimit !== null && estimate.expectedNetLoss > lossLimit) {
+          skipped.set(row.setId, {
+            setId: row.setId,
+            name: row.name,
+            reason: estimate.status !== "estimated" ? estimate.reason : estimate.feasible === false ? "capital-gap" : "loss-limit",
+            requiredCapital: estimate.requiredCapital ?? null,
+            capitalShortfall: estimate.capitalShortfall ?? null
+          });
+          comparisons++;
+          if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
+            selectionStopped = true;
+            break search;
+          }
+          continue;
+        }
+        const incrementalLoss = estimate.expectedNetLoss - funding.expectedNetLoss;
+        const value = { row, option, trial, estimate, added, ratio: incrementalLoss / added };
+        if (!best || value.ratio < best.ratio || value.ratio === best.ratio && (estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && row.setId.localeCompare(best.row.setId) < 0)) best = value;
+        comparisons++;
+        if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
+          selectionStopped = true;
+          break search;
+        }
+      }
+      if (!best) break;
+      selected.clear();
+      for (const entry of best.trial) selected.set(...entry);
+      funding = best.estimate;
+      gain += best.added;
+      if (selectionStopped) break;
+    }
+    const route = funding.steps.map((step, index) => {
+      const { row, option } = selected.get(step.setId);
+      return {
+        ...step,
+        order: index + 1,
+        name: row.name,
+        categoryId: row.categoryId,
+        currentGrade: row.currentGrade,
+        targetGrade: option.grade,
+        currentScore: row.currentScore,
+        projectedScore: option.score,
+        baselineTokens: row.baselineTokens,
+        projectedTokens: option.projectedTokens,
+        addedTokens: option.projectedTokens - row.baselineTokens,
+        items: option.items,
+        claimState: "unknown",
+        estimated: option.estimated !== false,
+        searchComplete: option.searchComplete === true
+      };
+    });
+    for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
+    return {
+      status: route.length ? "ready" : "no-route",
+      objective: "low-forecast-loss-per-added-token",
+      claimState: "unknown",
+      tokenBasis: "catalog-increase-not-unclaimed-balance",
+      baselineTokens: rows.reduce((sum2, row) => sum2 + (row.baselineTokens ?? 0), 0),
+      addedTokens: gain,
+      funding,
+      route,
+      selectedOptions: [...selected].map(([setId, entry]) => ({ setId, option: entry.option })),
+      selectionStopped,
+      comparisons,
+      skipped: [...skipped.values()].filter((row) => !selected.has(row.setId)),
+      unavailable,
+      freeCheck: rows.filter((row) => row.currentGrade).map((row) => ({
+        setId: row.setId,
+        name: row.name,
+        grade: row.currentGrade,
+        catalogTokens: row.baselineTokens,
+        claimState: "unknown"
+      })),
+      searchComplete: false
+    };
+  }
+
+  // src/gallery/roadmap.js
+  function* planGalleryRoadmapSteps({
+    targets = [],
+    capital = null,
+    lossLimit = null,
+    resaleDiscountBps = 0,
+    gradePlanner = planGalleryGradeSteps,
+    previousRows = [],
+    previousSelection = []
+  } = {}) {
+    const rows = [], key = "event_token_1";
+    const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
+    let stopped = false, gradesChecked = 0;
+    for (const [index, target] of targets.entries()) {
+      const { set, catalog, progress } = target;
+      if (previous.get(set.id)?.analysisComplete) {
+        rows.push(previous.get(set.id));
+        continue;
+      }
+      const row = {
+        setId: set.id,
+        name: set.name,
+        categoryId: set.categoryId,
+        currentGrade: null,
+        currentScore: null,
+        baselineTokens: 0,
+        options: [],
+        reason: null,
+        checkedGrades: [],
+        ...previous.get(set.id)
+      };
+      rows.push(row);
+      if (!progress?.rows || target.stale || target.poolStale || target.status && target.status !== "observed") {
+        row.reason = "progress-unavailable";
+        row.analysisComplete = true;
+        continue;
+      }
+      const base = yield* summarizeGalleryScoreSteps({ set, catalog, progress: {
+        ...progress,
+        rows: progress.rows.map((card) => isGalleryOwned(card) ? { ...card, collected: true } : card)
+      } });
+      if (!base?.low) {
+        row.reason = base?.reason ?? "score-unavailable";
+        row.analysisComplete = true;
+        continue;
+      }
+      const currentGrade = galleryCatalogGrade(set, base);
+      row.currentGrade = currentGrade?.name ?? null;
+      row.currentScore = base.low.total;
+      row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key) : 0;
+      row.collectionUnknown = !!base.collectionUnknown;
+      row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
+      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key) > row.baselineTokens);
+      const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
+      for (const grade of grades3) {
+        if (row.checkedGrades.includes(grade.name)) continue;
+        const result = yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+        gradesChecked++;
+        const candidate = result.plans?.[0];
+        if (result.status === "ready" && candidate?.reached && candidate.totalPrice !== null) {
+          const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
+          row.options = row.options.filter((option) => option.requestedGrade !== grade.name);
+          row.options.push({
+            grade: reached?.name ?? grade.name,
+            requestedGrade: grade.name,
+            score: candidate.score,
+            items: candidate.items,
+            projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key),
+            estimated: candidate.estimated,
+            searchComplete: result.searchComplete === true
+          });
+        } else row.reason = result.reason ?? "grade-proposal-unavailable";
+        if (!result.timeExhausted) row.checkedGrades.push(grade.name);
+        row.analysisComplete = grades3.every((grade2) => row.checkedGrades.includes(grade2.name));
+        if (result.timeExhausted || (yield {
+          phase: "roadmap",
+          completed: index,
+          total: targets.length,
+          setId: set.id,
+          name: set.name,
+          grade: grade.name,
+          gradesChecked
+        })) {
+          stopped = true;
+          break;
+        }
+      }
+      row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
+      if (stopped) break;
+      if (yield {
+        phase: "roadmap",
+        completed: index + 1,
+        total: targets.length,
+        setId: set.id,
+        name: set.name,
+        gradesChecked
+      }) {
+        stopped = true;
+        break;
+      }
+    }
+    const plan = yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
+    return { ...plan, rows, coverage: {
+      total: targets.length,
+      inspected: rows.length,
+      available: rows.filter((row) => row.currentScore !== null).length,
+      missing: rows.filter((row) => row.reason === "progress-unavailable").length,
+      gradesChecked: rows.reduce((sum2, row) => sum2 + (row.checkedGrades?.length ?? 0), 0),
+      stopped: stopped || plan.selectionStopped
+    }, partial: stopped || plan.selectionStopped || rows.some((row) => row.reason || row.collectionUnknown || row.candidateOnly) };
+  }
+
+  // src/gallery/analysis-snapshot.js
+  var pick4 = (value, keys2) => Object.fromEntries(keys2.filter((key) => value?.[key] !== void 0).map((key) => [key, value[key]]));
+  var versionFields = [
+    "eaId",
+    "playerEaId",
+    "name",
+    "version",
+    "overall",
+    "galleryScore",
+    "gradingScore",
+    "nationEaId",
+    "clubEaId",
+    "leagueEaId",
+    "rarityEaId",
+    "positions",
+    "weakFoot",
+    "skillMoves",
+    "holographic",
+    "collected",
+    "inClub",
+    "held",
+    "firstOwned",
+    "observedFirstOwned",
+    "firstOwnedSource"
+  ];
+  var accountFacts = ["collected", "inClub", "held", "firstOwned", "gradingScore"];
+  function buildGalleryAnalysisSnapshot({
+    catalog,
+    targets = [],
+    plan = null,
+    version = null,
+    galleryLevel: galleryLevel2 = null,
+    catalogFetchedAt = null,
+    now = Date.now()
+  } = {}) {
+    if (!catalog?.categories || !Array.isArray(targets)) throw Error("FC27_GALLERY_EXPORT_INPUT_INVALID");
+    const versions = /* @__PURE__ */ new Map(), bySet = new Map(targets.map((target) => [target.set.id, target]));
+    const collections = catalog.categories.flatMap((category) => category.sets.map((set) => {
+      const target = bySet.get(set.id), detail = target?.progress;
+      for (const row of detail?.rows ?? []) {
+        if (!Number.isSafeInteger(row.eaId) || row.eaId <= 0) continue;
+        const existing = versions.get(row.eaId), card = pick4(row, versionFields);
+        const evidenceAt = Number.isSafeInteger(row.readAt) ? row.readAt : null;
+        if (!existing) versions.set(row.eaId, { ...card, evidenceAt, conflictingFields: [] });
+        else {
+          for (const key of accountFacts) if (existing[key] !== card[key]) {
+            existing[key] = null;
+            if (!existing.conflictingFields.includes(key)) existing.conflictingFields.push(key);
+          }
+          existing.evidenceAt = existing.evidenceAt === evidenceAt ? evidenceAt : null;
+        }
+      }
+      const quote2 = target?.priceSnapshot, prices = [];
+      for (const row of detail?.rows ?? []) {
+        const price2 = target?.prices?.[row.eaId];
+        if (Number.isSafeInteger(price2) && price2 > 0) prices.push({
+          eaId: row.eaId,
+          price: price2,
+          platform: quote2?.platform ?? target?.platform ?? null,
+          source: quote2?.policy?.source ?? null,
+          expiresAt: quote2?.expiresAt ?? null,
+          fresh: quote2?.expiresAt != null && quote2.expiresAt > now
+        });
+      }
+      return {
+        setId: set.id,
+        categoryId: category.id,
+        name: set.name,
+        requiredCards: set.requiredCards,
+        conditions: set.conditions ?? null,
+        slug: set.slug ?? null,
+        description: set.description ?? null,
+        grades: set.grades.map((grade) => ({
+          name: grade.name,
+          threshold: grade.threshold,
+          rewards: grade.rewards.map((reward) => pick4(reward, ["type", "count", "value", "label", "resourceId", "assetId"])),
+          rewardsComplete: grade.rewardsComplete === true
+        })),
+        claimState: "unknown",
+        status: target?.status ?? "unloaded",
+        stale: target?.stale === true || target?.poolStale === true,
+        poolRevision: target?.pool?.revision ?? null,
+        evidenceAt: target?.fetchedAt ?? null,
+        progressComplete: detail?.complete === true,
+        poolComplete: detail?.poolComplete === true,
+        candidateOnly: detail?.candidateOnly === true,
+        poolSize: detail?.poolSize ?? null,
+        versionIds: (detail?.rows ?? []).map((row) => row.eaId),
+        prices
+      };
+    }));
+    return {
+      schema: 1,
+      kind: "gallery-analysis",
+      season: "27",
+      applicationVersion: version,
+      exportedAt: now,
+      catalog: {
+        ...pick4(catalog, ["schema", "season", "source", "revision", "tags", "engine"]),
+        fetchedAt: catalogFetchedAt,
+        categories: catalog.categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          setIds: category.sets.map((set) => set.id)
+        }))
+      },
+      galleryLevel: galleryLevel2 ? {
+        ...pick4(galleryLevel2, ["status", "source", "exactLevel", "galleryXp", "confirmedAtLeast", "observedAt", "levelBasis"]),
+        consoleNote: galleryLevel2.consoleNote ? pick4(galleryLevel2.consoleNote, ["level", "recordedAt", "source"]) : null,
+        milestones: (galleryLevel2.milestones ?? []).map((row) => pick4(row, ["level", "title", "completed", "claimed", "rewards", "observedAt"]))
+      } : null,
+      coverage: {
+        total: collections.length,
+        loaded: collections.filter((set) => set.status === "observed").length,
+        complete: collections.filter((set) => set.progressComplete && !set.stale).length
+      },
+      collections,
+      versions: [...versions.values()],
+      roadmap: plan ? {
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt"]),
+        route: (plan.route ?? []).map((row) => ({
+          ...pick4(row, [
+            "setId",
+            "name",
+            "order",
+            "currentGrade",
+            "targetGrade",
+            "currentScore",
+            "projectedScore",
+            "baselineTokens",
+            "projectedTokens",
+            "addedTokens",
+            "claimState"
+          ]),
+          purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId)
+        })),
+        funding: pick4(plan.funding, [
+          "capital",
+          "requiredCapital",
+          "totalPurchase",
+          "expectedTax",
+          "expectedNetLoss",
+          "expectedRemaining",
+          "feasible",
+          "taxBps",
+          "resaleDiscountBps",
+          "saleBasis"
+        ])
+      } : null,
+      interpretation: {
+        collectedMeansEverCollected: true,
+        currentHoldingsAreSeparate: true,
+        rewardClaimsVerified: false,
+        futureSaleIncomeIsForecastOnly: true,
+        perVersionEvidenceTimeMayBeUnknown: true
+      }
+    };
+  }
+
+  // src/adapters/browser/fc27-diagnostic-download.js
+  function downloadFc27Diagnostics(runtime, document, text5, filename) {
+    const blob = new runtime.Blob([String(text5)], { type: "application/json;charset=utf-8" });
+    const url = runtime.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    try {
+      anchor.click();
+    } finally {
+      anchor.remove();
+      runtime.setTimeout(() => runtime.URL.revokeObjectURL(url), 1e3);
+    }
+  }
+
+  // src/adapters/browser/fc27-gallery-roadmap.js
+  var money = (value) => value == null ? "\u5F85\u6838\u5B9E" : Number(value).toLocaleString("en-US");
+  var add = (document, parent, tag, text5 = "") => {
+    const node = document.createElement(tag);
+    node.textContent = text5;
+    parent.append(node);
+    return node;
+  };
+  function mountGalleryRoadmap({
+    document,
+    parent,
+    button,
+    read,
+    prepare: prepare2,
+    stopPrepare,
+    loadPrices = null,
+    readTimeout = async () => 3e4,
+    openSet,
+    download = downloadFc27Diagnostics
+  }) {
+    const dialog = add(document, parent, "dialog");
+    dialog.className = "gallery-roadmap-dialog";
+    dialog.setAttribute("aria-label", "\u5168\u753B\u5ECA\u6574\u4F53\u65B9\u6848");
+    const style = add(document, dialog, "style", ".gallery-roadmap-dialog{width:min(1120px,94vw);max-width:calc(100vw - 24px);max-height:88vh;overflow:auto;box-sizing:border-box;padding:20px;font:14px/1.5 Arial,sans-serif;text-align:left}.gallery-roadmap-dialog p{margin:8px 0}.gallery-roadmap-dialog h2{margin:0}.gallery-roadmap-dialog .row{margin:12px 0}.gallery-roadmap-header,.gallery-roadmap-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.gallery-roadmap-header{justify-content:space-between}.gallery-roadmap-controls label{flex:1;min-width:180px}.gallery-roadmap-controls input,.gallery-roadmap-controls select{width:100%;box-sizing:border-box}.gallery-roadmap-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}.gallery-roadmap-metrics article{padding:12px;border:1px solid #45606b;border-radius:6px}.gallery-roadmap-metrics strong{display:block;font-size:22px}.gallery-roadmap-table{overflow:auto}.gallery-roadmap-table table{width:100%;border-collapse:collapse}.gallery-roadmap-table th,.gallery-roadmap-table td{padding:10px;text-align:left;border-bottom:1px solid #45606b}.gallery-roadmap-dialog button{min-height:40px}.gallery-roadmap-status{display:block;margin:12px 0;overflow-wrap:anywhere}");
+    void style;
+    const header = add(document, dialog, "div");
+    header.className = "gallery-roadmap-header";
+    add(document, header, "h2", "\u5168\u753B\u5ECA\u6574\u4F53\u65B9\u6848");
+    const close = add(document, header, "button", "\u5173\u95ED");
+    close.type = "button";
+    add(document, dialog, "p", "\u5148\u770B\u5168\u76EE\u5F55\u8DEF\u7EBF\uFF0C\u518D\u8FDB\u5165\u5404\u4FF1\u4E50\u90E8\u5B8C\u6210\u3002\u5DF2\u7ECF\u6536\u96C6\u8FC7\u7684\u7248\u672C\u4E0D\u91CD\u590D\u4E70\uFF1B\u5356\u51FA\u6216 SBC \u6D88\u8017\u540E\u4ECD\u7B97\u5DF2\u6709\u3002");
+    const controls = add(document, dialog, "div");
+    controls.className = "gallery-roadmap-controls";
+    const input = (labelText, placeholder) => {
+      const label = add(document, controls, "label", labelText), field = add(document, label, "input");
+      field.type = "number";
+      field.min = "0";
+      field.step = "1";
+      field.placeholder = placeholder;
+      return field;
+    };
+    const capital = input("\u53EF\u5468\u8F6C\u91D1\u5E01", "\u53EF\u7559\u7A7A\uFF0C\u5148\u770B\u6240\u9700\u672C\u91D1");
+    const lossLimit = input("\u6700\u591A\u9884\u8BA1\u635F\u8017\uFF08\u53EF\u9009\uFF09", "\u7559\u7A7A\u4E0D\u9650\uFF0C\u4E0D\u7B49\u4E8E\u91C7\u8D2D\u603B\u989D");
+    const discountLabel = add(document, controls, "label", "\u56DE\u552E\u4EF7\u5047\u8BBE");
+    const discount = add(document, discountLabel, "select");
+    for (const [value, text5] of [[0, "\u6309\u4E70\u5165\u4EF7\u5356\u56DE\uFF0C\u4EC5\u4F30\u7A0E\u8D39"], [500, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 5%\uFF0C\u53E6\u6263\u7A0E"], [1e3, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 10%\uFF0C\u53E6\u6263\u7A0E"]]) {
+      const option = add(document, discount, "option", text5);
+      option.value = String(value);
+    }
+    const actions = add(document, dialog, "div");
+    actions.className = "row";
+    const generate = add(document, actions, "button", "\u751F\u6210\u6574\u4F53\u65B9\u6848");
+    generate.className = "primary";
+    generate.type = "button";
+    const stop6 = add(document, actions, "button", "\u505C\u6B62\u5206\u6790");
+    stop6.type = "button";
+    stop6.hidden = true;
+    const exportButton = add(document, actions, "button", "\u5BFC\u51FA\u5206\u6790\u5FEB\u7167");
+    exportButton.type = "button";
+    const progress = add(document, dialog, "progress");
+    progress.max = 1;
+    progress.value = 0;
+    progress.hidden = true;
+    progress.setAttribute("aria-label", "\u6574\u4F53\u65B9\u6848\u5206\u6790\u8FDB\u5EA6");
+    const status = add(document, dialog, "output");
+    status.className = "gallery-roadmap-status";
+    status.setAttribute("role", "status");
+    const output = add(document, dialog, "div");
+    output.setAttribute("aria-live", "polite");
+    let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
+    let stage = "idle", stopRequested = false;
+    const parse = (field) => field.value.trim() === "" ? null : Number(field.value);
+    const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value) });
+    const capture = (state) => ({
+      scope: state.scope,
+      revision: state.catalog?.revision,
+      source: state.catalog?.source,
+      targets: state.targets.map((target) => [
+        target.set.id,
+        target.progressKey ?? target.progress,
+        target.pool?.revision,
+        !!target.stale,
+        !!target.poolStale,
+        target.status
+      ])
+    });
+    const same28 = (mark) => {
+      const state = read("binding");
+      if (!state.active || state.scope !== mark.scope || state.catalog?.revision !== mark.revision || state.catalog?.source !== mark.source || state.targets.length !== mark.targets.length) return false;
+      return state.targets.every((target, i) => {
+        const before = mark.targets[i];
+        return target.set.id === before[0] && (target.progressKey ?? target.progress) === before[1] && target.pool?.revision === before[2] && !!target.stale === before[3] && !!target.poolStale === before[4] && target.status === before[5];
+      });
+    };
+    const quotesFresh = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || target.priceSnapshot?.expiresAt == null || target.priceSnapshot.expiresAt > Date.now());
+    const invalidate = () => {
+      epoch2++;
+      last = null;
+      planInputs = null;
+      binding = null;
+      output.replaceChildren();
+      generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
+    };
+    const render = (result) => {
+      output.replaceChildren();
+      const metric = add(document, output, "div");
+      metric.className = "gallery-roadmap-metrics";
+      for (const [label, value] of [
+        ["\u76EE\u5F55\u65B0\u589E token", result.addedTokens],
+        ["\u6240\u9700\u5468\u8F6C\u672C\u91D1", result.funding?.requiredCapital],
+        ["\u9884\u8BA1\u51C0\u635F\u8017", result.funding?.expectedNetLoss],
+        ["\u7D2F\u8BA1\u91C7\u8D2D\u989D\uFF08\u975E\u672C\u91D1\uFF09", result.funding?.totalPurchase]
+      ]) {
+        const card = add(document, metric, "article");
+        add(document, card, "small", label);
+        add(document, card, "strong", money(value));
+      }
+      add(document, output, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
+      add(document, output, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
+      add(document, output, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
+      if (!result.route.length) add(document, output, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
+      const tableWrap = add(document, output, "div");
+      tableWrap.className = "gallery-roadmap-table";
+      const table = add(document, tableWrap, "table"), head = add(document, table, "tr");
+      for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u590D\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
+      for (const step of result.route) {
+        const tr = add(document, table, "tr");
+        add(document, tr, "th", `${step.order}. ${step.name}`);
+        add(document, tr, "td", `${step.currentGrade ?? "\u672A\u8FBE\u6863"} \u2192 ${step.targetGrade}`);
+        add(document, tr, "td", `+${step.addedTokens}`);
+        add(document, tr, "td", `${step.cycles.length} \u5F20 / ${step.reusedIds.length} \u5F20`);
+        const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
+        open.type = "button";
+        open.addEventListener("click", (event) => {
+          if (!event.isTrusted || !binding || !same28(binding) || !quotesFresh(planInputs)) {
+            status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
+            return;
+          }
+          dialog.close();
+          openSet(step.setId, step.targetGrade);
+        });
+        const cards = add(document, output, "details");
+        add(document, cards, "summary", `${step.order}. ${step.name} \xB7 \u8865\u5361\u4E0E\u9010\u5361\u5468\u8F6C\u660E\u7EC6`);
+        for (const cycle of step.cycles) {
+          const card = step.items.find((item2) => item2.eaId === cycle.eaId);
+          add(document, cards, "p", `${card?.name ?? cycle.eaId} \xB7 ${card?.version ?? ""} \xB7 \u4E70\u5165 ${money(cycle.price)} \u2192 \u9884\u8BA1\u7A0E\u540E\u56DE\u6536 ${money(cycle.expectedSaleNet)}${cycle.expectedClosingBalance != null ? ` \u2192 \u9884\u8BA1\u4F59\u989D ${money(cycle.expectedClosingBalance)}` : ""}`);
+        }
+      }
+      const pending2 = [...result.unavailable, ...result.skipped];
+      if (result.freeCheck.length) {
+        const achieved = add(document, output, "details");
+        add(document, achieved, "summary", `\u73B0\u6709\u6536\u85CF\u5DF2\u53EF\u8FBE\u6863\u4F4D ${result.freeCheck.length} \u9879\uFF08\u4E0D\u91CD\u590D\u4E70\u5165\uFF0C\u9886\u53D6\u72B6\u6001\u672A\u6838\u5B9E\uFF09`);
+        for (const row of result.freeCheck) add(document, achieved, "p", `${row.name} \xB7 ${row.grade} \xB7 \u7D2F\u8BA1\u76EE\u5F55 token ${row.catalogTokens}`);
+      }
+      if (pending2.length) {
+        const details = add(document, output, "details");
+        add(document, details, "summary", `\u5F85\u6838\u5B9E / \u8D44\u91D1\u53D7\u9650 ${pending2.length} \u9879`);
+        const reasons2 = {
+          "capital-gap": "\u5468\u8F6C\u672C\u91D1\u4E0D\u8DB3",
+          "loss-limit": "\u8D85\u51FA\u9884\u8BA1\u635F\u8017\u4E0A\u9650",
+          "price-unknown": "\u62A5\u4EF7\u5F85\u6838\u5B9E",
+          "progress-unavailable": "\u6536\u96C6\u72B6\u6001\u6216\u5361\u6C60\u5C1A\u672A\u8BFB\u53D6 / \u5DF2\u8FC7\u671F",
+          "target-unreachable": "\u5DF2\u68C0\u67E5\u8303\u56F4\u6682\u672A\u8FBE\u5230\u76EE\u6807",
+          "collection-status-unknown": "\u90E8\u5206\u7248\u672C\u7684\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E",
+          "existing-score-unknown": "\u5DF2\u6709\u6536\u85CF\u7684\u8BA1\u5206\u5F85\u6838\u5B9E",
+          "search-time-exhausted": "\u672C\u8F6E\u5206\u6790\u65F6\u95F4\u5DF2\u5230\uFF0C\u53EF\u7EE7\u7EED",
+          "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848"
+        };
+        for (const item2 of pending2) add(document, details, "p", `${item2.name} \xB7 ${reasons2[item2.reason] ?? `\u5C1A\u672A\u786E\u8BA4\u65B9\u6848\uFF08${item2.reason}\uFF09`}${item2.capitalShortfall ? ` \xB7 \u9884\u8BA1\u8FD8\u5DEE ${money(item2.capitalShortfall)} \u91D1\u5E01\u672C\u91D1` : ""}`);
+      }
+    };
+    const cancel = () => {
+      stopRequested = true;
+      if (stage !== "planning") {
+        epoch2++;
+        stopPrepare?.();
+      }
+      status.textContent = "\u6B63\u5728\u505C\u6B62\u5206\u6790\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
+    };
+    stop6.addEventListener("click", (event) => {
+      if (event.isTrusted) cancel();
+    });
+    close.addEventListener("click", (event) => {
+      if (event.isTrusted) {
+        if (busy) cancel();
+        epoch2++;
+        dialog.close();
+      }
+    });
+    dialog.addEventListener("cancel", () => {
+      if (busy) cancel();
+      epoch2++;
+    });
+    for (const field of [capital, lossLimit, discount]) field.addEventListener("change", invalidate);
+    button?.addEventListener("click", (event) => {
+      if (!event.isTrusted) return;
+      if (binding && (!same28(binding) || !quotesFresh(planInputs))) invalidate();
+      const state = read();
+      status.textContent = state.catalog ? `\u5168\u76EE\u5F55 ${state.targets.length} \u4E2A\u5408\u96C6\u3002\u70B9\u51FB\u751F\u6210\u540E\u81EA\u52A8\u590D\u7528\u6536\u96C6\u7F13\u5B58\u3001\u8865\u5145\u6570\u636E\u4E0E\u62A5\u4EF7\uFF1B\u53EF\u968F\u65F6\u505C\u6B62\u3002` : "\u516C\u5F00\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165\uFF0C\u8BF7\u5148\u7B49\u5F85 Gallery \u540C\u6B65\u3002";
+      if (!dialog.open) dialog.showModal();
+    });
+    generate.addEventListener("click", async (event) => {
+      if (!event.isTrusted || busy) return;
+      const options = params();
+      if ([options.capital, options.lossLimit].some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 1e9))) {
+        status.textContent = "\u8BF7\u8F93\u5165\u975E\u8D1F\u6574\u6570\u91D1\u5E01\u91D1\u989D\u3002\u53EF\u5468\u8F6C\u91D1\u5E01\u4E0D\u662F\u7D2F\u8BA1\u91C7\u8D2D\u4E0A\u9650\u3002";
+        return;
+      }
+      const token = ++epoch2;
+      busy = true;
+      stopRequested = false;
+      generate.disabled = true;
+      exportButton.disabled = true;
+      stop6.hidden = false;
+      progress.hidden = false;
+      for (const field of [capital, lossLimit, discount]) field.disabled = true;
+      const context = read("context").scope, current2 = () => {
+        const state = read("context");
+        return token === epoch2 && state.active && state.scope === context && dialog.open;
+      };
+      try {
+        const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && quotesFresh(planInputs);
+        if (!resume) {
+          last = null;
+          binding = null;
+          planInputs = null;
+          output.replaceChildren();
+          generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
+          stage = "preparing";
+          status.textContent = "1/3 \xB7 \u6821\u9A8C\u5168\u76EE\u5F55\u6536\u96C6\u72B6\u6001\uFF08\u4EC5\u6570\u636E\u8BFB\u53D6\uFF0C\u4E0D\u4E70\u5356\uFF09\u2026";
+          await prepare2?.((value) => {
+            if (current2()) status.textContent = `1/3 \xB7 \u540C\u6B65 ${value.phase ?? ""} ${value.index ?? 0}/${value.total ?? "?"} \xB7 \u5DF2\u8BFB ${value.count ?? 0}`;
+          });
+          if (!current2()) return;
+        }
+        const state = read();
+        if (!state.catalog) throw Error("\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165");
+        binding = capture(state);
+        const valid3 = () => current2() && same28(binding) && (stage !== "planning" || quotesFresh(targets));
+        let targets = resume ? planInputs : structuredClone(state.targets);
+        if (!resume && loadPrices) {
+          stage = "pricing";
+          status.textContent = "2/3 \xB7 \u8BFB\u53D6\u5168\u76EE\u5F55\u5019\u9009\u7684\u516C\u5F00\u62A5\u4EF7\u2026";
+          const available = targets.filter((target) => target.progress?.rows && !target.stale && !target.poolStale && target.status === "observed");
+          const priced2 = await priceGalleryPlanningTargets(available, {
+            load: loadPrices,
+            current: valid3,
+            onProgress: (value) => {
+              status.textContent = `2/3 \xB7 \u8BFB\u53D6 ${value.source ?? ""} \u62A5\u4EF7 ${value.index}/${value.total}`;
+            }
+          });
+          const byId = new Map(priced2.map((target) => [target.set.id, target]));
+          targets = targets.map((target) => byId.get(target.set.id) ?? target);
+        }
+        if (!valid3()) return;
+        if (!quotesFresh(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
+        const maxMs = await readTimeout();
+        stage = "planning";
+        const generator = planGalleryRoadmapSteps({
+          ...options,
+          targets,
+          previousRows: resume ? last.rows : [],
+          previousSelection: resume ? last.selectedOptions : []
+        });
+        const steps = { next: (finish) => generator.next(finish || stopRequested), return: () => generator.return() };
+        const result = await runGalleryPlan(
+          steps,
+          { current: valid3, maxMs, progress: (value) => {
+            status.textContent = value.phase === "route" ? `3/3 \xB7 \u7EC4\u5408\u6574\u4F53\u8DEF\u7EBF \xB7 \u5DF2\u9009 ${value.completed}/${value.total} \u4E2A\u76EE\u6807 \xB7 \u6BD4\u5BF9 ${value.comparisons} \u6B21` : `3/3 \xB7 \u5168\u76EE\u5F55\u5206\u6790 ${value.completed ?? 0}/${value.total ?? targets.length} \xB7 ${value.name ?? ""} ${value.grade ?? ""} \xB7 \u5DF2\u68C0\u67E5 ${value.gradesChecked ?? 0} \u6863`;
+            progress.max = value.total || targets.length || 1;
+            progress.value = value.completed ?? 0;
+          } }
+        );
+        if (!result || !valid3()) {
+          status.textContent = !quotesFresh(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
+          return;
+        }
+        last = { ...result, generatedAt: Date.now() };
+        planInputs = targets;
+        fingerprint = JSON.stringify(options);
+        render(result);
+        status.textContent = result.coverage.stopped ? "\u5DF2\u4FDD\u7559\u672C\u8F6E\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u6863\u4F4D\uFF0C\u4E0D\u4ECE\u5934\u91CD\u7B97\u3002" : "\u6574\u4F53\u8DEF\u7EBF\u5DF2\u751F\u6210\uFF1B\u8FDB\u5165\u5177\u4F53\u5408\u96C6\u540E\u518D\u786E\u8BA4\u64CD\u4F5C\u3002";
+        generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
+      } catch (error2) {
+        status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : error2?.message === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "\u6570\u636E\u8BFB\u53D6\u6216\u89C4\u5212\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u8BD5\u3002"}`;
+      } finally {
+        if (stopRequested && stage !== "planning") status.textContent = "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
+        busy = false;
+        stage = "idle";
+        generate.disabled = false;
+        exportButton.disabled = false;
+        stop6.hidden = true;
+        progress.hidden = true;
+        for (const field of [capital, lossLimit, discount]) field.disabled = false;
+      }
+    });
+    exportButton.addEventListener("click", (event) => {
+      if (!event.isTrusted || busy) return;
+      try {
+        const state = read(), current2 = binding && same28(binding) && quotesFresh(planInputs);
+        const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current2 && planInputs ? planInputs : state.targets, plan: current2 ? last : null });
+        const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
+        download(document.defaultView, document, JSON.stringify(payload, null, 2), filename);
+        status.textContent = `\u5DF2\u5BFC\u51FA ${payload.coverage.loaded}/${payload.coverage.total} \u4E2A\u5408\u96C6\u5FEB\u7167\uFF1B\u672A\u52A0\u8F7D\u548C\u672A\u77E5\u9879\u5DF2\u6807\u8BB0\uFF0C\u4E0D\u542B\u8D26\u53F7\u6216\u4EA4\u6613\u65E5\u5FD7\u3002`;
+      } catch {
+        status.textContent = "\u5FEB\u7167\u5BFC\u51FA\u672A\u5B8C\u6210\uFF1B\u8BF7\u5148\u8BFB\u53D6\u76EE\u5F55\u3002";
+      }
+    });
+    return {
+      close: () => {
+        if (busy) cancel();
+        invalidate();
+        dialog.close();
+      },
+      dispose: () => {
+        if (busy) cancel();
+        epoch2++;
+        dialog.close();
+        dialog.remove();
+      }
+    };
+  }
+
+  // src/adapters/browser/fc27-gallery-level.js
+  function mountGalleryLevel({ document, parent, service, visible = () => true, timers = document.defaultView }) {
+    if (!service || !parent) return null;
+    parent.hidden = false;
+    const add3 = (tag, text5 = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      parent.append(node);
+      return node;
+    };
+    const line = add3("div");
+    line.className = "row";
+    const title = document.createElement("strong");
+    title.textContent = "\u753B\u5ECA\u7B49\u7EA7\uFF1A\u5F85\u6838\u5B9E";
+    line.append(title);
+    const reward = document.createElement("span");
+    line.append(reward);
+    const refresh = document.createElement("button");
+    refresh.textContent = "\u5237\u65B0\u7B49\u7EA7\u5956\u52B1";
+    refresh.type = "button";
+    line.append(refresh);
+    const status = add3("output");
+    status.setAttribute("role", "status");
+    const details = add3("details"), summary3 = document.createElement("summary");
+    summary3.textContent = "\u7B49\u7EA7\u6765\u6E90 / \u4E3B\u673A\u8BB0\u5F55";
+    details.append(summary3);
+    const note = document.createElement("p");
+    note.textContent = "EA \u76EE\u524D\u8FD4\u56DE\u7B49\u7EA7\u91CC\u7A0B\u7891\u72B6\u6001\uFF0C\u6CA1\u6709\u7CBE\u786E\u7B49\u7EA7\u6216 XP\uFF1B\u4E0D\u6309 token \u6216\u5408\u96C6\u8BC4\u5206\u731C\u7B49\u7EA7\u3002";
+    details.append(note);
+    const label = document.createElement("label");
+    label.textContent = "\u4E3B\u673A\u786E\u8BA4\u7B49\u7EA7\uFF08\u53EF\u9009\uFF09";
+    details.append(label);
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.max = "1000";
+    input.step = "1";
+    label.append(input);
+    const save = document.createElement("button");
+    save.textContent = "\u4FDD\u5B58\u4E3B\u673A\u8BB0\u5F55";
+    save.type = "button";
+    details.append(save);
+    const explanation = document.createElement("small");
+    explanation.textContent = "\u4EC5\u5B58\u672C\u673A\u5E76\u6807\u660E\u6765\u6E90\uFF0C\u4E0D\u4FEE\u6539 EA \u7B49\u7EA7\u3002\u7B49\u7EA7\u5956\u52B1\u4ECD\u5728\u6E38\u620F\u5185\u786E\u8BA4/\u9886\u53D6\u3002";
+    details.append(explanation);
+    const list2 = document.createElement("ul");
+    details.append(list2);
+    let active = false, epoch2 = 0, snapshot = null, consoleNote = null, interval = null;
+    const render = () => {
+      const minimum = snapshot?.confirmedAtLeast;
+      title.textContent = snapshot?.exactLevel != null ? `\u753B\u5ECA\u7B49\u7EA7\uFF1ALv.${snapshot.exactLevel}\uFF08EA\uFF09` : consoleNote && !(minimum > consoleNote.level) ? `\u753B\u5ECA\u7B49\u7EA7\uFF1ALv.${consoleNote.level}\uFF08\u4E3B\u673A\u8BB0\u5F55\uFF09` : minimum != null ? `\u753B\u5ECA\u7B49\u7EA7\uFF1A\u81F3\u5C11 Lv.${minimum}\uFF08EA \u91CC\u7A0B\u7891\uFF09` : "\u753B\u5ECA\u7CBE\u786E\u7B49\u7EA7\uFF1A\u5F85 EA \u6570\u636E\u786E\u8BA4";
+      const next = snapshot?.nextMilestone;
+      reward.textContent = next ? `\u4E0B\u4E00\u5956\u52B1\u8282\u70B9 Lv.${next.level} \xB7 ${next.rewards.join(" / ") || "\u5956\u52B1\u63CF\u8FF0\u5F85\u6838\u5B9E"}` : "\u4E0B\u4E00\u7B49\u7EA7\u5956\u52B1\uFF1A\u5F85\u6838\u5B9E";
+      input.value = consoleNote ? String(consoleNote.level) : "";
+      list2.replaceChildren();
+      for (const milestone of snapshot?.milestones ?? []) {
+        const li = document.createElement("li");
+        const state = milestone.claimed === true ? "\u5DF2\u9886\u53D6" : milestone.completed === true ? "\u5DF2\u8FBE\u6210\uFF0C\u672A\u9886\u53D6" : milestone.completed === false ? "\u672A\u8FBE\u6210" : "\u5B8C\u6210\u72B6\u6001\u5F85\u6838\u5B9E";
+        li.textContent = `Lv.${milestone.level} \xB7 ${state} \xB7 ${milestone.rewards.join(" / ") || "\u5956\u52B1\u63CF\u8FF0\u5F85\u6838\u5B9E"}`;
+        list2.append(li);
+      }
+    };
+    const load = async (force) => {
+      if (!active || !visible()) return;
+      let scope2;
+      try {
+        scope2 = service.scope();
+      } catch {
+        status.textContent = "\u8D26\u53F7\u4E0A\u4E0B\u6587\u5F85\u5C31\u7EEA\uFF0C\u7B49\u7EA7\u4FE1\u606F\u5C1A\u672A\u8BFB\u53D6\u3002";
+        return;
+      }
+      const token = ++epoch2;
+      refresh.disabled = true;
+      save.disabled = true;
+      status.textContent = "\u6B63\u5728\u8BFB\u53D6\u753B\u5ECA\u7B49\u7EA7\u5956\u52B1\u2026";
+      const current2 = () => active && token === epoch2 && scope2 === service.scope();
+      try {
+        const storedNote = await service.readNote();
+        if (!current2()) return;
+        consoleNote = storedNote;
+        snapshot = service.peek();
+        render();
+        if (force || !snapshot || Date.now() - (snapshot.observedAt ?? 0) >= 3e5) {
+          const updated = await service.refresh();
+          if (!current2()) return;
+          snapshot = updated;
+        }
+        if (!current2()) return;
+        render();
+        status.textContent = snapshot?.status === "observed" ? "\u5DF2\u5237\u65B0 EA \u7B49\u7EA7\u91CC\u7A0B\u7891\uFF1B\u7CBE\u786E\u7B49\u7EA7\u4E0E\u5347\u7EA7 XP \u5C1A\u672A\u7531\u6B64\u63A5\u53E3\u63D0\u4F9B\u3002" : "\u7B49\u7EA7\u76EE\u6807\u6682\u672A\u6838\u5B9E\uFF1B\u73B0\u6709\u753B\u5ECA\u6536\u96C6\u548C\u6574\u4F53\u89C4\u5212\u4E0D\u53D7\u5F71\u54CD\u3002";
+      } catch {
+        if (active) status.textContent = "\u7B49\u7EA7\u4FE1\u606F\u8BFB\u53D6\u672A\u5B8C\u6210\uFF0C\u672A\u9886\u53D6\u5956\u52B1\u6216\u4FEE\u6539\u7B49\u7EA7\u3002";
+      } finally {
+        if (token === epoch2) {
+          refresh.disabled = false;
+          save.disabled = false;
+        }
+      }
+    };
+    refresh.addEventListener("click", (event) => {
+      if (event.isTrusted) void load(true);
+    });
+    save.addEventListener("click", async (event) => {
+      if (!event.isTrusted || !active) return;
+      const level2 = Number(input.value);
+      if (!Number.isSafeInteger(level2) || level2 < 1 || level2 > 1e3) {
+        status.textContent = "\u8BF7\u8F93\u5165\u4E3B\u673A\u4E0A\u786E\u8BA4\u7684\u7B49\u7EA7\u3002";
+        return;
+      }
+      const token = ++epoch2;
+      save.disabled = true;
+      try {
+        const value = await service.saveNote(level2);
+        if (!active || token !== epoch2) return;
+        consoleNote = value;
+        render();
+        status.textContent = "\u5DF2\u4FDD\u5B58\u672C\u673A\u4E3B\u673A\u8BB0\u5F55\uFF1B\u4E0D\u662F EA \u81EA\u52A8\u8BFB\u53D6\u7684\u7CBE\u786E\u7B49\u7EA7\u3002";
+      } catch {
+        if (active) status.textContent = "\u4E3B\u673A\u7B49\u7EA7\u8BB0\u5F55\u4FDD\u5B58\u672A\u786E\u8BA4\uFF0C\u8BF7\u91CD\u8BD5\u3002";
+      } finally {
+        save.disabled = false;
+      }
+    });
+    const setActive = (value) => {
+      active = value;
+      epoch2++;
+      if (interval !== null) timers.clearInterval(interval);
+      interval = null;
+      if (active) {
+        void load(false);
+        interval = timers.setInterval(() => {
+          void load(false);
+        }, 3e5);
+      } else {
+        snapshot = null;
+        consoleNote = null;
+        refresh.disabled = false;
+        save.disabled = false;
+        status.textContent = "";
+        render();
+      }
+    };
+    return { setActive, snapshot: () => ({ ...snapshot, consoleNote }), dispose: () => {
+      setActive(false);
+      parent.replaceChildren();
+    } };
   }
 
   // src/adapters/browser/fc27-gallery-view.js
@@ -17388,10 +18366,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     relist = null,
     tradePreferences = null,
     planningSettings = null,
+    galleryLevel: galleryLevel2 = null,
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
     const node = (id12) => shadow.getElementById(id12);
+    let roadmap = null, roadmapTarget = null, levelPanel = null;
+    const roadmapProgressKeys = /* @__PURE__ */ new WeakMap();
+    const roadmapProgressKey = (progress) => {
+      if (!progress) return null;
+      if (!roadmapProgressKeys.has(progress)) roadmapProgressKeys.set(
+        progress,
+        galleryPlanningStateKey({ status: "observed", progress })
+      );
+      return roadmapProgressKeys.get(progress);
+    };
     const planningTimeout = async (current2, output) => {
       if (!planningSettings) return DEFAULT_GALLERY_PLANNING_TIMEOUT_MS;
       try {
@@ -17549,7 +18538,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     relistRecoverButton?.addEventListener("click", (event) => {
       if (event.isTrusted) void runRelist(() => relist.poll({ recover: true }));
     });
-    const add2 = (parent, tag, value = "", className = "") => {
+    const add3 = (parent, tag, value = "", className = "") => {
       const child = document.createElement(tag);
       child.textContent = value;
       child.className = className;
@@ -17754,7 +18743,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               unassigned: "Unassigned",
               collected: "\u5DF2\u786E\u8BA4\u6536\u96C6"
             }[item2.state] ?? item2.reason ?? item2.state;
-            add2(resultList, "li", `${item2.name || item2.definitionId} \xB7 ${state2}${item2.price == null ? "" : ` \xB7 ${count2(item2.price)} \u91D1\u5E01`}`);
+            add3(resultList, "li", `${item2.name || item2.definitionId} \xB7 ${state2}${item2.price == null ? "" : ` \xB7 ${count2(item2.price)} \u91D1\u5E01`}`);
           }
         }
         purchaseReplan = null;
@@ -17763,8 +18752,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (remaining.length) {
             purchaseReplan = { ...input.replanContext, outcome };
             const acquired = (outcome.results ?? []).filter((item2) => ["club", "unassigned", "acquired", "collected"].includes(item2.state)).length;
-            const replan = add2(resultList ?? dialog, "li", `\u5DF2\u786E\u8BA4 ${acquired} \u5F20\uFF1B\u5269\u4F59 ${remaining.length} \u5F20\u53EF\u91CD\u65B0\u8BA1\u7B97\u65B9\u6848`, "gallery-replan-ready");
-            const replanButton = add2(replan, "button", "\u91CD\u65B0\u89C4\u5212\u5269\u4F59\u76EE\u6807");
+            const replan = add3(resultList ?? dialog, "li", `\u5DF2\u786E\u8BA4 ${acquired} \u5F20\uFF1B\u5269\u4F59 ${remaining.length} \u5F20\u53EF\u91CD\u65B0\u8BA1\u7B97\u65B9\u6848`, "gallery-replan-ready");
+            const replanButton = add3(replan, "button", "\u91CD\u65B0\u89C4\u5212\u5269\u4F59\u76EE\u6807");
             replanButton.type = "button";
             replanButton.addEventListener("click", (event) => {
               if (event.isTrusted && !buying) {
@@ -17786,7 +18775,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const renderPurchaseReplan = (input) => {
       const target = node(input?.mode === "joint" ? "gallery-joint-output" : "gallery-set-detail");
       if (!target || !input?.targets?.length || !input.outcome) return;
-      const message = input.mode === "joint" ? target : target.querySelector(".gallery-plan-output") ?? add2(target, "div", "", "gallery-plan-output");
+      const message = input.mode === "joint" ? target : target.querySelector(".gallery-plan-output") ?? add3(target, "div", "", "gallery-plan-output");
       message.replaceChildren();
       message.textContent = "\u6B63\u5728\u6839\u636E\u5DF2\u786E\u8BA4\u6536\u96C6\u548C\u5269\u4F59\u9884\u7B97\u91CD\u65B0\u89C4\u5212\u2026";
       const identity5 = scope2(), token = ++planningEpoch;
@@ -17821,12 +18810,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         message.replaceChildren();
         if (plan.status === "ready") {
           attachPlanPrices(plan, plan.targets.map((target2) => target2.priceSnapshot));
-          add2(message, "small", "\u539F\u8D2D\u4E70\u7ED3\u679C\u5DF2\u4FDD\u7559\uFF1B\u4EE5\u4E0B\u4EC5\u662F\u65B0\u7684\u672C\u5730\u66FF\u4EE3\u65B9\u6848\uFF0C\u9700\u8981\u518D\u6B21\u70B9\u51FB\u8D2D\u4E70\u3002", "gallery-unknown");
+          add3(message, "small", "\u539F\u8D2D\u4E70\u7ED3\u679C\u5DF2\u4FDD\u7559\uFF1B\u4EE5\u4E0B\u4EC5\u662F\u65B0\u7684\u672C\u5730\u66FF\u4EE3\u65B9\u6848\uFF0C\u9700\u8981\u518D\u6B21\u70B9\u51FB\u8D2D\u4E70\u3002", "gallery-unknown");
           for (const candidate of plan.plans) {
-            const detail = add2(message, "details");
-            add2(detail, "summary", `${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`}${candidate.score == null ? "" : ` \xB7 \u6700\u7EC8 ${count2(candidate.score)} \u5206`}`);
-            const list2 = add2(detail, "ul");
-            for (const item2 of candidate.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}`);
+            const detail = add3(message, "details");
+            add3(detail, "summary", `${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`}${candidate.score == null ? "" : ` \xB7 \u6700\u7EC8 ${count2(candidate.score)} \u5206`}`);
+            const list2 = add3(detail, "ul");
+            for (const item2 of candidate.items) add3(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}`);
             const executionBudget = plan.remainingBudget ?? input.budget;
             purchaseButton(detail, candidate.items, `${input.binding ?? "gallery"}:replan:${candidate.items.map((item2) => item2.eaId).join(",")}`, {
               budget: executionBudget,
@@ -17835,8 +18824,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               valid: () => current2() && !buying
             });
           }
-        } else if (plan.status === "achieved") add2(message, "small", "\u5F53\u524D\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u7EE7\u7EED\u8D2D\u4E70\u3002");
-        else add2(message, "small", `\u5269\u4F59\u76EE\u6807\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan.reason ?? plan.status}`, "gallery-unknown");
+        } else if (plan.status === "achieved") add3(message, "small", "\u5F53\u524D\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u7EE7\u7EED\u8D2D\u4E70\u3002");
+        else add3(message, "small", `\u5269\u4F59\u76EE\u6807\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan.reason ?? plan.status}`, "gallery-unknown");
       }).catch(() => {
         if (current2()) message.textContent = "\u5269\u4F59\u76EE\u6807\u91CD\u89C4\u5212\u5931\u8D25\uFF0C\u539F Journal \u4FDD\u7559\u3002";
       });
@@ -17850,13 +18839,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       replanContext = null
     } = {}) => {
       if (typeof purchase !== "function" || !items.length) return null;
-      const button = add2(parent, "button", label, "primary gallery-purchase");
+      const button = add3(parent, "button", label, "primary gallery-purchase");
       button.type = "button";
       const identity5 = scope2();
       const blocked12 = (reason, message) => {
         let notice = parent.querySelector(".gallery-purchase-error");
         if (!notice) {
-          notice = add2(parent, "small", "", "gallery-purchase-error");
+          notice = add3(parent, "small", "", "gallery-purchase-error");
           notice.setAttribute("role", "status");
         }
         notice.textContent = message;
@@ -17979,17 +18968,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       nativeCards.clear();
     };
     const renderTextCard = (parent, row) => {
-      const fallback = add2(parent, "div", "", "gallery-text-card");
-      add2(fallback, "strong", String(row.overall ?? "\u2014"), "gallery-text-card-rating");
-      add2(fallback, "span", row.name, "gallery-text-card-name");
-      add2(fallback, "small", `${row.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${row.positions?.[0] ?? "\u4F4D\u7F6E\u672A\u77E5"}`, "gallery-text-card-meta");
+      const fallback = add3(parent, "div", "", "gallery-text-card");
+      add3(fallback, "strong", String(row.overall ?? "\u2014"), "gallery-text-card-rating");
+      add3(fallback, "span", row.name, "gallery-text-card-name");
+      add3(fallback, "small", `${row.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${row.positions?.[0] ?? "\u4F4D\u7F6E\u672A\u77E5"}`, "gallery-text-card-meta");
       fallback.title = "EA \u539F\u751F\u5361\u9762\u6682\u672A\u53D6\u5F97";
       return fallback;
     };
     const cardImage = (parent, row, runtimeCards, setId) => {
       if (!active || disposed || jointMode) return;
       let native, fallbackRendered = false;
-      const slot = add2(parent, "slot");
+      const slot = add3(parent, "slot");
       slot.name = `gallery-card-${++cardSequence}`;
       const fallback = () => {
         if (fallbackRendered || disposed || !active || !slot.isConnected || selectedSetId !== setId) return;
@@ -18058,26 +19047,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const purchasePriceText = (item2) => item2.priceReference ? `FUT.GG ${count2(item2.priceReference.futgg)} / FUTBIN ${count2(item2.priceReference.futbin)} \xB7 \u4F30\u4EF7 ${count2(item2.price)} \xB7 \u4E0A\u9650 ${count2(item2.priceReference.maxBuy)}` : item2.price == null ? "\u4EF7\u683C\u672A\u77E5" : `${count2(item2.price)} \u{1FA99}`;
     const statusIcon = (parent, value, label) => {
-      const icon = add2(parent, "span", value === true ? "\u2713" : value === false ? "\u25CB" : "?", `gallery-status-icon ${value === true ? "is-yes" : value === false ? "is-no" : "is-unknown"}`);
+      const icon = add3(parent, "span", value === true ? "\u2713" : value === false ? "\u25CB" : "?", `gallery-status-icon ${value === true ? "is-yes" : value === false ? "is-no" : "is-unknown"}`);
       icon.title = label;
       icon.setAttribute("aria-label", label);
       return icon;
     };
     const gradeTrack = (parent, grades3, summary3 = null) => {
       const state2 = summary3?.status ?? "";
-      const track = add2(parent, "div", "", `gallery-grade-track ${state2}`);
+      const track = add3(parent, "div", "", `gallery-grade-track ${state2}`);
       track.setAttribute("role", "list");
       for (const { grade, reached, current: current2, fraction } of galleryGradeSegments(grades3, summary3)) {
-        const cell = add2(track, "span", "", "gallery-grade-cell");
+        const cell = add3(track, "span", "", "gallery-grade-cell");
         cell.setAttribute("role", "listitem");
-        const bar = add2(cell, "span", "", "gallery-grade-bar");
-        const fill = add2(bar, "i");
+        const bar = add3(cell, "span", "", "gallery-grade-bar");
+        const fill = add3(bar, "i");
         fill.style.width = `${Math.round(fraction * 100)}%`;
-        const diamond = add2(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 ? "is-current" : ""}`);
-        add2(diamond, "span", grade.name, "gallery-grade-letter");
+        const diamond = add3(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 ? "is-current" : ""}`);
+        add3(diamond, "span", grade.name, "gallery-grade-letter");
         diamond.title = `${grade.name} \xB7 ${count2(grade.threshold)} \u5206 \xB7 ${grade.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u5956\u52B1"}${grade.rewardsComplete ? "" : " \xB7 \u672A\u63D0\u4F9B\u975E\u4EE3\u5E01\u5956\u52B1"}`;
         diamond.setAttribute("aria-label", `${grade.name} \u6863\uFF0C${count2(grade.threshold)} \u5206${reached ? "\uFF0C\u5DF2\u8FBE\u5230" : ""}`);
-        add2(cell, "small", count2(grade.threshold), "gallery-grade-threshold");
+        add3(cell, "small", count2(grade.threshold), "gallery-grade-threshold");
       }
       return track;
     };
@@ -18097,13 +19086,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const renderRewardSummary = (parent, sets2, className = "gallery-reward-summary") => {
       const rewards2 = summarizeRewards(sets2).map((reward) => ({ ...reward, icon: asset("reward", reward.type) })).filter((reward) => reward.icon);
       if (!rewards2.length) return null;
-      const summary3 = add2(parent, "span", "", className);
+      const summary3 = add3(parent, "span", "", className);
       summary3.setAttribute("aria-label", "\u5956\u52B1\u6C47\u603B");
       for (const reward of rewards2) {
-        const item2 = add2(summary3, "span", "", "gallery-reward-token");
+        const item2 = add3(summary3, "span", "", "gallery-reward-token");
         item2.dataset.rewardType = reward.type;
         image(item2, reward.icon, reward.type, "gallery-reward-token-icon");
-        add2(item2, "span", count2(reward.value), "gallery-reward-token-value");
+        add3(item2, "span", count2(reward.value), "gallery-reward-token-value");
         item2.title = `${reward.type} ${count2(reward.value)}`;
         item2.setAttribute("aria-label", item2.title);
       }
@@ -18153,7 +19142,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const ids2 = new Set(summary3.lineup?.map((row) => String(row.eaId)) ?? []);
             for (const card of target.querySelectorAll(".gallery-card")) {
               card.querySelector(".gallery-score-member")?.remove();
-              if (ids2.has(card.dataset.definitionId)) add2(card.querySelector(".gallery-player-meta"), "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
+              if (ids2.has(card.dataset.definitionId)) add3(card.querySelector(".gallery-player-meta"), "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
             }
           }
         }
@@ -18197,22 +19186,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const compactScore = (summary3) => !summary3?.low ? summary3?.status === "calculating" ? "\u8BA1\u5206\u4E2D\u2026" : "\u8BA1\u5206\u5F85\u540C\u6B65" : `${count2(summary3.low.total)}${summary3.low.total !== summary3.high?.total ? `\u2013${count2(summary3.high?.total)}` : ""} \u5206`;
     const renderScoring = (target, summary3, value) => {
-      const section = add2(target, "section", "", "gallery-score");
-      add2(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167" : "\u5F53\u524D"}\u8BA1\u5206\uFF1A${scoreText(summary3)}`);
+      const section = add3(target, "section", "", "gallery-score");
+      add3(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167" : "\u5F53\u524D"}\u8BA1\u5206\uFF1A${scoreText(summary3)}`);
       if (!summary3?.low) {
         if (summary3?.status === "calculating") {
-          add2(section, "small", "\u6B63\u5728\u540E\u53F0\u8BA1\u7B97\uFF0C\u53EF\u7EE7\u7EED\u6D4F\u89C8\u6216\u5207\u6362\u9875\u9762\u3002");
+          add3(section, "small", "\u6B63\u5728\u540E\u53F0\u8BA1\u7B97\uFF0C\u53EF\u7EE7\u7EED\u6D4F\u89C8\u6216\u5207\u6362\u9875\u9762\u3002");
           return;
         }
-        add2(section, "small", summary3?.reason === "base-score-unknown" ? "\u90E8\u5206\u5DF2\u6536\u96C6\u5361\u7F3A\u5C11 EA \u57FA\u7840\u5206\uFF1B\u516C\u5F00\u4F30\u503C\u4E0D\u4F1A\u4EE3\u66FF\u8D26\u53F7\u5206\u503C\u3002" : "\u76EE\u5F55\u5305\u542B\u672A\u8BC6\u522B\u7684\u8BA1\u5206\u6761\u4EF6\uFF0C\u4FDD\u7559\u6536\u96C6\u8FDB\u5EA6\u5E76\u7B49\u5F85\u89C4\u5219\u9002\u914D\u3002");
+        add3(section, "small", summary3?.reason === "base-score-unknown" ? "\u90E8\u5206\u5DF2\u6536\u96C6\u5361\u7F3A\u5C11 EA \u57FA\u7840\u5206\uFF1B\u516C\u5F00\u4F30\u503C\u4E0D\u4F1A\u4EE3\u66FF\u8D26\u53F7\u5206\u503C\u3002" : "\u76EE\u5F55\u5305\u542B\u672A\u8BC6\u522B\u7684\u8BA1\u5206\u6761\u4EF6\uFF0C\u4FDD\u7559\u6536\u96C6\u8FDB\u5EA6\u5E76\u7B49\u5F85\u89C4\u5219\u9002\u914D\u3002");
         return;
       }
-      add2(section, "small", `\u57FA\u7840\u5206 ${count2(summary3.low.base)} \uFF0B \u5DF2\u77E5\u52A0\u6210 ${count2(summary3.low.bonus)} \xB7 \u8BA1\u5206 ${summary3.lineup.length} \u5F20`);
-      if (summary3.zeroScoreCards) add2(section, "small", `${summary3.zeroScoreCards} \u5F20\u5DF2\u6536\u96C6\u7248\u672C\u7684 EA \u57FA\u7840\u5206\u4E3A 0\uFF0C\u6309\u53C2\u8003\u89C4\u5219\u4E0D\u8BA1\u5165\u8BA1\u5206\u4EBA\u6570\u3002`);
-      if (summary3.full && summary3.nextGrade) add2(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(summary3.pointsToNext)} \u5206`);
-      else if (summary3.full) add2(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
+      add3(section, "small", `\u57FA\u7840\u5206 ${count2(summary3.low.base)} \uFF0B \u5DF2\u77E5\u52A0\u6210 ${count2(summary3.low.bonus)} \xB7 \u8BA1\u5206 ${summary3.lineup.length} \u5F20`);
+      if (summary3.zeroScoreCards) add3(section, "small", `${summary3.zeroScoreCards} \u5F20\u5DF2\u6536\u96C6\u7248\u672C\u7684 EA \u57FA\u7840\u5206\u4E3A 0\uFF0C\u6309\u53C2\u8003\u89C4\u5219\u4E0D\u8BA1\u5165\u8BA1\u5206\u4EBA\u6570\u3002`);
+      if (summary3.full && summary3.nextGrade) add3(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(summary3.pointsToNext)} \u5206`);
+      else if (summary3.full) add3(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
       if (summary3.full && summary3.low.total !== summary3.high.total) {
-        add2(section, "small", `\u540C\u4E00\u8BA1\u5206\u7EC4\u5408\u7684\u6761\u4EF6\u7B49\u7EA7\uFF1A${summary3.lowGrade ?? "\u672A\u8FBE D"}\u2013${summary3.highGrade ?? "\u672A\u8FBE D"}\u3002\u533A\u95F4\u4EC5\u9488\u5BF9\u5DF2\u9009\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6240\u6709\u7EC4\u5408\u7684\u6700\u9AD8\u5206\u3002`, "gallery-unknown");
+        add3(section, "small", `\u540C\u4E00\u8BA1\u5206\u7EC4\u5408\u7684\u6761\u4EF6\u7B49\u7EA7\uFF1A${summary3.lowGrade ?? "\u672A\u8FBE D"}\u2013${summary3.highGrade ?? "\u672A\u8FBE D"}\u3002\u533A\u95F4\u4EC5\u9488\u5BF9\u5DF2\u9009\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6240\u6709\u7EC4\u5408\u7684\u6700\u9AD8\u5206\u3002`, "gallery-unknown");
       }
       const names = {
         firstOwned: "First Owner \u5386\u53F2",
@@ -18227,27 +19216,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         overall: "\u8BC4\u5206",
         rarityEaId: "\u5361\u79CD"
       };
-      if (summary3.unknownFields.length) add2(section, "small", `\u672A\u77E5\uFF1A${summary3.unknownFields.map((field) => names[field] ?? field).join("\u3001")}\u3002\u5DF2\u77E5\u8D21\u732E\u4E0D\u8BA1\u672A\u77E5\u9879\uFF0C\u533A\u95F4\u53E6\u4E00\u7AEF\u6309\u672A\u77E5\u9879\u6EE1\u8DB3\u6761\u4EF6\u8BA1\u7B97\uFF1B\u91CD\u65B0\u540C\u6B65\u672A\u5FC5\u80FD\u627E\u56DE\u5DF2\u79BB\u961F\u5361\u7684\u9996\u4EFB\u5386\u53F2\u3002`, "gallery-unknown");
-      if (summary3.ruleDifference) add2(section, "small", `\u5206\u7EC4\u89C4\u5219\u6709\u5DEE\u5F02\uFF1A\u540C\u7EC4\u5408 Fodder ${count2(summary3.low.total)}\u2013${count2(summary3.high.total)}\uFF0CFUT.GG ${count2(summary3.comparison.low.total)}\u2013${count2(summary3.comparison.high.total)}\uFF1BEA \u89C4\u5219\u4ECD\u5F85\u5BF9\u7167\u3002`, "gallery-unknown");
-      if (summary3.collectionUnknown) add2(section, "small", "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u5B8C\u6574\uFF0C\u5F53\u524D\u4EC5\u8BA1\u7B97\u5DF2\u786E\u8BA4\u6536\u96C6\u5361\u3002", "gallery-unknown");
-      add2(section, "small", `${summary3.selection === "bounded-search" ? "\u6309\u53C2\u8003\u63D2\u4EF6\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club \u7F13\u5B58\u3002`);
-      const explanation = add2(section, "details");
-      add2(explanation, "summary", "\u8BA1\u5206\u5361\u7247\u4E0E\u52A0\u6210\u660E\u7EC6");
-      const selected = add2(explanation, "ul", "", "gallery-lineup");
-      for (const row of summary3.lineup) add2(selected, "li", `${row.name ?? row.eaId} \xB7 ${row.version ?? ""} \xB7 EA ${count2(row.gradingScore)}`);
-      add2(explanation, "p", "\u53EA\u8BA1\u6536\u76CA\u6700\u9AD8\u7684\u5341\u9879\u52A0\u6210\uFF1B\u6BCF\u9879\u6309\u5339\u914D\u5361\u7247\u7684\u57FA\u7840\u5206\u5411\u4E0B\u53D6\u6574\u3002");
-      const bonuses = add2(explanation, "ul", "", "gallery-bonuses");
+      if (summary3.unknownFields.length) add3(section, "small", `\u672A\u77E5\uFF1A${summary3.unknownFields.map((field) => names[field] ?? field).join("\u3001")}\u3002\u5DF2\u77E5\u8D21\u732E\u4E0D\u8BA1\u672A\u77E5\u9879\uFF0C\u533A\u95F4\u53E6\u4E00\u7AEF\u6309\u672A\u77E5\u9879\u6EE1\u8DB3\u6761\u4EF6\u8BA1\u7B97\uFF1B\u91CD\u65B0\u540C\u6B65\u672A\u5FC5\u80FD\u627E\u56DE\u5DF2\u79BB\u961F\u5361\u7684\u9996\u4EFB\u5386\u53F2\u3002`, "gallery-unknown");
+      if (summary3.ruleDifference) add3(section, "small", `\u5206\u7EC4\u89C4\u5219\u6709\u5DEE\u5F02\uFF1A\u540C\u7EC4\u5408 Fodder ${count2(summary3.low.total)}\u2013${count2(summary3.high.total)}\uFF0CFUT.GG ${count2(summary3.comparison.low.total)}\u2013${count2(summary3.comparison.high.total)}\uFF1BEA \u89C4\u5219\u4ECD\u5F85\u5BF9\u7167\u3002`, "gallery-unknown");
+      if (summary3.collectionUnknown) add3(section, "small", "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u5B8C\u6574\uFF0C\u5F53\u524D\u4EC5\u8BA1\u7B97\u5DF2\u786E\u8BA4\u6536\u96C6\u5361\u3002", "gallery-unknown");
+      add3(section, "small", `${summary3.selection === "bounded-search" ? "\u6309\u53C2\u8003\u63D2\u4EF6\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club \u7F13\u5B58\u3002`);
+      const explanation = add3(section, "details");
+      add3(explanation, "summary", "\u8BA1\u5206\u5361\u7247\u4E0E\u52A0\u6210\u660E\u7EC6");
+      const selected = add3(explanation, "ul", "", "gallery-lineup");
+      for (const row of summary3.lineup) add3(selected, "li", `${row.name ?? row.eaId} \xB7 ${row.version ?? ""} \xB7 EA ${count2(row.gradingScore)}`);
+      add3(explanation, "p", "\u53EA\u8BA1\u6536\u76CA\u6700\u9AD8\u7684\u5341\u9879\u52A0\u6210\uFF1B\u6BCF\u9879\u6309\u5339\u914D\u5361\u7247\u7684\u57FA\u7840\u5206\u5411\u4E0B\u53D6\u6574\u3002");
+      const bonuses = add3(explanation, "ul", "", "gallery-bonuses");
       for (const tag of summary3.low.tags) {
         const high = summary3.high.tags.find((row) => row.id === tag.id);
         const suffix = tag.bonus > 0 && !tag.counted ? " \xB7 \u672A\u8FDB\u524D\u5341\uFF0C\u4E0D\u8BA1\u5165" : tag.counted ? " \xB7 \u8BA1\u5165" : "";
-        add2(bonuses, "li", `${tag.name}\uFF1A${tag.count} \u5F20 \xB7 ${count2(tag.matched)} \xD7 ${tag.pct}% = ${count2(tag.bonus)}${suffix}${high.bonus !== tag.bonus ? ` \xB7 \u672A\u77E5\u9879\u6EE1\u8DB3\u65F6 ${count2(high.bonus)}` : ""}${tag.next ? ` \xB7 \u518D ${tag.next.needed} \u5F20\u8FBE ${tag.next.pct}%` : ""}`);
+        add3(bonuses, "li", `${tag.name}\uFF1A${tag.count} \u5F20 \xB7 ${count2(tag.matched)} \xD7 ${tag.pct}% = ${count2(tag.bonus)}${suffix}${high.bonus !== tag.bonus ? ` \xB7 \u672A\u77E5\u9879\u6EE1\u8DB3\u65F6 ${count2(high.bonus)}` : ""}${tag.next ? ` \xB7 \u518D ${tag.next.needed} \u5F20\u8FBE ${tag.next.pct}%` : ""}`);
       }
     };
     const renderPlan = (target, value, set, summary3) => {
       if (typeof gradePlanner !== "function" || !value?.progress || !result?.catalog) return;
-      const section = add2(target, "section", "", "gallery-plan");
-      add2(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
-      const row = add2(section, "div", "", "row");
+      const section = add3(target, "section", "", "gallery-plan");
+      add3(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
+      const row = add3(section, "div", "", "row");
       const select = document.createElement("select");
       for (const grade of set.grades) {
         const option = document.createElement("option");
@@ -18256,15 +19245,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         select.append(option);
       }
       if (summary3?.nextGrade) select.value = summary3.nextGrade;
+      if (roadmapTarget?.setId === set.id && set.grades.some((grade) => grade.name === roadmapTarget.grade)) {
+        select.value = roadmapTarget.grade;
+        add3(section, "small", `\u6574\u4F53\u8DEF\u7EBF\u76EE\u6807 ${roadmapTarget.grade}\uFF1B\u5982\u9700\u5468\u8F6C\uFF0C\u53EF\u5148\u5C11\u91CF\u4E70\u5165\u5E76\u786E\u8BA4\u6536\u96C6\u540E\u518D\u5356\u56DE\uFF0C\u4E0D\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002`);
+      }
       select.addEventListener("change", () => {
         select.dataset.edited = "true";
+        if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
       });
       row.append(select);
-      const button = add2(row, "button", "\u751F\u6210\u65B9\u6848");
+      const button = add3(row, "button", "\u751F\u6210\u65B9\u6848");
       button.type = "button";
-      const overviewButton = add2(row, "button", "\u5404\u6863\u8D39\u7528");
+      const overviewButton = add3(row, "button", "\u5404\u6863\u8D39\u7528");
       overviewButton.type = "button";
-      const jointAdd = add2(row, "button", "+", "gallery-joint-add");
+      const jointAdd = add3(row, "button", "+", "gallery-joint-add");
       jointAdd.type = "button";
       jointAdd.title = "\u52A0\u5165\u8054\u5408\u76EE\u6807";
       jointAdd.setAttribute("aria-label", "\u52A0\u5165\u8054\u5408\u76EE\u6807");
@@ -18280,9 +19274,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         persistTargets();
         jointAdd.title = "\u5DF2\u52A0\u5165\u8054\u5408\u76EE\u6807";
       });
-      const output = add2(section, "div", "", "gallery-plan-output");
+      const output = add3(section, "div", "", "gallery-plan-output");
       output.setAttribute("aria-live", "polite");
-      const overview = add2(section, "div", "", "gallery-grade-overview");
+      const overview = add3(section, "div", "", "gallery-grade-overview");
       overview.setAttribute("aria-live", "polite");
       const rewardText = (snapshot) => {
         if (!snapshot) return "\u8BF7\u91CD\u65B0\u751F\u6210";
@@ -18290,7 +19284,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return `${text5 || (snapshot.rewardsComplete ? "\u65E0" : "\u672A\u63D0\u4F9B")}${snapshot.rewardsComplete ? "" : "\uFF08\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1\uFF09"}`;
       };
       const showRewardChange = (parent, current2, projected2) => {
-        const line = add2(parent, "small", "", "gallery-reward-estimate");
+        const line = add3(parent, "small", "", "gallery-reward-estimate");
         if (!current2 || !projected2) {
           line.textContent = "\u5956\u52B1\u9884\u4F30\uFF1A\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848";
           return;
@@ -18305,28 +19299,28 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const showOverview = (plan) => {
         overview.replaceChildren();
         if (!plan) return;
-        add2(overview, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
+        add3(overview, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
         for (const item2 of plan.grades ?? []) {
           const saved2 = planCache.get(set.id)?.plan;
           const candidate = saved2?.status === "ready" && saved2.targetGrade === item2.grade ? saved2.plans?.[0] ?? item2.candidate : item2.candidate;
-          const line = add2(overview, "div", "", "gallery-grade-overview-row");
-          add2(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
-          add2(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
-          if (candidate?.score != null) add2(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
-          add2(line, "small", `\u672C\u6863\uFF1A${rewardText(item2.rewards?.tier)} \xB7 \u7D2F\u8BA1\uFF1A${rewardText(item2.rewards?.cumulative)}`, "gallery-reward-estimate");
+          const line = add3(overview, "div", "", "gallery-grade-overview-row");
+          add3(line, "strong", `${item2.grade} \xB7 ${count2(item2.threshold)} \u5206`);
+          add3(line, "span", item2.status === "achieved" ? "\u5DF2\u8FBE\u5230 \xB7 0 \u91D1\u5E01" : candidate?.totalPrice == null ? item2.status === "ready" ? "\u62A5\u4EF7\u672A\u77E5" : item2.reason ?? "\u6682\u4E0D\u53EF\u8FBE" : `${count2(candidate.totalPrice)} \u91D1\u5E01`);
+          if (candidate?.score != null) add3(line, "small", `${count2(candidate.score)} \u5206 \xB7 ${candidate.items?.length ?? 0} \u5F20\u8865\u5361`);
+          add3(line, "small", `\u672C\u6863\uFF1A${rewardText(item2.rewards?.tier)} \xB7 \u7D2F\u8BA1\uFF1A${rewardText(item2.rewards?.cumulative)}`, "gallery-reward-estimate");
         }
       };
       const show = (plan, expectedPlanBinding = planCache.get(set.id)?.binding) => {
         output.replaceChildren();
         if (!plan || plan.status === "unavailable") {
-          add2(output, "small", `\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan?.reason ?? "\u8F93\u5165\u4E0D\u5B8C\u6574"}`, "gallery-unknown");
+          add3(output, "small", `\u6682\u4E0D\u53EF\u89C4\u5212\uFF1A${plan?.reason ?? "\u8F93\u5165\u4E0D\u5B8C\u6574"}`, "gallery-unknown");
           return;
         }
-        if (plan.collectionUnknownCount) add2(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+        if (plan.collectionUnknownCount) add3(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
         if (plan.status === "achieved") {
-          add2(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
+          add3(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
           showRewardChange(output, plan.currentRewards, plan.currentRewards);
-          add2(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
+          add3(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
           return;
         }
         const reasons2 = {
@@ -18341,34 +19335,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "target-unreachable": "\u5F53\u524D\u6750\u6599\u8FBE\u4E0D\u5230\u76EE\u6807"
         };
         if (plan.status !== "ready") {
-          add2(output, "small", reasons2[plan.reason] ?? "\u6682\u672A\u627E\u5230\u53EF\u884C\u65B9\u6848", "gallery-unknown");
+          add3(output, "small", reasons2[plan.reason] ?? "\u6682\u672A\u627E\u5230\u53EF\u884C\u65B9\u6848", "gallery-unknown");
           if (plan.bestScore != null) {
             const distance = plan.distanceToTarget == null ? "" : ` \xB7 \u8FD8\u5DEE ${count2(plan.distanceToTarget)} \u5206`;
-            add2(output, "small", `\u5DF2\u68C0\u67E5\u5230\u7684\u6700\u4F73\u7EC4\u5408\uFF1A${count2(plan.bestScore)} \u5206${distance} \xB7 ${plan.bestCandidate?.totalPrice == null ? "\u62A5\u4EF7\u672A\u5B8C\u6574" : `${count2(plan.bestCandidate.totalPrice)} \u91D1\u5E01`}`);
+            add3(output, "small", `\u5DF2\u68C0\u67E5\u5230\u7684\u6700\u4F73\u7EC4\u5408\uFF1A${count2(plan.bestScore)} \u5206${distance} \xB7 ${plan.bestCandidate?.totalPrice == null ? "\u62A5\u4EF7\u672A\u5B8C\u6574" : `${count2(plan.bestCandidate.totalPrice)} \u91D1\u5E01`}`);
             if (plan.bestCandidate?.ids?.length) {
-              const details2 = add2(output, "details");
-              add2(details2, "summary", "\u6700\u4F73\u5DF2\u77E5\u8865\u5361\u7EC4\u5408\uFF08\u641C\u7D22\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\uFF09");
-              const list2 = add2(details2, "ul");
+              const details2 = add3(output, "details");
+              add3(details2, "summary", "\u6700\u4F73\u5DF2\u77E5\u8865\u5361\u7EC4\u5408\uFF08\u641C\u7D22\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\uFF09");
+              const list2 = add3(details2, "ul");
               for (const item2 of plan.bestCandidate.items ?? plan.bestCandidate.ids.map((eaId) => ({ eaId }))) {
-                add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.score == null ? "\u5206\u6570\u672A\u77E5" : `${count2(item2.score)} \u5206`} \xB7 ${item2.price == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
+                add3(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.score == null ? "\u5206\u6570\u672A\u77E5" : `${count2(item2.score)} \u5206`} \xB7 ${item2.price == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(item2.price)} \u91D1\u5E01`}`);
               }
             }
           }
           return;
         }
-        add2(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
-        add2(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
-        if (!plan.searchComplete) add2(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
-        if (plan.costAudit) add2(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
+        add3(output, "small", `\u627E\u5230 ${plan.plans.length} \u4E2A\u5019\u9009\u65B9\u6848\uFF1B\u53EA\u8BFB\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u3002`);
+        add3(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\uFF1B\u4E0D\u62B5\u6263\u8D2D\u5361\u8D39\u7528\u3002", "gallery-unknown");
+        if (!plan.searchComplete) add3(output, "small", "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
+        if (plan.costAudit) add3(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\u3001${count2(plan.costAudit.score)} \u5206\uFF08\u76EE\u6807 ${count2(plan.costAudit.target)}\uFF09\u3002`, "gallery-unknown");
         for (const [index, candidate] of plan.plans.entries()) {
-          const details2 = add2(output, "details");
+          const details2 = add3(output, "details");
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count2(candidate.currentScore)} + \u65B0\u589E ${count2(candidate.addedScore ?? 0)} = ${count2(candidate.score)} \u5206` : `${count2(candidate.score)} \u5206`;
-          const heading = add2(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
+          const heading = add3(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
           showRewardChange(heading, plan.currentRewards, candidate.rewards);
-          const list2 = add2(details2, "ul");
-          for (const item2 of candidate.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
-          if (candidate.missingPriceIds.length) add2(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
-          if (candidate.unknownFields?.length) add2(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
+          const list2 = add3(details2, "ul");
+          for (const item2 of candidate.items) add3(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
+          if (candidate.missingPriceIds.length) add3(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
+          if (candidate.unknownFields?.length) add3(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
           purchaseButton(
             details2,
             candidate.items,
@@ -18399,26 +19393,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (saved?.plan) {
         show(saved.plan);
         if (saved.binding !== planBinding(value, set))
-          add2(output, "small", "\u96C6\u5408\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4EE5\u4E0B\u4FDD\u7559\u4E0A\u6B21\u65B9\u6848\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u786E\u8BA4\u91D1\u989D\u3002", "gallery-unknown");
+          add3(output, "small", "\u96C6\u5408\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4EE5\u4E0B\u4FDD\u7559\u4E0A\u6B21\u65B9\u6848\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u786E\u8BA4\u91D1\u989D\u3002", "gallery-unknown");
       }
       if (saved?.overview) {
         showOverview(saved.overview);
-        if (saved.overviewBinding !== planBinding(value, set)) add2(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
+        if (saved.overviewBinding !== planBinding(value, set)) add3(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
       }
       button.addEventListener("click", async (event) => {
         if (!event.isTrusted) return;
         button.disabled = true;
         output.replaceChildren();
-        add2(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
+        add3(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
         const token = ++planningEpoch, identity5 = scope2(), revision = result;
         activePlans++;
         const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
-        const cancel = add2(row, "button", "\u53D6\u6D88");
+        const cancel = add3(row, "button", "\u53D6\u6D88");
         cancel.type = "button";
         cancel.addEventListener("click", () => {
           planningEpoch++;
           output.replaceChildren();
-          add2(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
+          add3(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
         });
         try {
           await priceForPlan(value, set, current2, output);
@@ -18519,7 +19513,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               while (overviewCache.size > 8) overviewCache.delete(overviewCache.keys().next().value);
             }
             showOverview(plan);
-            if (plan.status === "partial") add2(overview, "small", "\u8D39\u7528\u8BA1\u7B97\u672A\u5B8C\u6210\uFF1B\u5DF2\u663E\u793A\u90E8\u5206\u6863\u4F4D\uFF0C\u53EF\u5355\u72EC\u9009\u62E9\u76EE\u6807\u6863\u4F4D\u8BA1\u7B97\u3002", "gallery-unknown");
+            if (plan.status === "partial") add3(overview, "small", "\u8D39\u7528\u8BA1\u7B97\u672A\u5B8C\u6210\uFF1B\u5DF2\u663E\u793A\u90E8\u5206\u6863\u4F4D\uFF0C\u53EF\u5355\u72EC\u9009\u62E9\u76EE\u6807\u6863\u4F4D\u8BA1\u7B97\u3002", "gallery-unknown");
           }
         } catch {
           if (token === planningEpoch) overview.textContent = "\u5404\u6863\u8D39\u7528\u6682\u4E0D\u53EF\u7528";
@@ -18712,7 +19706,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const output = node("gallery-joint-output");
       const hadPlan = output.hasChildNodes();
       output.replaceChildren();
-      if (message && hadPlan) add2(output, "small", message, "gallery-unknown");
+      if (message && hadPlan) add3(output, "small", message, "gallery-unknown");
     };
     const renderJoint = () => {
       const container = node("gallery-joint-targets");
@@ -18731,18 +19725,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if ([...rewardSelect.options].some((row) => row.value === previousReward)) rewardSelect.value = previousReward;
       if (catalogObjective() && !rewardSelect.options.length) node("gallery-joint-plan").disabled = true;
       if (!jointTargets.size) {
-        add2(container, "small", "\u5C1A\u65E0\u8054\u5408\u76EE\u6807");
+        add3(container, "small", "\u5C1A\u65E0\u8054\u5408\u76EE\u6807");
         return;
       }
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
       for (const [id12, grade] of jointTargets) {
         const set = sets2.find((set2) => set2.id === id12);
-        const row = add2(container, "div", "", "gallery-joint-target");
+        const row = add3(container, "div", "", "gallery-joint-target");
         row.dataset.setId = id12;
         if (!set) {
-          add2(row, "strong", id12);
-          add2(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
-          const remove2 = add2(row, "button", "\xD7");
+          add3(row, "strong", id12);
+          add3(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
+          const remove2 = add3(row, "button", "\xD7");
           remove2.title = "\u79FB\u9664\u76EE\u6807";
           remove2.setAttribute("aria-label", `\u79FB\u9664 ${id12}`);
           remove2.disabled = restoringTargets;
@@ -18756,7 +19750,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
           continue;
         }
-        add2(row, "strong", set.name);
+        add3(row, "strong", set.name);
         const select = document.createElement("select");
         select.setAttribute("aria-label", `${set.name} \u76EE\u6807\u7B49\u7EA7`);
         for (const grade2 of set.grades) {
@@ -18774,7 +19768,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           invalidateJoint();
           persistTargets();
         });
-        const remove = add2(row, "button", "\xD7");
+        const remove = add3(row, "button", "\xD7");
         remove.title = "\u79FB\u9664\u76EE\u6807";
         remove.setAttribute("aria-label", `\u79FB\u9664 ${set.name}`);
         remove.disabled = restoringTargets;
@@ -18787,10 +19781,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           persistTargets();
         });
         const value = details.get(id12);
-        if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add2(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
-        else add2(row, "small", scoreText(scoreSummary(value, set)));
+        if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add3(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
+        else add3(row, "small", scoreText(scoreSummary(value, set)));
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
-          const open = add2(row, "button", "\u67E5\u770B\u5361\u7247", "gallery-target-open");
+          const open = add3(row, "button", "\u67E5\u770B\u5361\u7247", "gallery-target-open");
           open.addEventListener("click", (event) => {
             if (!event.isTrusted) return;
             setJointMode(false);
@@ -18818,18 +19812,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const showJointPlan = (plan, inputs = []) => {
       const output = node("gallery-joint-output");
       output.replaceChildren();
-      if (plan.collectionUnknownCount) add2(output, "small", `${plan.collectionUnknownCount} \u6761\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+      if (plan.collectionUnknownCount) add3(output, "small", `${plan.collectionUnknownCount} \u6761\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
       const rewardEstimate = plan.rewardEstimate;
       if (rewardEstimate) {
-        const note = add2(output, "small", `\u76EE\u5F55\u9884\u4F30 \xB7 ${rewardEstimate.label} \xB7 \u5F53\u524D ${count2(rewardEstimate.baselineQuantity)}`, "gallery-unknown");
+        const note = add3(output, "small", `\u76EE\u5F55\u9884\u4F30 \xB7 ${rewardEstimate.label} \xB7 \u5F53\u524D ${count2(rewardEstimate.baselineQuantity)}`, "gallery-unknown");
         note.title = "\u6BCF\u4E2A\u96C6\u5408\u7D2F\u8BA1\u5DF2\u8FBE\u5230\u7684\u5404\u7EA7\u76EE\u5F55\u5956\u52B1\uFF1B\u4E0D\u540C\u5956\u52B1\u4E0D\u6298\u7B97\u91D1\u5E01\u3002\u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002";
       }
       if (plan.status === "achieved" && rewardEstimate) {
-        add2(output, "p", "\u6240\u9009\u76EE\u5F55\u5956\u52B1\u5DF2\u8FBE\u5F53\u524D\u76EE\u5F55\u4E0A\u9650\uFF0C\u65E0\u9700\u8865\u5361\u3002\u9886\u53D6\u72B6\u6001\u672A\u786E\u8BA4\u3002");
+        add3(output, "p", "\u6240\u9009\u76EE\u5F55\u5956\u52B1\u5DF2\u8FBE\u5F53\u524D\u76EE\u5F55\u4E0A\u9650\uFF0C\u65E0\u9700\u8865\u5361\u3002\u9886\u53D6\u72B6\u6001\u672A\u786E\u8BA4\u3002");
         return;
       }
       if (plan.status === "achieved") {
-        add2(output, "p", "\u5F53\u524D\u8054\u5408\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u8865\u5361\u3002");
+        add3(output, "p", "\u5F53\u524D\u8054\u5408\u76EE\u6807\u5DF2\u8FBE\u5230\uFF0C\u65E0\u9700\u8865\u5361\u3002");
         return;
       }
       if (plan.status !== "ready") {
@@ -18852,27 +19846,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "reward-type-unknown": "\u8BF7\u9009\u62E9\u76EE\u5F55\u5956\u52B1\u7C7B\u578B",
           "reward-improvement-not-found": "\u672C\u6B21\u6709\u754C\u641C\u7D22\u672A\u627E\u5230\u66F4\u9AD8\u76EE\u5F55\u5956\u52B1\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u65E0\u89E3"
         };
-        add2(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
-        for (const target of plan.targets ?? []) add2(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
+        add3(output, "p", messages2[plan.reason] ?? "\u8054\u5408\u89C4\u5212\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
+        for (const target of plan.targets ?? []) add3(output, "small", `${target.name} \xB7 ${target.targetGrade} \xB7 \u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count2(target.pointsMissing)} \u5206`);
         return;
       }
-      if (!plan.searchComplete) add2(output, "small", rewardEstimate ? "\u6709\u754C\u76EE\u5F55\u9884\u4F30\uFF0C\u4E0D\u4FDD\u8BC1\u5956\u52B1\u6700\u591A\u6216\u603B\u4EF7\u6700\u4F4E\u3002" : "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
-      if (plan.costAudit) add2(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\uFF0C\u6700\u4F4E\u76EE\u6807\u8BA1\u5206 ${count2(plan.costAudit.score)} \u5206\u3002`, "gallery-unknown");
+      if (!plan.searchComplete) add3(output, "small", rewardEstimate ? "\u6709\u754C\u76EE\u5F55\u9884\u4F30\uFF0C\u4E0D\u4FDD\u8BC1\u5956\u52B1\u6700\u591A\u6216\u603B\u4EF7\u6700\u4F4E\u3002" : "\u6709\u754C\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u603B\u4EF7\u3002", "gallery-unknown");
+      if (plan.costAudit) add3(output, "small", `\u6309\u5355\u5361\u4EF7\u683C\u9009\u53D6\u7684\u5B8C\u6574\u7EC4\u5408\u4E3A ${count2(plan.costAudit.totalPrice)} \u91D1\u5E01\uFF0C\u6700\u4F4E\u76EE\u6807\u8BA1\u5206 ${count2(plan.costAudit.score)} \u5206\u3002`, "gallery-unknown");
       for (const [index, planRow] of plan.plans.entries()) {
-        const detail = add2(output, "details");
+        const detail = add3(output, "details");
         detail.open = index === 0;
-        add2(detail, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${planRow.items.length} \u5F20 \xB7 ${planRow.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(planRow.totalPrice)} \u{1FA99}`}`);
-        if (planRow.remainingBudget != null) add2(detail, "small", `\u5269\u4F59\u9884\u7B97 ${count2(planRow.remainingBudget)} \u{1FA99}`);
-        if (planRow.estimated) add2(detail, "small", "\u5305\u542B\u516C\u5F00\u4F30\u5206", "gallery-unknown");
+        add3(detail, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${planRow.items.length} \u5F20 \xB7 ${planRow.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count2(planRow.totalPrice)} \u{1FA99}`}`);
+        if (planRow.remainingBudget != null) add3(detail, "small", `\u5269\u4F59\u9884\u7B97 ${count2(planRow.remainingBudget)} \u{1FA99}`);
+        if (planRow.estimated) add3(detail, "small", "\u5305\u542B\u516C\u5F00\u4F30\u5206", "gallery-unknown");
         if (planRow.rewardEstimate) {
           const estimate = planRow.rewardEstimate;
-          add2(detail, "strong", `${estimate.label} \xB7 ${count2(estimate.baselineQuantity)} \u2192 ${count2(estimate.projectedQuantity)}\uFF08\u76EE\u5F55\u5DEE\u989D +${count2(estimate.change)}\uFF09`);
-          if (estimate.projectedTargets.some((target) => !target.rewardsComplete)) add2(detail, "small", "\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1", "gallery-unknown");
+          add3(detail, "strong", `${estimate.label} \xB7 ${count2(estimate.baselineQuantity)} \u2192 ${count2(estimate.projectedQuantity)}\uFF08\u76EE\u5F55\u5DEE\u989D +${count2(estimate.change)}\uFF09`);
+          if (estimate.projectedTargets.some((target) => !target.rewardsComplete)) add3(detail, "small", "\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1", "gallery-unknown");
         }
         if (inputs.length && !rewardEstimate) {
-          const benchmark = add2(detail, "button", "\u5BF9\u7167\u9010\u96C6\u5408");
+          const benchmark = add3(detail, "button", "\u5BF9\u7167\u9010\u96C6\u5408");
           benchmark.type = "button";
-          const comparison = add2(detail, "output", "", "gallery-joint-benchmark");
+          const comparison = add3(detail, "output", "", "gallery-joint-benchmark");
           const frozen = structuredClone(inputs), identity5 = scope2();
           benchmark.addEventListener("click", async (event) => {
             if (!event.isTrusted || benchmark.disabled) return;
@@ -18897,16 +19891,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           });
         }
-        const targets = add2(detail, "table");
+        const targets = add3(detail, "table");
         for (const target of planRow.targets) {
-          const row = add2(targets, "tr");
-          add2(row, "th", `${target.name} \xB7 ${target.targetGrade ?? "\u672A\u8FBE\u6863\u4F4D"}`);
-          add2(row, "td", `${count2(target.score)} \u5206`);
-          add2(row, "td", target.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u76EE\u5F55\u5956\u52B1");
+          const row = add3(targets, "tr");
+          add3(row, "th", `${target.name} \xB7 ${target.targetGrade ?? "\u672A\u8FBE\u6863\u4F4D"}`);
+          add3(row, "td", `${count2(target.score)} \u5206`);
+          add3(row, "td", target.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u76EE\u5F55\u5956\u52B1");
         }
-        add2(detail, "small", "\u5956\u52B1\u4E3A\u76EE\u5F55\u5185\u5BB9\uFF0C\u672A\u786E\u8BA4\u53EF\u9886\u6216\u65B0\u589E\u6536\u76CA\u3002");
-        const list2 = add2(detail, "ul");
-        for (const item2 of planRow.items) add2(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
+        add3(detail, "small", "\u5956\u52B1\u4E3A\u76EE\u5F55\u5185\u5BB9\uFF0C\u672A\u786E\u8BA4\u53EF\u9886\u6216\u65B0\u589E\u6536\u76CA\u3002");
+        const list2 = add3(detail, "ul");
+        for (const item2 of planRow.items) add3(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? ""} \xB7 ${purchasePriceText(item2)}${item2.targetIds.length > 1 ? ` \xB7 \u5171\u7528 ${item2.targetIds.length} \u4E2A\u76EE\u6807` : ""}`);
         const targetsBinding = JSON.stringify([...jointTargets]);
         const jointBinding = () => JSON.stringify([
           targetValue().budget,
@@ -18984,7 +19978,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       button.disabled = true;
       const output = node("gallery-joint-output");
       output.textContent = "\u6B63\u5728\u8BA1\u7B97\u2026";
-      const cancel = add2(node("gallery-joint-controls") ?? button.parentElement, "button", "\u53D6\u6D88");
+      const cancel = add3(node("gallery-joint-controls") ?? button.parentElement, "button", "\u53D6\u6D88");
       cancel.addEventListener("click", () => {
         planningEpoch++;
         output.textContent = "\u8BA1\u7B97\u5DF2\u53D6\u6D88";
@@ -19091,6 +20085,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       selectedSetId = null;
       details.clear();
       comparisonViews.clear();
+      roadmapTarget = null;
+      roadmap?.close();
+      levelPanel?.setActive(false);
+      if (active) levelPanel?.setActive(true);
       if (node("gallery-accounting")) {
         node("gallery-accounting").hidden = true;
         node("gallery-accounting-summary").textContent = "";
@@ -19132,11 +20130,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       showBrowseLevel();
       node("gallery-selection-footer").replaceChildren();
       node("gallery-selection-footer").hidden = true;
-      const heading = add2(target, "div", "", "gallery-detail-heading");
-      const headingIdentity = add2(heading, "div", "", "gallery-identity");
-      add2(headingIdentity, "h3", set.name);
+      const heading = add3(target, "div", "", "gallery-detail-heading");
+      const headingIdentity = add3(heading, "div", "", "gallery-identity");
+      add3(headingIdentity, "h3", set.name);
       if (sync) {
-        const button = add2(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408");
+        const button = add3(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408");
         button.title = "\u540C\u6B65\u5F53\u524D\u96C6\u5408";
         button.disabled = foregroundSync?.setId === set.id;
         button.addEventListener("click", (event) => {
@@ -19145,44 +20143,44 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       if (!value) return;
       if (value.status === "loading") {
-        add2(target, "p", "\u6B63\u5728\u8BFB\u53D6\u5361\u6C60\u548C\u8D26\u53F7\u72B6\u6001\u2026");
+        add3(target, "p", "\u6B63\u5728\u8BFB\u53D6\u5361\u6C60\u548C\u8D26\u53F7\u72B6\u6001\u2026");
         return;
       }
       if (!value.progress) {
-        add2(target, "p", value.reason ?? "\u96C6\u5408\u5361\u6C60\u6216\u8D26\u53F7\u8FDB\u5EA6\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
+        add3(target, "p", value.reason ?? "\u96C6\u5408\u5361\u6C60\u6216\u8D26\u53F7\u8FDB\u5EA6\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
         return;
       }
       const progress = value.progress;
       const summary3 = scoreSummary(value, set, 3);
-      if (value.status !== "observed") add2(target, "small", `\u8D26\u53F7\u72B6\u6001\u672A\u540C\u6B65 \xB7 ${value.reason ?? "\u8BFB\u53D6\u5931\u8D25"}`, "gallery-unknown");
-      if (value.priceError) add2(target, "small", `\u4EF7\u683C\u8BFB\u53D6\u5931\u8D25 \xB7 ${value.priceError}`, "gallery-unknown");
-      if (value.priceSnapshot?.stale || priceExpired(value)) add2(target, "small", "\u62A5\u4EF7\u5FEB\u7167\u5F85\u66F4\u65B0", "gallery-unknown");
+      if (value.status !== "observed") add3(target, "small", `\u8D26\u53F7\u72B6\u6001\u672A\u540C\u6B65 \xB7 ${value.reason ?? "\u8BFB\u53D6\u5931\u8D25"}`, "gallery-unknown");
+      if (value.priceError) add3(target, "small", `\u4EF7\u683C\u8BFB\u53D6\u5931\u8D25 \xB7 ${value.priceError}`, "gallery-unknown");
+      if (value.priceSnapshot?.stale || priceExpired(value)) add3(target, "small", "\u62A5\u4EF7\u5FEB\u7167\u5F85\u66F4\u65B0", "gallery-unknown");
       const first = progress.rows[0];
-      const emblems = add2(headingIdentity, "div", "", "gallery-emblems");
+      const emblems = add3(headingIdentity, "div", "", "gallery-emblems");
       image(emblems, asset("club", first?.clubEaId), "\u4FF1\u4E50\u90E8\u5FBD\u7AE0", "gallery-emblem");
       image(emblems, asset("league", first?.leagueEaId), "\u8054\u8D5B\u6807\u5FD7", "gallery-emblem");
-      const overview = add2(target, "div", "", "gallery-overview");
+      const overview = add3(target, "div", "", "gallery-overview");
       const unconfirmed = progress.totals.unknown === progress.totals.total && progress.totals.total > 0;
-      add2(overview, "strong", unconfirmed ? `?/${set.requiredCards}` : `${progress.totals.collected}/${set.requiredCards}`, "gallery-big-count");
-      add2(overview, "span", unconfirmed ? "\u5F85\u540C\u6B65" : progress.candidateOnly ? "\u5019\u9009\u5185\u5DF2\u6536\u96C6" : "\u5DF2\u786E\u8BA4\u6536\u96C6", "gallery-muted");
-      add2(overview, "span", `${progress.totals.missing} \u7F3A\u5931 \xB7 ${progress.totals.unknown} \u5F85\u6838\u5B9E`, "gallery-muted");
-      add2(overview, "span", progress.candidateOnly ? `\u9AD8\u5206\u5019\u9009 ${progress.totals.total} / \u5168\u90E8 ${progress.poolSize ?? "?"}` : `\u5361\u6C60 ${progress.totals.total}`, "gallery-muted");
+      add3(overview, "strong", unconfirmed ? `?/${set.requiredCards}` : `${progress.totals.collected}/${set.requiredCards}`, "gallery-big-count");
+      add3(overview, "span", unconfirmed ? "\u5F85\u540C\u6B65" : progress.candidateOnly ? "\u5019\u9009\u5185\u5DF2\u6536\u96C6" : "\u5DF2\u786E\u8BA4\u6536\u96C6", "gallery-muted");
+      add3(overview, "span", `${progress.totals.missing} \u7F3A\u5931 \xB7 ${progress.totals.unknown} \u5F85\u6838\u5B9E`, "gallery-muted");
+      add3(overview, "span", progress.candidateOnly ? `\u9AD8\u5206\u5019\u9009 ${progress.totals.total} / \u5168\u90E8 ${progress.poolSize ?? "?"}` : `\u5361\u6C60 ${progress.totals.total}`, "gallery-muted");
       gradeTrack(overview, set.grades, summary3);
-      const rewards2 = add2(target, "details", "", "gallery-rewards");
-      add2(rewards2, "summary", "\u7B49\u7EA7\u5956\u52B1");
+      const rewards2 = add3(target, "details", "", "gallery-rewards");
+      add3(rewards2, "summary", "\u7B49\u7EA7\u5956\u52B1");
       for (const grade of set.grades) {
-        const row = add2(rewards2, "div", "", "gallery-reward-row");
-        add2(row, "strong", grade.name);
-        add2(row, "span", `${count2(grade.threshold)} \u5206`);
-        add2(row, "span", grade.rewards.map((reward) => reward.label).join("\u3001") || (grade.rewardsComplete ? "\u65E0\u5956\u52B1" : "\u975E\u4EE3\u5E01\u5956\u52B1\u672A\u63D0\u4F9B"));
+        const row = add3(rewards2, "div", "", "gallery-reward-row");
+        add3(row, "strong", grade.name);
+        add3(row, "span", `${count2(grade.threshold)} \u5206`);
+        add3(row, "span", grade.rewards.map((reward) => reward.label).join("\u3001") || (grade.rewardsComplete ? "\u65E0\u5956\u52B1" : "\u975E\u4EE3\u5E01\u5956\u52B1\u672A\u63D0\u4F9B"));
       }
-      const facts2 = add2(target, "details", "", "gallery-facts");
-      add2(facts2, "summary", "\u6536\u96C6\u72B6\u6001\u8BE6\u60C5");
-      add2(facts2, "small", `Club \u53EF\u89C1 ${progress.totals.inClub} / \u672A\u77E5 ${progress.totals.clubUnknown} \xB7 \u9996\u4EFB\u53EF\u89C1 ${progress.totals.firstOwned} / \u672A\u77E5 ${progress.totals.firstOwnedUnknown}`);
-      add2(facts2, "small", "Club \u6765\u81EA\u5F53\u524D\u7F13\u5B58\uFF1B\u672A\u770B\u5230\u4E0D\u7B49\u4E8E\u6CA1\u6709\u3002\u516C\u5F00\u5206\u503C\u4E0E EA \u5355\u5361\u57FA\u7840\u5206\u5206\u522B\u663E\u793A\u3002");
-      if (value.stale) add2(target, "small", `\u66F4\u65B0\u672A\u6210\u529F\uFF0C\u4FDD\u7559\u6700\u8FD1\u5FEB\u7167 \xB7 ${value.reason ?? ""}`, "gallery-unknown");
-      if (value.poolStale) add2(target, "small", "\u516C\u5171\u5361\u6C60\u6682\u65F6\u65E0\u6CD5\u66F4\u65B0\uFF0C\u4F7F\u7528\u4E0A\u6B21\u5361\u6C60\u3002", "gallery-unknown");
-      if (value.fetchedAt) add2(target, "small", `\u6536\u96C6\u72B6\u6001\u8BFB\u53D6\u4E8E ${date(value.fetchedAt)}`);
+      const facts2 = add3(target, "details", "", "gallery-facts");
+      add3(facts2, "summary", "\u6536\u96C6\u72B6\u6001\u8BE6\u60C5");
+      add3(facts2, "small", `Club \u53EF\u89C1 ${progress.totals.inClub} / \u672A\u77E5 ${progress.totals.clubUnknown} \xB7 \u9996\u4EFB\u53EF\u89C1 ${progress.totals.firstOwned} / \u672A\u77E5 ${progress.totals.firstOwnedUnknown}`);
+      add3(facts2, "small", "Club \u6765\u81EA\u5F53\u524D\u7F13\u5B58\uFF1B\u672A\u770B\u5230\u4E0D\u7B49\u4E8E\u6CA1\u6709\u3002\u516C\u5F00\u5206\u503C\u4E0E EA \u5355\u5361\u57FA\u7840\u5206\u5206\u522B\u663E\u793A\u3002");
+      if (value.stale) add3(target, "small", `\u66F4\u65B0\u672A\u6210\u529F\uFF0C\u4FDD\u7559\u6700\u8FD1\u5FEB\u7167 \xB7 ${value.reason ?? ""}`, "gallery-unknown");
+      if (value.poolStale) add3(target, "small", "\u516C\u5171\u5361\u6C60\u6682\u65F6\u65E0\u6CD5\u66F4\u65B0\uFF0C\u4F7F\u7528\u4E0A\u6B21\u5361\u6C60\u3002", "gallery-unknown");
+      if (value.fetchedAt) add3(target, "small", `\u6536\u96C6\u72B6\u6001\u8BFB\u53D6\u4E8E ${date(value.fetchedAt)}`);
       renderScoring(target, summary3, value);
       const cachedPlan = planCache.get(set.id);
       if (cachedPlan) cachedPlan.stale = cachedPlan.binding !== planBinding(value, set);
@@ -19192,9 +20190,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         selectionSource = result?.source ?? null;
         cardPage = 1;
       }
-      const filters = add2(target, "div", "", "row gallery-card-filters");
+      const filters = add3(target, "div", "", "row gallery-card-filters");
       for (const [key, label] of [["all", "\u5168\u90E8"], ["collected", "\u5DF2\u6536\u96C6"], ["missing", "\u672A\u6536\u96C6"], ["unknown", "\u5F85\u6838\u5B9E"], ["held", "\u6301\u6709"], ["lineup", "\u8BA1\u5206\u9635\u5BB9"], ["firstOwned", "First Owner"]]) {
-        const button = add2(filters, "button", label);
+        const button = add3(filters, "button", label);
         button.setAttribute("aria-pressed", String(filter === key));
         button.addEventListener("click", (event) => {
           if (!event.isTrusted) return;
@@ -19203,8 +20201,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           renderSetDetail(value, set);
         });
       }
-      const cardTools = add2(target, "div", "", "row gallery-card-tools");
-      const search = add2(cardTools, "input");
+      const cardTools = add3(target, "div", "", "row gallery-card-tools");
+      const search = add3(cardTools, "input");
       search.type = "search";
       search.value = cardQuery;
       search.placeholder = "\u641C\u7D22\u7403\u5458";
@@ -19219,32 +20217,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         order2.append(option);
       }
       cardTools.append(order2);
-      const clear = add2(cardTools, "button", "\xD7");
+      const clear = add3(cardTools, "button", "\xD7");
       clear.title = "\u6E05\u9664\u9009\u62E9";
       clear.setAttribute("aria-label", "\u6E05\u9664\u9009\u62E9");
       clear.type = "button";
       clear.disabled = !selectedCards.size;
       const missingRows = progress.rows.filter((row) => !isGalleryOwned(row) && row.collected === false);
-      const cheapCount = add2(cardTools, "input");
+      const cheapCount = add3(cardTools, "input");
       cheapCount.type = "number";
       cheapCount.min = "1";
       cheapCount.max = String(Math.max(1, missingRows.length));
       cheapCount.value = String(Math.max(1, set.requiredCards - progress.totals.collected));
       cheapCount.setAttribute("aria-label", "\u6700\u4F4E\u4EF7\u9009\u5361\u6570\u91CF");
       cheapCount.className = "gallery-cheapest-count";
-      const cheapest = add2(cardTools, "button", "\u6700\u4F4E\u4EF7 N \u5F20");
+      const cheapest = add3(cardTools, "button", "\u6700\u4F4E\u4EF7 N \u5F20");
       cheapest.type = "button";
       cheapest.disabled = typeof purchase !== "function" || !missingRows.length;
       const filtered = filterGalleryCards(progress.rows, { filter, query: cardQuery, order: cardOrder, prices: planningPrices(value) ?? {}, lineupIds: summary3?.lineup?.map((row) => row.eaId) ?? [] });
       const page = paginateGalleryCards(filtered, { page: cardPage, pageSize: 24 });
       cardPage = page.page;
-      add2(cardTools, "span", `${page.total ? `${(page.page - 1) * page.pageSize + 1}-${Math.min(page.page * page.pageSize, page.total)}` : 0} / ${page.total}`, "gallery-card-page");
-      const previous = add2(cardTools, "button", "\u2190");
+      add3(cardTools, "span", `${page.total ? `${(page.page - 1) * page.pageSize + 1}-${Math.min(page.page * page.pageSize, page.total)}` : 0} / ${page.total}`, "gallery-card-page");
+      const previous = add3(cardTools, "button", "\u2190");
       previous.type = "button";
       previous.title = "\u4E0A\u4E00\u9875";
       previous.setAttribute("aria-label", "\u4E0A\u4E00\u9875");
       previous.disabled = page.page <= 1;
-      const next = add2(cardTools, "button", "\u2192");
+      const next = add3(cardTools, "button", "\u2192");
       next.type = "button";
       next.title = "\u4E0B\u4E00\u9875";
       next.setAttribute("aria-label", "\u4E0B\u4E00\u9875");
@@ -19252,12 +20250,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const reconciled = reconcileGallerySelection(selectedCards, selectionContext().rows);
       selectedCards.clear();
       for (const [id12, row] of reconciled) selectedCards.set(id12, row);
-      const list2 = add2(target, "div", "", "gallery-card-list");
+      const list2 = add3(target, "div", "", "gallery-card-list");
       const selectionBar = node("gallery-selection-footer");
       selectionBar.hidden = typeof purchase !== "function" || !selectedCards.size;
-      const selectedBuy = typeof purchase === "function" ? add2(selectionBar, "button", "Buy 0", "primary gallery-purchase") : null;
-      const selectionSummary = add2(selectionBar, "span", "", "gallery-selection-summary");
-      const preview = add2(selectionBar, "div", "", "gallery-selection-preview");
+      const selectedBuy = typeof purchase === "function" ? add3(selectionBar, "button", "Buy 0", "primary gallery-purchase") : null;
+      const selectionSummary = add3(selectionBar, "span", "", "gallery-selection-summary");
+      const preview = add3(selectionBar, "div", "", "gallery-selection-preview");
       preview.setAttribute("role", "status");
       let selectedSummary, previewEpoch = 0;
       const updateSelected = () => {
@@ -19302,7 +20300,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
       };
       if (selectedBuy) {
-        const budget = add2(selectionBar, "input");
+        const budget = add3(selectionBar, "input");
         budget.type = "number";
         budget.min = "0";
         budget.max = "165000000";
@@ -19363,13 +20361,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       const scoredIds = new Set(summary3?.lineup?.map((row) => row.eaId) ?? []);
       for (const row of page.rows) {
-        const card = add2(list2, "article", "", "gallery-card gallery-player-card");
+        const card = add3(list2, "article", "", "gallery-card gallery-player-card");
         card.dataset.definitionId = String(row.eaId);
         card.dataset.rarityId = String(row.rarityEaId ?? "");
-        const art = add2(card, "div", "", "gallery-player-art");
+        const art = add3(card, "div", "", "gallery-player-art");
         art.dataset.galleryCardArt = String(row.eaId);
         if (selectedBuy && !isGalleryOwned(row) && row.collected === false && value.status === "observed" && !value.stale && !value.poolStale) {
-          const select = add2(art, "button", selectedCards.has(String(row.eaId)) ? "Added" : "Buy", "gallery-card-select");
+          const select = add3(art, "button", selectedCards.has(String(row.eaId)) ? "Added" : "Buy", "gallery-card-select");
           select.type = "button";
           select.setAttribute("aria-label", `${selectedCards.has(String(row.eaId)) ? "\u79FB\u9664" : "\u6DFB\u52A0"} ${row.name} ${row.version ?? ""}`);
           select.dataset.cardName = `${row.name} ${row.version ?? ""}`;
@@ -19387,34 +20385,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           });
         }
         const price2 = cachedPrice(row, value);
-        const priceBar = add2(art, "div", "", "gallery-card-pricebar");
-        const priceLabel = add2(priceBar, "span", price2 == null ? "\u4EF7\u683C\u672A\u77E5" : `${price2.toLocaleString()} \u{1FA99}`, "gallery-card-price");
+        const priceBar = add3(art, "div", "", "gallery-card-pricebar");
+        const priceLabel = add3(priceBar, "span", price2 == null ? "\u4EF7\u683C\u672A\u77E5" : `${price2.toLocaleString()} \u{1FA99}`, "gallery-card-price");
         const stalePrice = price2 != null && (priceExpired(value) || value.priceSnapshot?.staleIds?.includes(row.eaId) || value.priceSnapshot && !Object.hasOwn(value.priceSnapshot.prices, row.eaId));
         if (stalePrice) {
           priceLabel.dataset.priceState = "snapshot";
           priceLabel.title = "\u65E7\u62A5\u4EF7\u5FEB\u7167\uFF0C\u4E0D\u7528\u4E8E\u65B9\u6848\u6210\u672C";
           priceLabel.classList.add("gallery-unknown");
         }
-        add2(priceBar, "span", `Gallery ${row.galleryScore == null ? "\u2014" : row.galleryScore.toLocaleString()}`, "gallery-card-gallery-score");
+        add3(priceBar, "span", `Gallery ${row.galleryScore == null ? "\u2014" : row.galleryScore.toLocaleString()}`, "gallery-card-gallery-score");
         cardImage(art, row, value.runtimeCards, set.id);
         const selectControl = art.querySelector(".gallery-card-select");
         if (selectControl) art.append(selectControl);
-        const meta = add2(card, "div", "", "gallery-player-meta");
-        add2(meta, "strong", row.name);
-        add2(meta, "span", `${row.overall ?? "\u2014"} OVR \xB7 ${row.version ?? "\u7248\u672C\u672A\u77E5"}`, "gallery-player-version");
-        const logos = add2(meta, "div", "", "gallery-player-logos");
+        const meta = add3(card, "div", "", "gallery-player-meta");
+        add3(meta, "strong", row.name);
+        add3(meta, "span", `${row.overall ?? "\u2014"} OVR \xB7 ${row.version ?? "\u7248\u672C\u672A\u77E5"}`, "gallery-player-version");
+        const logos = add3(meta, "div", "", "gallery-player-logos");
         image(logos, asset("club", row.clubEaId), "\u4FF1\u4E50\u90E8", "gallery-mini-emblem");
         image(logos, asset("league", row.leagueEaId), "\u8054\u8D5B", "gallery-mini-emblem");
         image(logos, asset("nation", row.nationEaId), "\u56FD\u7C4D", "gallery-mini-emblem");
-        const flags2 = add2(meta, "div", "", "gallery-player-flags");
+        const flags2 = add3(meta, "div", "", "gallery-player-flags");
         statusIcon(flags2, row.collected, row.collected === true ? "\u5DF2\u6536\u96C6" : row.collected === false ? "\u672A\u6536\u96C6" : "\u6536\u96C6\u72B6\u6001\u672A\u77E5");
         statusIcon(flags2, row.inClub, row.inClub === true ? "Club \u53EF\u89C1" : row.inClub === false && row.held ? "\u5176\u4ED6\u5E93\u5B58\u533A\u6301\u6709\uFF0CClub \u672A\u770B\u5230" : row.inClub === false ? "Club \u672A\u770B\u5230" : "Club \u72B6\u6001\u672A\u77E5");
         statusIcon(flags2, row.firstOwned, row.firstOwned === true ? "First Owner" : row.firstOwned === false ? "\u975E First Owner" : "First Owner \u672A\u77E5");
-        add2(meta, "span", `EA ${row.gradingScore == null ? "\u672A\u77E5" : row.gradingScore}`, "gallery-player-score");
+        add3(meta, "span", `EA ${row.gradingScore == null ? "\u672A\u77E5" : row.gradingScore}`, "gallery-player-score");
         const firstOwnerAction = galleryFirstOwnerHistoryAction(row);
         if (typeof setFirstOwner === "function" && firstOwnerAction) {
           const localFirstOwner = firstOwnerAction === "clear";
-          const firstOwner = add2(meta, "button", localFirstOwner ? "\u6E05\u9664\u5386\u53F2 FO" : "\u6807\u8BB0\u5386\u53F2 FO", "gallery-first-owner-toggle");
+          const firstOwner = add3(meta, "button", localFirstOwner ? "\u6E05\u9664\u5386\u53F2 FO" : "\u6807\u8BB0\u5386\u53F2 FO", "gallery-first-owner-toggle");
           firstOwner.type = "button";
           firstOwner.title = localFirstOwner ? "\u6E05\u9664\u672C\u5730\u9996\u4EFB\u5386\u53F2\u58F0\u660E\uFF0C\u6062\u590D\u81EA\u52A8\u8BC6\u522B\u7ED3\u679C\uFF1B\u4E0D\u6539\u53D8 EA \u8BB0\u5F55" : "\u4EC5\u5728\u786E\u5B9A\u66FE\u9996\u4EFB\u83B7\u5F97\u8FD9\u4E2A\u7248\u672C\u65F6\u6807\u8BB0\uFF1B\u4EC5\u4ECE\u5E02\u573A\u4E70\u8FC7\u7684\u4E0D\u8981\u6807\u8BB0\u3002\u53EA\u5F71\u54CD FCAT \u672C\u5730\u4F30\u5206\uFF0C\u4E0D\u6539\u53D8 EA \u8BB0\u5F55";
           firstOwner.addEventListener("click", async (event) => {
@@ -19448,7 +20446,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             } catch {
               firstOwner.title = "\u672C\u5730 FO \u5386\u53F2\u4FDD\u5B58\u5931\u8D25";
               if (identity5 === scope2() && thisDetailCurrent(value, set.id)) {
-                const failure = meta.querySelector(".gallery-first-owner-error") ?? add2(meta, "small", "", "gallery-first-owner-error");
+                const failure = meta.querySelector(".gallery-first-owner-error") ?? add3(meta, "small", "", "gallery-first-owner-error");
                 failure.textContent = "\u672C\u5730 FO \u5386\u53F2\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5";
               }
             } finally {
@@ -19456,11 +20454,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           });
         }
-        if (scoredIds.has(row.eaId)) add2(meta, "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
+        if (scoredIds.has(row.eaId)) add3(meta, "span", "\u8BA1\u5206\u9635\u5BB9\u6210\u5458", "badge gallery-score-member");
         if (typeof marketCompare === "function" && !isGalleryOwned(row) && row.collected === false) {
-          const compare = add2(meta, "button", "\u6BD4\u4EF7", "gallery-card-compare");
+          const compare = add3(meta, "button", "\u6BD4\u4EF7", "gallery-card-compare");
           compare.type = "button";
-          const comparison = add2(meta, "small", "", "gallery-market-comparison");
+          const comparison = add3(meta, "small", "", "gallery-market-comparison");
           const compareScope = scope2(), compareSource = result?.source;
           const key = JSON.stringify([compareScope, compareSource, set.id, row.eaId]);
           const current2 = () => !disposed && active && !jointMode && selectedSetId === set.id && compareScope === scope2() && compareSource === result?.source && comparison.isConnected;
@@ -19486,9 +20484,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const reference = cachedPrice(row, details.get(set.id) ?? value);
             comparison.textContent = `EA ${quote2.price == null ? "\u65E0\u6709\u6548\u6302\u724C" : `${count2(quote2.price)} \u91D1\u5E01`} \xB7 \u53C2\u8003 ${reference == null ? "\u672A\u77E5" : `${count2(reference)} \u91D1\u5E01`}`;
             if (quote2.listings?.length) {
-              const detail = add2(meta, "details", "", "gallery-market-listings");
-              add2(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
-              for (const listing2 of quote2.listings.slice(0, 3)) add2(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
+              const detail = add3(meta, "details", "", "gallery-market-listings");
+              add3(detail, "summary", `EA \u53EF\u89C1\u62A5\u4EF7 ${quote2.listings.length} \u6761`);
+              for (const listing2 of quote2.listings.slice(0, 3)) add3(detail, "small", `${count2(listing2.buyNow)} \u91D1\u5E01 \xB7 \u5269\u4F59 ${listing2.expires ?? "?"} \u79D2`);
             }
           };
           const stored = comparisonViews.get(key);
@@ -19601,14 +20599,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         targets: targetValue().targets,
         summaries
       });
-      if (!filtered.length) add2(list2, "p", "\u6CA1\u6709\u5339\u914D\u7684\u96C6\u5408", "gallery-unknown");
+      if (!filtered.length) add3(list2, "p", "\u6CA1\u6709\u5339\u914D\u7684\u96C6\u5408", "gallery-unknown");
       for (const { set } of filtered) {
-        const card = add2(list2, "article", "", "gallery-set");
+        const card = add3(list2, "article", "", "gallery-set");
         card.dataset.setId = set.id;
-        const title = add2(card, "div", "", "gallery-set-title");
+        const title = add3(card, "div", "", "gallery-set-title");
         const configuredIcons = assets?.set?.(set.name, category, set, details.get(set.id)?.pool?.items ?? []);
         const titleIcons = Array.isArray(configuredIcons) && configuredIcons.length ? configuredIcons : ["leagues", "rarities"].includes(category.slug) ? [] : details.get(set.id)?.pool?.items?.slice(0, 3).map((item2) => asset("club", item2.clubEaId)) ?? [];
-        const iconBox = add2(title, "span", "", "gallery-set-icons");
+        const iconBox = add3(title, "span", "", "gallery-set-icons");
         const iconKind = category.slug === "leagues" ? "league" : category.slug === "rarities" ? "rarity" : "club";
         const candidates = (Array.isArray(titleIcons) ? titleIcons : [titleIcons]).map((value) => typeof value === "string" && value.startsWith("https://") ? value : asset(iconKind, value)).filter(Boolean);
         let chosen = setIconSelections.get(set.id);
@@ -19617,8 +20615,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           setIconSelections.set(set.id, chosen);
         }
         if (chosen.src) image(iconBox, chosen.src, set.name, "gallery-set-icon");
-        add2(title, "h4", set.name);
-        const watch = add2(title, "button", jointTargets.has(set.id) ? "\u2605" : "\u2606", "gallery-watch");
+        add3(title, "h4", set.name);
+        const watch = add3(title, "button", jointTargets.has(set.id) ? "\u2605" : "\u2606", "gallery-watch");
         watch.type = "button";
         watch.title = jointTargets.has(set.id) ? "\u53D6\u6D88\u5173\u6CE8" : "\u5173\u6CE8\u96C6\u5408";
         watch.setAttribute("aria-label", `${watch.title} ${set.name}`);
@@ -19636,32 +20634,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           renderSets();
           persistTargets();
         });
-        if (result.changes?.added.includes(set.id)) add2(card, "span", "\u65B0\u96C6\u5408", "badge");
-        const detail = details.get(set.id), totals = detail?.progress?.totals, summary3 = scoreSummary(detail, set, 2);
-        const grades3 = add2(card, "div", "", "gallery-grades");
+        if (result.changes?.added.includes(set.id)) add3(card, "span", "\u65B0\u96C6\u5408", "badge");
+        const detail = details.get(set.id), totals2 = detail?.progress?.totals, summary3 = scoreSummary(detail, set, 2);
+        const grades3 = add3(card, "div", "", "gallery-grades");
         gradeTrack(grades3, set.grades, summary3);
-        const metrics = add2(card, "div", "", "gallery-set-metrics");
-        const collected = add2(metrics, "span", totals ? `${totals.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, "gallery-collected");
-        collected.title = totals ? `\u5DF2\u6536\u96C6 / \u76EE\u6807 \xB7 ${totals.unknown} \u5F85\u6838\u5B9E` : "\u6536\u96C6\u8FDB\u5EA6\uFF1A\u672A\u540C\u6B65";
-        if (!totals || totals.total > 0 && totals.unknown === totals.total) collected.textContent = `? / ${set.requiredCards}`;
-        const scoreCaption = add2(metrics, "span", "Base score", "gallery-score-caption");
+        const metrics = add3(card, "div", "", "gallery-set-metrics");
+        const collected = add3(metrics, "span", totals2 ? `${totals2.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, "gallery-collected");
+        collected.title = totals2 ? `\u5DF2\u6536\u96C6 / \u76EE\u6807 \xB7 ${totals2.unknown} \u5F85\u6838\u5B9E` : "\u6536\u96C6\u8FDB\u5EA6\uFF1A\u672A\u540C\u6B65";
+        if (!totals2 || totals2.total > 0 && totals2.unknown === totals2.total) collected.textContent = `? / ${set.requiredCards}`;
+        const scoreCaption = add3(metrics, "span", "Base score", "gallery-score-caption");
         scoreCaption.title = "\u96C6\u5408\u57FA\u7840\u5206\uFF08\u672C\u5730\u53C2\u8003\u8BA1\u5206\uFF09";
-        const score2 = add2(metrics, "span", compactScore(summary3), "gallery-summary");
+        const score2 = add3(metrics, "span", compactScore(summary3), "gallery-summary");
         score2.title = `Base score \xB7 ${scoreText(summary3)}`;
         score2.setAttribute("aria-label", `Base score ${scoreText(summary3)}`);
         renderRewardSummary(metrics, [set]);
         if (detail?.progress?.candidateOnly) {
-          const candidate = add2(metrics, "span", "\u25A3", "gallery-collection-flag");
+          const candidate = add3(metrics, "span", "\u25A3", "gallery-collection-flag");
           candidate.title = `\u9AD8\u5206\u5019\u9009 ${detail.progress.totals?.total ?? "?"} / \u5168\u90E8 ${detail.progress.poolSize ?? "?"}`;
           candidate.setAttribute("aria-label", candidate.title);
         }
         if (detail?.stale || detail?.poolStale) {
-          const snapshot = add2(metrics, "span", "\u25F7", "gallery-collection-flag");
+          const snapshot = add3(metrics, "span", "\u25F7", "gallery-collection-flag");
           snapshot.title = "\u5F53\u524D\u663E\u793A\u6700\u8FD1\u4E00\u6B21\u5FEB\u7167";
           snapshot.setAttribute("aria-label", snapshot.title);
         }
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
-          const button = add2(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
+          const button = add3(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
           button.type = "button";
           button.addEventListener("click", (event) => {
             if (event.isTrusted) void loadSetDetails(set);
@@ -19673,10 +20671,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       showBrowseLevel();
     };
-    const applySyncDetails = (values7) => {
+    const applySyncDetails = (values8) => {
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
       let changed = false, selectedChanged = false, jointChanged = false;
-      for (const value of values7 ?? []) {
+      for (const value of values8 ?? []) {
         const setId = value?.pool?.setId ?? value?.progress?.setId;
         const source = value?.pool?.source ?? value?.progress?.source;
         const id12 = `${source}:${setId}`;
@@ -19746,8 +20744,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const refreshShared = () => {
       if (!sync || disposed || !active || syncing || !result || syncRefresh) return syncRefresh;
       const identity5 = scope2(), source = result.source;
-      syncRefresh = Promise.resolve(sync.peekDetails(source)).then((values7) => {
-        if (!disposed && active && !syncing && scope2() === identity5 && result?.source === source) applySyncDetails(values7);
+      syncRefresh = Promise.resolve(sync.peekDetails(source)).then((values8) => {
+        if (!disposed && active && !syncing && scope2() === identity5 && result?.source === source) applySyncDetails(values8);
       }).catch(() => {
       }).finally(() => {
         syncRefresh = null;
@@ -19880,9 +20878,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const buttons = node("gallery-categories");
       buttons.replaceChildren();
       for (const row of catalog.categories) {
-        const button = add2(buttons, "button");
-        const top = add2(button, "span", "", "gallery-category-top");
-        const iconsBox = add2(top, "span", "", "gallery-category-icons");
+        const button = add3(buttons, "button");
+        const top = add3(button, "span", "", "gallery-category-top");
+        const iconsBox = add3(top, "span", "", "gallery-category-icons");
         const icons = assets?.category?.(row.slug, row.name, row.sets) ?? [];
         const iconKey = JSON.stringify([row.id, icons]);
         if (!categoryIconSelections.has(iconKey)) {
@@ -19890,12 +20888,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           categoryIconSelections.set(iconKey, selectGalleryCategoryIcons(Array.isArray(icons) ? icons : [icons]));
         }
         for (const src of categoryIconSelections.get(iconKey)) image(iconsBox, src, row.name, "gallery-category-icon");
-        add2(top, "span", `${row.sets.length} \u4E2A\u96C6\u5408`, "gallery-category-count");
+        add3(top, "span", `${row.sets.length} \u4E2A\u96C6\u5408`, "gallery-category-count");
         renderRewardSummary(top, row.sets, "gallery-category-rewards");
-        add2(button, "strong", row.name, "gallery-category-name");
-        const score2 = add2(button, "span", "", "gallery-category-score");
-        add2(score2, "span");
-        add2(score2, "progress");
+        add3(button, "strong", row.name, "gallery-category-name");
+        const score2 = add3(button, "span", "", "gallery-category-score");
+        add3(score2, "span");
+        add3(score2, "progress");
         button.type = "button";
         button.dataset.categoryId = row.id;
         button.addEventListener("click", () => {
@@ -19952,7 +20950,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const setActive = (value) => {
       const wasActive = active;
       active = value && !disposed;
+      levelPanel?.setActive(active);
       if (!active) {
+        roadmap?.close();
         planningEpoch++;
         scoreQueue.cancel();
         selection++;
@@ -20022,6 +21022,63 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       node("gallery-status").textContent = message;
       node("gallery-progress-note").textContent = message;
     }
+    roadmap = mountGalleryRoadmap({
+      document,
+      parent: shadow,
+      button: node("gallery-roadmap-open"),
+      read: (mode = "full") => {
+        checkScope();
+        const context = { active: active && !disposed, scope: scope2(), catalog: result?.catalog, catalogFetchedAt: result?.fetchedAt };
+        if (mode === "context") return context;
+        return {
+          ...context,
+          version: host.dataset.version ?? null,
+          galleryLevel: levelPanel?.snapshot(),
+          targets: (result?.catalog?.categories ?? []).flatMap((category) => category.sets).map((set) => {
+            const detail = details.get(set.id);
+            return {
+              set,
+              catalog: result.catalog,
+              status: detail?.status ?? "unloaded",
+              progress: detail?.progress,
+              progressKey: roadmapProgressKey(detail?.progress),
+              stale: detail?.stale || result?.stale,
+              poolStale: detail?.poolStale,
+              fetchedAt: detail?.fetchedAt,
+              pool: detail?.pool ? { revision: detail.pool.revision } : null,
+              prices: mode === "full" && detail ? planningPrices(detail) : {},
+              priceSnapshot: detail?.priceSnapshot,
+              platform: detail?.platform
+            };
+          })
+        };
+      },
+      prepare: async (onProgress) => {
+        if (!result?.catalog) await load(false);
+        const identity5 = scope2(), source = result?.source;
+        if (!sync || !source) return;
+        const outcome = await sync.sync({ source, setId: null, force: false, onProgress: (value) => {
+          if (identity5 === scope2() && active) {
+            if (value.details?.length) applySyncDetails(value.details);
+            onProgress(value);
+          }
+        } });
+        if (identity5 !== scope2() || !active) return;
+        applySyncDetails(outcome.details ?? await sync.peekDetails(source));
+      },
+      stopPrepare: () => sync?.stop(),
+      loadPrices: loadPlanningPrices,
+      readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
+      openSet: (setId, grade) => {
+        if (checkScope() === false) return;
+        const set = currentGallerySet(setId);
+        if (!set) return;
+        roadmapTarget = { setId, grade };
+        setJointMode(false);
+        void loadSetDetails(set);
+      }
+    });
+    levelPanel = mountGalleryLevel({ document, parent: node("gallery-level-panel"), service: galleryLevel2, visible, timers });
     return Object.freeze({ setActive, dispose: () => {
       disposed = true;
       selection++;
@@ -20031,6 +21088,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       sync?.stop();
       unsubscribeSync?.();
       bulkList?.dispose?.();
+      roadmap?.dispose();
+      levelPanel?.dispose();
       fodderBuy?.dispose();
       purchase?.stop?.();
       node("gallery-purchase-dialog").close();
@@ -20045,23 +21104,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFc27PriceSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add2 = (parent2, tag, text5 = "") => {
+    const add3 = (parent2, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const card = add2(parent, "section");
+    const card = add3(parent, "section");
     card.className = "card";
     card.id = "public-price-settings";
-    add2(card, "h3", "\u62A5\u4EF7\u4E0E\u4EA4\u6613\u4EF7\u683C \xB7 Gallery / Puzzle");
-    const fields4 = add2(card, "div");
+    add3(card, "h3", "\u62A5\u4EF7\u4E0E\u4EA4\u6613\u4EF7\u683C \xB7 Gallery / Puzzle");
+    const fields4 = add3(card, "div");
     fields4.className = "settings-grid";
-    const select = (label, values7) => {
-      const control = add2(add2(fields4, "label", label), "select");
+    const select = (label, values8) => {
+      const control = add3(add3(fields4, "label", label), "select");
       control.setAttribute("aria-label", label);
-      for (const [value, text5] of values7) {
-        const option = add2(control, "option", text5);
+      for (const [value, text5] of values8) {
+        const option = add3(control, "option", text5);
         option.value = value;
       }
       return control;
@@ -20071,7 +21130,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const source = select("\u8D2D\u4E70 / \u6302\u724C\u4EF7\u683C\u53C2\u8003", [["futgg", "FUT.GG"], ["futbin", "FUTBIN"]]);
     const mode = select("\u5141\u8BB8\u8D85\u8FC7\u53C2\u8003\u4EF7", [["fixed", "\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u767E\u5206\u6BD4"]]);
     const number4 = (label, min) => {
-      const control = add2(add2(fields4, "label", label), "input");
+      const control = add3(add3(fields4, "label", label), "input");
       control.type = "number";
       control.min = String(min);
       control.step = "1";
@@ -20081,16 +21140,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const premium = number4("\u6EA2\u4EF7\u6570\u503C", 0), attempts = number4("\u6BCF\u5361\u8D2D\u4E70\u5C1D\u8BD5\u6B21\u6570", 1);
     const validity = number4("\u62A5\u4EF7\u6709\u6548\u671F\uFF08\u5206\u949F\uFF09", 1);
     validity.max = "30";
-    add2(card, "small", "\u8D2D\u4E70\u4E0E\u6302\u724C\u5171\u7528\u53C2\u8003\u6765\u6E90\uFF0C\u6EA2\u4EF7\u4EC5\u7528\u4E8E\u8D2D\u4E70\u3002\u62A5\u4EF7\u4F18\u5148\u590D\u7528\u6709\u6548\u7F13\u5B58\uFF0C\u7F3A\u5931\u6216\u8FC7\u671F\u65F6\u66F4\u65B0\u3002\u4FDD\u5B58\u540E\u65B0\u65B9\u6848\u751F\u6548\uFF0C\u5DF2\u6279\u51C6\u7684\u4EF7\u683C\u4E0D\u53D8\u3002");
-    add2(card, "small", "\u62A5\u4EF7\u6709\u6548\u671F 1\u201330 \u5206\u949F\uFF0C\u9ED8\u8BA4 5\uFF0C\u4ECE\u5B9E\u9645\u83B7\u53D6\u62A5\u4EF7\u65F6\u8BA1\u65F6\u3002\u4FDD\u5B58\u540E\u65B0\u8BFB\u53D6\u751F\u6548\uFF1B\u5DF2\u6253\u5F00\u7684\u6302\u724C\u7A97\u53E3\u8BF7\u5173\u95ED\u540E\u91CD\u65B0\u6253\u5F00\u3002\u5931\u8D25\u91CD\u8BD5\u7B49\u5F85\u4E0D\u53D7\u6B64\u8BBE\u7F6E\u5F71\u54CD\u3002");
-    const preview = add2(card, "output");
+    add3(card, "small", "\u8D2D\u4E70\u4E0E\u6302\u724C\u5171\u7528\u53C2\u8003\u6765\u6E90\uFF0C\u6EA2\u4EF7\u4EC5\u7528\u4E8E\u8D2D\u4E70\u3002\u62A5\u4EF7\u4F18\u5148\u590D\u7528\u6709\u6548\u7F13\u5B58\uFF0C\u7F3A\u5931\u6216\u8FC7\u671F\u65F6\u66F4\u65B0\u3002\u4FDD\u5B58\u540E\u65B0\u65B9\u6848\u751F\u6548\uFF0C\u5DF2\u6279\u51C6\u7684\u4EF7\u683C\u4E0D\u53D8\u3002");
+    add3(card, "small", "\u62A5\u4EF7\u6709\u6548\u671F 1\u201330 \u5206\u949F\uFF0C\u9ED8\u8BA4 5\uFF0C\u4ECE\u5B9E\u9645\u83B7\u53D6\u62A5\u4EF7\u65F6\u8BA1\u65F6\u3002\u4FDD\u5B58\u540E\u65B0\u8BFB\u53D6\u751F\u6548\uFF1B\u5DF2\u6253\u5F00\u7684\u6302\u724C\u7A97\u53E3\u8BF7\u5173\u95ED\u540E\u91CD\u65B0\u6253\u5F00\u3002\u5931\u8D25\u91CD\u8BD5\u7B49\u5F85\u4E0D\u53D7\u6B64\u8BBE\u7F6E\u5F71\u54CD\u3002");
+    const preview = add3(card, "output");
     preview.setAttribute("aria-live", "polite");
-    const row = add2(card, "div");
+    const row = add3(card, "div");
     row.className = "row";
-    const save = add2(row, "button", "\u4FDD\u5B58\u4EF7\u683C\u8BBE\u7F6E");
+    const save = add3(row, "button", "\u4FDD\u5B58\u4EF7\u683C\u8BBE\u7F6E");
     save.type = "button";
     save.className = "primary";
-    const status = add2(card, "output");
+    const status = add3(card, "output");
     status.setAttribute("aria-live", "polite");
     let scope2 = null, busy = false, epoch2 = 0;
     const enabled = (value) => {
@@ -20184,33 +21243,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryTradeSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add2 = (parent2, tag, text5 = "") => {
+    const add3 = (parent2, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       parent2.append(node);
       return node;
     };
-    const card = add2(parent, "section");
+    const card = add3(parent, "section");
     card.id = "gallery-trade-settings";
     card.className = "card";
-    add2(card, "h3", "Gallery \u4EA4\u6613");
-    const grid = add2(card, "div");
+    add3(card, "h3", "Gallery \u4EA4\u6613");
+    const grid = add3(card, "div");
     grid.className = "settings-grid";
     const select = (label, options) => {
-      const control = add2(add2(grid, "label", label), "select");
+      const control = add3(add3(grid, "label", label), "select");
       control.setAttribute("aria-label", label);
       for (const [value, text5] of options) {
-        const option = add2(control, "option", text5);
+        const option = add3(control, "option", text5);
         option.value = value;
       }
       return control;
     };
     const destination = select("Gallery \u8D2D\u5361\u53BB\u5411", [["club", "Club"], ["unassigned", "Unassigned"]]);
     const style = select("Gallery \u8D2D\u4E70 / \u6302\u724C\u98CE\u683C", [["enhancer", "Enhancer"], ["fodder", "Fodder"]]);
-    add2(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002\u753B\u5ECA\u8BB0\u5F55\u62E5\u6709\u8FC7\u7684\u5361\uFF0C\u552E\u51FA\u6216\u7528\u4E8E SBC \u4E0D\u64A4\u9500\u6536\u96C6\uFF1B\u8BA1\u5206\u4EE5 EA \u8BB0\u5F55\u4E3A\u51C6\u3002");
-    const save = add2(card, "button", "\u4FDD\u5B58 Gallery \u4EA4\u6613\u8BBE\u7F6E");
+    add3(card, "small", "\u53BB\u5411\u4EC5\u4F5C\u7528\u4E8E\u65B0\u8D2D\u4E70\u6279\u6B21\uFF1B\u6062\u590D\u6CBF\u7528\u539F\u6279\u6B21\u8BBE\u7F6E\u3002\u753B\u5ECA\u8BB0\u5F55\u62E5\u6709\u8FC7\u7684\u5361\uFF0C\u552E\u51FA\u6216\u7528\u4E8E SBC \u4E0D\u64A4\u9500\u6536\u96C6\uFF1B\u8BA1\u5206\u4EE5 EA \u8BB0\u5F55\u4E3A\u51C6\u3002");
+    const save = add3(card, "button", "\u4FDD\u5B58 Gallery \u4EA4\u6613\u8BBE\u7F6E");
     save.type = "button";
-    const output = add2(card, "output");
+    const output = add3(card, "output");
     output.setAttribute("role", "status");
     let account = null, busy = false, epoch2 = 0;
     const enable = (value) => {
@@ -20263,27 +21322,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryPlanningSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add2 = (owner, tag, text5 = "") => {
+    const add3 = (owner, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       owner.append(node);
       return node;
     };
-    const card = add2(parent, "section");
+    const card = add3(parent, "section");
     card.id = "gallery-planning-settings";
     card.className = "card";
-    add2(card, "h3", "Gallery \u65B9\u6848\u8BA1\u7B97");
-    const label = add2(card, "label", "\u65B9\u6848\u8BA1\u7B97\u65F6\u95F4\u4E0A\u9650\uFF08\u79D2\uFF09");
-    const input = add2(label, "input");
+    add3(card, "h3", "Gallery \u65B9\u6848\u8BA1\u7B97");
+    const label = add3(card, "label", "\u65B9\u6848\u8BA1\u7B97\u65F6\u95F4\u4E0A\u9650\uFF08\u79D2\uFF09");
+    const input = add3(label, "input");
     input.type = "number";
     input.min = String(MIN_GALLERY_PLANNING_TIMEOUT_MS / 1e3);
     input.max = String(MAX_GALLERY_PLANNING_TIMEOUT_MS / 1e3);
     input.step = "1";
     input.setAttribute("aria-label", "\u65B9\u6848\u8BA1\u7B97\u65F6\u95F4\u4E0A\u9650\uFF08\u79D2\uFF09");
-    add2(card, "small", `\u9ED8\u8BA4 ${DEFAULT_GALLERY_PLANNING_TIMEOUT_MS / 1e3} \u79D2\uFF0C\u8303\u56F4 ${input.min}-${input.max} \u79D2\u3002\u4EC5\u5F71\u54CD Gallery \u65B9\u6848\u641C\u7D22\uFF0C\u4E0D\u6539\u53D8\u62A5\u4EF7\u3001\u9884\u7B97\u6216\u8D2D\u4E70\u6388\u6743\u3002`);
-    const save = add2(card, "button", "\u4FDD\u5B58 Gallery \u65B9\u6848\u8BBE\u7F6E");
+    add3(card, "small", `\u9ED8\u8BA4 ${DEFAULT_GALLERY_PLANNING_TIMEOUT_MS / 1e3} \u79D2\uFF0C\u8303\u56F4 ${input.min}-${input.max} \u79D2\u3002\u4EC5\u5F71\u54CD Gallery \u65B9\u6848\u641C\u7D22\uFF0C\u4E0D\u6539\u53D8\u62A5\u4EF7\u3001\u9884\u7B97\u6216\u8D2D\u4E70\u6388\u6743\u3002`);
+    const save = add3(card, "button", "\u4FDD\u5B58 Gallery \u65B9\u6848\u8BBE\u7F6E");
     save.type = "button";
-    const output = add2(card, "output");
+    const output = add3(card, "output");
     output.setAttribute("role", "status");
     let account = null, busy = false, epoch2 = 0;
     const enable = (enabled) => {
@@ -20369,6 +21428,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     galleryRelist: galleryRelist2 = null,
     galleryFirstOwnerHistory = null,
     galleryScoreCache = null,
+    galleryLevel: galleryLevel2 = null,
     galleryAccounting: galleryAccounting2 = null,
     galleryTradePreferences: galleryTradePreferences2 = null,
     galleryPlanningSettings: galleryPlanningSettings2 = null,
@@ -20386,7 +21446,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (version) host.dataset.version = version;
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = fc27WorkbenchMarkup({ installationChecks: typeof checkInstallation === "function" });
-    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, planningSettings: galleryPlanningSettings2, setFirstOwner: galleryFirstOwnerHistory });
+    const gallery = mountFc27GalleryView({ document, shadow, host, provider: galleryCatalog2, loadSet: gallerySetLoader, loadPrices: galleryPriceLoader, loadPlanningPrices: galleryPlanningPrices, accountScope: galleryAccountScope, assets: galleryAssets2, prices: galleryPrices2, marketCompare: galleryMarketCompare, diagnosticLog: galleryDiagnosticLog, nativeRenderer: galleryNativeRenderer2, targetStore: galleryTargetStore, planStore: galleryPlanStore, scoreCache: galleryScoreCache, accounting: galleryAccounting2, sync: gallerySync2, purchase: purchaseGallery, listing: galleryListing2, relist: galleryRelist2, tradePreferences: galleryTradePreferences2, planningSettings: galleryPlanningSettings2, galleryLevel: galleryLevel2, setFirstOwner: galleryFirstOwnerHistory });
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#settings-bottom"), service: publicPrices2 });
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
     const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
@@ -21554,7 +22614,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var sameDatabaseId = (left, right) => databaseId(left) === databaseId(right);
   var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var safeReason8 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PROGRESS_UNAVAILABLE";
-  var fail22 = (reason) => {
+  var fail23 = (reason) => {
     throw new Error(reason);
   };
   var CARD_KEYS = Object.freeze([
@@ -21628,10 +22688,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Object.freeze(result);
   };
   function sanitizeRows(rows, allowed, accepts = (value) => allowed.has(value), maxRows = allowed.size) {
-    if (!Array.isArray(rows) || rows.length > maxRows) fail22("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+    if (!Array.isArray(rows) || rows.length > maxRows) fail23("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
     const result = rows.map((raw) => {
       const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
-      if (!id9(definitionId) || !accepts(definitionId)) fail22("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!id9(definitionId) || !accepts(definitionId)) fail23("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       const flag = ownData(raw, "isCollected"), score2 = ownData(raw, "gradingScore");
       const cardData = nativeCardData(ownData(raw, "cardData") ?? raw);
       return {
@@ -21641,7 +22701,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         ...cardData?.resourceId === definitionId ? { cardData } : {}
       };
     });
-    if (new Set(result.map((row) => row.definitionId)).size !== result.length) fail22("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+    if (new Set(result.map((row) => row.definitionId)).size !== result.length) fail23("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
     return result;
   }
   function readClubSnapshot(root) {
@@ -21719,7 +22779,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return states4.get(key);
     };
     const assert = (context) => {
-      if (disposed || !same20(context, readFc27Context(root))) fail22("FC27_GALLERY_CONTEXT_CHANGED");
+      if (disposed || !same20(context, readFc27Context(root))) fail23("FC27_GALLERY_CONTEXT_CHANGED");
     };
     const merge = (state, rows) => {
       let changed = false;
@@ -21863,7 +22923,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return true;
     };
     const validatePool = (pool, context) => {
-      if (!["futgg", "fodder"].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== "boolean" || !(pool.source === "fodder" ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id9(pool.setId)) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id9(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id9(pool.requiredCards) || !id9(pool.poolSize) || (pool.source === "futgg" ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length) || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail22("FC27_GALLERY_POOL_UNAVAILABLE");
+      if (!["futgg", "fodder"].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== "boolean" || !(pool.source === "fodder" ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id9(pool.setId)) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id9(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id9(pool.requiredCards) || !id9(pool.poolSize) || (pool.source === "futgg" ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length) || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail23("FC27_GALLERY_POOL_UNAVAILABLE");
     };
     const projectState = (pool, state, extra = {}) => {
       assert(state.context);
@@ -21979,7 +23039,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         context = readFc27Context(root);
         if (pool) validatePool(pool, context);
-        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id9(value)) || new Set(definitionIds).size !== definitionIds.length)) fail22("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id9(value)) || new Set(definitionIds).size !== definitionIds.length)) fail23("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
       }
@@ -21999,7 +23059,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await restore(state);
           assert(context);
           const allIds = definitionIds ?? (pool ? pool.items.map((row) => row.eaId) : root.repositories.Item.getStaticData().map((row) => row.id));
-          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id9(value))) fail22("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id9(value))) fail23("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
           const fullSync = !pool && definitionIds === null;
           let ids2 = fullSync && !force ? allIds.filter((value) => !state.coveredDefinitionIds.has(value)) : pool && incremental && !force ? allIds.filter((value) => needsRead(state, value, missingOnly)) : allIds;
           let rechecking = false;
@@ -22013,8 +23073,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             record({ event: "sync-plan", phase: "incremental", status: "success", count: 0, cached: true });
             return { status: "observed", cached: true, scope: scope2(), covered: state.coveredDefinitionIds.size };
           }
-          if (definitionIds === null && now() < state.retryAt) fail22("FC27_GALLERY_PROGRESS_BACKOFF");
-          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function" || root.GAME_NAME !== "fc27") fail22("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
+          if (definitionIds === null && now() < state.retryAt) fail23("FC27_GALLERY_PROGRESS_BACKOFF");
+          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function" || root.GAME_NAME !== "fc27") fail23("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
           record({ event: "sync-plan", phase: force ? "full" : rechecking ? "recheck" : "incremental", status: "started", count: ids2.length, cached: state.rows.size > 0 });
           const incoming = [], seen = /* @__PURE__ */ new Set(), groups = Math.ceil(ids2.length / 1e3);
           let familyEvidence = false;
@@ -22042,9 +23102,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               });
               const reply = await nativePage(criteria, context);
               record({ event: "concept-response", status: "received", httpStatus: reply?.status });
-              if (reply?.success !== true || reply.status !== 200) fail22(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
+              if (reply?.success !== true || reply.status !== 200) fail23(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
               const data = reply.response ?? reply.data;
-              if (!Array.isArray(data?.items) || data.items.length > 250) fail22("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+              if (!Array.isArray(data?.items) || data.items.length > 250) fail23("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
               const exactProjection = pool || definitionIds !== null || rechecking;
               const pageAllowed = exactProjection ? allowed : new Set(data.items.map((item2) => item2.definitionId));
               const accepts = pool || rechecking ? (value) => [...allowed].some((requested) => sameDatabaseId(requested, value)) : (value) => pageAllowed.has(value);
@@ -22086,7 +23146,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 recheck: rechecking
               });
               for (const row of retainedRows) {
-                if (seen.has(row.definitionId)) fail22("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+                if (seen.has(row.definitionId)) fail23("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
                 row.readAt = now();
                 seen.add(row.definitionId);
                 incoming.push(row);
@@ -22135,8 +23195,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               unknownCount: incoming.filter((row) => row.familyOnly === true).length
             });
           }
-          if ((definitionIds !== null || rechecking) && incoming.length !== ids2.length) fail22("FC27_GALLERY_CONCEPT_INCOMPLETE");
-          if (pool && incoming.length < ids2.length && ids2.every((id12) => state.rows.has(id12))) fail22("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if ((definitionIds !== null || rechecking) && incoming.length !== ids2.length) fail23("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if (pool && incoming.length < ids2.length && ids2.every((id12) => state.rows.has(id12))) fail23("FC27_GALLERY_CONCEPT_INCOMPLETE");
           merge(state, incoming);
           state.fetchedAt = now();
           if (fullSync && !rechecking) for (const value of ids2) state.coveredDefinitionIds.add(value);
@@ -22225,8 +23285,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         try {
           await restore(state);
           assert(context);
-          if (now() < state.retryAt) fail22("FC27_GALLERY_PROGRESS_BACKOFF");
-          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || root.GAME_NAME !== "fc27") fail22("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
+          if (now() < state.retryAt) fail23("FC27_GALLERY_PROGRESS_BACKOFF");
+          if (!install() || typeof root.UTSearchCriteriaDTO !== "function" || root.GAME_NAME !== "fc27") fail23("FC27_GALLERY_CONCEPT_RUNTIME_UNVERIFIED");
           const items = /* @__PURE__ */ new Map();
           let requests = 0, bounded2 = false;
           for (const [index, query] of queries.entries()) {
@@ -22244,9 +23304,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const criteria = Object.assign(new root.UTSearchCriteriaDTO(), { type: root.SearchType?.PLAYER ?? "player", count: 200, offset }, query);
               const reply = await nativePage(criteria, context);
               assert(context);
-              if (reply?.success !== true || reply.status !== 200) fail22(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
+              if (reply?.success !== true || reply.status !== 200) fail23(Number.isInteger(reply?.status) && reply.status >= 100 && reply.status <= 599 ? `FC27_GALLERY_HTTP_${reply.status}` : "FC27_GALLERY_CONCEPT_RESPONSE_UNVERIFIED");
               const data = reply.response ?? reply.data;
-              if (!Array.isArray(data?.items) || data.items.length > 200) fail22("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
+              if (!Array.isArray(data?.items) || data.items.length > 200) fail23("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
               let added = 0;
               for (const item2 of data.items) if (id9(item2?.definitionId) && !items.has(item2.definitionId) && matchesFodderPool(set, item2)) {
                 items.set(item2.definitionId, item2);
@@ -22306,9 +23366,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const context = readFc27Context(root), state = stateFor(context);
       await restore(state);
       assert(context);
-      if (!id9(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail22("FC27_GALLERY_FO_INPUT_INVALID");
+      if (!id9(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail23("FC27_GALLERY_FO_INPUT_INVALID");
       const saved = await persist(state, (history) => firstOwned === null ? removeGalleryFirstOwnerHistory(history, Number(definitionId)) : toggleGalleryFirstOwnerHistory(history, Number(definitionId), firstOwned, now()));
-      if (!saved) fail22("FC27_GALLERY_FO_SAVE_FAILED");
+      if (!saved) fail23("FC27_GALLERY_FO_SAVE_FAILED");
       assert(context);
       notify();
       return { status: "observed", definitionId: Number(definitionId), firstOwned };
@@ -22346,6 +23406,166 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           state.heldSnapshot = null;
         }
         listeners.clear();
+      }
+    });
+  }
+
+  // src/gallery/level-milestones.js
+  function projectGalleryLevelMilestones(groups = [], observedAt = null) {
+    const milestones = [];
+    for (const group of groups) for (const objective of group.objectives ?? []) {
+      const match = /^Reach Gallery Level (\d+)\.$/i.exec(objective.description ?? "");
+      const level2 = match ? Number(match[1]) : null;
+      if (!Number.isSafeInteger(level2) || level2 < 1 || level2 > 1e3) continue;
+      const completed = [2, 3].includes(objective.state) ? true : objective.state === 1 ? false : null;
+      milestones.push({
+        level: level2,
+        objectiveId: objective.id,
+        title: objective.title ?? `Level ${level2}`,
+        completed,
+        claimed: objective.state === 3 ? true : objective.state === 2 ? false : null,
+        rewards: (objective.rewards ?? []).filter((value) => typeof value === "string").slice(0, 10),
+        availableInWebUi: objective.companion === true,
+        observedAt
+      });
+    }
+    milestones.sort((a, b) => a.level - b.level);
+    const confirmed = milestones.filter((row) => row.completed === true);
+    const confirmedAtLeast = confirmed.length ? Math.max(...confirmed.map((row) => row.level)) : null;
+    return {
+      status: milestones.length ? "observed" : "unavailable",
+      source: "ea-gallery-objective-milestones",
+      exactLevel: null,
+      galleryXp: null,
+      confirmedAtLeast,
+      nextMilestone: milestones.find((row) => row.level > (confirmedAtLeast ?? 0) && row.completed !== true) ?? null,
+      observedAt,
+      milestones,
+      levelBasis: "milestone-lower-bound-not-exact-level"
+    };
+  }
+
+  // src/adapters/ea/fc27-gallery-level.js
+  var FC27_GALLERY_LEVEL_CATEGORIES_HASH = "bcbab0fd238e5d4b53f93c3b22fa6d9250cf7e83790b6c0b8f01db60e68d1872";
+  var values6 = (object) => Object.values(ownData(object, "_collection") ?? object ?? {});
+  var method5 = (object, key) => {
+    for (let depth = 0; object && depth < 5; depth++, object = Object.getPrototypeOf(object)) {
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      if (descriptor) return descriptor.value;
+    }
+    return null;
+  };
+  var detach = (categories) => categories.flatMap((category) => values6(ownData(category, "groups")).map((group) => ({
+    objectives: values6(ownData(group, "objectives")).map((objective) => ({
+      id: ownData(objective, "id"),
+      title: ownData(objective, "title"),
+      description: ownData(objective, "description"),
+      state: ownData(objective, "_state"),
+      companion: ownData(objective, "companion"),
+      rewards: values6(ownData(ownData(objective, "rewards"), "rewards")).map((reward) => {
+        const data = ownData(ownData(reward, "item"), "_staticData");
+        const value = ownData(data, "description") || ownData(reward, "displayName");
+        return typeof value === "string" ? value.slice(0, 300) : "";
+      }).filter(Boolean)
+    }))
+  })));
+  function createFc27GalleryLevelReader(root, { get = async () => null, set = async () => {
+  }, now = Date.now } = {}) {
+    const snapshots = /* @__PURE__ */ new Map(), pending2 = /* @__PURE__ */ new Map();
+    const scope2 = () => contextKey(readFc27Context(root), "gallery-level");
+    const same28 = (expected) => {
+      if (scope2() !== expected) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+    };
+    const noteKey = (expected) => `fcat-fc27-gallery-console-level-v1:${expected}`;
+    return Object.freeze({
+      scope: scope2,
+      peek() {
+        try {
+          return snapshots.get(scope2()) ?? null;
+        } catch {
+          return null;
+        }
+      },
+      async readNote() {
+        const expected = scope2(), note = await get(noteKey(expected), null);
+        same28(expected);
+        return note?.source === "console-user-recorded" && Number.isSafeInteger(note.level) && note.level > 0 && note.level <= 1e3 && Number.isSafeInteger(note.recordedAt) && note.recordedAt >= 0 && note.recordedAt <= now() ? { level: note.level, recordedAt: note.recordedAt, source: note.source } : null;
+      },
+      async saveNote(level2) {
+        if (!Number.isSafeInteger(level2) || level2 < 1 || level2 > 1e3) throw Error("FC27_GALLERY_LEVEL_NOTE_INVALID");
+        const expected = scope2(), note = { level: level2, recordedAt: now(), source: "console-user-recorded" };
+        await set(noteKey(expected), note);
+        same28(expected);
+        const saved = await get(noteKey(expected), null);
+        same28(expected);
+        if (JSON.stringify(saved) !== JSON.stringify(note)) throw Error("FC27_GALLERY_LEVEL_NOTE_UNCONFIRMED");
+        return note;
+      },
+      refresh() {
+        let expected;
+        try {
+          expected = scope2();
+        } catch {
+          return Promise.resolve({ status: "unavailable", reason: "context-unavailable", exactLevel: null });
+        }
+        if (pending2.has(expected)) return pending2.get(expected);
+        const run = (async () => {
+          try {
+            const service = ownData(ownData(root, "services"), "Objectives"), dao = ownData(service, "objectivesDAO");
+            const read = method5(dao, "getCategories");
+            const states4 = ownData(root, "ObjectiveProgressState");
+            if (ownData(root, "GAME_NAME") !== "fc27" || typeof read !== "function" || ownData(states4, "COMPLETED") !== 2 || ownData(states4, "REDEEMED") !== 3 || ownData(states4, "IN_PROGRESS") !== 1) throw Error("FC27_GALLERY_LEVEL_RUNTIME_UNVERIFIED");
+            const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest(
+              "SHA-256",
+              new globalThis.TextEncoder().encode(Function.prototype.toString.call(read))
+            )), (value) => value.toString(16).padStart(2, "0")).join("");
+            if (hash !== FC27_GALLERY_LEVEL_CATEGORIES_HASH) throw Error("FC27_GALLERY_LEVEL_RUNTIME_UNVERIFIED");
+            same28(expected);
+            const result = await new Promise((resolve, reject) => {
+              const owner = {};
+              let observable, finished = false;
+              const finish = (error2, value) => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                try {
+                  observable?.unobserve(owner);
+                } catch {
+                }
+                if (error2) reject(error2);
+                else resolve(value);
+              };
+              const timer = setTimeout(() => finish(Error("FC27_GALLERY_LEVEL_TIMEOUT")), 15e3);
+              try {
+                observable = read.call(dao);
+                observable.observe(owner, (_sender, response) => {
+                  try {
+                    same28(expected);
+                    if (response?.success !== true || response.status !== 200 || !Array.isArray(response.response?.categories) || response.response.categories.length > 64) throw Error("FC27_GALLERY_LEVEL_READ_UNCONFIRMED");
+                    finish(null, projectGalleryLevelMilestones(detach(response.response.categories), now()));
+                  } catch (error2) {
+                    finish(error2);
+                  }
+                });
+              } catch (error2) {
+                finish(error2);
+              }
+            });
+            same28(expected);
+            snapshots.set(expected, result);
+            return result;
+          } catch (error2) {
+            return {
+              ...snapshots.get(expected) ?? {},
+              status: "unavailable",
+              stale: true,
+              exactLevel: null,
+              reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_LEVEL_READ_UNCONFIRMED"
+            };
+          }
+        })().finally(() => pending2.delete(expected));
+        pending2.set(expected, run);
+        return run;
       }
     });
   }
@@ -23274,7 +24494,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/gallery/net-cost-store.js
   var galleryNetCostKey = (scope2) => `fcat-fc27-gallery-net-cost-v1:${scope2}`;
-  var fail23 = (reason) => {
+  var fail24 = (reason) => {
     throw Error(reason);
   };
   var same22 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -23284,25 +24504,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         raw = await get(galleryNetCostKey(scope2), null);
       } catch {
-        fail23("FC27_GALLERY_ACCOUNTING_READ_FAILED");
+        fail24("FC27_GALLERY_ACCOUNTING_READ_FAILED");
       }
       if (raw == null) return createGalleryNetCostLedger({ scope: scope2 });
       const value = normalizeGalleryNetCostLedger(raw);
-      if (!value || value.scope !== scope2 || value.entries.length > 5e3) fail23("FC27_GALLERY_ACCOUNTING_INVALID");
+      if (!value || value.scope !== scope2 || value.entries.length > 5e3) fail24("FC27_GALLERY_ACCOUNTING_INVALID");
       return value;
     };
     const write = async (scope2, ledger) => {
-      if (ledger.entries.length > 5e3) fail23("FC27_GALLERY_ACCOUNTING_FULL");
+      if (ledger.entries.length > 5e3) fail24("FC27_GALLERY_ACCOUNTING_FULL");
       try {
         await set(galleryNetCostKey(scope2), ledger);
-        if (!same22(await get(galleryNetCostKey(scope2), null), ledger)) fail23("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
+        if (!same22(await get(galleryNetCostKey(scope2), null), ledger)) fail24("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
       } catch {
-        fail23("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
+        fail24("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
       }
     };
     const run = async (scope2, task) => {
       try {
-        if (typeof scope2 !== "string" || !scope2) fail23("FC27_GALLERY_CONTEXT_CHANGED");
+        if (typeof scope2 !== "string" || !scope2) fail24("FC27_GALLERY_CONTEXT_CHANGED");
         return await exclusive(scope2, async () => task(await load(scope2)));
       } catch (error2) {
         return { status: "blocked", reason: /^FC27_[A-Z0-9_]+$/.test(error2.message) ? error2.message : "FC27_GALLERY_ACCOUNTING_UNAVAILABLE" };
@@ -23314,25 +24534,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         let next = ledger;
         for (const receipt of receipts) {
           const result = recordGalleryPurchase(next, receipt);
-          if (result.status === "blocked") fail23(result.reason);
+          if (result.status === "blocked") fail24(result.reason);
           next = result.ledger;
         }
         if (!same22(next, ledger)) await write(scope2, next);
         return { ...summarizeGalleryNetCost(next), ledger: next };
       }),
       markListed: (scope2, receipts) => run(scope2, async (ledger) => {
-        if (!Array.isArray(receipts)) fail23("FC27_GALLERY_ACCOUNTING_LISTING_UNCONFIRMED");
+        if (!Array.isArray(receipts)) fail24("FC27_GALLERY_ACCOUNTING_LISTING_UNCONFIRMED");
         let next = ledger;
         for (const receipt of receipts) {
           const result = recordGallerySale(next, { ...receipt, state: "listed" });
-          if (result.status === "blocked") fail23(result.reason);
+          if (result.status === "blocked") fail24(result.reason);
           next = result.ledger;
         }
         if (!same22(next, ledger)) await write(scope2, next);
         return { ...summarizeGalleryNetCost(next), ledger: next };
       }),
       reconcile: (scope2, snapshot) => run(scope2, async (ledger) => {
-        if (snapshot?.status !== "observed" || !Array.isArray(snapshot.receipts) || new Set(snapshot.receipts.map((row) => row.itemId)).size !== snapshot.receipts.length) fail23("FC27_GALLERY_SALES_UNCONFIRMED");
+        if (snapshot?.status !== "observed" || !Array.isArray(snapshot.receipts) || new Set(snapshot.receipts.map((row) => row.itemId)).size !== snapshot.receipts.length) fail24("FC27_GALLERY_SALES_UNCONFIRMED");
         let next = ledger, unknown = 0;
         const rows = new Map(snapshot.receipts.map((row) => [row.itemId, row]));
         for (const entry of ledger.entries) {
@@ -23342,7 +24562,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (["listed", "unsold", "unknown"].includes(entry.state)) unknown++;
             continue;
           }
-          if (row.definitionId !== entry.definitionId) fail23("FC27_GALLERY_NET_COST_IDENTITY_CONFLICT");
+          if (row.definitionId !== entry.definitionId) fail24("FC27_GALLERY_NET_COST_IDENTITY_CONFLICT");
           const sale = {
             itemId: entry.itemId,
             definitionId: entry.definitionId,
@@ -23357,7 +24577,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             continue;
           }
           const result = recordGallerySale(next, sale);
-          if (result.status === "blocked") fail23(result.reason);
+          if (result.status === "blocked") fail24(result.reason);
           next = result.ledger;
         }
         if (!same22(next, ledger)) await write(scope2, next);
@@ -23630,10 +24850,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return ACTIONS.has(action) ? action : "unknown";
   }
   function normalizeRange(value, fallback = [0, 0], options = {}) {
-    const values7 = Array.isArray(value) ? value : fallback;
+    const values8 = Array.isArray(value) ? value : fallback;
     const floor = options.positive === true ? Number.MIN_VALUE : 0;
-    const first = Math.max(floor, finiteNumber3(values7?.[0], fallback[0]));
-    const second = Math.max(floor, finiteNumber3(values7?.[1], fallback[1]));
+    const first = Math.max(floor, finiteNumber3(values8?.[0], fallback[0]));
+    const second = Math.max(floor, finiteNumber3(values8?.[1], fallback[1]));
     return [Math.min(first, second), Math.max(first, second)];
   }
   function tradeActionDelay(policy = {}, actionInput = "") {
@@ -23702,9 +24922,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     return merged;
   }
-  function callBoolean2(item2, method7, fallback = false) {
+  function callBoolean2(item2, method8, fallback = false) {
     try {
-      if (typeof item2?.[method7] === "function") return item2[method7]() === true;
+      if (typeof item2?.[method8] === "function") return item2[method8]() === true;
     } catch {
     }
     return fallback;
@@ -23714,8 +24934,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Array.isArray(groups) ? groups : [];
   }
   function itemLeagueId(item2) {
-    const values7 = [item2?.leagueId, item2?.league, item2?._leagueId, item2?._data?.leagueId, item2?._staticData?.leagueId];
-    const value = values7.map(Number).find((entry) => Number.isFinite(entry) && entry > 0);
+    const values8 = [item2?.leagueId, item2?.league, item2?._leagueId, item2?._data?.leagueId, item2?._staticData?.leagueId];
+    const value = values8.map(Number).find((entry) => Number.isFinite(entry) && entry > 0);
     return value || 0;
   }
   var IDENTITY_FIELDS = [
@@ -23750,13 +24970,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   ];
   function identityIds(item2) {
     const holders = [item2, ...IDENTITY_HOLDERS.map((field) => item2?.[field])].filter((holder) => holder && typeof holder === "object");
-    const values7 = holders.flatMap((holder) => IDENTITY_FIELDS.flatMap((field) => {
+    const values8 = holders.flatMap((holder) => IDENTITY_FIELDS.flatMap((field) => {
       const value = holder?.[field];
       if (Array.isArray(value)) return value;
       if (typeof value === "string") return value.match(/\d+/g) || [];
       return [value];
     }));
-    return [...new Set(values7.map(Number).filter((value) => Number.isFinite(value) && value > 0))];
+    return [...new Set(values8.map(Number).filter((value) => Number.isFinite(value) && value > 0))];
   }
   function isLimitedUse(item2) {
     const loans = Number(item2?.loans ?? item2?._data?.loans);
@@ -23918,13 +25138,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const resolvedPile = pileValue("purchased");
       const actions = [];
       const run = async (id12, owner, methodName, args = []) => {
-        const method7 = owner?.[methodName];
-        if (typeof method7 !== "function") {
+        const method8 = owner?.[methodName];
+        if (typeof method8 !== "function") {
           actions.push({ id: id12, available: false, succeeded: false, error: null });
           return;
         }
         try {
-          await method7.apply(owner, args);
+          await method8.apply(owner, args);
           actions.push({ id: id12, available: true, succeeded: true, error: null });
         } catch (error2) {
           actions.push({
@@ -24078,9 +25298,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (Array.isArray(value)) return value.filter((entry) => entry === null || ["string", "number", "boolean"].includes(typeof entry));
     return null;
   }
-  function callBoolean3(value, method7) {
+  function callBoolean3(value, method8) {
     try {
-      return typeof value?.[method7] === "function" ? value[method7]() === true : null;
+      return typeof value?.[method8] === "function" ? value[method8]() === true : null;
     } catch {
       return null;
     }
@@ -24862,16 +26082,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     async function refreshPurchaseState(options = {}) {
       const service = runtime?.services?.Item;
       const methods = options.ambiguity === true ? ["requestUnassignedItems", "requestTransferItems", "requestClubItems", "requestWatchlist", "requestWatchedItems"] : options.destination === "transfer" ? ["requestTransferItems"] : options.destination === "club" ? ["requestClubItems"] : ["requestUnassignedItems"];
-      const available = [...new Set(methods)].filter((method7) => typeof service?.[method7] === "function");
+      const available = [...new Set(methods)].filter((method8) => typeof service?.[method8] === "function");
       if (!available.length) return { status: "unsupported", response: null, steps: [], error: null };
       try {
         const steps = [];
-        for (const method7 of available) {
+        for (const method8 of available) {
           const pacingError = await requestPacingError("purchase-refresh");
           if (pacingError) return { status: "blocked", response: null, steps, error: pacingError };
-          const response = await observeResult(service[method7](), options.observerContext || {});
+          const response = await observeResult(service[method8](), options.observerContext || {});
           const summary3 = responseSummary(response);
-          steps.push({ method: method7, response: summary3 });
+          steps.push({ method: method8, response: summary3 });
           if (!summary3.success) {
             const classification = await classifyPacingResult("purchase-refresh", response || {});
             return {
@@ -25202,14 +26422,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
   function zonedParts(epoch2, timezone) {
-    const values7 = Object.fromEntries(formatter(timezone).formatToParts(new Date(epoch2)).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+    const values8 = Object.fromEntries(formatter(timezone).formatToParts(new Date(epoch2)).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
     return {
-      year: values7.year,
-      month: values7.month,
-      day: values7.day,
-      hour: values7.hour,
-      minute: values7.minute,
-      second: values7.second
+      year: values8.year,
+      month: values8.month,
+      day: values8.day,
+      hour: values8.hour,
+      minute: values8.minute,
+      second: values8.second
     };
   }
   function localPartsEpoch(parts) {
@@ -25279,7 +26499,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var tradeId3 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var clone3 = (value) => structuredClone(value);
   var same24 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var fail24 = (reason) => {
+  var fail25 = (reason) => {
     throw new Error(reason);
   };
   var epoch = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -25349,14 +26569,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const raw = await get(key, null);
       if (raw === null) return null;
       const value = normalizeGalleryListingSchedule(raw);
-      if (!value || value.scope !== scope2 || !same24(value.context, context)) fail24("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!value || value.scope !== scope2 || !same24(value.context, context)) fail25("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       return value;
     };
     const write = async (value) => {
       const normalized = normalizeGalleryListingSchedule(value);
-      if (!normalized) fail24("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!normalized) fail25("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       await set(key, clone3(normalized));
-      if (!same24(await get(key, null), normalized)) fail24("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
+      if (!same24(await get(key, null), normalized)) fail25("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
       return normalized;
     };
     const inspect = async ({ purchase = null, at: at11 = now(), sessionReady = true } = {}) => {
@@ -25458,7 +26678,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/ea/fc27-gallery-listing-inventory.js
-  var fail25 = (reason) => {
+  var fail26 = (reason) => {
     throw Error(reason);
   };
   var id11 = (value) => Number.isSafeInteger(value) && value > 0;
@@ -25483,16 +26703,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return item2?.definitionId === ref.definitionId ? { item: item2, pile: "club" } : null;
       },
       async scan(target) {
-        if (!target?.set?.id || !["futgg", "fodder"].includes(target.source) || !target.set.id.startsWith(`${target.source}:`)) fail25("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
+        if (!target?.set?.id || !["futgg", "fodder"].includes(target.source) || !target.set.id.startsWith(`${target.source}:`)) fail26("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
         let matches2;
         if (target.source === "fodder") {
           fodderPoolQueries(target.set);
           matches2 = (item2) => matchesFodderPool(target.set, item2);
         } else {
-          if (!Array.isArray(target.pool?.items) || target.pool.candidateOnly === true || target.pool.complete !== true) fail25("FC27_GALLERY_LISTING_SET_POOL_INCOMPLETE");
-          if (`futgg:${target.pool.setId}` !== target.set.id) fail25("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
+          if (!Array.isArray(target.pool?.items) || target.pool.candidateOnly === true || target.pool.complete !== true) fail26("FC27_GALLERY_LISTING_SET_POOL_INCOMPLETE");
+          if (`futgg:${target.pool.setId}` !== target.set.id) fail26("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
           const ids2 = new Set(target.pool.items.map((row) => row.eaId));
-          if (!ids2.size || [...ids2].some((value) => !id11(value))) fail25("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
+          if (!ids2.size || [...ids2].some((value) => !id11(value))) fail26("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
           matches2 = (item2) => ids2.has(item2.definitionId);
         }
         assertCurrent();
@@ -25501,9 +26721,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const seen = /* @__PURE__ */ new Set();
         for (let start = 0; start < count2; start += 250) {
           const rows = await read({ start, count: Math.min(250, count2 - start), definitionIds: [] });
-          if (rows.length !== Math.min(250, count2 - start)) fail25("FC27_GALLERY_LISTING_CLUB_INCOMPLETE");
+          if (rows.length !== Math.min(250, count2 - start)) fail26("FC27_GALLERY_LISTING_CLUB_INCOMPLETE");
           for (const row of rows) {
-            if (seen.has(row.id) || !entities.has(row.id)) fail25("FC27_GALLERY_LISTING_CLUB_INCOMPLETE");
+            if (seen.has(row.id) || !entities.has(row.id)) fail26("FC27_GALLERY_LISTING_CLUB_INCOMPLETE");
             seen.add(row.id);
           }
         }
@@ -25525,7 +26745,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return rows.some((row) => row.id === ref.id && row.definitionId === ref.definitionId && row.pile === "club") && entities.has(ref.id);
       },
       async validate(ref) {
-        if (ref.pile === "club" && !await this.hydrate(ref)) fail25("FC27_GALLERY_LISTING_ITEM_CHANGED");
+        if (ref.pile === "club" && !await this.hydrate(ref)) fail26("FC27_GALLERY_LISTING_ITEM_CHANGED");
       }
     };
   }
@@ -25602,7 +26822,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-gallery-listing.js
-  var fail26 = (reason) => {
+  var fail27 = (reason) => {
     throw new Error(reason);
   };
   var safe = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_LISTING_UNAVAILABLE";
@@ -25639,12 +26859,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var readCircuit = async (get, scope2) => {
     const value = await get(circuitKey(scope2), null);
     if (!value) return { schema: 1, scope: scope2, persistent: false, retryAt: 0 };
-    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail26("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+    if (value.schema !== 1 || value.scope !== scope2 || typeof value.persistent !== "boolean" || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) fail27("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
     return value;
   };
   var saveCircuit = async (get, set, scope2, value) => {
     await set(circuitKey(scope2), value);
-    if (same25(await get(circuitKey(scope2), null), value) === false) fail26("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+    if (same25(await get(circuitKey(scope2), null), value) === false) fail27("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
   };
   function createFc27GalleryListing({
     root,
@@ -25675,20 +26895,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assertCurrent = () => {
-        if (!same25(context, readFc27Context(root)) || !isCurrent()) fail26("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same25(context, readFc27Context(root)) || !isCurrent()) fail27("FC27_GALLERY_CONTEXT_CHANGED");
       };
       if (setSource && !inventory) inventory = inventoryFactory(root, { assertCurrent });
       const adapter = adapterFactory(inventory ? galleryListingInventoryRuntime(root, inventory) : root);
       const assertSource = async () => {
         if (setSource) return;
         const currentPurchase = await purchase.inspect();
-        if (!currentPurchase || currentPurchase.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) fail26("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+        if (!currentPurchase || currentPurchase.status !== "observed" || `${currentPurchase.operationId}:${currentPurchase.binding}` !== expectedPurchaseBinding) fail27("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
       };
       const checkOtherTransactions = async () => {
         await assertGalleryRelistSettled(get, scope2);
         const other = await persistence.journal.read(scope2);
-        if (other && !isTerminalTraditionalJournal(other)) fail26("FC27_RECOVERY_REQUIRED");
-        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail26("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
+        if (other && !isTerminalTraditionalJournal(other)) fail27("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null) !== null) fail27("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
       };
       const session2 = createGalleryBulkListSession({
         scope: scope2,
@@ -25706,9 +26926,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await assertSource();
           if (setSource) await inventory.validate(entry.item);
           const circuit = await readCircuit(get, scope2);
-          if (circuit.persistent) fail26("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail26("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail26("FC27_GALLERY_LISTING_DISABLED");
+          if (circuit.persistent) fail27("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail27("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail27("FC27_GALLERY_LISTING_DISABLED");
           await checkOtherTransactions();
         },
         afterMutation: async (_entry, result) => {
@@ -25814,7 +27034,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           try {
             const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
             const purchaseSnapshot = await purchase.inspect();
-            if (!same25(prepared?.context, context) || !same25(context, readFc27Context(root))) fail26("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same25(prepared?.context, context) || !same25(context, readFc27Context(root))) fail27("FC27_GALLERY_CONTEXT_CHANGED");
             if (prepared?.binding !== `${purchaseSnapshot.operationId}:${purchaseSnapshot.binding}`) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_PURCHASE_CHANGED" };
             }
@@ -25833,7 +27053,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const store = createGalleryListingScheduleStore({ get, set, scope: scope2, context });
             const purchaseSnapshot = await purchase.inspect();
             const state = await store.inspect({ purchase: purchaseSnapshot, sessionReady: true, at: Date.now() });
-            if (!same25(context, readFc27Context(root))) fail26("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same25(context, readFc27Context(root))) fail27("FC27_GALLERY_CONTEXT_CHANGED");
             if (state.status === "blocked") return state;
             if (state.status !== "disarmed") return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_STATE_LOCKED" };
             if (!liveEnabled || state.schedule?.schedule?.type !== "once" || state.schedule.runCount !== 0 || !(state.schedule.nextRunAt > Date.now())) {
@@ -25874,7 +27094,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
             }
             const scheduleCurrent = () => isCurrent() && same25(context, readFc27Context(root));
-            if (!scheduleCurrent()) fail26("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!scheduleCurrent()) fail27("FC27_GALLERY_CONTEXT_CHANGED");
             await store.checkpoint({ status: "running", reason: null, at: Date.now(), runCount: saved.runCount });
             const preparedResult = await publicApi.prepare({ isCurrent: scheduleCurrent });
             if (preparedResult.status !== "ready") {
@@ -25926,10 +27146,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         planned2 = null;
         try {
           const setSource = target ? { kind: "set", setId: target.set?.id } : null;
-          if (setSource && (typeof setSource.setId !== "string" || !/^(futgg|fodder):[a-zA-Z0-9/_-]+$/.test(setSource.setId) || setSource.setId.length > 240)) fail26("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
+          if (setSource && (typeof setSource.setId !== "string" || !/^(futgg|fodder):[a-zA-Z0-9/_-]+$/.test(setSource.setId) || setSource.setId.length > 240)) fail27("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
           const env = create({ isCurrent, setSource }), info = setSource ? null : await purchase.inspect();
           env.assertCurrent();
-          if (!setSource && info?.status !== "observed") fail26(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+          if (!setSource && info?.status !== "observed") fail27(info?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
           const binding = setSource ? `set:${setSource.setId}` : `${info.operationId}:${info.binding}`;
           const result = await env.persistence.exclusive(env.scope, async () => {
             await env.checkOtherTransactions();
@@ -25965,7 +27185,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (setSource || source.entries.some((row) => row.pile === "unassigned")) {
               const fresh = await env.adapter.refreshPurchaseState({ destination: "unassigned" });
               env.assertCurrent();
-              if (fresh?.status !== "completed") fail26("FC27_GALLERY_UNASSIGNED_UNCONFIRMED");
+              if (fresh?.status !== "completed") fail27("FC27_GALLERY_UNASSIGNED_UNCONFIRMED");
             }
             const refs3 = setSource ? await env.inventory.scan(target) : source.entries.map((row) => ({ id: row.itemId, definitionId: row.definitionId, pile: row.pile ?? "club" }));
             env.assertCurrent();
@@ -26120,9 +27340,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const ids2 = [...new Set(previous.candidates.map((row) => row.item.definitionId))].filter((id12) => !definitionIds || definitionIds.includes(id12));
           if (!ids2.length) return { prices: structuredClone(previous.marketPrices), expiresAt: previous.expiresAt };
           const quotes = await loadPrices(ids2, { force: true, isCurrent: () => isCurrent() && !stopped });
-          if (!isCurrent() || prepared !== previous || !same25(previous.context, readFc27Context(root))) fail26("FC27_GALLERY_CONTEXT_CHANGED");
-          if (stopped) fail26("FC27_GALLERY_BULK_LIST_STOPPED");
-          if (quotes.listingPriceSource && quotes.listingPriceSource !== previous.listingPriceSource) fail26("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (!isCurrent() || prepared !== previous || !same25(previous.context, readFc27Context(root))) fail27("FC27_GALLERY_CONTEXT_CHANGED");
+          if (stopped) fail27("FC27_GALLERY_BULK_LIST_STOPPED");
+          if (quotes.listingPriceSource && quotes.listingPriceSource !== previous.listingPriceSource) fail27("FC27_GALLERY_LISTING_PLAN_CHANGED");
           const merged = { ...previous.marketPrices };
           for (const id12 of ids2) {
             delete merged[id12];
@@ -26167,14 +27387,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (resume && old.entries?.some((entry) => entry.status === "pending" && entry.item.pile === "unassigned")) {
             const refreshed = await env.adapter.refreshPurchaseState({ destination: "unassigned" });
             env.assertCurrent();
-            if (refreshed?.status !== "completed") fail26("FC27_GALLERY_UNASSIGNED_UNCONFIRMED");
+            if (refreshed?.status !== "completed") fail27("FC27_GALLERY_UNASSIGNED_UNCONFIRMED");
           }
           const circuit = await readCircuit(get, env.scope);
-          if (circuit.persistent) fail26("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
-          if (circuit.retryAt > Date.now()) fail26("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!resume && (!prepared || !same25(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same25(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same25(c.item, e.item) && same25(c.purchase, e.purchase))))) fail26("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (circuit.persistent) fail27("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+          if (circuit.retryAt > Date.now()) fail27("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
+          if (!resume && (!prepared || !same25(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same25(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same25(c.item, e.item) && same25(c.purchase, e.purchase))))) fail27("FC27_GALLERY_LISTING_PLAN_CHANGED");
           if (!resume && plan.entries.some((e) => e.priceOrigin === "market" && (e.quoteExpiresAt ?? prepared.expiresAt) <= Date.now())) {
-            fail26("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
+            fail27("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
           }
           const result = await env.session.execute({
             approved,
@@ -26566,7 +27786,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-gallery-relist.js
   var same26 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var copy = (value) => structuredClone(value);
-  var fail27 = (reason) => {
+  var fail28 = (reason) => {
     throw Error(reason);
   };
   var galleryRelistKey = (scope2) => `fcat-fc27-gallery-auto-relist-v1:${scope2}`;
@@ -26588,29 +27808,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const read = async (context, scope2) => {
       const raw = await get(galleryRelistKey(scope2), null);
       if (raw === null) return null;
-      if (raw.schema !== 1 || !same26(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive9(raw.nextAt) || !positive9(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive9(ref.id) || !positive9(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive9(row?.item?.id) || !positive9(row?.item?.definitionId) || !positive9(row.auction?.startingBid) || !positive9(row.auction?.buyNowPrice)))) fail27("FC27_GALLERY_RELIST_RECORD_INVALID");
+      if (raw.schema !== 1 || !same26(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive9(raw.nextAt) || !positive9(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive9(ref.id) || !positive9(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive9(row?.item?.id) || !positive9(row?.item?.definitionId) || !positive9(row.auction?.startingBid) || !positive9(row.auction?.buyNowPrice)))) fail28("FC27_GALLERY_RELIST_RECORD_INVALID");
       return copy(raw);
     };
     const write = async (scope2, value) => {
       await set(galleryRelistKey(scope2), copy(value));
-      if (!same26(await get(galleryRelistKey(scope2), null), value)) fail27("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
+      if (!same26(await get(galleryRelistKey(scope2), null), value)) fail28("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
     };
     const environment = () => {
       const context = contextNow(), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assert = () => {
-        if (!same26(context, contextNow())) fail27("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same26(context, contextNow())) fail28("FC27_GALLERY_CONTEXT_CHANGED");
       };
       const adapter = adapterFactory(root);
       const guard = async () => {
         assert();
-        if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail27("FC27_GALLERY_LISTING_DISABLED");
+        if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope2)) fail28("FC27_GALLERY_LISTING_DISABLED");
         const journal = await persistence.journal.read(scope2);
-        if (journal && !isTerminalTraditionalJournal(journal)) fail27("FC27_RECOVERY_REQUIRED");
-        if (await get(galleryPurchasePendingKey(scope2), null)) fail27("FC27_BUY_RECOVERY_REQUIRED");
+        if (journal && !isTerminalTraditionalJournal(journal)) fail28("FC27_RECOVERY_REQUIRED");
+        if (await get(galleryPurchasePendingKey(scope2), null)) fail28("FC27_BUY_RECOVERY_REQUIRED");
         const circuit = await get(`fcat-fc27-gallery-listing-circuit-v1:${scope2}`, null);
-        if (circuit && (circuit.schema !== 1 || circuit.scope !== scope2 || typeof circuit.persistent !== "boolean" || !Number.isSafeInteger(circuit.retryAt))) fail27("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
-        if (circuit?.persistent || circuit?.retryAt > now()) fail27("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
+        if (circuit && (circuit.schema !== 1 || circuit.scope !== scope2 || typeof circuit.persistent !== "boolean" || !Number.isSafeInteger(circuit.retryAt))) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNVERIFIED");
+        if (circuit?.persistent || circuit?.retryAt > now()) fail28("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
         assert();
       };
       const response = async (result) => {
@@ -26619,7 +27839,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const value = { schema: 1, scope: scope2, persistent: code2 === 427, retryAt: code2 === 429 ? now() + 6e4 : 0 };
           const key = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
           await set(key, value);
-          if (!same26(await get(key, null), value)) fail27("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+          if (!same26(await get(key, null), value)) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
         }
       };
       return { context, scope: scope2, persistence, assert, adapter, guard, response };
@@ -26654,12 +27874,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return await env.persistence.exclusive(env.scope, async () => {
             await env.guard();
             const old = await read(env.context, env.scope);
-            if (old && ["running", "blocked", "armed"].includes(old.status)) fail27("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            if (old && ["running", "blocked", "armed"].includes(old.status)) fail28("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
             let snapshot = null, items = [];
             if (range === "batch") {
               snapshot = await purchase.inspect();
               env.assert();
-              if (snapshot?.status !== "observed") fail27(snapshot?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
+              if (snapshot?.status !== "observed") fail28(snapshot?.reason ?? "FC27_GALLERY_LISTING_NO_PURCHASE");
               const receipts = projectGalleryListingReceipts({
                 scope: env.scope,
                 context: env.context,
@@ -26668,9 +27888,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 expectedOperationId: snapshot.operationId,
                 expectedBinding: snapshot.binding
               });
-              if (receipts.status !== "observed") fail27(receipts.reason);
+              if (receipts.status !== "observed") fail28(receipts.reason);
               items = receipts.entries.filter((row) => positive9(row.itemId) && positive9(row.definitionId)).map((row) => ({ id: row.itemId, definitionId: row.definitionId }));
-              if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail27("FC27_GALLERY_LISTING_NO_PURCHASE");
+              if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail28("FC27_GALLERY_LISTING_NO_PURCHASE");
             }
             const value = {
               schema: 1,
@@ -26704,7 +27924,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             env.assert();
             const value = await read(env.context, env.scope);
             if (!value) return { status: "absent" };
-            if (value.status === "running" || value.pending) fail27("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+            if (value.status === "running" || value.pending) fail28("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
             value.status = "disarmed";
             value.reason = "user-stopped";
             await write(env.scope, value);
@@ -26733,13 +27953,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 await write(env.scope, value);
                 return value;
               }
-              if ((await env.adapter.refreshTransferItems()).status !== "completed") fail27("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              if ((await env.adapter.refreshTransferItems()).status !== "completed") fail28("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               env.assert();
               const exact = value.pending.every((row) => {
                 const current3 = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
                 return current3?.item.id === row.item.id && current3.item.definitionId === row.item.definitionId && current3.auction?.state === "active" && current3.auction.startingBid === row.auction.startingBid && current3.auction.buyNowPrice === row.auction.buyNowPrice;
               });
-              if (!exact) fail27("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              if (!exact) fail28("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               if (value.range === "batch") await assertNoGalleryListingPending(get, env.scope, {
                 set,
                 context: env.context,
@@ -26761,7 +27981,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (value.nextAt > now()) return { ...value, status: "waiting-time" };
             await env.guard();
             const previous = await readGalleryBulkListRecovery(get, env.scope);
-            if (!["absent", "clear"].includes(previous.status)) fail27("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
+            if (!["absent", "clear"].includes(previous.status)) fail28("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
             if (value.range === "batch") {
               const snapshot = await purchase.inspect();
               env.assert();
@@ -26772,10 +27992,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 return value;
               }
             }
-            if ((await env.adapter.refreshTransferItems()).status !== "completed") fail27("FC27_GALLERY_TRANSFER_UNCONFIRMED");
+            if ((await env.adapter.refreshTransferItems()).status !== "completed") fail28("FC27_GALLERY_TRANSFER_UNCONFIRMED");
             env.assert();
             const before = normalizeBulkRelistSnapshot(env.adapter.inspectBulkRelistSnapshot());
-            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive9(row.item.id) || !positive9(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail27("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
+            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive9(row.item.id) || !positive9(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail28("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
             const entries2 = value.range === "all" ? before.items : before.items.filter((row) => value.items.some((ref) => ref.id === row.item.id && ref.definitionId === row.item.definitionId));
             if (!entries2.length) {
               value.nextAt = now() + value.minutes * 6e4;
@@ -26787,11 +28007,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             await write(env.scope, value);
             const current2 = async () => {
               await env.guard();
-              if (stopped || !same26(await read(env.context, env.scope), value)) fail27("FC27_GALLERY_RELIST_PLAN_CHANGED");
+              if (stopped || !same26(await read(env.context, env.scope), value)) fail28("FC27_GALLERY_RELIST_PLAN_CHANGED");
               if (value.range === "batch") {
                 const snapshot = await purchase.inspect();
                 env.assert();
-                if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) fail27("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+                if (`${snapshot?.operationId}:${snapshot?.binding}` !== value.purchaseBinding) fail28("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
               }
             };
             let result;
@@ -26839,7 +28059,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   await current2();
                   const original = entries2.find((row) => row.item.id === entry.item.id);
                   const live = env.adapter.inspectListingItem(entry.item)?.candidate?.auction;
-                  if (String(live?.tradeId) !== String(original.auction.tradeId) || live.startingBid !== original.auction.startingBid || live.buyNowPrice !== original.auction.buyNowPrice) fail27("FC27_GALLERY_RELIST_PLAN_CHANGED");
+                  if (String(live?.tradeId) !== String(original.auction.tradeId) || live.startingBid !== original.auction.startingBid || live.buyNowPrice !== original.auction.buyNowPrice) fail28("FC27_GALLERY_RELIST_PLAN_CHANGED");
                   value.pending ??= [];
                   value.pending.push(copy(original));
                   await write(env.scope, value);
@@ -26876,7 +28096,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               if (value.range === "all" && value.pending?.some((row) => {
                 const live = env.adapter.inspectListingItem({ ...row.item, pile: "transfer" })?.candidate;
                 return live?.item.definitionId !== row.item.definitionId || live.auction?.state !== "active" || live.auction.startingBid !== row.auction.startingBid || live.auction.buyNowPrice !== row.auction.buyNowPrice;
-              })) fail27("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
+              })) fail28("FC27_GALLERY_RELIST_RECOVERY_REQUIRED");
               value.pending = null;
               value.status = value.runs < 2 ? "armed" : "completed";
               value.nextAt = now() + value.minutes * 6e4;
@@ -27380,7 +28600,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "skillMoves"
   ];
   var flags = ["collected", "held", "inClub", "firstOwned", "holographic"];
-  var integer15 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
+  var integer16 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e9;
   var gradeName = (value) => typeof value === "string" && /^[A-S][+-]?$/.test(value);
   function createGalleryPlanReplay(input) {
     try {
@@ -27389,7 +28609,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!targets.length || targets.length > 4 || targets.reduce((n, target) => n + target.progress.rows.length, 0) > 512) return null;
       const clean = targets.map((target) => {
         const { set, catalog, progress, prices = {}, targetGrade } = target;
-        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer15(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer15(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
+        if (!/^futgg:[1-9]\d{0,8}$/.test(set.id) || !integer16(set.requiredCards) || set.requiredCards < 1 || !Array.isArray(set.grades) || set.grades.length > 10 || !(gradeName(targetGrade) || integer16(targetGrade)) || compileGalleryScoringRules(catalog).status !== "ready") throw Error("invalid");
         const tags = catalog.tags.map((tag) => {
           const rule = tag.rules[0];
           if (rule.values.length > 256 || rule.values.some((value) => !/^[A-Za-z0-9_-]{1,24}$/.test(String(value))) || tag.tiers.length > 256) throw Error("invalid");
@@ -27404,7 +28624,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         const rows = progress.rows.map((row) => {
           const clean2 = {};
-          for (const key of numeric) if (row[key] == null || integer15(row[key])) clean2[key] = row[key] ?? null;
+          for (const key of numeric) if (row[key] == null || integer16(row[key])) clean2[key] = row[key] ?? null;
           else throw Error("invalid");
           for (const key of flags) if (row[key] == null || typeof row[key] === "boolean") clean2[key] = row[key] ?? null;
           else throw Error("invalid");
@@ -27415,9 +28635,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return clean2;
         });
         const quotes = {};
-        for (const row of rows) if (integer15(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
+        for (const row of rows) if (integer16(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
         return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
-          if (!gradeName(grade.name) || !integer15(grade.threshold)) throw Error("invalid");
+          if (!gradeName(grade.name) || !integer16(grade.threshold)) throw Error("invalid");
           if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
           if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error("invalid");
           const rewards2 = grade.rewards.map((reward) => {
@@ -27425,13 +28645,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
             for (const key of ["assetId", "teamEaId", "resourceId"]) {
               if (reward[key] != null) {
-                if (!integer15(reward[key])) throw Error("invalid");
+                if (!integer16(reward[key])) throw Error("invalid");
                 value[key] = reward[key];
               }
             }
             for (const key of ["itemType", "itemCategory"]) {
               if (reward[key] != null) {
-                if (!(integer15(reward[key]) || typeof reward[key] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key]))) throw Error("invalid");
+                if (!(integer16(reward[key]) || typeof reward[key] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key]))) throw Error("invalid");
                 value[key] = reward[key];
               }
             }
@@ -27451,7 +28671,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           rows
         }, prices: quotes, targetGrade };
       });
-      if (joint && input.budget != null && !integer15(input.budget)) return null;
+      if (joint && input.budget != null && !integer16(input.budget)) return null;
       if (rewardMode && !clean.some((target) => target.set.grades.some((grade) => grade.rewards.some((reward) => galleryRewardIdentity(reward)?.key === input.catalogRewardKey)))) return null;
       return {
         schema: 1,
@@ -27742,22 +28962,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key });
   }
 
-  // src/adapters/browser/fc27-diagnostic-download.js
-  function downloadFc27Diagnostics(runtime, document, text5, filename) {
-    const blob = new runtime.Blob([String(text5)], { type: "application/json;charset=utf-8" });
-    const url = runtime.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    try {
-      anchor.click();
-    } finally {
-      anchor.remove();
-      runtime.setTimeout(() => runtime.URL.revokeObjectURL(url), 1e3);
-    }
-  }
-
   // src/gallery/reference-prices.js
   var positive10 = (value) => Number.isSafeInteger(value) && value > 0;
   var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -27990,9 +29194,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const startedAt = now();
           let timer;
           const loading = ensure(source, unique2, options, byId, current2, forced.has(source), progress, quoteTtlMs, futbinBatch, deadlineAt);
-          let values7;
+          let values8;
           try {
-            values7 = deadlineAt === null ? await loading : await Promise.race([
+            values8 = deadlineAt === null ? await loading : await Promise.race([
               loading,
               new Promise((resolve) => {
                 timer = setTimeout(() => resolve(null), Math.max(0, deadlineAt - now()));
@@ -28002,13 +29206,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             clearTimeout(timer);
           }
           current2();
-          if (values7 === null) {
-            values7 = unique2.map((id12) => {
+          if (values8 === null) {
+            values8 = unique2.map((id12) => {
               const row = cache.get(keyOf4(source, options, id12));
               return valid3(row, source, options, id12) && (!forced.has(source) || row.fetchedAt >= startedAt) ? row : void 0;
             });
           }
-          quotes[source] = values7.map((row) => lifetime2(row, quoteTtlMs));
+          quotes[source] = values8.map((row) => lifetime2(row, quoteTtlMs));
           if (deadlineAt !== null && now() >= deadlineAt && quotes[source].some((row) => !row || row.error || !validPublicPrice(row.price) || row.expiresAt <= now())) budgetExpired = true;
           progress({ source, index: quotes[source].filter(Boolean).length, total: unique2.length });
         }
@@ -28419,7 +29623,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   };
   var streamlinedExternalReason = (reason) => reason?.startsWith("prerequisite-") ? `Club \u524D\u7F6E\u5361\uFF1A${labels[reason.slice(13)] ?? reason.slice(13)}` : labels[reason] ?? reason;
   function renderStreamlinedExternalSelection({ document, parent, snapshot, renderCard, onSelection, isBusy }) {
-    const add2 = (parent2, tag, text5 = "") => {
+    const add3 = (parent2, tag, text5 = "") => {
       const node = document.createElement(tag);
       node.textContent = text5;
       parent2.append(node);
@@ -28428,15 +29632,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const selected = /* @__PURE__ */ new Set(), rows = snapshot.rows, size = 24;
     const controls = /* @__PURE__ */ new Set();
     let page = 0, disposed = false, cardDisposers = [];
-    add2(parent, "strong", `Transfer / Unassigned \xB7 ${number2(rows.length)} \u5F20`).className = "result-summary";
-    add2(parent, "small", `\u5F53\u524D\u7F13\u5B58 \xB7 \u53EF\u9009 ${number2(rows.filter((row) => row.selectable).length)} \u5F20 \xB7 FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${snapshot.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"}`);
-    add2(parent, "small", "Club \u6709\u540C\u7248\u672C\u65F6\uFF0C\u9884\u89C8\u4F1A\u52A0\u5165\u90A3\u5F20 Club \u5361\u4F5C\u4E3A\u524D\u7F6E\uFF1B\u786E\u8BA4\u6D88\u8017\u540E\u624D\u9010\u6279\u79FB\u5165\u5916\u90E8\u5361\u3002\u8FBE\u5230\u672C\u8F6E\u76EE\u6807\u5373\u505C\u6B62\u3002");
-    const summary3 = add2(parent, "output");
+    add3(parent, "strong", `Transfer / Unassigned \xB7 ${number2(rows.length)} \u5F20`).className = "result-summary";
+    add3(parent, "small", `\u5F53\u524D\u7F13\u5B58 \xB7 \u53EF\u9009 ${number2(rows.filter((row) => row.selectable).length)} \u5F20 \xB7 FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${snapshot.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"}`);
+    add3(parent, "small", "Club \u6709\u540C\u7248\u672C\u65F6\uFF0C\u9884\u89C8\u4F1A\u52A0\u5165\u90A3\u5F20 Club \u5361\u4F5C\u4E3A\u524D\u7F6E\uFF1B\u786E\u8BA4\u6D88\u8017\u540E\u624D\u9010\u6279\u79FB\u5165\u5916\u90E8\u5361\u3002\u8FBE\u5230\u672C\u8F6E\u76EE\u6807\u5373\u505C\u6B62\u3002");
+    const summary3 = add3(parent, "output");
     summary3.dataset.externalSummary = "";
-    const actions = add2(parent, "div");
+    const actions = add3(parent, "div");
     actions.className = "external-actions";
     const button = (text5, action) => {
-      const node = add2(actions, "button", text5);
+      const node = add3(actions, "button", text5);
       node.type = "button";
       controls.add(node);
       node.addEventListener("click", (event) => {
@@ -28456,12 +29660,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       page--;
       paint();
     });
-    const pageLabel = add2(actions, "span");
+    const pageLabel = add3(actions, "span");
     const next = button("\u4E0B\u4E00\u9875", () => {
       page++;
       paint();
     });
-    const list2 = add2(parent, "div");
+    const list2 = add3(parent, "div");
     list2.dataset.externalList = "";
     const notify = () => {
       const chosen = rows.filter((row) => selected.has(row.item.key));
@@ -28481,25 +29685,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       list2.replaceChildren();
       page = Math.max(0, Math.min(page, Math.max(0, Math.ceil(rows.length / size) - 1)));
       pageLabel.textContent = `${page + 1} / ${Math.max(1, Math.ceil(rows.length / size))}`;
-      if (!rows.length) add2(list2, "small", "\u5F53\u524D\u7F13\u5B58\u6CA1\u6709\u5916\u90E8\u7403\u5458\u3002\u8BF7\u5148\u5728 EA \u539F\u751F\u8F6C\u4F1A\u5217\u8868\u6216\u672A\u5206\u914D\u9875\u9762\u52A0\u8F7D\u7403\u5458\uFF0C\u518D\u8FD4\u56DE\u5E76\u70B9\u51FB\u201C\u5237\u65B0\u5217\u8868\u201D\u3002");
+      if (!rows.length) add3(list2, "small", "\u5F53\u524D\u7F13\u5B58\u6CA1\u6709\u5916\u90E8\u7403\u5458\u3002\u8BF7\u5148\u5728 EA \u539F\u751F\u8F6C\u4F1A\u5217\u8868\u6216\u672A\u5206\u914D\u9875\u9762\u52A0\u8F7D\u7403\u5458\uFF0C\u518D\u8FD4\u56DE\u5E76\u70B9\u51FB\u201C\u5237\u65B0\u5217\u8868\u201D\u3002");
       for (const row of rows.slice(page * size, (page + 1) * size)) {
-        const element = add2(list2, "div");
+        const element = add3(list2, "div");
         element.className = "external-row";
         cardDisposers.push(renderCard(element, row.item));
-        const info = add2(element, "div");
+        const info = add3(element, "div");
         info.className = "player-text";
-        const label = add2(info, "label");
+        const label = add3(info, "label");
         label.className = "external-choice";
-        const choice = add2(label, "input");
+        const choice = add3(label, "input");
         choice.type = "checkbox";
         choice.checked = selected.has(row.item.key);
         choice.dataset.unavailable = String(!row.selectable);
         controls.add(choice);
         choice.setAttribute("aria-label", `\u9009\u62E9 ${row.item.name ?? `\u7248\u672C ${row.item.definitionId}`} (${row.item.id})`);
-        add2(label, "strong", row.item.name ?? `\u7248\u672C ${row.item.definitionId}`);
-        add2(info, "span", `${number2(row.item.rating)} OVR \xB7 ${number2(row.item.points)} \u5206 \xB7 ${row.item.pile === "transfer" ? "Transfer" : "Unassigned"}`);
-        if (!row.selectable) add2(info, "span", streamlinedExternalReason(row.reason)).className = "inventory-warning";
-        else add2(info, "span", row.prerequisite ? `\u5148\u8D21\u732E Club \u540C\u7248\u672C\uFF08${number2(row.prerequisite.rating)} OVR \xB7 ${number2(row.prerequisite.points)} \u5206\uFF09` : "\u6267\u884C\u65F6\u6838\u5BF9\u540E\u79FB\u5165 Club");
+        add3(label, "strong", row.item.name ?? `\u7248\u672C ${row.item.definitionId}`);
+        add3(info, "span", `${number2(row.item.rating)} OVR \xB7 ${number2(row.item.points)} \u5206 \xB7 ${row.item.pile === "transfer" ? "Transfer" : "Unassigned"}`);
+        if (!row.selectable) add3(info, "span", streamlinedExternalReason(row.reason)).className = "inventory-warning";
+        else add3(info, "span", row.prerequisite ? `\u5148\u8D21\u732E Club \u540C\u7248\u672C\uFF08${number2(row.prerequisite.rating)} OVR \xB7 ${number2(row.prerequisite.points)} \u5206\uFF09` : "\u6267\u884C\u65F6\u6838\u5BF9\u540E\u79FB\u5165 Club");
         choice.addEventListener("change", (event) => {
           if (!event.isTrusted || disposed || isBusy() || !row.selectable) return;
           if (choice.checked) selected.add(row.item.key);
@@ -28731,7 +29935,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     now = () => Date.now()
   } = {}) {
     if (!document?.body || document.getElementById("fcat-streamlined-entry")) return null;
-    const add2 = (parent, tag, value = "") => {
+    const add3 = (parent, tag, value = "") => {
       const node2 = document.createElement(tag);
       node2.textContent = value;
       parent.append(node2);
@@ -28834,11 +30038,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       rendered.clear();
     };
     const renderCard = (parent, item2, generation = renderGeneration) => {
-      const card = add2(parent, "div");
+      const card = add3(parent, "div");
       card.className = "player-card";
-      const fallback = add2(card, "span", number3(item2.rating));
+      const fallback = add3(card, "span", number3(item2.rating));
       fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
-      const slot = add2(card, "slot");
+      const slot = add3(card, "slot");
       slot.name = `streamlined-card-${generation}-${item2.key}`;
       let native = null, failed2 = false, retired = false;
       const release = () => {
@@ -29098,14 +30302,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (!result.plan) {
         const output2 = node("result");
         if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
-          add2(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
-          add2(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
+          add3(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
+          add3(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
         } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
-          add2(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
-          if (result.marketError) add2(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
+          add3(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
+          if (result.marketError) add3(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
         } else if (result.reason) {
-          add2(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason) ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
-          if (["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason)) add2(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
+          add3(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason) ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          if (["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason)) add3(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
         }
         return;
       }
@@ -29115,20 +30319,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : orderedExternal ? "\u6309\u987A\u5E8F\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
       const output = node("result"), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
-        const warning = add2(output, "section");
+        const warning = add3(output, "section");
         warning.className = "inventory-warning";
-        add2(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
+        add3(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
         for (const [key, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
           const coverage = result.quoteCoverage?.[key];
-          if (coverage) add2(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number3(coverage.valid)} / ${number3(coverage.requested)} \xB7 \u5931\u8D25 ${number3(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number3(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
+          if (coverage) add3(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number3(coverage.valid)} / ${number3(coverage.requested)} \xB7 \u5931\u8D25 ${number3(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number3(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
         }
-        add2(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
+        add3(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
       }
-      const inventoryReview = add2(output, "details");
+      const inventoryReview = add3(output, "details");
       inventoryReview.className = "inventory-review";
       inventoryReview.dataset.inventoryReview = "";
       inventoryReview.open = true;
-      const inventorySummary = add2(inventoryReview, "summary"), inventoryList = add2(inventoryReview, "div");
+      const inventorySummary = add3(inventoryReview, "summary"), inventoryList = add3(inventoryReview, "div");
       let inventoryPage = 0;
       const updateInventoryReview = () => {
         inventoryList.replaceChildren();
@@ -29138,26 +30342,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         node("review-stock").textContent = `\u5E93\u5B58 ${number3(remaining)} \u5F20\uFF08\u67E5\u770B\uFF09`;
         node("review-stock").hidden = false;
         if (!rows.length) {
-          add2(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
+          add3(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
           return;
         }
         if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
-          add2(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
+          add3(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
         }
         inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
         for (const item2 of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
-          const row = add2(inventoryList, "div");
+          const row = add3(inventoryList, "div");
           row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
-          add2(row, "strong", number3(item2.rating));
-          const text5 = add2(row, "div");
-          add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
+          add3(row, "strong", number3(item2.rating));
+          const text5 = add3(row, "div");
+          add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
           const pile = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D \u2192 Club", transfer: "\u8F6C\u4F1A\u5217\u8868 \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
-          add2(text5, "small", `${pile} \xB7 ${number3(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number3(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
+          add3(text5, "small", `${pile} \xB7 ${number3(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number3(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
         }
         if (rows.length > 50) {
-          add2(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
+          add3(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
           for (const [label, delta] of [["\u4E0A\u4E00\u9875", -1], ["\u4E0B\u4E00\u9875", 1]]) {
-            const button = add2(inventoryList, "button", label);
+            const button = add3(inventoryList, "button", label);
             button.type = "button";
             button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
             button.addEventListener("click", () => {
@@ -29168,7 +30372,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       };
       if (marketRun) {
-        const label = add2(output, "label", "\u8D2D\u5361\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09"), budget = add2(label, "input");
+        const label = add3(output, "label", "\u8D2D\u5361\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09"), budget = add3(label, "input");
         budget.type = "number";
         budget.min = "0";
         budget.step = "1";
@@ -29179,21 +30383,21 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           budget.dataset.settled = "true";
           budget.disabled = true;
         }
-        add2(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\u3002\u66F4\u6539\u989D\u5EA6\u9700\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u786E\u8BA4\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6539\u5199\u65E7\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
-        add2(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+        add3(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\u3002\u66F4\u6539\u989D\u5EA6\u9700\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u786E\u8BA4\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6539\u5199\u65E7\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
+        add3(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
         const scope2 = result.plan.execution?.purchaseScope;
         if (scope2) {
-          const pool = add2(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
-          add2(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number3(rows.length)} \u4E2A\u7248\u672C`);
-          add2(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
-          for (const item2 of rows) add2(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number3(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number3(item2.price)} \xB7 \u4E0A\u9650 ${number3(item2.purchaseMaxBuy)} \u91D1\u5E01`);
+          const pool = add3(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
+          add3(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number3(rows.length)} \u4E2A\u7248\u672C`);
+          add3(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
+          for (const item2 of rows) add3(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number3(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number3(item2.price)} \xB7 \u4E0A\u9650 ${number3(item2.purchaseMaxBuy)} \u91D1\u5E01`);
         }
       }
       if (result.routes?.length) {
-        const routes = add2(output, "div");
+        const routes = add3(output, "div");
         routes.className = "route-list";
         for (const route of result.routes) {
-          const button = add2(routes, "button", streamlinedRouteSummary(route));
+          const button = add3(routes, "button", streamlinedRouteSummary(route));
           button.type = "button";
           button.style.cssText = "display:block;width:100%;text-align:left;margin:6px 0";
           button.setAttribute("aria-pressed", String(route.id === result.selectedRoute));
@@ -29215,32 +30419,32 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           });
         }
       }
-      add2(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
+      add3(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
       const inventoryFirst = result.plan.objective === "inventory-first";
       const quoteLabel = inventoryFirst && !marketRun ? "\u5E93\u5B58\u4F18\u5148 \xB7 \u672A\u67E5\u8BE2\u5E02\u573A\u62A5\u4EF7" : String(result.quoteSource).toUpperCase();
-      add2(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number3(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number3(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number3(result.materialValue)} \xB7 ${quoteLabel} \xB7 ${number3(result.items.length)} \u5F20 / ${number3(result.batches.length)} \u6279`);
+      add3(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number3(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number3(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number3(result.materialValue)} \xB7 ${quoteLabel} \xB7 ${number3(result.items.length)} \u5F20 / ${number3(result.batches.length)} \u6279`);
       if (orderedExternal) {
-        add2(output, "small", "\u6309\u4E0B\u65B9\u987A\u5E8F\u6267\u884C\u6574\u4EFD\u9009\u5361\u8BA1\u5212\uFF1A\u5148\u8D21\u732E Club \u540C\u7248\u672C\u5E76\u786E\u8BA4\u6D88\u8017\uFF0C\u518D\u5C06\u5916\u90E8\u5361\u9010\u6279\u79FB\u5165 Club \u540E\u8D21\u732E\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u81EA\u52A8\u8DF3\u8FC7\u3002");
-        if (result.selectedCount !== void 0) add2(output, "small", `\u9009\u4E2D\u5916\u90E8\u5361 ${number3(result.selectedCount)} \u5F20 \xB7 Club \u524D\u7F6E ${number3(result.prerequisiteCount)} \u5F20${result.omittedExternalCount ? ` \xB7 \u8FBE\u6807\u540E\u4E0D\u518D\u6295\u5165\u7684\u5916\u90E8\u5361 ${number3(result.omittedExternalCount)} \u5F20` : ""}`);
-      } else if (inventoryFirst) add2(output, "small", "\u5148\u7528\u5408\u89C4 SBC Storage\uFF0C\u518D\u7528 Club \u6750\u6599\uFF1B\u5E93\u5B58\u4E0D\u8DB3\u624D\u8865\u5361\uFF0C\u539F\u6750\u6599\u4FDD\u62A4\u4E0D\u53D8\u3002");
+        add3(output, "small", "\u6309\u4E0B\u65B9\u987A\u5E8F\u6267\u884C\u6574\u4EFD\u9009\u5361\u8BA1\u5212\uFF1A\u5148\u8D21\u732E Club \u540C\u7248\u672C\u5E76\u786E\u8BA4\u6D88\u8017\uFF0C\u518D\u5C06\u5916\u90E8\u5361\u9010\u6279\u79FB\u5165 Club \u540E\u8D21\u732E\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u81EA\u52A8\u8DF3\u8FC7\u3002");
+        if (result.selectedCount !== void 0) add3(output, "small", `\u9009\u4E2D\u5916\u90E8\u5361 ${number3(result.selectedCount)} \u5F20 \xB7 Club \u524D\u7F6E ${number3(result.prerequisiteCount)} \u5F20${result.omittedExternalCount ? ` \xB7 \u8FBE\u6807\u540E\u4E0D\u518D\u6295\u5165\u7684\u5916\u90E8\u5361 ${number3(result.omittedExternalCount)} \u5F20` : ""}`);
+      } else if (inventoryFirst) add3(output, "small", "\u5148\u7528\u5408\u89C4 SBC Storage\uFF0C\u518D\u7528 Club \u6750\u6599\uFF1B\u5E93\u5B58\u4E0D\u8DB3\u624D\u8865\u5361\uFF0C\u539F\u6750\u6599\u4FDD\u62A4\u4E0D\u53D8\u3002");
       if (result.policy) {
         const stats = result.inventoryStats;
         const pileLabels = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D", transfer: "\u8F6C\u4F1A\u5217\u8868" };
         const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pileLabels[pile]} ${number3(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / SBC \u4ED3\u5E93";
         const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number3(stats.rawByPile.club)} / ${number3(stats.rawByPile.storage)}` : "";
-        add2(output, "small", `FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
-        add2(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
+        add3(output, "small", `FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
+        add3(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
       }
-      if (!result.searchComplete) add2(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
-      if (!result.poolComplete) add2(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
-      if (result.marketPending) add2(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
-      if (result.quoteReadError) add2(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
-      if (result.marketError) add2(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
-      if (result.unknownValueCount) add2(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
+      if (!result.searchComplete) add3(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
+      if (!result.poolComplete) add3(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
+      if (result.marketPending) add3(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
+      if (result.quoteReadError) add3(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
+      if (result.marketError) add3(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
+      if (result.unknownValueCount) add3(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
       const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
       selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
-      const selection = add2(output, "output");
+      const selection = add3(output, "output");
       selection.dataset.selection = "";
       const updateSelection = () => {
         const items = [...selected].flatMap((index) => result.batches[index]);
@@ -29258,9 +30462,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       updateSelection();
       const generation = renderGeneration;
       result.batches.forEach((batch, index) => {
-        const details = add2(output, "details");
+        const details = add3(output, "details");
         details.open = index === 0;
-        const summary3 = add2(details, "summary"), choice = add2(summary3, "input");
+        const summary3 = add3(details, "summary"), choice = add3(summary3, "input");
         choice.type = "checkbox";
         choice.checked = !settled2(index);
         if (marketRun || orderedExternal) choice.hidden = true;
@@ -29280,23 +30484,23 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const populate = () => {
           if (populated || !details.open || generation !== renderGeneration || disposed) return;
           populated = true;
-          const list2 = add2(details, "div");
+          const list2 = add3(details, "div");
           list2.className = "player-list";
           for (const item2 of batch) {
-            const row = add2(list2, "div");
+            const row = add3(list2, "div");
             row.className = "player-row";
             renderCard(row, item2, generation);
-            const text5 = add2(row, "div");
+            const text5 = add3(row, "div");
             text5.className = "player-text";
-            add2(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
-            add2(text5, "span", `${number3(item2.rating)} OVR \xB7 ${number3(item2.points)} \u5206`);
-            add2(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
-            const points = add2(row, "span", `${number3(item2.points)} \u5206`);
+            add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
+            add3(text5, "span", `${number3(item2.rating)} OVR \xB7 ${number3(item2.points)} \u5206`);
+            add3(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            const points = add3(row, "span", `${number3(item2.points)} \u5206`);
             points.className = "player-points";
-            const price2 = add2(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number3(item2.price)} \u91D1\u5E01`);
+            const price2 = add3(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number3(item2.price)} \u91D1\u5E01`);
             price2.className = "player-price";
             price2.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
-            if (item2.source === "market") add2(price2, "small", `\u4E0A\u9650 ${number3(item2.purchaseMaxBuy)}`);
+            if (item2.source === "market") add3(price2, "small", `\u4E0A\u9650 ${number3(item2.purchaseMaxBuy)}`);
           }
         };
         details.addEventListener("toggle", populate);
@@ -29304,17 +30508,17 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       });
       const skipped = Object.entries(result.excluded ?? {}).map(([key, count2]) => `${key}: ${count2}`).join(" \xB7 ");
       if (skipped) {
-        const details = add2(output, "details");
-        add2(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
-        add2(details, "small", skipped);
+        const details = add3(output, "details");
+        add3(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
+        add3(details, "small", skipped);
       }
       if (result.policy?.goldRange?.[1] < 99) {
-        add2(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number3(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
+        add3(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number3(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
       }
       const exclusionBuckets = result.inventorySelection?.buckets;
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
-        const details = add2(output, "details");
-        add2(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number3(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
+        const details = add3(output, "details");
+        add3(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number3(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
         const labels2 = {
           "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
           untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
@@ -29324,11 +30528,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
           "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
         };
-        add2(details, "small", exclusionBuckets.map(
+        add3(details, "small", exclusionBuckets.map(
           (bucket) => `${labels2[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number3(bucket.rating)}\u7EA7`} \xD7${number3(bucket.count)}`
         ).join("; "));
       }
-      add2(output, "small", streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : orderedExternal ? "\u70B9\u51FB\u540E\u6309\u987A\u5E8F\u6C38\u4E45\u6D88\u8017 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\uFF1B\u72EC\u7ACB\u786E\u8BA4\u524D\u6279\u540E\u624D\u79FB\u5165\u4E0B\u4E00\u6279\u3002\u8FBE\u5230\u76EE\u6807\u5373\u505C\u6B62\uFF0C\u505C\u6B62\u6309\u94AE\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`));
+      add3(output, "small", streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : orderedExternal ? "\u70B9\u51FB\u540E\u6309\u987A\u5E8F\u6C38\u4E45\u6D88\u8017 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\uFF1B\u72EC\u7ACB\u786E\u8BA4\u524D\u6279\u540E\u624D\u79FB\u5165\u4E0B\u4E00\u6279\u3002\u8FBE\u5230\u76EE\u6807\u5373\u505C\u6B62\uFF0C\u505C\u6B62\u6309\u94AE\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`));
       node("contribute").hidden = false;
     };
     on("external-prepare", async () => {
@@ -29534,9 +30738,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
 
   // src/streamlined/contract.js
-  var integer16 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
+  var integer17 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var same27 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var fail28 = (code2) => {
+  var fail29 = (code2) => {
     throw Error(`FC27_STREAMLINED_${code2}`);
   };
   var deepFreeze = (value) => {
@@ -29549,15 +30753,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var isStreamlinedChallenge = (value) => value?.isOneClick === true;
   function normalizeStreamlinedChallenge(value = {}) {
     const context = createSeasonContext(value.context);
-    if (context.season !== "27" || !isStreamlinedChallenge(value) || !integer16(value.id, 1) || !integer16(value.setId, 1) || !integer16(value.scoreRequirement, 1, 1e9) || !integer16(value.submittedScore, 0, 1e9) || !["IN_PROGRESS", "NOT_STARTED", "COMPLETED"].includes(value.status)) fail28("CONTRACT_UNVERIFIED");
-    if (!Array.isArray(value.eligibility) || value.eligibility.length > 32 || !["AND", "OR"].includes(value.eligibilityOperation ?? "AND")) fail28("ELIGIBILITY_UNVERIFIED");
+    if (context.season !== "27" || !isStreamlinedChallenge(value) || !integer17(value.id, 1) || !integer17(value.setId, 1) || !integer17(value.scoreRequirement, 1, 1e9) || !integer17(value.submittedScore, 0, 1e9) || !["IN_PROGRESS", "NOT_STARTED", "COMPLETED"].includes(value.status)) fail29("CONTRACT_UNVERIFIED");
+    if (!Array.isArray(value.eligibility) || value.eligibility.length > 32 || !["AND", "OR"].includes(value.eligibilityOperation ?? "AND")) fail29("ELIGIBILITY_UNVERIFIED");
     const eligibility = value.eligibility.map((rule) => {
-      if (!rule || !integer16(rule.count, -1, 1e3) || !integer16(rule.scope, -1, 1e3) || !Array.isArray(rule.pairs) || !rule.pairs.length || rule.pairs.length > 32) fail28("ELIGIBILITY_UNVERIFIED");
+      if (!rule || !integer17(rule.count, -1, 1e3) || !integer17(rule.scope, -1, 1e3) || !Array.isArray(rule.pairs) || !rule.pairs.length || rule.pairs.length > 32) fail29("ELIGIBILITY_UNVERIFIED");
       const pairs = rule.pairs.map((pair) => {
-        if (!integer16(pair.key, 0, 1e5) || !Array.isArray(pair.values) || !pair.values.length || pair.values.length > 128 || pair.values.some((v) => !integer16(v, 0, 1e9))) fail28("ELIGIBILITY_UNVERIFIED");
+        if (!integer17(pair.key, 0, 1e5) || !Array.isArray(pair.values) || !pair.values.length || pair.values.length > 128 || pair.values.some((v) => !integer17(v, 0, 1e9))) fail29("ELIGIBILITY_UNVERIFIED");
         return { key: pair.key, values: [...pair.values] };
       }).sort((a, b) => a.key - b.key);
-      if (new Set(pairs.map((p) => p.key)).size !== pairs.length) fail28("ELIGIBILITY_UNVERIFIED");
+      if (new Set(pairs.map((p) => p.key)).size !== pairs.length) fail29("ELIGIBILITY_UNVERIFIED");
       return { count: rule.count, scope: rule.scope, pairs };
     });
     return deepFreeze({
@@ -29571,12 +30775,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       targetScore: value.scoreRequirement,
       submittedScore: value.submittedScore,
       remainingScore: Math.max(0, value.scoreRequirement - value.submittedScore),
-      selectionLimit: integer16(value.selectionLimit, 1, 1e3) ? value.selectionLimit : null,
+      selectionLimit: integer17(value.selectionLimit, 1, 1e3) ? value.selectionLimit : null,
       eligibility,
       eligibilityOperation: value.eligibilityOperation ?? "AND",
-      repeats: integer16(value.repeats) ? value.repeats : null,
+      repeats: integer17(value.repeats) ? value.repeats : null,
       repeatabilityMode: typeof value.repeatabilityMode === "string" ? value.repeatabilityMode : null,
-      endTime: integer16(value.endTime) ? value.endTime : null,
+      endTime: integer17(value.endTime) ? value.endTime : null,
       isOneClick: true,
       scoreSource: "ea-sbsScore",
       writeContractVerified: false
@@ -29584,24 +30788,24 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function normalizeStreamlinedItem(value = {}) {
     const source = value.source === "market" ? "market" : "inventory";
-    if (!integer16(value.definitionId, 1) || source === "inventory" && !integer16(value.id, 1)) return null;
+    if (!integer17(value.definitionId, 1) || source === "inventory" && !integer17(value.id, 1)) return null;
     const item2 = {
       source,
       id: source === "inventory" ? value.id : null,
       definitionId: value.definitionId,
       key: source === "inventory" ? `item:${value.id}` : `market:${value.definitionId}:${value.copy ?? 0}`,
-      points: integer16(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
+      points: integer17(value.sbsScore ?? value.points, 1, 1e9) ? value.sbsScore ?? value.points : null,
       scoreVerified: value.scoreVerified === true,
-      rating: integer16(value.rating, 1, 99) ? value.rating : null,
+      rating: integer17(value.rating, 1, 99) ? value.rating : null,
       // Streamlined planning may see cards outside Club/Storage, but those
       // cards are only executable after the EA move-to-Club materialization
       // transaction has been confirmed.
       pile: ["club", "storage", "unassigned", "transfer"].includes(value.pile) ? value.pile : null,
-      duplicateId: integer16(value.duplicateId, 1) ? value.duplicateId : null,
+      duplicateId: integer17(value.duplicateId, 1) ? value.duplicateId : null,
       name: typeof value.name === "string" ? value.name.slice(0, 160) : null,
-      leagueId: integer16(value.leagueId, 1) ? value.leagueId : null,
-      loans: integer16(value.loans, -1) ? value.loans : null,
-      price: integer16(value.price, 1, 15e6) ? value.price : null,
+      leagueId: integer17(value.leagueId, 1) ? value.leagueId : null,
+      loans: integer17(value.loans, -1) ? value.loans : null,
+      price: integer17(value.price, 1, 15e6) ? value.price : null,
       quote: value.quote ? structuredClone(value.quote) : null
     };
     for (const key of [
@@ -29622,7 +30826,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return deepFreeze(item2);
   }
   function streamlinedProgress(challenge, added = 0) {
-    if (!integer16(challenge?.targetScore, 1) || !integer16(challenge?.submittedScore) || !integer16(added)) fail28("PROGRESS_UNKNOWN");
+    if (!integer17(challenge?.targetScore, 1) || !integer17(challenge?.submittedScore) || !integer17(added)) fail29("PROGRESS_UNKNOWN");
     const total = challenge.submittedScore + added;
     return {
       target: challenge.targetScore,
@@ -29650,7 +30854,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     route = null,
     execution = null
   } = {}) {
-    const keyOf5 = (item2) => typeof item2?.key === "string" ? item2.key : integer16(item2?.id, 1) ? `item:${item2.id}` : integer16(item2?.definitionId, 1) ? `definition:${item2.definitionId}` : "unknown";
+    const keyOf5 = (item2) => typeof item2?.key === "string" ? item2.key : integer17(item2?.id, 1) ? `item:${item2.id}` : integer17(item2?.definitionId, 1) ? `definition:${item2.definitionId}` : "unknown";
     return JSON.stringify({
       schema: 1,
       context: createSeasonContext(context),
@@ -29680,34 +30884,34 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       sources: value.sources ?? ["club", "storage"],
       partialWaitMs: value.partialWaitMs ?? 6e4
     };
-    if (!integer16(result.maxRating, 1, 99) || !integer16(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer16(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail28("SETTINGS_INVALID");
+    if (!integer17(result.maxRating, 1, 99) || !integer17(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer17(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail29("SETTINGS_INVALID");
     return deepFreeze(structuredClone(result));
   }
   function createStreamlinedSettings({ get, set }) {
     const key = (context, challengeId) => contextKey(context, `streamlined-settings:${challengeId ?? "global"}`);
     const read = async (context, challengeId = null) => {
-      if (challengeId !== null && !integer16(challengeId, 1)) fail28("SETTINGS_INVALID");
+      if (challengeId !== null && !integer17(challengeId, 1)) fail29("SETTINGS_INVALID");
       let value;
       try {
         value = await get(key(context, challengeId), null);
       } catch {
-        fail28("SETTINGS_READ_FAILED");
+        fail29("SETTINGS_READ_FAILED");
       }
       if (value === null) return challengeId === null ? normalizeStreamlinedSettings() : read(context);
-      if (![1, 2, 3].includes(value?.schema) || !value.settings) fail28("SETTINGS_INVALID");
+      if (![1, 2, 3].includes(value?.schema) || !value.settings) fail29("SETTINGS_INVALID");
       return normalizeStreamlinedSettings({
         ...value.settings,
         ...value.schema < 3 && (value.settings.objective === "lowest-value" || value.schema === 1 && value.settings.objective === "lowest-coins") ? { objective: "inventory-first" } : {}
       });
     };
     return Object.freeze({ read, async save(context, challengeId, value) {
-      if (challengeId !== null && !integer16(challengeId, 1)) fail28("SETTINGS_INVALID");
+      if (challengeId !== null && !integer17(challengeId, 1)) fail29("SETTINGS_INVALID");
       const settings = normalizeStreamlinedSettings(value);
       try {
         await set(key(context, challengeId), { schema: 3, settings });
-        if (!same27(await read(context, challengeId), settings)) fail28("SETTINGS_SAVE_FAILED");
+        if (!same27(await read(context, challengeId), settings)) fail29("SETTINGS_SAVE_FAILED");
       } catch {
-        fail28("SETTINGS_SAVE_FAILED");
+        fail29("SETTINGS_SAVE_FAILED");
       }
       return settings;
     } });
@@ -29729,24 +30933,24 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function filterStreamlinedItems(items, { eligibility, policy } = {}) {
     const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
     if (!Array.isArray(items) || items.length > 2e4 || !eligibility?.known) return blocked12("ELIGIBILITY_UNVERIFIED");
-    if (!policy || !integer16(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer16(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer16(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer16(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
+    if (!policy || !integer17(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer17(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer17(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer17(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key) => typeof policy[key] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
     const excluded = {}, excludedRows = [], accepted = [], keys2 = /* @__PURE__ */ new Set(), ids2 = /* @__PURE__ */ new Set();
     for (const item2 of items) {
-      if (!item2 || !integer16(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer16(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
+      if (!item2 || !integer17(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer17(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
       keys2.add(item2.key);
       if (item2.source === "inventory") ids2.add(item2.id);
       const checks = [
-        ["points-unknown", integer16(item2.points, 1, 1e9) && item2.scoreVerified === true],
+        ["points-unknown", integer17(item2.points, 1, 1e9) && item2.scoreVerified === true],
         // Frozen legacy plans without a separate procurement limit retain their
         // original ceiling. New settings explicitly supply marketMaxRating.
-        ["rating", integer16(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
-        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer16(item2.rating, ...policy.goldRange)],
+        ["rating", integer17(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
+        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer17(item2.rating, ...policy.goldRange)],
         ["special", item2.special === false],
         ["evolution", item2.evolution === false],
         ["cosmetic", item2.cosmetic === false],
         ["academy", item2.academyEnrolled === false],
         ["protected", item2.protected === false],
-        ["league", integer16(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
+        ["league", integer17(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
       ];
       if (item2.source === "inventory") checks.push(
         ["pile", ["club", "storage", "unassigned", "transfer"].includes(item2.pile)],
@@ -29772,9 +30976,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/scoring.js
   function scoreStreamlinedItems(items = []) {
-    if (!Array.isArray(items) || items.some((item2) => !integer16(item2?.points, 1))) fail28("SCORE_UNKNOWN");
+    if (!Array.isArray(items) || items.some((item2) => !integer17(item2?.points, 1))) fail29("SCORE_UNKNOWN");
     const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-    if (!integer16(total)) fail28("SCORE_UNKNOWN");
+    if (!integer17(total)) fail29("SCORE_UNKNOWN");
     return { status: "observed", total, count: items.length };
   }
   function streamlinedResourceCost(plan) {
@@ -29863,7 +31067,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   // src/streamlined/routes.js
   var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
   var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
-  var add = (state, group, index, count2) => {
+  var add2 = (state, group, index, count2) => {
     const counts = state.counts.slice();
     counts[index] = (counts[index] ?? 0) + count2;
     return {
@@ -29885,13 +31089,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     quoteSource = "futgg",
     quoteAt = Date.now()
   }) {
-    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer16(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer16(quoteAt)) fail28("ROUTE_INPUT_INVALID");
+    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer17(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer17(quoteAt)) fail29("ROUTE_INPUT_INVALID");
     const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
     if (filtered.status !== "observed") throw Error(filtered.reason);
     const groups = [], byKey = /* @__PURE__ */ new Map(), excluded = { ...filtered.excluded };
     for (const item2 of filtered.items) {
       const q = item2.quote;
-      if (item2.source === "market" && (!integer16(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer16(q.fetchedAt) || q.fetchedAt > quoteAt || !integer16(q.expiresAt) || q.expiresAt <= quoteAt)) {
+      if (item2.source === "market" && (!integer17(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer17(q.fetchedAt) || q.fetchedAt > quoteAt || !integer17(q.expiresAt) || q.expiresAt <= quoteAt)) {
         excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
         continue;
       }
@@ -29916,7 +31120,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     budget = null
   } = {}) {
     const { challenge, objective = "lowest-value" } = input;
-    if (!integer16(maxNodes, 1, 5e6) || !integer16(maxStates, 1, 1e5) || !integer16(maxMs, 1, 6e4) || budget !== null && !integer16(budget) || !integer16(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail28("ROUTE_INPUT_INVALID");
+    if (!integer17(maxNodes, 1, 5e6) || !integer17(maxStates, 1, 1e5) || !integer17(maxMs, 1, 6e4) || budget !== null && !integer17(budget) || !integer17(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail29("ROUTE_INPUT_INVALID");
     const { groups, excluded } = groupStreamlinedCandidates(input);
     if (objective === "inventory-first") return yield* planInventoryFirstRoutesSteps(
       input,
@@ -29945,7 +31149,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (!pending2 || entry.g.item.price == null || entry.g.item.price > g.item.price) break;
           const count2 = Math.min(pending2, entry.g.quantity - (state.counts[entry.i] ?? 0));
           if (count2 <= 0) continue;
-          state = add(add(state, g, i, -count2), entry.g, entry.i, count2);
+          state = add2(add2(state, g, i, -count2), entry.g, entry.i, count2);
           pending2 -= count2;
         }
       }
@@ -29988,19 +31192,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       let state = empty();
       for (const { g, i } of order2) {
         if (state.score >= target) break;
-        state = add(state, g, i, Math.min(g.quantity, Math.ceil((target - state.score) / g.item.points)));
+        state = add2(state, g, i, Math.min(g.quantity, Math.ceil((target - state.score) / g.item.points)));
       }
       remember(state);
       bases.push(state);
     }
     for (const base of bases) for (const { g, i } of market) {
-      if (base.score < target) remember(add(base, g, i, Math.ceil((target - base.score) / g.item.points)));
+      if (base.score < target) remember(add2(base, g, i, Math.ceil((target - base.score) / g.item.points)));
     }
     fast: for (const left of market) {
-      remember(add(empty(), left.g, left.i, Math.ceil(target / left.g.item.points)));
-      const bulk = add(empty(), left.g, left.i, Math.floor(target / left.g.item.points));
+      remember(add2(empty(), left.g, left.i, Math.ceil(target / left.g.item.points)));
+      const bulk = add2(empty(), left.g, left.i, Math.floor(target / left.g.item.points));
       for (const right of market) {
-        remember(bulk.score >= target ? bulk : add(
+        remember(bulk.score >= target ? bulk : add2(
           bulk,
           right.g,
           right.i,
@@ -30018,13 +31222,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       let base = empty();
       for (const { g, i } of order2) {
         for (let n = 0; n < g.quantity && base.score < target; n++) {
-          base = add(base, g, i, 1);
+          base = add2(base, g, i, 1);
           if (base.score >= target) {
             remember(base);
             break;
           }
           for (const version of market) {
-            remember(add(base, version.g, version.i, Math.ceil((target - base.score) / version.g.item.points)));
+            remember(add2(base, version.g, version.i, Math.ceil((target - base.score) / version.g.item.points)));
             nodes++;
             if (yield* checkpoint()) break mixed;
           }
@@ -30037,14 +31241,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (base.score >= target) continue;
       for (let a = 0; a < market.length; a++) {
         const left = market[a];
-        remember(add(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
+        remember(add2(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
         for (let b = a + 1; b < market.length; b++) {
           const right = market[b], count2 = Math.ceil((target - base.score) / left.g.item.points);
-          const bulk = add(base, left.g, left.i, Math.floor((target - base.score) / left.g.item.points));
-          remember(bulk.score >= target ? bulk : add(bulk, right.g, right.i, Math.ceil((target - bulk.score) / right.g.item.points)));
+          const bulk = add2(base, left.g, left.i, Math.floor((target - base.score) / left.g.item.points));
+          remember(bulk.score >= target ? bulk : add2(bulk, right.g, right.i, Math.ceil((target - bulk.score) / right.g.item.points)));
           for (let n = 0; n <= count2; n++) {
-            let state = add(base, left.g, left.i, n);
-            if (state.score < target) state = add(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
+            let state = add2(base, left.g, left.i, n);
+            if (state.score < target) state = add2(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
             remember(state);
             nodes++;
             if (yield* checkpoint()) break seed;
@@ -30061,7 +31265,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         remaining -= count2;
         const before = [...states4.values()].flat();
         for (const state of before) {
-          const candidate = add(state, group, i, count2);
+          const candidate = add2(state, group, i, count2);
           nodes++;
           if (candidate.score >= target) remember(candidate);
           else if (budget === null || candidate.purchaseCost <= budget) {
@@ -30097,7 +31301,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (!count2) continue;
         demands.set(familyKey(g), (demands.get(familyKey(g)) ?? 0) + count2);
         upper = Math.max(upper, Math.ceil(count2 / g.items.length));
-        owned2 = add(owned2, g, i, -count2);
+        owned2 = add2(owned2, g, i, -count2);
       }
       if (upper <= 1) continue;
       let lower = Math.ceil(base.count / challenge.selectionLimit);
@@ -30111,7 +31315,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           let remaining = count2;
           for (const { g, i } of families.get(key)) {
             const quantity = Math.min(remaining, waves * g.items.length);
-            if (quantity) state = add(state, g, i, quantity);
+            if (quantity) state = add2(state, g, i, quantity);
             remaining -= quantity;
             if (!remaining) break;
           }
@@ -30285,13 +31489,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
   }
   function expandStreamlinedRoute(route, challenge) {
-    if (!route || !integer16(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail28("ROUTE_INVALID");
+    if (!route || !integer17(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail29("ROUTE_INVALID");
     const items = [], copies = /* @__PURE__ */ new Map();
     for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(["unassigned", "transfer"].includes(a.item.pile)) - Number(["unassigned", "transfer"].includes(b.item.pile)))) {
-      if (!integer16(group.quantity, 1, 2e4) || !group.items?.length) fail28("ROUTE_INVALID");
+      if (!integer17(group.quantity, 1, 2e4) || !group.items?.length) fail29("ROUTE_INVALID");
       for (let n = 0; n < group.quantity; n++) {
         if (group.source === "inventory") {
-          if (!group.items[n]) fail28("ROUTE_INVALID");
+          if (!group.items[n]) fail29("ROUTE_INVALID");
           items.push(group.items[n]);
         } else {
           const item2 = group.items[n % group.items.length], copy2 = copies.get(item2.definitionId) ?? 0;
@@ -30300,7 +31504,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       }
     }
-    if (items.length !== route.count) fail28("ROUTE_INVALID");
+    if (items.length !== route.count) fail29("ROUTE_INVALID");
     const batches = [], nextByDefinition = /* @__PURE__ */ new Map();
     let firstOpen = 0;
     for (const item2 of items) {
@@ -30326,7 +31530,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/planner.js
   function splitStreamlinedBatches(items, limit) {
-    if (!integer16(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
+    if (!integer17(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
     const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
     const batches = [], nextVersion = /* @__PURE__ */ new Map();
     let open = 0;
@@ -30358,9 +31562,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     marketComplete = false
   } = {}) {
     const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
-    if (challenge?.mechanism !== "streamlined" || !integer16(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer16(maxNodes, 1, 5e6) || !integer16(maxStates, 1, 1e5) || !integer16(maxMs, 1, 6e4) || !integer16(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
+    if (challenge?.mechanism !== "streamlined" || !integer17(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer17(maxNodes, 1, 5e6) || !integer17(maxStates, 1, 1e5) || !integer17(maxMs, 1, 6e4) || !integer17(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
     if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
-    if (!integer16(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
+    if (!integer17(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
     if (objective === "inventory-first") {
       const result = yield* planStreamlinedRoutesSteps(
         { challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
@@ -30376,7 +31580,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const candidates = filtered.items.filter((item2) => {
       if (item2.source !== "market") return true;
       const q = item2.quote;
-      const valid3 = integer16(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer16(q.fetchedAt) && q.fetchedAt <= quoteAt && integer16(q.expiresAt) && q.expiresAt > quoteAt;
+      const valid3 = integer17(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer17(q.fetchedAt) && q.fetchedAt <= quoteAt && integer17(q.expiresAt) && q.expiresAt > quoteAt;
       if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
       return valid3;
     }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
@@ -30493,11 +31697,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return validStreamlinedPurchaseScope(scope2) ? deepFreeze(scope2) : null;
   }
   function validStreamlinedPurchaseScope(scope2) {
-    if (!scope2 || scope2.schema !== 1 || !integer16(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
+    if (!scope2 || scope2.schema !== 1 || !integer17(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
     const ids2 = /* @__PURE__ */ new Set(), keys2 = /* @__PURE__ */ new Set();
-    return scope2.groups.every((group) => group.source === "market" && integer16(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same27(group.item, group.items[0]) && group.items.every((item2) => {
+    return scope2.groups.every((group) => group.source === "market" && integer17(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same27(group.item, group.items[0]) && group.items.every((item2) => {
       const q = item2.quote;
-      if (ids2.has(item2.definitionId) || !integer16(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer16(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer16(item2.price, 150, 15e6) || !integer16(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer16(q.fetchedAt, 0, scope2.quotedAt) || !integer16(q.expiresAt, scope2.quotedAt + 1)) return false;
+      if (ids2.has(item2.definitionId) || !integer17(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer17(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer17(item2.price, 150, 15e6) || !integer17(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer17(q.fetchedAt, 0, scope2.quotedAt) || !integer17(q.expiresAt, scope2.quotedAt + 1)) return false;
       ids2.add(item2.definitionId);
       return true;
     })) && ids2.size <= 2e3;
@@ -30505,10 +31709,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function approvedStreamlinedPurchaseRoute(plan) {
     const scope2 = plan.execution?.purchaseScope;
     if (!scope2) return plan.route;
-    if (!validStreamlinedPurchaseScope(scope2)) fail28("PURCHASE_SCOPE_INVALID");
+    if (!validStreamlinedPurchaseScope(scope2)) fail29("PURCHASE_SCOPE_INVALID");
     const stock = plan.route.groups.filter((group) => group.source === "inventory");
     for (const group of plan.route.groups.filter((group2) => group2.source === "market")) {
-      if (!group.items.every((item2) => scope2.groups.some((allowed) => allowed.items.some((row) => same27(row, item2))))) fail28("PURCHASE_SCOPE_INVALID");
+      if (!group.items.every((item2) => scope2.groups.some((allowed) => allowed.items.some((row) => same27(row, item2))))) fail29("PURCHASE_SCOPE_INVALID");
     }
     return { ...plan.route, groups: structuredClone([...stock, ...scope2.groups]) };
   }
@@ -30553,18 +31757,18 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   // src/streamlined/plan.js
   function validPlanContents(plan) {
     const { challenge, items, batches } = plan;
-    if (plan.execution && (!integer16(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer16(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer16(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer16(plan.execution.partialWaitMs, 0, 36e5))) return false;
-    if (!challenge || challenge.mechanism !== "streamlined" || !integer16(challenge.targetScore, 1) || !integer16(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer16(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same27(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
-    if (items.some((i) => !integer16(i?.definitionId, 1) || !integer16(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer16(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer16(i.price, 1, 15e6)))) return false;
+    if (plan.execution && (!integer17(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer17(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer17(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer17(plan.execution.partialWaitMs, 0, 36e5))) return false;
+    if (!challenge || challenge.mechanism !== "streamlined" || !integer17(challenge.targetScore, 1) || !integer17(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer17(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same27(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
+    if (items.some((i) => !integer17(i?.definitionId, 1) || !integer17(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer17(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer17(i.price, 1, 15e6)))) return false;
     const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
     const inventory = items.filter((i) => i.source === "inventory");
-    const value = inventory.some((i) => !integer16(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
+    const value = inventory.some((i) => !integer17(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
     return plan.score === score2 && same27(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
   }
   function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
-    if (!same27(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer16(challenge.selectionLimit, 1, 1e3)) fail28("PLAN_UNCONFIRMED");
+    if (!same27(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer17(challenge.selectionLimit, 1, 1e3)) fail29("PLAN_UNCONFIRMED");
     const items = structuredClone(result.items), batches = structuredClone(result.batches);
-    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail28("PLAN_UNCONFIRMED");
+    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail29("PLAN_UNCONFIRMED");
     const route = result.route ? structuredClone(result.route) : null;
     const fingerprint = streamlinedPlanFingerprint({
       context,
@@ -30603,7 +31807,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     });
   }
   function assertStreamlinedPlan(plan) {
-    if (plan?.schema !== 1 || !same27(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail28("PLAN_CHANGED");
+    if (plan?.schema !== 1 || !same27(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail29("PLAN_CHANGED");
     return plan;
   }
 
@@ -30637,7 +31841,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/contribution.js
   function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same27(receipt.itemIds, itemIds) || !integer16(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer16(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer16(receipt.challengeAwardCount, 0, 100) || !integer16(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer16(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail28("RECEIPT_INVALID");
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same27(receipt.itemIds, itemIds) || !integer17(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer17(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer17(receipt.challengeAwardCount, 0, 100) || !integer17(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer17(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail29("RECEIPT_INVALID");
     return deepFreeze({
       schema: 1,
       status: "accepted",
@@ -30656,12 +31860,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     });
   }
   function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
-    if (!integer16(expected.challengeId, 1) || !integer16(expected.setId, 1) || !integer16(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer16(id12, 1))) fail28("CONTRIBUTION_INPUT_INVALID");
-    const response = reply?.response, code2 = integer16(reply?.status, 100, 599) ? reply.status : null;
+    if (!integer17(expected.challengeId, 1) || !integer17(expected.setId, 1) || !integer17(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id12) => !integer17(id12, 1))) fail29("CONTRIBUTION_INPUT_INVALID");
+    const response = reply?.response, code2 = integer17(reply?.status, 100, 599) ? reply.status : null;
     const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
     const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
     const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
-    const hasProgress = integer16(response?.submittedScore, expected.previousScore + 1, 1e9);
+    const hasProgress = integer17(response?.submittedScore, expected.previousScore + 1, 1e9);
     if (reply?.success === false || conflict) {
       if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
       if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
@@ -30681,7 +31885,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       challengeId: expected.challengeId,
       itemIds: [...expected.itemIds],
       submittedScore: response.submittedScore,
-      ...integer16(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
+      ...integer17(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
       challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
       challengeAwardCount: challengeAwards.length,
       setAwardCount: setAwards.length,
@@ -30712,16 +31916,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return contextKey(context, "streamlined-contribution");
   }
   function validateStreamlinedJournal(record, context) {
-    if (record?.schema !== 1 || !same27(record.context, createSeasonContext(context)) || !integer16(record.revision, 1) || !integer16(record.updatedAt) || !integer16(record.submittedScore) || !Array.isArray(record.batches) || !integer16(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail28("JOURNAL_INVALID");
+    if (record?.schema !== 1 || !same27(record.context, createSeasonContext(context)) || !integer17(record.revision, 1) || !integer17(record.updatedAt) || !integer17(record.submittedScore) || !Array.isArray(record.batches) || !integer17(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail29("JOURNAL_INVALID");
     assertStreamlinedPlan(record.plan);
-    if (!same27(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same27(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail28("JOURNAL_INVALID");
+    if (!same27(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same27(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail29("JOURNAL_INVALID");
     let previousScore = record.plan.challenge.submittedScore;
     for (const batch of record.batches) {
-      if (batch.startingScore !== void 0 && (!integer16(
+      if (batch.startingScore !== void 0 && (!integer17(
         batch.startingScore,
         record.plan.challenge.submittedScore,
         record.submittedScore
-      ) || batch.state === "waiting")) fail28("JOURNAL_INVALID");
+      ) || batch.state === "waiting")) fail29("JOURNAL_INVALID");
       const start = batch.startingScore ?? previousScore;
       const maxScore = start + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
       if (batch.receipt !== void 0) {
@@ -30732,7 +31936,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           maxScore,
           itemIds: batch.refs.map((ref) => ref.id)
         });
-        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same27(projected2, batch.receipt)) fail28("JOURNAL_INVALID");
+        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same27(projected2, batch.receipt)) fail29("JOURNAL_INVALID");
       }
       if (batch.state === "confirmed") previousScore = batch.receipt?.submittedScore ?? maxScore;
     }
@@ -30746,20 +31950,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         record = await get(streamlinedJournalKey(context), null);
       } catch {
-        fail28("JOURNAL_READ_FAILED");
+        fail29("JOURNAL_READ_FAILED");
       }
       return record == null ? null : structuredClone(validateStreamlinedJournal(record, context));
     };
     const write = (context, record, previousRevision = 0) => {
       const task = tail2.then(async () => {
         const current2 = await read(context);
-        if ((current2?.revision ?? 0) !== previousRevision) fail28("JOURNAL_CHANGED");
+        if ((current2?.revision ?? 0) !== previousRevision) fail29("JOURNAL_CHANGED");
         const next = validateStreamlinedJournal({ ...structuredClone(record), revision: previousRevision + 1, updatedAt: now() }, context);
         try {
           await set(streamlinedJournalKey(context), next);
-          if (!same27(await get(streamlinedJournalKey(context), null), next)) fail28("JOURNAL_READBACK_FAILED");
+          if (!same27(await get(streamlinedJournalKey(context), null), next)) fail29("JOURNAL_READBACK_FAILED");
         } catch {
-          fail28("JOURNAL_WRITE_FAILED");
+          fail29("JOURNAL_WRITE_FAILED");
         }
         return structuredClone(next);
       });
@@ -30769,20 +31973,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
     return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
       assertStreamlinedPlan(plan);
-      if (plan.items.some((item2) => item2.source !== "inventory")) fail28("PURCHASE_PENDING");
+      if (plan.items.some((item2) => item2.source !== "inventory")) fail29("PURCHASE_PENDING");
       const prior = await read(plan.context);
       const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
-      if (replaceRemainder && !replacement) fail28("RECOVERY_REQUIRED");
-      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail28("RECOVERY_REQUIRED");
+      if (replaceRemainder && !replacement) fail29("RECOVERY_REQUIRED");
+      if (prior && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail29("RECOVERY_REQUIRED");
       if (replacement) {
         const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
         try {
           const saved = await get(key, null);
-          if (saved != null && !same27(saved, prior)) fail28("JOURNAL_ARCHIVE_CONFLICT");
+          if (saved != null && !same27(saved, prior)) fail29("JOURNAL_ARCHIVE_CONFLICT");
           if (saved == null) await set(key, structuredClone(prior));
-          if (!same27(await get(key, null), prior)) fail28("JOURNAL_ARCHIVE_FAILED");
+          if (!same27(await get(key, null), prior)) fail29("JOURNAL_ARCHIVE_FAILED");
         } catch {
-          fail28("JOURNAL_ARCHIVE_FAILED");
+          fail29("JOURNAL_ARCHIVE_FAILED");
         }
       }
       return write(plan.context, {
@@ -30812,19 +32016,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (group.items.length < group.quantity || group.items.slice(0, group.quantity).some((item2) => {
         const entry = inventoryEntries.get(item2.id);
         return !entry || entry.groupIndex !== groupIndex || entry.definitionId !== item2.definitionId;
-      })) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      })) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     }
     const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
-    if (ids2.some((id12) => !integer16(id12, 1))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (ids2.some((id12) => !integer17(id12, 1))) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     if (record.contribution) {
       const { batchPlan, material } = record.contribution;
       try {
         assertStreamlinedPlan(batchPlan);
       } catch {
-        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+        fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
       }
       if (!same27(batchPlan.context, record.context) || batchPlan.challenge.id !== record.challenge.id || batchPlan.challenge.setId !== record.challenge.setId || batchPlan.challenge.targetScore !== record.challenge.targetScore || batchPlan.challenge.submittedScore !== record.submittedScore || !same27(batchPlan.items, material.map((row) => row.item))) {
-        fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+        fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
       }
       ids2.push(...batchPlan.items.map((item2) => item2.id));
     }
@@ -30853,35 +32057,35 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function validateStreamlinedPurchase(record, context) {
     if (record?.plan?.schema === 1) {
       assertStreamlinedPlan(record.plan);
-      if (record.plan.fingerprint !== record.fingerprint || !same27(record.plan.context, context) || !same27(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same27(record.plan.challenge, record.challenge) || !same27(record.plan.policy, record.policy)) fail28("PURCHASE_JOURNAL_INVALID");
+      if (record.plan.fingerprint !== record.fingerprint || !same27(record.plan.context, context) || !same27(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same27(record.plan.challenge, record.challenge) || !same27(record.plan.policy, record.policy)) fail29("PURCHASE_JOURNAL_INVALID");
     }
-    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same27(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer16(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer16(record.budget) || !integer16(record.spent) || record.spent > record.budget || !integer16(record.submittedScore) || !integer16(record.challenge?.id, 1) || !integer16(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer16(record.confirmedBatches) || !integer16(record.challenge?.targetScore, 1) || !integer16(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer16(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer16(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer16(id12, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same27(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer17(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer17(record.budget) || !integer17(record.spent) || record.spent > record.budget || !integer17(record.submittedScore) || !integer17(record.challenge?.id, 1) || !integer17(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer17(record.confirmedBatches) || !integer17(record.challenge?.targetScore, 1) || !integer17(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer17(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer17(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id12) => !integer17(id12, 1))) fail29("PURCHASE_JOURNAL_INVALID");
     for (const group of record.route.groups) {
-      if (!["inventory", "market"].includes(group.source) || !integer16(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer16(group.item?.points, 1) || group.items.some((item2) => !integer16(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer16(item2.price, 150, 15e6) || !integer16(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer16(item2.id, 1))) fail28("PURCHASE_JOURNAL_INVALID");
+      if (!["inventory", "market"].includes(group.source) || !integer17(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer17(group.item?.points, 1) || group.items.some((item2) => !integer17(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer17(item2.price, 150, 15e6) || !integer17(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer17(item2.id, 1))) fail29("PURCHASE_JOURNAL_INVALID");
     }
     const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
     let spent = 0;
     for (const entry of record.entries) {
       const group = record.route.groups[entry.groupIndex];
-      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer16(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer16(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail28("PURCHASE_JOURNAL_INVALID");
+      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer17(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer17(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail29("PURCHASE_JOURNAL_INVALID");
       keys2.add(entry.key);
       if (entry.source === "inventory") {
-        if (!integer16(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        if (!integer17(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
         items.add(entry.itemId);
         continue;
       }
       if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
-        if (!integer16(entry.itemId, 1) || !integer16(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer16(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail28("PURCHASE_JOURNAL_INVALID");
+        if (!integer17(entry.itemId, 1) || !integer17(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer17(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail29("PURCHASE_JOURNAL_INVALID");
         items.add(entry.itemId);
         if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
-      } else if (entry.cap !== null && !integer16(entry.cap, 150, 15e6)) fail28("PURCHASE_JOURNAL_INVALID");
-      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail28("PURCHASE_JOURNAL_INVALID");
+      } else if (entry.cap !== null && !integer17(entry.cap, 150, 15e6)) fail29("PURCHASE_JOURNAL_INVALID");
+      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail29("PURCHASE_JOURNAL_INVALID");
     }
-    if (spent !== record.spent) fail28("PURCHASE_JOURNAL_INVALID");
-    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail28("PURCHASE_JOURNAL_INVALID");
+    if (spent !== record.spent) fail29("PURCHASE_JOURNAL_INVALID");
+    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail29("PURCHASE_JOURNAL_INVALID");
     if (record.contribution) {
       const material = record.contribution.material;
-      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail28("PURCHASE_JOURNAL_INVALID");
+      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail29("PURCHASE_JOURNAL_INVALID");
     }
     return record;
   }
@@ -30893,19 +32097,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         rows = await get(streamlinedRetiredPurchaseKey(context), []);
       } catch {
-        fail28("PURCHASE_JOURNAL_READ_FAILED");
+        fail29("PURCHASE_JOURNAL_READ_FAILED");
       }
       rows ??= [];
-      if (!Array.isArray(rows) || rows.length > 50) fail28("PURCHASE_ARCHIVE_INVALID");
+      if (!Array.isArray(rows) || rows.length > 50) fail29("PURCHASE_ARCHIVE_INVALID");
       const operations = /* @__PURE__ */ new Set();
       for (const row of rows) {
-        if (row?.reason !== "user-abandoned" || !integer16(row.at) || !row.record || operations.has(row.record.operationId)) fail28("PURCHASE_ARCHIVE_INVALID");
+        if (row?.reason !== "user-abandoned" || !integer17(row.at) || !row.record || operations.has(row.record.operationId)) fail29("PURCHASE_ARCHIVE_INVALID");
         validateStreamlinedPurchase(row.record, context);
         streamlinedPurchaseReservedIds(row.record);
-        if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail28("PURCHASE_ARCHIVE_INVALID");
+        if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail29("PURCHASE_ARCHIVE_INVALID");
         if (row.contributionJournal) {
           validateStreamlinedJournal(row.contributionJournal, context);
-          if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail28("PURCHASE_ARCHIVE_INVALID");
+          if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail29("PURCHASE_ARCHIVE_INVALID");
         }
         operations.add(row.record.operationId);
       }
@@ -30913,7 +32117,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
     const isRetired = async (record) => {
       const row = (await readRetired(record.context)).find((row2) => row2.record.operationId === record.operationId);
-      if (row && !same27(row.record, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+      if (row && !same27(row.record, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
       return !!row;
     };
     const reservedFor = (row) => [
@@ -30923,20 +32127,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const reservedIds = async (context) => [...new Set((await readRetired(context)).flatMap(reservedFor))];
     const isRetiredContribution = async (record) => {
       const row = (await readRetired(record.context)).find((row2) => row2.contributionJournal?.plan.fingerprint === record.plan.fingerprint);
-      if (row && !same27(row.contributionJournal, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+      if (row && !same27(row.contributionJournal, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
       return !!row;
     };
     const assertAvailable = async (context, challenge, refs3 = []) => {
       for (const row of await readRetired(context)) {
         const { record } = row;
-        if ((record.contribution || row.contributionJournal?.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail28("HISTORY_TARGET_UNRESOLVED");
+        if ((record.contribution || row.contributionJournal?.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail29("HISTORY_TARGET_UNRESOLVED");
         const reserved = new Set(reservedFor(row));
-        if (refs3.some((ref) => reserved.has(ref.id ?? ref.itemId))) fail28("FOREIGN_PURCHASE_MATERIAL_RESERVED");
+        if (refs3.some((ref) => reserved.has(ref.id ?? ref.itemId))) fail29("FOREIGN_PURCHASE_MATERIAL_RESERVED");
       }
     };
     const assertPlanAvailable = async (plan) => {
       for (const row of await readRetired(plan.context)) {
-        if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint].includes(plan.fingerprint)) fail28("PURCHASE_HISTORY_RETIRED");
+        if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint].includes(plan.fingerprint)) fail29("PURCHASE_HISTORY_RETIRED");
       }
       await assertAvailable(plan.context, plan.challenge, plan.items);
     };
@@ -30945,64 +32149,64 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         record = await get(streamlinedPurchaseKey(context), null);
       } catch {
-        fail28("PURCHASE_JOURNAL_READ_FAILED");
+        fail29("PURCHASE_JOURNAL_READ_FAILED");
       }
       return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
     };
     const write = async (record, previousRevision = record.revision) => {
       assertHeld();
       const old = await read(record.context);
-      if ((old?.revision ?? 0) !== previousRevision) fail28("PURCHASE_JOURNAL_CHANGED");
+      if ((old?.revision ?? 0) !== previousRevision) fail29("PURCHASE_JOURNAL_CHANGED");
       const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
-      if ((await readRetired(record.context)).some((row) => row.record.operationId === next.operationId)) fail28("PURCHASE_HISTORY_RETIRED");
+      if ((await readRetired(record.context)).some((row) => row.record.operationId === next.operationId)) fail29("PURCHASE_HISTORY_RETIRED");
       await assertAvailable(next.context, next.challenge, next.entries);
       try {
         assertHeld();
         await set(streamlinedPurchaseKey(record.context), next);
         assertHeld();
-        if (!same27(next, await get(streamlinedPurchaseKey(record.context), null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(next, await get(streamlinedPurchaseKey(record.context), null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       } catch {
-        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       }
       return structuredClone(next);
     };
     const archive = async (record) => {
       assertHeld();
       validateStreamlinedPurchase(record, record.context);
-      if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
-      if (!same27(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
+      if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail29("PURCHASE_RECOVERY_REQUIRED");
+      if (!same27(record, await read(record.context))) fail29("PURCHASE_JOURNAL_CHANGED");
       const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
       try {
         const prior = await get(key, null);
-        if (prior !== null && !same27(prior, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+        if (prior !== null && !same27(prior, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
         assertHeld();
         await set(key, structuredClone(record));
         assertHeld();
-        if (!same27(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(record, await get(key, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       } catch {
-        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       }
     };
     const retire = async (record, contributionJournal = null) => {
       assertHeld();
       validateStreamlinedPurchase(record, record.context);
-      if (!same27(record, await read(record.context))) fail28("PURCHASE_JOURNAL_CHANGED");
+      if (!same27(record, await read(record.context))) fail29("PURCHASE_JOURNAL_CHANGED");
       const rows = await readRetired(record.context);
       if (rows.some((row) => row.record.operationId === record.operationId)) {
-        if (!await isRetired(record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+        if (!await isRetired(record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
         return;
       }
-      if (rows.length >= 50) fail28("PURCHASE_ARCHIVE_FULL");
-      if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail28("PURCHASE_RECOVERY_REQUIRED");
-      if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail28("PURCHASE_ARCHIVE_INVALID");
+      if (rows.length >= 50) fail29("PURCHASE_ARCHIVE_FULL");
+      if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail29("PURCHASE_RECOVERY_REQUIRED");
+      if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail29("PURCHASE_ARCHIVE_INVALID");
       const key = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
       try {
         const prior = await get(key, null);
-        if (prior !== null && !same27(prior, record)) fail28("PURCHASE_ARCHIVE_CONFLICT");
+        if (prior !== null && !same27(prior, record)) fail29("PURCHASE_ARCHIVE_CONFLICT");
         assertHeld();
         await set(key, structuredClone(record));
         assertHeld();
-        if (!same27(record, await get(key, null))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(record, await get(key, null))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
         rows.push({
           reason: "user-abandoned",
           at: Date.now(),
@@ -31012,9 +32216,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         assertHeld();
         await set(streamlinedRetiredPurchaseKey(record.context), rows);
         assertHeld();
-        if (!same27(rows, await readRetired(record.context))) fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        if (!same27(rows, await readRetired(record.context))) fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       } catch {
-        fail28("PURCHASE_JOURNAL_WRITE_FAILED");
+        fail29("PURCHASE_JOURNAL_WRITE_FAILED");
       }
     };
     return Object.freeze({ read, write, archive, retire, readRetired, isRetired, isRetiredContribution, reservedIds, assertAvailable, assertPlanAvailable });
@@ -31059,7 +32263,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function planStreamlinedExternalSelection(snapshot, keys2) {
     if (snapshot?.status !== "observed" || !Array.isArray(keys2) || !keys2.length || keys2.length > 2e4 || new Set(keys2).size !== keys2.length) return blocked11("EXTERNAL_SELECTION_INVALID");
     const { challenge } = snapshot;
-    if (!integer16(challenge?.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
+    if (!integer17(challenge?.selectionLimit, 1, 1e3)) return blocked11("BATCH_LIMIT_UNKNOWN");
     if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [] };
     const byKey = new Map(snapshot.rows.map((row) => [row.item.key, row]));
     const selected = keys2.map((key) => byKey.get(key));
@@ -31167,12 +32371,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
     const capture = () => {
       const value = inspect();
-      if (!value?.context || !value.challenge) fail28("PAGE_UNAVAILABLE");
+      if (!value?.context || !value.challenge) fail29("PAGE_UNAVAILABLE");
       return value;
     };
     const unchanged = (origin) => {
       const current2 = capture();
-      if (!same27(current2, origin)) fail28("CONTEXT_CHANGED");
+      if (!same27(current2, origin)) fail29("CONTEXT_CHANGED");
     };
     const confirmedCompletion = (record) => record?.submittedScore >= record?.plan?.challenge.targetScore && Array.isArray(record.batches) && record.batches.length > 0 && record.batches.every((batch) => batch.state === "confirmed" && batch.receipt?.status === "accepted") && record.batches.some((batch) => batch.receipt.challengeCompleted === true && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
     return Object.freeze({
@@ -31226,8 +32430,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const reservedIds = await purchaseJournal.reservedIds(origin.context);
           unchanged(origin);
           input.assertCurrent();
-          if (stopRequested || run !== planningRun) fail28("CANCELLED");
-          if (!same27(input.context, origin.context) || !same27(input.challenge, origin.challenge)) fail28("CONTEXT_CHANGED");
+          if (stopRequested || run !== planningRun) fail29("CANCELLED");
+          if (!same27(input.context, origin.context) || !same27(input.challenge, origin.challenge)) fail29("CONTEXT_CHANGED");
           const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
           if (snapshot.status === "observed") externalView = { origin, config, input, snapshot };
           return snapshot;
@@ -31255,13 +32459,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const check = () => {
             unchanged(saved.origin);
             input.assertCurrent();
-            if (stopRequested || run !== planningRun) fail28("CANCELLED");
+            if (stopRequested || run !== planningRun) fail29("CANCELLED");
           };
           check();
           const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
           const before = new Map(saved.snapshot.rows.map((row) => [row.item.key, row]));
           const after = new Map(snapshot.rows?.map((row) => [row.item.key, row]) ?? []);
-          if (!same27(input.context, saved.origin.context) || !same27(snapshot.policy, saved.snapshot.policy) || !same27(snapshot.challenge, saved.snapshot.challenge) || !Array.isArray(keys2) || keys2.some((key) => !before.has(key) || !same27(before.get(key), after.get(key)))) fail28("EXTERNAL_SELECTION_CHANGED");
+          if (!same27(input.context, saved.origin.context) || !same27(snapshot.policy, saved.snapshot.policy) || !same27(snapshot.challenge, saved.snapshot.challenge) || !Array.isArray(keys2) || keys2.some((key) => !before.has(key) || !same27(before.get(key), after.get(key)))) fail29("EXTERNAL_SELECTION_CHANGED");
           const result = planStreamlinedExternalSelection(snapshot, keys2);
           if (!["ready", "partial"].includes(result.status)) return result;
           const plan = createStreamlinedPlan({
@@ -31342,7 +32546,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const check = () => {
             unchanged(origin);
             input.assertCurrent();
-            if (stopRequested || run !== planningRun) fail28("CANCELLED");
+            if (stopRequested || run !== planningRun) fail29("CANCELLED");
           };
           const waitRead = async (read, initial, progressStartedAt = null) => {
             const started = now();
@@ -31440,7 +32644,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                     return true;
                   }
                 }), { phase: "quotes", completed: offset, total: ids2.length }, inventoryQuotesStartedAt);
-                if (offset && snapshot.policy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
+                if (offset && snapshot.policy.source !== quoteSource) fail29("PRICE_POLICY_CHANGED");
                 quoteSource = snapshot.policy.source;
                 purchaseAttempts = snapshot.policy.purchaseAttempts ?? 3;
                 Object.assign(references, snapshot.references);
@@ -31485,9 +32689,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               market = Array.isArray(data) ? data : data.market;
               marketCoverage = data.quoteCoverage ?? null;
               quoteReadError ??= data.quoteReadError ?? null;
-              if (!Array.isArray(market)) fail28("MARKET_CANDIDATES_UNVERIFIED");
+              if (!Array.isArray(market)) fail29("MARKET_CANDIDATES_UNVERIFIED");
               if (data.pricePolicy) {
-                if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail28("PRICE_POLICY_CHANGED");
+                if (Object.keys(references).length && data.pricePolicy.source !== quoteSource) fail29("PRICE_POLICY_CHANGED");
                 quoteSource = data.pricePolicy.source;
                 purchaseAttempts = data.pricePolicy.purchaseAttempts ?? 3;
               }
@@ -31780,7 +32984,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           unchanged(saved.origin);
           saved.input.assertCurrent();
           const route = saved.routes.find((row) => row.id === routeId);
-          if (!route) fail28("ROUTE_INVALID");
+          if (!route) fail29("ROUTE_INVALID");
           const result = { ...expandStreamlinedRoute(route, saved.input.challenge), route };
           const plan = createStreamlinedPlan({
             context: saved.input.context,
@@ -31924,7 +33128,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 { setId: origin.challenge.setId, challengeId: origin.challenge.id }
               );
               const current3 = capture(), record2 = contribution.record;
-              if (!same27(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
+              if (!same27(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail29("CONTEXT_CHANGED");
               const ownRecord = record2 && same27(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
               const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
               let isolationReason;
@@ -31990,7 +33194,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
           }
           const current2 = capture();
-          if (!same27(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail28("CONTEXT_CHANGED");
+          if (!same27(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail29("CONTEXT_CHANGED");
           if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
             result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
           }
@@ -32006,7 +33210,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           });
           const record = result.record;
           if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
-            if (!same27(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail28("CONTEXT_CHANGED");
+            if (!same27(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail29("CONTEXT_CHANGED");
             const completed = record.submittedScore >= record.plan.challenge.targetScore;
             if (!completed) activeExecution.prepare(record.plan);
             const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
@@ -32077,7 +33281,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           timeout: 15e3,
           onload: (response) => {
             if (response.finalUrl && response.finalUrl !== url) return error2("REDIRECT");
-            if (response.status !== 200) return error2(integer16(response.status, 100, 599) ? `HTTP_${response.status}` : "RESPONSE_INVALID");
+            if (response.status !== 200) return error2(integer17(response.status, 100, 599) ? `HTTP_${response.status}` : "RESPONSE_INVALID");
             try {
               if (typeof response.responseText !== "string" || response.responseText.length > 3e6) return error2("RESPONSE_INVALID");
               const value = JSON.parse(response.responseText).data;
@@ -32098,28 +33302,28 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return Object.freeze({ async load({ challenge, context, policy, check = () => {
     }, onProgress = () => {
     } }) {
-      if (context?.season !== "27" || !integer16(challenge?.setId, 1) || !integer16(challenge.id, 1)) fail28("CATALOG_INPUT_INVALID");
+      if (context?.season !== "27" || !integer17(challenge?.setId, 1) || !integer17(challenge.id, 1)) fail29("CATALOG_INPUT_INVALID");
       const platform = /^pc:/i.test(context.platform) ? "pc" : /^(psn|xbox):/i.test(context.platform) ? "ps5" : null;
-      if (!platform) fail28("CATALOG_PLATFORM_INVALID");
+      if (!platform) fail29("CATALOG_PLATFORM_INVALID");
       check();
       const set = await read(`set/${challenge.setId}/`);
       check();
-      if (set.game !== "27" || set.eaId !== challenge.setId || !set.challengeEaIds?.includes(challenge.id) || typeof set.slug !== "string" || !/^27-[a-z0-9-]{1,150}$/.test(set.slug)) fail28("CATALOG_TARGET_CHANGED");
+      if (set.game !== "27" || set.eaId !== challenge.setId || !set.challengeEaIds?.includes(challenge.id) || typeof set.slug !== "string" || !/^27-[a-z0-9-]{1,150}$/.test(set.slug)) fail29("CATALOG_TARGET_CHANGED");
       const base = `${set.slug}/streamlined-solutions/`;
       const data = await read(`${base}?challenge=${challenge.id}&pool=${platform}`);
       check();
       const target = data.challenges?.find((row) => row.challengeEaId === challenge.id);
       const solution = target?.[platform];
-      if (data.setEaId !== challenge.setId || target?.scoreRequirement !== challenge.targetScore || !Array.isArray(solution?.rates) || solution.rates.length > 100) fail28("CATALOG_RULES_CHANGED");
+      if (data.setEaId !== challenge.setId || target?.scoreRequirement !== challenge.targetScore || !Array.isArray(solution?.rates) || solution.rates.length > 100) fail29("CATALOG_RULES_CHANGED");
       const marketMaxRating = policy.marketMaxRating ?? policy.maxRating;
       const routeGroups = data.routeGroups ?? [];
-      if (!Array.isArray(routeGroups) || routeGroups.length > 100 || routeGroups.some((row) => !integer16(row?.overall, 1, 99) || !integer16(row?.rarityEaId, 0, 1e4))) fail28("CATALOG_RULES_CHANGED");
-      const descriptors = [...solution.rates.filter((row) => integer16(row?.score, 1)), ...routeGroups];
+      if (!Array.isArray(routeGroups) || routeGroups.length > 100 || routeGroups.some((row) => !integer17(row?.overall, 1, 99) || !integer17(row?.rarityEaId, 0, 1e4))) fail29("CATALOG_RULES_CHANGED");
+      const descriptors = [...solution.rates.filter((row) => integer17(row?.score, 1)), ...routeGroups];
       const byGroup = /* @__PURE__ */ new Map();
-      for (const row of descriptors) if (integer16(row?.overall, 1, marketMaxRating) && integer16(row?.rarityEaId, 0, 1e4)) {
+      for (const row of descriptors) if (integer17(row?.overall, 1, marketMaxRating) && integer17(row?.rarityEaId, 0, 1e4)) {
         byGroup.set(`${row.overall}:${row.rarityEaId}`, row);
       }
-      if (byGroup.size > 100) fail28("CATALOG_RULES_CHANGED");
+      if (byGroup.size > 100) fail29("CATALOG_RULES_CHANGED");
       const rates = [...byGroup.values()].sort((a, b) => a.overall - b.overall || a.rarityEaId - b.rarityEaId);
       const ids2 = /* @__PURE__ */ new Set();
       let completed = 0;
@@ -32129,9 +33333,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const group = await read(`${base}?challenge=${challenge.id}&overall=${rate.overall}&rarity=${rate.rarityEaId}&limit=30&platform=${platform}`);
         check();
         completed++;
-        if (group.challengeEaId !== challenge.id || group.overall !== rate.overall || group.rarityEaId !== rate.rarityEaId || group.platform !== platform || !Array.isArray(group.players) || group.players.length > 30) fail28("CATALOG_GROUP_INVALID");
+        if (group.challengeEaId !== challenge.id || group.overall !== rate.overall || group.rarityEaId !== rate.rarityEaId || group.platform !== platform || !Array.isArray(group.players) || group.players.length > 30) fail29("CATALOG_GROUP_INVALID");
         for (const row of group.players) {
-          if (!integer16(row.player?.eaId, 1) || row.player.overall !== rate.overall) fail28("CATALOG_PLAYER_INVALID");
+          if (!integer17(row.player?.eaId, 1) || row.player.overall !== rate.overall) fail29("CATALOG_PLAYER_INVALID");
           ids2.add(row.player.eaId);
         }
       }
@@ -32175,19 +33379,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return async ({ input, check = () => {
     }, onProgress = () => {
     }, quoteDeadlineAt = null, allowPartialQuotes = false }) => {
-      if (busy) fail28("BUSY");
+      if (busy) fail29("BUSY");
       busy = true;
       try {
         const assert = () => {
           check();
           input.assertCurrent();
-          if (!same27(readFc27Context(root), input.context)) fail28("CONTEXT_CHANGED");
+          if (!same27(readFc27Context(root), input.context)) fail29("CONTEXT_CHANGED");
         };
         assert();
         const result = await catalog.load({ ...input, check: assert, onProgress });
         assert();
-        if (!Array.isArray(result.ids) || result.ids.length > 3e3) fail28("MARKET_CANDIDATES_UNVERIFIED");
-        if (root.GAME_NAME !== "fc27" || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function") fail28("MARKET_RUNTIME_UNVERIFIED");
+        if (!Array.isArray(result.ids) || result.ids.length > 3e3) fail29("MARKET_CANDIDATES_UNVERIFIED");
+        if (root.GAME_NAME !== "fc27" || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function") fail29("MARKET_RUNTIME_UNVERIFIED");
         const contextKey2 = JSON.stringify(input.context), entities = /* @__PURE__ */ new Map(), missing = [];
         for (const id12 of result.ids) {
           const row = cache.get(`${contextKey2}:${id12}`);
@@ -32203,26 +33407,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             Object.assign(criteria, { type: root.SearchType.PLAYER, category: root.SearchCategory.ANY, defId: batch, count: 250, offset });
             const reply = await request(criteria);
             assert();
-            if (reply?.success !== true || reply.status !== 200) fail28(integer16(reply?.status, 100, 599) ? `MARKET_HTTP_${reply.status}` : "MARKET_RESPONSE_INVALID");
+            if (reply?.success !== true || reply.status !== 200) fail29(integer17(reply?.status, 100, 599) ? `MARKET_HTTP_${reply.status}` : "MARKET_RESPONSE_INVALID");
             const rows = (reply.response ?? reply.data)?.items;
-            if (!Array.isArray(rows) || rows.length > 250) fail28("MARKET_RESPONSE_INVALID");
+            if (!Array.isArray(rows) || rows.length > 250) fail29("MARKET_RESPONSE_INVALID");
             for (const entity of rows) {
-              if (!integer16(entity?.definitionId, 1)) fail28("MARKET_IDENTITY_INVALID");
+              if (!integer17(entity?.definitionId, 1)) fail29("MARKET_IDENTITY_INVALID");
               if (!batch.includes(entity.definitionId)) continue;
-              if (seen.has(entity.definitionId)) fail28("MARKET_IDENTITY_INVALID");
+              if (seen.has(entity.definitionId)) fail29("MARKET_IDENTITY_INVALID");
               seen.add(entity.definitionId);
               entities.set(entity.definitionId, entity);
               cache.set(`${contextKey2}:${entity.definitionId}`, { at: now(), entity });
             }
             if (rows.length < 250 || batch.every((id12) => seen.has(id12))) break;
-            if (offset === 750) fail28("MARKET_READ_LIMIT");
+            if (offset === 750) fail29("MARKET_READ_LIMIT");
           }
         }
         assert();
         const projected2 = [];
         for (const entity of entities.values()) {
           const cosmetics = entity.cosmetics, hyper = entity._hyperCosmeticDTOs;
-          if (!isFc27PlayerItem(entity) || entity.concept !== true || entity.upgrades !== null || !Array.isArray(cosmetics) || !hyper || typeof hyper !== "object" || cosmetics.length || Object.keys(hyper).length || !integer16(entity.sbsScore, 1) || !integer16(entity._rareflag, 0, 1)) continue;
+          if (!isFc27PlayerItem(entity) || entity.concept !== true || entity.upgrades !== null || !Array.isArray(cosmetics) || !hyper || typeof hyper !== "object" || cosmetics.length || Object.keys(hyper).length || !integer17(entity.sbsScore, 1) || !integer17(entity._rareflag, 0, 1)) continue;
           const item2 = normalizeStreamlinedItem({
             source: "market",
             definitionId: entity.definitionId,
@@ -32278,7 +33482,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
           });
           assert();
-          if (pricePolicy && !same27(pricePolicy, snapshot.policy)) fail28("PRICE_POLICY_CHANGED");
+          if (pricePolicy && !same27(pricePolicy, snapshot.policy)) fail29("PRICE_POLICY_CHANGED");
           pricePolicy = snapshot.policy;
           Object.assign(references, snapshot.references);
           const quoteError2 = streamlinedQuoteFailure(
@@ -32345,7 +33549,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
           });
           assert();
-          if (!same27(pricePolicy, refresh.policy)) fail28("PRICE_POLICY_CHANGED");
+          if (!same27(pricePolicy, refresh.policy)) fail29("PRICE_POLICY_CHANGED");
           Object.assign(references, refresh.references);
           const refreshError = streamlinedQuoteFailure(refresh.references, pricePolicy.source, batch, now(), { requireFresh: false });
           if (fatalStreamlinedQuoteFailure(refreshError)) throw Error(refreshError);
@@ -32388,9 +33592,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const market = [];
         for (const item2 of filtered.items) {
           const quote2 = references[item2.definitionId]?.quotes?.[pricePolicy.source];
-          if (validStreamlinedQuote(quote2, pricePolicy.source, item2.definitionId, quoteAt) && integer16(quote2.price, 150, 15e6)) {
+          if (validStreamlinedQuote(quote2, pricePolicy.source, item2.definitionId, quoteAt) && integer17(quote2.price, 150, 15e6)) {
             const authority = galleryReferenceQuote({ [pricePolicy.source]: quote2.price }, pricePolicy);
-            if (!integer16(authority.maxBuy, 150, 15e6)) continue;
+            if (!integer17(authority.maxBuy, 150, 15e6)) continue;
             const raw = entities.get(item2.definitionId);
             market.push({
               ...item2,
@@ -32431,11 +33635,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const exclusive = createTraditionalExclusive({ context: bound, lockManager });
     const pending2 = /* @__PURE__ */ new Set();
     const assertContext = (requested) => {
-      if (!same27(createSeasonContext(requested), bound) || !same27(createSeasonContext(readContext()), bound)) fail28("CONTEXT_CHANGED");
+      if (!same27(createSeasonContext(requested), bound) || !same27(createSeasonContext(readContext()), bound)) fail29("CONTEXT_CHANGED");
     };
     const assertHeld = () => {
       assertContext(bound);
-      if (!exclusive.hasExclusiveAccess(scope2)) fail28("EXCLUSIVE_ACCESS_REQUIRED");
+      if (!exclusive.hasExclusiveAccess(scope2)) fail29("EXCLUSIVE_ACCESS_REQUIRED");
     };
     const raw = createStreamlinedJournal({
       now,
@@ -32474,7 +33678,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         assertHeld();
         return (async () => {
           const prior = await raw.read(bound);
-          if (prior && await isArchivedContribution(prior)) fail28("PURCHASE_HISTORY_RETIRED");
+          if (prior && await isArchivedContribution(prior)) fail29("PURCHASE_HISTORY_RETIRED");
           return raw.write(bound, record, revision);
         })();
       },
@@ -32488,7 +33692,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (previous && previous.plan.fingerprint !== plan.fingerprint) {
             await beforeReplace(previous, plan);
             assertHeld();
-            if (!same27(previous, await raw.read(bound))) fail28("JOURNAL_CHANGED");
+            if (!same27(previous, await raw.read(bound))) fail29("JOURNAL_CHANGED");
           }
           return raw.begin(plan, options);
         })();
@@ -32540,15 +33744,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
     const Request = root.UTHttpRequest, factory = root.factories?.Item, createItem = factory?.createItem;
     const auth = ownData(dao, "authDelegate"), game = ownData(root, "GAME_NAME"), pile = ownData(root.ItemPile, "STORAGE");
-    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game) || !integer16(pile, 1) || typeof createItem !== "function") fail28("STORAGE_RUNTIME_UNVERIFIED");
+    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game) || !integer17(pile, 1) || typeof createItem !== "function") fail29("STORAGE_RUNTIME_UNVERIFIED");
     let busy = false, stopped = false, requests = 0;
     const assert = () => {
       runtime();
       native();
-      if (stopped || !same27(readFc27Context(root), context) || root.services?.Item?.itemDao !== dao || dao.searchStorageItems !== methods.search || root.UTHttpRequest.prototype.setUrlVariables !== methods.query || ownData(dao, "authDelegate") !== auth || root.factories?.Item !== factory || factory.createItem !== createItem || ownData(root.ItemPile, "STORAGE") !== pile || root.GAME_NAME !== game) fail28("STORAGE_CONTEXT_CHANGED");
+      if (stopped || !same27(readFc27Context(root), context) || root.services?.Item?.itemDao !== dao || dao.searchStorageItems !== methods.search || root.UTHttpRequest.prototype.setUrlVariables !== methods.query || ownData(dao, "authDelegate") !== auth || root.factories?.Item !== factory || factory.createItem !== createItem || ownData(root.ItemPile, "STORAGE") !== pile || root.GAME_NAME !== game) fail29("STORAGE_CONTEXT_CHANGED");
     };
     return Object.freeze({ getRequestCount: () => requests, async read() {
-      if (busy || stopped) fail28("STORAGE_READ_BLOCKED");
+      if (busy || stopped) fail29("STORAGE_READ_BLOCKED");
       busy = true;
       try {
         assert();
@@ -32560,10 +33764,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         req.requestType = "GET";
         const endpoint = `/ut/game/${game}/storagepile`;
         req.setPath(endpoint);
-        if (req.setUrlVariables !== methods.query) fail28("STORAGE_CONTEXT_CHANGED");
+        if (req.setUrlVariables !== methods.query) fail29("STORAGE_CONTEXT_CHANGED");
         req.setUrlVariables({ skuMode: "FUT" });
         const url = new URL(ownData(req, "url"));
-        if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || ownData(req, "urlVariables") !== "?skuMode=FUT" || url.hash || url.username || url.password) fail28("STORAGE_ENDPOINT_UNVERIFIED");
+        if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || ownData(req, "urlVariables") !== "?skuMode=FUT" || url.hash || url.username || url.password) fail29("STORAGE_ENDPOINT_UNVERIFIED");
         requests++;
         const dto = await new Promise((resolve, reject) => {
           let done = false;
@@ -32607,13 +33811,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         assert();
         if (ownData(dto, "success") !== true || ownData(dto, "status") !== 200) {
           const status = ownData(dto, "status");
-          fail28(integer16(status, 100, 599) ? `STORAGE_HTTP_${status}` : "STORAGE_RESPONSE_UNVERIFIED");
+          fail29(integer17(status, 100, 599) ? `STORAGE_HTTP_${status}` : "STORAGE_RESPONSE_UNVERIFIED");
         }
         const response = ownData(dto, "response"), data = ownData(response, "itemData");
-        if (!Array.isArray(data) || data.length > 2e4 || new Set(data.map((item2) => ownData(item2, "id"))).size !== data.length || data.some((item2) => !integer16(ownData(item2, "id"), 1) || !integer16(ownData(item2, "resourceId"), 1) || ![void 0, "player"].includes(ownData(item2, "itemType")))) fail28("STORAGE_PAYLOAD_UNVERIFIED");
+        if (!Array.isArray(data) || data.length > 2e4 || new Set(data.map((item2) => ownData(item2, "id"))).size !== data.length || data.some((item2) => !integer17(ownData(item2, "id"), 1) || !integer17(ownData(item2, "resourceId"), 1) || ![void 0, "player"].includes(ownData(item2, "itemType")))) fail29("STORAGE_PAYLOAD_UNVERIFIED");
         const rows = data.map((data2) => {
           const entity = createItem.call(factory, { ...data2 });
-          if (!isFc27PlayerItem(entity) || ownData(entity, "id") !== data2.id || ownData(entity, "definitionId") !== data2.resourceId || ownData(entity, "utasPile") !== pile || ownData(entity, "concept") !== false) fail28("STORAGE_ENTITY_UNVERIFIED");
+          if (!isFc27PlayerItem(entity) || ownData(entity, "id") !== data2.id || ownData(entity, "definitionId") !== data2.resourceId || ownData(entity, "utasPile") !== pile || ownData(entity, "concept") !== false) fail29("STORAGE_ENTITY_UNVERIFIED");
           const snapshot = { ...snapshotFc27ClubPlayer(entity, root), pile: "storage" };
           onEntity?.(entity);
           return snapshot;
@@ -32631,11 +33835,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/adapters/ea/fc27-streamlined-read.js
   var at9 = (root, path) => path.split(".").reduce((v, key) => ownData(v, key), root);
-  function values6(input, limit) {
+  function values7(input, limit) {
     for (let i = 0; i < 3 && ownData(input, "_collection") !== void 0; i++) input = ownData(input, "_collection");
-    if (!input || typeof input !== "object") fail28("COLLECTION_UNKNOWN");
+    if (!input || typeof input !== "object") fail29("COLLECTION_UNKNOWN");
     const keys2 = Object.getOwnPropertyNames(input).filter((key) => key !== "length");
-    if (keys2.length > limit) fail28("COLLECTION_LIMIT");
+    if (keys2.length > limit) fail29("COLLECTION_LIMIT");
     return keys2.map((key) => ownData(input, key));
   }
   function assertFc27StreamlinedPolicy(root, expected, items = []) {
@@ -32643,10 +33847,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const { lockedItemIds: _locks, activeSquadId: _squad, activeSquadItemIds: _members, ...base } = current2;
     const { lockedItemIds: _oldLocks, activeSquadId: _oldSquad, activeSquadItemIds: _oldMembers, ...frozen } = expected;
     if (!same27(base, frozen)) {
-      if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false || !same27({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, frozen)) fail28("POLICY_CHANGED");
+      if (expected.protectFsuLockedPlayers !== false || expected.protectActiveSquad !== false || !same27({ ...base, protectFsuLockedPlayers: false, protectActiveSquad: false }, frozen)) fail29("POLICY_CHANGED");
     }
     const locked = new Set(current2.lockedItemIds), active = new Set(current2.activeSquadItemIds);
-    if (items.some((item2) => item2.source === "inventory" && (locked.has(item2.id) || active.has(item2.id)))) fail28("MATERIAL_CHANGED");
+    if (items.some((item2) => item2.source === "inventory" && (locked.has(item2.id) || active.has(item2.id)))) fail29("MATERIAL_CHANGED");
     return current2;
   }
   function locateFc27StreamlinedPage(root) {
@@ -32656,7 +33860,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (typeof root.UTOneClickSBCWorkAreaSplitViewController === "function" && controller instanceof root.UTOneClickSBCWorkAreaSplitViewController) {
           const work = ownData(controller, "workAreaController"), vm = ownData(work, "viewModel");
           const challenge = vm?.getChallenge?.(), set = vm?.getSet?.();
-          if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id || !integer16(challenge.id, 1) || !integer16(set.id, 1)) return null;
+          if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id || !integer17(challenge.id, 1) || !integer17(set.id, 1)) return null;
           const anchor = work.getView?.()?.getRootElement?.();
           if (!anchor?.isConnected || anchor.ownerDocument !== root.document) return null;
           return { controller, vm, challenge, set, anchor, setId: set.id, challengeId: challenge.id };
@@ -32669,10 +33873,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function projectFc27StreamlinedChallenge(page, context) {
     const { challenge, set, vm } = page;
-    if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id) fail28("CONTRACT_UNVERIFIED");
-    const eligibility = values6(ownData(challenge, "eligibilityRequirements"), 32).map((rule) => {
+    if (challenge?.isOneClickChallenge?.() !== true || challenge.setId !== set?.id) fail29("CONTRACT_UNVERIFIED");
+    const eligibility = values7(ownData(challenge, "eligibilityRequirements"), 32).map((rule) => {
       const pairs = ownData(ownData(rule, "kvPairs"), "_collection");
-      if (!pairs || typeof pairs !== "object") fail28("ELIGIBILITY_UNVERIFIED");
+      if (!pairs || typeof pairs !== "object") fail29("ELIGIBILITY_UNVERIFIED");
       return {
         count: ownData(rule, "count"),
         scope: ownData(rule, "scope"),
@@ -32699,13 +33903,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   function createFc27StreamlinedMatcher(root, contract, entities) {
     const rules = contract.eligibility.map((rule) => {
       const pairs = new Map(rule.pairs.map((p) => [p.key, p.values]));
-      if (rule.count !== -1 || rule.scope === -1 || pairs.get(41)?.length !== 1 || !pairs.has(40) || [...pairs.keys()].some((key) => ![40, 41, 42].includes(key)) || typeof root.UTEvolutionEligibilityVO !== "function") fail28("ELIGIBILITY_UNVERIFIED");
+      if (rule.count !== -1 || rule.scope === -1 || pairs.get(41)?.length !== 1 || !pairs.has(40) || [...pairs.keys()].some((key) => ![40, 41, 42].includes(key)) || typeof root.UTEvolutionEligibilityVO !== "function") fail29("ELIGIBILITY_UNVERIFIED");
       const vo = new root.UTEvolutionEligibilityVO({
         attribute: pairs.get(41)[0],
         scope: rule.scope,
         targets: [...pairs.get(40), ...pairs.get(42) ?? []]
       });
-      if (vo.isValid !== true || typeof vo.meetsRequirements !== "function") fail28("ELIGIBILITY_UNVERIFIED");
+      if (vo.isValid !== true || typeof vo.meetsRequirements !== "function") fail29("ELIGIBILITY_UNVERIFIED");
       return vo;
     });
     return createStreamlinedEligibility({ rules, matcher: (item2) => {
@@ -32737,7 +33941,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       activeTrade: expiredUnsold ? false : base.activeTrade,
       pile,
       points,
-      scoreVerified: integer16(points, 1),
+      scoreVerified: integer17(points, 1),
       locked: protection.lockedItemIds.includes(base.id),
       activeSquad: protection.activeSquadItemIds.includes(base.id),
       protected: base.special !== false || base.evolution !== false || base.cosmetic !== false,
@@ -32749,7 +33953,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function readFc27StreamlinedInputs(root, settings = {}) {
     const page = locateFc27StreamlinedPage(root);
-    if (!page) fail28("PAGE_UNAVAILABLE");
+    if (!page) fail29("PAGE_UNAVAILABLE");
     const context = readFc27Context(root);
     const challenge = projectFc27StreamlinedChallenge(page, context);
     const policy = readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99);
@@ -32761,7 +33965,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const skippedNonPlayerByPile = Object.fromEntries(allowedPiles.map((pile) => [pile, 0]));
     const inventoryTradeability = { tradeable: 0, untradeable: 0, unknown: 0 };
     for (const pile of sources3) {
-      if (!allowedPiles.includes(pile)) fail28("PILE_UNVERIFIED");
+      if (!allowedPiles.includes(pile)) fail29("PILE_UNVERIFIED");
       const repository = at9(root, "repositories.Item");
       const repo = at9(root, `repositories.Item.${pile}`);
       let raw;
@@ -32769,22 +33973,22 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const getter = pile === "unassigned" ? repository?.getUnassignedItems : pile === "transfer" ? repository?.getTransferItems : null;
         raw = typeof getter === "function" ? getter.call(repository) : ownData(repo, "items") ?? repo;
       } catch {
-        fail28("PILE_UNAVAILABLE");
+        fail29("PILE_UNAVAILABLE");
       }
       if (raw == null) {
         if (pile === "storage") continue;
-        fail28("PILE_UNAVAILABLE");
+        fail29("PILE_UNAVAILABLE");
       }
-      for (const item2 of values6(raw, 2e4)) {
+      for (const item2 of values7(raw, 2e4)) {
         rawByPile[pile]++;
         if (!isFc27PlayerItem(item2)) {
           skippedNonPlayerByPile[pile]++;
           continue;
         }
-        if (entities.has(item2.id)) fail28("IDENTITY_CONFLICT");
+        if (entities.has(item2.id)) fail29("IDENTITY_CONFLICT");
         entities.set(item2.id, item2);
         const projected2 = projectFc27StreamlinedItem(item2, root, pile, policy);
-        if (!projected2) fail28("IDENTITY_CONFLICT");
+        if (!projected2) fail29("IDENTITY_CONFLICT");
         inventory.push(projected2);
         inventoryByPile[pile]++;
         if (projected2.tradeable === true) inventoryTradeability.tradeable++;
@@ -32795,7 +33999,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const eligibility = createFc27StreamlinedMatcher(root, challenge, entities);
     const assertCurrent = () => {
       const current2 = locateFc27StreamlinedPage(root);
-      if (!current2 || current2.controller !== page.controller || !same27(readFc27Context(root), context) || !same27(projectFc27StreamlinedChallenge(current2, context), challenge) || !same27(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99), policy)) fail28("CONTEXT_CHANGED");
+      if (!current2 || current2.controller !== page.controller || !same27(readFc27Context(root), context) || !same27(projectFc27StreamlinedChallenge(current2, context), challenge) || !same27(readFc27StreamlinedPolicy(root, settings.maxRating ?? 99, settings.marketMaxRating ?? 99), policy)) fail29("CONTEXT_CHANGED");
     };
     assertCurrent();
     return {
@@ -32817,7 +34021,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       assertCurrent,
       registerMarketEntity(item2, entity) {
         assertCurrent();
-        if (item2?.source !== "market" || entity?.definitionId !== item2.definitionId || entity.concept !== true) fail28("MARKET_IDENTITY_INVALID");
+        if (item2?.source !== "market" || entity?.definitionId !== item2.definitionId || entity.concept !== true) fail29("MARKET_IDENTITY_INVALID");
         entities.set(`market:${item2.definitionId}`, entity);
       },
       // UI-only reference, never included in a plan/Journal or diagnostic export.
@@ -32845,12 +34049,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
   }
   function readFc27StreamlinedPolicy(root, maxRating = 99, marketMaxRating = void 0) {
-    if (!integer16(maxRating, 1, 99) || marketMaxRating !== void 0 && !integer16(marketMaxRating, 1, 99)) fail28("POLICY_INVALID");
+    if (!integer17(maxRating, 1, 99) || marketMaxRating !== void 0 && !integer17(marketMaxRating, 1, 99)) fail29("POLICY_INVALID");
     const context = readFc27Context(root), base = at9(root, "info.base");
     const flags2 = ["untradeable", "academy", "league", "firststorage"].map((key) => at9(root, `info.build.${key}`));
     const goldenMax = at9(root, "info.set.goldenrange"), leagues = at9(root, "info.set.shield_league");
-    if (![27, "27"].includes(ownData(base, "year")) || ownData(base, "initialized") !== true || !["ready", "finalizing", "trusted-provisional", "validating", "validation-failed"].includes(at9(base, "clubCache.status"))) fail28("FSU_NOT_READY");
-    if (flags2.some((v) => typeof v !== "boolean") || !integer16(goldenMax, 75, 99) || !Array.isArray(leagues) || leagues.length > 200 || leagues.some((v) => !integer16(v, 1))) fail28("POLICY_UNVERIFIED");
+    if (![27, "27"].includes(ownData(base, "year")) || ownData(base, "initialized") !== true || !["ready", "finalizing", "trusted-provisional", "validating", "validation-failed"].includes(at9(base, "clubCache.status"))) fail29("FSU_NOT_READY");
+    if (flags2.some((v) => typeof v !== "boolean") || !integer17(goldenMax, 75, 99) || !Array.isArray(leagues) || leagues.length > 200 || leagues.some((v) => !integer17(v, 1))) fail29("POLICY_UNVERIFIED");
     return {
       schema: 1,
       context,
@@ -32884,7 +34088,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     let busy = false;
     return Object.freeze({ async verify(plan, batch, submittedScore, { onProgress = () => {
     }, stopped = () => false } = {}) {
-      if (busy) fail28("BUSY");
+      if (busy) fail29("BUSY");
       busy = true;
       try {
         assertStreamlinedPlan(plan);
@@ -32895,7 +34099,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           pile: item2.pile,
           ...item2.executionPile ? { executionPile: item2.executionPile } : {}
         }));
-        if (!expected || !same27(expected, batch.refs) || !integer16(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail28("PLAN_CHANGED");
+        if (!expected || !same27(expected, batch.refs) || !integer17(submittedScore, plan.challenge.submittedScore, plan.challenge.targetScore - 1)) fail29("PLAN_CHANGED");
         const page = locateFc27StreamlinedPage(root);
         const expectedChallenge = {
           ...plan.challenge,
@@ -32906,26 +34110,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         let fresh = null;
         if (typeof readProgress === "function") {
           fresh = await readProgress(plan.challenge, { onProgress, stopped });
-          if (fresh?.fresh !== true || !integer16(fresh.observedAt) || fresh.observedAt > now() || now() - fresh.observedAt > 15e3 || !same27(fresh.challenge, expectedChallenge)) fail28("PROGRESS_CHANGED");
+          if (fresh?.fresh !== true || !integer17(fresh.observedAt) || fresh.observedAt > now() || now() - fresh.observedAt > 15e3 || !same27(fresh.challenge, expectedChallenge)) fail29("PROGRESS_CHANGED");
           if (!same27(pageChallenge, {
             ...expectedChallenge,
             submittedScore: pageChallenge.submittedScore,
             remainingScore: pageChallenge.remainingScore
-          })) fail28("PROGRESS_CHANGED");
+          })) fail29("PROGRESS_CHANGED");
         }
         const check = () => {
-          if (stopped()) fail28("CANCELLED");
+          if (stopped()) fail29("CANCELLED");
           const current2 = locateFc27StreamlinedPage(root);
-          if (!current2 || current2.controller !== page?.controller || !same27(readFc27Context(root), plan.context)) fail28("CONTEXT_CHANGED");
+          if (!current2 || current2.controller !== page?.controller || !same27(readFc27Context(root), plan.context)) fail29("CONTEXT_CHANGED");
           const challenge = projectFc27StreamlinedChallenge(current2, plan.context);
-          if (!same27(challenge, fresh ? pageChallenge : expectedChallenge) || fresh && now() - fresh.observedAt > 15e3) fail28("PROGRESS_CHANGED");
-          if (challenge.endTime > 0 && challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
+          if (!same27(challenge, fresh ? pageChallenge : expectedChallenge) || fresh && now() - fresh.observedAt > 15e3) fail29("PROGRESS_CHANGED");
+          if (challenge.endTime > 0 && challenge.endTime * 1e3 <= now()) fail29("CHALLENGE_EXPIRED");
           assertFc27StreamlinedPolicy(root, plan.policy, batch.refs.map((ref) => ({ ...ref, source: "inventory" })));
         };
         check();
         const entities = /* @__PURE__ */ new Map();
         const onEntity = (entity) => {
-          if (entities.has(entity.id)) fail28("IDENTITY_CONFLICT");
+          if (entities.has(entity.id)) fail29("IDENTITY_CONFLICT");
           entities.set(entity.id, entity);
         };
         const effectivePile = (ref) => ref.executionPile ?? ref.pile;
@@ -32938,26 +34142,26 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const definitionIds = ids2.slice(offset, offset + 50);
           for (let start = 0; ; start += 250) {
             check();
-            if (start >= 2e4) fail28("INVENTORY_LIMIT");
+            if (start >= 2e4) fail29("INVENTORY_LIMIT");
             const rows = await transport.readPage({ start, count: 250, definitionIds });
             check();
-            if (!Array.isArray(rows) || rows.length > 250) fail28("FRESH_ENTITY_UNVERIFIED");
+            if (!Array.isArray(rows) || rows.length > 250) fail29("FRESH_ENTITY_UNVERIFIED");
             const wrongSelectedPile = (row) => selectedById.has(row?.id) && (row.pile !== "club" || effectivePile(selectedById.get(row.id)) !== "club");
-            if (rows.some((row) => !row || !integer16(row.id, 1) || !integer16(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
+            if (rows.some((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId || wrongSelectedPile(row) || entities.get(row.id)?.definitionId !== row.definitionId)) {
               const error2 = Error("FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED");
               error2.evidence = {
                 phase: "selected-club-read",
                 rows: rows.length,
                 unexpectedVersion: rows.filter((row) => !definitionIds.includes(row?.definitionId)).length,
                 wrongPile: rows.filter(wrongSelectedPile).length,
-                identityMismatch: rows.filter((row) => !row || !integer16(row.id, 1) || !integer16(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
+                identityMismatch: rows.filter((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || selectedById.has(row.id) && selectedById.get(row.id).definitionId !== row.definitionId).length,
                 factoryMismatch: rows.filter((row) => entities.get(row?.id)?.definitionId !== row?.definitionId).length
               };
               throw error2;
             }
             const selected = clubRefs.filter((ref) => definitionIds.includes(ref.definitionId));
             if (selected.every((ref) => entities.get(ref.id)?.definitionId === ref.definitionId)) break;
-            if (rows.length < 250) fail28("MATERIAL_MISSING");
+            if (rows.length < 250) fail29("MATERIAL_MISSING");
           }
           try {
             onProgress({ phase: "validation", completed: Math.min(offset + 50, ids2.length), total: ids2.length });
@@ -32972,8 +34176,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           check();
           const rows = await storage.read();
           check();
-          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer16(row.id, 1) || !integer16(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== "storage")))) fail28("FRESH_ENTITY_UNVERIFIED");
-          if (storageRefs.some((ref) => !rows.some((row) => row.id === ref.id && row.definitionId === ref.definitionId))) fail28("MATERIAL_MISSING");
+          if (!Array.isArray(rows) || rows.length > 2e4 || new Set(rows.map((row) => row?.id)).size !== rows.length || rows.some((row) => !row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "storage" || entities.get(row.id)?.definitionId !== row.definitionId || batch.refs.some((ref) => ref.id === row.id && (ref.definitionId !== row.definitionId || effectivePile(ref) !== "storage")))) fail29("FRESH_ENTITY_UNVERIFIED");
+          if (storageRefs.some((ref) => !rows.some((row) => row.id === ref.id && row.definitionId === ref.definitionId))) fail29("MATERIAL_MISSING");
           requests += storage.getRequestCount();
           try {
             onProgress({ phase: "validation", completed: batch.refs.length, total: batch.refs.length });
@@ -32985,12 +34189,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const eligibility = createFc27StreamlinedMatcher(root, plan.challenge, entities);
         const currentPolicy = assertFc27StreamlinedPolicy(root, plan.policy, items);
         const filtered = filterStreamlinedItems(items, { policy: currentPolicy, eligibility });
-        if (filtered.status !== "observed") fail28("MATERIAL_CHANGED");
+        if (filtered.status !== "observed") fail29("MATERIAL_CHANGED");
         const accepted = new Set(filtered.items.map((item2) => item2.key));
         for (let index = 0; index < items.length; index++) {
           const proof = plan.batches[batch.index][index]?.purchaseReceipt;
           if (!proof) continue;
-          if (proof.itemId !== items[index]?.id || proof.definitionId !== items[index]?.definitionId || typeof purchaseVerifier !== "function" || await purchaseVerifier(items[index], proof, plan) !== true) fail28("PURCHASE_RECEIPT_UNVERIFIED");
+          if (proof.itemId !== items[index]?.id || proof.definitionId !== items[index]?.definitionId || typeof purchaseVerifier !== "function" || await purchaseVerifier(items[index], proof, plan) !== true) fail29("PURCHASE_RECEIPT_UNVERIFIED");
           const checked = filterStreamlinedItems([items[index]], {
             policy: {
               ...currentPolicy,
@@ -33000,7 +34204,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             },
             eligibility
           });
-          if (checked.status !== "observed" || checked.items.length !== 1) fail28("MATERIAL_CHANGED");
+          if (checked.status !== "observed" || checked.items.length !== 1) fail29("MATERIAL_CHANGED");
           accepted.add(items[index].key);
         }
         const facts2 = (item2) => Object.fromEntries([
@@ -33030,7 +34234,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (plan.policy.protectActiveSquad === false && expected2.activeSquad === null && item2.activeSquad === false) expected2.activeSquad = false;
           return expected2;
         };
-        if (accepted.size !== items.length || items.some((item2, index) => !same27(facts2(item2), plannedFacts(item2, index)))) fail28("MATERIAL_CHANGED");
+        if (accepted.size !== items.length || items.some((item2, index) => !same27(facts2(item2), plannedFacts(item2, index)))) fail29("MATERIAL_CHANGED");
         check();
         return {
           fresh: true,
@@ -33039,7 +34243,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           points: items.reduce((sum2, item2) => sum2 + item2.points, 0),
           requests,
           contributionReady: false,
-          timesCompleted: integer16(fresh?.timesCompleted) ? fresh.timesCompleted : null
+          timesCompleted: integer17(fresh?.timesCompleted) ? fresh.timesCompleted : null
         };
       } finally {
         busy = false;
@@ -33052,7 +34256,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var transientReadStatuses = /* @__PURE__ */ new Set([0, 408, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
   var observedReadStatuses = /* @__PURE__ */ new Set([426, 512]);
   var retryableRead = (code2) => transientReadStatuses.has(code2) || observedReadStatuses.has(code2);
-  var method5 = (object, key) => {
+  var method6 = (object, key) => {
     for (let depth = 0; object && depth < 8; depth++, object = Object.getPrototypeOf(object)) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
       if (descriptor) return descriptor.value;
@@ -33064,11 +34268,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     let busy = false;
     return Object.freeze({ async read(expected, { onProgress = () => {
     }, stopped = () => false } = {}) {
-      if (busy) fail28("BUSY");
+      if (busy) fail29("BUSY");
       busy = true;
       try {
         const page = locateFc27StreamlinedPage(root), context = readFc27Context(root);
-        if (!same27(context, expected?.context) || requirePage && (!page || page.setId !== expected.setId || page.challengeId !== expected.id)) fail28("CONTEXT_CHANGED");
+        if (!same27(context, expected?.context) || requirePage && (!page || page.setId !== expected.setId || page.challengeId !== expected.id)) fail29("CONTEXT_CHANGED");
         const projection = requirePage ? page : {
           set: {
             id: expected.setId,
@@ -33078,15 +34282,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           },
           vm: { getSelectionLimit: () => expected.selectionLimit }
         };
-        const dao = root.services?.SBC?.sbcDAO, read = method5(dao, "getChallengesForSet");
-        if (typeof read !== "function") fail28("PROGRESS_READ_UNVERIFIED");
+        const dao = root.services?.SBC?.sbcDAO, read = method6(dao, "getChallengesForSet");
+        if (typeof read !== "function") fail29("PROGRESS_READ_UNVERIFIED");
         const bytes = new globalThis.TextEncoder().encode(Function.prototype.toString.call(read));
         const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
-        if (hash !== FC27_STREAMLINED_PROGRESS_HASH) fail28("PROGRESS_READ_UNVERIFIED");
+        if (hash !== FC27_STREAMLINED_PROGRESS_HASH) fail29("PROGRESS_READ_UNVERIFIED");
         const assert = () => {
-          if (stopped()) fail28("CANCELLED");
+          if (stopped()) fail29("CANCELLED");
           const current2 = locateFc27StreamlinedPage(root);
-          if (requirePage && (!current2 || current2.controller !== page.controller || current2.setId !== expected.setId || current2.challengeId !== expected.id) || !same27(readFc27Context(root), context) || root.services?.SBC?.sbcDAO !== dao || method5(dao, "getChallengesForSet") !== read) fail28("CONTEXT_CHANGED");
+          if (requirePage && (!current2 || current2.controller !== page.controller || current2.setId !== expected.setId || current2.challengeId !== expected.id) || !same27(readFc27Context(root), context) || root.services?.SBC?.sbcDAO !== dao || method6(dao, "getChallengesForSet") !== read) fail29("CONTEXT_CHANGED");
         };
         assert();
         return await new Promise((resolve, reject) => {
@@ -33101,10 +34305,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
           };
           const readError = (code2, status, nativeCode) => Object.assign(Error(`FC27_STREAMLINED_${code2}`), {
-            ...integer16(status, 0, 599) ? { httpStatus: status } : {},
+            ...integer17(status, 0, 599) ? { httpStatus: status } : {},
             attempt: attempts,
             attemptLimit: 3,
-            ...integer16(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
+            ...integer17(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
           });
           const finish = (error2, value) => {
             if (done) return;
@@ -33148,7 +34352,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                         attempt: attempts,
                         attemptLimit: 3,
                         waitMs,
-                        ...integer16(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
+                        ...integer17(nativeCode, 0, 1e9) ? { localReason: `FC27_NATIVE_ERROR_${nativeCode}` } : {}
                       };
                       release();
                       try {
@@ -33168,15 +34372,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                   }
                   const value = ownData(ownData(reply, "response"), "challenges");
                   const raw = ownData(value, "_collection") ?? value;
-                  if (!raw || typeof raw !== "object") fail28("PROGRESS_READ_UNVERIFIED");
+                  if (!raw || typeof raw !== "object") fail29("PROGRESS_READ_UNVERIFIED");
                   const keys2 = Object.getOwnPropertyNames(raw).filter((key) => key !== "length");
-                  if (keys2.length > 100) fail28("PROGRESS_READ_UNVERIFIED");
+                  if (keys2.length > 100) fail29("PROGRESS_READ_UNVERIFIED");
                   const rows = keys2.map((key) => ownData(raw, key));
-                  if (rows.some((row) => !integer16(ownData(row, "id"), 1) || ownData(row, "setId") !== expected.setId) || new Set(rows.map((row) => row.id)).size !== rows.length) fail28("PROGRESS_READ_UNVERIFIED");
+                  if (rows.some((row) => !integer17(ownData(row, "id"), 1) || ownData(row, "setId") !== expected.setId) || new Set(rows.map((row) => row.id)).size !== rows.length) fail29("PROGRESS_READ_UNVERIFIED");
                   const selected = rows.find((row) => row.id === expected.id);
-                  if (!selected) fail28("PROGRESS_READ_UNVERIFIED");
+                  if (!selected) fail29("PROGRESS_READ_UNVERIFIED");
                   const timesCompleted = ownData(selected, "timesCompleted");
-                  if (timesCompleted != null && !integer16(timesCompleted)) fail28("PROGRESS_COUNT_UNVERIFIED");
+                  if (timesCompleted != null && !integer17(timesCompleted)) fail29("PROGRESS_COUNT_UNVERIFIED");
                   const challenge = projectFc27StreamlinedChallenge({ ...projection, challenge: selected }, context);
                   finish(null, {
                     fresh: true,
@@ -33210,7 +34414,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     ["dao.initiateOneClickChallenge", "ebb8bd1901f0d47a2f2afdf8ecf832e7c1a3d3f78825d9d3bb84f8c9c713df9c"]
   ]);
   var at10 = (root, path) => path.split(".").reduce((value, key) => ownData(value, key), root);
-  var method6 = (dao, key) => {
+  var method7 = (dao, key) => {
     for (let value = dao, depth = 0; value && depth < 8; value = Object.getPrototypeOf(value), depth++) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor) return typeof descriptor.value === "function" ? descriptor.value : void 0;
@@ -33226,33 +34430,33 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
     const methods = Object.fromEntries(FC27_STREAMLINED_CONTRIBUTION_METHODS.map(([path]) => {
       const key = path.split(".").at(-1);
-      return [key, method6(dao, key)];
+      return [key, method7(dao, key)];
     }));
     const native = await verifyFc27Methods({ dao: methods, crypto: root.crypto }, FC27_STREAMLINED_CONTRIBUTION_METHODS);
     const Request = ownData(root, "UTHttpRequest"), auth = ownData(dao, "authDelegate"), game = ownData(root, "GAME_NAME");
-    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game)) fail28("RUNTIME_UNVERIFIED");
+    if (!auth || typeof game !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(game)) fail29("RUNTIME_UNVERIFIED");
     let busy = false, stopped = false, last = -Infinity, cancelActive = null;
     const assert = () => {
       runtime();
       native();
       assertCurrent();
-      if (Object.entries(methods).some(([key, fn]) => method6(dao, key) !== fn)) fail28("RUNTIME_UNVERIFIED");
-      if (stopped || !same27(readFc27Context(root), context) || at10(root, "services.SBC.sbcDAO") !== dao || ownData(dao, "authDelegate") !== auth || ownData(root, "GAME_NAME") !== game) fail28("CONTEXT_CHANGED");
+      if (Object.entries(methods).some(([key, fn]) => method7(dao, key) !== fn)) fail29("RUNTIME_UNVERIFIED");
+      if (stopped || !same27(readFc27Context(root), context) || at10(root, "services.SBC.sbcDAO") !== dao || ownData(dao, "authDelegate") !== auth || ownData(root, "GAME_NAME") !== game) fail29("CONTEXT_CHANGED");
     };
     return Object.freeze({
       async request(action, target, beforeDispatch) {
-        if (busy || stopped) fail28("TRANSPORT_BLOCKED");
-        if (!["initiate", "contribute"].includes(action) || !integer16(target?.challengeId, 1) || typeof beforeDispatch !== "function" || canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+        if (busy || stopped) fail29("TRANSPORT_BLOCKED");
+        if (!["initiate", "contribute"].includes(action) || !integer17(target?.challengeId, 1) || typeof beforeDispatch !== "function" || canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
         const id12 = target.challengeId;
         const ids2 = action === "contribute" && Array.isArray(target?.itemIds) ? [...target.itemIds] : null;
-        if (action === "contribute" && (!Array.isArray(ids2) || !ids2.length || ids2.length > 1e3 || ids2.some((value) => !integer16(value, 1)) || new Set(ids2).size !== ids2.length)) fail28("CONTRIBUTION_INPUT_INVALID");
+        if (action === "contribute" && (!Array.isArray(ids2) || !ids2.length || ids2.length > 1e3 || ids2.some((value) => !integer17(value, 1)) || new Set(ids2).size !== ids2.length)) fail29("CONTRIBUTION_INPUT_INVALID");
         busy = true;
         try {
           const wait = Math.max(0, 800 - (Date.now() - last));
           if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
           assert();
           const req = new Request(auth);
-          if (req.send !== at10(root, "UTHttpRequest.prototype.send") || req.setPath !== at10(root, "UTHttpRequest.prototype.setPath") || req.setRequestBody !== at10(root, "EAHttpRequest.prototype.setRequestBody") || req.abort !== at10(root, "EAHttpRequest.prototype.abort")) fail28("RUNTIME_UNVERIFIED");
+          if (req.send !== at10(root, "UTHttpRequest.prototype.send") || req.setPath !== at10(root, "UTHttpRequest.prototype.setPath") || req.setRequestBody !== at10(root, "EAHttpRequest.prototype.setRequestBody") || req.abort !== at10(root, "EAHttpRequest.prototype.abort")) fail29("RUNTIME_UNVERIFIED");
           req.doRetry = false;
           req.doReauth = false;
           req.timeout = 1e4;
@@ -33260,11 +34464,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const endpoint = `/ut/game/${game}/sbs/challenge/${id12}${action === "contribute" ? "/item/submit" : ""}`;
           req.setPath(endpoint);
           const url = new URL(ownData(req, "url"));
-          if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) fail28("ENDPOINT_UNVERIFIED");
+          if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) fail29("ENDPOINT_UNVERIFIED");
           if (ids2) req.setRequestBody({ playerItemIds: ids2, skipUserSquadValidation: true });
           await beforeDispatch();
           assert();
-          if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+          if (canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
           last = Date.now();
           return await new Promise((resolve, reject) => {
             let done = false;
@@ -33295,7 +34499,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 if (done) return;
                 try {
                   assert();
-                  if (sender !== req) fail28("RESPONSE_OWNER");
+                  if (sender !== req) fail29("RESPONSE_OWNER");
                   finish(null, reply);
                 } catch {
                   stopped = true;
@@ -33303,7 +34507,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 }
               });
               assert();
-              if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+              if (canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
               req.send();
             } catch {
               stopped = true;
@@ -33324,9 +34528,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/completion.js
   function streamlinedResetProof(receipt, expected, current2, timesCompleted) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeCompleted !== true || receipt.challengeId !== expected?.id || receipt.setId !== expected.setId || !integer16(expected.targetScore, 1) || !integer16(receipt.submittedScore, expected.targetScore) || !integer16(receipt.challengeAwardCount, 0, 100) || !integer16(receipt.setAwardCount, 0, 100) || receipt.challengeAwardCount + receipt.setAwardCount === 0 || current2?.id !== expected.id || current2.setId !== expected.setId || current2.submittedScore !== 0 || current2.targetScore !== expected.targetScore || !same27(current2.context, expected.context) || ![receipt.previousTimesCompleted, timesCompleted].every((value) => value == null || integer16(value))) return null;
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeCompleted !== true || receipt.challengeId !== expected?.id || receipt.setId !== expected.setId || !integer17(expected.targetScore, 1) || !integer17(receipt.submittedScore, expected.targetScore) || !integer17(receipt.challengeAwardCount, 0, 100) || !integer17(receipt.setAwardCount, 0, 100) || receipt.challengeAwardCount + receipt.setAwardCount === 0 || current2?.id !== expected.id || current2.setId !== expected.setId || current2.submittedScore !== 0 || current2.targetScore !== expected.targetScore || !same27(current2.context, expected.context) || ![receipt.previousTimesCompleted, timesCompleted].every((value) => value == null || integer17(value))) return null;
     const previous = receipt.previousTimesCompleted;
-    if (integer16(previous) && integer16(timesCompleted)) {
+    if (integer17(previous) && integer17(timesCompleted)) {
       if (timesCompleted === previous + 1) return "challenge-count";
       if (timesCompleted !== previous) return null;
     }
@@ -33346,16 +34550,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   } = {}) {
     let busy = false;
     return Object.freeze({ async reconcile(record, batch) {
-      if (busy) fail28("BUSY");
+      if (busy) fail29("BUSY");
       busy = true;
       try {
         validateStreamlinedJournal(record, readFc27Context(root));
-        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state)) fail28("JOURNAL_INVALID");
-        if (!batch.receipt) fail28("RECEIPT_REQUIRED");
+        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state)) fail29("JOURNAL_INVALID");
+        if (!batch.receipt) fail29("RECEIPT_REQUIRED");
         const page = locateFc27StreamlinedPage(root), expected = record.plan.challenge;
         const assert = () => {
           const current3 = locateFc27StreamlinedPage(root);
-          if (requirePage && (!page || !current3 || current3.controller !== page.controller || current3.setId !== expected.setId || current3.challengeId !== expected.id) || !same27(readFc27Context(root), record.context)) fail28("CONTEXT_CHANGED");
+          if (requirePage && (!page || !current3 || current3.controller !== page.controller || current3.setId !== expected.setId || current3.challengeId !== expected.id) || !same27(readFc27Context(root), record.context)) fail29("CONTEXT_CHANGED");
         };
         assert();
         const effectivePile = (ref) => ref.executionPile ?? ref.pile;
@@ -33367,14 +34571,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const definitionIds = ids2.slice(offset, offset + 50);
           for (let start = 0; ; start += 250) {
             assert();
-            if (start >= 2e4) fail28("INVENTORY_LIMIT");
+            if (start >= 2e4) fail29("INVENTORY_LIMIT");
             const rows = await transport.readPage({ start, count: 250, definitionIds });
             assert();
-            if (!Array.isArray(rows) || rows.length > 250) fail28("FRESH_ENTITY_UNVERIFIED");
+            if (!Array.isArray(rows) || rows.length > 250) fail29("FRESH_ENTITY_UNVERIFIED");
             for (const row of rows) {
-              if (!row || !integer16(row.id, 1) || !integer16(row.definitionId, 1) || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail28("FRESH_ENTITY_UNVERIFIED");
+              if (!row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
               seen.add(row.id);
-              if (batch.refs.some((ref) => ref.id === row.id)) fail28("MATERIAL_STILL_PRESENT");
+              if (batch.refs.some((ref) => ref.id === row.id)) fail29("MATERIAL_STILL_PRESENT");
             }
             if (rows.length < 250) break;
           }
@@ -33385,30 +34589,30 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           assert();
           const rows = await storage.read();
           assert();
-          if (!Array.isArray(rows) || rows.length > 2e4) fail28("FRESH_ENTITY_UNVERIFIED");
+          if (!Array.isArray(rows) || rows.length > 2e4) fail29("FRESH_ENTITY_UNVERIFIED");
           for (const row of rows) {
-            if (!row || !integer16(row.id, 1) || !integer16(row.definitionId, 1) || row.pile !== "storage" || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail28("FRESH_ENTITY_UNVERIFIED");
+            if (!row || !integer17(row.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "storage" || seen.has(row.id) || batch.refs.some((ref) => ref.id === row.id && ref.definitionId !== row.definitionId)) fail29("FRESH_ENTITY_UNVERIFIED");
             seen.add(row.id);
-            if (batch.refs.some((ref) => ref.id === row.id)) fail28("MATERIAL_STILL_PRESENT");
+            if (batch.refs.some((ref) => ref.id === row.id)) fail29("MATERIAL_STILL_PRESENT");
           }
           requests += storage.getRequestCount();
         }
         const progress = await createProgress(root, { now, requirePage }).read(expected);
         assert();
-        if (progress?.fresh !== true || !integer16(progress.observedAt) || now() < progress.observedAt || now() - progress.observedAt > 15e3 || !progress.challenge) fail28("PROGRESS_READ_UNVERIFIED");
+        if (progress?.fresh !== true || !integer17(progress.observedAt) || now() < progress.observedAt || now() - progress.observedAt > 15e3 || !progress.challenge) fail29("PROGRESS_READ_UNVERIFIED");
         const current2 = progress.challenge;
         const changed = { ...expected, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore };
-        if (!same27(current2, changed)) fail28("PROGRESS_CHANGED");
+        if (!same27(current2, changed)) fail29("PROGRESS_CHANGED");
         const cycleReset = current2.submittedScore === 0 && batch.receipt.challengeCompleted;
         const resetProof = cycleReset ? streamlinedResetProof(batch.receipt, expected, current2, progress.timesCompleted) : null;
         if (cycleReset && !resetProof) {
           throw Object.assign(Error("FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED"), {
-            mismatch: batch.receipt.submittedScore < expected.targetScore ? "completion-score-below-target" : integer16(batch.receipt.previousTimesCompleted) && integer16(progress.timesCompleted) && progress.timesCompleted !== batch.receipt.previousTimesCompleted && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? "cycle-count-conflict" : "cycle-state-conflict",
+            mismatch: batch.receipt.submittedScore < expected.targetScore ? "completion-score-below-target" : integer17(batch.receipt.previousTimesCompleted) && integer17(progress.timesCompleted) && progress.timesCompleted !== batch.receipt.previousTimesCompleted && progress.timesCompleted !== batch.receipt.previousTimesCompleted + 1 ? "cycle-count-conflict" : "cycle-state-conflict",
             cycleCountBefore: batch.receipt.previousTimesCompleted,
             cycleCountAfter: progress.timesCompleted
           });
         }
-        if (!cycleReset && current2.submittedScore !== batch.receipt.submittedScore) fail28("PROGRESS_CHANGED");
+        if (!cycleReset && current2.submittedScore !== batch.receipt.submittedScore) fail29("PROGRESS_CHANGED");
         return {
           fresh: true,
           context: record.context,
@@ -33447,7 +34651,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
   function createStreamlinedMaterializationJournal({ context, get, set, assertCurrent = () => {
   } }) {
-    if (typeof get !== "function" || typeof set !== "function") fail28("MATERIALIZE_JOURNAL_UNAVAILABLE");
+    if (typeof get !== "function" || typeof set !== "function") fail29("MATERIALIZE_JOURNAL_UNAVAILABLE");
     const key = contextKey(context, "streamlined-materialization");
     const read = async () => {
       assertCurrent();
@@ -33455,11 +34659,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         record = await get(key, null);
       } catch {
-        fail28("MATERIALIZE_JOURNAL_READ_FAILED");
+        fail29("MATERIALIZE_JOURNAL_READ_FAILED");
       }
       assertCurrent();
       if (record === null) return { schema: 1, entries: [] };
-      if (record?.schema !== 1 || !Array.isArray(record.entries) || record.entries.length > 2e4 || new Set(record.entries.map((entry) => entry?.id)).size !== record.entries.length || record.entries.some((entry) => !integer16(entry?.id, 1) || !integer16(entry?.definitionId, 1) || !["unassigned", "transfer"].includes(entry.pile) || !["pending", "confirmed", "rejected"].includes(entry.state) || !integer16(entry.setId, 1) || !integer16(entry.challengeId, 1))) fail28("MATERIALIZE_JOURNAL_INVALID");
+      if (record?.schema !== 1 || !Array.isArray(record.entries) || record.entries.length > 2e4 || new Set(record.entries.map((entry) => entry?.id)).size !== record.entries.length || record.entries.some((entry) => !integer17(entry?.id, 1) || !integer17(entry?.definitionId, 1) || !["unassigned", "transfer"].includes(entry.pile) || !["pending", "confirmed", "rejected"].includes(entry.state) || !integer17(entry.setId, 1) || !integer17(entry.challengeId, 1))) fail29("MATERIALIZE_JOURNAL_INVALID");
       return structuredClone(record);
     };
     const save = async (record) => {
@@ -33467,9 +34671,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       try {
         await set(key, record);
         assertCurrent();
-        if (!same27(await get(key, null), record)) fail28("MATERIALIZE_JOURNAL_WRITE_FAILED");
+        if (!same27(await get(key, null), record)) fail29("MATERIALIZE_JOURNAL_WRITE_FAILED");
       } catch {
-        fail28("MATERIALIZE_JOURNAL_WRITE_FAILED");
+        fail29("MATERIALIZE_JOURNAL_WRITE_FAILED");
       }
       assertCurrent();
     };
@@ -33492,11 +34696,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       assert();
       const rows = await transport.readPage({ start, count: 250, definitionIds: [ref.definitionId] });
       assert();
-      if (!Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer16(row?.id, 1) || !integer16(row.definitionId, 1) || row.pile !== "club" || row.id === ref.id && row.definitionId !== ref.definitionId) || new Set([...matches2, ...rows].map((row) => row.id)).size !== matches2.length + rows.length) fail28("MATERIALIZE_READBACK_UNCONFIRMED");
+      if (!Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer17(row?.id, 1) || !integer17(row.definitionId, 1) || row.pile !== "club" || row.id === ref.id && row.definitionId !== ref.definitionId) || new Set([...matches2, ...rows].map((row) => row.id)).size !== matches2.length + rows.length) fail29("MATERIALIZE_READBACK_UNCONFIRMED");
       matches2.push(...rows);
       if (rows.length < 250) return matches2.filter((row) => row.definitionId === ref.definitionId);
     }
-    fail28("INVENTORY_LIMIT");
+    fail29("INVENTORY_LIMIT");
   }
   async function createFc27StreamlinedMaterializationRecovery(root, {
     context,
@@ -33509,7 +34713,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }
   } = {}) {
     const assert = () => {
-      if (!same27(readFc27Context(root), context)) fail28("MATERIALIZE_CONTEXT_CHANGED");
+      if (!same27(readFc27Context(root), context)) fail29("MATERIALIZE_CONTEXT_CHANGED");
       assertCurrent();
     };
     const journal = createStreamlinedMaterializationJournal({ context, get, set, assertCurrent: assert });
@@ -33570,7 +34774,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }
   } = {}) {
     const service = root.services?.Item, proto = service && Object.getPrototypeOf(service);
-    if (!service || !proto) fail28("MATERIALIZE_RUNTIME_UNVERIFIED");
+    if (!service || !proto) fail29("MATERIALIZE_RUNTIME_UNVERIFIED");
     const runtime = await verifyFc27Methods(
       { service: proto, crypto: root.crypto },
       FC27_BUY_SERVICE_METHODS.filter(([name]) => name === "move").map(([name, hash]) => [`service.${name}`, hash]),
@@ -33578,8 +34782,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     );
     const context = readFc27Context(root), adapter = createEaInventoryAdapter(root);
     const move = service.move;
-    if (typeof move !== "function" || root.ItemPile?.CLUB !== 7) fail28("MATERIALIZE_RUNTIME_UNVERIFIED");
-    if (!same27(plan?.context, context) || typeof get !== "function" || typeof set !== "function") fail28("MATERIALIZE_JOURNAL_UNAVAILABLE");
+    if (typeof move !== "function" || root.ItemPile?.CLUB !== 7) fail29("MATERIALIZE_RUNTIME_UNVERIFIED");
+    if (!same27(plan?.context, context) || typeof get !== "function" || typeof set !== "function") fail29("MATERIALIZE_JOURNAL_UNAVAILABLE");
     let busy = false;
     const report = (stage, index, total, id12) => {
       try {
@@ -33598,7 +34802,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const assert = () => {
       runtime();
       if (canWrite() !== true || !same27(readFc27Context(root), context) || root.services?.Item !== service || Object.getPrototypeOf(service) !== proto || service.move !== move) {
-        fail28("MATERIALIZE_CONTEXT_CHANGED");
+        fail29("MATERIALIZE_CONTEXT_CHANGED");
       }
       assertCurrent();
     };
@@ -33648,12 +34852,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         "limitedUse",
         "protected"
       ];
-      if (!selected || checked.status !== "observed" || checked.items.length !== 1 || fields4.some((field) => !same27(projected2?.[field], selected[field]))) fail28("MATERIALIZE_MATERIAL_CHANGED");
+      if (!selected || checked.status !== "observed" || checked.items.length !== 1 || fields4.some((field) => !same27(projected2?.[field], selected[field]))) fail29("MATERIALIZE_MATERIAL_CHANGED");
     };
     return Object.freeze({
       async prepare(refs3 = []) {
-        if (busy) fail28("MATERIALIZE_BUSY");
-        if (!Array.isArray(refs3) || refs3.some((ref) => !integer16(ref?.id, 1) || !integer16(ref?.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref?.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length) fail28("MATERIALIZE_INPUT_INVALID");
+        if (busy) fail29("MATERIALIZE_BUSY");
+        if (!Array.isArray(refs3) || refs3.some((ref) => !integer17(ref?.id, 1) || !integer17(ref?.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref?.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club") || new Set(refs3.map((ref) => ref.id)).size !== refs3.length) fail29("MATERIALIZE_INPUT_INVALID");
         busy = true;
         const external2 = refs3.filter((ref) => ["unassigned", "transfer"].includes(ref.pile));
         try {
@@ -33670,11 +34874,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             const ref = external2[index];
             report("checking-source", index, external2.length, ref.id);
             let entry = record.entries.find((e) => e.id === ref.id);
-            if (entry && (entry.definitionId !== ref.definitionId || entry.pile !== ref.pile || entry.setId !== plan.challenge.setId || entry.challengeId !== plan.challenge.id)) fail28("MATERIALIZE_IDENTITY_CHANGED");
+            if (entry && (entry.definitionId !== ref.definitionId || entry.pile !== ref.pile || entry.setId !== plan.challenge.setId || entry.challengeId !== plan.challenge.id)) fail29("MATERIALIZE_IDENTITY_CHANGED");
             report("checking-club", index, external2.length, ref.id);
             const before = await freshClub(ref);
             if (before.some((row) => row.id === ref.id)) {
-              if (!entry || !["pending", "confirmed"].includes(entry.state)) fail28("MATERIALIZE_IDENTITY_CHANGED");
+              if (!entry || !["pending", "confirmed"].includes(entry.state)) fail29("MATERIALIZE_IDENTITY_CHANGED");
               entry.state = "confirmed";
               await save(record);
               assert();
@@ -33685,10 +34889,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               recovery: streamlinedMaterializationRecovery(record)
             });
             const source = adapter.readPile(ref.pile).find((item2) => Number(item2?.id) === ref.id && Number(item2?.definitionId) === ref.definitionId);
-            if (!source) fail28("MATERIALIZE_SOURCE_MISSING");
+            if (!source) fail29("MATERIALIZE_SOURCE_MISSING");
             const snapshot = adapter.snapshotItem(source, ref.pile);
-            if (snapshot.activeTrade === true) fail28("MATERIALIZE_ACTIVE_TRADE");
-            if (before.length) fail28("MATERIALIZE_DUPLICATE_BLOCKED");
+            if (snapshot.activeTrade === true) fail29("MATERIALIZE_ACTIVE_TRADE");
+            if (before.length) fail29("MATERIALIZE_DUPLICATE_BLOCKED");
             checkSource(ref, source);
             entry ??= {
               id: ref.id,
@@ -33698,7 +34902,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               challengeId: plan.challenge.id
             };
             if (!record.entries.includes(entry)) {
-              if (record.entries.length >= 2e4) fail28("MATERIALIZE_JOURNAL_LIMIT");
+              if (record.entries.length >= 2e4) fail29("MATERIALIZE_JOURNAL_LIMIT");
               record.entries.push(entry);
             }
             entry.state = "pending";
@@ -33711,12 +34915,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             if (reply?.success === false) {
               entry.state = "rejected";
               await save(record);
-              fail28("MATERIALIZE_MOVE_REJECTED");
+              fail29("MATERIALIZE_MOVE_REJECTED");
             }
-            if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.map(Number).includes(ref.id)) fail28("MATERIALIZE_UNCONFIRMED");
+            if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.map(Number).includes(ref.id)) fail29("MATERIALIZE_UNCONFIRMED");
             report("move-acknowledged", index, external2.length, ref.id);
             report("club-readback", index, external2.length, ref.id);
-            if (!(await freshClub(ref)).some((row) => row.id === ref.id)) fail28("MATERIALIZE_READBACK_UNCONFIRMED");
+            if (!(await freshClub(ref)).some((row) => row.id === ref.id)) fail29("MATERIALIZE_READBACK_UNCONFIRMED");
             entry.state = "confirmed";
             await save(record);
             assert();
@@ -33759,15 +34963,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     });
     const binding = () => {
       const page = locateFc27StreamlinedPage(root);
-      if (!page) fail28("PAGE_UNAVAILABLE");
+      if (!page) fail29("PAGE_UNAVAILABLE");
       const context = readFc27Context(root);
       return { controller: page.controller, context, challenge: projectFc27StreamlinedChallenge(page, context) };
     };
     const unchanged = (origin, plan) => {
       const current2 = binding();
-      if (current2.controller !== origin.controller || !same27(current2.context, plan.context) || !same27(current2.challenge, origin.challenge)) fail28("CONTEXT_CHANGED");
+      if (current2.controller !== origin.controller || !same27(current2.context, plan.context) || !same27(current2.challenge, origin.challenge)) fail29("CONTEXT_CHANGED");
       assertFc27StreamlinedPolicy(root, plan.policy, plan.items);
-      if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
+      if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail29("CHALLENGE_EXPIRED");
     };
     return Object.freeze({
       capabilities: Object.freeze({ get contributionVerified() {
@@ -33775,18 +34979,18 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       } }),
       async verify(plan, batch, submittedScore, { onProgress = () => {
       }, stopped = () => false } = {}) {
-        if (busy) fail28("BUSY");
+        if (busy) fail29("BUSY");
         busy = true;
         lease = null;
         try {
-          if (plan.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
+          if (plan.challenge.status !== "IN_PROGRESS") fail29("INITIATION_UNVERIFIED");
           const origin = binding();
           unchanged(origin, plan);
           const prior = await journal?.read?.(plan.context), recent = confirmedCooldown.get(root), at11 = now();
           const times = [
             same27(recent?.context, plan.context) ? recent.at : null,
             same27(prior?.context, plan.context) && prior.batches.some((row) => row.state === "confirmed") ? prior.updatedAt : null
-          ].filter((time2) => integer16(time2) && time2 <= at11);
+          ].filter((time2) => integer17(time2) && time2 <= at11);
           const waitMs = times.length ? Math.max(0, Math.max(...times) + 3e3 - at11) : 0;
           if (waitMs > 0) {
             try {
@@ -33795,7 +34999,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
             const check = () => {
               unchanged(origin, plan);
-              if (stopped()) fail28("CANCELLED");
+              if (stopped()) fail29("CANCELLED");
             };
             check();
             await new Promise((resolve, reject) => {
@@ -33828,14 +35032,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           unchanged(origin, plan);
           await maintenance?.prepare?.(batch.refs);
           if (batch.refs.some((ref) => ["unassigned", "transfer"].includes(ref.pile))) {
-            if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+            if (canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
             const materializer = await createMaterializer(root, {
               canWrite,
               plan,
               ...materializationStorage,
               assertCurrent: () => {
                 unchanged(origin, plan);
-                if (stopped()) fail28("CANCELLED");
+                if (stopped()) fail29("CANCELLED");
               },
               onProgress: (progressEvent) => {
                 try {
@@ -33852,7 +35056,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             stopped
           });
           unchanged(origin, plan);
-          if (evidence?.fresh !== true || !integer16(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail28("MATERIAL_CHANGED");
+          if (evidence?.fresh !== true || !integer17(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || evidence.count !== batch.refs.length || evidence.points !== batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0)) fail29("MATERIAL_CHANGED");
           lease = {
             origin,
             fingerprint: plan.fingerprint,
@@ -33860,7 +35064,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             refs: structuredClone(batch.refs),
             submittedScore,
             at: evidence.observedAt,
-            timesCompleted: integer16(evidence.timesCompleted) ? evidence.timesCompleted : null
+            timesCompleted: integer17(evidence.timesCompleted) ? evidence.timesCompleted : null
           };
           return true;
         } finally {
@@ -33868,19 +35072,19 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       },
       async contribute(plan, batch) {
-        if (busy) fail28("BUSY");
+        if (busy) fail29("BUSY");
         const approved = lease;
         lease = null;
-        if (!approved || approved.fingerprint !== plan.fingerprint || approved.index !== batch.index || !same27(approved.refs, batch.refs)) fail28("VALIDATION_REQUIRED");
+        if (!approved || approved.fingerprint !== plan.fingerprint || approved.index !== batch.index || !same27(approved.refs, batch.refs)) fail29("VALIDATION_REQUIRED");
         busy = true;
         let sent = false;
         const assert = () => {
           unchanged(approved.origin, plan);
-          if (!sent && (now() < approved.at || now() - approved.at > 15e3)) fail28("VALIDATION_EXPIRED");
+          if (!sent && (now() < approved.at || now() - approved.at > 15e3)) fail29("VALIDATION_EXPIRED");
         };
         try {
           assert();
-          if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
+          if (canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
           const transport = await createTransport(root, { canWrite, assertCurrent: assert });
           const reply = await transport.request("contribute", {
             challengeId: plan.challenge.id,
@@ -33890,7 +35094,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             await checkOtherTransactions(plan, batch);
             assert();
             const record = validateStreamlinedJournal(await journal.read(plan.context), plan.context);
-            if (record.plan.fingerprint !== plan.fingerprint || record.submittedScore !== approved.submittedScore || !same27(record.batches[batch.index], batch) || batch.state !== "pending" || batch.receipt) fail28("JOURNAL_CHANGED");
+            if (record.plan.fingerprint !== plan.fingerprint || record.submittedScore !== approved.submittedScore || !same27(record.batches[batch.index], batch) || batch.state !== "pending" || batch.receipt) fail29("JOURNAL_CHANGED");
             assert();
             await maintenance?.dirty?.();
             assert();
@@ -33915,7 +35119,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return reconciler.reconcile(record, batch);
       },
       async finalize(record, batch, evidence) {
-        if (maintenance && await maintenance.apply(record, batch, evidence) !== true) fail28("FINALIZATION_REQUIRED");
+        if (maintenance && await maintenance.apply(record, batch, evidence) !== true) fail29("FINALIZATION_REQUIRED");
         confirmedCooldown.set(root, { context: record.context, at: now() });
         return true;
       }
@@ -33940,30 +35144,30 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const verified = await verifyFc27Methods({ methods, crypto: root.crypto }, FC27_STREAMLINED_CACHE_METHODS);
     const assert = () => {
       verified();
-      if (!same27(readFc27Context(root), context) || root.services?.SBC !== service || root.services?.Squad !== squad || service._evictSubmittedItems !== methods.evict || service.removeItemsById !== methods.removeFromSbc || squad.resetSquadsCache !== methods.resetSquads || root.events?.markClubCacheDirty !== methods.dirty) fail28("CACHE_RUNTIME_CHANGED");
+      if (!same27(readFc27Context(root), context) || root.services?.SBC !== service || root.services?.Squad !== squad || service._evictSubmittedItems !== methods.evict || service.removeItemsById !== methods.removeFromSbc || squad.resetSquadsCache !== methods.resetSquads || root.events?.markClubCacheDirty !== methods.dirty) fail29("CACHE_RUNTIME_CHANGED");
     };
     const item2 = (pile, id12) => {
       const repo = ownData(ownData(root.repositories, "Item"), pile);
       const collection = ownData(ownData(repo, "items"), "_collection");
-      if (pile === "club" && (!collection || typeof collection !== "object")) fail28("CACHE_UNVERIFIED");
+      if (pile === "club" && (!collection || typeof collection !== "object")) fail29("CACHE_UNVERIFIED");
       const storage = pile === "storage" ? ownData(repo, "_collection") : void 0;
-      if (repo && !collection && !storage) fail28("CACHE_UNVERIFIED");
+      if (repo && !collection && !storage) fail29("CACHE_UNVERIFIED");
       return ownData(collection ?? storage, String(id12));
     };
     const validateRefs = (refs3, { preMaterialize = false } = {}) => {
-      if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer16(ref.id, 1) || !integer16(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail28("CACHE_UNVERIFIED");
+      if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer17(ref.id, 1) || !integer17(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail29("CACHE_UNVERIFIED");
       if (!refs3.length) return;
       for (const ref of refs3) {
         const pile = ref.executionPile ?? ref.pile;
         if (preMaterialize && ["unassigned", "transfer"].includes(ref.pile)) continue;
         const cached = item2(pile, ref.id);
-        if (cached && (ownData(cached, "id") !== ref.id || ownData(cached, "definitionId") !== ref.definitionId) || item2(pile === "club" ? "storage" : "club", ref.id)) fail28("CACHE_IDENTITY_CHANGED");
+        if (cached && (ownData(cached, "id") !== ref.id || ownData(cached, "definitionId") !== ref.definitionId) || item2(pile === "club" ? "storage" : "club", ref.id)) fail29("CACHE_IDENTITY_CHANGED");
       }
     };
     const dirty = () => {
       assert();
       methods.dirty.call(root.events, "FC27 Streamlined SBC");
-      if (ownData(ownData(ownData(root.info, "base"), "clubCache"), "localDirty") !== true) fail28("CACHE_UNVERIFIED");
+      if (ownData(ownData(ownData(root.info, "base"), "clubCache"), "localDirty") !== true) fail29("CACHE_UNVERIFIED");
     };
     return Object.freeze({
       assert,
@@ -33975,12 +35179,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       apply(record, batch, evidence) {
         assert();
         validateStreamlinedJournal(record, context);
-        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state) || !batch.receipt || evidence?.fresh !== true || evidence.operationConfirmed !== true || !same27(evidence.context, context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !same27(evidence.absent, batch.refs) || !integer16(evidence.observedAt) || evidence.observedAt > now() || now() - evidence.observedAt > 15e3 || evidence.submittedScore !== batch.receipt.submittedScore) fail28("CACHE_EVIDENCE_REQUIRED");
+        if (!same27(record.batches[batch?.index], batch) || !["pending", "unknown"].includes(batch.state) || !batch.receipt || evidence?.fresh !== true || evidence.operationConfirmed !== true || !same27(evidence.context, context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !same27(evidence.absent, batch.refs) || !integer17(evidence.observedAt) || evidence.observedAt > now() || now() - evidence.observedAt > 15e3 || evidence.submittedScore !== batch.receipt.submittedScore) fail29("CACHE_EVIDENCE_REQUIRED");
         validateRefs(batch.refs);
         dirty();
         methods.evict.call(service, batch.refs.map((ref) => ref.id));
         assert();
-        if (batch.refs.some((ref) => item2("club", ref.id) || item2("storage", ref.id))) fail28("CACHE_RECONCILIATION_UNCONFIRMED");
+        if (batch.refs.some((ref) => item2("club", ref.id) || item2("storage", ref.id))) fail29("CACHE_RECONCILIATION_UNCONFIRMED");
         return true;
       }
     });
@@ -34003,7 +35207,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     createCache = createFc27StreamlinedCache
   } = {}) {
     const context = readFc27Context(root), page = locateFc27StreamlinedPage(root);
-    if (!page) fail28("PAGE_UNAVAILABLE");
+    if (!page) fail29("PAGE_UNAVAILABLE");
     const dao = root.services?.SBC?.sbcDAO;
     const methods = { hub: dao?.getHub, notify: root.EAObservable?.prototype?.notify };
     const checked = await verifyFc27Methods(
@@ -34015,10 +35219,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const assert = () => {
       checked();
       cache.assert();
-      if (!same27(readFc27Context(root), context) || locateFc27StreamlinedPage(root)?.controller !== page.controller || root.services?.SBC?.sbcDAO !== dao || dao.getHub !== methods.hub || page.challenge.onDataChange?.notify !== methods.notify) fail28("PAGE_CHANGED");
+      if (!same27(readFc27Context(root), context) || locateFc27StreamlinedPage(root)?.controller !== page.controller || root.services?.SBC?.sbcDAO !== dao || dao.getHub !== methods.hub || page.challenge.onDataChange?.notify !== methods.notify) fail29("PAGE_CHANGED");
     };
     const writable = (object, keys2) => {
-      if (keys2.some((key) => Object.getOwnPropertyDescriptor(object, key)?.writable !== true)) fail28("PAGE_FIELDS_UNVERIFIED");
+      if (keys2.some((key) => Object.getOwnPropertyDescriptor(object, key)?.writable !== true)) fail29("PAGE_FIELDS_UNVERIFIED");
     };
     const hub = () => new Promise((resolve, reject) => {
       let observer, done = false;
@@ -34041,22 +35245,22 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         observer.observe(owner, (_sender, reply) => {
           try {
             assert();
-            if (ownData(reply, "success") !== true || ownData(reply, "status") !== 200) fail28("SET_READ_FAILED");
+            if (ownData(reply, "success") !== true || ownData(reply, "status") !== 200) fail29("SET_READ_FAILED");
             const container = ownData(ownData(reply, "response"), "sets");
             const collection = ownData(container, "_collection") ?? container;
-            if (!collection || typeof collection !== "object" || Object.keys(collection).length > 1e3) fail28("SET_READ_UNVERIFIED");
+            if (!collection || typeof collection !== "object" || Object.keys(collection).length > 1e3) fail29("SET_READ_UNVERIFIED");
             const matches2 = Object.keys(collection).map((key) => ownData(collection, key)).filter((row) => ownData(row, "id") === page.setId);
-            if (matches2.length !== 1) fail28("SET_READ_UNVERIFIED");
+            if (matches2.length !== 1) fail29("SET_READ_UNVERIFIED");
             const set = matches2[0];
             for (const key of setFields) {
-              if (!integer16(ownData(set, key))) fail28(`SET_${{
+              if (!integer17(ownData(set, key))) fail29(`SET_${{
                 totalSubmittedScore: "SCORE",
                 challengesCompletedCount: "CHALLENGE_COUNT",
                 timesCompleted: "CYCLE_COUNT"
               }[key]}_UNVERIFIED`);
             }
-            if (["repeats", "repeatabilityMode"].some((key) => ownData(set, key) !== ownData(page.set, key))) fail28("SET_CHANGED");
-            if (!integer16(ownData(set, "endTime")) || set.endTime === 0 !== (page.set.endTime === 0)) fail28("SET_EXPIRY_UNVERIFIED");
+            if (["repeats", "repeatabilityMode"].some((key) => ownData(set, key) !== ownData(page.set, key))) fail29("SET_CHANGED");
+            if (!integer17(ownData(set, "endTime")) || set.endTime === 0 !== (page.set.endTime === 0)) fail29("SET_EXPIRY_UNVERIFIED");
             finish(null, Object.fromEntries(setFields.map((key) => [key, set[key]])));
           } catch (error2) {
             finish(error2);
@@ -34072,7 +35276,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       writable(page.challenge, ["submittedScore", "status", "timesCompleted"]);
       writable(page.set, setFields);
       const count2 = ownData(page.challenge, "timesCompleted");
-      if (setFields.some((key) => !integer16(ownData(page.set, key))) || count2 != null && !integer16(count2)) fail28("PAGE_FIELDS_UNVERIFIED");
+      if (setFields.some((key) => !integer17(ownData(page.set, key))) || count2 != null && !integer17(count2)) fail29("PAGE_FIELDS_UNVERIFIED");
     };
     return Object.freeze({
       prepare: prepare2,
@@ -34081,23 +35285,23 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         prepare2(batch.refs);
         const current2 = projectFc27StreamlinedChallenge(page, context), fresh = evidence?.challenge;
         const completed = batch.receipt?.challengeCompleted === true;
-        if (!fresh || !same27(fresh.context, context) || !integer16(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null) || !same27(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same27({
+        if (!fresh || !same27(fresh.context, context) || !integer17(evidence.timesCompleted) && !(completed && evidence.timesCompleted === null) || !same27(current2, { ...fresh, status: current2.status, submittedScore: current2.submittedScore, remainingScore: current2.remainingScore }) || !same27({
           ...record.plan.challenge,
           status: fresh.status,
           submittedScore: fresh.submittedScore,
           remainingScore: fresh.remainingScore
-        }, fresh)) fail28("PAGE_PROGRESS_UNVERIFIED");
+        }, fresh)) fail29("PAGE_PROGRESS_UNVERIFIED");
         if (evidence.cycleResetConfirmed === true || completed && fresh.submittedScore === 0) {
-          if (evidence.cycleResetConfirmed !== true || !streamlinedResetProof(batch.receipt, record.plan.challenge, fresh, evidence.timesCompleted)) fail28("PAGE_PROGRESS_UNVERIFIED");
+          if (evidence.cycleResetConfirmed !== true || !streamlinedResetProof(batch.receipt, record.plan.challenge, fresh, evidence.timesCompleted)) fail29("PAGE_PROGRESS_UNVERIFIED");
         }
         let set;
         if (completed) {
           set = await hub();
-          if (set.totalSubmittedScore < fresh.submittedScore) fail28("PAGE_PROGRESS_UNVERIFIED");
+          if (set.totalSubmittedScore < fresh.submittedScore) fail29("PAGE_PROGRESS_UNVERIFIED");
         } else {
-          if (current2.submittedScore !== (batch.startingScore ?? record.submittedScore) && current2.submittedScore !== fresh.submittedScore) fail28("PAGE_PROGRESS_CHANGED");
+          if (current2.submittedScore !== (batch.startingScore ?? record.submittedScore) && current2.submittedScore !== fresh.submittedScore) fail29("PAGE_PROGRESS_CHANGED");
           const total = page.set.totalSubmittedScore + fresh.submittedScore - current2.submittedScore;
-          if (!integer16(total) || total < fresh.submittedScore || evidence.timesCompleted !== page.challenge.timesCompleted) fail28("PAGE_PROGRESS_UNVERIFIED");
+          if (!integer17(total) || total < fresh.submittedScore || evidence.timesCompleted !== page.challenge.timesCompleted) fail29("PAGE_PROGRESS_UNVERIFIED");
           set = { totalSubmittedScore: total };
         }
         assert();
@@ -34106,7 +35310,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const progress = {
           submittedScore: fresh.submittedScore,
           status: fresh.status,
-          ...integer16(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}
+          ...integer17(evidence.timesCompleted) ? { timesCompleted: evidence.timesCompleted } : {}
         };
         Object.assign(page.challenge, progress);
         methods.notify.call(page.challenge.onDataChange, progress);
@@ -34128,14 +35332,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     ].includes(reason) ? `FC27_STREAMLINED_${reason}` : safeReason10({ message: reason });
     const failureDetail = (error2) => {
       const detail = { reason: safeReason10(error2) };
-      if (integer16(error2?.httpStatus, 0, 599)) detail.httpStatus = error2.httpStatus;
+      if (integer17(error2?.httpStatus, 0, 599)) detail.httpStatus = error2.httpStatus;
       if (typeof error2?.localReason === "string" && /^FC27_NATIVE_ERROR_\d{1,10}$/.test(error2.localReason)) detail.localReason = error2.localReason;
-      for (const key of ["attempt", "attemptLimit"]) if (integer16(error2?.[key], 1, 3)) detail[key] = error2[key];
+      for (const key of ["attempt", "attemptLimit"]) if (integer17(error2?.[key], 1, 3)) detail[key] = error2[key];
       if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
       if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
       if (typeof error2?.expectedHash === "string" && /^[a-f0-9]{64}$/.test(error2.expectedHash)) detail.expectedHash = error2.expectedHash;
       if (["completion-score-below-target", "cycle-count-conflict", "cycle-state-conflict", "purchase-history-overlap"].includes(error2?.mismatch)) detail.mismatch = error2.mismatch;
-      for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer16(error2?.[key], 0, 1e9)) detail[key] = error2[key];
+      for (const key of ["cycleCountBefore", "cycleCountAfter"]) if (integer17(error2?.[key], 0, 1e9)) detail[key] = error2[key];
       if (detail.reason === "FC27_STREAMLINED_FRESH_ENTITY_UNVERIFIED" && error2?.evidence?.phase === "selected-club-read") {
         detail.mismatch = "selected-club-read";
         for (const [source, target] of [
@@ -34145,7 +35349,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           ["identityMismatch", "identityMismatchCount"],
           ["factoryMismatch", "factoryMismatchCount"]
         ]) {
-          if (integer16(error2.evidence[source], 0, 250)) detail[target] = error2.evidence[source];
+          if (integer17(error2.evidence[source], 0, 250)) detail[target] = error2.evidence[source];
         }
       }
       return detail;
@@ -34171,14 +35375,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const receipt = batch.receipt;
         const reset = receipt?.challengeCompleted === true && receipt.submittedScore >= record.plan.challenge.targetScore && evidence?.cycleResetConfirmed === true && evidence.submittedScore === 0;
         const submittedScore = reset ? receipt.submittedScore : evidence?.submittedScore;
-        if (evidence?.fresh !== true || !same27(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer16(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same27(evidence.absent, batch.refs) || !integer16(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail28("RECONCILIATION_REQUIRED");
+        if (evidence?.fresh !== true || !same27(evidence.context, record.context) || evidence.setId !== record.plan.challenge.setId || evidence.challengeId !== record.plan.challenge.id || !integer17(evidence.observedAt) || now() < evidence.observedAt || now() - evidence.observedAt > 15e3 || !Array.isArray(evidence.absent) || !same27(evidence.absent, batch.refs) || !integer17(submittedScore) || submittedScore <= record.submittedScore || submittedScore > record.submittedScore + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0) || receipt && receipt.submittedScore !== submittedScore || evidence.operationConfirmed !== true) fail29("RECONCILIATION_REQUIRED");
         confirmed = { ...evidence, submittedScore, finalizationReason: null };
         diagnose("readback", "verified", record, batch, {
           currentScore: submittedScore,
           ...["challenge-count", "receipt-completed-state", "receipt-reset-state"].includes(evidence.cycleResetProof) ? { mismatch: evidence.cycleResetProof, cycleCountBefore: receipt?.previousTimesCompleted, cycleCountAfter: evidence.timesCompleted } : {}
         });
         phase = "finalization";
-        if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail28("FINALIZATION_REQUIRED");
+        if (typeof adapter.finalize === "function" && await adapter.finalize(record, batch, confirmed) !== true) fail29("FINALIZATION_REQUIRED");
         return confirmed;
       } catch (error2) {
         diagnose(phase, "blocked", record, batch, () => ({
@@ -34222,23 +35426,23 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       };
       try {
         assertStreamlinedPlan(plan);
-        if (adapter?.capabilities?.contributionVerified !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
-        if (approval?.approved !== true || approval.fingerprint !== plan.fingerprint || !Array.isArray(approval.batchIndices) || !approval.batchIndices.length || new Set(approval.batchIndices).size !== approval.batchIndices.length || approval.batchIndices.some((i, n) => !integer16(i, 0, plan.batches.length - 1) || n && i <= approval.batchIndices[n - 1]) || plan.status === "partial" && approval.allowPartial !== true) fail28("APPROVAL_REQUIRED");
+        if (adapter?.capabilities?.contributionVerified !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
+        if (approval?.approved !== true || approval.fingerprint !== plan.fingerprint || !Array.isArray(approval.batchIndices) || !approval.batchIndices.length || new Set(approval.batchIndices).size !== approval.batchIndices.length || approval.batchIndices.some((i, n) => !integer17(i, 0, plan.batches.length - 1) || n && i <= approval.batchIndices[n - 1]) || plan.status === "partial" && approval.allowPartial !== true) fail29("APPROVAL_REQUIRED");
         release = await lock.acquire(plan.context);
-        if (typeof release !== "function") fail28("BUSY");
+        if (typeof release !== "function") fail29("BUSY");
         record = await journal.read(plan.context);
         const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
         if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)) || replaceRemainder)) {
           record = await journal.begin(plan, { replaceRemainder });
         }
-        if (record.plan.fingerprint !== plan.fingerprint) fail28("RECOVERY_REQUIRED");
-        if (record.batches.some((b) => ["pending", "unknown"].includes(b.state))) fail28("RECOVERY_REQUIRED");
-        if (record.batches.some((b) => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail28("PROGRESS_CHANGED");
+        if (record.plan.fingerprint !== plan.fingerprint) fail29("RECOVERY_REQUIRED");
+        if (record.batches.some((b) => ["pending", "unknown"].includes(b.state))) fail29("RECOVERY_REQUIRED");
+        if (record.batches.some((b) => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail29("PROGRESS_CHANGED");
         for (const index of approval.batchIndices) {
           let batch = record.batches[index];
           activeBatch = batch;
           if (batch.state === "confirmed") continue;
-          if (batch.state !== "waiting") fail28("REPLAN_REQUIRED");
+          if (batch.state !== "waiting") fail29("REPLAN_REQUIRED");
           if (shouldStop() || record.submittedScore >= plan.challenge.targetScore) break;
           phase = "validation";
           report("validation", index);
@@ -34250,7 +35454,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               } catch {
               }
             }
-          }) !== true) fail28("MATERIAL_CHANGED");
+          }) !== true) fail29("MATERIAL_CHANGED");
           if (shouldStop()) break;
           phase = "checkpoint";
           record.batches[index].state = "pending";
@@ -34268,7 +35472,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           }
           diagnose("response", "unknown", record, batch, () => ({
             status: ["accepted", "rejected", "unknown"].includes(reply?.status) ? reply.status : "unknown",
-            ...integer16(reply?.code, 100, 599) ? { httpStatus: reply.code } : {},
+            ...integer17(reply?.code, 100, 599) ? { httpStatus: reply.code } : {},
             ...reply?.reason ? { reason: responseReason(reply.reason) } : {}
           }));
           if (reply?.status === "rejected") {
@@ -34346,7 +35550,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       let release, record, batch;
       try {
         release = await lock.acquire(context);
-        if (typeof release !== "function") fail28("BUSY");
+        if (typeof release !== "function") fail29("BUSY");
         record = await journal.read(context);
         if (!record) return { status: "absent" };
         if (target && (record.plan.challenge.setId !== target.setId || record.plan.challenge.id !== target.challengeId)) {
@@ -34402,7 +35606,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     onEvent = () => {
     }
   } = {}) {
-    if (!plan?.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
+    if (!plan?.route?.groups?.some((group) => group.source === "market")) fail29("PURCHASE_ROUTE_UNVERIFIED");
     const origin = readFc27Context(root), marketItems = approvedStreamlinedPurchaseRoute(plan).groups.flatMap((group) => group.source === "market" ? group.items : []);
     const players = new Map(marketItems.map((item2) => [item2.definitionId, {
       _rating: item2.rating,
@@ -34413,12 +35617,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }]));
     const references = new Map(marketItems.map((item2) => [item2.definitionId, item2.price]));
     const assertTarget = () => {
-      if (!same27(origin, readFc27Context(root))) fail28("CONTEXT_CHANGED");
+      if (!same27(origin, readFc27Context(root))) fail29("CONTEXT_CHANGED");
       const page = locateFc27StreamlinedPage(root);
-      if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail28("CONTEXT_CHANGED");
+      if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail29("CONTEXT_CHANGED");
       const current2 = projectFc27StreamlinedChallenge(page, origin);
       for (const key of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode", "endTime"]) {
-        if (!same27(current2[key], plan.challenge[key])) fail28("CONTEXT_CHANGED");
+        if (!same27(current2[key], plan.challenge[key])) fail29("CONTEXT_CHANGED");
       }
     };
     const buyer = await createBuyer(root, {
@@ -34448,14 +35652,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       const { reader, contradictoryIds, evolutionIds } = owned2 ?? await createOwnedReader(onEntity);
       const seen = /* @__PURE__ */ new Set(), matched = [];
       for (let offset = 0; offset <= 2e4; offset += 250) {
-        if (stopped()) fail28("STOPPED");
+        if (stopped()) fail29("STOPPED");
         assertTarget();
         onProgress({ phase: "checking-holdings", offset });
-        if (stopped()) fail28("STOPPED");
+        if (stopped()) fail29("STOPPED");
         const rows = await reader.readPage({ start: offset, count: 250, definitionIds });
         assertTarget();
-        if (stopped()) fail28("STOPPED");
-        const invalid3 = !Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer16(row?.id, 1) || !integer16(row.definitionId, 1) || !["club", null].includes(row.pile) || contradictoryIds.has(row.id));
+        if (stopped()) fail29("STOPPED");
+        const invalid3 = !Array.isArray(rows) || rows.length > 250 || rows.some((row) => !integer17(row?.id, 1) || !integer17(row.definitionId, 1) || !["club", null].includes(row.pile) || contradictoryIds.has(row.id));
         const duplicate = !invalid3 && rows.some((row) => {
           if (seen.has(row.id)) return true;
           seen.add(row.id);
@@ -34475,13 +35679,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           });
         } catch {
         }
-        if (invalid3 || duplicate) fail28("PURCHASE_HOLDINGS_UNVERIFIED");
-        if (itemId !== null && evolutionIds.has(itemId)) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        if (invalid3 || duplicate) fail29("PURCHASE_HOLDINGS_UNVERIFIED");
+        if (itemId !== null && evolutionIds.has(itemId)) fail29("PURCHASE_MATERIAL_UNKNOWN");
         matched.push(...current2.filter((row) => itemId === null || row.id === itemId));
         if (itemId !== null && matched.length || itemId === null && definitionIds.every((id12) => matched.some((row) => row.definitionId === id12))) return matched;
         if (rows.length < 250) return matched;
       }
-      fail28("PURCHASE_HOLDINGS_UNVERIFIED");
+      fail29("PURCHASE_HOLDINGS_UNVERIFIED");
     };
     const materialize3 = async (entries2, currentRecord) => {
       assertFc27StreamlinedPolicy(root, plan.policy, entries2.map((entry) => ({ id: entry.itemId, source: "inventory" })));
@@ -34490,7 +35694,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const group = currentRecord.route.groups[entry.groupIndex];
         if (entry.source === "inventory") {
           const item2 = group?.items.find((row) => row.id === entry.itemId && row.definitionId === entry.definitionId);
-          if (!item2) fail28("PURCHASE_MATERIAL_UNKNOWN");
+          if (!item2) fail29("PURCHASE_MATERIAL_UNKNOWN");
           output.push({ groupIndex: entry.groupIndex, item: item2 });
           continue;
         }
@@ -34502,9 +35706,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           }
         });
         const raw = rows.find((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId);
-        if (!raw) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        if (!raw) fail29("PURCHASE_MATERIAL_UNKNOWN");
         const entity = entities.get(entry.itemId);
-        if (!entity || entity.id !== raw.id || entity.definitionId !== raw.definitionId) fail28("PURCHASE_MATERIAL_UNKNOWN");
+        if (!entity || entity.id !== raw.id || entity.definitionId !== raw.definitionId) fail29("PURCHASE_MATERIAL_UNKNOWN");
         const projected2 = projectFc27StreamlinedItem(entity, root, "club");
         output.push({ groupIndex: entry.groupIndex, item: { ...projected2, purchaseReceipt: {
           operationId: currentRecord.operationId,
@@ -34518,7 +35722,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
     const contributionDiagnostic = (row) => onEvent({ ...row, stage: `contribution-${row.phase}` });
     const contribute = async (batchPlan, callbacks = {}) => {
-      if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail28("WRITE_CONTRACT_UNVERIFIED");
+      if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail29("WRITE_CONTRACT_UNVERIFIED");
       const result = await createStreamlinedTransaction({
         adapter: contributionAdapter.adapter,
         journal: contributionAdapter.journal,
@@ -34533,7 +35737,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       );
       if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
         if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
-        if (result.record.batches.length === 1 && result.record.batches[0].state === "confirmed" && integer16(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
+        if (result.record.batches.length === 1 && result.record.batches[0].state === "confirmed" && integer17(result.record.submittedScore, batchPlan.challenge.submittedScore + 1)) {
           return { confirmed: true, submittedScore: result.record.submittedScore };
         }
       }
@@ -34582,7 +35786,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       },
       async find(item2, cap) {
         assertTarget();
-        if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail28("CHALLENGE_EXPIRED");
+        if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail29("CHALLENGE_EXPIRED");
         let quote2 = item2.quote;
         if (prices) {
           const snapshot = await prices.load([item2.definitionId], {
@@ -34597,8 +35801,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           assertTarget();
           quote2 = snapshot.references[item2.definitionId]?.quotes?.[item2.pricePolicy.source];
         }
-        if (!integer16(quote2?.expiresAt) || quote2.expiresAt <= now()) fail28("PURCHASE_QUOTE_EXPIRED");
-        if (quote2?.definitionId !== item2.definitionId || quote2.error || !integer16(quote2.price, 150, 15e6) || !integer16(quote2.fetchedAt) || quote2.fetchedAt > now()) fail28("PURCHASE_PRICE_UNVERIFIED");
+        if (!integer17(quote2?.expiresAt) || quote2.expiresAt <= now()) fail29("PURCHASE_QUOTE_EXPIRED");
+        if (quote2?.definitionId !== item2.definitionId || quote2.error || !integer17(quote2.price, 150, 15e6) || !integer17(quote2.fetchedAt) || quote2.fetchedAt > now()) fail29("PURCHASE_PRICE_UNVERIFIED");
         const authority = item2.pricePolicy ? galleryReferenceQuote({ [quote2.source]: quote2.price }, item2.pricePolicy) : { maxBuy: cap };
         cap = purchasePriceCap({ maxBuy: authority.maxBuy, approvedCap: cap, priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS });
         if (cap === null) return { unavailable: true, reason: "FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED" };
@@ -34645,7 +35849,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             score: score2,
             progress,
             purchaseCost: 0,
-            materialValue: items.every((item2) => integer16(item2.price, 1, 15e6)) ? items.reduce((sum2, item2) => sum2 + item2.price, 0) : null,
+            materialValue: items.every((item2) => integer17(item2.price, 1, 15e6)) ? items.reduce((sum2, item2) => sum2 + item2.price, 0) : null,
             searchComplete: true
           }
         });
@@ -34657,7 +35861,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         assertTarget();
         const previous = await contributionAdapter.journal.read(origin);
         if (!previous || previous.plan.fingerprint !== saved.batchPlan.fingerprint && previous.batches.every((batch) => ["confirmed", "rejected"].includes(batch.state))) return { notDispatched: true };
-        if (previous.plan.fingerprint !== saved.batchPlan.fingerprint) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+        if (previous.plan.fingerprint !== saved.batchPlan.fingerprint) fail29("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
         if (previous.batches.every((batch) => ["waiting", "rejected"].includes(batch.state))) return { notDispatched: true };
         const result = await createStreamlinedTransaction({
           adapter: contributionAdapter.adapter,
@@ -34669,7 +35873,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }).recover(origin, { setId: plan.challenge.setId, challengeId: plan.challenge.id });
         if (result.status === "recovered" || result.status === "observed") {
           const score2 = result.record?.submittedScore;
-          if (integer16(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
+          if (integer17(score2, saved.batchPlan.challenge.submittedScore + 1)) return { confirmed: true, submittedScore: score2 };
         }
         return {
           confirmed: false,
@@ -34698,7 +35902,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     freeSlots,
     blockedDefinitions = []
   } = {}) {
-    if (!Array.isArray(route?.groups) || !integer16(limit, 1, 1e3) || !integer16(submittedScore) || !integer16(targetScore, 1) || !integer16(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id12) => integer16(id12, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer16(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail28("WAVE_INPUT_INVALID");
+    if (!Array.isArray(route?.groups) || !integer17(limit, 1, 1e3) || !integer17(submittedScore) || !integer17(targetScore, 1) || !integer17(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id12) => integer17(id12, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer17(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail29("WAVE_INPUT_INVALID");
     const material = [], purchases = [], blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
     let points = submittedScore, capacity = freeSlots;
     const append = (row) => {
@@ -34711,7 +35915,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     for (const group of route.groups) {
       if (group.source !== "inventory") continue;
       for (const item2 of group.items ?? []) {
-        if (!integer16(item2?.id, 1) || consumed.has(item2.id)) continue;
+        if (!integer17(item2?.id, 1) || consumed.has(item2.id)) continue;
         if (!["club", "storage"].includes(item2.pile)) continue;
         const rows = preferredByDefinition.get(item2.definitionId) ?? [];
         rows.push(item2);
@@ -34721,7 +35925,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const orderedReady = ready.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.item?.pile)) - Number(["unassigned", "transfer"].includes(b.item?.pile)));
     for (const row of orderedReady) {
       const group = route.groups[row.groupIndex];
-      if (!group || !integer16(row.item?.id, 1) || !integer16(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail28("WAVE_RECEIPT_INVALID");
+      if (!group || !integer17(row.item?.id, 1) || !integer17(row.item.points, 1) || row.item.points !== group.item.points || !group.items.some((item2) => item2.definitionId === row.item.definitionId)) fail29("WAVE_RECEIPT_INVALID");
       if (selectedIds.has(row.item.id)) continue;
       const external2 = ["unassigned", "transfer"].includes(row.item.pile);
       const preferred = preferredByDefinition.get(row.item.definitionId) ?? [];
@@ -34748,7 +35952,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const group = route.groups[i];
         if (group.source !== "market") continue;
         const pending2 = group.quantity - (fulfilled[i] ?? 0) - ready.filter((row) => row.groupIndex === i).length;
-        if (pending2 < 0) fail28("WAVE_QUANTITY_CHANGED");
+        if (pending2 < 0) fail29("WAVE_QUANTITY_CHANGED");
         let count2 = 0;
         for (const item2 of group.items) {
           if (count2 >= pending2 || capacity <= 0 || points >= targetScore || material.length + purchases.length >= limit) break;
@@ -34819,23 +36023,23 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         ...result?.confirmation ? { confirmation: result.confirmation } : {}
       });
       try {
-        if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer16(approval.budget) || !integer16(approval.attempts, 1) || !integer16(approval.expiresAt) || !plan?.route?.groups?.length || !integer16(plan.challenge?.selectionLimit, 1, 1e3))) fail28("PURCHASE_APPROVAL_REQUIRED");
+        if (!reconcileOnly && (approval?.approved !== true || approval.fingerprint !== (plan.fingerprint ?? JSON.stringify(plan)) || !integer17(approval.budget) || !integer17(approval.attempts, 1) || !integer17(approval.expiresAt) || !plan?.route?.groups?.length || !integer17(plan.challenge?.selectionLimit, 1, 1e3))) fail29("PURCHASE_APPROVAL_REQUIRED");
         release = await lock.acquire(plan.context);
-        if (typeof release !== "function") fail28("BUSY");
+        if (typeof release !== "function") fail29("BUSY");
         record = await journal.read(plan.context);
         const fingerprint = plan.fingerprint ?? JSON.stringify(plan);
         if (reconcileOnly && !record) return { status: "absent" };
         let replace = false;
         if (record && record.fingerprint !== fingerprint) {
-          if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record) && !await journal.isRetired?.(record)) fail28("PURCHASE_RECOVERY_REQUIRED");
+          if (reconcileOnly || streamlinedPurchaseNeedsRecovery(record) && !await journal.isRetired?.(record)) fail29("PURCHASE_RECOVERY_REQUIRED");
           await journal.archive(record);
           replace = true;
         }
         if (record?.completed && record.fingerprint === fingerprint) return { status: "completed", record };
         const hasPending = record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending"].includes(entry.state)) || !!record?.contribution;
-        if (!reconcileOnly && now() >= approval.expiresAt && !hasPending) fail28("PURCHASE_APPROVAL_EXPIRED");
+        if (!reconcileOnly && now() >= approval.expiresAt && !hasPending) fail29("PURCHASE_APPROVAL_EXPIRED");
         if (!record || record.completed || replace) {
-          if (now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
+          if (now() >= approval.expiresAt) fail29("PURCHASE_APPROVAL_EXPIRED");
           const route = approvedStreamlinedPurchaseRoute(plan);
           const inventoryEntries = route.groups.flatMap((group, groupIndex) => group.source === "inventory" ? group.items.slice(0, group.quantity).map((item2, index) => ({
             key: `inventory:${item2.id}:${index}`,
@@ -34871,11 +36075,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             entries: inventoryEntries
           }, record?.revision ?? 0);
         }
-        if (!reconcileOnly && record.budget !== approval.budget) fail28("PURCHASE_APPROVAL_CHANGED");
+        if (!reconcileOnly && record.budget !== approval.budget) fail29("PURCHASE_APPROVAL_CHANGED");
         const check = async ({ recovery = false } = {}) => {
           if (stopped && !recovery) throw stoppedError();
-          if (!recovery && now() >= approval.expiresAt) fail28("PURCHASE_APPROVAL_EXPIRED");
-          if (await journal.isRetired?.(record)) fail28("PURCHASE_HISTORY_RETIRED");
+          if (!recovery && now() >= approval.expiresAt) fail29("PURCHASE_APPROVAL_EXPIRED");
+          if (await journal.isRetired?.(record)) fail29("PURCHASE_HISTORY_RETIRED");
           await journal.assertAvailable?.(record.context, record.challenge, record.entries);
           await adapter.assertCurrent(record);
         };
@@ -34895,7 +36099,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           const entry = record.entries[index];
           if (entry.state === "club" && record.consumedIds.includes(entry.itemId)) continue;
           const location = await adapter.locate(entry);
-          if (!["club", "purchased"].includes(location)) fail28("PURCHASE_RECOVERY_REQUIRED");
+          if (!["club", "purchased"].includes(location)) fail29("PURCHASE_RECOVERY_REQUIRED");
           if (record.entries[index].state === "buy-pending") {
             record.entries[index].state = "bought";
             record.spent += entry.price;
@@ -34916,8 +36120,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             await save();
             await check();
             const moved = await adapter.move(record.entries[i]);
-            if (moved?.status === "rejected") fail28("PURCHASE_MOVE_REJECTED");
-            if (await adapter.locate(record.entries[i]) !== "club") fail28("PURCHASE_RECOVERY_REQUIRED");
+            if (moved?.status === "rejected") fail29("PURCHASE_MOVE_REJECTED");
+            if (await adapter.locate(record.entries[i]) !== "club") fail29("PURCHASE_RECOVERY_REQUIRED");
             record.entries[i].state = "club";
             await save();
           }
@@ -34930,7 +36134,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           report("checking-state");
           const state = await adapter.readState(record, { onProgress: (row) => report(row.phase ?? "checking-state", row), stopped: () => stopped });
           await check();
-          if (state.submittedScore !== record.submittedScore) fail28("PROGRESS_CHANGED");
+          if (state.submittedScore !== record.submittedScore) fail29("PROGRESS_CHANGED");
           const available = record.entries.filter((e) => ["ready", "club"].includes(e.state));
           const preferredDefinitions = new Set(available.filter((e) => ["club", "storage"].includes(e.pile)).map((e) => e.definitionId));
           const selectedDefinitions = /* @__PURE__ */ new Set();
@@ -34942,7 +36146,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             return true;
           }).slice(0, record.challenge.selectionLimit);
           const materialized = await adapter.materialize(readyEntries, record);
-          if (!Array.isArray(materialized)) fail28("PURCHASE_MATERIAL_UNKNOWN");
+          if (!Array.isArray(materialized)) fail29("PURCHASE_MATERIAL_UNKNOWN");
           const ready = materialized.map((row, index) => row?.item ? row : {
             groupIndex: readyEntries[index]?.groupIndex,
             item: row
@@ -35001,7 +36205,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             attempted.add(candidate.definitionId);
             if (stopped) break;
             await check();
-            if (!integer16(candidate.purchaseMaxBuy, 150, 15e6)) fail28("PURCHASE_PRICE_UNVERIFIED");
+            if (!integer17(candidate.purchaseMaxBuy, 150, 15e6)) fail29("PURCHASE_PRICE_UNVERIFIED");
             const cap = Math.min(candidate.purchaseMaxBuy, record.budget - record.spent);
             if (cap < 150) {
               budgetBlocked = true;
@@ -35027,7 +36231,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 break;
               }
               const previous = record.entries.find((e) => e.itemId === offer.itemId || e.tradeId === offer.tradeId);
-              const mismatch2 = offer.definitionId !== candidate.definitionId ? "definition" : !integer16(offer.price, 150, cap) ? "price" : !integer16(offer.itemId, 1) ? "item" : typeof offer.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? "trade" : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId || previous.tradeId !== offer.tradeId || !["rejected", "consumed"].includes(previous.state)) ? "record-identity" : null;
+              const mismatch2 = offer.definitionId !== candidate.definitionId ? "definition" : !integer17(offer.price, 150, cap) ? "price" : !integer17(offer.itemId, 1) ? "item" : typeof offer.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(offer.tradeId) ? "trade" : previous && (previous.definitionId !== offer.definitionId || previous.itemId !== offer.itemId || previous.tradeId !== offer.tradeId || !["rejected", "consumed"].includes(previous.state)) ? "record-identity" : null;
               if (mismatch2) {
                 const error2 = new Error("FC27_STREAMLINED_PURCHASE_OFFER_CHANGED");
                 error2.offerMismatch = mismatch2;
@@ -35061,7 +36265,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               if (receipt?.status !== "bought" || !same27(
                 [receipt.itemId, receipt.definitionId, receipt.tradeId, receipt.price],
                 [offer.itemId, offer.definitionId, offer.tradeId, offer.price]
-              )) fail28("PURCHASE_RECOVERY_REQUIRED");
+              )) fail29("PURCHASE_RECOVERY_REQUIRED");
               record.entries[index].state = "bought";
               record.spent += receipt.price;
               await save();
@@ -35070,13 +36274,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               await save();
               report("moving");
               await check();
-              if ((await adapter.move(record.entries[index]))?.status === "rejected") fail28("PURCHASE_MOVE_REJECTED");
-              if (await adapter.locate(record.entries[index]) !== "club") fail28("PURCHASE_RECOVERY_REQUIRED");
+              if ((await adapter.move(record.entries[index]))?.status === "rejected") fail29("PURCHASE_MOVE_REJECTED");
+              if (await adapter.locate(record.entries[index]) !== "club") fail29("PURCHASE_RECOVERY_REQUIRED");
               record.entries[index].state = "club";
               await save();
               if (stopped) break;
               const rows = await adapter.materialize([record.entries[index]], record);
-              if (rows.length !== 1) fail28("PURCHASE_MATERIAL_UNKNOWN");
+              if (rows.length !== 1) fail29("PURCHASE_MATERIAL_UNKNOWN");
               material.push(rows[0]?.item ? rows[0] : { groupIndex: slot.groupIndex, item: rows[0] });
               lastBought = now();
               boughtThisWave++;
@@ -35149,13 +36353,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return { status: record.completed ? "completed" : "stopped", record };
         async function settleContribution(result) {
           const material = record.contribution.material;
-          if (!integer16(
+          if (!integer17(
             result.submittedScore,
             record.submittedScore + 1,
             record.submittedScore + material.reduce((sum2, r) => sum2 + r.item.points, 0)
-          )) fail28("PROGRESS_CHANGED");
+          )) fail29("PROGRESS_CHANGED");
           for (const row of material) {
-            if (record.consumedIds.includes(row.item.id)) fail28("PURCHASE_IDENTITY_CONFLICT");
+            if (record.consumedIds.includes(row.item.id)) fail29("PURCHASE_IDENTITY_CONFLICT");
             record.consumedIds.push(row.item.id);
             record.fulfilled[row.groupIndex]++;
             const entry = record.entries.find((e) => e.itemId === row.item.id);
@@ -35169,7 +36373,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           record.progressChanged = result.submittedScore !== expected && result.submittedScore < record.challenge.targetScore;
           await save();
           report("confirmed");
-          if (record.progressChanged) fail28("PROGRESS_CHANGED");
+          if (record.progressChanged) fail29("PROGRESS_CHANGED");
         }
       } catch (error2) {
         if (error2?.stopped || error2?.message === "FC27_STREAMLINED_STOPPED") {
@@ -35214,9 +36418,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     try {
       assertStreamlinedPlan(batchPlan);
     } catch {
-      fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     }
-    if (!same27(batchPlan.context, purchase.context) || batchPlan.challenge.setId !== purchase.challenge.setId || batchPlan.challenge.id !== purchase.challenge.id || batchPlan.challenge.targetScore !== purchase.challenge.targetScore || batchPlan.challenge.submittedScore !== purchase.submittedScore || !same27(batchPlan.items, material.map((row) => row.item))) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (!same27(batchPlan.context, purchase.context) || batchPlan.challenge.setId !== purchase.challenge.setId || batchPlan.challenge.id !== purchase.challenge.id || batchPlan.challenge.targetScore !== purchase.challenge.targetScore || batchPlan.challenge.submittedScore !== purchase.submittedScore || !same27(batchPlan.items, material.map((row) => row.item))) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     return batchPlan;
   }
   function assertStreamlinedRecoveryIsolation(plan, refs3, purchase) {
@@ -35225,25 +36429,25 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     validateStreamlinedPurchase(purchase, plan.context);
     if (!streamlinedPurchaseNeedsRecovery(purchase)) return true;
     if (!isStreamlinedStockPlan(plan)) {
-      fail28("FOREIGN_PURCHASE_SCOPE_BLOCKED");
+      fail29("FOREIGN_PURCHASE_SCOPE_BLOCKED");
     }
     const planned2 = new Map(plan.items.map((item2) => [item2.id, item2]));
     if (!Array.isArray(refs3) || !refs3.length || refs3.length > 2e4 || refs3.some((ref) => {
       const item2 = planned2.get(ref.id);
       return !item2 || item2.definitionId !== ref.definitionId || item2.points !== ref.points || item2.pile !== ref.pile || ref.executionPile;
-    })) fail28("PLAN_CHANGED");
+    })) fail29("PLAN_CHANGED");
     const reserved = /* @__PURE__ */ new Set();
     for (const entry of purchase.entries) {
       if (!["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)) continue;
-      if (!integer16(entry.itemId, 1)) fail28("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      if (!integer17(entry.itemId, 1)) fail29("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
       reserved.add(entry.itemId);
     }
     if (purchase.contribution) {
       const batchPlan = streamlinedPurchaseContributionPlan(purchase);
-      if (batchPlan.fingerprint === plan.fingerprint) fail28("FOREIGN_PURCHASE_SCOPE_BLOCKED");
+      if (batchPlan.fingerprint === plan.fingerprint) fail29("FOREIGN_PURCHASE_SCOPE_BLOCKED");
       for (const item2 of batchPlan.items) reserved.add(item2.id);
     }
-    if (refs3.some((ref) => reserved.has(ref.id))) fail28("FOREIGN_PURCHASE_MATERIAL_RESERVED");
+    if (refs3.some((ref) => reserved.has(ref.id))) fail29("FOREIGN_PURCHASE_MATERIAL_RESERVED");
     return true;
   }
 
@@ -35265,7 +36469,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return null;
     }
     if (previous.batches.length !== 1 || !same27(previous.plan.items, marker.material.map((row) => row.item)) || old.submittedScore !== purchase.submittedScore || old.targetScore !== purchase.challenge.targetScore) {
-      fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+      fail29("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
     }
     const next = structuredClone(purchase), batch = previous.batches[0];
     if (isUnsentStreamlinedJournal(previous) || batch.state === "rejected") {
@@ -35274,10 +36478,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     }
     if (["pending", "unknown"].includes(batch.state)) return null;
     const maximum = purchase.submittedScore + marker.material.reduce((sum2, row) => sum2 + row.item.points, 0);
-    if (batch.state !== "confirmed" || batch.receipt?.status !== "accepted" || batch.receipt.submittedScore !== previous.submittedScore || !integer16(previous.submittedScore, purchase.submittedScore + 1, maximum)) fail28("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
+    if (batch.state !== "confirmed" || batch.receipt?.status !== "accepted" || batch.receipt.submittedScore !== previous.submittedScore || !integer17(previous.submittedScore, purchase.submittedScore + 1, maximum)) fail29("PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED");
     for (const row of marker.material) {
       const entry = next.entries.find((item2) => item2.itemId === row.item.id && item2.definitionId === row.item.definitionId);
-      if (!entry || !["ready", "club"].includes(entry.state) || next.consumedIds.includes(entry.itemId)) fail28("PURCHASE_IDENTITY_CONFLICT");
+      if (!entry || !["ready", "club"].includes(entry.state) || next.consumedIds.includes(entry.itemId)) fail29("PURCHASE_IDENTITY_CONFLICT");
       entry.state = "consumed";
       next.consumedIds.push(entry.itemId);
       next.fulfilled[row.groupIndex]++;
@@ -35314,7 +36518,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   } = {}) {
     await maintainFc27PuzzlePurchases(root, { get, set });
     await assertStreamlinedOtherTransactions(get, context);
-    if (!same27(readFc27Context(root), context)) fail28("CONTEXT_CHANGED");
+    if (!same27(readFc27Context(root), context)) fail29("CONTEXT_CHANGED");
     const persistence = createFc27StreamlinedPersistence({
       context,
       get,
@@ -35340,7 +36544,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       context,
       ...materializationStorage,
       assertCurrent: () => {
-        if (!same27(readFc27Context(root), context)) fail28("CONTEXT_CHANGED");
+        if (!same27(readFc27Context(root), context)) fail29("CONTEXT_CHANGED");
       }
     });
     const marketJournal = createStreamlinedPurchaseJournal({ get, set, assertHeld: persistence.assertHeld });
@@ -35460,8 +36664,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return Object.freeze({ ...native, async assertCurrent(record) {
         const current2 = await persistence.journal.read(context);
         if (current2 && current2.plan.fingerprint !== streamlinedPurchaseContributionPlan(record)?.fingerprint && !isUnsentStreamlinedJournal(current2)) {
-          if (current2.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail28("RECOVERY_REQUIRED");
-          if (current2.batches.some((batch) => batch.state === "waiting")) fail28("PURCHASE_REMAINDER_RECOVERY_REQUIRED");
+          if (current2.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail29("RECOVERY_REQUIRED");
+          if (current2.batches.some((batch) => batch.state === "waiting")) fail29("PURCHASE_REMAINDER_RECOVERY_REQUIRED");
         }
         await native.assertCurrent(record);
       } });
@@ -35471,12 +36675,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       journal: persistence.journal,
       async inspectInventoryRecovery(record) {
         const release = await persistence.lock.acquire(context);
-        if (typeof release !== "function") fail28("BUSY");
+        if (typeof release !== "function") fail29("BUSY");
         try {
-          if (!same27(record, await persistence.journal.read(context))) fail28("JOURNAL_CHANGED");
-          if (record.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail28("RECOVERY_REQUIRED");
+          if (!same27(record, await persistence.journal.read(context))) fail29("JOURNAL_CHANGED");
+          if (record.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) fail29("RECOVERY_REQUIRED");
           const refs3 = record.batches.filter((batch) => batch.state === "waiting").flatMap((batch) => batch.refs);
-          if (!refs3.length) fail28("RECOVERY_REQUIRED");
+          if (!refs3.length) fail29("RECOVERY_REQUIRED");
           await marketJournal.assertAvailable(context, record.plan.challenge, refs3);
           const saved = await marketJournal.read(context);
           return saved && await marketJournal.isRetired(saved) ? true : assertStreamlinedRecoveryIsolation(record.plan, refs3, saved);
@@ -35541,11 +36745,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             historyAction: { canArchive }
           };
         }
-        if (saved.challenge.targetScore !== challenge.targetScore) fail28("CONTEXT_CHANGED");
-        if (!saved.plan) fail28("PURCHASE_JOURNAL_INVALID");
+        if (saved.challenge.targetScore !== challenge.targetScore) fail29("CONTEXT_CHANGED");
+        if (!saved.plan) fail29("PURCHASE_JOURNAL_INVALID");
         if (saved.completed) return { status: "completed", record: saved };
         marketPurchase = await createMarket(saved.plan);
-        if (!marketPurchase) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        if (!marketPurchase) fail29("PURCHASE_ROUTE_UNVERIFIED");
         const driver = createStreamlinedProcurement({ journal: marketJournal, lock: persistence.lock, adapter: marketPurchase, now });
         activeProcurement = driver;
         try {
@@ -35555,15 +36759,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       },
       async archivePurchaseHistory(challenge) {
-        if (!historyToArchive) fail28("PURCHASE_RECOVERY_REQUIRED");
+        if (!historyToArchive) fail29("PURCHASE_RECOVERY_REQUIRED");
         const release = await persistence.lock.acquire(context);
-        if (typeof release !== "function") fail28("BUSY");
+        if (typeof release !== "function") fail29("BUSY");
         try {
           await assertStreamlinedOtherTransactions(get, context);
           await materializationJournal.assertSettled();
           const current2 = await persistence.journal.read(context), { saved, current: expected } = historyToArchive;
-          if (!same27(current2, expected)) fail28("JOURNAL_CHANGED");
-          if (saved.challenge.id === challenge.id && saved.challenge.setId === challenge.setId || !canRetireStreamlinedPurchase(saved, current2)) fail28("RECOVERY_REQUIRED");
+          if (!same27(current2, expected)) fail29("JOURNAL_CHANGED");
+          if (saved.challenge.id === challenge.id && saved.challenge.setId === challenge.setId || !canRetireStreamlinedPurchase(saved, current2)) fail29("RECOVERY_REQUIRED");
           const ownInner = current2?.plan.challenge.id === saved.challenge.id && current2?.plan.challenge.setId === saved.challenge.setId;
           await marketJournal.retire(saved, ownInner ? current2 : null);
           historyToArchive = null;
@@ -35574,7 +36778,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       },
       async purchase(plan2, approval = {}, callbacks = {}) {
         marketPurchase = await createMarket(plan2);
-        if (!marketPurchase) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        if (!marketPurchase) fail29("PURCHASE_ROUTE_UNVERIFIED");
         const runPlan = { ...plan2, route: plan2.route ?? { groups: [] } };
         const driver = createStreamlinedProcurement({
           journal: marketJournal,
@@ -35597,11 +36801,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       },
       prepare(plan2) {
-        if (canWrite() !== true) fail28("WRITE_CONTRACT_UNVERIFIED");
-        if (!persistence.inspect().supported) fail28("EXCLUSIVE_ACCESS_REQUIRED");
-        if (plan2.challenge.status !== "IN_PROGRESS") fail28("INITIATION_UNVERIFIED");
-        if (plan2.items.some((item2) => item2.source === "inventory" && (!["club", "storage", "unassigned", "transfer"].includes(item2.pile) || ["unassigned", "transfer"].includes(item2.pile) && item2.executionPile !== "club"))) fail28("PILE_UNVERIFIED");
-        if (plan2.items.some((item2) => item2.source === "market") && !plan2.route?.groups?.some((group) => group.source === "market")) fail28("PURCHASE_ROUTE_UNVERIFIED");
+        if (canWrite() !== true) fail29("WRITE_CONTRACT_UNVERIFIED");
+        if (!persistence.inspect().supported) fail29("EXCLUSIVE_ACCESS_REQUIRED");
+        if (plan2.challenge.status !== "IN_PROGRESS") fail29("INITIATION_UNVERIFIED");
+        if (plan2.items.some((item2) => item2.source === "inventory" && (!["club", "storage", "unassigned", "transfer"].includes(item2.pile) || ["unassigned", "transfer"].includes(item2.pile) && item2.executionPile !== "club"))) fail29("PILE_UNVERIFIED");
+        if (plan2.items.some((item2) => item2.source === "market") && !plan2.route?.groups?.some((group) => group.source === "market")) fail29("PURCHASE_ROUTE_UNVERIFIED");
         maintenance.prepare(plan2.items.filter((item2) => item2.source === "inventory"));
         return true;
       },
@@ -35656,7 +36860,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.62" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.63" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35745,7 +36949,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     set: (name, category = {}, set = {}, pool = []) => {
       try {
         const kind = category.slug === "leagues" ? "LEAGUE" : category.slug === "rarities" ? "RARITY" : "CLUB";
-        const idsFor = (values7) => [...new Set((values7 ?? []).map(Number))].filter((id12) => Number.isSafeInteger(id12) && id12 > 0);
+        const idsFor = (values8) => [...new Set((values8 ?? []).map(Number))].filter((id12) => Number.isSafeInteger(id12) && id12 > 0);
         const explicit = idsFor(set.conditions?.[kind === "LEAGUE" ? "leagues" : kind === "RARITY" ? "rareflags" : "clubs"]);
         if (kind === "RARITY" && (set.slug === "holographics" || set.conditions?.holo === true)) {
           return [galleryAssets.rarity(12)].filter(Boolean);
@@ -35881,6 +37085,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     createTransport: (options) => createFc27MarketReadTransport(unsafeWindow, options),
     diagnosticLog
   });
+  var galleryLevel = createFc27GalleryLevelReader(unsafeWindow, { get: GM_getValue, set: GM_setValue });
   var galleryAccounting = createFc27GalleryAccounting({ root: unsafeWindow, get: GM_getValue, set: GM_setValue });
   var galleryTradePreferences = createGalleryTradePreferences({ scope: () => publicPrices.scope(), get: GM_getValue, set: GM_setValue });
   var galleryPlanningSettings = createGalleryPlanningSettings({ scope: galleryProgress.scope, get: GM_getValue, set: GM_setValue });
@@ -35993,8 +37198,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.62"}`,
-    version: "27.0.62",
+    title: `FC Automation Tool ${"27.0.63"}`,
+    version: "27.0.63",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -36022,6 +37227,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     galleryAccounting,
     galleryTradePreferences,
     galleryPlanningSettings,
+    galleryLevel,
     exportDiagnostics: async () => {
       const payload = await diagnosticLog.exportPayload();
       const stamp = new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-");

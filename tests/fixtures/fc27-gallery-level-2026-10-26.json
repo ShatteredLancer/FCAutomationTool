@@ -1,0 +1,10 @@
+{
+  "evidence": "Reduced observed EA objective shapes; no account identifiers. currentProgress is a completion counter, not the current Gallery level.",
+  "groups": [{"objectives": [
+    {"id":719,"title":"Level 5","description":"Reach Gallery Level 5.","state":3,"companion":false,"rewards":[]},
+    {"id":720,"title":"Level 10","description":"Reach Gallery Level 10.","state":0,"companion":false,"rewards":["1 of 5 Holographic Base Hero Player Pick"]},
+    {"id":721,"title":"Level 15","description":"Reach Gallery Level 15.","state":0,"companion":false,"rewards":["1 of 5 Holographic Base Icon Player Pick"]},
+    {"id":722,"title":"Level 20","description":"Reach Gallery Level 20.","state":0,"companion":false,"rewards":["1 of 5 88+ Holographic Base Hero Player Pick"]},
+    {"id":723,"title":"Level 25","description":"Reach Gallery Level 25.","state":0,"companion":false,"rewards":["1 of 5 92+ Holographic Base Icon Player Pick"]}
+  ]}]
+}
