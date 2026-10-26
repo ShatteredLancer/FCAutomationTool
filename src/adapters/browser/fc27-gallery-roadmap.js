@@ -5,6 +5,7 @@ import { buildGalleryAnalysisSnapshot } from '../../gallery/analysis-snapshot.js
 import { downloadFc27Diagnostics } from './fc27-diagnostic-download.js';
 import { attachFodderPlanningReferences, forecastFodderReferencePrices } from '../../gallery/fodder-planning-reference.js';
 import { renderGalleryReferenceTable } from './fc27-gallery-reference-table.js';
+import { createGalleryRoadmapWork } from '../../gallery/roadmap-work.js';
 
 const money = value => value == null ? '待核实' : Number(value).toLocaleString('en-US');
 const failureCode = error => {
@@ -60,6 +61,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   const referenceBox = add(document, dialog, 'div');
   const output = add(document, dialog, 'div'); output.setAttribute('aria-live', 'polite');
   let epoch = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
+  const work = createGalleryRoadmapWork();
   let stage = 'idle', stopRequested = false;
   let mismatchReason = null;
   const mismatch = reason => { mismatchReason ??= reason; return false; };
@@ -87,7 +89,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   const quotesFresh = targets => (targets ?? []).every(target => !target.progress?.rows || target.stale || target.poolStale
     || target.status !== 'observed' || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null
     || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
-  const invalidate = () => { epoch++; last = null; planInputs = null; binding = null; output.replaceChildren(); referenceBox.replaceChildren(); timing.textContent = ''; generate.textContent = '生成整体方案'; };
+  const invalidate = () => { epoch++; work.clear(); last = null; planInputs = null; binding = null; output.replaceChildren(); referenceBox.replaceChildren(); timing.textContent = ''; generate.textContent = '生成整体方案'; };
   const render = result => {
     output.replaceChildren();
     const metric = add(document, output, 'div'); metric.className = 'gallery-roadmap-metrics';
@@ -162,7 +164,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       status.textContent = '请输入非负整数金币金额。可周转金币不是累计采购上限。'; return;
     }
     const token = ++epoch; busy = true; stopRequested = false; mismatchReason = null; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
-    let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0;
+    let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0, planningLimitMs = null;
     for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
     const completedPhases = new Set();
     const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : stage === 'pricing' ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
@@ -178,6 +180,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       const resume = last?.coverage.stopped && binding && same(binding) && fingerprint === JSON.stringify(options)
         && quotesFresh(planInputs);
       if (!resume) {
+        work.clear();
         last = null; binding = null; planInputs = null; output.replaceChildren(); generate.textContent = '生成整体方案';
         if (referenceService) {
           stage = 'reference'; status.textContent = '读取 Fodder 全目录公开组合（空收藏请求，不发送你的收藏）…';
@@ -226,19 +229,22 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       if (!valid()) return;
       if (!quotesFresh(targets)) throw Error('FC27_GALLERY_ROADMAP_QUOTES_EXPIRED');
       const maxMs = await readTimeout();
+      planningLimitMs = maxMs;
       stage = 'planning';
       const planStarted = performance.now();
       stageStarted = planStarted;
       const generator = planGalleryRoadmapSteps({ ...options, targets, previousRows: resume ? last.rows : [],
-        previousSelection: resume ? last.selectedOptions : [], fastReferences });
+        previousSelection: resume ? last.selectedOptions : [], fastReferences, work });
       const steps = { next: finish => generator.next(finish || stopRequested), return: () => generator.return() };
       const result = await runGalleryPlan(steps,
-        { current: valid, maxMs, progress: value => {
+        { current, checkpoint: valid, maxMs, progress: value => {
           status.textContent = value.phase === 'route' ? `3/3 · 组合整体路线 · 已选 ${value.completed}/${value.total} 个目标 · 比对 ${value.comparisons} 次`
             : `3/3 · 全目录分析 ${value.completed ?? 0}/${value.total ?? targets.length} · ${value.name ?? ''} ${value.grade ?? ''} · 已检查 ${value.gradesChecked ?? 0} 档`;
           progress.max = value.total || targets.length || 1; progress.value = value.completed ?? 0;
         } });
-      if (!result || !valid()) { status.textContent = !quotesFresh(targets) ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
+      if (!result || !valid()) {
+        failureReason = !quotesFresh(targets) ? 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' : 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED';
+        status.textContent = !quotesFresh(targets) ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
         : '数据、账号或页面已变化，旧计算已停止。'; return; }
       timings.planningMs = Math.round(performance.now() - planStarted);
       last = { ...result, generatedAt: Date.now(), timings, priceBasis };
@@ -255,7 +261,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       document.defaultView.clearInterval(ticker);
       const unfinishedPhase = { reference: 'referenceMs', preparing: 'syncMs', pricing: 'priceMs', planning: 'planningMs' }[stage];
       if (unfinishedPhase && timings[unfinishedPhase] == null) timings[unfinishedPhase] = Math.round(performance.now() - stageStarted);
-      const outcome = completed ? 'success' : stopRequested ? 'stopped' : failureReason ? 'failed' : 'blocked';
+      const outcome = completed ? last.coverage.stopped ? 'partial' : 'success' : stopRequested ? 'stopped' : failureReason ? 'failed' : 'blocked';
       for (const [key, phase] of [['referenceMs','reference'],['syncMs','sync'],['priceMs','pricing'],['planningMs','planning']]) {
         if (timings[key] != null) diagnose({ event: 'roadmap-phase', phase,
           status: phase === 'reference' ? referenceSnapshot ? 'observed' : stopRequested ? 'stopped' : 'unavailable'
@@ -265,12 +271,16 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
           responseCount: phase === 'reference' ? referenceSnapshot?.sets?.length ?? 0 : undefined });
       }
       diagnose({ event: 'roadmap-plan', phase: stage, status: outcome, priceSource: priceBasis, count: targetCount,
-        durationMs: Math.round(performance.now() - startedAt), reason: failureReason ?? (mismatchReason ? 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED' : undefined),
+        durationMs: Math.round(performance.now() - startedAt), deadlineMs: planningLimitMs,
+        responseCount: completed ? last.coverage.inspected : 0, acceptedCount: completed ? last.route.length : 0,
+        reason: failureReason ?? (mismatchReason ? 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'
+          : completed && last.coverage.stopped ? stopRequested ? 'FC27_GALLERY_ROADMAP_STOPPED' : 'FC27_GALLERY_ROADMAP_TIME_LIMIT' : undefined),
         localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : undefined });
       timing.textContent = `本轮 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · 公共参考 ${((timings.referenceMs ?? 0) / 1000).toFixed(1)} / 同步 ${((timings.syncMs ?? 0) / 1000).toFixed(1)} / 查价 ${((timings.priceMs ?? 0) / 1000).toFixed(1)} / 计算 ${((timings.planningMs ?? 0) / 1000).toFixed(1)} 秒`;
       if (stopRequested && stage !== 'planning') status.textContent = '数据读取已停止；未进行买卖。';
       busy = false; stage = 'idle'; generate.disabled = false; exportButton.disabled = false; stop.hidden = true; progress.hidden = true;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+      if (!completed || !last.coverage.stopped) work.clear();
       onBusyChange(false);
     }
   });
@@ -285,5 +295,5 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     } catch { status.textContent = '快照导出未完成；请先读取目录。'; }
   });
   return { close: () => { if (busy) cancel(); invalidate(); dialog.close(); },
-    dispose: () => { if (busy) cancel(); epoch++; dialog.close(); dialog.remove(); } };
+    dispose: () => { if (busy) cancel(); epoch++; work.clear(); dialog.close(); dialog.remove(); } };
 }

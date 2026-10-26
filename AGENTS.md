@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-26 Gallery 27.0.67：.66日志reference3.6s/sync87.1s成功/planning212.4s blocked，总303.4s且缺实际配置时限/原因；与5分钟参考过期吻合，但未证实唯一现场原因。先失败回归：已完成合集后进入65已收集/21人计分，10单位截止无响应，持续到100单位输入失效后整轮null。整体路线增加冻结输入专属内存continuation与评分memo，baseline/reference/grade任一嵌套yield可暂停，已完成行/档位保留，继续不重算暂停工作；完成合集释放memo，输入/预算/模式/账号变化或失败清理，不进GM/JSON。仅整体路线在JS片段内每微步查账号/页面，片段开始/让出前后/最终完整核验，避免每裸yield重建196合集；其它调用者默认行为不变。诊断记录deadlineMs、明确过期/变化、部分完成计数；原TTL/计分/节点/预算/限价/交易保护不变。同步87秒不是本次已解决事项，实际配置时限及完整路线/耗时待更新验证；详见docs/FC27_FODDER_REFERENCE_ZH.md的.67计划与验收。
+
 2026-10-26 Gallery 27.0.66：.65新诊断快模式无新独立查价，但两轮本地planning在78/118ms内泛化失败；同步169/50秒是独立耗时问题。生产UI离线Chrome和跨scorer/roadmap/scheduler单测先失败复现：已有计分卡多于阵容人数，底层裸yield越过12ms片段后被当作对象进度读取phase，确定TypeError。调度器对裸yield仍schedule/截止/取消，只不发布不存在的记录，不改求解或计分顺序。诊断保留固定异常类、已完成阶段不被后续失败改成failed；不导出异常原文/stack。FSU、原核价/预算/限价、交易/Journal、收集核验与缓存TTL不变；不是现场每张卡的精确重放，同步等待优化仍未完成。详见docs/FC27_FODDER_REFERENCE_ZH.md的.66计划/证据与实机gap。
 
 2026-10-26 Gallery 27.0.65：.64截图125s=公共2.1/同步48.0/独立价格74.8/计算0，诊断250目标/169 HTTP/74806ms失败，背景同步启动141ms后批次报CONTEXT_CHANGED、随后目录304；未输出具体差异字段。先Chrome失败复现账号/目录内容不变，仅5分钟TTL先render过期缓存即可同错。整体分析现在延后例行目录刷新及共享缓存读取/回调，结束补刷；显式prepare、scope/目录/材料/价格检查不放宽。用户明确确认快模式先按Fodder逐卡参考价预测，独立price loader调用0；不制造fresh quote，不更新审批/原缓存。冲突同版本统一较高价，未知不补0、行情年龄null，预测JSON标forecast/fresh=false；深模式独立核价及原俱乐部/购买核价不变。公共参考失败快模式明确待深度、不悄悄进入昂贵查价。新增bounded roadmap phase/plan诊断与固定上下文原因，保留在40条performance ring，不导出身份。完整verify/Chrome通过，真实更新后的全流程耗时仍待验收；日志/复现/用户选择见 docs/FC27_FODDER_REFERENCE_ZH.md。

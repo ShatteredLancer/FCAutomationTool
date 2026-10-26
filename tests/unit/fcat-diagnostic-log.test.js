@@ -22,6 +22,14 @@ it('retains bounded Gallery roadmap phase and mismatch evidence without account 
   expect(JSON.stringify(payload)).not.toMatch(/private-account|private-item/);
 });
 
+it('retains the configured roadmap limit and explicit expiry instead of an unexplained blocked result', async () => {
+  const t = harness();
+  await t.log.record({ area: 'gallery', event: 'roadmap-plan', status: 'failed', phase: 'planning',
+    deadlineMs: 30000, reason: 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED', account: 'private-account' });
+  expect((await t.log.exportPayload()).performanceEntries).toContainEqual(expect.objectContaining({
+    deadlineMs: 30000, reason: 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' }));
+});
+
 it('retains material failure counts through export and reload without raw entity evidence', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-validation',

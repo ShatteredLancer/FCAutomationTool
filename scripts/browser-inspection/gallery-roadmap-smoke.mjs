@@ -52,7 +52,9 @@ export async function exerciseGalleryRoadmap(context, directory) {
         holographic: false, positions: ['ST'], skillMoves: 3, weakFoot: 3, nationEaId: 1, clubEaId: 1, leagueEaId: 1, rarityEaId: 1 });
       const detail = setId => {
         const ids = setId === 30 ? [1] : setId === 31 ? [2] : [1, 2];
-        const rows = globalThis.roadmapKnobs.scoringSlices && setId === 30
+        const rows = globalThis.roadmapKnobs.longScoring && setId === 30
+          ? Array.from({ length: 65 }, (_, i) => ({ ...row(i + 100), gradingScore: i + 100, collected: true }))
+          : globalThis.roadmapKnobs.scoringSlices && setId === 30
           ? [1,3,4].map(eaId => ({ ...row(eaId), collected: true })) : ids.map(row);
         return { status: 'observed', scope: globalThis.roadmapScope, fetchedAt: Date.now(),
           pool: { source: 'futgg', setId, revision: `pool-${setId}` }, prices,
@@ -102,6 +104,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
             references: Object.fromEntries(ids.map(id => [id, { futbin: prices[id], futgg: prices[id], maxBuy: prices[id] }])), expiresAt: Date.now() + globalThis.roadmapKnobs.priceTtl }; },
         purchaseGallery: async () => { globalThis.roadmapCalls.buys++; throw Error('No buys in offline route'); },
       }); globalThis.roadmapPanel.open();
+      globalThis.roadmapFixtureCatalog = catalog;
     }, catalog);
     const shadow = page.locator('#roadmap-test');
     await shadow.locator('#tab-gallery').click();
@@ -220,6 +223,38 @@ export async function exerciseGalleryRoadmap(context, directory) {
       assert.equal(evidence.plan.reason, code); assert.equal(evidence.leaked, false);
     }
     await page.evaluate(() => { globalThis.roadmapKnobs.settingsFault = null; });
+    const beforeNested = await page.evaluate(() => {
+      globalThis.roadmapKnobs.longScoring = true;
+      globalThis.roadmapFixtureCatalog.categories[0].sets[0].requiredCards = 21;
+      globalThis.roadmapRealNow = globalThis.performance.now.bind(globalThis.performance);
+      let tick = globalThis.roadmapRealNow(); globalThis.performance.now = () => tick += 200;
+      return { sync: globalThis.roadmapCalls.sync, quotes: globalThis.roadmapCalls.quoteReads };
+    });
+    await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
+    await dialog.getByText('已保留本轮结果；可继续分析剩余档位，不从头重算。', { exact: true }).waitFor();
+    const bounded = await page.evaluate(() => ({
+      plan: globalThis.roadmapDiagnostics.filter(row => row.event === 'roadmap-plan').at(-1),
+      phase: globalThis.roadmapDiagnostics.filter(row => row.event === 'roadmap-phase' && row.phase === 'planning').at(-1),
+    }));
+    assert.equal(bounded.plan.deadlineMs, 30000); assert.equal(bounded.plan.status, 'partial');
+    assert.equal(bounded.plan.reason, 'FC27_GALLERY_ROADMAP_TIME_LIMIT');
+    assert.ok(bounded.phase.durationMs < 37000, 'Nested scoring must return near the configured limit, not run until expiry');
+    let continuations = 0;
+    while (await dialog.getByRole('button', { name: '继续分析剩余', exact: true }).count() && continuations < 30) {
+      await dialog.getByRole('button', { name: '继续分析剩余', exact: true }).click();
+      await page.waitForFunction(() => !globalThis.document.querySelector('#roadmap-test').shadowRoot.querySelector('.gallery-roadmap-controls + .row button').disabled);
+      continuations++;
+    }
+    assert.ok(continuations > 0 && continuations < 30, 'Paused scoring must make progress instead of restarting the heavy set');
+    assert.ok((await dialog.innerText()).includes('整体路线已生成'));
+    const afterNested = await page.evaluate(() => {
+      globalThis.performance.now = globalThis.roadmapRealNow;
+      globalThis.roadmapKnobs.longScoring = false;
+      globalThis.roadmapFixtureCatalog.categories[0].sets[0].requiredCards = 1;
+      return globalThis.roadmapCalls;
+    });
+    assert.equal(afterNested.sync, beforeNested.sync + 1, 'Continuing must reuse the frozen verified inputs');
+    assert.equal(afterNested.quoteReads, beforeNested.quotes, 'Quick continuation must not add independent price requests');
     await dialog.locator('input[type=checkbox]').check();
     await page.evaluate(() => { globalThis.roadmapKnobs.priceTtl = 300000; globalThis.roadmapKnobs.holdSync = true; });
     await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();

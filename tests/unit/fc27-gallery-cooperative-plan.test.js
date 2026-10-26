@@ -42,6 +42,31 @@ it.each(['cancel', 'deadline'])('preserves %s at bare scoring checkpoints withou
   expect(turns).toBe(1); expect(closed).toBe(true);
 });
 
+it.each(['resume', 'final'])('checks full immutable-input binding at the %s boundary', async boundary => {
+  let valid = true, closed = false, reads = 0, turns = 0, at = 0;
+  function* steps() {
+    try {
+      for (let i = 0; i < 40; i++) yield;
+      if (boundary === 'final') valid = false;
+      return { status: 'ready' };
+    } finally { closed = true; }
+  }
+  expect(await runGalleryPlan(steps(), { current: () => true, checkpoint: () => { reads++; return valid; },
+    now: () => ++at, sliceMs: 10, schedule: async () => { turns++; if (boundary === 'resume') valid = false; },
+  })).toBeNull();
+  expect(closed).toBe(true); expect(reads).toBeLessThan(12); expect(turns).toBeGreaterThan(0);
+});
+
+it('avoids rebuilding a full catalog binding for every checkpoint within one synchronous CPU slice', async () => {
+  let at = 0, fullReads = 0, contextReads = 0;
+  function* steps() { for (let i = 0; i < 5000; i++) yield; return 7; }
+  expect(await runGalleryPlan(steps(), { now: () => at += 0.001, sliceMs: 12,
+    current: () => { contextReads++; return true; }, checkpoint: () => { fullReads++; return true; },
+    schedule: async () => { throw Error('No asynchronous slice needed in this controlled clock'); },
+  })).toBe(7);
+  expect(contextReads).toBeGreaterThan(5000); expect(fullReads).toBe(2);
+});
+
 it('cooperative grade and joint evaluation preserve synchronous results and yield to UI', async () => {
   // The cheapest 360-point seed is insufficient: this scenario must search,
   // unlike the immediate cheapest-lineup shortcut covered below.

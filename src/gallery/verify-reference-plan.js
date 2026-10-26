@@ -5,7 +5,7 @@ import { isGalleryOwned } from './planner.js';
 // versions, ownership and rules. Price inputs are explicitly either forecast
 // estimates or independent quotes; neither grants spending authority. No
 // foreign score or aggregate public cost proves a personal plan.
-export function* verifyGalleryReferenceSteps({ target, proposal, capital = null } = {}) {
+export function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize = summarizeGalleryScoreSteps } = {}) {
   const { progress, prices, set, catalog } = target;
   if (target.publicReference?.basis !== 'empty-collection-public-reference'
       || target.publicReference.expiresAt <= Date.now() || progress?.complete === false
@@ -24,7 +24,7 @@ export function* verifyGalleryReferenceSteps({ target, proposal, capital = null 
     items.push({ ...row, price, score, scoreSource: row.gradingScore == null ? 'catalog' : 'ea' });
   }
   const measure = function* (picked) {
-    return yield* summarizeGalleryScoreSteps({ set, catalog, progress: { ...progress,
+    return yield* summarize({ set, catalog, progress: { ...progress,
       rows: [...existing.map(row => ({ ...row, collected: true })), ...picked] } });
   };
   let summary = yield* measure(selected);

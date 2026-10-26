@@ -3,6 +3,7 @@ import { selectGalleryRoadmap } from '../../src/gallery/roadmap-selection.js';
 import { planGalleryRoadmapSteps } from '../../src/gallery/roadmap.js';
 import { planGalleryGradeSteps } from '../../src/gallery/planner.js';
 import { runGalleryPlan } from '../../src/gallery/cooperative-plan.js';
+import { createGalleryRoadmapWork } from '../../src/gallery/roadmap-work.js';
 const finish = iterator => { let step; do { step = iterator.next(); } while (!step.done); return step.value; };
 const option = (grade, tokens, items) => ({ grade, projectedTokens: tokens, score: 100, items });
 const row = (setId, options, extra = {}) => ({ setId, name: setId, baselineTokens: 0, options, ...extra });
@@ -128,4 +129,75 @@ it('keeps a large catalog cooperative and resumes a partial route without replay
   expect(stopped.coverage.stopped).toBe(true);
   const resumed = finish(planGalleryRoadmapSteps({ targets, previousRows: stopped.rows, previousSelection: stopped.selectedOptions }));
   expect(resumed.coverage).toMatchObject({ total: 150, inspected: 150, stopped: false });
+});
+
+it('returns completed roadmap work at the deadline instead of scoring until the reference expires', async () => {
+  const ready = target('futgg:30', 1, 1000, true), heavy = target('futgg:31', 2, 1000, true);
+  heavy.set.requiredCards = 21;
+  heavy.progress.rows = Array.from({ length: 65 }, (_, i) => ({ ...heavy.progress.rows[0],
+    eaId: i + 100, playerEaId: i + 100, gradingScore: i + 100, collected: true }));
+  let at = 0, turns = 0;
+  const result = await runGalleryPlan(planGalleryRoadmapSteps({ targets: [ready, heavy], fastReferences: true }), {
+    now: () => ++at, sliceMs: 1, maxMs: 10, current: () => turns < 100,
+    schedule: async () => { turns++; },
+  });
+  expect(result).not.toBeNull();
+  expect(result).toMatchObject({ partial: true, coverage: { stopped: true } });
+  expect(result.freeCheck).toContainEqual(expect.objectContaining({ setId: ready.set.id, grade: 'S' }));
+  expect(turns).toBeLessThan(20);
+});
+
+it('continues a paused scorer over multiple deadlines with the same final score and route', async () => {
+  const heavy = target('futgg:31', 1, 1000, true); heavy.set.requiredCards = 21;
+  heavy.progress.rows = Array.from({ length: 65 }, (_, i) => ({ ...heavy.progress.rows[0],
+    eaId: i + 100, playerEaId: i + 100, gradingScore: i + 100 }));
+  const targets = [target('futgg:30', 1, 1000, true), heavy], work = createGalleryRoadmapWork();
+  let result, count = 0;
+  do {
+    let at = 0;
+    result = await runGalleryPlan(planGalleryRoadmapSteps({ targets, work, fastReferences: true,
+      previousRows: result?.rows, previousSelection: result?.selectedOptions }), {
+      now: () => ++at, sliceMs: 1, maxMs: 40, schedule: async () => {},
+    });
+    count++;
+  } while (result.coverage.stopped && count < 100);
+  expect(count).toBeGreaterThan(1); expect(count).toBeLessThan(100);
+  expect(result.coverage.stopped).toBe(false);
+  expect(result).toEqual(finish(planGalleryRoadmapSteps({ targets, fastReferences: true })));
+});
+
+it.each(['reference', 'grade'])('pauses nested %s verification and keeps completed grades', async mode => {
+  const t = target('futgg:30', 1, 1000);
+  if (mode === 'reference') {
+    t.set.requiredCards = 21;
+    t.progress.rows = Array.from({ length: 65 }, (_, i) => ({ ...t.progress.rows[0],
+      eaId: i + 100, playerEaId: i + 100, gradingScore: i + 100, collected: i < 21 }));
+    // Baseline has exactly the required lineup; the proposed union is heavy.
+    t.set.grades.forEach(grade => { grade.threshold += 100000; });
+    t.publicReference = { basis: 'empty-collection-public-reference', expiresAt: Date.now() + 300000,
+      grades: [{ grade: 'B', cost: 1000, ids: t.progress.rows.map(row => row.eaId) }] };
+    t.prices = Object.fromEntries(t.progress.rows.map(row => [row.eaId,1000]));
+  }
+  let at = 0, turns = 0;
+  function* longGrade() { for (let i = 0; i < 1000; i++) yield { phase: 'grade', evaluations: i };
+    return { status: 'partial', plans: [] }; }
+  const result = await runGalleryPlan(planGalleryRoadmapSteps({ targets: [t], fastReferences: mode === 'reference',
+    gradePlanner: longGrade }), { now: () => ++at, sliceMs: 1, maxMs: 10, schedule: async () => { turns++; } });
+  expect(result).toMatchObject({ partial: true, coverage: { stopped: true } });
+  expect(turns).toBeLessThan(20); expect(result.rows[0].analysisComplete).toBe(false);
+});
+
+it('keeps an earlier unresolved-grade reason when continuing later grades', () => {
+  const targets = [target('futgg:30', 1, 1000)], work = createGalleryRoadmapWork();
+  function* planner({ targetGrade }) {
+    return targetGrade === 'B' ? { status: 'partial', reason: 'candidate-search-truncated', plans: [] }
+      : { status: 'ready', plans: [{ reached: true, score: 100, totalPrice: 1000, items: [{ eaId: 1, price: 1000 }] }] };
+  }
+  const steps = planGalleryRoadmapSteps({ targets, work, gradePlanner: planner });
+  steps.next(); let next;
+  do { next = steps.next(true); } while (!next.done);
+  const resumed = finish(planGalleryRoadmapSteps({ targets, work, gradePlanner: planner,
+    previousRows: next.value.rows, previousSelection: next.value.selectedOptions }));
+  expect(resumed.rows[0].reason).toBe('candidate-search-truncated');
+  expect(resumed.partial).toBe(true);
 });

@@ -1,4 +1,4 @@
-# Fodder 公共规划参考与生成体验（27.0.66；保留 .64/.65 实施记录）
+# Fodder 公共规划参考与生成体验（27.0.67；保留此前实施记录）
 
 ## 已确认需求 / 不变量
 
@@ -111,3 +111,30 @@
 - 代码只改协作调度和整体方案的错误/阶段提示；未改同步服务、缓存TTL、计分算法、参考价/原购买价源、预算/限价、锁卡或交易恢复记录。
 - 失败与通过证据：artifacts/gallery-roadmap-bare-yield-unit-red.log、bare-yield-browser-red.log、bare-yield-unit-final.log、bare-yield-browser-final.log、gallery-roadmap-checkpoint-66-verify.log、gallery-roadmap-checkpoint-66-browser.log，均本地忽略。新fixture只保留两轮阶段/时间/数量，不含账号卡库或异常原文。
 - 现场差距仍在：.65诊断只导出泛化错误，尚未逐字段确认唯一根因；.66增加固定异常类，更新后须验证整体路线能生成，并观察收集同步169/50秒是否持续。不得宣称本次已解决同步性能或已完成真实账户全流程。
+
+## 27.0.67 续修计划（2026-10-26 18:46 诊断）
+
+- 当前main/本机1a1765e /27.0.66，工作区原先干净。最新一轮reference3632ms、sync87056ms且success、planning212388ms后blocked，总计303391ms，无固定异常/上下文原因；旧78/118ms失败为.65历史。本轮没有独立查价阶段。
+- 时间与5分钟参考有效期吻合，但旧诊断没有实际计算时限、过期原因或账号完整输入，不把推测当唯一现场证明。优先假设：内层scorer忽略结束信号（已失败复现）→每个微步骤重建196合集绑定校验的开销→用户计算时限可能较长/真正数据或报价过期。保留真实过期和上下文失效门禁。
+- 最小失败回归已有：先完成一个合集，再进入65张已收集/21人计分的合成目标；10单位截止到达后，旧代码持续到100单位参考失效，runGalleryPlan返回null，已完成部分丢失。不是用户逐卡重放。
+- 实施计划：①整体路线专属可暂停内存工作单元覆盖baseline/reference/grade嵌套计算，截止/Stop返回已完成行，下一轮复用同一冻结输入的iterator/memo，不从头重算；账号/参数/输入/目录或报价失效清掉旧工作。②按合集复用已有评分memo，完成合集释放，仅保留当前暂停工作；不改计分/求解顺序或节点参数。③仅整体路线启用每次异步让出前后和最终的全量绑定校验；每微步骤仍查账号/页面，JS无异步间隙内不反复重建全目录。④诊断明确报价过期/数据变化及实际配置时限，不延长TTL。⑤原保护/核价/预算/交易/Journal不变。
+- 场景矩阵：嵌套baseline/reference/deep截止与Stop→部分结果；多轮续算→无重放/无跨账号；输入/预算/报价变化→废弃；同步片段/最终/异步恢复处数据变化→阻断；同输入评分等价/已收藏与共享版本语义；阶段诊断与过期原因；全量verify(4workers/原10秒门槛)、Chrome、主线/版本/公开产物核对后按既有约定提交推送。
+- 初始恢复点（由下方状态更新）：当时只新增失败测试，生产代码未改；下一步为内部暂停与校验优化。同步87秒不在本次跳过核验；真实完整路线/总耗时仍须升级验收。
+
+### 27.0.67 实现 / 验证状态
+
+| 场景 | 结果与证据 | 边界 / 剩余差距 |
+|---|---|---|
+| 已完成合集→重baseline计分→配置截止→参考失效 | 单测先失败整轮null，修复后在截止附近返回部分结果并保留已完成合集 | 合成65卡/21人计分及受控时钟，不是账户逐卡重放 |
+| baseline/reference/deep嵌套yield到时或停止 | 定向单测通过；未完成档位不伪装成已确认方案 | 未完成工作暂留内存；不改计分或节点数 |
+| 多轮继续，同一冻结输入 | 单测最终结果与一次完整计算相同；Chrome多轮最终完成，只同步一次、独立查价仍0 | 不跨刷新/账号保留iterator，不新增GM或JSON字段缓存 |
+| 输入/本金/模式/求解器变更与清理 | 6项工作单元测试通过，关闭旧iterator、memo只在当前target复用，完成合集释放 | UI还有原账号/目录/材料与报价校验 |
+| 继续时已有档位尚未解决 | 提交前复查先复现旧reason丢失，再修复；只清暂时截止原因，原未覆盖/截断提示保留 | 不把继续后的部分分析静默标成全解 |
+| 全目录校验优化及异步漂移 | 初始、让出前后、最终检查；单测异步恢复/最终漂移挡住，受控5000个同步checkpoint仅2次完整绑定读取 | 是同一JS片段的调用次数，不是实机耗时承诺 |
+| TTL、报价过期、Stop/切号、深/快、原Gallery/SBC/交易路径 | 全套Chrome通过，新增部分结果/续算/实际时限诊断断言 | 过期仍失效，不延长参考TTL或采购许可 |
+| 同输入公开资料对照 | 缓存San Diego公开30卡池/规则/价格，0/50/100%合成收藏，.66/.67完整结果一致 | 收藏和EA基础分为控制输入，不当用户路线或实时价格 |
+
+- 完整npm run verify最终复跑通过：437文件、5224通过、39跳过；4workers，原10秒testTimeout不变；根dist/版本/FSU资产通过。完整离线Chrome最终复跑也通过，页面/网络测试均使用离线样本，无EA买卖/移卡/领取。
+- 证据保留在忽略的artifacts：gallery-roadmap-deadline-67-red/green.log、gallery-roadmap-work-67-unit-final.log、gallery-roadmap-work-67-browser.log、gallery-roadmap-work-67-verify.log、gallery-roadmap-work-67-browser-full.log、gallery-roadmap-67-score-differential.log。新fixture只保存本轮阶段/耗时，configuredDeadlineMs与expiryConfirmed仍为null。
+- 提交前续算reason复查证据：gallery-roadmap-resume-reason-67-red/green.log；最终全套验证见gallery-roadmap-work-67-verify-final.log，Chrome最终复跑结果另在gallery-roadmap-work-67-browser-final.log核对。
+- 恢复/实机gap：尝试只读查看当前EA页的配置时限时，浏览器tab连接超时；未刷新、点击生成或修改设置，实际配置仍未知。新的deadlineMs与明确过期/变化原因用于下轮诊断。真实完整196合集路线、耗时和同步87秒是否持续仍待更新后验收，未宣称已完全解决账户现场性能。

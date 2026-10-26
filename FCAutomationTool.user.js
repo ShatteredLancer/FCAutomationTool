@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.66
+// @version      27.0.67
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.66", at: Date.now(), status: 'started',
+    state = { version: "27.0.67", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13264,20 +13264,24 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     now = () => performance.now(),
     schedule = () => new Promise((resolve) => setTimeout(resolve, 0)),
     sliceMs = 12,
-    maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS
+    maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
+    checkpoint = null
   } = {}) {
     const started = now();
     let slice = started, finish = false;
     try {
+      if (checkpoint && !checkpoint()) return null;
       for (; ; ) {
         if (!current2()) return null;
         const next = steps.next(finish);
-        if (next.done) return current2() ? next.value : null;
+        if (next.done) return current2() && (!checkpoint || checkpoint()) ? next.value : null;
         const time2 = now();
         finish = time2 - started >= maxMs;
         if (time2 - slice >= sliceMs || finish) {
+          if (checkpoint && !checkpoint()) return null;
           if (next.value !== void 0) progress(next.value);
           await schedule();
+          if (checkpoint && !checkpoint()) return null;
           slice = now();
         }
       }
@@ -17518,7 +17522,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/verify-reference-plan.js
-  function* verifyGalleryReferenceSteps({ target, proposal, capital = null } = {}) {
+  function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize: summarize2 = summarizeGalleryScoreSteps } = {}) {
     const { progress, prices, set, catalog } = target;
     if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
     const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
@@ -17535,7 +17539,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       items.push({ ...row, price: price2, score: score2, scoreSource: row.gradingScore == null ? "catalog" : "ea" });
     }
     const measure = function* (picked) {
-      return yield* summarizeGalleryScoreSteps({ set, catalog, progress: {
+      return yield* summarize2({ set, catalog, progress: {
         ...progress,
         rows: [...existing.map((row) => ({ ...row, collected: true })), ...picked]
       } });
@@ -17562,6 +17566,66 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/gallery/roadmap-work.js
+  function createGalleryRoadmapWork() {
+    let groups = /* @__PURE__ */ new WeakMap(), binding = null;
+    const pending2 = /* @__PURE__ */ new Set();
+    const close = (entry) => {
+      try {
+        entry.steps?.return();
+      } finally {
+        pending2.delete(entry);
+        entry.steps = null;
+      }
+    };
+    const clear = () => {
+      for (const entry of pending2) close(entry);
+      groups = /* @__PURE__ */ new WeakMap();
+      binding = null;
+    };
+    const group = (target) => {
+      if (!groups.has(target)) groups.set(target, { entries: /* @__PURE__ */ new Map(), values: /* @__PURE__ */ new Map() });
+      return groups.get(target);
+    };
+    return {
+      bind(targets, capital, planner, fast) {
+        if (binding && (binding.targets !== targets || binding.capital !== capital || binding.planner !== planner || binding.fast !== fast)) clear();
+        binding = { targets, capital, planner, fast };
+      },
+      memo(target, key2, create) {
+        const values8 = group(target).values;
+        if (!values8.has(key2)) values8.set(key2, create());
+        return values8.get(key2);
+      },
+      *run(target, key2, create) {
+        const entries2 = group(target).entries;
+        if (!entries2.has(key2)) {
+          const entry2 = { steps: create(), done: false };
+          entries2.set(key2, entry2);
+          pending2.add(entry2);
+        }
+        const entry = entries2.get(key2);
+        if (entry.done) return { complete: true, value: entry.value };
+        for (; ; ) {
+          const next = entry.steps.next();
+          if (next.done) {
+            entry.done = true;
+            entry.value = next.value;
+            close(entry);
+            return { complete: true, value: next.value };
+          }
+          if (yield next.value) return { complete: false };
+        }
+      },
+      release(target) {
+        const entries2 = groups.get(target)?.entries;
+        if (entries2) for (const entry of entries2.values()) close(entry);
+        groups.delete(target);
+      },
+      clear
+    };
+  }
+
   // src/gallery/roadmap.js
   function* planGalleryRoadmapSteps({
     targets = [],
@@ -17571,8 +17635,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     gradePlanner = planGalleryGradeSteps,
     previousRows = [],
     previousSelection = [],
-    fastReferences = false
+    fastReferences = false,
+    work = createGalleryRoadmapWork()
   } = {}) {
+    work.bind(targets, capital, gradePlanner, fastReferences);
     const rows = [], key2 = "event_token_1";
     const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
     let stopped = false, gradesChecked = 0;
@@ -17595,18 +17661,28 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         ...previous.get(set.id)
       };
       rows.push(row);
+      if (row.reason === "search-time-exhausted") row.reason = null;
       if (!progress?.rows || target.stale || target.poolStale || target.status && target.status !== "observed") {
         row.reason = "progress-unavailable";
         row.analysisComplete = true;
         continue;
       }
-      const base = yield* summarizeGalleryScoreSteps({ set, catalog, progress: {
+      const scorer = work.memo(target, "scorer", () => createGalleryScoreSummarizer(catalog));
+      const baseline = yield* work.run(target, "baseline", () => scorer.steps({ set, progress: {
         ...progress,
         rows: progress.rows.map((card) => isGalleryOwned(card) ? { ...card, collected: true } : card)
-      } });
+      } }));
+      if (!baseline.complete) {
+        row.reason = "search-time-exhausted";
+        row.analysisComplete = false;
+        stopped = true;
+        break;
+      }
+      const base = baseline.value;
       if (!base?.low) {
         row.reason = base?.reason ?? "score-unavailable";
         row.analysisComplete = true;
+        work.release(target);
         continue;
       }
       const currentGrade = galleryCatalogGrade(set, base);
@@ -17620,8 +17696,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const grade of grades3) {
         if (row.checkedGrades.includes(grade.name)) continue;
         const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
-        const verified = proposal ? yield* verifyGalleryReferenceSteps({ target: { ...target, progress: planningProgress }, proposal, capital }) : null;
-        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : yield* gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 });
+        const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
+          target: { ...target, progress: planningProgress },
+          proposal,
+          capital,
+          summarize: scorer.steps
+        })) : { complete: true, value: null };
+        if (!reference.complete) {
+          row.reason ??= "search-time-exhausted";
+          stopped = true;
+          break;
+        }
+        const verified = reference.value;
+        const local = !fastReferences ? yield* work.run(
+          target,
+          `grade:${grade.name}`,
+          () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 })
+        ) : null;
+        if (local && !local.complete) {
+          row.reason ??= "search-time-exhausted";
+          stopped = true;
+          break;
+        }
+        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : local.value;
         if (!fastReferences && verified && result.status !== "achieved" && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
           result.status = "ready";
           result.plans = [verified];
@@ -17659,6 +17756,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
+      if (row.analysisComplete) work.release(target);
       if (stopped) break;
       if (yield {
         phase: "roadmap",
@@ -18099,6 +18197,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
+    const work = createGalleryRoadmapWork();
     let stage = "idle", stopRequested = false;
     let mismatchReason = null;
     const mismatch2 = (reason) => {
@@ -18144,6 +18243,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const quotesFresh = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
     const invalidate = () => {
       epoch2++;
+      work.clear();
       last = null;
       planInputs = null;
       binding = null;
@@ -18267,7 +18367,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       exportButton.disabled = true;
       stop6.hidden = false;
       progress.hidden = false;
-      let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0;
+      let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0, planningLimitMs = null;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
       const completedPhases = /* @__PURE__ */ new Set();
       const startedAt = performance.now(), timings = {}, tick = () => {
@@ -18285,6 +18385,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         onBusyChange(true);
         const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && quotesFresh(planInputs);
         if (!resume) {
+          work.clear();
           last = null;
           binding = null;
           planInputs = null;
@@ -18351,6 +18452,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!valid3()) return;
         if (!quotesFresh(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
         const maxMs = await readTimeout();
+        planningLimitMs = maxMs;
         stage = "planning";
         const planStarted = performance.now();
         stageStarted = planStarted;
@@ -18359,18 +18461,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           targets,
           previousRows: resume ? last.rows : [],
           previousSelection: resume ? last.selectedOptions : [],
-          fastReferences
+          fastReferences,
+          work
         });
         const steps = { next: (finish) => generator.next(finish || stopRequested), return: () => generator.return() };
         const result = await runGalleryPlan(
           steps,
-          { current: valid3, maxMs, progress: (value) => {
+          { current: current2, checkpoint: valid3, maxMs, progress: (value) => {
             status.textContent = value.phase === "route" ? `3/3 \xB7 \u7EC4\u5408\u6574\u4F53\u8DEF\u7EBF \xB7 \u5DF2\u9009 ${value.completed}/${value.total} \u4E2A\u76EE\u6807 \xB7 \u6BD4\u5BF9 ${value.comparisons} \u6B21` : `3/3 \xB7 \u5168\u76EE\u5F55\u5206\u6790 ${value.completed ?? 0}/${value.total ?? targets.length} \xB7 ${value.name ?? ""} ${value.grade ?? ""} \xB7 \u5DF2\u68C0\u67E5 ${value.gradesChecked ?? 0} \u6863`;
             progress.max = value.total || targets.length || 1;
             progress.value = value.completed ?? 0;
           } }
         );
         if (!result || !valid3()) {
+          failureReason = !quotesFresh(targets) ? "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" : "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED";
           status.textContent = !quotesFresh(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
           return;
         }
@@ -18390,7 +18494,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         document.defaultView.clearInterval(ticker);
         const unfinishedPhase = { reference: "referenceMs", preparing: "syncMs", pricing: "priceMs", planning: "planningMs" }[stage];
         if (unfinishedPhase && timings[unfinishedPhase] == null) timings[unfinishedPhase] = Math.round(performance.now() - stageStarted);
-        const outcome = completed ? "success" : stopRequested ? "stopped" : failureReason ? "failed" : "blocked";
+        const outcome = completed ? last.coverage.stopped ? "partial" : "success" : stopRequested ? "stopped" : failureReason ? "failed" : "blocked";
         for (const [key2, phase] of [["referenceMs", "reference"], ["syncMs", "sync"], ["priceMs", "pricing"], ["planningMs", "planning"]]) {
           if (timings[key2] != null) diagnose({
             event: "roadmap-phase",
@@ -18410,7 +18514,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           priceSource: priceBasis,
           count: targetCount,
           durationMs: Math.round(performance.now() - startedAt),
-          reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : void 0),
+          deadlineMs: planningLimitMs,
+          responseCount: completed ? last.coverage.inspected : 0,
+          acceptedCount: completed ? last.route.length : 0,
+          reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : completed && last.coverage.stopped ? stopRequested ? "FC27_GALLERY_ROADMAP_STOPPED" : "FC27_GALLERY_ROADMAP_TIME_LIMIT" : void 0),
           localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : void 0
         });
         timing.textContent = `\u672C\u8F6E ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 \u516C\u5171\u53C2\u8003 ${((timings.referenceMs ?? 0) / 1e3).toFixed(1)} / \u540C\u6B65 ${((timings.syncMs ?? 0) / 1e3).toFixed(1)} / \u67E5\u4EF7 ${((timings.priceMs ?? 0) / 1e3).toFixed(1)} / \u8BA1\u7B97 ${((timings.planningMs ?? 0) / 1e3).toFixed(1)} \u79D2`;
@@ -18422,6 +18529,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stop6.hidden = true;
         progress.hidden = true;
         for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+        if (!completed || !last.coverage.stopped) work.clear();
         onBusyChange(false);
       }
     });
@@ -18446,6 +18554,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       dispose: () => {
         if (busy) cancel();
         epoch2++;
+        work.clear();
         dialog.close();
         dialog.remove();
       }
@@ -29135,6 +29244,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "remainingBudget",
     "retryAt",
     "durationMs",
+    "deadlineMs",
     "processingMs",
     "schedulingMs",
     "pendingWriteCount",
@@ -37290,7 +37400,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.66" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.67" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -37632,8 +37742,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.66"}`,
-    version: "27.0.66",
+    title: `FC Automation Tool ${"27.0.67"}`,
+    version: "27.0.67",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

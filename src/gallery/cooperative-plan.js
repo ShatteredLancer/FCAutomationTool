@@ -5,19 +5,23 @@ import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from './planning-settings.js';
 // invalidation discards the computation instead of publishing stale results.
 export async function runGalleryPlan(steps, { current = () => true, progress = () => {},
   now = () => performance.now(), schedule = () => new Promise(resolve => setTimeout(resolve, 0)),
-  sliceMs = 12, maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } = {}) {
+  sliceMs = 12, maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS, checkpoint = null } = {}) {
   const started = now(); let slice = started, finish = false;
   try {
+    if (checkpoint && !checkpoint()) return null;
     for (;;) {
       if (!current()) return null;
       const next = steps.next(finish);
-      if (next.done) return current() ? next.value : null;
+      if (next.done) return current() && (!checkpoint || checkpoint()) ? next.value : null;
       const time = now(); finish = time - started >= maxMs;
       if (time - slice >= sliceMs || finish) {
+        if (checkpoint && !checkpoint()) return null;
         // Scoring uses bare yields solely as cooperative checkpoints. Keep
         // scheduling/cancellation, without publishing an absent UI record.
         if (next.value !== undefined) progress(next.value);
-        await schedule(); slice = now();
+        await schedule();
+        if (checkpoint && !checkpoint()) return null;
+        slice = now();
       }
     }
   } finally { steps.return(); }

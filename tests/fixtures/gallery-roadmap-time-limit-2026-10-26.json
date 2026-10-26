@@ -1,0 +1,41 @@
+{
+  "evidence": "Reduced 27.0.66 roadmap timing. No account inputs, configured limit, quote-expiry cause or nested iteration position were exported. Deadline/expiry replay uses synthetic cards and a controlled clock.",
+  "version": "27.0.66",
+  "configuredDeadlineMs": null,
+  "expiryConfirmed": null,
+  "events": [
+    {
+      "event": "roadmap-phase",
+      "phase": "reference",
+      "status": "observed",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 3632,
+      "count": 196,
+      "responseCount": 195
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "sync",
+      "status": "success",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 87056,
+      "count": 196
+    },
+    {
+      "event": "roadmap-phase",
+      "phase": "planning",
+      "status": "blocked",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 212388,
+      "count": 196
+    },
+    {
+      "event": "roadmap-plan",
+      "phase": "planning",
+      "status": "blocked",
+      "priceSource": "fodder-public-estimate",
+      "durationMs": 303391,
+      "count": 196
+    }
+  ]
+}
