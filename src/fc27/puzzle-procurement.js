@@ -6,6 +6,7 @@ import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
+import { planPuzzleNationalityAffinity } from './puzzle-query-affinity.js';
 
 const seeds = new WeakMap();
 const stop = reason => ({ status: 'blocked', reason, executable: false, plans: [] });
@@ -379,6 +380,11 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
     for (const level of tiers) add({ start: 0, count: 20, level });
   }
   if (!queries.length) for (const level of tiers) add({ start: 0, count: 20, level });
+  if (!cappedClubs && queries.length < 3 && pool.candidates.length && chemistryNeeded && tiers.length > 1) {
+    const affinity = planPuzzleNationalityAffinity({ candidates: [...pool.candidates, ...marketCandidates(input, entries)],
+      material, formation: input.challenge.formation, brickIndices: input.challenge.brickIndices, usedQueries });
+    if (affinity) add(affinity);
+  }
   const baseQueries = queries.slice();
   // With no eligible owned anchors, two generic quality pages used to end
   // the route early. Spend the existing third page on a complementary tier

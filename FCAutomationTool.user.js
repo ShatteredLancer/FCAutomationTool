@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.61
+// @version      27.0.62
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.61", at: Date.now(), status: 'started',
+    state = { version: "27.0.62", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -632,12 +632,12 @@
       const pairs = ownData(ownData(rule, "kvPairs"), "_collection");
       const codes = pairs && Object.keys(pairs);
       if (codes?.length === 1 && codes[0] === "3") {
-        const quality2 = ownData(pairs, "3");
+        const quality3 = ownData(pairs, "3");
         const scope2 = ownData(rule, "scope");
-        if (ownData(keys2, "PLAYER_QUALITY") !== 3 || ownData(rule, "count") !== -1 || ownData(qualities, "BRONZE") !== 1 || ownData(qualities, "SILVER") !== 2 || ownData(qualities, "GOLD") !== 3 || !Array.isArray(quality2) || quality2.length !== 1 || ![1, 2, 3].includes(quality2[0]) || !(scope2 === 2 || scope2 === 0 && quality2[0] === 3)) {
+        if (ownData(keys2, "PLAYER_QUALITY") !== 3 || ownData(rule, "count") !== -1 || ownData(qualities, "BRONZE") !== 1 || ownData(qualities, "SILVER") !== 2 || ownData(qualities, "GOLD") !== 3 || !Array.isArray(quality3) || quality3.length !== 1 || ![1, 2, 3].includes(quality3[0]) || !(scope2 === 2 || scope2 === 0 && quality3[0] === 3)) {
           throw new Error("FC27_REQUIREMENT_UNSUPPORTED");
         }
-        const [min, max] = [[1, 64], [65, 74], [75, 99]][quality2[0] - 1];
+        const [min, max] = [[1, 64], [65, 74], [75, 99]][quality3[0] - 1];
         requirements.push({ kind: "player-min-overall", count: count2, value: min }, { kind: "player-max-overall", count: count2, value: max });
         continue;
       }
@@ -3429,8 +3429,8 @@
       case "quality-count": {
         const qualities = players.map(itemQuality);
         if (qualities.some((value) => value === null)) return null;
-        const matches2 = qualities.filter((quality2) => {
-          return rule.qualities.includes(quality2);
+        const matches2 = qualities.filter((quality3) => {
+          return rule.qualities.includes(quality3);
         }).length;
         return compareCount(matches2, rule.count, rule.mode);
       }
@@ -4619,8 +4619,8 @@
       const observed = matches2[0];
       const keys2 = ownData(root, "SBCEligibilityKey");
       const scopes = ownData(root, "SBCEligibilityScope");
-      const quality2 = ownData(root, "SBCEligibilityQualityType");
-      if (Object.entries({ GREATER: 0, LOWER: 1, EXACT: 2 }).some(([key, value]) => ownData(scopes, key) !== value) || Object.entries({ BRONZE: 1, SILVER: 2, GOLD: 3 }).some(([key, value]) => ownData(quality2, key) !== value) || observed.requirements.some((rule) => rule.pairs.some((pair) => enumNames[pair.key] && ownData(keys2, enumNames[pair.key]) !== pair.key))) {
+      const quality3 = ownData(root, "SBCEligibilityQualityType");
+      if (Object.entries({ GREATER: 0, LOWER: 1, EXACT: 2 }).some(([key, value]) => ownData(scopes, key) !== value) || Object.entries({ BRONZE: 1, SILVER: 2, GOLD: 3 }).some(([key, value]) => ownData(quality3, key) !== value) || observed.requirements.some((rule) => rule.pairs.some((pair) => enumNames[pair.key] && ownData(keys2, enumNames[pair.key]) !== pair.key))) {
         return blocked3("FC27_PUZZLE_ENUM_CHANGED");
       }
       if (!suppliedLayout) await new Promise((resolve) => setTimeout(resolve, Math.max(0, 800 - (Date.now() - started))));
@@ -5357,9 +5357,9 @@
     if (!Number.isSafeInteger(policy?.maxRating) || policy.maxRating < 1 || policy.maxRating > 99 || !Array.isArray(policy.excludedLeagueIds)) return stop3("FC27_MARKET_POLICY_UNVERIFIED");
     const allowed = levels.filter(({ min, max }) => min <= policy.maxRating && !parsed.rules.some((rule) => rule.kind === "all-quality" && (max < rule.minRating || min > rule.maxRating) || rule.kind === "min-quality" && max < rule.minRating || rule.kind === "max-quality" && min > rule.maxRating));
     if (!allowed.length) return stop3("FC27_MARKET_QUALITY_UNAVAILABLE");
-    const priority = (level) => {
-      const quality2 = level === "bronze" ? 1 : level === "silver" ? 2 : 3;
-      return Math.max(0, ...parsed.rules.filter((rule) => rule.kind === "quality-count" && rule.mode === "min" && rule.qualities.includes(quality2)).map((rule) => rule.count));
+    const priority = (level2) => {
+      const quality3 = level2 === "bronze" ? 1 : level2 === "silver" ? 2 : 3;
+      return Math.max(0, ...parsed.rules.filter((rule) => rule.kind === "quality-count" && rule.mode === "min" && rule.qualities.includes(quality3)).map((rule) => rule.count));
     };
     const ratingFloor = Math.max(0, ...parsed.rules.filter((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind)).map((rule) => rule.value));
     const belowFloor = (tier) => Number(Math.min(tier.max, policy.maxRating) < ratingFloor);
@@ -5372,7 +5372,7 @@
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
     };
     for (const anchor of anchors.slice(0, 2)) add2({ start: 0, count: 20, level: allowed[0].level, ...anchor });
-    for (const { level } of allowed) add2({ start: 0, count: 20, level });
+    for (const { level: level2 } of allowed) add2({ start: 0, count: 20, level: level2 });
     return {
       status: "ready",
       queries,
@@ -5387,6 +5387,43 @@
   var MAX_PUZZLE_QUOTE_PRICE2 = 15e6;
   var PUZZLE_MARKET_READ_LIMIT = 25;
   var isPuzzleQuoteCeiling = (value) => value === null || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE2;
+
+  // src/fc27/puzzle-query-affinity.js
+  var quality = (rating) => rating < 65 ? 1 : rating < 75 ? 2 : 3;
+  var level = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
+  function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
+    if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || !Array.isArray(brickIndices)) return null;
+    const required2 = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
+    if (required2.length < 2) return null;
+    const slots = formation.positions.filter((_position, index) => !brickIndices.includes(index));
+    const groups = /* @__PURE__ */ new Map();
+    for (const item2 of candidates) {
+      if (!required2.some((rule) => rule.qualities[0] === quality(item2.rating)) || !item2.positions.some((position) => slots.includes(position))) continue;
+      if (!groups.has(item2.nationId)) groups.set(item2.nationId, /* @__PURE__ */ new Map());
+      groups.get(item2.nationId).set(item2.definitionId, item2);
+    }
+    const ranked = [];
+    for (const [nation, byId] of groups) {
+      const items = [...byId.values()];
+      if (!required2.every((rule) => items.some((item2) => quality(item2.rating) === rule.qualities[0]))) continue;
+      const assigned = slots.map(() => -1);
+      const augment = (index, visited) => {
+        for (let slot = 0; slot < slots.length; slot++) {
+          if (visited.has(slot) || !items[index].positions.includes(slots[slot])) continue;
+          visited.add(slot);
+          if (assigned[slot] === -1 || augment(assigned[slot], visited)) {
+            assigned[slot] = index;
+            return true;
+          }
+        }
+        return false;
+      };
+      items.forEach((_item, index) => augment(index, /* @__PURE__ */ new Set()));
+      ranked.push({ nation, matched: assigned.filter((index) => index !== -1).length, count: items.length });
+    }
+    ranked.sort((a, b) => b.matched - a.matched || b.count - a.count || a.nation - b.nation);
+    return ranked.map(({ nation }) => ({ start: 0, count: 20, level: level(required2[0].qualities[0]), nation })).find((query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) ?? null;
+  }
 
   // src/fc27/puzzle-procurement.js
   var seeds = /* @__PURE__ */ new WeakMap();
@@ -5447,7 +5484,7 @@
     chemistry: input.chemistry,
     rating: input.chemistry?.rating
   });
-  var quality = (rating) => rating < 65 ? 1 : rating < 75 ? 2 : 3;
+  var quality2 = (rating) => rating < 65 ? 1 : rating < 75 ? 2 : 3;
   var validSeed = (input, seed) => seeds.get(seed) === signature(input);
   var findFc27PuzzleRepairSeedCooperatively = (input, onProgress, options) => finishPuzzleSearchCooperatively(iterateRepairSeed(input, onProgress), options);
   function* iterateRepairSeed(input, onProgress = null) {
@@ -5499,12 +5536,12 @@
       }
       return [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
     };
-    const tier = count2((item2) => quality(item2.rating))[0]?.[0];
-    const level = { 1: "bronze", 2: "silver", 3: "gold" }[tier];
+    const tier = count2((item2) => quality2(item2.rating))[0]?.[0];
+    const level2 = { 1: "bronze", 2: "silver", 3: "gold" }[tier];
     const clubs = count2((item2) => resolveClub?.(item2.teamId));
     const leagues = count2((item2) => item2.leagueId);
     const slotChemistry = seed.teamFacts?.slotChemistry ?? [];
-    const otherTier = count2((item2) => quality(item2.rating)).filter(([candidate]) => candidate !== tier).map(([candidate]) => ({ candidate, slots: seed.squad.flatMap((item2, slot) => item2 && quality(item2.rating) === candidate ? [{ item: item2, slot, chemistry: slotChemistry[slot] ?? 3 }] : []) })).sort((a, b) => Math.min(...a.slots.map((value) => value.chemistry)) - Math.min(...b.slots.map((value) => value.chemistry)) || b.slots.length - a.slots.length)[0];
+    const otherTier = count2((item2) => quality2(item2.rating)).filter(([candidate]) => candidate !== tier).map(([candidate]) => ({ candidate, slots: seed.squad.flatMap((item2, slot) => item2 && quality2(item2.rating) === candidate ? [{ item: item2, slot, chemistry: slotChemistry[slot] ?? 3 }] : []) })).sort((a, b) => Math.min(...a.slots.map((value) => value.chemistry)) - Math.min(...b.slots.map((value) => value.chemistry)) || b.slots.length - a.slots.length)[0];
     const weakest = otherTier?.slots.sort((a, b) => a.chemistry - b.chemistry || a.slot - b.slot)[0];
     const secondary = weakest && positive7(weakest.item.leagueId) && !input.policy.excludedLeagueIds.includes(weakest.item.leagueId) ? {
       start: 0,
@@ -5513,10 +5550,10 @@
       league: weakest.item.leagueId
     } : null;
     const queries = [];
-    if (positive7(clubs[0]?.[0]) && clubs[0][1] >= 2) queries.push({ start: 0, count: 20, level, team: clubs[0][0] });
+    if (positive7(clubs[0]?.[0]) && clubs[0][1] >= 2) queries.push({ start: 0, count: 20, level: level2, team: clubs[0][0] });
     for (const [league] of leagues) {
       if (queries.length >= (secondary ? 2 : 3)) break;
-      if (positive7(league) && !input.policy.excludedLeagueIds.includes(league)) queries.push({ start: 0, count: 20, level, league });
+      if (positive7(league) && !input.policy.excludedLeagueIds.includes(league)) queries.push({ start: 0, count: 20, level: level2, league });
     }
     if (secondary) queries.push(secondary);
     return { status: "ready", executable: false, queries, complete: false };
@@ -5667,7 +5704,7 @@
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
     if (parsed.status !== "observed") return stop4(parsed.reason);
     const material = puzzleMaterialRules(parsed.rules, required(input));
-    const missing = material.filter((rule) => rule.count > new Set(pool.candidates.filter((item2) => quality(item2.rating) === rule.qualities[0]).map((item2) => item2.definitionId)).size);
+    const missing = material.filter((rule) => rule.count > new Set(pool.candidates.filter((item2) => quality2(item2.rating) === rule.qualities[0]).map((item2) => item2.definitionId)).size);
     const generic = planFc27MarketQueryRoute(input);
     if (generic.status !== "ready") return generic;
     const levelOf = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
@@ -5683,9 +5720,9 @@
     if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && clubs.length) {
       const resolveClub = createFc27ClubResolver(input.clubLinks);
       if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
-      const candidates = [...pool.candidates, ...marketCandidates(input, entries2)].filter((item2) => tiers2.includes(levelOf(quality(item2.rating))));
+      const candidates = [...pool.candidates, ...marketCandidates(input, entries2)].filter((item2) => tiers2.includes(levelOf(quality2(item2.rating))));
       const filler = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count)[0];
-      const level = levelOf(filler.qualities[0]);
+      const level2 = levelOf(filler.qualities[0]);
       const anchors = [];
       for (const rule of clubs) {
         const ids2 = new Set(rule.ids.map(resolveClub));
@@ -5697,28 +5734,28 @@
         }
       }
       const counts = /* @__PURE__ */ new Map();
-      for (const item2 of anchors.length ? anchors : candidates.filter((item3) => levelOf(quality(item3.rating)) === level)) {
+      for (const item2 of anchors.length ? anchors : candidates.filter((item3) => levelOf(quality2(item3.rating)) === level2)) {
         counts.set(item2.nationId, (counts.get(item2.nationId) ?? 0) + 1);
       }
       const nation = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
-      if (positive7(nation)) add2({ start: 0, count: 20, level, nation });
+      if (positive7(nation)) add2({ start: 0, count: 20, level: level2, nation });
       const leagues2 = /* @__PURE__ */ new Map();
-      for (const item2 of candidates.filter((item3) => levelOf(quality(item3.rating)) === level && item3.nationId === nation)) {
+      for (const item2 of candidates.filter((item3) => levelOf(quality2(item3.rating)) === level2 && item3.nationId === nation)) {
         leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       }
       for (const [league] of [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])) {
-        add2({ start: 0, count: 20, level, league });
+        add2({ start: 0, count: 20, level: level2, league });
       }
-      add2({ start: 0, count: 20, level });
+      add2({ start: 0, count: 20, level: level2 });
       return { status: "ready", executable: false, queries, complete: false };
     }
     if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && nations.length) {
       const ranked = [...new Set(nations)].map((nation) => ({
         nation,
-        items: pool.candidates.filter((item2) => item2.nationId === nation && tiers2.includes(levelOf(quality(item2.rating))))
-      })).sort((a, b) => b.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length - a.items.filter((item2) => levelOf(quality(item2.rating)) === tiers2[0]).length || b.items.length - a.items.length || a.nation - b.nation);
+        items: pool.candidates.filter((item2) => item2.nationId === nation && tiers2.includes(levelOf(quality2(item2.rating))))
+      })).sort((a, b) => b.items.filter((item2) => levelOf(quality2(item2.rating)) === tiers2[0]).length - a.items.filter((item2) => levelOf(quality2(item2.rating)) === tiers2[0]).length || b.items.length - a.items.length || a.nation - b.nation);
       const anchor = ranked[0];
-      for (const level of tiers2) add2({ start: 0, count: 20, level, nation: anchor.nation });
+      for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2, nation: anchor.nation });
       const leagues2 = /* @__PURE__ */ new Map();
       for (const item2 of anchor.items) leagues2.set(item2.leagueId, (leagues2.get(item2.leagueId) ?? 0) + 1);
       const league = [...leagues2].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
@@ -5733,20 +5770,20 @@
         const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
         for (const rule of clubs) {
           const ids2 = new Set(rule.ids.map(resolveClub));
-          const matching = new Set(candidates.filter((item2) => ids2.has(resolveClub(item2.teamId)) && tiers2.includes(levelOf(quality(item2.rating)))).map((item2) => item2.definitionId));
+          const matching = new Set(candidates.filter((item2) => ids2.has(resolveClub(item2.teamId)) && tiers2.includes(levelOf(quality2(item2.rating)))).map((item2) => item2.definitionId));
           if (matching.size >= rule.count) continue;
           const lane = generic.queries.find((query2) => rule.ids.includes(query2.team));
-          const level = lane?.level ?? tiers2[0];
-          const query = rule.ids.map((team) => ({ start: 0, count: 20, level, team })).find(unused);
+          const level2 = lane?.level ?? tiers2[0];
+          const query = rule.ids.map((team) => ({ start: 0, count: 20, level: level2, team })).find(unused);
           if (query) add2(query);
         }
         const fillers = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
         const groups = /* @__PURE__ */ new Map();
-        for (const item2 of candidates.filter((item3) => tiers2.includes(levelOf(quality(item3.rating))))) {
+        for (const item2 of candidates.filter((item3) => tiers2.includes(levelOf(quality2(item3.rating))))) {
           const key = resolveClub(item2.teamId);
           if (!positive7(key)) continue;
           if (!groups.has(key)) groups.set(key, { team: item2.teamId, ids: /* @__PURE__ */ new Map() });
-          groups.get(key).ids.set(item2.definitionId, quality(item2.rating));
+          groups.get(key).ids.set(item2.definitionId, quality2(item2.rating));
         }
         const coverage = (group) => fillers.map((rule) => Math.min(
           rule.count,
@@ -5763,16 +5800,16 @@
         }
         return { status: "ready", executable: false, queries, complete: false };
       }
-      const lanes = tiers2.map((level) => {
+      const lanes = tiers2.map((level2) => {
         const groups = /* @__PURE__ */ new Map();
-        for (const item2 of candidates.filter((item3) => levelOf(quality(item3.rating)) === level)) {
+        for (const item2 of candidates.filter((item3) => levelOf(quality2(item3.rating)) === level2)) {
           const team = item2.teamId;
           const group = resolveClub(team);
           if (!positive7(team) || !positive7(group)) continue;
           if (!groups.has(group)) groups.set(group, { team, ids: /* @__PURE__ */ new Set() });
           groups.get(group).ids.add(item2.definitionId);
         }
-        return [...groups.values()].sort((a, b) => b.ids.size - a.ids.size || a.team - b.team).map(({ team }) => ({ start: 0, count: 20, level, team }));
+        return [...groups.values()].sort((a, b) => b.ids.size - a.ids.size || a.team - b.team).map(({ team }) => ({ start: 0, count: 20, level: level2, team }));
       });
       for (const query of generic.queries.filter((query2) => query2.team || query2.nation || query2.league)) {
         if (tiers2.includes(query.level)) add2(query);
@@ -5784,25 +5821,35 @@
       for (const query of generic.queries) if (tiers2.includes(query.level)) add2(query);
     } else {
       for (const rule of missing) add2({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
-      for (const level of tiers2) add2({ start: 0, count: 20, level });
+      for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2 });
     }
-    if (!queries.length) for (const level of tiers2) add2({ start: 0, count: 20, level });
+    if (!queries.length) for (const level2 of tiers2) add2({ start: 0, count: 20, level: level2 });
+    if (!cappedClubs && queries.length < 3 && pool.candidates.length && chemistryNeeded && tiers2.length > 1) {
+      const affinity = planPuzzleNationalityAffinity({
+        candidates: [...pool.candidates, ...marketCandidates(input, entries2)],
+        material,
+        formation: input.challenge.formation,
+        brickIndices: input.challenge.brickIndices,
+        usedQueries
+      });
+      if (affinity) add2(affinity);
+    }
     const baseQueries = queries.slice();
     if (!pool.candidates.length && chemistryNeeded && tiers2.length > 1) {
       const publicItems = marketCandidates(input, entries2);
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of publicItems) {
-        const level = levelOf(quality(item2.rating));
-        if (!tiers2.includes(level)) continue;
+        const level2 = levelOf(quality2(item2.rating));
+        if (!tiers2.includes(level2)) continue;
         if (!groups.has(item2.leagueId)) groups.set(item2.leagueId, /* @__PURE__ */ new Map());
         const counts = groups.get(item2.leagueId);
-        counts.set(level, (counts.get(level) ?? 0) + 1);
+        counts.set(level2, (counts.get(level2) ?? 0) + 1);
       }
-      const lanes = [...groups].flatMap(([league, counts]) => tiers2.map((level) => ({
+      const lanes = [...groups].flatMap(([league, counts]) => tiers2.map((level2) => ({
         league,
-        level,
-        support: [...counts].filter(([tier]) => tier !== level).reduce((n, [, count2]) => n + count2, 0),
-        present: counts.get(level) ?? 0
+        level: level2,
+        support: [...counts].filter(([tier]) => tier !== level2).reduce((n, [, count2]) => n + count2, 0),
+        present: counts.get(level2) ?? 0
       })));
       lanes.sort((a, b) => b.support - a.support || a.present - b.present || a.league - b.league || tiers2.indexOf(a.level) - tiers2.indexOf(b.level));
       for (const lane of lanes) {
@@ -6161,10 +6208,10 @@
     }
     if (queries.length) return queries;
     for (const card of cards) {
-      const level = card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold";
-      add2({ start: 0, count: 20, level, nation: card.nationId, league: card.leagueId });
-      add2({ start: 0, count: 20, level, nation: card.nationId });
-      add2({ start: 0, count: 20, level, league: card.leagueId });
+      const level2 = card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold";
+      add2({ start: 0, count: 20, level: level2, nation: card.nationId, league: card.leagueId });
+      add2({ start: 0, count: 20, level: level2, nation: card.nationId });
+      add2({ start: 0, count: 20, level: level2, league: card.leagueId });
     }
     return queries;
   }
@@ -24163,12 +24210,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!user || user.tradeAccess === void 0 || user.tradeAccess === null) {
       return { available: false, allowed: null, level: null };
     }
-    const level = safePrimitive(user.tradeAccess);
+    const level2 = safePrimitive(user.tradeAccess);
     const allowedValue = runtime?.TradeAccessLevel?.ALLOWED;
     let allowed = null;
     if (allowedValue !== void 0) allowed = user.tradeAccess === allowedValue;
     else if (typeof user.tradeAccess === "string") allowed = user.tradeAccess.toLowerCase() === "allowed";
-    return { available: true, allowed, level };
+    return { available: true, allowed, level: level2 };
   }
   function currencyAmount(value) {
     if (value === null || value === void 0 || value === "") return null;
@@ -35609,7 +35656,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.61" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.62" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -35946,8 +35993,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.61"}`,
-    version: "27.0.61",
+    title: `FC Automation Tool ${"27.0.62"}`,
+    version: "27.0.62",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

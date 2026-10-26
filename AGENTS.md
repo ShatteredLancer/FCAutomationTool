@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-26 Puzzle 27.0.62：.61 新日志仍无方案，gold覆盖生效但普通第三页仍是silver+league19。只读缓存确认当前6开放槽为GK/RB/CB/CB/LB/ST、最高85；匿名9安全材料与实际公共目录回放复现原三页完整验算0。普通有安全库存的混合品质化学分支，在必需品质查询后用跨品质国籍+开放位置最大匹配排序剩余页，查询需求最多品质；没有可靠联系仍旧联赛回退。原身份/俱乐部上限/repair、FSU/锁卡/主阵容、品质配比、价格授权/预算、三页/50k、写事务与Journal不变；不得硬编码国家/球员或将查询锚点强制入阵。Session在合成报价下五金一银/化学16，原始报价未捕获，不宣称精确重放8591节点/已买/已提交/全市场最优。见 docs/FC27_PUZZLE_CHEMISTRY_AFFINITY_ZH.md。
+
 2026-10-26 Puzzle 27.0.61：.58 现场 Set 73/Challenge 113 三页均 silver（普通/联赛19/13），9安全库存、54可用公共版本、4155组合节点且摆阵/验算0；截图确认六人/五金/最低银/化学16及联赛最多5、同俱乐部至少2、国家最多4。普通缺料 route 原只按品质数量缺口查询，再用亲和页填满；数量足不证明现有卡能满足其它约束。仅此普通分支先保留缺少品质，再覆盖其余明确必需品质，最后用剩余页做亲和查询；保留专用身份/俱乐部上限/repair分支。合成双向 Session 先失败后通过：缺银但旧金卡国籍组合不适配、缺金但旧银卡联赛不适配；不冒称实际账号逐卡根因。六人配比仍五金一银，锁卡/主阵容/个人上限、材料总价值/价格授权、三页/50k、所有写事务/Journal不变，不清缓存或历史，不做游标持久化。基于 ad 27.0.60 同步后实现，Streamlined外部选择/过期未售出卡不改。见 docs/FC27_PUZZLE_QUALITY_COVERAGE_ZH.md，真实市场待升级验收。
 
 2026-10-24 Streamlined 27.0.60：.59 用户截图反馈入口独占行及未售出 Transfer 禁选。匿名 EA 11414 公开源码核对原生 tabs/menu-container/ea-filter-bar-item-view，入口现直接放同一栏并保留原生 Club/Storage 状态；原生菜单重建后重挂，不新增行或注册伪 tab。共享 Club 快照仅认可 inactive/free，Streamlined Transfer 单独认可 EXPIRED＋本人拥有＋currentBid=0＋free；相同投影在移入前复核，active/closed/未知/有出价或缺字段仍挡。普通 Puzzle/Gallery 共享快照不变，FSU Only Untradeable/锁卡/主阵容、材料顺序和 Journal 不变；开启仅不可交易时可交易卡仍不可选。先失败复现，再读取/选卡/移卡与生产贡献贯通、离线 Chrome 验证，真实账号截图对应字段/移动贡献待更新验收；不把公开源码与合成回归冒称现场逐字段根因。见 docs/FC27_STREAMLINED_EXTERNAL_SELECTION_ZH.md。
