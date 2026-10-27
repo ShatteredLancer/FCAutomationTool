@@ -63,3 +63,18 @@ it('exports expired read-only forecast evidence without extending time or manufa
   expect(exported.roadmap.forecastReference).toMatchObject({ forecastOnly: true, cacheExpired: true, expiresAt: 2000 });
   expect(JSON.stringify(exported)).not.toContain('DO_NOT_EXPORT'); expect(JSON.stringify(input)).toBe(before);
 });
+
+it('separates demand quote evidence from reference estimates without exporting execution fields', () => {
+  const input = { catalog, targets: [target()], now: 5000, plan: { demandDriven: true,
+    referenceOverview: { coverage: { inspected: 1, total: 1 }, addedTokens: 15, funding: { requiredCapital: 1000 },
+      route: [{ setId: set.id, targetGrade: 'S', account: 'DO_NOT_EXPORT' }] },
+    deepCoverage: { quoted: 24, candidateLimit: 96, private: 'DO_NOT_EXPORT' },
+    route: [{ setId: set.id, cycles: [{ eaId: 11 }], items: [{ eaId: 11, price: 500, token: 'DO_NOT_EXPORT',
+      roadmapQuote: { source: 'futbin', fetchedAt: 4000, expiresAt: 6000, permit: 'DO_NOT_EXPORT' } }] }], funding: { totalPurchase: 500 } } };
+  const result = buildGalleryAnalysisSnapshot(input);
+  expect(result.collections[0].prices[0].price).toBe(1000);
+  expect(result.roadmap.route[0].quotedItems[0]).toEqual({ eaId: 11, price: 500, source: 'futbin', fetchedAt: 4000, expiresAt: 6000, fresh: true });
+  expect(result.roadmap.referenceOverview.requiredCapital).toBe(1000);
+  expect(result.roadmap.deepCoverage.quoted).toBe(24);
+  expect(JSON.stringify(result)).not.toContain('DO_NOT_EXPORT');
+});

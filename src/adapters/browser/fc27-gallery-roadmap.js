@@ -1,12 +1,12 @@
 import { planGalleryRoadmapSteps } from '../../gallery/roadmap.js';
 import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
-import { priceGalleryPlanningTargets } from '../../gallery/planning-prices.js';
 import { buildGalleryAnalysisSnapshot } from '../../gallery/analysis-snapshot.js';
 import { downloadFc27Diagnostics } from './fc27-diagnostic-download.js';
 import { attachFodderPlanningReferences, forecastFodderReferencePrices, captureFodderForecastSnapshot,
   isCapturedFodderForecastTarget } from '../../gallery/fodder-planning-reference.js';
 import { renderGalleryReferenceTable } from './fc27-gallery-reference-table.js';
 import { createGalleryRoadmapWork } from '../../gallery/roadmap-work.js';
+import { createGalleryDemandWork, pruneGalleryDemandResult } from '../../gallery/roadmap-demand.js';
 
 const money = value => value == null ? '待核实' : Number(value).toLocaleString('en-US');
 const failureCode = error => {
@@ -53,7 +53,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   const modeLabel = add(document, actions, 'label', ' '), deep = add(document, modeLabel, 'input'); deep.type = 'checkbox';
   modeLabel.style.display = referenceService ? 'inline-flex' : 'none'; modeLabel.style.alignItems = 'center'; modeLabel.style.gap = '8px';
   deep.style.width = '18px'; deep.style.height = '18px'; deep.style.minHeight = '0'; deep.style.margin = '0';
-  modeLabel.append(document.createTextNode('深度优化（完整候选查价/搜索，更慢）')); modeLabel.hidden = !referenceService;
+  modeLabel.append(document.createTextNode('按需深度优化（先参考全貌，再逐项核价/优化）')); modeLabel.hidden = !referenceService;
   if (referenceService) add(document, dialog, 'small', '默认快速首轮：按 Fodder 参考价估算，不等全目录逐卡查价；本地核验组合并扣已有。进入俱乐部/购买前仍独立核价，不保证最低价。');
   const progress = add(document, dialog, 'progress'); progress.max = 1; progress.value = 0; progress.hidden = true;
   progress.setAttribute('aria-label', '整体方案分析进度');
@@ -63,11 +63,19 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   forecastNote.setAttribute('role', 'status'); forecastNote.hidden = true;
   Object.assign(forecastNote.style, { border: '1px solid currentColor', borderRadius: '4px', padding: '8px' });
   const referenceBox = add(document, dialog, 'div');
+  const previewBox = add(document, dialog, 'details'); previewBox.className = 'gallery-roadmap-preview'; previewBox.hidden = true;
   const output = add(document, dialog, 'div'); output.setAttribute('aria-live', 'polite');
   let epoch = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
   const work = createGalleryRoadmapWork();
+  const demand = createGalleryDemandWork();
   let forecastEvidence = null, forecastClock = null;
   const updateForecastNote = () => {
+    if (!busy && last?.demandDriven && (last.route.some(row => row.items.some(item => item.roadmapQuote?.expiresAt <= Date.now()))
+        || !last.quotesExpired && !demand.validResult())) {
+      last = pruneGalleryDemandResult(last); render(last);
+      add(document, output, 'p', '部分独立报价已过期，已撤去受影响路线；其余有效结果和上方参考全貌保留。点击继续重新核价，不延长旧报价。');
+      generate.textContent = '继续分析剩余';
+    }
     forecastNote.hidden = !forecastEvidence;
     if (!forecastEvidence) { forecastNote.textContent = ''; return; }
     const expired = Date.now() >= forecastEvidence.expiresAt;
@@ -110,10 +118,14 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     || target.status !== 'observed' || isCapturedFodderForecastTarget(target)
     || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null
     || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
-  const invalidate = () => { epoch++; work.clear(); last = null; planInputs = null; binding = null;
+  const invalidate = () => { epoch++; work.clear(); demand.clear(); last = null; planInputs = null; binding = null;
+    previewBox.replaceChildren(); previewBox.hidden = true;
     forecastEvidence = null; updateForecastNote(); output.replaceChildren(); referenceBox.replaceChildren(); timing.textContent = ''; generate.textContent = '生成整体方案'; };
-  const render = result => {
+  const render = (result, outputNode = output) => {
+    const output = outputNode;
     output.replaceChildren();
+    if (result.demandDriven) add(document, output, 'h3', `按需深度结果 · 已核价 ${result.deepCoverage.quoted} 个版本 · 已完成 ${result.deepCoverage.completed}/${result.deepCoverage.eligible} 个待升级合集`);
+    if (result.demandDriven) add(document, output, 'p', '每合集按 24 → 48 → 96 个候选逐步扩展，已完成仅指本轮有界检查；未查版本仍可能更优。下方金额只来自尚有效的独立报价，与上方参考全貌分开。');
     const metric = add(document, output, 'div'); metric.className = 'gallery-roadmap-metrics';
     for (const [label, value] of [['目录新增 token', result.addedTokens], ['所需周转本金', result.funding?.requiredCapital],
       ['预计净损耗', result.funding?.expectedNetLoss], ['累计采购额（非本金）', result.funding?.totalPurchase]]) {
@@ -137,7 +149,8 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       add(document, tr, 'td', `${step.cycles.length} 张 / ${step.reusedIds.length} 张`);
       const td = add(document, tr, 'td'), open = add(document, td, 'button', '进入俱乐部 / 合集'); open.type = 'button';
       open.addEventListener('click', event => {
-        if (!event.isTrusted || !binding || !same(binding) || !pricesUsable(planInputs)) { status.textContent = '数据、账号或报价已变化，请重新生成路线。'; return; }
+        if (!event.isTrusted || !binding || !same(binding) || !pricesUsable(planInputs)
+            || result.demandDriven && step.items.some(item => item.roadmapQuote?.expiresAt <= Date.now())) { status.textContent = '数据、账号或报价已变化，请重新生成路线。'; return; }
         dialog.close(); openSet(step.setId, step.targetGrade);
       });
       const cards = add(document, output, 'details');
@@ -159,13 +172,14 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         'progress-unavailable': '收集状态或卡池尚未读取 / 已过期', 'target-unreachable': '已检查范围暂未达到目标',
         'collection-status-unknown': '部分版本的收集状态待核实', 'existing-score-unknown': '已有收藏的计分待核实',
         'search-time-exhausted': '本轮分析时间已到，可继续', 'candidate-search-truncated': '候选范围有限，尚未确认方案',
+        'quote-expired': '此项独立报价已过期；参考全貌仍保留，可继续重新核价',
         'deep-analysis-pending': '快速首轮尚未确认，可勾选深度优化继续检查' };
       for (const item of pending) add(document, details, 'p', `${item.name} · ${reasons[item.reason] ?? `尚未确认方案（${item.reason}）`}${item.capitalShortfall ? ` · 预计还差 ${money(item.capitalShortfall)} 金币本金` : ''}`);
     }
   };
   const cancel = () => {
     stopRequested = true;
-    if (stage !== 'planning') { epoch++; stopPrepare?.(); }
+    if (stage !== 'planning' && stage !== 'demand-pricing') { epoch++; stopPrepare?.(); }
     status.textContent = '正在停止分析；未进行买卖。';
   };
   stop.addEventListener('click', event => { if (event.isTrusted) cancel(); });
@@ -191,7 +205,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0, planningLimitMs = null;
     for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
     const completedPhases = new Set();
-    const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : stage === 'pricing' ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
+    const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : ['pricing','demand-pricing'].includes(stage) ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
     let stageStarted = startedAt;
     const ticker = document.defaultView.setInterval(tick, 500); let referenceSnapshot = null, referenceView = null;
     const context = read('context').scope, current = () => {
@@ -201,10 +215,11 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     };
     try {
       onBusyChange(true);
-      const resume = last?.coverage.stopped && binding && same(binding) && fingerprint === JSON.stringify(options)
+      const resume = (last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same(binding) && fingerprint === JSON.stringify(options)
         && pricesUsable(planInputs);
       if (!resume) {
         work.clear();
+        demand.clear(); previewBox.replaceChildren(); previewBox.hidden = true;
         forecastEvidence = null; updateForecastNote();
         last = null; binding = null; planInputs = null; output.replaceChildren(); generate.textContent = '生成整体方案';
         if (referenceService) {
@@ -214,8 +229,8 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
           try {
             const loaded = await referenceService.load({ isCurrent: current });
             if (!current()) return;
-            referenceSnapshot = options.deep ? loaded : captureFodderForecastSnapshot(loaded);
-            if (!options.deep) {
+            referenceSnapshot = captureFodderForecastSnapshot(loaded);
+            {
               forecastEvidence = { source: 'fodder', forecastOnly: true, fetchedAt: referenceSnapshot.fetchedAt,
                 capturedAt: referenceSnapshot.capturedAt, expiresAt: referenceSnapshot.expiresAt };
               updateForecastNote();
@@ -243,20 +258,39 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       if (!resume && referenceSnapshot) referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
       const fastReferences = !!referenceService && !options.deep;
       priceBasis = fastReferences ? 'fodder-public-estimate' : 'independent-reference-quotes';
-      if (!resume && fastReferences) targets = forecastFodderReferencePrices(targets);
-      if (!resume && loadPrices && !fastReferences) {
-        stage = 'pricing';
-        const at = performance.now();
-        stageStarted = at;
-        status.textContent = '2/3 · 读取全目录候选的公开报价…';
-        const available = targets.filter(target => target.progress?.rows && !target.stale && !target.poolStale && target.status === 'observed');
-        const priced = await priceGalleryPlanningTargets(available, { load: loadPrices, current: valid,
-          onProgress: value => { status.textContent = `2/3 · 读取 ${value.source ?? ''} 报价 ${value.index}/${value.total}`; } });
-        const byId = new Map(priced.map(target => [target.set.id, target])); targets = targets.map(target => {
-          const priced = byId.get(target.set.id); return priced ? { ...target, prices: priced.prices, priceSnapshot: priced.priceSnapshot } : target;
-        });
-        timings.priceMs = Math.round(performance.now() - at);
-        completedPhases.add('pricing');
+      if (!resume && referenceService) targets = forecastFodderReferencePrices(targets);
+      if (!fastReferences && loadPrices) {
+        planInputs = targets; fingerprint = JSON.stringify(options);
+        const maxMs = await readTimeout(); planningLimitMs = maxMs;
+        priceBasis = 'demand-independent-quotes'; stage = 'planning'; stageStarted = performance.now();
+        let phaseStarted = stageStarted, phase = 'planning';
+        const phaseChange = next => {
+          const at = performance.now(), key = phase === 'pricing' ? 'priceMs' : 'planningMs';
+          timings[key] = (timings[key] ?? 0) + Math.round(at - phaseStarted);
+          phase = next; phaseStarted = at; stage = next === 'pricing' ? 'demand-pricing' : 'planning'; stageStarted = at;
+        };
+        try {
+          const value = await demand.run({ targets, options, load: loadPrices, maxMs, current, checkpoint: valid,
+            stopped: () => stopRequested, onPhase: phaseChange,
+            onPreview: result => { if (!valid()) return; previewBox.hidden = false; previewBox.open = true; previewBox.replaceChildren();
+              add(document, previewBox, 'summary', `参考全貌 · ${result.coverage.inspected}/${result.coverage.total} 合集 · +${result.addedTokens} token · 点击展开/收起`);
+              const body = add(document, previewBox, 'div'); render(result, body); referenceView?.collapse();
+              add(document, body, 'p', '以上为参考全貌；以下只对优先候选逐项独立核价。未查版本不视为零成本，范围有界不保证最低价。'); },
+            onResult: result => { if (valid()) { previewBox.open = !result.route.length; render(result); } },
+            progress: value => { if (!valid()) return;
+              status.textContent = value.phase === 'pricing' ? `按需深度 · ${value.name} · ${value.source ?? ''} 查价 ${value.index ?? 0}/${value.quoteTotal ?? '?'} · 已完成 ${value.completed}/${value.total}`
+                : `按需深度 · 本地核验 ${value.name ?? ''} ${value.grade ?? ''}`;
+            } });
+          if (!valid() || !value.result) return;
+          last = { ...value.result, referenceOverview: value.preview, generatedAt: Date.now(), timings, priceBasis,
+            forecastReference: forecastEvidence ? { ...forecastEvidence } : null };
+          render(last); completed = true;
+          status.textContent = last.coverage.stopped ? '已保留参考全貌和深度部分结果；可继续分析，不重复同步。'
+            : '按需深度分析已完成本轮有界范围；未查范围及参考全貌保留，进入俱乐部前重新核价。';
+          generate.textContent = last.coverage.stopped ? '继续分析剩余' : '重新生成整体方案';
+          completedPhases.add('planning'); completedPhases.add('pricing');
+        } finally { phaseChange(phase); }
+        return;
       }
       if (!valid()) return;
       if (!pricesUsable(targets)) throw Error('FC27_GALLERY_ROADMAP_QUOTES_EXPIRED');
@@ -287,6 +321,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       generate.textContent = result.coverage.stopped ? '继续分析剩余' : '重新生成整体方案';
     } catch (error) {
       failureReason = failureCode(error);
+      if (mismatchReason) { demand.clear(); last = null; previewBox.replaceChildren(); previewBox.hidden = true; output.replaceChildren(); }
       status.textContent = stopRequested ? '数据读取已停止；未进行买卖。'
       : failureReason === 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' ? '公开报价已过期，请重新生成整体方案；未进行买卖。'
       : `本次分析未完成，未买卖：${failureReason}`; }
@@ -308,11 +343,13 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         forecastSnapshot: !!forecastEvidence, forecastExpired: !!forecastEvidence && Date.now() >= forecastEvidence.expiresAt,
         fetchedAt: forecastEvidence?.fetchedAt, capturedAt: forecastEvidence?.capturedAt, expiresAt: forecastEvidence?.expiresAt,
         responseCount: completed ? last.coverage.inspected : 0, acceptedCount: completed ? last.route.length : 0,
+        quotedCount: completed && last.demandDriven ? last.deepCoverage.quoted : undefined,
+        candidateLimit: completed && last.demandDriven ? last.deepCoverage.candidateLimit : undefined,
         reason: failureReason ?? (mismatchReason ? 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'
           : completed && last.coverage.stopped ? stopRequested ? 'FC27_GALLERY_ROADMAP_STOPPED' : 'FC27_GALLERY_ROADMAP_TIME_LIMIT' : undefined),
         localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : undefined });
       timing.textContent = `本轮 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · 公共参考 ${((timings.referenceMs ?? 0) / 1000).toFixed(1)} / 同步 ${((timings.syncMs ?? 0) / 1000).toFixed(1)} / 查价 ${((timings.priceMs ?? 0) / 1000).toFixed(1)} / 计算 ${((timings.planningMs ?? 0) / 1000).toFixed(1)} 秒`;
-      if (stopRequested && stage !== 'planning') status.textContent = '数据读取已停止；未进行买卖。';
+      if (stopRequested && stage !== 'planning' && stage !== 'demand-pricing') status.textContent = '数据读取已停止；未进行买卖。';
       busy = false; stage = 'idle'; generate.disabled = false; exportButton.disabled = false; stop.hidden = true; progress.hidden = true;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
       updateForecastNote();
@@ -323,6 +360,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   exportButton.addEventListener('click', event => {
     if (!event.isTrusted || busy) return;
     try {
+      updateForecastNote();
       const state = read(), current = binding && same(binding) && pricesUsable(planInputs);
       const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current && planInputs ? planInputs : state.targets, plan: current ? last : null });
       const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-')}.json`;
@@ -331,5 +369,5 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     } catch { status.textContent = '快照导出未完成；请先读取目录。'; }
   });
   return { close: () => { if (busy) cancel(); invalidate(); dialog.close(); },
-    dispose: () => { if (busy) cancel(); epoch++; stopForecastClock(); work.clear(); dialog.close(); dialog.remove(); } };
+    dispose: () => { if (busy) cancel(); epoch++; stopForecastClock(); work.clear(); demand.clear(); dialog.close(); dialog.remove(); } };
 }

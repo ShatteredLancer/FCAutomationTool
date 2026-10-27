@@ -178,7 +178,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
       return count;
     }, observedContext.ttlMs);
     assert.equal(catalogDuring, catalogBefore, 'Routine TTL refresh is deferred, not ignored by weakening the content check');
-    await dialog.getByText('整体路线已生成；进入具体合集后再确认操作。', { exact: true }).waitFor({ timeout: 2000 });
+    await dialog.getByText('按需深度分析已完成本轮有界范围；未查范围及参考全貌保留，进入俱乐部前重新核价。', { exact: true }).waitFor({ timeout: 2000 });
     assert.ok(await page.evaluate(count => globalThis.roadmapCalls.catalogReads > count, catalogBefore), 'Deferred catalog refresh resumes after planning');
     await page.evaluate(() => {
       globalThis.roadmapKnobs.catalogStale = false; globalThis.roadmapKnobs.holdCatalog = false; globalThis.releaseRoadmapCatalog?.();
@@ -186,8 +186,8 @@ export async function exerciseGalleryRoadmap(context, directory) {
     await page.evaluate(() => { globalThis.roadmapKnobs.priceTtl = -1; });
     await dialog.getByRole('button', { name: '重新生成整体方案', exact: true }).click();
     await page.waitForFunction(() => !globalThis.document.querySelector('#roadmap-test').shadowRoot.querySelector('.gallery-roadmap-controls + .row button').disabled);
-    assert.ok((await dialog.innerText()).includes('公开报价已过期'), 'Expired quote must not publish a newly feasible route');
-    assert.equal(await dialog.getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count(), 0);
+    assert.equal(await dialog.locator('> div[aria-live=polite]').getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count(), 0, 'Expired quotes must not publish an independently priced route');
+    assert.equal(await dialog.locator('.gallery-roadmap-preview').getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count(), 3, 'Reference overview remains distinct and visible');
     await dialog.locator('input[type=checkbox]').uncheck();
     const quotedBeforeFailure = await page.evaluate(() => globalThis.roadmapCalls.quoteReads);
     await page.evaluate(() => { globalThis.roadmapKnobs.referenceFailed = true; });

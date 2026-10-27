@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.68
+// @version      27.0.69
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.68", at: Date.now(), status: 'started',
+    state = { version: "27.0.69", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6710,7 +6710,7 @@
                 if (plan.purchases.every((item2) => quotes.get(item2.definitionId)?.price > 0)) break;
               }
               diagnostics.excludedUnavailable = unavailable.size;
-              const priced2 = plans.filter((plan) => plan.purchases.every((item2) => quotes.get(item2.definitionId)?.price > 0)).map((plan) => ({
+              const priced3 = plans.filter((plan) => plan.purchases.every((item2) => quotes.get(item2.definitionId)?.price > 0)).map((plan) => ({
                 ...plan,
                 purchases: plan.purchases.map((item2) => ({
                   ...item2,
@@ -6723,9 +6723,9 @@
                 })),
                 estimatedCost: plan.purchases.reduce((sum2, item2) => sum2 + quotes.get(item2.definitionId).price, 0)
               })).sort((a, b) => planCost(a) - planCost(b) || a.estimatedCost - b.estimatedCost || a.purchaseCount - b.purchaseCount);
-              if (priced2.length) {
-                diagnostics.initialEstimatedCost ??= priced2[0].estimatedCost;
-                if (!incumbent || planCost(priced2[0]) < planCost(incumbent[0])) incumbent = priced2;
+              if (priced3.length) {
+                diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
+                if (!incumbent || planCost(priced3[0]) < planCost(incumbent[0])) incumbent = priced3;
                 diagnostics.estimatedCost = incumbent[0].estimatedCost;
                 if (!loadPublicPrices || !refinementCards(refinementPlan(incumbent[0])).length) return finishIncumbent();
                 break;
@@ -8667,8 +8667,8 @@
             return reply;
           }
         });
-        const priced2 = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
-        const items = typeof excludeOffer === "function" ? priced2.filter((card) => {
+        const priced3 = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy);
+        const items = typeof excludeOffer === "function" ? priced3.filter((card) => {
           const auction2 = card.getAuctionData();
           return excludeOffer(Object.freeze({
             definitionId,
@@ -8676,8 +8676,8 @@
             tradeId: String(auction2.tradeId),
             price: auction2.buyNowPrice
           }), currentRecord) !== true;
-        }) : priced2;
-        if (items.length < priced2.length) diagnostic("offer-filter", { definitionId, count: items.length, skippedCount: priced2.length - items.length });
+        }) : priced3;
+        if (items.length < priced3.length) diagnostic("offer-filter", { definitionId, count: items.length, skippedCount: priced3.length - items.length });
         items.sort((a, b) => b.getAuctionData().buyNowPrice - a.getAuctionData().buyNowPrice);
         if (!items.length) return searchFailure ? { unavailable: true, ...searchFailure } : null;
         const selected = items[items.length - 1];
@@ -18038,7 +18038,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       collections,
       versions: [...versions.values()],
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis"]),
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired"]),
+        deepCoverage: plan.deepCoverage ? pick4(plan.deepCoverage, ["eligible", "completed", "quoted", "candidateLimit", "pending"]) : null,
+        referenceOverview: plan.referenceOverview ? {
+          ...pick4(plan.referenceOverview, ["status", "partial", "coverage", "addedTokens"]),
+          requiredCapital: plan.referenceOverview.funding?.requiredCapital ?? null,
+          route: plan.referenceOverview.route.map((row) => pick4(row, ["setId", "targetGrade", "addedTokens"]))
+        } : null,
         forecastReference: plan.forecastReference ? {
           ...pick4(plan.forecastReference, ["source", "forecastOnly", "fetchedAt", "capturedAt", "expiresAt"]),
           cacheExpired: plan.forecastReference.expiresAt <= now
@@ -18058,7 +18064,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             "addedTokens",
             "claimState"
           ]),
-          purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId)
+          purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId),
+          ...plan.demandDriven ? { quotedItems: row.items.map((item2) => ({
+            eaId: item2.eaId,
+            price: item2.price,
+            ...pick4(item2.roadmapQuote, ["source", "fetchedAt", "expiresAt"]),
+            fresh: item2.roadmapQuote?.expiresAt > now
+          })) } : {}
         })),
         funding: pick4(plan.funding, [
           "capital",
@@ -18128,6 +18140,303 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { collapse: () => {
       details.open = false;
     } };
+  }
+
+  // src/gallery/roadmap-demand.js
+  var priced2 = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6;
+  function pruneGalleryDemandResult(result, now = Date.now()) {
+    const keep = (row) => row.items.every((item2) => item2.roadmapQuote?.expiresAt > now);
+    const kept = result.route.filter(keep), byId = new Map(kept.map((row) => [row.setId, row]));
+    const funding = forecastGalleryTurnover({
+      steps: kept.map((row) => ({ setId: row.setId, items: row.items })),
+      capital: result.funding.capital,
+      resaleDiscountBps: result.funding.resaleDiscountBps
+    });
+    const route = funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 }));
+    return {
+      ...result,
+      quotesExpired: true,
+      partial: true,
+      status: route.length ? "ready" : "quotes-expired",
+      funding,
+      route,
+      addedTokens: route.reduce((n, row) => n + row.addedTokens, 0),
+      rows: result.rows.map((row) => ({ ...row, options: row.options.filter(keep) })),
+      selectedOptions: result.selectedOptions.filter((row) => byId.has(row.setId))
+    };
+  }
+  function createGalleryDemandWork() {
+    let binding, preview, jobs = [], policy = null, quotes = /* @__PURE__ */ new Map(), attempted = /* @__PURE__ */ new Set();
+    const preflight = createGalleryRoadmapWork();
+    const clear = () => {
+      preflight.clear();
+      for (const job of jobs) job.work.clear();
+      binding = null;
+      preview = null;
+      jobs = [];
+      policy = null;
+      quotes = /* @__PURE__ */ new Map();
+      attempted = /* @__PURE__ */ new Set();
+    };
+    const fresh = (id12, at11) => quotes.get(id12)?.expiresAt > at11 ? quotes.get(id12) : null;
+    const selections = (job, limit) => {
+      const { target } = job, compiled = compileGalleryScoringRules(target.catalog);
+      if (compiled.status !== "ready") return [];
+      const candidates = target.progress.rows.filter((row) => row.collected === false && !isGalleryOwned(row) && Number.isSafeInteger(row.gradingScore ?? row.galleryScore)).map((row) => ({
+        id: row.eaId,
+        score: row.gradingScore ?? row.galleryScore,
+        price: target.prices?.[row.eaId],
+        row,
+        diversityKeys: galleryCostSearchKeys(row, compiled.tags)
+      }));
+      const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+      const selected = /* @__PURE__ */ new Map();
+      const add3 = (candidate) => {
+        if (candidate && selected.size < limit) selected.set(candidate.id, candidate.row);
+      };
+      for (const id12 of job.ids) add3(byId.get(id12));
+      for (const option of (job.forecast.options ?? []).slice().sort((a, b) => a.items.reduce((n, row) => n + row.price, 0) - b.items.reduce((n, row) => n + row.price, 0))) {
+        for (const item2 of option.items) add3(byId.get(item2.eaId));
+      }
+      for (const candidate of selectGalleryCandidatePool(candidates, limit)) add3(candidate);
+      return [...selected.values()];
+    };
+    const candidatesRemain = (job) => job.target.progress.rows.filter((row) => row.collected === false && !isGalleryOwned(row)).length > job.ids.length;
+    const usefulExpansion = (job) => {
+      if (!candidatesRemain(job) || job.ids.length >= 96) return false;
+      const options = job.result?.rows?.[0]?.options ?? [];
+      if (!options.length) return true;
+      const best = Math.min(...options.map((option) => option.items.reduce((n, row) => n + row.price, 0)));
+      return job.target.progress.rows.some((row) => row.collected === false && !isGalleryOwned(row) && !job.ids.includes(row.eaId) && (!priced2(job.target.prices?.[row.eaId]) || job.target.prices[row.eaId] < best));
+    };
+    const resultSteps = function* (options, at11, stopped) {
+      const rows = [];
+      for (const job of jobs) {
+        const row = job.shown?.rows?.[0];
+        if (!row) continue;
+        const value = structuredClone(row);
+        value.options = value.options.filter((option) => option.items.every((item2) => fresh(item2.eaId, at11)));
+        for (const option of value.options) for (const item2 of option.items) {
+          const quote2 = fresh(item2.eaId, at11);
+          item2.price = quote2.price;
+          item2.roadmapQuote = { source: policy.source, fetchedAt: quote2.fetchedAt, expiresAt: quote2.expiresAt };
+        }
+        if (row.options.length && !value.options.length) value.reason = "quote-expired";
+        rows.push(value);
+      }
+      const route = yield* selectGalleryRoadmapSteps({ rows, ...options });
+      return {
+        ...route,
+        rows,
+        fastReferences: false,
+        demandDriven: true,
+        partial: true,
+        coverage: {
+          total: binding.targets.length,
+          inspected: rows.length,
+          available: rows.filter((row) => row.currentScore !== null).length,
+          missing: 0,
+          stopped: stopped || route.selectionStopped,
+          gradesChecked: rows.reduce((n, row) => n + (row.checkedGrades?.length ?? 0), 0)
+        },
+        deepCoverage: {
+          eligible: jobs.length,
+          completed: jobs.filter((job) => job.done).length,
+          quoted: quotes.size,
+          candidateLimit: 96,
+          pending: jobs.filter((job) => !job.done).length
+        }
+      };
+    };
+    const validResult = (at11 = Date.now()) => !jobs.some((job) => job.shown?.rows?.some((row) => row.options.some((option) => option.items.some((item2) => !fresh(item2.eaId, at11)))));
+    return {
+      clear,
+      validResult,
+      async run({
+        targets,
+        options,
+        load,
+        current: current2 = () => true,
+        checkpoint = current2,
+        stopped = () => false,
+        maxMs,
+        progress = () => {
+        },
+        onPreview = () => {
+        },
+        onResult = () => {
+        },
+        onPhase = () => {
+        },
+        now = Date.now,
+        clock = () => performance.now(),
+        schedule,
+        gradePlanner
+      } = {}) {
+        const key2 = JSON.stringify(options);
+        if (binding && (binding.targets !== targets || binding.key !== key2)) clear();
+        if (!binding) {
+          const owned2 = new Set(targets.flatMap((target) => (target.progress?.rows ?? []).filter(isGalleryOwned).map((row) => row.eaId)));
+          binding = { targets, key: key2, planningTargets: targets.map((target) => !target.progress?.rows ? target : {
+            ...target,
+            progress: { ...target.progress, rows: target.progress.rows.map((row) => owned2.has(row.eaId) ? { ...row, held: true } : row) }
+          }) };
+        }
+        const started = clock(), remaining = () => Math.max(0, maxMs - (clock() - started));
+        const checking = () => {
+          if (!current2() || !checkpoint()) throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
+        };
+        const run = async (steps) => {
+          const result2 = await runGalleryPlan(
+            { next: (finish) => steps.next(finish || stopped()), return: () => steps.return() },
+            { current: current2, checkpoint, maxMs: remaining(), progress, ...schedule ? { schedule } : {}, now: clock }
+          );
+          checking();
+          return result2;
+        };
+        checking();
+        onPhase("planning");
+        if (!preview || preview.coverage.stopped) {
+          preview = await run(planGalleryRoadmapSteps({
+            ...options,
+            targets: binding.planningTargets,
+            fastReferences: true,
+            work: preflight,
+            previousRows: preview?.rows,
+            previousSelection: preview?.selectedOptions
+          }));
+          if (!preview) {
+            checking();
+            throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
+          }
+        }
+        onPreview(preview);
+        for (const [id12, quote2] of quotes) if (quote2.expiresAt <= now()) attempted.delete(id12);
+        for (const job of jobs) if (job.input && job.ids.some((id12) => quotes.has(id12) && !fresh(id12, now()))) {
+          job.input = null;
+          job.result = null;
+          job.done = false;
+          job.work.clear();
+          for (const id12 of job.ids) if (!fresh(id12, now())) attempted.delete(id12);
+        }
+        if (!preview.coverage.stopped && !jobs.length) {
+          const byId = new Map(preview.rows.map((row) => [row.setId, row]));
+          jobs = binding.planningTargets.flatMap((target) => {
+            const row = byId.get(target.set.id), top = Math.max(...target.set.grades.map((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, "event_token_1")));
+            if (!row || row.currentScore === null || row.reason === "progress-unavailable" || target.progress.complete === false || !(top > row.baselineTokens)) return [];
+            const ratios = row.options.map((option) => option.items.reduce((n, item2) => n + item2.price, 0) / Math.max(1, option.projectedTokens - row.baselineTokens));
+            return [{ target, forecast: row, rank: Math.min(...ratios), ids: [], tier: 24, work: createGalleryRoadmapWork(), done: false }];
+          }).sort((a, b) => a.rank - b.rank || a.target.set.id.localeCompare(b.target.set.id));
+        }
+        while (!preview.coverage.stopped && remaining() > 0 && !stopped()) {
+          checking();
+          const job = jobs.filter((job2) => !job2.done).sort((a, b) => a.tier - b.tier || a.rank - b.rank)[0];
+          if (!job) break;
+          if (!job.input) {
+            const rows = selections(job, job.tier);
+            job.ids = rows.map((row) => row.eaId);
+            const missing = rows.filter((row) => !fresh(row.eaId, now()) && !attempted.has(row.eaId));
+            for (let start = 0; start < missing.length && remaining() > 0 && !stopped(); start += 24) {
+              onPhase("pricing");
+              const batch = missing.slice(start, start + 24), deadlineAt = now() + Math.max(1, Math.floor(Math.min(15e3, remaining())));
+              let part;
+              try {
+                part = await load(batch.map((row) => row.eaId), {
+                  rows: batch,
+                  purpose: "roadmap",
+                  deadlineAt,
+                  ...policy ? { policy } : {},
+                  isCurrent: () => current2() && checkpoint() && !stopped(),
+                  onProgress: (value) => {
+                    if (current2() && !stopped()) progress({
+                      ...value,
+                      quoteTotal: value.total,
+                      phase: "pricing",
+                      name: job.target.set.name,
+                      completed: jobs.filter((job2) => job2.done).length,
+                      total: jobs.length
+                    });
+                  }
+                });
+              } catch (error2) {
+                checking();
+                if (stopped()) break;
+                throw error2;
+              }
+              checking();
+              if (stopped()) break;
+              if (part?.source !== "public-references" || !part.policy || policy && JSON.stringify(policy) !== JSON.stringify(part.policy))
+                throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+              policy ??= part.policy;
+              for (const row of batch) {
+                const id12 = row.eaId, price2 = part.freshPrices?.[id12], evidence = part.references?.[id12]?.quotes?.[policy.source];
+                const expiresAt = evidence?.expiresAt ?? part.expiresAt, fetchedAt = evidence?.fetchedAt ?? now();
+                if (priced2(price2) && Number.isSafeInteger(expiresAt) && expiresAt > now() && Number.isSafeInteger(fetchedAt) && fetchedAt <= now()) quotes.set(id12, { price: price2, fetchedAt, expiresAt });
+                if (fresh(id12, now()) || !part.budgetExpired) attempted.add(id12);
+              }
+              if (part.budgetExpired) break;
+            }
+            if (remaining() <= 0 || stopped()) break;
+            const unresolved = rows.some((row) => !fresh(row.eaId, now()) && !attempted.has(row.eaId));
+            if (unresolved) break;
+            const quoteRows = rows.filter((row) => fresh(row.eaId, now()));
+            const prices = Object.fromEntries(quoteRows.map((row) => [row.eaId, fresh(row.eaId, now()).price]));
+            job.input = [{
+              ...job.target,
+              publicReference: null,
+              forecastPriceBasis: null,
+              priceSnapshot: null,
+              prices,
+              progress: {
+                ...job.target.progress,
+                candidateOnly: true,
+                poolComplete: false,
+                rows: job.target.progress.rows.filter((row) => isGalleryOwned(row) || Object.hasOwn(prices, row.eaId))
+              }
+            }];
+          }
+          onPhase("planning");
+          job.result = await run(planGalleryRoadmapSteps({
+            ...options,
+            targets: job.input,
+            previousRows: job.result?.rows,
+            previousSelection: job.result?.selectedOptions,
+            work: job.work,
+            ...gradePlanner ? { gradePlanner } : {}
+          }));
+          if (!job.result) {
+            checking();
+            throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
+          }
+          if (job.shown) {
+            const row = job.result.rows[0], previous = job.shown.rows[0];
+            if (row && previous) for (const option of previous.options) {
+              const existing = row.options.find((value) => value.requestedGrade === option.requestedGrade);
+              if (option.items.every((item2) => fresh(item2.eaId, now())) && (!existing || option.items.reduce((n, item2) => n + fresh(item2.eaId, now()).price, 0) < existing.items.reduce((n, item2) => n + item2.price, 0))) {
+                row.options = row.options.filter((value) => value.requestedGrade !== option.requestedGrade);
+                row.options.push(structuredClone(option));
+              }
+            }
+          }
+          job.shown = structuredClone(job.result);
+          if (!job.result.coverage.stopped) {
+            job.done = !usefulExpansion(job);
+            if (!job.done) {
+              job.tier = Math.min(96, job.tier * 2);
+              job.input = null;
+              job.result = null;
+              job.work.clear();
+            }
+          }
+          const result2 = await run(resultSteps(options, now(), true));
+          if (result2) onResult(result2);
+          if (job.shown.coverage.stopped) break;
+        }
+        onPhase("planning");
+        const result = await run(resultSteps(options, now(), preview.coverage.stopped || jobs.some((job) => !job.done)));
+        return { result, preview };
+      }
+    };
   }
 
   // src/adapters/browser/fc27-gallery-roadmap.js
@@ -18213,7 +18522,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     deep.style.height = "18px";
     deep.style.minHeight = "0";
     deep.style.margin = "0";
-    modeLabel.append(document.createTextNode("\u6DF1\u5EA6\u4F18\u5316\uFF08\u5B8C\u6574\u5019\u9009\u67E5\u4EF7/\u641C\u7D22\uFF0C\u66F4\u6162\uFF09"));
+    modeLabel.append(document.createTextNode("\u6309\u9700\u6DF1\u5EA6\u4F18\u5316\uFF08\u5148\u53C2\u8003\u5168\u8C8C\uFF0C\u518D\u9010\u9879\u6838\u4EF7/\u4F18\u5316\uFF09"));
     modeLabel.hidden = !referenceService;
     if (referenceService) add(document, dialog, "small", "\u9ED8\u8BA4\u5FEB\u901F\u9996\u8F6E\uFF1A\u6309 Fodder \u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u4E0D\u7B49\u5168\u76EE\u5F55\u9010\u5361\u67E5\u4EF7\uFF1B\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u5E76\u6263\u5DF2\u6709\u3002\u8FDB\u5165\u4FF1\u4E50\u90E8/\u8D2D\u4E70\u524D\u4ECD\u72EC\u7ACB\u6838\u4EF7\uFF0C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u4EF7\u3002");
     const progress = add(document, dialog, "progress");
@@ -18232,12 +18541,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     forecastNote.hidden = true;
     Object.assign(forecastNote.style, { border: "1px solid currentColor", borderRadius: "4px", padding: "8px" });
     const referenceBox = add(document, dialog, "div");
+    const previewBox = add(document, dialog, "details");
+    previewBox.className = "gallery-roadmap-preview";
+    previewBox.hidden = true;
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
     const work = createGalleryRoadmapWork();
+    const demand = createGalleryDemandWork();
     let forecastEvidence = null, forecastClock = null;
     const updateForecastNote = () => {
+      if (!busy && last?.demandDriven && (last.route.some((row) => row.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) || !last.quotesExpired && !demand.validResult())) {
+        last = pruneGalleryDemandResult(last);
+        render(last);
+        add(document, output, "p", "\u90E8\u5206\u72EC\u7ACB\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u5DF2\u64A4\u53BB\u53D7\u5F71\u54CD\u8DEF\u7EBF\uFF1B\u5176\u4F59\u6709\u6548\u7ED3\u679C\u548C\u4E0A\u65B9\u53C2\u8003\u5168\u8C8C\u4FDD\u7559\u3002\u70B9\u51FB\u7EE7\u7EED\u91CD\u65B0\u6838\u4EF7\uFF0C\u4E0D\u5EF6\u957F\u65E7\u62A5\u4EF7\u3002");
+        generate.textContent = "\u7EE7\u7EED\u5206\u6790\u5269\u4F59";
+      }
       forecastNote.hidden = !forecastEvidence;
       if (!forecastEvidence) {
         forecastNote.textContent = "";
@@ -18299,9 +18618,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const invalidate = () => {
       epoch2++;
       work.clear();
+      demand.clear();
       last = null;
       planInputs = null;
       binding = null;
+      previewBox.replaceChildren();
+      previewBox.hidden = true;
       forecastEvidence = null;
       updateForecastNote();
       output.replaceChildren();
@@ -18309,9 +18631,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       timing.textContent = "";
       generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
     };
-    const render = (result) => {
-      output.replaceChildren();
-      const metric = add(document, output, "div");
+    const render = (result, outputNode = output) => {
+      const output2 = outputNode;
+      output2.replaceChildren();
+      if (result.demandDriven) add(document, output2, "h3", `\u6309\u9700\u6DF1\u5EA6\u7ED3\u679C \xB7 \u5DF2\u6838\u4EF7 ${result.deepCoverage.quoted} \u4E2A\u7248\u672C \xB7 \u5DF2\u5B8C\u6210 ${result.deepCoverage.completed}/${result.deepCoverage.eligible} \u4E2A\u5F85\u5347\u7EA7\u5408\u96C6`);
+      if (result.demandDriven) add(document, output2, "p", "\u6BCF\u5408\u96C6\u6309 24 \u2192 48 \u2192 96 \u4E2A\u5019\u9009\u9010\u6B65\u6269\u5C55\uFF0C\u5DF2\u5B8C\u6210\u4EC5\u6307\u672C\u8F6E\u6709\u754C\u68C0\u67E5\uFF1B\u672A\u67E5\u7248\u672C\u4ECD\u53EF\u80FD\u66F4\u4F18\u3002\u4E0B\u65B9\u91D1\u989D\u53EA\u6765\u81EA\u5C1A\u6709\u6548\u7684\u72EC\u7ACB\u62A5\u4EF7\uFF0C\u4E0E\u4E0A\u65B9\u53C2\u8003\u5168\u8C8C\u5206\u5F00\u3002");
+      const metric = add(document, output2, "div");
       metric.className = "gallery-roadmap-metrics";
       for (const [label, value] of [
         ["\u76EE\u5F55\u65B0\u589E token", result.addedTokens],
@@ -18323,12 +18648,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add(document, card, "small", label);
         add(document, card, "strong", money(value));
       }
-      add(document, output, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
-      if (result.fastReferences) add(document, output, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF1B\u91D1\u989D\u6309 Fodder \u9010\u5361\u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u884C\u60C5\u5E74\u9F84\u672A\u77E5\uFF0C\u4E0D\u662F\u5B9E\u9645\u8D2D\u4E70\u9650\u4EF7\u3002\u8FDB\u5165\u5408\u96C6/\u8D2D\u4E70\u524D\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u6838\u4EF7\uFF1B\u6DF1\u5EA6\u4F18\u5316\u53EF\u7EE7\u7EED\u6BD4\u8F83\u3002");
-      add(document, output, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
-      add(document, output, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
-      if (!result.route.length) add(document, output, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
-      const tableWrap = add(document, output, "div");
+      add(document, output2, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
+      if (result.fastReferences) add(document, output2, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF1B\u91D1\u989D\u6309 Fodder \u9010\u5361\u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u884C\u60C5\u5E74\u9F84\u672A\u77E5\uFF0C\u4E0D\u662F\u5B9E\u9645\u8D2D\u4E70\u9650\u4EF7\u3002\u8FDB\u5165\u5408\u96C6/\u8D2D\u4E70\u524D\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u6838\u4EF7\uFF1B\u6DF1\u5EA6\u4F18\u5316\u53EF\u7EE7\u7EED\u6BD4\u8F83\u3002");
+      add(document, output2, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
+      add(document, output2, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
+      if (!result.route.length) add(document, output2, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
+      const tableWrap = add(document, output2, "div");
       tableWrap.className = "gallery-roadmap-table";
       const table = add(document, tableWrap, "table"), head = add(document, table, "tr");
       for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u590D\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
@@ -18341,14 +18666,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
         open.type = "button";
         open.addEventListener("click", (event) => {
-          if (!event.isTrusted || !binding || !same28(binding) || !pricesUsable(planInputs)) {
+          if (!event.isTrusted || !binding || !same28(binding) || !pricesUsable(planInputs) || result.demandDriven && step.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) {
             status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
             return;
           }
           dialog.close();
           openSet(step.setId, step.targetGrade);
         });
-        const cards = add(document, output, "details");
+        const cards = add(document, output2, "details");
         add(document, cards, "summary", `${step.order}. ${step.name} \xB7 \u8865\u5361\u4E0E\u9010\u5361\u5468\u8F6C\u660E\u7EC6`);
         for (const cycle of step.cycles) {
           const card = step.items.find((item2) => item2.eaId === cycle.eaId);
@@ -18357,12 +18682,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const pending2 = [...result.unavailable, ...result.skipped];
       if (result.freeCheck.length) {
-        const achieved = add(document, output, "details");
+        const achieved = add(document, output2, "details");
         add(document, achieved, "summary", `\u73B0\u6709\u6536\u85CF\u5DF2\u53EF\u8FBE\u6863\u4F4D ${result.freeCheck.length} \u9879\uFF08\u4E0D\u91CD\u590D\u4E70\u5165\uFF0C\u9886\u53D6\u72B6\u6001\u672A\u6838\u5B9E\uFF09`);
         for (const row of result.freeCheck) add(document, achieved, "p", `${row.name} \xB7 ${row.grade} \xB7 \u7D2F\u8BA1\u76EE\u5F55 token ${row.catalogTokens}`);
       }
       if (pending2.length) {
-        const details = add(document, output, "details");
+        const details = add(document, output2, "details");
         add(document, details, "summary", `\u5F85\u6838\u5B9E / \u8D44\u91D1\u53D7\u9650 ${pending2.length} \u9879`);
         const reasons2 = {
           "capital-gap": "\u5468\u8F6C\u672C\u91D1\u4E0D\u8DB3",
@@ -18374,6 +18699,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "existing-score-unknown": "\u5DF2\u6709\u6536\u85CF\u7684\u8BA1\u5206\u5F85\u6838\u5B9E",
           "search-time-exhausted": "\u672C\u8F6E\u5206\u6790\u65F6\u95F4\u5DF2\u5230\uFF0C\u53EF\u7EE7\u7EED",
           "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848",
+          "quote-expired": "\u6B64\u9879\u72EC\u7ACB\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF1B\u53C2\u8003\u5168\u8C8C\u4ECD\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u91CD\u65B0\u6838\u4EF7",
           "deep-analysis-pending": "\u5FEB\u901F\u9996\u8F6E\u5C1A\u672A\u786E\u8BA4\uFF0C\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5"
         };
         for (const item2 of pending2) add(document, details, "p", `${item2.name} \xB7 ${reasons2[item2.reason] ?? `\u5C1A\u672A\u786E\u8BA4\u65B9\u6848\uFF08${item2.reason}\uFF09`}${item2.capitalShortfall ? ` \xB7 \u9884\u8BA1\u8FD8\u5DEE ${money(item2.capitalShortfall)} \u91D1\u5E01\u672C\u91D1` : ""}`);
@@ -18381,7 +18707,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const cancel = () => {
       stopRequested = true;
-      if (stage !== "planning") {
+      if (stage !== "planning" && stage !== "demand-pricing") {
         epoch2++;
         stopPrepare?.();
       }
@@ -18430,7 +18756,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
       const completedPhases = /* @__PURE__ */ new Set();
       const startedAt = performance.now(), timings = {}, tick = () => {
-        timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : stage === "pricing" ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
+        timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : ["pricing", "demand-pricing"].includes(stage) ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
       };
       let stageStarted = startedAt;
       const ticker = document.defaultView.setInterval(tick, 500);
@@ -18442,9 +18768,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       };
       try {
         onBusyChange(true);
-        const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
+        const resume = (last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
         if (!resume) {
           work.clear();
+          demand.clear();
+          previewBox.replaceChildren();
+          previewBox.hidden = true;
           forecastEvidence = null;
           updateForecastNote();
           last = null;
@@ -18460,8 +18789,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             try {
               const loaded = await referenceService.load({ isCurrent: current2 });
               if (!current2()) return;
-              referenceSnapshot = options.deep ? loaded : captureFodderForecastSnapshot(loaded);
-              if (!options.deep) {
+              referenceSnapshot = captureFodderForecastSnapshot(loaded);
+              {
                 forecastEvidence = {
                   source: "fodder",
                   forecastOnly: true,
@@ -18502,27 +18831,75 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!resume && referenceSnapshot) referenceView = renderGalleryReferenceTable(document, referenceBox, targets, referenceSnapshot);
         const fastReferences = !!referenceService && !options.deep;
         priceBasis = fastReferences ? "fodder-public-estimate" : "independent-reference-quotes";
-        if (!resume && fastReferences) targets = forecastFodderReferencePrices(targets);
-        if (!resume && loadPrices && !fastReferences) {
-          stage = "pricing";
-          const at11 = performance.now();
-          stageStarted = at11;
-          status.textContent = "2/3 \xB7 \u8BFB\u53D6\u5168\u76EE\u5F55\u5019\u9009\u7684\u516C\u5F00\u62A5\u4EF7\u2026";
-          const available = targets.filter((target) => target.progress?.rows && !target.stale && !target.poolStale && target.status === "observed");
-          const priced2 = await priceGalleryPlanningTargets(available, {
-            load: loadPrices,
-            current: valid3,
-            onProgress: (value) => {
-              status.textContent = `2/3 \xB7 \u8BFB\u53D6 ${value.source ?? ""} \u62A5\u4EF7 ${value.index}/${value.total}`;
-            }
-          });
-          const byId = new Map(priced2.map((target) => [target.set.id, target]));
-          targets = targets.map((target) => {
-            const priced3 = byId.get(target.set.id);
-            return priced3 ? { ...target, prices: priced3.prices, priceSnapshot: priced3.priceSnapshot } : target;
-          });
-          timings.priceMs = Math.round(performance.now() - at11);
-          completedPhases.add("pricing");
+        if (!resume && referenceService) targets = forecastFodderReferencePrices(targets);
+        if (!fastReferences && loadPrices) {
+          planInputs = targets;
+          fingerprint = JSON.stringify(options);
+          const maxMs2 = await readTimeout();
+          planningLimitMs = maxMs2;
+          priceBasis = "demand-independent-quotes";
+          stage = "planning";
+          stageStarted = performance.now();
+          let phaseStarted = stageStarted, phase = "planning";
+          const phaseChange = (next) => {
+            const at11 = performance.now(), key2 = phase === "pricing" ? "priceMs" : "planningMs";
+            timings[key2] = (timings[key2] ?? 0) + Math.round(at11 - phaseStarted);
+            phase = next;
+            phaseStarted = at11;
+            stage = next === "pricing" ? "demand-pricing" : "planning";
+            stageStarted = at11;
+          };
+          try {
+            const value = await demand.run({
+              targets,
+              options,
+              load: loadPrices,
+              maxMs: maxMs2,
+              current: current2,
+              checkpoint: valid3,
+              stopped: () => stopRequested,
+              onPhase: phaseChange,
+              onPreview: (result2) => {
+                if (!valid3()) return;
+                previewBox.hidden = false;
+                previewBox.open = true;
+                previewBox.replaceChildren();
+                add(document, previewBox, "summary", `\u53C2\u8003\u5168\u8C8C \xB7 ${result2.coverage.inspected}/${result2.coverage.total} \u5408\u96C6 \xB7 +${result2.addedTokens} token \xB7 \u70B9\u51FB\u5C55\u5F00/\u6536\u8D77`);
+                const body = add(document, previewBox, "div");
+                render(result2, body);
+                referenceView?.collapse();
+                add(document, body, "p", "\u4EE5\u4E0A\u4E3A\u53C2\u8003\u5168\u8C8C\uFF1B\u4EE5\u4E0B\u53EA\u5BF9\u4F18\u5148\u5019\u9009\u9010\u9879\u72EC\u7ACB\u6838\u4EF7\u3002\u672A\u67E5\u7248\u672C\u4E0D\u89C6\u4E3A\u96F6\u6210\u672C\uFF0C\u8303\u56F4\u6709\u754C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u4EF7\u3002");
+              },
+              onResult: (result2) => {
+                if (valid3()) {
+                  previewBox.open = !result2.route.length;
+                  render(result2);
+                }
+              },
+              progress: (value2) => {
+                if (!valid3()) return;
+                status.textContent = value2.phase === "pricing" ? `\u6309\u9700\u6DF1\u5EA6 \xB7 ${value2.name} \xB7 ${value2.source ?? ""} \u67E5\u4EF7 ${value2.index ?? 0}/${value2.quoteTotal ?? "?"} \xB7 \u5DF2\u5B8C\u6210 ${value2.completed}/${value2.total}` : `\u6309\u9700\u6DF1\u5EA6 \xB7 \u672C\u5730\u6838\u9A8C ${value2.name ?? ""} ${value2.grade ?? ""}`;
+              }
+            });
+            if (!valid3() || !value.result) return;
+            last = {
+              ...value.result,
+              referenceOverview: value.preview,
+              generatedAt: Date.now(),
+              timings,
+              priceBasis,
+              forecastReference: forecastEvidence ? { ...forecastEvidence } : null
+            };
+            render(last);
+            completed = true;
+            status.textContent = last.coverage.stopped ? "\u5DF2\u4FDD\u7559\u53C2\u8003\u5168\u8C8C\u548C\u6DF1\u5EA6\u90E8\u5206\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u91CD\u590D\u540C\u6B65\u3002" : "\u6309\u9700\u6DF1\u5EA6\u5206\u6790\u5DF2\u5B8C\u6210\u672C\u8F6E\u6709\u754C\u8303\u56F4\uFF1B\u672A\u67E5\u8303\u56F4\u53CA\u53C2\u8003\u5168\u8C8C\u4FDD\u7559\uFF0C\u8FDB\u5165\u4FF1\u4E50\u90E8\u524D\u91CD\u65B0\u6838\u4EF7\u3002";
+            generate.textContent = last.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
+            completedPhases.add("planning");
+            completedPhases.add("pricing");
+          } finally {
+            phaseChange(phase);
+          }
+          return;
         }
         if (!valid3()) return;
         if (!pricesUsable(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
@@ -18570,6 +18947,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
       } catch (error2) {
         failureReason = failureCode(error2);
+        if (mismatchReason) {
+          demand.clear();
+          last = null;
+          previewBox.replaceChildren();
+          previewBox.hidden = true;
+          output.replaceChildren();
+        }
         status.textContent = stopRequested ? "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : failureReason === "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : `\u672C\u6B21\u5206\u6790\u672A\u5B8C\u6210\uFF0C\u672A\u4E70\u5356\uFF1A${failureReason}`;
       } finally {
         document.defaultView.clearInterval(ticker);
@@ -18603,11 +18987,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           expiresAt: forecastEvidence?.expiresAt,
           responseCount: completed ? last.coverage.inspected : 0,
           acceptedCount: completed ? last.route.length : 0,
+          quotedCount: completed && last.demandDriven ? last.deepCoverage.quoted : void 0,
+          candidateLimit: completed && last.demandDriven ? last.deepCoverage.candidateLimit : void 0,
           reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : completed && last.coverage.stopped ? stopRequested ? "FC27_GALLERY_ROADMAP_STOPPED" : "FC27_GALLERY_ROADMAP_TIME_LIMIT" : void 0),
           localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : void 0
         });
         timing.textContent = `\u672C\u8F6E ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 \u516C\u5171\u53C2\u8003 ${((timings.referenceMs ?? 0) / 1e3).toFixed(1)} / \u540C\u6B65 ${((timings.syncMs ?? 0) / 1e3).toFixed(1)} / \u67E5\u4EF7 ${((timings.priceMs ?? 0) / 1e3).toFixed(1)} / \u8BA1\u7B97 ${((timings.planningMs ?? 0) / 1e3).toFixed(1)} \u79D2`;
-        if (stopRequested && stage !== "planning") status.textContent = "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
+        if (stopRequested && stage !== "planning" && stage !== "demand-pricing") status.textContent = "\u6570\u636E\u8BFB\u53D6\u5DF2\u505C\u6B62\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002";
         busy = false;
         stage = "idle";
         generate.disabled = false;
@@ -18623,6 +19009,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     exportButton.addEventListener("click", (event) => {
       if (!event.isTrusted || busy) return;
       try {
+        updateForecastNote();
         const state = read(), current2 = binding && same28(binding) && pricesUsable(planInputs);
         const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current2 && planInputs ? planInputs : state.targets, plan: current2 ? last : null });
         const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
@@ -18643,6 +19030,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         epoch2++;
         stopForecastClock();
         work.clear();
+        demand.clear();
         dialog.close();
         dialog.remove();
       }
@@ -19551,7 +19939,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const needsPriceRefresh = (detail) => !detail?.priceSnapshot || priceExpired(detail) || detail.priceSnapshot.expiresAt == null && !Object.keys(detail.priceSnapshot.freshPrices ?? {}).length;
     const priceForPlan = async (value, set, current2, output) => {
       if (!loadPlanningPrices) return;
-      const [priced2] = await priceGalleryPlanningTargets([{ set, progress: value.progress }], {
+      const [priced3] = await priceGalleryPlanningTargets([{ set, progress: value.progress }], {
         load: loadPlanningPrices,
         current: current2,
         onProgress: (state2) => {
@@ -19559,7 +19947,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       });
       if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
-      Object.assign(value, { priceSnapshot: priced2.priceSnapshot, prices: priced2.prices });
+      Object.assign(value, { priceSnapshot: priced3.priceSnapshot, prices: priced3.prices });
     };
     const attachPlanPrices = (plan, snapshots) => {
       for (const candidate of plan?.plans ?? []) for (const item2 of candidate.items ?? []) {
@@ -20538,14 +20926,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const maxMs = await planningTimeout(current2, output);
         if (maxMs == null) return;
         if (loadPlanningPrices) {
-          const priced2 = await priceGalleryPlanningTargets(targets, {
+          const priced3 = await priceGalleryPlanningTargets(targets, {
             load: loadPlanningPrices,
             current: current2,
             onProgress: (state2) => {
               output.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
             }
           });
-          targets.splice(0, targets.length, ...priced2);
+          targets.splice(0, targets.length, ...priced3);
           for (const target of targets) Object.assign(details.get(target.set.id), { prices: target.prices, priceSnapshot: target.priceSnapshot });
         }
         const refreshIds = loadPlanningPrices ? [] : [...new Set(targets.filter((target) => {
@@ -30144,7 +30532,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const purpose = options.purpose ?? "gallery";
       const policy = options.policy ?? (purpose === "listing" ? { ...settings, source: settings.listingSource } : settings);
       if (!publicPriceSourceEnabled(settings, policy.source)) throw Error(`FC27_PUBLIC_PRICE_${policy.source.toUpperCase()}_DISABLED`);
-      const sources3 = (options.sources ?? (purpose === "puzzle" || purpose === "purchase" ? [policy.source] : [policy.source, policy.source === "futbin" ? "futgg" : "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
+      const sources3 = (options.sources ?? (["puzzle", "purchase", "roadmap"].includes(purpose) ? [policy.source] : [policy.source, policy.source === "futbin" ? "futgg" : "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
       if (!sources3.length) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
       const snapshot = await service.load(ids2, {
         ...options,
@@ -37489,7 +37877,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.68" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.69" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -37831,8 +38219,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.68"}`,
-    version: "27.0.68",
+    title: `FC Automation Tool ${"27.0.69"}`,
+    version: "27.0.69",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

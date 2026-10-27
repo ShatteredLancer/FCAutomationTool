@@ -1,0 +1,13 @@
+{
+  "version": "27.0.68",
+  "collections": 196,
+  "timing": {
+    "referenceMs": 3092,
+    "syncMs": 15605,
+    "pricingMs": 4941663,
+    "totalMs": 4960467
+  },
+  "lastStatus": "stopped",
+  "lastReason": "FC27_PUBLIC_PRICE_CONTEXT_CHANGED",
+  "evidence": "Reduced diagnostic phases only. No private account, player or transaction data. Last reason does not establish why the stop occurred."
+}

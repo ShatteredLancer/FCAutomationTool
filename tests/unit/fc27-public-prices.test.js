@@ -18,7 +18,7 @@ function fixture({ legacy = true } = {}) {
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
 
-it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined'])('uses default FUTBIN batches for %s and shares page hits with other purposes', async purpose => {
+it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined', 'roadmap'])('uses default FUTBIN batches for %s and shares page hits with other purposes', async purpose => {
   const f = fixture({ legacy: false });
   const rows = Array.from({ length: 14 }, (_, i) => ({ ...f.player, definitionId: i + 1000, rating: 84 }));
   f.gm.mockImplementation(options => options.onload({ status: 200, responseText: JSON.stringify({ errorcode: '200',
@@ -38,6 +38,15 @@ it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined'])('uses defau
   expect(f.gm).toHaveBeenCalledTimes(1);
   expect(f.gm.mock.calls[0][0].url).toContain('rating=84-84');
   expect(f.transport.getPrices).not.toHaveBeenCalled();
+});
+
+it.each(['futbin', 'futgg'])('demand roadmap reads only the selected %s authority, leaving dual-source Gallery display unchanged', async source => {
+  const f = fixture(); await f.service.saveSettings({ readSources: 'both', source });
+  const result = await f.service.load([f.player.definitionId], { purpose: 'roadmap', rows: [f.player] });
+  expect(result.requestedSources).toEqual([source]);
+  expect(result.policy.source).toBe(source);
+  if (source === 'futbin') { expect(f.gm).toHaveBeenCalled(); expect(f.transport.getPrices).not.toHaveBeenCalled(); }
+  else { expect(f.gm).not.toHaveBeenCalled(); expect(f.transport.getPrices).toHaveBeenCalled(); }
 });
 
 it('reads the selected authority first in Both without changing either price source', async () => {

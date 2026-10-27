@@ -79,27 +79,34 @@ export async function exerciseGalleryForecastClock(context, directory) {
     assert.equal(calls.sync, 1); assert.equal(calls.reference, 1); assert.equal(calls.quote, scenario.deep ? 1 : 0);
     const handoff = page.getByRole('button', { name: '进入俱乐部 / 合集', exact: true });
     if (scenario.quoteExpired || scenario.drift) {
-      assert.equal(await handoff.count(), 0);
+      assert.equal(scenario.quoteExpired ? await page.locator('.gallery-roadmap-dialog > div[aria-live=polite]').getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count() : await handoff.count(), 0);
       const event = await page.evaluate(() => globalThis.clockEvents.filter(row => row.event === 'roadmap-plan').at(-1));
-      assert.equal(event.reason, scenario.quoteExpired ? 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' : 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED');
+      if (scenario.quoteExpired) {
+        assert.equal(await page.locator('.gallery-roadmap-preview').getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count(), 1);
+        assert.equal(event.priceSource, 'demand-independent-quotes');
+      } else assert.equal(event.reason, 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED');
     } else if (scenario.expiredStart) {
       assert.equal(await handoff.count(), 0); assert.ok(text.includes('Fodder 参考暂不可用'));
       assert.equal(await page.locator('.gallery-forecast-note').isVisible(), false);
     } else {
-      assert.ok(text.includes('整体路线已生成'), scenario.name);
+      assert.ok(text.includes(scenario.deep ? '按需深度分析已完成' : '整体路线已生成'), scenario.name);
       if (!scenario.deep) assert.ok(text.includes('参考缓存已过期'), 'Expired reference estimates must remain visibly labelled');
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: '导出分析快照', exact: true }).click();
       const file = path.join(directory, `gallery-forecast-${scenario.name}.json`); await (await download).saveAs(file);
       const exported = JSON.parse(await readFile(file, 'utf8')), price = exported.collections[0].prices[0];
-      if (scenario.deep) { assert.equal(price.price, 5000); assert.equal(price.fresh, true); }
+      if (scenario.deep) {
+        assert.equal(price.price, 1000); assert.equal(price.fresh, false); // Reference overview is not overwritten by independent quotes.
+        assert.equal(exported.roadmap.route[0].quotedItems[0].price, 5000);
+        assert.equal(exported.roadmap.route[0].quotedItems[0].fresh, true);
+      }
       else {
         assert.equal(price.price, 1000); assert.equal(price.fresh, false); assert.equal(price.cacheExpired, true);
         assert.ok(price.capturedAt < price.expiresAt && price.expiresAt < exported.exportedAt);
         assert.equal(exported.roadmap.forecastReference.cacheExpired, true);
         await page.screenshot({ path: path.join(directory, 'gallery-forecast-clock.png') });
       }
-      await handoff.click();
+      await handoff.last().click();
       assert.deepEqual(await page.evaluate(() => globalThis.clockHandoff), ['futgg:1', 'S'], 'Only a target, never estimated prices, crosses the club boundary');
     }
     assert.equal(requests, 0);

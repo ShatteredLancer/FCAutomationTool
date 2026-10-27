@@ -113,7 +113,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     // Frozen purchase policies retain their caps, but cannot re-enable a
     // source the account has disabled since the plan was approved.
     if (!publicPriceSourceEnabled(settings, policy.source)) throw Error(`FC27_PUBLIC_PRICE_${policy.source.toUpperCase()}_DISABLED`);
-    const sources = (options.sources ?? (purpose === 'puzzle' || purpose === 'purchase' ? [policy.source]
+    const sources = (options.sources ?? (['puzzle', 'purchase', 'roadmap'].includes(purpose) ? [policy.source]
       : [policy.source, policy.source === 'futbin' ? 'futgg' : 'futbin']))
       .filter(source => publicPriceSourceEnabled(settings, source));
     if (!sources.length) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
