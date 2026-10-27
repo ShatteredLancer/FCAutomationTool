@@ -1,12 +1,13 @@
 import { planGalleryRoadmapSteps } from './roadmap.js';
 import { createGalleryRoadmapWork } from './roadmap-work.js';
 import { runGalleryPlan } from './cooperative-plan.js';
-import { selectGalleryRoadmapSteps } from './roadmap-selection.js';
+import { createGalleryPortfolioWork } from './roadmap-portfolios.js';
+import { createGalleryRoadmapSession } from './roadmap-session.js';
 import { isGalleryOwned, galleryCostSearchKeys } from './planner.js';
 import { compileGalleryScoringRules } from './scoring.js';
 import { selectGalleryCandidatePool } from './candidate-pool.js';
 import { galleryCumulativeRewardQuantity } from './catalog-rewards.js';
-import { forecastGalleryTurnover } from './turnover-budget.js';
+import { filterGalleryRoadmapRoutes } from './roadmap-retain.js';
 
 const priced = value => Number.isSafeInteger(value) && value >= 150 && value <= 15000000;
 
@@ -14,23 +15,20 @@ const priced = value => Number.isSafeInteger(value) && value >= 150 && value <= 
 // quote or discards the separate Fodder overview / still-valid collections.
 export function pruneGalleryDemandResult(result, now = Date.now()) {
   const keep = row => row.items.every(item => item.roadmapQuote?.expiresAt > now);
-  const kept = result.route.filter(keep), byId = new Map(kept.map(row => [row.setId, row]));
-  const funding = forecastGalleryTurnover({ steps: kept.map(row => ({ setId: row.setId, items: row.items })),
-    capital: result.funding.capital, resaleDiscountBps: result.funding.resaleDiscountBps });
-  const route = funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 }));
-  return { ...result, quotesExpired: true, partial: true, status: route.length ? 'ready' : 'quotes-expired', funding, route,
-    addedTokens: route.reduce((n, row) => n + row.addedTokens, 0),
-    rows: result.rows.map(row => ({ ...row, options: row.options.filter(keep) })),
-    selectedOptions: result.selectedOptions.filter(row => byId.has(row.setId)) };
+  const kept=filterGalleryRoadmapRoutes(result,keep);
+  return { ...kept, quotesExpired: true, partial: true, status: kept.route.length ? 'ready' : 'quotes-expired',
+    rows: result.rows.map(row => ({ ...row, options: row.options.filter(keep) })) };
 }
 
 // One frozen, read-only analysis. No persistence, approvals or transactions.
 // Reference overview and independently quoted optimization are kept separate.
-export function createGalleryDemandWork() {
+export function createGalleryDemandWork({referenceSession=null}={}) {
   let binding, preview, jobs = [], policy = null, quotes = new Map(), attempted = new Set();
-  const preflight = createGalleryRoadmapWork();
+  const preflight = referenceSession ?? createGalleryRoadmapSession();
+  const portfolioWork=createGalleryPortfolioWork();
   const clear = () => {
     preflight.clear(); for (const job of jobs) job.work.clear();
+    portfolioWork.clear();
     binding = null; preview = null; jobs = []; policy = null; quotes = new Map(); attempted = new Set();
   };
   const fresh = (id, at) => quotes.get(id)?.expiresAt > at ? quotes.get(id) : null;
@@ -79,64 +77,72 @@ export function createGalleryDemandWork() {
       if (row.options.length && !value.options.length) value.reason = 'quote-expired';
       rows.push(value);
     }
-    const route = yield* selectGalleryRoadmapSteps({ rows, ...options });
+    const compared=yield* portfolioWork.run({rows,...options}),route=compared.result;
     return { ...route, rows, fastReferences: false, demandDriven: true, partial: true,
       coverage: { total: binding.targets.length, inspected: rows.length, available: rows.filter(row => row.currentScore !== null).length,
         missing: 0, stopped: stopped || route.selectionStopped, gradesChecked: rows.reduce((n, row) => n + (row.checkedGrades?.length ?? 0), 0) },
       deepCoverage: { eligible: jobs.length, completed: jobs.filter(job => job.done).length,
-        quoted: quotes.size, candidateLimit: 96, pending: jobs.filter(job => !job.done).length } };
+        quoted: quotes.size, candidateLimit: 96, pending: jobs.filter(job => !job.done).length,referencePending:preflight.pending().length } };
   };
   const validResult = (at = Date.now()) => !jobs.some(job => job.shown?.rows?.some(row =>
     row.options.some(option => option.items.some(item => !fresh(item.eaId, at)))));
+  const bind=(targets,options)=>{
+    const key=JSON.stringify({...options,deep:undefined});if(binding && binding.key!==key)clear();
+    const changed=preflight.bind(targets,options),ids=new Set(changed),present=new Set(targets.map(target=>target.set.id));
+    jobs=jobs.filter(job=>{if(ids.has(job.target.set.id)||!present.has(job.target.set.id)){job.work.clear();return false;}return true;});
+    for(const target of targets)if(ids.has(target.set.id))for(const row of target.progress?.rows ?? [])if(!fresh(row.eaId,Date.now()))attempted.delete(row.eaId);
+    binding={targets,key};preview=null;return changed;
+  };
+  const refreshJobs=()=>{
+    const known=new Set(jobs.map(job=>job.target.set.id));
+    for(const entry of preflight.entries()){
+      const target=entry.target,row=entry.result?.rows?.[0];
+      if(known.has(target.set.id)){const job=jobs.find(job=>job.target.set.id===target.set.id);if(row)job.forecast=row;continue;}
+      if(!row || !(row.analysisComplete || row.options?.some(option=>option.grade==='S')) || row.currentScore===null||row.reason==='progress-unavailable'
+          || target.progress.complete===false)continue;
+      const top=Math.max(...target.set.grades.map(grade=>galleryCumulativeRewardQuantity(target.set,grade.threshold,'event_token_1')));
+      if(!(top>row.baselineTokens))continue;
+      const best=row.options.slice().sort((a,b)=>({S:5,A:4,B:3}[b.grade] ?? 0)-({S:5,A:4,B:3}[a.grade] ?? 0))[0];
+      const rank=best ? best.items.reduce((n,item)=>n+item.price,0)/Math.max(1,best.projectedTokens-row.baselineTokens) : Infinity;
+      jobs.push({target,forecast:row,rank,ids:[],tier:24,work:createGalleryRoadmapWork(),done:false,turns:0});
+    }
+  };
   return {
-    clear, validResult,
+    clear, validResult, bind,
     async run({ targets, options, load, current = () => true, checkpoint = current, stopped = () => false, maxMs,
       progress = () => {}, onPreview = () => {}, onResult = () => {}, onPhase = () => {},
-      now = Date.now, clock = () => performance.now(), schedule, gradePlanner } = {}) {
-      const key = JSON.stringify(options);
-      if (binding && (binding.targets !== targets || binding.key !== key)) clear();
-      if (!binding) {
-        const owned = new Set(targets.flatMap(target => (target.progress?.rows ?? []).filter(isGalleryOwned).map(row => row.eaId)));
-        binding = { targets, key, planningTargets: targets.map(target => !target.progress?.rows ? target : ({ ...target,
-          progress: { ...target.progress, rows: target.progress.rows.map(row => owned.has(row.eaId) ? { ...row, held: true } : row) } })) };
-      }
+      now = Date.now, clock = () => performance.now(), schedule, gradePlanner, quantumMs = 40 } = {}) {
+      const key = JSON.stringify({...options,deep:undefined});
+      if (!binding || binding.targets!==targets || binding.key!==key) bind(targets,options);
       const started = clock(), remaining = () => Math.max(0, maxMs - (clock() - started));
       const checking = () => { if (!current() || !checkpoint()) throw Error('FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'); };
-      const run = async steps => {
+      const run = async (steps,limit=remaining()) => {
         const result = await runGalleryPlan({ next: finish => steps.next(finish || stopped()), return: () => steps.return() },
-          { current, checkpoint, maxMs: remaining(), progress, ...(schedule ? { schedule } : {}), now: clock });
+          { current, checkpoint, maxMs: Math.min(remaining(),limit), progress, ...(schedule ? { schedule } : {}), now: clock });
         checking(); return result;
       };
       checking();
       onPhase('planning');
-      if (!preview || preview.coverage.stopped) {
-        preview = await run(planGalleryRoadmapSteps({ ...options, targets: binding.planningTargets, fastReferences: true, work: preflight,
-          previousRows: preview?.rows, previousSelection: preview?.selectedOptions }));
-        if (!preview) { checking(); throw Error('FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'); }
-      }
-      onPreview(preview);
+      let published=-Infinity;
+      if(!preflight.pending().length){preview=await run(preflight.snapshotSteps(options));if(preview){onPreview(preview);published=clock();}}
+      for(const job of jobs)job.deferred=false;
       for (const [id, quote] of quotes) if (quote.expiresAt <= now()) attempted.delete(id);
       for (const job of jobs) if (job.input && job.ids.some(id => quotes.has(id) && !fresh(id, now()))) {
         job.input = null; job.result = null; job.done = false; job.work.clear();
         for (const id of job.ids) if (!fresh(id, now())) attempted.delete(id);
       }
-      if (!preview.coverage.stopped && !jobs.length) {
-        const byId = new Map(preview.rows.map(row => [row.setId, row]));
-        jobs = binding.planningTargets.flatMap(target => {
-          const row = byId.get(target.set.id), top = Math.max(...target.set.grades.map(grade =>
-            galleryCumulativeRewardQuantity(target.set, grade.threshold, 'event_token_1')));
-          if (!row || row.currentScore === null || row.reason === 'progress-unavailable'
-              || target.progress.complete === false || !(top > row.baselineTokens)) return [];
-          const ratios = row.options.map(option => option.items.reduce((n, item) => n + item.price, 0)
-            / Math.max(1, option.projectedTokens - row.baselineTokens));
-          return [{ target, forecast: row, rank: Math.min(...ratios), ids: [], tier: 24, work: createGalleryRoadmapWork(), done: false }];
-        }).sort((a, b) => a.rank - b.rank || a.target.set.id.localeCompare(b.target.set.id));
-      }
       // All jobs get a small first pass before expanding any one collection.
-      while (!preview.coverage.stopped && remaining() > 0 && !stopped()) {
+      while (remaining() > 0 && !stopped()) {
         checking();
-        const job = jobs.filter(job => !job.done).sort((a, b) => a.tier - b.tier || a.rank - b.rank)[0];
-        if (!job) break;
+        onPhase('planning');
+        const advanced=await preflight.advance({options,current,checkpoint,stopped,maxMs:remaining(),quantumMs,progress,clock,schedule});
+        refreshJobs();
+        const job = jobs.filter(job => !job.done && !job.deferred).sort((a, b) => a.tier-b.tier || a.turns-b.turns || a.rank-b.rank)[0];
+        if(advanced && (!preview || job && !preview.rows.some(row=>row.setId===job.target.set.id) || clock()-published>=250)){
+          preview=await run(preflight.snapshotSteps(options));
+          if(preview){onPreview(preview);published=clock();}
+        }
+        if (!job) {if(!preflight.pending().length)break;continue;}
         if (!job.input) {
           const rows = selections(job, job.tier); job.ids = rows.map(row => row.eaId);
           const missing = rows.filter(row => !fresh(row.eaId, now()) && !attempted.has(row.eaId));
@@ -166,7 +172,7 @@ export function createGalleryDemandWork() {
           }
           if (remaining() <= 0 || stopped()) break;
           const unresolved = rows.some(row => !fresh(row.eaId, now()) && !attempted.has(row.eaId));
-          if (unresolved) break; // Yield to a later click, not an unbounded retry.
+          if (unresolved) {job.deferred=true;continue;}
           const quoteRows = rows.filter(row => fresh(row.eaId, now()));
           const prices = Object.fromEntries(quoteRows.map(row => [row.eaId, fresh(row.eaId, now()).price]));
           job.input = [{ ...job.target, publicReference: null, forecastPriceBasis: null, priceSnapshot: null, prices,
@@ -176,7 +182,8 @@ export function createGalleryDemandWork() {
         onPhase('planning');
         job.result = await run(planGalleryRoadmapSteps({ ...options, targets: job.input,
           previousRows: job.result?.rows, previousSelection: job.result?.selectedOptions, work: job.work,
-          ...(gradePlanner ? { gradePlanner } : {}) }));
+          rowsOnly:true,...(gradePlanner ? { gradePlanner } : {}) }),quantumMs);
+        job.turns++;
         if (!job.result) { checking(); throw Error('FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'); }
         // Retain completed options while a larger tier is being evaluated.
         if (job.shown) {
@@ -195,12 +202,15 @@ export function createGalleryDemandWork() {
           job.done = !usefulExpansion(job);
           if (!job.done) { job.tier = Math.min(96, job.tier * 2); job.input = null; job.result = null; job.work.clear(); }
         }
-        const result = await run(resultSteps(options, now(), true));
-        if (result) onResult(result);
-        if (job.shown.coverage.stopped) break;
+        if(clock()-published>=200 || !job.shown.coverage.stopped){
+          const result = await run(resultSteps(options, now(), true));
+          if (result) onResult(result);
+        }
+        if(!preflight.pending().length && jobs.every(job=>job.done||job.deferred))break;
       }
       onPhase('planning');
-      const result = await run(resultSteps(options, now(), preview.coverage.stopped || jobs.some(job => !job.done)));
+      preview=await run(preflight.snapshotSteps(options));if(preview)onPreview(preview);
+      const result = await run(resultSteps(options, now(), preflight.pending().length>0 || jobs.some(job => !job.done)));
       return { result, preview };
     },
   };

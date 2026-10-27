@@ -5,12 +5,13 @@ const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
 const MAX_PERFORMANCE_ENTRIES = 40;
 const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', 'futbin-batch-result'].includes(entry.event)
-  || entry?.area === 'gallery' && ['roadmap-plan', 'roadmap-phase'].includes(entry.event)
+  || entry?.area === 'gallery' && ['roadmap-plan', 'roadmap-phase','roadmap-reconcile'].includes(entry.event)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
+  'referenceInspectedCount','referenceCompletedCount','referencePendingCount','reconciledCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',

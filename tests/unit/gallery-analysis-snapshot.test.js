@@ -78,3 +78,13 @@ it('separates demand quote evidence from reference estimates without exporting e
   expect(result.roadmap.deepCoverage.quoted).toBe(24);
   expect(JSON.stringify(result)).not.toContain('DO_NOT_EXPORT');
 });
+
+it('exports all global route alternatives and local execution states with a strict field allowlist',()=>{
+  const plan={selectedProfile:'tokens',retainedChanges:1,portfolios:[{profile:'tokens',label:'Tokens',addedTokens:28,
+    funding:{requiredCapital:1000,receipt:'DO_NOT_EXPORT'},route:[{setId:set.id,targetGrade:'S',cycles:[{eaId:11,itemId:'DO_NOT_EXPORT'}]}],permit:'DO_NOT_EXPORT'}],
+    executionSteps:[{setId:set.id,targetGrade:'S',state:'local-score-reached',account:'DO_NOT_EXPORT'}],route:[]};
+  const value=buildGalleryAnalysisSnapshot({catalog,targets:[target()],plan,now:5000});
+  expect(value.roadmap.portfolios[0].route[0].purchaseVersionIds).toEqual([11]);
+  expect(value.roadmap.executionSteps).toEqual([{setId:set.id,targetGrade:'S',state:'local-score-reached'}]);
+  expect(value.roadmap.selectedProfile).toBe('tokens');expect(JSON.stringify(value)).not.toContain('DO_NOT_EXPORT');
+});

@@ -1,0 +1,12 @@
+{
+  "version": "27.0.69",
+  "collections": 196,
+  "referenceMs": 2705,
+  "syncMs": 55781,
+  "planningMs": 302903,
+  "durationMs": 361673,
+  "deadlineMs": 300000,
+  "quotedCount": 0,
+  "reason": "FC27_GALLERY_ROADMAP_TIME_LIMIT",
+  "evidence": "Reduced diagnostic stages only. No private cards/account fields. Detailed per-collection CPU inputs were not captured."
+}

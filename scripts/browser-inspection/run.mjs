@@ -115,6 +115,8 @@ if (help) {
       await exerciseGalleryForecastClock(context, out);
       const { exerciseGalleryDemand } = await import('./gallery-demand-smoke.mjs');
       await exerciseGalleryDemand(context, out);
+      const { exerciseGalleryRoadmapRetention } = await import('./gallery-roadmap-retention-smoke.mjs');
+      await exerciseGalleryRoadmapRetention(context, out);
       const { exerciseGalleryReplan } = await import('./gallery-replan-smoke.mjs');
       await exerciseGalleryReplan(context, out);
       const { exerciseGalleryCostReplay } = await import('./gallery-cost-replay-smoke.mjs');

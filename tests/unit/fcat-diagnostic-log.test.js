@@ -10,6 +10,17 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('keeps incremental roadmap completion/reuse counts in the bounded performance ring',async()=>{
+  const t=harness({maxEntries:1,maxCriticalEntries:1});
+  await t.log.record({area:'gallery',event:'roadmap-reconcile',phase:'local',status:'retained',retainedCount:194,reconciledCount:2,account:'private-account'});
+  await t.log.record({area:'gallery',event:'roadmap-plan',phase:'planning',referenceInspectedCount:196,referenceCompletedCount:144,referencePendingCount:52});
+  await t.log.record({area:'gallery',event:'pool-request',status:'success'});
+  const value=await t.log.exportPayload();
+  expect(value.performanceEntries).toContainEqual(expect.objectContaining({event:'roadmap-reconcile',retainedCount:194,reconciledCount:2}));
+  expect(value.performanceEntries).toContainEqual(expect.objectContaining({referenceCompletedCount:144,referencePendingCount:52}));
+  expect(JSON.stringify(value)).not.toContain('private-account');
+});
+
 it('retains bounded Gallery roadmap phase and mismatch evidence without account payloads', async () => {
   const t = harness({ maxEntries: 1, maxCriticalEntries: 1 });
   await t.log.record({ area: 'gallery', event: 'roadmap-plan', phase: 'pricing', status: 'failed', durationMs: 74806,

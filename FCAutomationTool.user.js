@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.69
+// @version      27.0.70
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.69", at: Date.now(), status: 'started',
+    state = { version: "27.0.70", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13059,6 +13059,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const base = sum(rows), bonus = paid.reduce((total, tag) => total + tag.bonus, 0);
     return { base, bonus, total: base + bonus, tags, lineupIds: rows.map((row) => row.eaId) };
   }
+  function lineupTotal(rows, compiled) {
+    const bonuses = [];
+    for (const tag of compiled.tags) {
+      const match = matchTag(rows, tag), pct = tierFor2(tag.tiers, match.count)?.pct ?? 0, matched = sum(match.cards);
+      const bonus = compiled.bonusMinusOne && matched > 0 && pct > 0 ? Math.floor((matched * pct - 1) / 100) : bonusFor(matched, pct);
+      if (bonus > 0) bonuses.push(bonus);
+    }
+    bonuses.sort((a, b) => b - a);
+    return sum(rows) + bonuses.slice(0, compiled.source === "fodder" ? bonuses.length : 10).reduce((n, value) => n + value, 0);
+  }
   function* chooseLineupSteps(rows, required2, compiled, memo = null) {
     const base = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore || b.overall - a.overall || a.eaId - b.eaId).slice(0, required2);
     if (rows.length <= required2 || !compiled.tags.length) return base;
@@ -13107,7 +13117,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const score2 = (cards) => {
       const identity5 = cards.map((row) => memo ? rowKeys.get(row) : row.eaId).join(",");
       if (totals2.has(identity5)) return totals2.get(identity5);
-      const total = evaluateGalleryLineup(cards, compiled).total;
+      const total = memo?.fastTotals ? lineupTotal(cards, compiled) : evaluateGalleryLineup(cards, compiled).total;
       if (totals2.size >= 8192) totals2.clear();
       totals2.set(identity5, total);
       return total;
@@ -13186,20 +13196,33 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       comparison: ruleDifference ? { low: comparison, high: comparisonHigh } : null
     };
   }
-  function createGalleryScoreSummarizer(catalog) {
+  function createGalleryScoreSummarizer(catalog, { summaryCacheSize = 0, fastTotals = false } = {}) {
     const compiled = compileGalleryScoringRules(catalog);
+    const summaries = /* @__PURE__ */ new Map(), limit = Number.isSafeInteger(summaryCacheSize) ? Math.max(0, Math.min(64, summaryCacheSize)) : 0;
     const memo = {
       compiled,
       totals: /* @__PURE__ */ new Map(),
       signatures: /* @__PURE__ */ new Map(),
+      fastTotals: fastTotals === true,
       fields: [...new Set((compiled.tags ?? []).map((tag) => tag.field))]
     };
     const stepsFor = function* (input) {
+      let key2 = null;
+      if (limit) try {
+        key2 = JSON.stringify([input.set, input.progress]);
+      } catch {
+      }
+      if (key2 !== null && summaries.has(key2)) return structuredClone(summaries.get(key2));
       if (memo.signatures.size > 8192) {
         memo.signatures.clear();
         memo.totals.clear();
       }
-      return yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+      const value = yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+      if (key2 !== null) {
+        if (summaries.size >= limit) summaries.delete(summaries.keys().next().value);
+        summaries.set(key2, structuredClone(value));
+      }
+      return value;
     };
     const summarize2 = (input) => {
       const steps = stepsFor(input);
@@ -14026,7 +14049,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     maxPlans = 3,
     beamWidth = 96,
     maxCandidates = 250,
-    maxEvaluations = 3e4
+    maxEvaluations = 3e4,
+    scoreSummarizer = null
   } = {}) {
     if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 1e5) {
       return { status: "unavailable", reason: "search-options-invalid" };
@@ -14038,7 +14062,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (threshold == null) return { status: "unavailable", reason: "target-grade-unknown" };
     const compiled = compileGalleryScoringRules(catalog);
     if (compiled.status !== "ready") return { status: "unavailable", reason: compiled.reason };
-    const score2 = createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
+    const score2 = scoreSummarizer ?? createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
     let scoringWork = 0, scoreDeadline = false;
     const summaryFor = function* (selected) {
       const key2 = selected.map((row) => row.eaId).join(",");
@@ -17300,613 +17324,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
 
-  // src/gallery/turnover-budget.js
-  var integer15 = (value, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= 0 && value <= max;
-  var validPrice5 = (value) => integer15(value, 15e6) && value > 0;
-  var fail22 = (reason, extra = {}) => ({ status: "unavailable", reason, feasible: null, ...extra });
-  var totals = (cycles) => {
-    let loss = 0, required2 = 0;
-    for (const cycle of cycles) {
-      required2 = Math.max(required2, loss + cycle.price);
-      loss += cycle.price - cycle.expectedSaleNet;
-    }
-    return { requiredCapital: Math.max(0, required2), expectedNetLoss: loss };
-  };
-  function forecastGalleryTurnover({
-    steps = [],
-    capital = null,
-    taxBps = GALLERY_MARKET_TAX_BPS,
-    resaleDiscountBps = 0,
-    optimizeOrder = true
-  } = {}) {
-    if (!Array.isArray(steps) || steps.length > 4096 || capital !== null && !integer15(capital, 1e9) || !integer15(taxBps, 1e4) || !integer15(resaleDiscountBps, 1e4) || typeof optimizeOrder !== "boolean") return fail22("input-invalid");
-    const versions = /* @__PURE__ */ new Map(), memberships = /* @__PURE__ */ new Map(), prepared = [];
-    for (const step of steps) {
-      if (typeof step?.setId !== "string" || !step.setId || !Array.isArray(step.items) || step.items.length > 2e3) return fail22("input-invalid");
-      const seen = /* @__PURE__ */ new Set(), cycles = [];
-      for (const item2 of step.items) {
-        if (!integer15(item2?.eaId) || !item2.eaId || seen.has(item2.eaId)) return fail22("version-invalid");
-        seen.add(item2.eaId);
-        if (item2.price == null) return { ...fail22("price-unknown"), status: "partial", requiredCapital: null };
-        if (!validPrice5(item2.price)) return fail22("price-invalid");
-        const resalePrice = Object.hasOwn(item2, "resalePrice") ? item2.resalePrice : Math.floor(item2.price * (1e4 - resaleDiscountBps) / 1e4);
-        if (resalePrice == null) return { ...fail22("resale-price-unknown"), status: "partial", requiredCapital: null };
-        if (!integer15(resalePrice, 15e6)) return fail22("price-invalid");
-        const expectedSaleNet2 = Math.floor(resalePrice * (1e4 - taxBps) / 1e4);
-        const cycle = {
-          eaId: item2.eaId,
-          price: item2.price,
-          resalePrice,
-          expectedSaleNet: expectedSaleNet2,
-          expectedTax: resalePrice - expectedSaleNet2,
-          requiresCollectionConfirmation: true,
-          requiresSaleReceipt: true
-        };
-        const previous = versions.get(item2.eaId);
-        if (previous && (previous.price !== cycle.price || previous.resalePrice !== cycle.resalePrice)) return fail22("version-price-conflict");
-        versions.set(item2.eaId, cycle);
-        cycles.push(cycle);
-        memberships.set(item2.eaId, (memberships.get(item2.eaId) ?? 0) + 1);
-      }
-      if (optimizeOrder) cycles.sort((a, b) => b.expectedSaleNet - a.expectedSaleNet || a.eaId - b.eaId);
-      prepared.push({ setId: step.setId, cycles, ...totals(cycles) });
-    }
-    if (optimizeOrder) prepared.sort((a, b) => b.requiredCapital - b.expectedNetLoss - (a.requiredCapital - a.expectedNetLoss) || a.setId.localeCompare(b.setId));
-    const acquired = /* @__PURE__ */ new Set(), resultSteps = [];
-    let loss = 0, requiredCapital = 0, totalPurchase = 0, expectedSaleNet = 0, expectedTax = 0, firstFundingGap = null;
-    for (const step of prepared) {
-      const cycles = [], reusedIds = [];
-      for (const source of step.cycles) {
-        if (acquired.has(source.eaId)) {
-          reusedIds.push(source.eaId);
-          continue;
-        }
-        acquired.add(source.eaId);
-        const expectedOpeningBalance = capital === null ? null : capital - loss;
-        requiredCapital = Math.max(requiredCapital, loss + source.price);
-        if (expectedOpeningBalance !== null && source.price > expectedOpeningBalance && !firstFundingGap) {
-          firstFundingGap = { setId: step.setId, eaId: source.eaId, shortfall: source.price - expectedOpeningBalance };
-        }
-        totalPurchase += source.price;
-        expectedSaleNet += source.expectedSaleNet;
-        expectedTax += source.expectedTax;
-        loss += source.price - source.expectedSaleNet;
-        cycles.push({ ...source, expectedOpeningBalance, expectedClosingBalance: capital === null ? null : capital - loss });
-      }
-      resultSteps.push({ setId: step.setId, cycles, reusedIds, expectedClosingBalance: capital === null ? null : capital - loss });
-    }
-    requiredCapital = Math.max(0, requiredCapital);
-    return {
-      status: "estimated",
-      saleBasis: "forecast-not-receipts",
-      actualSaleIncome: null,
-      capital,
-      taxBps,
-      resaleDiscountBps,
-      totalPurchase,
-      expectedSaleNet,
-      expectedTax,
-      expectedNetLoss: loss,
-      requiredCapital,
-      feasible: capital === null ? null : capital >= requiredCapital,
-      capitalShortfall: capital === null ? null : Math.max(0, requiredCapital - capital),
-      expectedRemaining: capital === null ? null : capital - loss,
-      firstFundingGap,
-      uniqueCards: acquired.size,
-      sharedCards: [...memberships.values()].filter((count2) => count2 > 1).length,
-      orderOptimal: false,
-      steps: resultSteps
-    };
-  }
-
-  // src/gallery/roadmap-selection.js
-  function* selectGalleryRoadmapSteps({
-    rows = [],
-    capital = null,
-    lossLimit = null,
-    resaleDiscountBps = 0,
-    previousSelection = []
-  } = {}) {
-    if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
-      return { status: "unavailable", reason: "input-invalid", route: [] };
-    }
-    const selected = /* @__PURE__ */ new Map(), unavailable = [], skipped = /* @__PURE__ */ new Map();
-    let funding = forecastGalleryTurnover({ capital, resaleDiscountBps }), gain = 0;
-    if (funding.status !== "estimated") return { status: "unavailable", reason: funding.reason, route: [] };
-    for (const saved of previousSelection) {
-      const row = rows.find((row2) => row2.setId === saved.setId);
-      const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
-      if (option) selected.set(row.setId, { row, option });
-    }
-    if (selected.size) {
-      funding = forecastGalleryTurnover({
-        capital,
-        resaleDiscountBps,
-        steps: [...selected].map(([setId, entry]) => ({ setId, items: entry.option.items }))
-      });
-      if (funding.status !== "estimated" || funding.feasible === false || lossLimit !== null && funding.expectedNetLoss > lossLimit) {
-        return { status: "unavailable", reason: "resume-input-invalid", route: [] };
-      }
-      gain = [...selected.values()].reduce((sum2, entry) => sum2 + entry.option.projectedTokens - entry.row.baselineTokens, 0);
-    }
-    let selectionStopped = false, comparisons = 0;
-    for (; ; ) {
-      let best = null;
-      search: for (const row of rows) for (const option of row.options ?? []) {
-        const current2 = selected.get(row.setId);
-        const added = option.projectedTokens - (current2?.option.projectedTokens ?? row.baselineTokens);
-        if (!(added > 0) || !Array.isArray(option.items)) continue;
-        const trial = new Map(selected);
-        trial.set(row.setId, { row, option });
-        const estimate = forecastGalleryTurnover({
-          capital,
-          resaleDiscountBps,
-          steps: [...trial].map(([setId, entry]) => ({ setId, items: entry.option.items }))
-        });
-        if (estimate.status !== "estimated" || estimate.feasible === false || lossLimit !== null && estimate.expectedNetLoss > lossLimit) {
-          skipped.set(row.setId, {
-            setId: row.setId,
-            name: row.name,
-            reason: estimate.status !== "estimated" ? estimate.reason : estimate.feasible === false ? "capital-gap" : "loss-limit",
-            requiredCapital: estimate.requiredCapital ?? null,
-            capitalShortfall: estimate.capitalShortfall ?? null
-          });
-          comparisons++;
-          if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
-            selectionStopped = true;
-            break search;
-          }
-          continue;
-        }
-        const incrementalLoss = estimate.expectedNetLoss - funding.expectedNetLoss;
-        const value = { row, option, trial, estimate, added, ratio: incrementalLoss / added };
-        if (!best || value.ratio < best.ratio || value.ratio === best.ratio && (estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && row.setId.localeCompare(best.row.setId) < 0)) best = value;
-        comparisons++;
-        if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
-          selectionStopped = true;
-          break search;
-        }
-      }
-      if (!best) break;
-      selected.clear();
-      for (const entry of best.trial) selected.set(...entry);
-      funding = best.estimate;
-      gain += best.added;
-      if (selectionStopped) break;
-    }
-    const route = funding.steps.map((step, index) => {
-      const { row, option } = selected.get(step.setId);
-      return {
-        ...step,
-        order: index + 1,
-        name: row.name,
-        categoryId: row.categoryId,
-        currentGrade: row.currentGrade,
-        targetGrade: option.grade,
-        currentScore: row.currentScore,
-        projectedScore: option.score,
-        baselineTokens: row.baselineTokens,
-        projectedTokens: option.projectedTokens,
-        addedTokens: option.projectedTokens - row.baselineTokens,
-        items: option.items,
-        claimState: "unknown",
-        estimated: option.estimated !== false,
-        searchComplete: option.searchComplete === true,
-        referenceVerified: option.referenceVerified === true
-      };
-    });
-    for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
-    return {
-      status: route.length ? "ready" : "no-route",
-      objective: "low-forecast-loss-per-added-token",
-      claimState: "unknown",
-      tokenBasis: "catalog-increase-not-unclaimed-balance",
-      baselineTokens: rows.reduce((sum2, row) => sum2 + (row.baselineTokens ?? 0), 0),
-      addedTokens: gain,
-      funding,
-      route,
-      selectedOptions: [...selected].map(([setId, entry]) => ({ setId, option: entry.option })),
-      selectionStopped,
-      comparisons,
-      skipped: [...skipped.values()].filter((row) => !selected.has(row.setId)),
-      unavailable,
-      freeCheck: rows.filter((row) => row.currentGrade).map((row) => ({
-        setId: row.setId,
-        name: row.name,
-        grade: row.currentGrade,
-        catalogTokens: row.baselineTokens,
-        claimState: "unknown"
-      })),
-      searchComplete: false
-    };
-  }
-
-  // src/gallery/fodder-planning-reference.js
-  var invalid2 = () => {
-    throw Error("FC27_FODDER_REFERENCE_INVALID");
-  };
-  var integer16 = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n >= min && n <= max;
-  var key = (category, slug2) => `${category}/${slug2}`;
-  var signature2 = (set) => JSON.stringify([
-    set.slug,
-    set.name,
-    set.requiredCards,
-    set.grades.map((grade) => [grade.name, grade.threshold, galleryCumulativeRewardQuantity(set, grade.threshold, "event_token_1")])
-  ]);
-  function isCapturedFodderForecast(reference, now = Date.now()) {
-    return reference?.source === "fodder" && reference.basis === "empty-collection-public-reference" && ["pc", "console"].includes(reference.platform) && reference.forecastOnly === true && integer16(reference.fetchedAt) && integer16(reference.expiresAt) && integer16(reference.capturedAt) && reference.fetchedAt <= reference.capturedAt && reference.capturedAt < reference.expiresAt && reference.capturedAt <= now;
-  }
-  function captureFodderForecastSnapshot(snapshot, now = Date.now()) {
-    if (snapshot?.source !== "fodder" || snapshot.basis !== "empty-collection-public-reference" || !["pc", "console"].includes(snapshot.platform) || !Array.isArray(snapshot.sets) || !integer16(now) || !integer16(snapshot.fetchedAt) || !integer16(snapshot.expiresAt) || snapshot.fetchedAt > now || snapshot.expiresAt <= now) invalid2();
-    return { ...structuredClone(snapshot), forecastOnly: true, capturedAt: now };
-  }
-  function isCapturedFodderForecastTarget(target, now = Date.now()) {
-    return target?.forecastPriceBasis === "fodder-public-estimate" && target.priceSnapshot == null && isCapturedFodderForecast(target.publicReference, now) && target.forecastPriceCapturedAt === target.publicReference.capturedAt;
-  }
-  function normalizeFodderPlanningReference(index, input, { platform, fetchedAt } = {}) {
-    if (!["pc", "console"].includes(platform) || !integer16(fetchedAt) || !Array.isArray(input?.sets) || input.sets.length > 4096) invalid2();
-    const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
-    const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
-    for (const row of input.sets) {
-      const id12 = key(row?.category, row?.slug), set = definitions.get(id12);
-      if (!set || seen.has(id12) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
-      seen.add(id12);
-      const grades3 = [], names = /* @__PURE__ */ new Set();
-      for (const grade of row.grades) {
-        const definition2 = set.grades.find((g) => g.name === grade?.grade);
-        if (!definition2 || names.has(grade.grade) || grade.tokens !== (definition2.rewards[0]?.value ?? 0)) invalid2();
-        names.add(grade.grade);
-        if (grade.cost === null) {
-          grades3.push({ grade: grade.grade, cost: null, ids: [] });
-          continue;
-        }
-        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id13) => !integer16(id13, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6)) || grade.prices.reduce((sum2, price2) => sum2 + price2, 0) !== grade.cost) invalid2();
-        grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
-      }
-      sets2.push({ key: id12, set, grades: grades3 });
-    }
-    return {
-      source: "fodder",
-      basis: "empty-collection-public-reference",
-      platform,
-      fetchedAt,
-      expiresAt: fetchedAt + 3e5,
-      marketObservedAt: null,
-      sets: sets2
-    };
-  }
-  function attachFodderPlanningReferences(targets, snapshot, now = Date.now()) {
-    if (snapshot?.basis !== "empty-collection-public-reference" || snapshot.expiresAt <= now && !isCapturedFodderForecast(snapshot, now)) return targets;
-    const groups = /* @__PURE__ */ new Map();
-    for (const row of snapshot.sets) {
-      const s = signature2(row.set);
-      groups.set(s, [...groups.get(s) ?? [], row]);
-    }
-    const localCounts = /* @__PURE__ */ new Map();
-    for (const target of targets) {
-      const s = signature2(target.set);
-      localCounts.set(s, (localCounts.get(s) ?? 0) + 1);
-    }
-    return targets.map((target) => {
-      const s = signature2(target.set), matches2 = groups.get(s);
-      return matches2?.length === 1 && localCounts.get(s) === 1 ? {
-        ...target,
-        publicReference: {
-          source: snapshot.source,
-          basis: snapshot.basis,
-          platform: snapshot.platform,
-          fetchedAt: snapshot.fetchedAt,
-          expiresAt: snapshot.expiresAt,
-          marketObservedAt: null,
-          ...isCapturedFodderForecast(snapshot, now) ? { forecastOnly: true, capturedAt: snapshot.capturedAt } : {},
-          grades: matches2[0].grades
-        }
-      } : target;
-    });
-  }
-  function forecastFodderReferencePrices(targets, now = Date.now()) {
-    const prices = {}, conflicts = /* @__PURE__ */ new Set(), platforms = /* @__PURE__ */ new Set();
-    const usable = (reference) => reference?.basis === "empty-collection-public-reference" && (reference.expiresAt > now || isCapturedFodderForecast(reference, now));
-    let expiresAt = Infinity, fetchedAt = Infinity;
-    for (const target of targets) {
-      const reference = target.publicReference;
-      if (!usable(reference)) continue;
-      platforms.add(reference.platform);
-      expiresAt = Math.min(expiresAt, reference.expiresAt);
-      fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
-      for (const grade of reference.grades) {
-        if (grade.cost == null) continue;
-        if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6))) invalid2();
-        grade.ids.forEach((id12, i) => {
-          if (!integer16(id12, 1)) invalid2();
-          if (prices[id12] != null && prices[id12] !== grade.prices[i]) conflicts.add(id12);
-          prices[id12] = Math.max(prices[id12] ?? 0, grade.prices[i]);
-        });
-      }
-    }
-    if (platforms.size > 1) invalid2();
-    return targets.map((target) => {
-      const valid3 = usable(target.publicReference);
-      return {
-        ...target,
-        priceSnapshot: null,
-        prices: valid3 ? { ...prices } : {},
-        forecastPriceBasis: "fodder-public-estimate",
-        forecastPriceExpiresAt: valid3 && Number.isFinite(expiresAt) ? expiresAt : null,
-        forecastPriceFetchedAt: valid3 && Number.isFinite(fetchedAt) ? fetchedAt : null,
-        forecastPriceCapturedAt: isCapturedFodderForecast(target.publicReference, now) ? target.publicReference.capturedAt : null,
-        forecastPriceConflictCount: conflicts.size
-      };
-    });
-  }
-
-  // src/gallery/verify-reference-plan.js
-  function* verifyGalleryReferenceSteps({
-    target,
-    proposal,
-    capital = null,
-    summarize: summarize2 = summarizeGalleryScoreSteps,
-    allowCapturedForecast = false
-  } = {}) {
-    const { progress, prices, set, catalog } = target;
-    if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target)) || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
-    const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
-    if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;
-    const existing = progress.rows.filter(isGalleryOwned), selected = [], items = [];
-    if (existing.some((row) => !Number.isSafeInteger(row.gradingScore) || row.gradingScore < 0)) return null;
-    for (const id12 of proposal.ids) {
-      const row = rows.get(id12);
-      if (!row) return null;
-      if (isGalleryOwned(row)) continue;
-      const price2 = prices?.[id12], score2 = row.gradingScore ?? row.galleryScore;
-      if (row.collected !== false || !Number.isSafeInteger(price2) || price2 < 150 || price2 > 15e6 || capital !== null && price2 > capital || !Number.isSafeInteger(score2) || score2 < 0) return null;
-      selected.push({ ...row, gradingScore: score2, firstOwned: false, collected: true });
-      items.push({ ...row, price: price2, score: score2, scoreSource: row.gradingScore == null ? "catalog" : "ea" });
-    }
-    const measure = function* (picked) {
-      return yield* summarize2({ set, catalog, progress: {
-        ...progress,
-        rows: [...existing.map((row) => ({ ...row, collected: true })), ...picked]
-      } });
-    };
-    let summary3 = yield* measure(selected);
-    const threshold = set.grades.find((grade) => grade.name === proposal.grade)?.threshold;
-    if (!summary3?.full || summary3.low?.total < threshold || threshold == null) return null;
-    if (existing.length) for (const item2 of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
-      const trial = yield* measure(selected.filter((row) => row.eaId !== item2.eaId));
-      if (trial?.full && trial.low?.total >= threshold) {
-        selected.splice(selected.findIndex((row) => row.eaId === item2.eaId), 1);
-        items.splice(items.findIndex((row) => row.eaId === item2.eaId), 1);
-        summary3 = trial;
-      }
-      if (yield { phase: "reference-validation", cards: items.length }) break;
-    }
-    return {
-      reached: true,
-      score: summary3.low.total,
-      items,
-      totalPrice: items.reduce((sum2, row) => sum2 + row.price, 0),
-      estimated: items.some((row) => row.scoreSource !== "ea"),
-      referenceVerified: true
-    };
-  }
-
-  // src/gallery/roadmap-work.js
-  function createGalleryRoadmapWork() {
-    let groups = /* @__PURE__ */ new WeakMap(), binding = null;
-    const pending2 = /* @__PURE__ */ new Set();
-    const close = (entry) => {
-      try {
-        entry.steps?.return();
-      } finally {
-        pending2.delete(entry);
-        entry.steps = null;
-      }
-    };
-    const clear = () => {
-      for (const entry of pending2) close(entry);
-      groups = /* @__PURE__ */ new WeakMap();
-      binding = null;
-    };
-    const group = (target) => {
-      if (!groups.has(target)) groups.set(target, { entries: /* @__PURE__ */ new Map(), values: /* @__PURE__ */ new Map() });
-      return groups.get(target);
-    };
-    return {
-      bind(targets, capital, planner, fast) {
-        if (binding && (binding.targets !== targets || binding.capital !== capital || binding.planner !== planner || binding.fast !== fast)) clear();
-        binding = { targets, capital, planner, fast };
-      },
-      memo(target, key2, create) {
-        const values8 = group(target).values;
-        if (!values8.has(key2)) values8.set(key2, create());
-        return values8.get(key2);
-      },
-      *run(target, key2, create) {
-        const entries2 = group(target).entries;
-        if (!entries2.has(key2)) {
-          const entry2 = { steps: create(), done: false };
-          entries2.set(key2, entry2);
-          pending2.add(entry2);
-        }
-        const entry = entries2.get(key2);
-        if (entry.done) return { complete: true, value: entry.value };
-        for (; ; ) {
-          const next = entry.steps.next();
-          if (next.done) {
-            entry.done = true;
-            entry.value = next.value;
-            close(entry);
-            return { complete: true, value: next.value };
-          }
-          if (yield next.value) return { complete: false };
-        }
-      },
-      release(target) {
-        const entries2 = groups.get(target)?.entries;
-        if (entries2) for (const entry of entries2.values()) close(entry);
-        groups.delete(target);
-      },
-      clear
-    };
-  }
-
-  // src/gallery/roadmap.js
-  function* planGalleryRoadmapSteps({
-    targets = [],
-    capital = null,
-    lossLimit = null,
-    resaleDiscountBps = 0,
-    gradePlanner = planGalleryGradeSteps,
-    previousRows = [],
-    previousSelection = [],
-    fastReferences = false,
-    work = createGalleryRoadmapWork()
-  } = {}) {
-    work.bind(targets, capital, gradePlanner, fastReferences);
-    const rows = [], key2 = "event_token_1";
-    const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
-    let stopped = false, gradesChecked = 0;
-    for (const [index, target] of targets.entries()) {
-      const { set, catalog, progress } = target;
-      if (previous.get(set.id)?.analysisComplete) {
-        rows.push(previous.get(set.id));
-        continue;
-      }
-      const row = {
-        setId: set.id,
-        name: set.name,
-        categoryId: set.categoryId,
-        currentGrade: null,
-        currentScore: null,
-        baselineTokens: 0,
-        options: [],
-        reason: null,
-        checkedGrades: [],
-        ...previous.get(set.id)
-      };
-      rows.push(row);
-      if (row.reason === "search-time-exhausted") row.reason = null;
-      if (!progress?.rows || target.stale || target.poolStale || target.status && target.status !== "observed") {
-        row.reason = "progress-unavailable";
-        row.analysisComplete = true;
-        continue;
-      }
-      const scorer = work.memo(target, "scorer", () => createGalleryScoreSummarizer(catalog));
-      const baseline = yield* work.run(target, "baseline", () => scorer.steps({ set, progress: {
-        ...progress,
-        rows: progress.rows.map((card) => isGalleryOwned(card) ? { ...card, collected: true } : card)
-      } }));
-      if (!baseline.complete) {
-        row.reason = "search-time-exhausted";
-        row.analysisComplete = false;
-        stopped = true;
-        break;
-      }
-      const base = baseline.value;
-      if (!base?.low) {
-        row.reason = base?.reason ?? "score-unavailable";
-        row.analysisComplete = true;
-        work.release(target);
-        continue;
-      }
-      const currentGrade = galleryCatalogGrade(set, base);
-      row.currentGrade = currentGrade?.name ?? null;
-      row.currentScore = base.low.total;
-      row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key2) : 0;
-      row.collectionUnknown = !!base.collectionUnknown;
-      row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
-      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
-      const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
-      for (const grade of grades3) {
-        if (row.checkedGrades.includes(grade.name)) continue;
-        const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
-        const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
-          target: { ...target, progress: planningProgress },
-          proposal,
-          capital,
-          summarize: scorer.steps,
-          allowCapturedForecast: fastReferences
-        })) : { complete: true, value: null };
-        if (!reference.complete) {
-          row.reason ??= "search-time-exhausted";
-          stopped = true;
-          break;
-        }
-        const verified = reference.value;
-        const local = !fastReferences ? yield* work.run(
-          target,
-          `grade:${grade.name}`,
-          () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 })
-        ) : null;
-        if (local && !local.complete) {
-          row.reason ??= "search-time-exhausted";
-          stopped = true;
-          break;
-        }
-        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : local.value;
-        if (!fastReferences && verified && result.status !== "achieved" && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
-          result.status = "ready";
-          result.plans = [verified];
-          result.searchComplete = false;
-        }
-        gradesChecked++;
-        const candidate = result.plans?.[0];
-        if (result.status === "ready" && candidate?.reached && candidate.totalPrice !== null) {
-          const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
-          row.options = row.options.filter((option) => option.requestedGrade !== grade.name);
-          row.options.push({
-            grade: reached?.name ?? grade.name,
-            requestedGrade: grade.name,
-            score: candidate.score,
-            items: candidate.items,
-            projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key2),
-            estimated: candidate.estimated,
-            referenceVerified: candidate.referenceVerified === true,
-            searchComplete: result.searchComplete === true
-          });
-        } else row.reason = result.reason ?? "grade-proposal-unavailable";
-        if (!result.timeExhausted) row.checkedGrades.push(grade.name);
-        row.analysisComplete = grades3.every((grade2) => row.checkedGrades.includes(grade2.name));
-        if (result.timeExhausted || (yield {
-          phase: "roadmap",
-          completed: index,
-          total: targets.length,
-          setId: set.id,
-          name: set.name,
-          grade: grade.name,
-          gradesChecked
-        })) {
-          stopped = true;
-          break;
-        }
-      }
-      row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
-      if (row.analysisComplete) work.release(target);
-      if (stopped) break;
-      if (yield {
-        phase: "roadmap",
-        completed: index + 1,
-        total: targets.length,
-        setId: set.id,
-        name: set.name,
-        gradesChecked
-      }) {
-        stopped = true;
-        break;
-      }
-    }
-    const plan = yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
-    return { ...plan, rows, fastReferences, coverage: {
-      total: targets.length,
-      inspected: rows.length,
-      available: rows.filter((row) => row.currentScore !== null).length,
-      missing: rows.filter((row) => row.reason === "progress-unavailable").length,
-      gradesChecked: rows.reduce((sum2, row) => sum2 + (row.checkedGrades?.length ?? 0), 0),
-      stopped: stopped || plan.selectionStopped
-    }, partial: stopped || plan.selectionStopped || rows.some((row) => row.reason || row.collectionUnknown || row.candidateOnly) };
-  }
-
   // src/gallery/analysis-snapshot.js
   var pick4 = (value, keys2) => Object.fromEntries(keys2.filter((key2) => value?.[key2] !== void 0).map((key2) => [key2, value[key2]]));
   var versionFields = [
@@ -18038,8 +17455,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       collections,
       versions: [...versions.values()],
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired"]),
-        deepCoverage: plan.deepCoverage ? pick4(plan.deepCoverage, ["eligible", "completed", "quoted", "candidateLimit", "pending"]) : null,
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired", "selectedProfile", "retainedChanges"]),
+        portfolios: (plan.portfolios ?? []).slice(0, 3).map((value) => ({
+          ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete"]),
+          funding: pick4(value.funding, ["requiredCapital", "totalPurchase", "expectedNetLoss", "feasible", "saleBasis"]),
+          route: value.route.map((row) => ({ ...pick4(row, ["setId", "targetGrade", "addedTokens"]), purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId) }))
+        })),
+        executionSteps: (plan.executionSteps ?? []).map((value) => pick4(value, ["setId", "targetGrade", "state"])),
+        deepCoverage: plan.deepCoverage ? pick4(plan.deepCoverage, ["eligible", "completed", "quoted", "candidateLimit", "pending", "referencePending"]) : null,
         referenceOverview: plan.referenceOverview ? {
           ...pick4(plan.referenceOverview, ["status", "partial", "coverage", "addedTokens"]),
           requiredCapital: plan.referenceOverview.funding?.requiredCapital ?? null,
@@ -18111,6 +17534,125 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
   }
 
+  // src/gallery/fodder-planning-reference.js
+  var invalid2 = () => {
+    throw Error("FC27_FODDER_REFERENCE_INVALID");
+  };
+  var integer15 = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n >= min && n <= max;
+  var key = (category, slug2) => `${category}/${slug2}`;
+  var signature2 = (set) => JSON.stringify([
+    set.slug,
+    set.name,
+    set.requiredCards,
+    set.grades.map((grade) => [grade.name, grade.threshold, galleryCumulativeRewardQuantity(set, grade.threshold, "event_token_1")])
+  ]);
+  function isCapturedFodderForecast(reference, now = Date.now()) {
+    return reference?.source === "fodder" && reference.basis === "empty-collection-public-reference" && ["pc", "console"].includes(reference.platform) && reference.forecastOnly === true && integer15(reference.fetchedAt) && integer15(reference.expiresAt) && integer15(reference.capturedAt) && reference.fetchedAt <= reference.capturedAt && reference.capturedAt < reference.expiresAt && reference.capturedAt <= now;
+  }
+  function captureFodderForecastSnapshot(snapshot, now = Date.now()) {
+    if (snapshot?.source !== "fodder" || snapshot.basis !== "empty-collection-public-reference" || !["pc", "console"].includes(snapshot.platform) || !Array.isArray(snapshot.sets) || !integer15(now) || !integer15(snapshot.fetchedAt) || !integer15(snapshot.expiresAt) || snapshot.fetchedAt > now || snapshot.expiresAt <= now) invalid2();
+    return { ...structuredClone(snapshot), forecastOnly: true, capturedAt: now };
+  }
+  function isCapturedFodderForecastTarget(target, now = Date.now()) {
+    return target?.forecastPriceBasis === "fodder-public-estimate" && target.priceSnapshot == null && isCapturedFodderForecast(target.publicReference, now) && target.forecastPriceCapturedAt === target.publicReference.capturedAt;
+  }
+  function normalizeFodderPlanningReference(index, input, { platform, fetchedAt } = {}) {
+    if (!["pc", "console"].includes(platform) || !integer15(fetchedAt) || !Array.isArray(input?.sets) || input.sets.length > 4096) invalid2();
+    const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
+    const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
+    for (const row of input.sets) {
+      const id12 = key(row?.category, row?.slug), set = definitions.get(id12);
+      if (!set || seen.has(id12) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
+      seen.add(id12);
+      const grades3 = [], names = /* @__PURE__ */ new Set();
+      for (const grade of row.grades) {
+        const definition2 = set.grades.find((g) => g.name === grade?.grade);
+        if (!definition2 || names.has(grade.grade) || grade.tokens !== (definition2.rewards[0]?.value ?? 0)) invalid2();
+        names.add(grade.grade);
+        if (grade.cost === null) {
+          grades3.push({ grade: grade.grade, cost: null, ids: [] });
+          continue;
+        }
+        if (!integer15(grade.cost, 1, 1e9) || !integer15(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id13) => !integer15(id13, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer15(price2, 150, 15e6)) || grade.prices.reduce((sum2, price2) => sum2 + price2, 0) !== grade.cost) invalid2();
+        grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
+      }
+      sets2.push({ key: id12, set, grades: grades3 });
+    }
+    return {
+      source: "fodder",
+      basis: "empty-collection-public-reference",
+      platform,
+      fetchedAt,
+      expiresAt: fetchedAt + 3e5,
+      marketObservedAt: null,
+      sets: sets2
+    };
+  }
+  function attachFodderPlanningReferences(targets, snapshot, now = Date.now()) {
+    if (snapshot?.basis !== "empty-collection-public-reference" || snapshot.expiresAt <= now && !isCapturedFodderForecast(snapshot, now)) return targets;
+    const groups = /* @__PURE__ */ new Map();
+    for (const row of snapshot.sets) {
+      const s = signature2(row.set);
+      groups.set(s, [...groups.get(s) ?? [], row]);
+    }
+    const localCounts = /* @__PURE__ */ new Map();
+    for (const target of targets) {
+      const s = signature2(target.set);
+      localCounts.set(s, (localCounts.get(s) ?? 0) + 1);
+    }
+    return targets.map((target) => {
+      const s = signature2(target.set), matches2 = groups.get(s);
+      return matches2?.length === 1 && localCounts.get(s) === 1 ? {
+        ...target,
+        publicReference: {
+          source: snapshot.source,
+          basis: snapshot.basis,
+          platform: snapshot.platform,
+          fetchedAt: snapshot.fetchedAt,
+          expiresAt: snapshot.expiresAt,
+          marketObservedAt: null,
+          ...isCapturedFodderForecast(snapshot, now) ? { forecastOnly: true, capturedAt: snapshot.capturedAt } : {},
+          grades: matches2[0].grades
+        }
+      } : target;
+    });
+  }
+  function forecastFodderReferencePrices(targets, now = Date.now()) {
+    const prices = {}, conflicts = /* @__PURE__ */ new Set(), platforms = /* @__PURE__ */ new Set();
+    const usable = (reference) => reference?.basis === "empty-collection-public-reference" && (reference.expiresAt > now || isCapturedFodderForecast(reference, now));
+    let expiresAt = Infinity, fetchedAt = Infinity;
+    for (const target of targets) {
+      const reference = target.publicReference;
+      if (!usable(reference)) continue;
+      platforms.add(reference.platform);
+      expiresAt = Math.min(expiresAt, reference.expiresAt);
+      fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
+      for (const grade of reference.grades) {
+        if (grade.cost == null) continue;
+        if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer15(price2, 150, 15e6))) invalid2();
+        grade.ids.forEach((id12, i) => {
+          if (!integer15(id12, 1)) invalid2();
+          if (prices[id12] != null && prices[id12] !== grade.prices[i]) conflicts.add(id12);
+          prices[id12] = Math.max(prices[id12] ?? 0, grade.prices[i]);
+        });
+      }
+    }
+    if (platforms.size > 1) invalid2();
+    return targets.map((target) => {
+      const valid3 = usable(target.publicReference);
+      return {
+        ...target,
+        priceSnapshot: null,
+        prices: valid3 ? { ...prices } : {},
+        forecastPriceBasis: "fodder-public-estimate",
+        forecastPriceExpiresAt: valid3 && Number.isFinite(expiresAt) ? expiresAt : null,
+        forecastPriceFetchedAt: valid3 && Number.isFinite(fetchedAt) ? fetchedAt : null,
+        forecastPriceCapturedAt: isCapturedFodderForecast(target.publicReference, now) ? target.publicReference.capturedAt : null,
+        forecastPriceConflictCount: conflicts.size
+      };
+    });
+  }
+
   // src/adapters/browser/fc27-gallery-reference-table.js
   function renderGalleryReferenceTable(document, parent, targets, snapshot) {
     parent.replaceChildren();
@@ -18142,35 +17684,886 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } };
   }
 
+  // src/gallery/turnover-budget.js
+  var integer16 = (value, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= 0 && value <= max;
+  var validPrice5 = (value) => integer16(value, 15e6) && value > 0;
+  var fail22 = (reason, extra = {}) => ({ status: "unavailable", reason, feasible: null, ...extra });
+  var totals = (cycles) => {
+    let loss = 0, required2 = 0;
+    for (const cycle of cycles) {
+      required2 = Math.max(required2, loss + cycle.price);
+      loss += cycle.price - cycle.expectedSaleNet;
+    }
+    return { requiredCapital: Math.max(0, required2), expectedNetLoss: loss };
+  };
+  function forecastGalleryTurnover({
+    steps = [],
+    capital = null,
+    taxBps = GALLERY_MARKET_TAX_BPS,
+    resaleDiscountBps = 0,
+    optimizeOrder = true
+  } = {}) {
+    if (!Array.isArray(steps) || steps.length > 4096 || capital !== null && !integer16(capital, 1e9) || !integer16(taxBps, 1e4) || !integer16(resaleDiscountBps, 1e4) || typeof optimizeOrder !== "boolean") return fail22("input-invalid");
+    const versions = /* @__PURE__ */ new Map(), memberships = /* @__PURE__ */ new Map(), prepared = [];
+    for (const step of steps) {
+      if (typeof step?.setId !== "string" || !step.setId || !Array.isArray(step.items) || step.items.length > 2e3) return fail22("input-invalid");
+      const seen = /* @__PURE__ */ new Set(), cycles = [];
+      for (const item2 of step.items) {
+        if (!integer16(item2?.eaId) || !item2.eaId || seen.has(item2.eaId)) return fail22("version-invalid");
+        seen.add(item2.eaId);
+        if (item2.price == null) return { ...fail22("price-unknown"), status: "partial", requiredCapital: null };
+        if (!validPrice5(item2.price)) return fail22("price-invalid");
+        const resalePrice = Object.hasOwn(item2, "resalePrice") ? item2.resalePrice : Math.floor(item2.price * (1e4 - resaleDiscountBps) / 1e4);
+        if (resalePrice == null) return { ...fail22("resale-price-unknown"), status: "partial", requiredCapital: null };
+        if (!integer16(resalePrice, 15e6)) return fail22("price-invalid");
+        const expectedSaleNet2 = Math.floor(resalePrice * (1e4 - taxBps) / 1e4);
+        const cycle = {
+          eaId: item2.eaId,
+          price: item2.price,
+          resalePrice,
+          expectedSaleNet: expectedSaleNet2,
+          expectedTax: resalePrice - expectedSaleNet2,
+          requiresCollectionConfirmation: true,
+          requiresSaleReceipt: true
+        };
+        const previous = versions.get(item2.eaId);
+        if (previous && (previous.price !== cycle.price || previous.resalePrice !== cycle.resalePrice)) return fail22("version-price-conflict");
+        versions.set(item2.eaId, cycle);
+        cycles.push(cycle);
+        memberships.set(item2.eaId, (memberships.get(item2.eaId) ?? 0) + 1);
+      }
+      if (optimizeOrder) cycles.sort((a, b) => b.expectedSaleNet - a.expectedSaleNet || a.eaId - b.eaId);
+      prepared.push({ setId: step.setId, cycles, ...totals(cycles) });
+    }
+    if (optimizeOrder) prepared.sort((a, b) => b.requiredCapital - b.expectedNetLoss - (a.requiredCapital - a.expectedNetLoss) || a.setId.localeCompare(b.setId));
+    const acquired = /* @__PURE__ */ new Set(), resultSteps = [];
+    let loss = 0, requiredCapital = 0, totalPurchase = 0, expectedSaleNet = 0, expectedTax = 0, firstFundingGap = null;
+    for (const step of prepared) {
+      const cycles = [], reusedIds = [];
+      for (const source of step.cycles) {
+        if (acquired.has(source.eaId)) {
+          reusedIds.push(source.eaId);
+          continue;
+        }
+        acquired.add(source.eaId);
+        const expectedOpeningBalance = capital === null ? null : capital - loss;
+        requiredCapital = Math.max(requiredCapital, loss + source.price);
+        if (expectedOpeningBalance !== null && source.price > expectedOpeningBalance && !firstFundingGap) {
+          firstFundingGap = { setId: step.setId, eaId: source.eaId, shortfall: source.price - expectedOpeningBalance };
+        }
+        totalPurchase += source.price;
+        expectedSaleNet += source.expectedSaleNet;
+        expectedTax += source.expectedTax;
+        loss += source.price - source.expectedSaleNet;
+        cycles.push({ ...source, expectedOpeningBalance, expectedClosingBalance: capital === null ? null : capital - loss });
+      }
+      resultSteps.push({ setId: step.setId, cycles, reusedIds, expectedClosingBalance: capital === null ? null : capital - loss });
+    }
+    requiredCapital = Math.max(0, requiredCapital);
+    return {
+      status: "estimated",
+      saleBasis: "forecast-not-receipts",
+      actualSaleIncome: null,
+      capital,
+      taxBps,
+      resaleDiscountBps,
+      totalPurchase,
+      expectedSaleNet,
+      expectedTax,
+      expectedNetLoss: loss,
+      requiredCapital,
+      feasible: capital === null ? null : capital >= requiredCapital,
+      capitalShortfall: capital === null ? null : Math.max(0, requiredCapital - capital),
+      expectedRemaining: capital === null ? null : capital - loss,
+      firstFundingGap,
+      uniqueCards: acquired.size,
+      sharedCards: [...memberships.values()].filter((count2) => count2 > 1).length,
+      orderOptimal: false,
+      steps: resultSteps
+    };
+  }
+
+  // src/gallery/roadmap-selection.js
+  function* selectGalleryRoadmapSteps({
+    rows = [],
+    capital = null,
+    lossLimit = null,
+    resaleDiscountBps = 0,
+    previousSelection = [],
+    profile = null
+  } = {}) {
+    if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
+      return { status: "unavailable", reason: "input-invalid", route: [] };
+    }
+    const selected = /* @__PURE__ */ new Map(), unavailable = [], skipped = /* @__PURE__ */ new Map();
+    const priority = (option) => profile ? { S: 5, A: 4, B: 3, C: 2, D: 1 }[option.grade] ?? 0 : 0;
+    const facts2 = /* @__PURE__ */ new WeakMap();
+    const info = (option) => {
+      if (!facts2.has(option)) {
+        const solo = forecastGalleryTurnover({ steps: [{ setId: "forecast", items: option.items }], resaleDiscountBps });
+        const byId = new Map(option.items.map((item2) => [item2.eaId, item2]));
+        facts2.set(option, {
+          weight: (solo.requiredCapital ?? 0) - (solo.expectedNetLoss ?? 0),
+          items: solo.steps?.[0]?.cycles.map((cycle) => byId.get(cycle.eaId)) ?? option.items
+        });
+      }
+      return facts2.get(option);
+    };
+    const forecast = (trial) => {
+      const entries2 = [...trial];
+      if (profile) entries2.sort((a, b) => priority(b[1].option) - priority(a[1].option) || info(b[1].option).weight - info(a[1].option).weight || a[0].localeCompare(b[0]));
+      return forecastGalleryTurnover({
+        capital,
+        resaleDiscountBps,
+        ...profile ? { optimizeOrder: false } : {},
+        steps: entries2.map(([setId, entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items }))
+      });
+    };
+    const singles = rows.flatMap((row) => {
+      const options = profile ? [...new Map((row.options ?? []).map((option) => [JSON.stringify([
+        option.grade,
+        option.projectedTokens,
+        option.score,
+        option.items?.map((item2) => [item2.eaId, item2.price]).sort((a, b) => a[0] - b[0]),
+        option.estimated,
+        option.referenceVerified,
+        option.searchComplete
+      ]), option])).values()] : row.options ?? [];
+      return options.map((option) => ({ row, option }));
+    });
+    const paired = [], seenPairs = /* @__PURE__ */ new Set(), memberships = /* @__PURE__ */ new Map();
+    if (profile) for (const entry of singles) for (const item2 of entry.option.items ?? []) {
+      const group = memberships.get(item2.eaId) ?? [];
+      group.push(entry);
+      memberships.set(item2.eaId, group);
+    }
+    if (profile) for (const group of memberships.values()) {
+      const candidates = group.slice().sort((a, b) => priority(b.option) - priority(a.option) || b.option.projectedTokens - a.option.projectedTokens || a.row.setId.localeCompare(b.row.setId)).slice(0, 12);
+      for (let a = 0; a < candidates.length; a++) for (let b = a + 1; b < candidates.length; b++) {
+        const pair = [candidates[a], candidates[b]];
+        if (pair[0].row.setId === pair[1].row.setId) continue;
+        if (priority(pair[0].option) !== priority(pair[1].option)) continue;
+        const key2 = pair.map((entry) => `${entry.row.setId}:${entry.option.requestedGrade ?? entry.option.grade}`).sort().join("|");
+        if (!seenPairs.has(key2)) {
+          seenPairs.add(key2);
+          paired.push(pair);
+        }
+      }
+    }
+    paired.sort((a, b) => Math.max(...b.map((entry) => priority(entry.option))) - Math.max(...a.map((entry) => priority(entry.option))) || b.reduce((n, entry) => n + entry.option.projectedTokens - entry.row.baselineTokens, 0) - a.reduce((n, entry) => n + entry.option.projectedTokens - entry.row.baselineTokens, 0) || a.map((entry) => entry.row.setId).join().localeCompare(b.map((entry) => entry.row.setId).join()));
+    let pairChecks = 0, representative = null;
+    let funding = forecastGalleryTurnover({ capital, resaleDiscountBps }), gain = 0;
+    if (funding.status !== "estimated") return { status: "unavailable", reason: funding.reason, route: [] };
+    for (const saved of previousSelection) {
+      const row = rows.find((row2) => row2.setId === saved.setId);
+      const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
+      if (option) selected.set(row.setId, { row, option });
+    }
+    if (selected.size) {
+      funding = forecast(selected);
+      if (funding.status !== "estimated" || funding.feasible === false || lossLimit !== null && funding.expectedNetLoss > lossLimit) {
+        return { status: "unavailable", reason: "resume-input-invalid", route: [] };
+      }
+      gain = [...selected.values()].reduce((sum2, entry) => sum2 + entry.option.projectedTokens - entry.row.baselineTokens, 0);
+    }
+    let selectionStopped = false, comparisons = 0;
+    for (; ; ) {
+      let best = null;
+      const choices = [...singles.map((entry) => [entry]), ...profile && pairChecks < 128 ? paired.slice(0, 128 - pairChecks) : []];
+      search: for (const additions of choices) {
+        const { row, option } = additions[0];
+        if (additions.length > 1) pairChecks++;
+        if (additions.some(({ row: row2, option: option2 }) => !Array.isArray(option2.items) || option2.projectedTokens <= (selected.get(row2.setId)?.option.projectedTokens ?? row2.baselineTokens))) continue;
+        const added = additions.reduce((n, { row: row2, option: option2 }) => n + option2.projectedTokens - (selected.get(row2.setId)?.option.projectedTokens ?? row2.baselineTokens), 0);
+        const trial = new Map(selected);
+        for (const entry of additions) trial.set(entry.row.setId, entry);
+        const estimate = forecast(trial);
+        if (estimate.status !== "estimated" || estimate.feasible === false || lossLimit !== null && estimate.expectedNetLoss > lossLimit) {
+          skipped.set(row.setId, {
+            setId: row.setId,
+            name: row.name,
+            reason: estimate.status !== "estimated" ? estimate.reason : estimate.feasible === false ? "capital-gap" : "loss-limit",
+            requiredCapital: estimate.requiredCapital ?? null,
+            capitalShortfall: estimate.capitalShortfall ?? null
+          });
+          comparisons++;
+          if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
+            selectionStopped = true;
+            break search;
+          }
+          continue;
+        }
+        const incrementalLoss = estimate.expectedNetLoss - funding.expectedNetLoss;
+        const value = {
+          row,
+          option,
+          trial,
+          estimate,
+          added,
+          ratio: incrementalLoss / added,
+          priority: Math.max(...additions.map((entry) => priority(entry.option)))
+        };
+        const better = !best || value.priority > best.priority || value.priority === best.priority && (profile === "capital" ? estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && value.ratio < best.ratio : profile === "tokens" ? added > best.added || added === best.added && value.ratio < best.ratio : profile === "loss" ? estimate.expectedNetLoss < best.estimate.expectedNetLoss || estimate.expectedNetLoss === best.estimate.expectedNetLoss && added > best.added : value.ratio < best.ratio || value.ratio === best.ratio && (estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && row.setId.localeCompare(best.row.setId) < 0));
+        if (better) best = value;
+        comparisons++;
+        if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
+          selectionStopped = true;
+          break search;
+        }
+      }
+      if (!best) break;
+      selected.clear();
+      for (const entry of best.trial) selected.set(...entry);
+      funding = best.estimate;
+      gain += best.added;
+      if (profile && (!representative || (profile === "tokens" ? gain > representative.gain : profile === "capital" ? funding.requiredCapital < representative.funding.requiredCapital : funding.expectedNetLoss < representative.funding.expectedNetLoss) || (profile === "capital" ? funding.requiredCapital === representative.funding.requiredCapital : profile === "tokens" ? gain === representative.gain : funding.expectedNetLoss === representative.funding.expectedNetLoss) && gain > representative.gain))
+        representative = { selected: new Map(selected), funding, gain };
+      if (selectionStopped) break;
+    }
+    if (representative) {
+      selected.clear();
+      for (const entry of representative.selected) selected.set(...entry);
+      funding = representative.funding;
+      gain = representative.gain;
+    }
+    const route = funding.steps.map((step, index) => {
+      const { row, option } = selected.get(step.setId);
+      return {
+        ...step,
+        order: index + 1,
+        name: row.name,
+        categoryId: row.categoryId,
+        currentGrade: row.currentGrade,
+        targetGrade: option.grade,
+        currentScore: row.currentScore,
+        projectedScore: option.score,
+        baselineTokens: row.baselineTokens,
+        projectedTokens: option.projectedTokens,
+        addedTokens: option.projectedTokens - row.baselineTokens,
+        items: option.items,
+        claimState: "unknown",
+        estimated: option.estimated !== false,
+        searchComplete: option.searchComplete === true,
+        referenceVerified: option.referenceVerified === true
+      };
+    });
+    for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
+    return {
+      status: route.length ? "ready" : "no-route",
+      objective: profile ? `grade-first-${profile}` : "low-forecast-loss-per-added-token",
+      claimState: "unknown",
+      tokenBasis: "catalog-increase-not-unclaimed-balance",
+      baselineTokens: rows.reduce((sum2, row) => sum2 + (row.baselineTokens ?? 0), 0),
+      addedTokens: gain,
+      funding,
+      route,
+      selectedOptions: [...selected].map(([setId, entry]) => ({ setId, option: entry.option })),
+      selectionStopped,
+      comparisons,
+      skipped: [...skipped.values()].filter((row) => !selected.has(row.setId)),
+      unavailable,
+      freeCheck: rows.filter((row) => row.currentGrade).map((row) => ({
+        setId: row.setId,
+        name: row.name,
+        grade: row.currentGrade,
+        catalogTokens: row.baselineTokens,
+        claimState: "unknown"
+      })),
+      searchComplete: false
+    };
+  }
+
+  // src/gallery/verify-reference-plan.js
+  function* verifyGalleryReferenceSteps({
+    target,
+    proposal,
+    capital = null,
+    summarize: summarize2 = summarizeGalleryScoreSteps,
+    allowCapturedForecast = false
+  } = {}) {
+    const { progress, prices, set, catalog } = target;
+    if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target)) || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
+    const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
+    if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;
+    const existing = progress.rows.filter(isGalleryOwned), selected = [], items = [];
+    if (existing.some((row) => !Number.isSafeInteger(row.gradingScore) || row.gradingScore < 0)) return null;
+    for (const id12 of proposal.ids) {
+      const row = rows.get(id12);
+      if (!row) return null;
+      if (isGalleryOwned(row)) continue;
+      const price2 = prices?.[id12], score2 = row.gradingScore ?? row.galleryScore;
+      if (row.collected !== false || !Number.isSafeInteger(price2) || price2 < 150 || price2 > 15e6 || capital !== null && price2 > capital || !Number.isSafeInteger(score2) || score2 < 0) return null;
+      selected.push({ ...row, gradingScore: score2, firstOwned: false, collected: true });
+      items.push({ ...row, price: price2, score: score2, scoreSource: row.gradingScore == null ? "catalog" : "ea" });
+    }
+    const measure = function* (picked) {
+      return yield* summarize2({ set, catalog, progress: {
+        ...progress,
+        rows: [...existing.map((row) => ({ ...row, collected: true })), ...picked]
+      } });
+    };
+    let summary3 = yield* measure(selected);
+    const threshold = set.grades.find((grade) => grade.name === proposal.grade)?.threshold;
+    if (!summary3?.full || summary3.low?.total < threshold || threshold == null) return null;
+    if (existing.length) for (const item2 of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
+      const trial = yield* measure(selected.filter((row) => row.eaId !== item2.eaId));
+      if (trial?.full && trial.low?.total >= threshold) {
+        selected.splice(selected.findIndex((row) => row.eaId === item2.eaId), 1);
+        items.splice(items.findIndex((row) => row.eaId === item2.eaId), 1);
+        summary3 = trial;
+      }
+      if (yield { phase: "reference-validation", cards: items.length }) break;
+    }
+    return {
+      reached: true,
+      score: summary3.low.total,
+      items,
+      totalPrice: items.reduce((sum2, row) => sum2 + row.price, 0),
+      estimated: items.some((row) => row.scoreSource !== "ea"),
+      referenceVerified: true
+    };
+  }
+
+  // src/gallery/roadmap-work.js
+  function createGalleryRoadmapWork() {
+    let groups = /* @__PURE__ */ new WeakMap(), binding = null;
+    const pending2 = /* @__PURE__ */ new Set();
+    const close = (entry) => {
+      try {
+        entry.steps?.return();
+      } finally {
+        pending2.delete(entry);
+        entry.steps = null;
+      }
+    };
+    const clear = () => {
+      for (const entry of pending2) close(entry);
+      groups = /* @__PURE__ */ new WeakMap();
+      binding = null;
+    };
+    const group = (target) => {
+      if (!groups.has(target)) groups.set(target, { entries: /* @__PURE__ */ new Map(), values: /* @__PURE__ */ new Map() });
+      return groups.get(target);
+    };
+    return {
+      bind(targets, capital, planner, fast) {
+        if (binding && (binding.targets !== targets || binding.capital !== capital || binding.planner !== planner || binding.fast !== fast)) clear();
+        binding = { targets, capital, planner, fast };
+      },
+      memo(target, key2, create) {
+        const values8 = group(target).values;
+        if (!values8.has(key2)) values8.set(key2, create());
+        return values8.get(key2);
+      },
+      *run(target, key2, create) {
+        const entries2 = group(target).entries;
+        if (!entries2.has(key2)) {
+          const entry2 = { steps: create(), done: false };
+          entries2.set(key2, entry2);
+          pending2.add(entry2);
+        }
+        const entry = entries2.get(key2);
+        if (entry.done) return { complete: true, value: entry.value };
+        for (; ; ) {
+          const next = entry.steps.next();
+          if (next.done) {
+            entry.done = true;
+            entry.value = next.value;
+            close(entry);
+            return { complete: true, value: next.value };
+          }
+          if (yield next.value) return { complete: false };
+        }
+      },
+      release(target) {
+        const entries2 = groups.get(target)?.entries;
+        if (entries2) for (const entry of entries2.values()) close(entry);
+        groups.delete(target);
+      },
+      clear
+    };
+  }
+
+  // src/gallery/roadmap.js
+  function* planGalleryRoadmapSteps({
+    targets = [],
+    capital = null,
+    lossLimit = null,
+    resaleDiscountBps = 0,
+    gradePlanner = planGalleryGradeSteps,
+    previousRows = [],
+    previousSelection = [],
+    fastReferences = false,
+    work = createGalleryRoadmapWork(),
+    rowsOnly = false
+  } = {}) {
+    work.bind(targets, capital, gradePlanner, fastReferences);
+    const rows = [], key2 = "event_token_1";
+    const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
+    let stopped = false, gradesChecked = 0;
+    for (const [index, target] of targets.entries()) {
+      const { set, catalog, progress } = target;
+      if (previous.get(set.id)?.analysisComplete) {
+        rows.push(previous.get(set.id));
+        continue;
+      }
+      const row = {
+        setId: set.id,
+        name: set.name,
+        categoryId: set.categoryId,
+        currentGrade: null,
+        currentScore: null,
+        baselineTokens: 0,
+        options: [],
+        reason: null,
+        checkedGrades: [],
+        ...previous.get(set.id)
+      };
+      rows.push(row);
+      if (row.reason === "search-time-exhausted") row.reason = null;
+      if (!progress?.rows || target.stale || target.poolStale || target.status && target.status !== "observed") {
+        row.reason = "progress-unavailable";
+        row.analysisComplete = true;
+        continue;
+      }
+      const scorer = work.memo(target, "scorer", () => createGalleryScoreSummarizer(catalog, { summaryCacheSize: 64, fastTotals: true }));
+      const baseline = yield* work.run(target, "baseline", () => scorer.steps({ set, progress: {
+        ...progress,
+        rows: progress.rows.map((card) => isGalleryOwned(card) ? { ...card, collected: true } : card)
+      } }));
+      if (!baseline.complete) {
+        row.reason = "search-time-exhausted";
+        row.analysisComplete = false;
+        stopped = true;
+        break;
+      }
+      const base = baseline.value;
+      if (!base?.low) {
+        row.reason = base?.reason ?? "score-unavailable";
+        row.analysisComplete = true;
+        work.release(target);
+        continue;
+      }
+      const currentGrade = galleryCatalogGrade(set, base);
+      row.currentGrade = currentGrade?.name ?? null;
+      row.currentScore = base.low.total;
+      row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key2) : 0;
+      row.collectionUnknown = !!base.collectionUnknown;
+      row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
+      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
+      if (rowsOnly) grades3.sort((a, b) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[b.name] ?? 0) - ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[a.name] ?? 0));
+      const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
+      for (const grade of grades3) {
+        if (row.checkedGrades.includes(grade.name)) continue;
+        const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
+        const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
+          target: { ...target, progress: planningProgress },
+          proposal,
+          capital,
+          summarize: scorer.steps,
+          allowCapturedForecast: fastReferences
+        })) : { complete: true, value: null };
+        if (!reference.complete) {
+          row.reason ??= "search-time-exhausted";
+          stopped = true;
+          break;
+        }
+        const verified = reference.value;
+        const local = !fastReferences ? yield* work.run(
+          target,
+          `grade:${grade.name}`,
+          () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1, scoreSummarizer: scorer })
+        ) : null;
+        if (local && !local.complete) {
+          row.reason ??= "search-time-exhausted";
+          stopped = true;
+          break;
+        }
+        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : local.value;
+        if (!fastReferences && verified && result.status !== "achieved" && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
+          result.status = "ready";
+          result.plans = [verified];
+          result.searchComplete = false;
+        }
+        gradesChecked++;
+        const candidate = result.plans?.[0];
+        if (result.status === "ready" && candidate?.reached && candidate.totalPrice !== null) {
+          const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
+          row.options = row.options.filter((option) => option.requestedGrade !== grade.name);
+          row.options.push({
+            grade: reached?.name ?? grade.name,
+            requestedGrade: grade.name,
+            score: candidate.score,
+            items: candidate.items,
+            projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key2),
+            estimated: candidate.estimated,
+            referenceVerified: candidate.referenceVerified === true,
+            searchComplete: result.searchComplete === true
+          });
+        } else row.reason = result.reason ?? "grade-proposal-unavailable";
+        if (!result.timeExhausted) row.checkedGrades.push(grade.name);
+        row.analysisComplete = grades3.every((grade2) => row.checkedGrades.includes(grade2.name));
+        if (result.timeExhausted || (yield {
+          phase: "roadmap",
+          completed: index,
+          total: targets.length,
+          setId: set.id,
+          name: set.name,
+          grade: grade.name,
+          gradesChecked
+        })) {
+          stopped = true;
+          break;
+        }
+      }
+      row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
+      if (row.analysisComplete) work.release(target);
+      if (stopped) break;
+      if (yield {
+        phase: "roadmap",
+        completed: index + 1,
+        total: targets.length,
+        setId: set.id,
+        name: set.name,
+        gradesChecked
+      }) {
+        stopped = true;
+        break;
+      }
+    }
+    const plan = rowsOnly ? { status: "candidates", route: [], selectedOptions: [], selectionStopped: false } : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
+    return { ...plan, rows, fastReferences, coverage: {
+      total: targets.length,
+      inspected: rows.length,
+      available: rows.filter((row) => row.currentScore !== null).length,
+      missing: rows.filter((row) => row.reason === "progress-unavailable").length,
+      gradesChecked: rows.reduce((sum2, row) => sum2 + (row.checkedGrades?.length ?? 0), 0),
+      stopped: stopped || plan.selectionStopped
+    }, partial: stopped || plan.selectionStopped || rows.some((row) => row.reason || row.collectionUnknown || row.candidateOnly) };
+  }
+
+  // src/gallery/roadmap-portfolios.js
+  function* planGalleryPortfoliosSteps(input) {
+    const portfolios = [];
+    let stopped = false;
+    for (const [profile, label] of [["tokens", "\u591A\u62FF token"], ["loss", "\u7701\u635F\u8017"], ["capital", "\u5C11\u5360\u672C\u91D1"]]) {
+      const value = yield* selectGalleryRoadmapSteps({ ...input, previousSelection: [], profile });
+      portfolios.push({ ...value, profile, label });
+      stopped ||= value.selectionStopped;
+      if (stopped) break;
+    }
+    const selected = portfolios.find((value) => value.profile === (input.selectedProfile ?? "tokens")) ?? portfolios[0];
+    return { ...selected, portfolios, selectionStopped: stopped, selectedProfile: selected.profile };
+  }
+  function chooseGalleryPortfolio(result, profile) {
+    const selected = result.portfolios?.find((value) => value.profile === profile);
+    return selected ? { ...result, ...selected, selectedProfile: profile } : result;
+  }
+  function createGalleryPortfolioWork() {
+    let key2 = null, steps = null, value = null;
+    const clear = () => {
+      steps?.return();
+      steps = null;
+      key2 = null;
+      value = null;
+    };
+    return { clear, *run(input) {
+      const nextKey = JSON.stringify(input);
+      if (key2 !== nextKey) {
+        clear();
+        key2 = nextKey;
+        steps = planGalleryPortfoliosSteps(input);
+      }
+      if (!steps) return { complete: true, result: structuredClone(value) };
+      for (; ; ) {
+        const next = steps.next();
+        if (next.done) {
+          value = next.value;
+          steps = null;
+          return { complete: true, result: structuredClone(value) };
+        }
+        if (yield next.value) {
+          const empty2 = selectGalleryRoadmapSteps({ ...input, rows: [], previousSelection: [] }).next().value;
+          return { complete: false, result: { ...empty2, portfolios: [], selectedProfile: "tokens", selectionStopped: true } };
+        }
+      }
+    } };
+  }
+
+  // src/gallery/roadmap-session.js
+  function galleryRoadmapMaterialKey(progress) {
+    const fields4 = ["eaId", "playerEaId", "gradingScore", "galleryScore", "firstOwned", "holographic", "overall", "nationEaId", "clubEaId", "leagueEaId", "rarityEaId", "positions", "weakFoot", "skillMoves"];
+    return JSON.stringify([
+      progress?.season,
+      progress?.setId,
+      progress?.complete,
+      progress?.candidateOnly,
+      progress?.poolComplete,
+      (progress?.rows ?? []).map((row) => [isGalleryOwned(row) ? "owned" : row.collected === false ? "missing" : "unknown", ...fields4.map((key2) => row[key2] ?? null)]).sort((a, b) => a[1] - b[1])
+    ]);
+  }
+  function galleryRoadmapTargetKey(target) {
+    return JSON.stringify([
+      target.set,
+      target.catalog?.revision,
+      target.catalog?.tags,
+      target.catalog?.engine,
+      target.status,
+      !!target.stale,
+      !!target.poolStale,
+      target.pool?.revision,
+      galleryRoadmapMaterialKey(target.progress),
+      (target.progress?.rows ?? []).map((row) => [row.eaId, target.prices?.[row.eaId] ?? null]),
+      target.publicReference
+    ]);
+  }
+  function createGalleryRoadmapSession() {
+    let entries2 = [], cursor = 0, optionsKey = null, version = 0, cached = null;
+    const knownOwned = /* @__PURE__ */ new Set();
+    const portfolioWork = createGalleryPortfolioWork();
+    const clear = () => {
+      for (const entry of entries2) entry.work.clear();
+      entries2 = [];
+      cursor = 0;
+      optionsKey = null;
+      version++;
+      cached = null;
+      portfolioWork.clear();
+      knownOwned.clear();
+    };
+    const bind = (targets, options) => {
+      const key2 = JSON.stringify({ ...options, deep: void 0 });
+      if (optionsKey !== null && optionsKey !== key2) clear();
+      optionsKey = key2;
+      const previous = new Map(entries2.map((entry) => [entry.target.set.id, entry]));
+      for (const target of targets) for (const row of target.progress?.rows ?? []) if (isGalleryOwned(row)) knownOwned.add(row.eaId);
+      const owned2 = knownOwned;
+      const changed = [];
+      entries2 = targets.map((original) => {
+        const target = !original.progress?.rows ? original : { ...original, progress: {
+          ...original.progress,
+          rows: original.progress.rows.map((row) => owned2.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row)
+        } };
+        const fingerprint = galleryRoadmapTargetKey(target), before = previous.get(target.set.id);
+        previous.delete(target.set.id);
+        if (before?.key === fingerprint) return before;
+        before?.work.clear();
+        changed.push(target.set.id);
+        return { target, key: fingerprint, input: [target], work: createGalleryRoadmapWork(), result: null, turns: 0 };
+      });
+      for (const entry of previous.values()) entry.work.clear();
+      if (changed.length || previous.size) {
+        version++;
+        cached = null;
+      }
+      cursor %= Math.max(1, entries2.length);
+      return changed;
+    };
+    const pending2 = () => entries2.filter((entry) => !entry.result || entry.result.coverage.stopped);
+    const snapshotSteps = function* (options, stopped = pending2().length > 0) {
+      if (cached?.version === version && cached.stopped === stopped) return structuredClone(cached.result);
+      const rows = entries2.flatMap((entry) => entry.result?.rows ?? []);
+      const compared = yield* portfolioWork.run({ rows, ...options }), result = compared.result;
+      const value = {
+        ...result,
+        rows,
+        fastReferences: true,
+        partial: stopped || result.selectionStopped || rows.some((row) => row.reason || row.collectionUnknown || row.candidateOnly),
+        coverage: {
+          total: entries2.length,
+          inspected: rows.length,
+          available: rows.filter((row) => row.currentScore !== null).length,
+          completed: entries2.filter((entry) => entry.result && !entry.result.coverage.stopped).length,
+          missing: rows.filter((row) => row.reason === "progress-unavailable").length,
+          gradesChecked: rows.reduce((n, row) => n + (row.checkedGrades?.length ?? 0), 0),
+          stopped: stopped || result.selectionStopped
+        }
+      };
+      if (!result.selectionStopped) cached = { version, stopped, result: structuredClone(value) };
+      return value;
+    };
+    const advance = async ({
+      options,
+      current: current2 = () => true,
+      checkpoint = current2,
+      stopped = () => false,
+      maxMs,
+      quantumMs = 40,
+      progress = () => {
+      },
+      clock = () => performance.now(),
+      schedule
+    } = {}) => {
+      for (let count2 = 0; count2 < entries2.length; count2++) {
+        const entry = entries2[cursor++ % entries2.length];
+        if (entry.result && !entry.result.coverage.stopped) continue;
+        const generator = planGalleryRoadmapSteps({
+          ...options,
+          targets: entry.input,
+          fastReferences: true,
+          work: entry.work,
+          rowsOnly: true,
+          previousRows: entry.result?.rows,
+          previousSelection: entry.result?.selectedOptions
+        });
+        const computed = await runGalleryPlan(
+          { next: (finish) => generator.next(finish || stopped()), return: () => generator.return() },
+          { current: current2, checkpoint, maxMs: Math.min(maxMs, quantumMs), progress, now: clock, ...schedule ? { schedule } : {} }
+        );
+        entry.turns++;
+        if (!computed) throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
+        if (JSON.stringify(computed.rows) !== JSON.stringify(entry.result?.rows)) {
+          version++;
+          cached = null;
+        }
+        entry.result = computed;
+        return entry;
+      }
+      return null;
+    };
+    return {
+      clear,
+      bind,
+      pending: pending2,
+      advance,
+      snapshotSteps,
+      entries: () => entries2,
+      async run({
+        targets,
+        options,
+        maxMs,
+        current: current2 = () => true,
+        checkpoint = current2,
+        stopped = () => false,
+        progress = () => {
+        },
+        onResult = () => {
+        },
+        clock = () => performance.now(),
+        schedule,
+        quantumMs = 40
+      } = {}) {
+        bind(targets, options);
+        const start = clock(), remaining = () => Math.max(0, maxMs - (clock() - start));
+        let result, published = -Infinity, turns = 0;
+        const snapshot = () => runGalleryPlan(snapshotSteps(options), { current: current2, checkpoint, maxMs: remaining(), progress, now: clock, ...schedule ? { schedule } : {} });
+        while (pending2().length && (remaining() > 0 || turns === 0) && !stopped()) {
+          const entry = await advance({ options, maxMs: Math.max(1, remaining()), current: current2, checkpoint, stopped, progress, clock, schedule, quantumMs });
+          turns++;
+          if (!entry) break;
+          if (!result || clock() - published >= 250) {
+            result = await snapshot();
+            if (result) onResult(result);
+            published = clock();
+          }
+        }
+        result = await snapshot();
+        if (result) onResult(result);
+        return result;
+      }
+    };
+  }
+
+  // src/gallery/roadmap-retain.js
+  var filterRoute = (plan, keep) => {
+    const selected = plan.route.filter(keep), byId = new Map(selected.map((row) => [row.setId, row]));
+    const steps = selected.map((row) => {
+      const byVersion = new Map(row.items.map((item2) => [item2.eaId, item2]));
+      const solo = forecastGalleryTurnover({ steps: [{ setId: row.setId, items: row.items }], resaleDiscountBps: plan.funding.resaleDiscountBps });
+      return { setId: row.setId, items: solo.steps?.[0]?.cycles.map((cycle) => byVersion.get(cycle.eaId)) ?? row.items };
+    });
+    const funding = forecastGalleryTurnover({
+      steps,
+      capital: plan.funding.capital,
+      resaleDiscountBps: plan.funding.resaleDiscountBps,
+      optimizeOrder: false
+    });
+    return {
+      ...plan,
+      status: selected.length ? "ready" : "no-route",
+      funding,
+      route: funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 })),
+      addedTokens: selected.reduce((n, row) => n + row.addedTokens, 0),
+      selectedOptions: (plan.selectedOptions ?? []).filter((row) => byId.has(row.setId))
+    };
+  };
+  function filterGalleryRoadmapRoutes(result, keep) {
+    return { ...filterRoute(result, keep), portfolios: result.portfolios?.map((plan) => filterRoute(plan, keep)) };
+  }
+  function retainGalleryRoadmap(result, affected) {
+    if (!result) return result;
+    const ids2 = new Set(affected);
+    const kept = filterGalleryRoadmapRoutes(result, (row) => !ids2.has(row.setId));
+    const ready = result.rows.filter((row) => !ids2.has(row.setId));
+    return {
+      ...kept,
+      status: kept.route.length ? "ready" : "pending-update",
+      partial: true,
+      retainedChanges: ids2.size,
+      baselineTokens: ready.reduce((n, row) => n + (row.baselineTokens ?? 0), 0),
+      freeCheck: (result.freeCheck ?? []).filter((row) => !ids2.has(row.setId)),
+      unavailable: [...(result.unavailable ?? []).filter((row) => !ids2.has(row.setId)), ...result.rows.filter((row) => ids2.has(row.setId)).map((row) => ({ setId: row.setId, name: row.name, reason: "collection-updated" }))],
+      skipped: (result.skipped ?? []).filter((row) => !ids2.has(row.setId)),
+      coverage: { ...result.coverage, available: ready.filter((row) => row.currentScore !== null).length, completed: ready.filter((row) => row.analysisComplete).length, stopped: true },
+      rows: result.rows.map((row) => ids2.has(row.setId) ? { ...row, currentScore: null, currentGrade: null, options: [], reason: "collection-updated", analysisComplete: false, checkedGrades: [] } : row),
+      referenceOverview: result.referenceOverview ? retainGalleryRoadmap(result.referenceOverview, affected) : void 0
+    };
+  }
+  function reconcileGalleryRoadmapInputs(previous, current2) {
+    const live = new Map(current2.map((target) => [target.set.id, target])), affected = /* @__PURE__ */ new Set(), versions = /* @__PURE__ */ new Set();
+    const materialKey = (target) => JSON.stringify([galleryRoadmapMaterialKey(target.progress), target.pool?.revision, target.status, !!target.stale, !!target.poolStale]);
+    const targets = previous.map((old) => {
+      const next = live.get(old.set.id);
+      if (!next) {
+        affected.add(old.set.id);
+        return { ...old, status: "unloaded", progress: null };
+      }
+      if (typeof old.progressKey === "string" && old.progressKey === next.progressKey && old.pool?.revision === next.pool?.revision && old.status === next.status && !!old.stale === !!next.stale && !!old.poolStale === !!next.poolStale) return old;
+      if (materialKey(old) === materialKey(next)) return old;
+      affected.add(old.set.id);
+      const before = new Map((old.progress?.rows ?? []).map((row) => [row.eaId, row]));
+      for (const row of next.progress?.rows ?? []) {
+        const prior = before.get(row.eaId);
+        if (!prior || isGalleryOwned(prior) !== isGalleryOwned(row) || ["firstOwned", "gradingScore", "galleryScore"].some((key2) => prior[key2] !== row[key2])) versions.add(row.eaId);
+        before.delete(row.eaId);
+      }
+      for (const id12 of before.keys()) versions.add(id12);
+      return {
+        ...old,
+        progress: next.progress,
+        progressKey: next.progressKey,
+        status: next.status,
+        pool: next.pool,
+        stale: next.stale,
+        poolStale: next.poolStale,
+        fetchedAt: next.fetchedAt
+      };
+    });
+    for (const target of targets) if (target.progress?.rows?.some((row) => versions.has(row.eaId))) affected.add(target.set.id);
+    return { targets, affected: [...affected] };
+  }
+
   // src/gallery/roadmap-demand.js
   var priced2 = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6;
   function pruneGalleryDemandResult(result, now = Date.now()) {
     const keep = (row) => row.items.every((item2) => item2.roadmapQuote?.expiresAt > now);
-    const kept = result.route.filter(keep), byId = new Map(kept.map((row) => [row.setId, row]));
-    const funding = forecastGalleryTurnover({
-      steps: kept.map((row) => ({ setId: row.setId, items: row.items })),
-      capital: result.funding.capital,
-      resaleDiscountBps: result.funding.resaleDiscountBps
-    });
-    const route = funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 }));
+    const kept = filterGalleryRoadmapRoutes(result, keep);
     return {
-      ...result,
+      ...kept,
       quotesExpired: true,
       partial: true,
-      status: route.length ? "ready" : "quotes-expired",
-      funding,
-      route,
-      addedTokens: route.reduce((n, row) => n + row.addedTokens, 0),
-      rows: result.rows.map((row) => ({ ...row, options: row.options.filter(keep) })),
-      selectedOptions: result.selectedOptions.filter((row) => byId.has(row.setId))
+      status: kept.route.length ? "ready" : "quotes-expired",
+      rows: result.rows.map((row) => ({ ...row, options: row.options.filter(keep) }))
     };
   }
-  function createGalleryDemandWork() {
+  function createGalleryDemandWork({ referenceSession = null } = {}) {
     let binding, preview, jobs = [], policy = null, quotes = /* @__PURE__ */ new Map(), attempted = /* @__PURE__ */ new Set();
-    const preflight = createGalleryRoadmapWork();
+    const preflight = referenceSession ?? createGalleryRoadmapSession();
+    const portfolioWork = createGalleryPortfolioWork();
     const clear = () => {
       preflight.clear();
       for (const job of jobs) job.work.clear();
+      portfolioWork.clear();
       binding = null;
       preview = null;
       jobs = [];
@@ -18224,7 +18617,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (row.options.length && !value.options.length) value.reason = "quote-expired";
         rows.push(value);
       }
-      const route = yield* selectGalleryRoadmapSteps({ rows, ...options });
+      const compared = yield* portfolioWork.run({ rows, ...options }), route = compared.result;
       return {
         ...route,
         rows,
@@ -18244,14 +18637,51 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           completed: jobs.filter((job) => job.done).length,
           quoted: quotes.size,
           candidateLimit: 96,
-          pending: jobs.filter((job) => !job.done).length
+          pending: jobs.filter((job) => !job.done).length,
+          referencePending: preflight.pending().length
         }
       };
     };
     const validResult = (at11 = Date.now()) => !jobs.some((job) => job.shown?.rows?.some((row) => row.options.some((option) => option.items.some((item2) => !fresh(item2.eaId, at11)))));
+    const bind = (targets, options) => {
+      const key2 = JSON.stringify({ ...options, deep: void 0 });
+      if (binding && binding.key !== key2) clear();
+      const changed = preflight.bind(targets, options), ids2 = new Set(changed), present = new Set(targets.map((target) => target.set.id));
+      jobs = jobs.filter((job) => {
+        if (ids2.has(job.target.set.id) || !present.has(job.target.set.id)) {
+          job.work.clear();
+          return false;
+        }
+        return true;
+      });
+      for (const target of targets) if (ids2.has(target.set.id)) {
+        for (const row of target.progress?.rows ?? []) if (!fresh(row.eaId, Date.now())) attempted.delete(row.eaId);
+      }
+      binding = { targets, key: key2 };
+      preview = null;
+      return changed;
+    };
+    const refreshJobs = () => {
+      const known = new Set(jobs.map((job) => job.target.set.id));
+      for (const entry of preflight.entries()) {
+        const target = entry.target, row = entry.result?.rows?.[0];
+        if (known.has(target.set.id)) {
+          const job = jobs.find((job2) => job2.target.set.id === target.set.id);
+          if (row) job.forecast = row;
+          continue;
+        }
+        if (!row || !(row.analysisComplete || row.options?.some((option) => option.grade === "S")) || row.currentScore === null || row.reason === "progress-unavailable" || target.progress.complete === false) continue;
+        const top = Math.max(...target.set.grades.map((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, "event_token_1")));
+        if (!(top > row.baselineTokens)) continue;
+        const best = row.options.slice().sort((a, b) => ({ S: 5, A: 4, B: 3 }[b.grade] ?? 0) - ({ S: 5, A: 4, B: 3 }[a.grade] ?? 0))[0];
+        const rank3 = best ? best.items.reduce((n, item2) => n + item2.price, 0) / Math.max(1, best.projectedTokens - row.baselineTokens) : Infinity;
+        jobs.push({ target, forecast: row, rank: rank3, ids: [], tier: 24, work: createGalleryRoadmapWork(), done: false, turns: 0 });
+      }
+    };
     return {
       clear,
       validResult,
+      bind,
       async run({
         targets,
         options,
@@ -18271,46 +18701,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         now = Date.now,
         clock = () => performance.now(),
         schedule,
-        gradePlanner
+        gradePlanner,
+        quantumMs = 40
       } = {}) {
-        const key2 = JSON.stringify(options);
-        if (binding && (binding.targets !== targets || binding.key !== key2)) clear();
-        if (!binding) {
-          const owned2 = new Set(targets.flatMap((target) => (target.progress?.rows ?? []).filter(isGalleryOwned).map((row) => row.eaId)));
-          binding = { targets, key: key2, planningTargets: targets.map((target) => !target.progress?.rows ? target : {
-            ...target,
-            progress: { ...target.progress, rows: target.progress.rows.map((row) => owned2.has(row.eaId) ? { ...row, held: true } : row) }
-          }) };
-        }
+        const key2 = JSON.stringify({ ...options, deep: void 0 });
+        if (!binding || binding.targets !== targets || binding.key !== key2) bind(targets, options);
         const started = clock(), remaining = () => Math.max(0, maxMs - (clock() - started));
         const checking = () => {
           if (!current2() || !checkpoint()) throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
         };
-        const run = async (steps) => {
+        const run = async (steps, limit = remaining()) => {
           const result2 = await runGalleryPlan(
             { next: (finish) => steps.next(finish || stopped()), return: () => steps.return() },
-            { current: current2, checkpoint, maxMs: remaining(), progress, ...schedule ? { schedule } : {}, now: clock }
+            { current: current2, checkpoint, maxMs: Math.min(remaining(), limit), progress, ...schedule ? { schedule } : {}, now: clock }
           );
           checking();
           return result2;
         };
         checking();
         onPhase("planning");
-        if (!preview || preview.coverage.stopped) {
-          preview = await run(planGalleryRoadmapSteps({
-            ...options,
-            targets: binding.planningTargets,
-            fastReferences: true,
-            work: preflight,
-            previousRows: preview?.rows,
-            previousSelection: preview?.selectedOptions
-          }));
-          if (!preview) {
-            checking();
-            throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
+        let published = -Infinity;
+        if (!preflight.pending().length) {
+          preview = await run(preflight.snapshotSteps(options));
+          if (preview) {
+            onPreview(preview);
+            published = clock();
           }
         }
-        onPreview(preview);
+        for (const job of jobs) job.deferred = false;
         for (const [id12, quote2] of quotes) if (quote2.expiresAt <= now()) attempted.delete(id12);
         for (const job of jobs) if (job.input && job.ids.some((id12) => quotes.has(id12) && !fresh(id12, now()))) {
           job.input = null;
@@ -18319,19 +18737,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           job.work.clear();
           for (const id12 of job.ids) if (!fresh(id12, now())) attempted.delete(id12);
         }
-        if (!preview.coverage.stopped && !jobs.length) {
-          const byId = new Map(preview.rows.map((row) => [row.setId, row]));
-          jobs = binding.planningTargets.flatMap((target) => {
-            const row = byId.get(target.set.id), top = Math.max(...target.set.grades.map((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, "event_token_1")));
-            if (!row || row.currentScore === null || row.reason === "progress-unavailable" || target.progress.complete === false || !(top > row.baselineTokens)) return [];
-            const ratios = row.options.map((option) => option.items.reduce((n, item2) => n + item2.price, 0) / Math.max(1, option.projectedTokens - row.baselineTokens));
-            return [{ target, forecast: row, rank: Math.min(...ratios), ids: [], tier: 24, work: createGalleryRoadmapWork(), done: false }];
-          }).sort((a, b) => a.rank - b.rank || a.target.set.id.localeCompare(b.target.set.id));
-        }
-        while (!preview.coverage.stopped && remaining() > 0 && !stopped()) {
+        while (remaining() > 0 && !stopped()) {
           checking();
-          const job = jobs.filter((job2) => !job2.done).sort((a, b) => a.tier - b.tier || a.rank - b.rank)[0];
-          if (!job) break;
+          onPhase("planning");
+          const advanced = await preflight.advance({ options, current: current2, checkpoint, stopped, maxMs: remaining(), quantumMs, progress, clock, schedule });
+          refreshJobs();
+          const job = jobs.filter((job2) => !job2.done && !job2.deferred).sort((a, b) => a.tier - b.tier || a.turns - b.turns || a.rank - b.rank)[0];
+          if (advanced && (!preview || job && !preview.rows.some((row) => row.setId === job.target.set.id) || clock() - published >= 250)) {
+            preview = await run(preflight.snapshotSteps(options));
+            if (preview) {
+              onPreview(preview);
+              published = clock();
+            }
+          }
+          if (!job) {
+            if (!preflight.pending().length) break;
+            continue;
+          }
           if (!job.input) {
             const rows = selections(job, job.tier);
             job.ids = rows.map((row) => row.eaId);
@@ -18378,7 +18800,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
             if (remaining() <= 0 || stopped()) break;
             const unresolved = rows.some((row) => !fresh(row.eaId, now()) && !attempted.has(row.eaId));
-            if (unresolved) break;
+            if (unresolved) {
+              job.deferred = true;
+              continue;
+            }
             const quoteRows = rows.filter((row) => fresh(row.eaId, now()));
             const prices = Object.fromEntries(quoteRows.map((row) => [row.eaId, fresh(row.eaId, now()).price]));
             job.input = [{
@@ -18402,8 +18827,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             previousRows: job.result?.rows,
             previousSelection: job.result?.selectedOptions,
             work: job.work,
+            rowsOnly: true,
             ...gradePlanner ? { gradePlanner } : {}
-          }));
+          }), quantumMs);
+          job.turns++;
           if (!job.result) {
             checking();
             throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
@@ -18428,12 +18855,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               job.work.clear();
             }
           }
-          const result2 = await run(resultSteps(options, now(), true));
-          if (result2) onResult(result2);
-          if (job.shown.coverage.stopped) break;
+          if (clock() - published >= 200 || !job.shown.coverage.stopped) {
+            const result2 = await run(resultSteps(options, now(), true));
+            if (result2) onResult(result2);
+          }
+          if (!preflight.pending().length && jobs.every((job2) => job2.done || job2.deferred)) break;
         }
         onPhase("planning");
-        const result = await run(resultSteps(options, now(), preview.coverage.stopped || jobs.some((job) => !job.done)));
+        preview = await run(preflight.snapshotSteps(options));
+        if (preview) onPreview(preview);
+        const result = await run(resultSteps(options, now(), preflight.pending().length > 0 || jobs.some((job) => !job.done)));
         return { result, preview };
       }
     };
@@ -18477,6 +18908,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     dialog.className = "gallery-roadmap-dialog";
     dialog.setAttribute("aria-label", "\u5168\u753B\u5ECA\u6574\u4F53\u65B9\u6848");
     const style = add(document, dialog, "style", ".gallery-roadmap-dialog{width:min(1120px,94vw);max-width:calc(100vw - 24px);max-height:88vh;overflow:auto;box-sizing:border-box;padding:20px;font:14px/1.5 Arial,sans-serif;text-align:left}.gallery-roadmap-dialog p{margin:8px 0}.gallery-roadmap-dialog h2{margin:0}.gallery-roadmap-dialog .row{margin:12px 0}.gallery-roadmap-header,.gallery-roadmap-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.gallery-roadmap-header{justify-content:space-between}.gallery-roadmap-controls label{flex:1;min-width:180px}.gallery-roadmap-controls input,.gallery-roadmap-controls select{width:100%;box-sizing:border-box}.gallery-roadmap-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}.gallery-roadmap-metrics article{padding:12px;border:1px solid #45606b;border-radius:6px}.gallery-roadmap-metrics strong{display:block;font-size:22px}.gallery-roadmap-table{overflow:auto}.gallery-roadmap-table table{width:100%;border-collapse:collapse}.gallery-roadmap-table th,.gallery-roadmap-table td{padding:10px;text-align:left;border-bottom:1px solid #45606b}.gallery-roadmap-dialog button{min-height:40px}.gallery-roadmap-status{display:block;margin:12px 0;overflow-wrap:anywhere}");
+    style.textContent += ".gallery-roadmap-portfolios{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px;margin:12px 0}.gallery-roadmap-portfolios p{grid-column:1/-1}.gallery-roadmap-portfolios button{text-align:left;white-space:normal;padding:10px;overflow-wrap:anywhere}.gallery-roadmap-portfolios button[aria-pressed=true]{border:2px solid #34bda2;background:rgba(52,189,162,.18)}";
     void style;
     const header = add(document, dialog, "div");
     header.className = "gallery-roadmap-header";
@@ -18513,6 +18945,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     stop6.hidden = true;
     const exportButton = add(document, actions, "button", "\u5BFC\u51FA\u5206\u6790\u5FEB\u7167");
     exportButton.type = "button";
+    const rebuild = add(document, actions, "button", "\u91CD\u65B0\u5206\u6790\u5168\u76EE\u5F55");
+    rebuild.type = "button";
+    rebuild.hidden = true;
     const modeLabel = add(document, actions, "label", " "), deep = add(document, modeLabel, "input");
     deep.type = "checkbox";
     modeLabel.style.display = referenceService ? "inline-flex" : "none";
@@ -18547,8 +18982,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
-    const work = createGalleryRoadmapWork();
-    const demand = createGalleryDemandWork();
+    const work = createGalleryRoadmapSession();
+    const demand = createGalleryDemandWork({ referenceSession: work });
+    let selectedProfile = "tokens";
+    const visited = /* @__PURE__ */ new Map();
     let forecastEvidence = null, forecastClock = null;
     const updateForecastNote = () => {
       if (!busy && last?.demandDriven && (last.route.some((row) => row.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) || !last.quotesExpired && !demand.validResult())) {
@@ -18622,6 +19059,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       last = null;
       planInputs = null;
       binding = null;
+      visited.clear();
+      rebuild.hidden = true;
       previewBox.replaceChildren();
       previewBox.hidden = true;
       forecastEvidence = null;
@@ -18631,10 +19070,35 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       timing.textContent = "";
       generate.textContent = "\u751F\u6210\u6574\u4F53\u65B9\u6848";
     };
+    const mainOutput = output;
     const render = (result, outputNode = output) => {
       const output2 = outputNode;
+      rebuild.hidden = !last;
+      result = chooseGalleryPortfolio(result, selectedProfile);
       output2.replaceChildren();
-      if (result.demandDriven) add(document, output2, "h3", `\u6309\u9700\u6DF1\u5EA6\u7ED3\u679C \xB7 \u5DF2\u6838\u4EF7 ${result.deepCoverage.quoted} \u4E2A\u7248\u672C \xB7 \u5DF2\u5B8C\u6210 ${result.deepCoverage.completed}/${result.deepCoverage.eligible} \u4E2A\u5F85\u5347\u7EA7\u5408\u96C6`);
+      if (result.portfolios?.length) {
+        const choices = add(document, output2, "div");
+        choices.className = "gallery-roadmap-portfolios";
+        add(document, choices, "p", "\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u7684\u8DEF\u7EBF\u5BF9\u6BD4\uFF1A\u9ED8\u8BA4 S \u2192 A \u2192 B\uFF0C\u5148\u6BD4\u8F83\u540C\u6863\u76EE\u6807\u3002\u5171\u4EAB\u7CBE\u786E\u7248\u672C\u53EA\u8BA1\u4E00\u6B21\u91C7\u8D2D\uFF1B\u8D44\u91D1\u6309\u5B9E\u9645\u987A\u5E8F\u4E0E\u9010\u5361\u56DE\u552E\u5047\u8BBE\u8BA1\u7B97\u3002\u672A\u6838\u9A8C\u7684 S \u4E0D\u7B97\u4E0D\u53EF\u505A\uFF0CA/B \u4EC5\u4E3A\u5F53\u524D\u5DF2\u6838\u9A8C\u8303\u56F4\u7684\u5019\u9009\u3002");
+        for (const portfolio of result.portfolios) {
+          const count2 = (grade) => portfolio.route.filter((row) => row.targetGrade === grade).length;
+          const pick5 = add(document, choices, "button", `${portfolio.label} \xB7 S ${count2("S")}/A ${count2("A")}/B ${count2("B")} \xB7 +${portfolio.addedTokens} token \xB7 \u672C\u91D1 ${money(portfolio.funding?.requiredCapital)} \xB7 \u635F\u8017 ${money(portfolio.funding?.expectedNetLoss)}`);
+          pick5.type = "button";
+          pick5.dataset.profile = portfolio.profile;
+          pick5.setAttribute("aria-pressed", String(result.selectedProfile === portfolio.profile));
+          pick5.addEventListener("click", (event) => {
+            if (!event.isTrusted) return;
+            selectedProfile = portfolio.profile;
+            let value = result;
+            if (value.demandDriven && value.portfolios.some((plan) => plan.route.some((row) => row.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())))) value = pruneGalleryDemandResult(value);
+            if (last) last = chooseGalleryPortfolio(outputNode === mainOutput ? value : last, selectedProfile);
+            render(value, outputNode);
+            if (last && outputNode !== mainOutput) render(last, mainOutput);
+          });
+        }
+      }
+      if (result.retainedChanges) add(document, output2, "p", `\u603B\u8BA1\u5212\u5DF2\u4FDD\u7559\uFF0C${result.retainedChanges} \u4E2A\u76F8\u5173\u5408\u96C6\u5F85\u5C40\u90E8\u66F4\u65B0\uFF1B\u5176\u4ED6\u5206\u6790\u7ED3\u679C\u4FDD\u7559\u3002`);
+      if (result.demandDriven) add(document, output2, "h3", `\u6309\u9700\u6DF1\u5EA6\u7ED3\u679C \xB7 \u5DF2\u6838\u4EF7 ${result.deepCoverage.quoted} \u4E2A\u7248\u672C \xB7 \u5DF2\u5B8C\u6210 ${result.deepCoverage.completed}/${result.deepCoverage.eligible} \u4E2A\u5DF2\u5C31\u7EEA\u5408\u96C6 \xB7 \u53C2\u8003\u5F85\u5B8C\u6210 ${result.deepCoverage.referencePending ?? 0}`);
       if (result.demandDriven) add(document, output2, "p", "\u6BCF\u5408\u96C6\u6309 24 \u2192 48 \u2192 96 \u4E2A\u5019\u9009\u9010\u6B65\u6269\u5C55\uFF0C\u5DF2\u5B8C\u6210\u4EC5\u6307\u672C\u8F6E\u6709\u754C\u68C0\u67E5\uFF1B\u672A\u67E5\u7248\u672C\u4ECD\u53EF\u80FD\u66F4\u4F18\u3002\u4E0B\u65B9\u91D1\u989D\u53EA\u6765\u81EA\u5C1A\u6709\u6548\u7684\u72EC\u7ACB\u62A5\u4EF7\uFF0C\u4E0E\u4E0A\u65B9\u53C2\u8003\u5168\u8C8C\u5206\u5F00\u3002");
       const metric = add(document, output2, "div");
       metric.className = "gallery-roadmap-metrics";
@@ -18648,9 +19112,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add(document, card, "small", label);
         add(document, card, "strong", money(value));
       }
-      add(document, output2, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
+      add(document, output2, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u5DF2\u5B8C\u6210 ${result.coverage.completed ?? result.deepCoverage?.completed ?? result.coverage.inspected}\uFF0C\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
       if (result.fastReferences) add(document, output2, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF1B\u91D1\u989D\u6309 Fodder \u9010\u5361\u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u884C\u60C5\u5E74\u9F84\u672A\u77E5\uFF0C\u4E0D\u662F\u5B9E\u9645\u8D2D\u4E70\u9650\u4EF7\u3002\u8FDB\u5165\u5408\u96C6/\u8D2D\u4E70\u524D\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u6838\u4EF7\uFF1B\u6DF1\u5EA6\u4F18\u5316\u53EF\u7EE7\u7EED\u6BD4\u8F83\u3002");
-      add(document, output2, "p", "\u6309\u4F4E\u9884\u8BA1\u635F\u8017 / \u65B0\u589E token \u4F18\u5148\u7684\u6709\u754C\u8DEF\u7EBF\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
+      add(document, output2, "p", "\u8DEF\u7EBF\u6309 S/A/B \u4F18\u5148\u7EA7\u5728\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u5185\u6BD4\u8F83\uFF0C\u5305\u542B\u5171\u4EAB\u7248\u672C\u548C\u5468\u8F6C\u7A0E\u635F\uFF1B\u641C\u7D22\u6709\u754C\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
       add(document, output2, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
       if (!result.route.length) add(document, output2, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
       const tableWrap = add(document, output2, "div");
@@ -18670,6 +19134,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
             return;
           }
+          visited.set(step.setId, { setId: step.setId, name: step.name, targetGrade: step.targetGrade });
           dialog.close();
           openSet(step.setId, step.targetGrade);
         });
@@ -18700,10 +19165,52 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "search-time-exhausted": "\u672C\u8F6E\u5206\u6790\u65F6\u95F4\u5DF2\u5230\uFF0C\u53EF\u7EE7\u7EED",
           "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848",
           "quote-expired": "\u6B64\u9879\u72EC\u7ACB\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF1B\u53C2\u8003\u5168\u8C8C\u4ECD\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u91CD\u65B0\u6838\u4EF7",
+          "collection-updated": "\u6536\u85CF\u6216\u5361\u6C60\u5DF2\u53D8\u5316\uFF0C\u6B63\u5728\u5C40\u90E8\u66F4\u65B0",
           "deep-analysis-pending": "\u5FEB\u901F\u9996\u8F6E\u5C1A\u672A\u786E\u8BA4\uFF0C\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5"
         };
         for (const item2 of pending2) add(document, details, "p", `${item2.name} \xB7 ${reasons2[item2.reason] ?? `\u5C1A\u672A\u786E\u8BA4\u65B9\u6848\uFF08${item2.reason}\uFF09`}${item2.capitalShortfall ? ` \xB7 \u9884\u8BA1\u8FD8\u5DEE ${money(item2.capitalShortfall)} \u91D1\u5E01\u672C\u91D1` : ""}`);
       }
+      if (visited.size) {
+        const log = add(document, output2, "div");
+        log.className = "gallery-roadmap-execution";
+        add(document, log, "h3", "\u672C\u8F6E\u6267\u884C\u8BB0\u5F55");
+        add(document, log, "p", "\u5DF2\u62E5\u6709\u7684\u7248\u672C\u4E0D\u518D\u8BA1\u5165\u540E\u7EED\u91C7\u8D2D\uFF1B\u5468\u8F6C\u91D1\u5E01\u4ECD\u6309\u4E0A\u65B9\u8F93\u5165\u4F30\u7B97\uFF0C\u672A\u552E\u51FA\u7684\u5361\u4E0D\u5F53\u4F5C\u5230\u8D26\u6536\u5165\u3002\u5B9E\u9645\u8D2D\u4E70\u4F1A\u8BFB\u53D6\u5F53\u65F6\u4F59\u989D\u3002");
+        const ranks = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+        for (const step of visited.values()) {
+          const observed = [...result.freeCheck ?? [], ...result.referenceOverview?.freeCheck ?? []].find((row) => row.setId === step.setId);
+          const reached = (ranks[observed?.grade] ?? 0) >= (ranks[step.targetGrade] ?? Infinity);
+          step.state = reached ? "local-score-reached" : "entered";
+          add(document, log, "p", `${step.name} \xB7 \u76EE\u6807 ${step.targetGrade} \xB7 ${reached ? "\u672C\u5730\u8BA1\u5206\u5DF2\u8FBE\u76EE\u6807\uFF0C\u5956\u52B1\u5F85\u6838\u5B9E" : "\u5DF2\u8FDB\u5165\uFF0C\u5F85\u6838\u5BF9/\u7EE7\u7EED\u5B8C\u6210"}`);
+        }
+      }
+    };
+    const renderPreview = (result) => {
+      previewBox.hidden = false;
+      previewBox.open = true;
+      previewBox.replaceChildren();
+      add(document, previewBox, "summary", `\u5168\u5C40\u53C2\u8003\u9884\u89C8 \xB7 ${result.coverage.inspected}/${result.coverage.total} \u5408\u96C6 \xB7 +${result.addedTokens} token \xB7 \u70B9\u51FB\u5C55\u5F00/\u6536\u8D77`);
+      const body = add(document, previewBox, "div");
+      render(result, body);
+      add(document, body, "p", "\u53C2\u8003\u9884\u89C8\u4E0E\u72EC\u7ACB\u6838\u4EF7\u5206\u5F00\uFF1B\u6240\u6709\u5DF2\u6838\u9A8C\u5019\u9009\u7EDF\u4E00\u6BD4\u8F83\uFF0C\u672A\u5B8C\u6210\u9879\u4F1A\u7EE7\u7EED\u52A0\u5165\u540C\u4E00\u5168\u5C40\u8BA1\u5212\u3002\u672A\u67E5\u7248\u672C\u4E0D\u5F53\u4F5C\u96F6\u6210\u672C\u3002");
+    };
+    const reconcileSaved = () => {
+      if (!binding || !planInputs || !last || busy) return 0;
+      const state = read();
+      if (!state.active || state.scope !== binding.scope || state.catalog?.revision !== binding.revision || state.catalog?.source !== binding.source || state.targets.length !== binding.targets.length || state.targets.some((target, i) => target.set.id !== binding.targets[i][0])) {
+        invalidate();
+        return 0;
+      }
+      const next = reconcileGalleryRoadmapInputs(planInputs, state.targets);
+      binding = capture(state);
+      mismatchReason = null;
+      if (!next.affected.length) return 0;
+      planInputs = next.targets;
+      last = retainGalleryRoadmap(last, next.affected);
+      diagnose({ event: "roadmap-reconcile", phase: "local", status: "retained", retainedCount: planInputs.length - next.affected.length, reconciledCount: next.affected.length });
+      if (last.referenceOverview) renderPreview(last.referenceOverview);
+      render(last);
+      generate.textContent = "\u66F4\u65B0\u53D7\u5F71\u54CD\u90E8\u5206";
+      return next.affected.length;
     };
     const cancel = () => {
       stopRequested = true;
@@ -18727,17 +19234,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (busy) cancel();
       epoch2++;
     });
-    for (const field of [capital, lossLimit, discount, deep]) field.addEventListener("change", invalidate);
+    for (const field of [capital, lossLimit, discount]) field.addEventListener("change", invalidate);
+    deep.addEventListener("change", () => {
+      if (!last || !binding || !planInputs) {
+        invalidate();
+        return;
+      }
+      reconcileSaved();
+      if (!last) return;
+      last = { ...last, coverage: { ...last.coverage, stopped: true } };
+      fingerprint = JSON.stringify(params());
+      generate.textContent = deep.checked ? "\u7EE7\u7EED\u6DF1\u5EA6\u4F18\u5316" : "\u7EE7\u7EED\u5206\u6790\u5269\u4F59";
+      status.textContent = "\u603B\u8BA1\u5212\u53CA\u53C2\u8003\u8BA1\u7B97\u5DF2\u4FDD\u7559\uFF1B\u5207\u6362\u6A21\u5F0F\u53EA\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u91CD\u65B0\u540C\u6B65\u5168\u76EE\u5F55\u3002";
+    });
     button?.addEventListener("click", (event) => {
       if (!event.isTrusted) return;
-      if (binding && (!same28(binding) || !pricesUsable(planInputs))) invalidate();
+      const changed = reconcileSaved();
       const state = read();
       status.textContent = state.catalog ? `\u5168\u76EE\u5F55 ${state.targets.length} \u4E2A\u5408\u96C6\u3002\u70B9\u51FB\u751F\u6210\u540E\u81EA\u52A8\u590D\u7528\u6536\u96C6\u7F13\u5B58\u3001\u8865\u5145\u6570\u636E\u4E0E\u62A5\u4EF7\uFF1B\u53EF\u968F\u65F6\u505C\u6B62\u3002` : "\u516C\u5F00\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165\uFF0C\u8BF7\u5148\u7B49\u5F85 Gallery \u540C\u6B65\u3002";
       if (!dialog.open) dialog.showModal();
       updateForecastNote();
       if (forecastClock === null) forecastClock = document.defaultView.setInterval(updateForecastNote, 1e3);
+      if (changed) void start(event);
     });
-    generate.addEventListener("click", async (event) => {
+    const start = async (event) => {
       if (!event.isTrusted || busy) return;
       const options = params();
       if ([options.capital, options.lossLimit].some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 1e9))) {
@@ -18752,6 +19272,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       exportButton.disabled = true;
       stop6.hidden = false;
       progress.hidden = false;
+      rebuild.disabled = true;
       let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0, planningLimitMs = null;
       for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
       const completedPhases = /* @__PURE__ */ new Set();
@@ -18768,7 +19289,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       };
       try {
         onBusyChange(true);
-        const resume = (last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
+        const resume = (last?.retainedChanges || last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
         if (!resume) {
           work.clear();
           demand.clear();
@@ -18832,6 +19353,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const fastReferences = !!referenceService && !options.deep;
         priceBasis = fastReferences ? "fodder-public-estimate" : "independent-reference-quotes";
         if (!resume && referenceService) targets = forecastFodderReferencePrices(targets);
+        planInputs = targets;
+        fingerprint = JSON.stringify(options);
         if (!fastReferences && loadPrices) {
           planInputs = targets;
           fingerprint = JSON.stringify(options);
@@ -18841,6 +19364,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           stage = "planning";
           stageStarted = performance.now();
           let phaseStarted = stageStarted, phase = "planning";
+          let referenceOverview = last?.referenceOverview ?? (last?.fastReferences ? last : null);
           const phaseChange = (next) => {
             const at11 = performance.now(), key2 = phase === "pricing" ? "priceMs" : "planningMs";
             timings[key2] = (timings[key2] ?? 0) + Math.round(at11 - phaseStarted);
@@ -18861,19 +19385,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               onPhase: phaseChange,
               onPreview: (result2) => {
                 if (!valid3()) return;
-                previewBox.hidden = false;
-                previewBox.open = true;
-                previewBox.replaceChildren();
-                add(document, previewBox, "summary", `\u53C2\u8003\u5168\u8C8C \xB7 ${result2.coverage.inspected}/${result2.coverage.total} \u5408\u96C6 \xB7 +${result2.addedTokens} token \xB7 \u70B9\u51FB\u5C55\u5F00/\u6536\u8D77`);
-                const body = add(document, previewBox, "div");
-                render(result2, body);
+                referenceOverview = result2;
+                renderPreview(result2);
                 referenceView?.collapse();
-                add(document, body, "p", "\u4EE5\u4E0A\u4E3A\u53C2\u8003\u5168\u8C8C\uFF1B\u4EE5\u4E0B\u53EA\u5BF9\u4F18\u5148\u5019\u9009\u9010\u9879\u72EC\u7ACB\u6838\u4EF7\u3002\u672A\u67E5\u7248\u672C\u4E0D\u89C6\u4E3A\u96F6\u6210\u672C\uFF0C\u8303\u56F4\u6709\u754C\u4E0D\u4FDD\u8BC1\u6700\u4F4E\u4EF7\u3002");
               },
               onResult: (result2) => {
                 if (valid3()) {
+                  last = {
+                    ...chooseGalleryPortfolio(result2, selectedProfile),
+                    referenceOverview,
+                    generatedAt: Date.now(),
+                    timings,
+                    priceBasis,
+                    forecastReference: forecastEvidence ? { ...forecastEvidence } : null
+                  };
                   previewBox.open = !result2.route.length;
-                  render(result2);
+                  render(last);
                 }
               },
               progress: (value2) => {
@@ -18883,13 +19410,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             });
             if (!valid3() || !value.result) return;
             last = {
-              ...value.result,
+              ...chooseGalleryPortfolio(value.result, selectedProfile),
               referenceOverview: value.preview,
               generatedAt: Date.now(),
               timings,
               priceBasis,
               forecastReference: forecastEvidence ? { ...forecastEvidence } : null
             };
+            previewBox.open = !last.route.length;
             render(last);
             completed = true;
             status.textContent = last.coverage.stopped ? "\u5DF2\u4FDD\u7559\u53C2\u8003\u5168\u8C8C\u548C\u6DF1\u5EA6\u90E8\u5206\u7ED3\u679C\uFF1B\u53EF\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u91CD\u590D\u540C\u6B65\u3002" : "\u6309\u9700\u6DF1\u5EA6\u5206\u6790\u5DF2\u5B8C\u6210\u672C\u8F6E\u6709\u754C\u8303\u56F4\uFF1B\u672A\u67E5\u8303\u56F4\u53CA\u53C2\u8003\u5168\u8C8C\u4FDD\u7559\uFF0C\u8FDB\u5165\u4FF1\u4E50\u90E8\u524D\u91CD\u65B0\u6838\u4EF7\u3002";
@@ -18908,23 +19436,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stage = "planning";
         const planStarted = performance.now();
         stageStarted = planStarted;
-        const generator = planGalleryRoadmapSteps({
-          ...options,
+        const result = await work.run({
           targets,
-          previousRows: resume ? last.rows : [],
-          previousSelection: resume ? last.selectedOptions : [],
-          fastReferences,
-          work
-        });
-        const steps = { next: (finish) => generator.next(finish || stopRequested), return: () => generator.return() };
-        const result = await runGalleryPlan(
-          steps,
-          { current: current2, checkpoint: valid3, maxMs, progress: (value) => {
+          options,
+          current: current2,
+          checkpoint: valid3,
+          maxMs,
+          stopped: () => stopRequested,
+          onResult: (result2) => {
+            if (valid3()) {
+              last = {
+                ...chooseGalleryPortfolio(result2, selectedProfile),
+                generatedAt: Date.now(),
+                timings,
+                priceBasis,
+                forecastReference: forecastEvidence ? { ...forecastEvidence } : null
+              };
+              render(last);
+            }
+          },
+          progress: (value) => {
             status.textContent = value.phase === "route" ? `3/3 \xB7 \u7EC4\u5408\u6574\u4F53\u8DEF\u7EBF \xB7 \u5DF2\u9009 ${value.completed}/${value.total} \u4E2A\u76EE\u6807 \xB7 \u6BD4\u5BF9 ${value.comparisons} \u6B21` : `3/3 \xB7 \u5168\u76EE\u5F55\u5206\u6790 ${value.completed ?? 0}/${value.total ?? targets.length} \xB7 ${value.name ?? ""} ${value.grade ?? ""} \xB7 \u5DF2\u68C0\u67E5 ${value.gradesChecked ?? 0} \u6863`;
             progress.max = value.total || targets.length || 1;
             progress.value = value.completed ?? 0;
-          } }
-        );
+          }
+        });
         if (!result || !valid3()) {
           failureReason = !pricesUsable(targets) ? "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" : "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED";
           status.textContent = !pricesUsable(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
@@ -18932,7 +19468,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         timings.planningMs = Math.round(performance.now() - planStarted);
         last = {
-          ...result,
+          ...chooseGalleryPortfolio(result, selectedProfile),
           generatedAt: Date.now(),
           timings,
           priceBasis,
@@ -18947,8 +19483,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         generate.textContent = result.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848";
       } catch (error2) {
         failureReason = failureCode(error2);
-        if (mismatchReason) {
+        if (["ACCOUNT", "CATALOG", "PAGE"].includes(mismatchReason)) {
           demand.clear();
+          work.clear();
           last = null;
           previewBox.replaceChildren();
           previewBox.hidden = true;
@@ -18989,6 +19526,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           acceptedCount: completed ? last.route.length : 0,
           quotedCount: completed && last.demandDriven ? last.deepCoverage.quoted : void 0,
           candidateLimit: completed && last.demandDriven ? last.deepCoverage.candidateLimit : void 0,
+          referenceInspectedCount: completed ? last.referenceOverview?.coverage.inspected ?? last.coverage.inspected : void 0,
+          referenceCompletedCount: completed ? last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected : void 0,
+          referencePendingCount: completed ? targetCount - (last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected) : void 0,
           reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : completed && last.coverage.stopped ? stopRequested ? "FC27_GALLERY_ROADMAP_STOPPED" : "FC27_GALLERY_ROADMAP_TIME_LIMIT" : void 0),
           localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : void 0
         });
@@ -19000,18 +19540,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         exportButton.disabled = false;
         stop6.hidden = true;
         progress.hidden = true;
+        rebuild.disabled = false;
+        rebuild.hidden = !last;
         for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
         updateForecastNote();
-        if (!completed || !last.coverage.stopped) work.clear();
         onBusyChange(false);
       }
+    };
+    generate.addEventListener("click", start);
+    rebuild.addEventListener("click", (event) => {
+      if (!event.isTrusted || busy) return;
+      invalidate();
+      void start(event);
     });
     exportButton.addEventListener("click", (event) => {
       if (!event.isTrusted || busy) return;
       try {
         updateForecastNote();
         const state = read(), current2 = binding && same28(binding) && pricesUsable(planInputs);
-        const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current2 && planInputs ? planInputs : state.targets, plan: current2 ? last : null });
+        const payload = buildGalleryAnalysisSnapshot({
+          ...state,
+          targets: current2 && planInputs ? planInputs : state.targets,
+          plan: current2 && last ? { ...last, executionSteps: [...visited.values()] } : null
+        });
         const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
         download(document.defaultView, document, JSON.stringify(payload, null, 2), filename);
         status.textContent = `\u5DF2\u5BFC\u51FA ${payload.coverage.loaded}/${payload.coverage.total} \u4E2A\u5408\u96C6\u5FEB\u7167\uFF1B\u672A\u52A0\u8F7D\u548C\u672A\u77E5\u9879\u5DF2\u6807\u8BB0\uFF0C\u4E0D\u542B\u8D26\u53F7\u6216\u4EA4\u6613\u65E5\u5FD7\u3002`;
@@ -19291,7 +19842,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!progress) return null;
       if (!roadmapProgressKeys.has(progress)) roadmapProgressKeys.set(
         progress,
-        galleryPlanningStateKey({ status: "observed", progress })
+        galleryRoadmapMaterialKey(progress)
       );
       return roadmapProgressKeys.get(progress);
     };
@@ -29707,7 +30258,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
   var MAX_TRANSACTION_RESULTS = 40;
   var MAX_PERFORMANCE_ENTRIES = 40;
-  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
+  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-reconcile"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
   var NUMBER_FIELDS = Object.freeze([
@@ -29724,6 +30275,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "capturedAt",
     "processingMs",
     "schedulingMs",
+    "referenceInspectedCount",
+    "referenceCompletedCount",
+    "referencePendingCount",
+    "reconciledCount",
     "pendingWriteCount",
     "unconsumedPurchaseCount",
     "contributedCount",
@@ -37877,7 +38432,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.69" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.70" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -38219,8 +38774,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.69"}`,
-    version: "27.0.69",
+    title: `FC Automation Tool ${"27.0.70"}`,
+    version: "27.0.70",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

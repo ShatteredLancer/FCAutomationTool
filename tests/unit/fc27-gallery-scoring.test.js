@@ -17,6 +17,36 @@ const set = { id: 'futgg:30', requiredCards: 2, grades: [
 const summary = (rows, tags = [tag(99,'RARE','COUNT',['999'])], target = set) => summarizeGalleryScore({ set: target,
   catalog: {source:'futgg',tags}, progress: {season:'27',setId:30,complete:true,rows} });
 
+it('reuses completed identical overall score requests without replaying lineup search, without sharing mutable output', () => {
+  const catalog = { source: 'futgg', tags: [tag(99, 'RARE', 'COUNT', ['999'])] };
+  const input = { set: { ...set, requiredCards: 21 }, catalog, progress: { season: '27', setId: 30, complete: true,
+    rows: Array.from({ length: 65 }, (_, i) => card(i + 1, { gradingScore: 100 + i })) } };
+  const scorer = createGalleryScoreSummarizer(catalog, { summaryCacheSize: 64 });
+  const drain = steps => { let next, yields = 0; do { next = steps.next(); if (!next.done) yields++; } while (!next.done); return { value: next.value, yields }; };
+  const first = drain(scorer.steps(input)), again = drain(scorer.steps(structuredClone(input)));
+  expect(first.yields).toBeGreaterThan(100);
+  expect(again.value).toEqual(first.value);
+  expect(again.yields).toBe(0);
+  again.value.lineup[0].name = 'mutated';
+  expect(drain(scorer.steps(input)).value).toEqual(first.value);
+  input.progress.rows[0].firstOwned = true;
+  expect(drain(scorer.steps(input)).yields).toBeGreaterThan(100);
+});
+
+it('keeps full lineups, ties, bonuses and unknown fields identical with the overall-only total evaluator',()=>{
+  const tags=[tag(1,'FIRST_OWNED'),tag(2,'HYPER_COSMETIC_TYPE'),tag(3,'NATION','MAX_COUNT_ALL_SAME',['0']),
+    tag(4,'NATION','COUNT_DIFF',['0']),tag(5,'BASE_DEF_ID','MAX_COUNT_ALL_SAME',['0']),tag(6,'LEVEL','COUNT',['gold']),
+    tag(7,'POSSIBLE_POSITIONS','COUNT_ANY',['ST','CM']),tag(8,'WEAK_FOOT','MIN_COUNT',['3'])];
+  const catalog={source:'futgg',tags};
+  for(let seed=0;seed<20;seed++){
+    const rows=Array.from({length:12},(_,i)=>card(i+1,{playerEaId:1+(i%5),gradingScore:100+(i*17+seed*13)%100,
+      firstOwned:(i+seed)%3===0?null:(i+seed)%2===0,holographic:i%3===0,nationEaId:i%4===0?null:1+i%3,
+      overall:60+i*3,positions:i%2?['ST','CM']:['GK'],weakFoot:1+i%5}));
+    const input={set:{...set,requiredCards:5},catalog,progress:{season:'27',setId:30,complete:true,rows}};
+    expect(createGalleryScoreSummarizer(catalog,{fastTotals:true})(input)).toEqual(createGalleryScoreSummarizer(catalog)(input));
+  }
+});
+
 describe('Gallery scoring from public rules and exact EA base scores', () => {
   it('characterizes the AJ Auxerre EA lineup separately from the public optimized lineup', () => {
     const tags = [

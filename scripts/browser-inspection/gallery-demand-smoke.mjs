@@ -85,7 +85,7 @@ export async function exerciseGalleryDemand(context, directory) {
       }, change);
       await page.waitForFunction(() => !globalThis.document.querySelector('.gallery-roadmap-controls + .row button').disabled);
       assert.equal(await page.locator('.gallery-roadmap-dialog > div[aria-live=polite]').getByRole('button', { name: '进入俱乐部 / 合集', exact: true }).count(), 0);
-      if (change !== 'stop') assert.equal(await page.locator('.gallery-roadmap-preview').getByRole('button', { name: '进入俱乐部 / 合集', includeHidden: true }).count(), 0);
+      if (change === 'scope') assert.equal(await page.locator('.gallery-roadmap-preview').getByRole('button', { name: '进入俱乐部 / 合集', includeHidden: true }).count(), 0);
       await page.evaluate(() => { globalThis.demandKnobs.scope = 'fixture'; globalThis.demandKnobs.material = 'stable'; });
       // Restore a completed analysis before the next independent scenario.
       await page.getByRole('button', { name: change === 'stop' ? '继续分析剩余' : '生成整体方案', exact: true }).click();

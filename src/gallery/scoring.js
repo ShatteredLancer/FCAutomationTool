@@ -138,6 +138,20 @@ export function evaluateGalleryLineup(rows, compiled, options = {}) {
   return { base, bonus, total: base + bonus, tags, lineupIds: rows.map(row => row.eaId) };
 }
 
+// Search needs only the exact low total, not display tags, next-tier objects,
+// matched IDs or repeated input validation for each one-card swap. The final
+// lineup still runs through the full public evaluator above.
+function lineupTotal(rows,compiled){
+  const bonuses=[];
+  for(const tag of compiled.tags){
+    const match=matchTag(rows,tag),pct=tierFor(tag.tiers,match.count)?.pct ?? 0,matched=sum(match.cards);
+    const bonus=compiled.bonusMinusOne && matched>0 && pct>0 ? Math.floor((matched*pct-1)/100) : bonusFor(matched,pct);
+    if(bonus>0)bonuses.push(bonus);
+  }
+  bonuses.sort((a,b)=>b-a);
+  return sum(rows)+bonuses.slice(0,compiled.source==='fodder'?bonuses.length:10).reduce((n,value)=>n+value,0);
+}
+
 // Reference behavior: top-base/tag-tier seeds; top60 plus high-bonus candidates;
 // top six seeds and single-card improvement. The 8000 evaluation budget is
 // checked between complete passes, as in the observed reference implementation.
@@ -183,7 +197,7 @@ function* chooseLineupSteps(rows, required, compiled, memo = null) {
   const score = cards => {
     const identity = cards.map(row => memo ? rowKeys.get(row) : row.eaId).join(',');
     if (totals.has(identity)) return totals.get(identity);
-    const total = evaluateGalleryLineup(cards, compiled).total;
+    const total = memo?.fastTotals ? lineupTotal(cards,compiled) : evaluateGalleryLineup(cards, compiled).total;
     if (totals.size >= 8192) totals.clear();
     totals.set(identity, total);
     return total;
@@ -251,14 +265,24 @@ export function summarizeGalleryScore(input) {
 // One planning call owns this cache. Reuse exact lineup totals across its
 // candidate pools, not just across seeds of a single selection. Keys include
 // every rule attribute and the base score; FO/attribute changes cannot reuse
-// an older value. Only totals are cached, never row objects or display text.
-export function createGalleryScoreSummarizer(catalog) {
+// an older value. The optional overall-plan summary cache keeps at most 64
+// cloned results for exact DTO inputs, only in this in-memory work unit.
+export function createGalleryScoreSummarizer(catalog, { summaryCacheSize = 0, fastTotals = false } = {}) {
   const compiled = compileGalleryScoringRules(catalog);
-  const memo = { compiled, totals: new Map(), signatures: new Map(),
+  const summaries = new Map(), limit = Number.isSafeInteger(summaryCacheSize) ? Math.max(0, Math.min(64, summaryCacheSize)) : 0;
+  const memo = { compiled, totals: new Map(), signatures: new Map(), fastTotals:fastTotals===true,
     fields: [...new Set((compiled.tags ?? []).map(tag => tag.field))] };
   const stepsFor = function* (input) {
+    let key = null;
+    if (limit) try { key = JSON.stringify([input.set, input.progress]); } catch { /* Invalid/non-DTO inputs retain the original validation path. */ }
+    if (key !== null && summaries.has(key)) return structuredClone(summaries.get(key));
     if (memo.signatures.size > 8192) { memo.signatures.clear(); memo.totals.clear(); }
-    return yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+    const value = yield* summarizeGalleryScoreSteps({ ...input, catalog }, memo);
+    if (key !== null) {
+      if (summaries.size >= limit) summaries.delete(summaries.keys().next().value);
+      summaries.set(key, structuredClone(value));
+    }
+    return value;
   };
   const summarize = input => {
     const steps = stepsFor(input);

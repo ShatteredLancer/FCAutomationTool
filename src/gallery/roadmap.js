@@ -9,7 +9,7 @@ import { createGalleryRoadmapWork } from './roadmap-work.js';
 // A deadline keeps the completed rows, explicitly identifying unfinished work.
 export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLimit = null, resaleDiscountBps = 0,
   gradePlanner = planGalleryGradeSteps, previousRows = [], previousSelection = [], fastReferences = false,
-  work = createGalleryRoadmapWork() } = {}) {
+  work = createGalleryRoadmapWork(), rowsOnly = false } = {}) {
   work.bind(targets, capital, gradePlanner, fastReferences);
   const rows = [], key = 'event_token_1';
   const previous = new Map(previousRows.map(row => [row.setId, structuredClone(row)]));
@@ -27,7 +27,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
     if (!progress?.rows || target.stale || target.poolStale || target.status && target.status !== 'observed') {
       row.reason = 'progress-unavailable'; row.analysisComplete = true; continue;
     }
-    const scorer = work.memo(target, 'scorer', () => createGalleryScoreSummarizer(catalog));
+    const scorer = work.memo(target, 'scorer', () => createGalleryScoreSummarizer(catalog, { summaryCacheSize: 64,fastTotals:true }));
     const baseline = yield* work.run(target, 'baseline', () => scorer.steps({ set, progress: { ...progress,
       rows: progress.rows.map(card => isGalleryOwned(card) ? { ...card, collected: true } : card) } }));
     if (!baseline.complete) { row.reason = 'search-time-exhausted'; row.analysisComplete = false; stopped = true; break; }
@@ -39,6 +39,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
     row.collectionUnknown = !!base.collectionUnknown;
     row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
     const grades = set.grades.filter(grade => galleryCumulativeRewardQuantity(set, grade.threshold, key) > row.baselineTokens);
+    if(rowsOnly)grades.sort((a,b)=>({S:5,A:4,B:3,C:2,D:1}[b.name] ?? 0)-({S:5,A:4,B:3,C:2,D:1}[a.name] ?? 0));
     const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter(card =>
       isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
     for (const grade of grades) {
@@ -50,7 +51,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
       if (!reference.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
       const verified = reference.value;
       const local = !fastReferences ? yield* work.run(target, `grade:${grade.name}`,
-        () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1 })) : null;
+        () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1, scoreSummarizer: scorer })) : null;
       if (local && !local.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
       const result = fastReferences ? verified ? { status: 'ready', plans: [verified], searchComplete: false }
         : { status: 'partial', reason: 'deep-analysis-pending', plans: [] }
@@ -79,7 +80,8 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
     if (yield { phase: 'roadmap', completed: index + 1, total: targets.length, setId: set.id,
       name: set.name, gradesChecked }) { stopped = true; break; }
   }
-  const plan = yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
+  const plan = rowsOnly ? { status:'candidates',route:[],selectedOptions:[],selectionStopped:false }
+    : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
   return { ...plan, rows, fastReferences, coverage: { total: targets.length, inspected: rows.length,
     available: rows.filter(row => row.currentScore !== null).length,
     missing: rows.filter(row => row.reason === 'progress-unavailable').length,

@@ -166,7 +166,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
     assert.ok((await dialog.innerText()).includes('110,000'), 'A semantically identical club read must keep the overall route');
     await dialog.locator('input[type=checkbox]').check();
     await page.evaluate(() => { globalThis.roadmapKnobs.holdQuotes = true; globalThis.releaseRoadmapQuotes = null; });
-    await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
+    await dialog.getByRole('button', { name: '重新分析全目录', exact: true }).click();
     await page.waitForFunction(() => typeof globalThis.releaseRoadmapQuotes === 'function');
     const catalogBefore = await page.evaluate(() => globalThis.roadmapCalls.catalogReads);
     const catalogDuring = await page.evaluate(async ttl => {
@@ -191,7 +191,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
     await dialog.locator('input[type=checkbox]').uncheck();
     const quotedBeforeFailure = await page.evaluate(() => globalThis.roadmapCalls.quoteReads);
     await page.evaluate(() => { globalThis.roadmapKnobs.referenceFailed = true; });
-    await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
+    await dialog.getByRole('button', { name: '重新分析全目录', exact: true }).click();
     await dialog.getByText('整体路线已生成；进入具体合集后再确认操作。', { exact: true }).waitFor();
     assert.ok((await dialog.innerText()).includes('Fodder 参考暂不可用'));
     assert.equal(await page.evaluate(() => globalThis.roadmapCalls.quoteReads), quotedBeforeFailure, 'Missing public forecasts must not silently start slow whole-catalog quoting');
@@ -227,7 +227,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
       globalThis.roadmapKnobs.longScoring = true;
       globalThis.roadmapFixtureCatalog.categories[0].sets[0].requiredCards = 21;
       globalThis.roadmapRealNow = globalThis.performance.now.bind(globalThis.performance);
-      let tick = globalThis.roadmapRealNow(); globalThis.performance.now = () => tick += 200;
+      let tick = globalThis.roadmapRealNow(); globalThis.performance.now = () => tick += 20;
       return { sync: globalThis.roadmapCalls.sync, quotes: globalThis.roadmapCalls.quoteReads };
     });
     await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
@@ -257,7 +257,7 @@ export async function exerciseGalleryRoadmap(context, directory) {
     assert.equal(afterNested.quoteReads, beforeNested.quotes, 'Quick continuation must not add independent price requests');
     await dialog.locator('input[type=checkbox]').check();
     await page.evaluate(() => { globalThis.roadmapKnobs.priceTtl = 300000; globalThis.roadmapKnobs.holdSync = true; });
-    await dialog.getByRole('button', { name: '生成整体方案', exact: true }).click();
+    await dialog.getByRole('button', { name: '重新分析全目录', exact: true }).click();
     await dialog.getByRole('button', { name: '停止分析', exact: true }).click();
     await page.evaluate(() => globalThis.releaseRoadmapSync());
     await dialog.getByText('数据读取已停止；未进行买卖。', { exact: true }).waitFor({ timeout: 2000 });

@@ -86,7 +86,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
 }
 
 export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, targetGrade,
-  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000 } = {}) {
+  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null } = {}) {
   if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 100000) {
     return { status: 'unavailable', reason: 'search-options-invalid' };
@@ -99,7 +99,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   if (threshold == null) return { status: 'unavailable', reason: 'target-grade-unknown' };
   const compiled = compileGalleryScoringRules(catalog);
   if (compiled.status !== 'ready') return { status: 'unavailable', reason: compiled.reason };
-  const score = createGalleryScoreSummarizer(catalog), summaries = new Map();
+  const score = scoreSummarizer ?? createGalleryScoreSummarizer(catalog), summaries = new Map();
   let scoringWork = 0, scoreDeadline = false;
   const summaryFor = function* (selected) {
     // Inputs are fixed for this generator. Preserve selected order so the

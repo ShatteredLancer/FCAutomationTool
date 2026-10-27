@@ -23,6 +23,7 @@ import { updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
 import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from '../../gallery/planning-settings.js';
 import { mountGalleryRoadmap } from './fc27-gallery-roadmap.js';
 import { mountGalleryLevel } from './fc27-gallery-level.js';
+import { galleryRoadmapMaterialKey } from '../../gallery/roadmap-session.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -88,7 +89,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const roadmapProgressKey = progress => {
     if (!progress) return null;
     if (!roadmapProgressKeys.has(progress)) roadmapProgressKeys.set(progress,
-      galleryPlanningStateKey({ status: 'observed', progress }));
+      galleryRoadmapMaterialKey(progress));
     return roadmapProgressKeys.get(progress);
   };
   const planningTimeout = async (current, output) => {

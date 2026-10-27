@@ -138,3 +138,30 @@ it('removes only expired independent routes and recalculates totals without losi
   expect(pruned).toMatchObject({ partial: true, quotesExpired: true, addedTokens: 28, funding: { totalPurchase: 500 } });
   expect(pruned.route.map(row => row.setId)).toEqual(['futgg:2']); expect(value.result).toEqual(before);
 });
+
+it('does not make a cheap collection wait for a heavy earlier reference computation before quoting it', async () => {
+  const heavy = target(1, 65); heavy.set.requiredCards = 21;
+  heavy.progress.rows.forEach((row, i) => { row.collected = true; row.gradingScore = 100 + i; });
+  heavy.set.grades.forEach((grade, i) => { grade.threshold = 100000 + i * 1000; });
+  const cheap = target(2, 1); cheap.progress.rows[0].eaId = 1000; cheap.progress.rows[0].playerEaId = 1000;
+  cheap.prices = {1000:1000}; cheap.publicReference.grades.forEach(grade => { grade.ids = [1000]; });
+  let ticks = 0; const load = vi.fn(async ids => quote(ids));
+  await run(createGalleryDemandWork(), [heavy,cheap], { load, clock: () => ++ticks, maxMs: 250, quantumMs: 15, schedule: async () => {} });
+  expect(load.mock.calls.flatMap(([ids]) => ids)).toContain(1000);
+});
+
+it('reconciles acquired collections and preserves other deep quotes and completed grade work',async()=>{
+  const a=target(1,1),b=target(2,1);b.progress.rows[0].eaId=2;b.progress.rows[0].playerEaId=2;
+  b.prices={2:1000};b.publicReference.grades.forEach(grade=>{grade.ids=[2];});
+  const work=createGalleryDemandWork(),load=vi.fn(async ids=>quote(ids)),calls=[];
+  function* gradePlanner({set,progress,targetGrade,prices}){
+    calls.push(set.id);const row=progress.rows.find(row=>row.collected===false && prices[row.eaId]);
+    return row?{status:'ready',plans:[{reached:true,totalPrice:prices[row.eaId],score:100,items:[{eaId:row.eaId,price:prices[row.eaId]}]}]}:{status:'achieved',plans:[]};
+  }
+  await run(work,[a,b],{load,gradePlanner});const initial=calls.filter(id=>id===b.set.id).length,reads=load.mock.calls.length;
+  const next=structuredClone([a,b]);next[0].progress.rows[0].collected=true;next[0].progress.rows[0].inClub=false;
+  const value=await run(work,next,{load,gradePlanner});
+  expect(load).toHaveBeenCalledTimes(reads);expect(calls.filter(id=>id===b.set.id)).toHaveLength(initial);
+  expect(value.preview.freeCheck.map(row=>row.setId)).toContain(a.set.id);
+  expect(value.result.route.map(row=>row.setId)).toEqual([b.set.id]);
+});
