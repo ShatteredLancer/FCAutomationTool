@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
+import roadmapIncident from '../fixtures/gallery-roadmap-empty-export-2026-10-27.json' with {type:'json'};
 
 function harness(options = {}) {
   const store = new Map();
@@ -9,6 +10,18 @@ function harness(options = {}) {
   const log = createFcatDiagnosticLog({ gmGetValue: get, gmSetValue: set, version: '27.0.2', now: () => time, ...options });
   return { log, store, get, set, advance: value => { time += value; } };
 }
+
+it('retains a separately bounded roadmap trail after pricing evicts the shared performance ring',async()=>{
+  const t=harness();
+  await t.log.record({area:'gallery',event:'roadmap-checkpoint',phase:'planning',status:'partial',acceptedCount:52,portfolioCount:3,comparisonPending:true,account:'private-account'});
+  for(const group of roadmapIncident.performanceGroups)for(let i=0;i<group.count;i++)await t.log.record({area:group.area,event:group.event,phase:'complete',count:i});
+  const payload=await t.log.exportPayload();
+  expect(payload.roadmapEntries).toContainEqual(expect.objectContaining({event:'roadmap-checkpoint',acceptedCount:52,portfolioCount:3,comparisonPending:true}));
+  for(let i=0;i<25;i++)await t.log.record({area:'gallery',event:'roadmap-plan',count:i});
+  const restored=createFcatDiagnosticLog({gmGetValue:t.get,gmSetValue:t.set});
+  expect((await restored.exportPayload()).roadmapEntries).toHaveLength(20);
+  expect(JSON.stringify(payload)).not.toContain('private-account');
+});
 
 it('keeps incremental roadmap completion/reuse counts in the bounded performance ring',async()=>{
   const t=harness({maxEntries:1,maxCriticalEntries:1});

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.70
+// @version      27.0.71
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.70", at: Date.now(), status: 'started',
+    state = { version: "27.0.71", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3582,11 +3582,11 @@
   function createFc27PuzzlePartialChemistryBound({ candidates, slots, formation, chemistry } = {}) {
     if (!Array.isArray(candidates) || !Array.isArray(slots) || !Array.isArray(formation?.positions) || formation.positions.length !== 11 || formation.positions.some((position) => !integer6(position, 0, 27)) || slots.some((slot) => !integer6(slot, 0, 10)) || new Set(slots).size !== slots.length || chemistry?.maxChemistryPerPlayer !== 3) return null;
     const parameters = parametersOf(chemistry.parameters);
-    const profiles = profilesOf(chemistry);
+    const profiles2 = profilesOf(chemistry);
     const resolveClub = createFc27ClubResolver(chemistry.links);
-    if (parameters?.size !== 3 || !profiles || !resolveClub || typeof chemistry.profilesEnabled !== "boolean") return null;
+    if (parameters?.size !== 3 || !profiles2 || !resolveClub || typeof chemistry.profilesEnabled !== "boolean") return null;
     if (chemistry.profilesEnabled && [...new Set(candidates.map((item2) => item2?.rarity))].some((rarity) => {
-      const profile = profiles.find((value) => value.applicableRarityIds.includes(rarity)) ?? profiles.find((value) => value.id === 1);
+      const profile = profiles2.find((value) => value.applicableRarityIds.includes(rarity)) ?? profiles2.find((value) => value.id === 1);
       return !ordinaryProfile(profile);
     })) return null;
     const identities = chemistry.identities;
@@ -3694,17 +3694,17 @@
     if (typeof chemistry?.profilesEnabled !== "boolean") return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
     const resolveClub = createFc27ClubResolver(chemistry.links);
     const parameters = parametersOf(chemistry.parameters);
-    const profiles = profilesOf(chemistry);
+    const profiles2 = profilesOf(chemistry);
     const identities = chemistry.identities;
     const identityKeys = ["legendClubId", "legendLeagueId", "heroClubId", "hallOfFutClubId"];
     if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key2) => positive4(identities?.[key2])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer6(value, 0, 1e4))) return fail8("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
-    if (!profiles) return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
+    if (!profiles2) return fail8("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
     const players = squad.filter((item2) => item2 !== null);
     for (const item2 of players) {
       if (!item2 || item2.type !== "player" || !integer6(item2.rating, 1, 99) || !positive4(item2.nationId) || !positive4(item2.teamId) || !positive4(item2.leagueId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.length > 28 || Array.from(item2.positions).some((value) => !integer6(value, 0, 27)) || ![0, 1].includes(item2.rarity) || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false) return fail8("FC27_PUZZLE_POSITION_OR_ITEM_FACTS_UNAVAILABLE");
       if ([identities.legendClubId, identities.heroClubId, identities.hallOfFutClubId].includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return fail8("FC27_PUZZLE_SPECIAL_CHEMISTRY_UNSUPPORTED");
       if (chemistry.profilesEnabled) {
-        const profile = profiles.find((value) => value.applicableRarityIds.includes(item2.rarity)) ?? profiles.find((value) => value.id === 1);
+        const profile = profiles2.find((value) => value.applicableRarityIds.includes(item2.rarity)) ?? profiles2.find((value) => value.id === 1);
         if (!ordinaryProfile(profile)) return fail8("FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED");
       }
     }
@@ -4568,7 +4568,7 @@
         contribution: ownData(rule, "contribution")
       }));
       if (!Array.isArray(parameters) || parameters.length !== 3 || parameters.some((parameter) => !Array.isArray(parameter.thresholds)) || !base || ownData(base, "maxChem") !== false || ownData(base, "baseOverride") !== false || !Array.isArray(rules) || rules.length !== 3 || rules.some((rule) => rule.calculationType !== 1 || rule.contribution !== 1 || ![1, 2, 3].includes(rule.parameterId)) || new Set(rules.map((rule) => rule.parameterId)).size !== 3) return null;
-      const profiles = rawProfiles?.map((profile) => ({
+      const profiles2 = rawProfiles?.map((profile) => ({
         id: ownData(profile, "id"),
         maxChem: ownData(profile, "maxChem"),
         applicableRarityIds: values5(ownData(profile, "applicableRarityIds"), 10001),
@@ -4578,7 +4578,7 @@
           contribution: ownData(rule, "contribution")
         }))
       }));
-      if (profilesEnabled && (!Array.isArray(profiles) || profiles.some((profile) => !Array.isArray(profile.applicableRarityIds) || !Array.isArray(profile.rules)))) return null;
+      if (profilesEnabled && (!Array.isArray(profiles2) || profiles2.some((profile) => !Array.isArray(profile.applicableRarityIds) || !Array.isArray(profile.rules)))) return null;
       return Object.freeze({
         parameters: Object.freeze(parameters.map((parameter) => Object.freeze({
           ...parameter,
@@ -4587,7 +4587,7 @@
         links: clubLinks,
         maxChemistryPerPlayer: 3,
         profilesEnabled,
-        profiles: profilesEnabled ? Object.freeze({ complete: true, entries: Object.freeze(profiles.map((profile) => Object.freeze(profile))) }) : null,
+        profiles: profilesEnabled ? Object.freeze({ complete: true, entries: Object.freeze(profiles2.map((profile) => Object.freeze(profile))) }) : null,
         identities: Object.freeze(identities),
         superChemRarityIds: Object.freeze(superChemRarityIds),
         rating: Object.freeze({ floatCalculationEnabled })
@@ -17357,6 +17357,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     version = null,
     galleryLevel: galleryLevel2 = null,
     catalogFetchedAt = null,
+    planningState = null,
     now = Date.now()
   } = {}) {
     if (!catalog?.categories || !Array.isArray(targets)) throw Error("FC27_GALLERY_EXPORT_INPUT_INVALID");
@@ -17454,10 +17455,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       },
       collections,
       versions: [...versions.values()],
+      planningState: {
+        status: ["current", "retained", "unavailable", "expired"].includes(planningState?.status) ? planningState.status : plan ? "current" : "unavailable",
+        usable: planningState?.usable === true || !planningState && !!plan,
+        .../^FC27_[A-Z0-9_]{1,120}$/.test(planningState?.reason ?? "") ? { reason: planningState.reason } : !plan ? { reason: "FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT" } : {}
+      },
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired", "selectedProfile", "retainedChanges"]),
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired", "selectedProfile", "retainedChanges", "comparisonPending"]),
         portfolios: (plan.portfolios ?? []).slice(0, 3).map((value) => ({
-          ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete"]),
+          ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete", "comparisonPending"]),
           funding: pick4(value.funding, ["requiredCapital", "totalPurchase", "expectedNetLoss", "feasible", "saleBasis"]),
           route: value.route.map((row) => ({ ...pick4(row, ["setId", "targetGrade", "addedTokens"]), purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId) }))
         })),
@@ -17790,12 +17796,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     lossLimit = null,
     resaleDiscountBps = 0,
     previousSelection = [],
-    profile = null
+    profile = null,
+    resumeOnly = false
   } = {}) {
     if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
       return { status: "unavailable", reason: "input-invalid", route: [] };
     }
-    const selected = /* @__PURE__ */ new Map(), unavailable = [], skipped = /* @__PURE__ */ new Map();
+    const selected = /* @__PURE__ */ new Map(), skipped = /* @__PURE__ */ new Map();
     const priority = (option) => profile ? { S: 5, A: 4, B: 3, C: 2, D: 1 }[option.grade] ?? 0 : 0;
     const facts2 = /* @__PURE__ */ new WeakMap();
     const info = (option) => {
@@ -17819,7 +17826,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         steps: entries2.map(([setId, entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items }))
       });
     };
-    const singles = rows.flatMap((row) => {
+    const singles = resumeOnly ? [] : rows.flatMap((row) => {
       const options = profile ? [...new Map((row.options ?? []).map((option) => [JSON.stringify([
         option.grade,
         option.projectedTokens,
@@ -17857,7 +17864,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const saved of previousSelection) {
       const row = rows.find((row2) => row2.setId === saved.setId);
       const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
-      if (option) selected.set(row.setId, { row, option });
+      if (option && option.projectedTokens > row.baselineTokens) selected.set(row.setId, { row, option });
     }
     if (selected.size) {
       funding = forecast(selected);
@@ -17867,7 +17874,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       gain = [...selected.values()].reduce((sum2, entry) => sum2 + entry.option.projectedTokens - entry.row.baselineTokens, 0);
     }
     let selectionStopped = false, comparisons = 0;
-    for (; ; ) {
+    const snapshot = () => selectionSnapshot({
+      rows,
+      selected: representative?.selected ?? selected,
+      funding: representative?.funding ?? funding,
+      gain: representative?.gain ?? gain,
+      profile,
+      selectionStopped,
+      comparisons,
+      skipped
+    });
+    for (; !resumeOnly; ) {
       let best = null;
       const choices = [...singles.map((entry) => [entry]), ...profile && pairChecks < 128 ? paired.slice(0, 128 - pairChecks) : []];
       search: for (const additions of choices) {
@@ -17918,6 +17935,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       gain += best.added;
       if (profile && (!representative || (profile === "tokens" ? gain > representative.gain : profile === "capital" ? funding.requiredCapital < representative.funding.requiredCapital : funding.expectedNetLoss < representative.funding.expectedNetLoss) || (profile === "capital" ? funding.requiredCapital === representative.funding.requiredCapital : profile === "tokens" ? gain === representative.gain : funding.expectedNetLoss === representative.funding.expectedNetLoss) && gain > representative.gain))
         representative = { selected: new Map(selected), funding, gain };
+      if (profile && !selectionStopped && (yield { phase: "route", completed: selected.size, total: rows.length, comparisons, portfolio: snapshot() })) selectionStopped = true;
       if (selectionStopped) break;
     }
     if (representative) {
@@ -17926,6 +17944,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       funding = representative.funding;
       gain = representative.gain;
     }
+    return snapshot();
+  }
+  function selectionSnapshot({ rows, selected, funding, gain, profile, selectionStopped, comparisons, skipped }) {
     const route = funding.steps.map((step, index) => {
       const { row, option } = selected.get(step.setId);
       return {
@@ -17947,7 +17968,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         referenceVerified: option.referenceVerified === true
       };
     });
-    for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
+    const unavailable = rows.filter((row) => !(row.options?.length > 0) && row.reason).map((row) => ({ setId: row.setId, name: row.name, reason: row.reason }));
     return {
       status: route.length ? "ready" : "no-route",
       objective: profile ? `grade-first-${profile}` : "low-forecast-loss-per-added-token",
@@ -18243,14 +18264,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/roadmap-portfolios.js
+  var profiles = [["tokens", "\u591A\u62FF token"], ["loss", "\u7701\u635F\u8017"], ["capital", "\u5C11\u5360\u672C\u91D1"]];
   function* planGalleryPortfoliosSteps(input) {
     const portfolios = [];
     let stopped = false;
-    for (const [profile, label] of [["tokens", "\u591A\u62FF token"], ["loss", "\u7701\u635F\u8017"], ["capital", "\u5C11\u5360\u672C\u91D1"]]) {
-      const value = yield* selectGalleryRoadmapSteps({ ...input, previousSelection: [], profile });
+    for (const [profile, label] of profiles) {
+      const iterator = selectGalleryRoadmapSteps({ ...input, previousSelection: [], profile });
+      let next, signal;
+      try {
+        for (; ; ) {
+          next = iterator.next(signal);
+          if (next.done) break;
+          signal = yield { ...next.value, ...next.value?.portfolio ? { portfolio: { ...next.value.portfolio, profile, label } } : {} };
+        }
+      } finally {
+        iterator.return();
+      }
+      const value = next.value;
       portfolios.push({ ...value, profile, label });
       stopped ||= value.selectionStopped;
       if (stopped) break;
+      if (yield { phase: "route", completed: value.route.length, total: input.rows.length, portfolio: { ...value, profile, label } }) {
+        stopped = true;
+        break;
+      }
     }
     const selected = portfolios.find((value) => value.profile === (input.selectedProfile ?? "tokens")) ?? portfolios[0];
     return { ...selected, portfolios, selectionStopped: stopped, selectedProfile: selected.profile };
@@ -18260,31 +18297,59 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return selected ? { ...result, ...selected, selectedProfile: profile } : result;
   }
   function createGalleryPortfolioWork() {
-    let key2 = null, steps = null, value = null;
+    let key2 = null, optionsKey = null, steps = null, value = null;
+    const shown = /* @__PURE__ */ new Map();
     const clear = () => {
       steps?.return();
       steps = null;
       key2 = null;
+      optionsKey = null;
       value = null;
+      shown.clear();
+    };
+    const projectOne = (input, source) => {
+      const iterator = selectGalleryRoadmapSteps({ ...input, profile: source.profile, resumeOnly: true, previousSelection: source.selectedOptions });
+      return { ...iterator.next().value, profile: source.profile, label: source.label, comparisons: source.comparisons ?? 0 };
+    };
+    const accept = (input, candidate) => {
+      const next = projectOne(input, candidate), before = shown.has(candidate.profile) ? projectOne(input, shown.get(candidate.profile)) : null;
+      const priority = (value2) => Math.max(0, ...value2.route.map((row) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 })[row.targetGrade] ?? 0));
+      const metric = (value2) => candidate.profile === "tokens" ? -value2.addedTokens : candidate.profile === "loss" ? value2.funding?.expectedNetLoss : value2.funding?.requiredCapital;
+      const better = !before?.route.length || next.route.length > 0 && (priority(next) > priority(before) || priority(next) === priority(before) && (metric(next) < metric(before) || metric(next) === metric(before) && next.addedTokens >= before.addedTokens));
+      shown.set(candidate.profile, better ? next : before);
+    };
+    const project3 = (input, pending2) => {
+      let portfolios = profiles.filter(([profile]) => shown.has(profile)).map(([profile]) => projectOne(input, shown.get(profile)));
+      const baseline = portfolios.find((value2) => value2.route.length > 0);
+      if (pending2 && baseline) portfolios = profiles.map(([profile, label]) => {
+        const existing = portfolios.find((value2) => value2.profile === profile);
+        return existing?.route.length ? existing : { ...baseline, profile, label, objective: `grade-first-${profile}`, comparisonPending: true };
+      });
+      const fallback = selectGalleryRoadmapSteps({ ...input, rows: [], resumeOnly: true }).next().value;
+      const selected = portfolios.find((value2) => value2.profile === (input.selectedProfile ?? "tokens")) ?? portfolios[0] ?? fallback;
+      return { ...selected, portfolios, selectedProfile: selected.profile ?? "tokens", selectionStopped: pending2, comparisonPending: pending2 };
     };
     return { clear, *run(input) {
-      const nextKey = JSON.stringify(input);
-      if (key2 !== nextKey) {
-        clear();
+      const nextKey = JSON.stringify(input), nextOptions = JSON.stringify({ ...input, rows: void 0 });
+      if (optionsKey !== null && optionsKey !== nextOptions) clear();
+      optionsKey = nextOptions;
+      if (!steps && key2 !== nextKey) {
         key2 = nextKey;
-        steps = planGalleryPortfoliosSteps(input);
+        steps = planGalleryPortfoliosSteps(structuredClone(input));
       }
-      if (!steps) return { complete: true, result: structuredClone(value) };
+      if (!steps) return { complete: true, result: project3(input, false) };
       for (; ; ) {
         const next = steps.next();
         if (next.done) {
-          value = next.value;
+          for (const portfolio of next.value.portfolios) accept(input, portfolio);
           steps = null;
-          return { complete: true, result: structuredClone(value) };
+          const complete = key2 === nextKey;
+          value = project3(input, !complete);
+          return { complete, result: structuredClone(value) };
         }
+        if (next.value?.portfolio) accept(input, next.value.portfolio);
         if (yield next.value) {
-          const empty2 = selectGalleryRoadmapSteps({ ...input, rows: [], previousSelection: [] }).next().value;
-          return { complete: false, result: { ...empty2, portfolios: [], selectedProfile: "tokens", selectionStopped: true } };
+          return { complete: false, result: project3(input, true) };
         }
       }
     } };
@@ -18446,15 +18511,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         bind(targets, options);
         const start = clock(), remaining = () => Math.max(0, maxMs - (clock() - start));
         let result, published = -Infinity, turns = 0;
-        const snapshot = () => runGalleryPlan(snapshotSteps(options), { current: current2, checkpoint, maxMs: remaining(), progress, now: clock, ...schedule ? { schedule } : {} });
-        while (pending2().length && (remaining() > 0 || turns === 0) && !stopped()) {
-          const entry = await advance({ options, maxMs: Math.max(1, remaining()), current: current2, checkpoint, stopped, progress, clock, schedule, quantumMs });
+        const snapshot = () => runGalleryPlan(snapshotSteps(options), { current: current2, checkpoint, maxMs: Math.min(Math.max(1, remaining()), quantumMs), progress, now: clock, ...schedule ? { schedule } : {} });
+        while ((pending2().length || !result || result.comparisonPending) && (remaining() > 0 || turns === 0) && !stopped()) {
+          const entry = pending2().length ? await advance({ options, maxMs: Math.max(1, remaining()), current: current2, checkpoint, stopped, progress, clock, schedule, quantumMs }) : null;
           turns++;
-          if (!entry) break;
-          if (!result || clock() - published >= 250) {
+          if (!entry && pending2().length) break;
+          if (!pending2().length || !result || clock() - published >= 250) {
+            const first = !result;
             result = await snapshot();
-            if (result) onResult(result);
-            published = clock();
+            if (result && (first || clock() - published >= 250 || !result.comparisonPending)) {
+              onResult(result);
+              published = clock();
+            }
           }
         }
         result = await snapshot();
@@ -18722,7 +18790,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         onPhase("planning");
         let published = -Infinity;
         if (!preflight.pending().length) {
-          preview = await run(preflight.snapshotSteps(options));
+          preview = await run(preflight.snapshotSteps(options), quantumMs);
           if (preview) {
             onPreview(preview);
             published = clock();
@@ -18744,7 +18812,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           refreshJobs();
           const job = jobs.filter((job2) => !job2.done && !job2.deferred).sort((a, b) => a.tier - b.tier || a.turns - b.turns || a.rank - b.rank)[0];
           if (advanced && (!preview || job && !preview.rows.some((row) => row.setId === job.target.set.id) || clock() - published >= 250)) {
-            preview = await run(preflight.snapshotSteps(options));
+            preview = await run(preflight.snapshotSteps(options), quantumMs);
             if (preview) {
               onPreview(preview);
               published = clock();
@@ -18856,13 +18924,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }
           if (clock() - published >= 200 || !job.shown.coverage.stopped) {
-            const result2 = await run(resultSteps(options, now(), true));
+            const result2 = await run(resultSteps(options, now(), true), quantumMs);
             if (result2) onResult(result2);
           }
           if (!preflight.pending().length && jobs.every((job2) => job2.done || job2.deferred)) break;
         }
         onPhase("planning");
-        preview = await run(preflight.snapshotSteps(options));
+        preview = await run(preflight.snapshotSteps(options), quantumMs);
         if (preview) onPreview(preview);
         const result = await run(resultSteps(options, now(), preflight.pending().length > 0 || jobs.some((job) => !job.done)));
         return { result, preview };
@@ -19011,6 +19079,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     dialog.addEventListener("close", stopForecastClock);
     let stage = "idle", stopRequested = false;
     let mismatchReason = null;
+    let checkpointAt = -Infinity;
     const mismatch2 = (reason) => {
       mismatchReason ??= reason;
       return false;
@@ -19021,6 +19090,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
       } catch {
       }
+    };
+    const recordCheckpoint = (result) => {
+      if (Date.now() - checkpointAt < 5e3) return;
+      checkpointAt = Date.now();
+      diagnose({
+        event: "roadmap-checkpoint",
+        phase: "planning",
+        status: result.coverage.stopped ? "partial" : "success",
+        acceptedCount: result.route.length,
+        portfolioCount: result.portfolios?.length ?? 0,
+        comparisonPending: !!result.comparisonPending,
+        comparisonCount: result.comparisons,
+        referenceInspectedCount: result.coverage.inspected,
+        referenceCompletedCount: result.coverage.completed,
+        referencePendingCount: result.coverage.total - (result.coverage.completed ?? result.coverage.inspected)
+      });
     };
     const parse = (field) => field.value.trim() === "" ? null : Number(field.value);
     const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
@@ -19076,13 +19161,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       rebuild.hidden = !last;
       result = chooseGalleryPortfolio(result, selectedProfile);
       output2.replaceChildren();
+      if (result.comparisonPending) add(document, output2, "p", "\u5168\u5C40\u8DEF\u7EBF\u4ECD\u5728\u540E\u53F0\u6BD4\u8F83\uFF1B\u5DF2\u6838\u9A8C\u4E14\u4ECD\u6709\u6548\u7684\u65B9\u6848\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u4ECE\u7A7A\u767D\u91CD\u6765\u3002");
       if (result.portfolios?.length) {
         const choices = add(document, output2, "div");
         choices.className = "gallery-roadmap-portfolios";
         add(document, choices, "p", "\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u7684\u8DEF\u7EBF\u5BF9\u6BD4\uFF1A\u9ED8\u8BA4 S \u2192 A \u2192 B\uFF0C\u5148\u6BD4\u8F83\u540C\u6863\u76EE\u6807\u3002\u5171\u4EAB\u7CBE\u786E\u7248\u672C\u53EA\u8BA1\u4E00\u6B21\u91C7\u8D2D\uFF1B\u8D44\u91D1\u6309\u5B9E\u9645\u987A\u5E8F\u4E0E\u9010\u5361\u56DE\u552E\u5047\u8BBE\u8BA1\u7B97\u3002\u672A\u6838\u9A8C\u7684 S \u4E0D\u7B97\u4E0D\u53EF\u505A\uFF0CA/B \u4EC5\u4E3A\u5F53\u524D\u5DF2\u6838\u9A8C\u8303\u56F4\u7684\u5019\u9009\u3002");
         for (const portfolio of result.portfolios) {
           const count2 = (grade) => portfolio.route.filter((row) => row.targetGrade === grade).length;
-          const pick5 = add(document, choices, "button", `${portfolio.label} \xB7 S ${count2("S")}/A ${count2("A")}/B ${count2("B")} \xB7 +${portfolio.addedTokens} token \xB7 \u672C\u91D1 ${money(portfolio.funding?.requiredCapital)} \xB7 \u635F\u8017 ${money(portfolio.funding?.expectedNetLoss)}`);
+          const pick5 = add(document, choices, "button", `${portfolio.label}${portfolio.comparisonPending ? "\uFF08\u57FA\u7EBF\u5F85\u4F18\u5316\uFF09" : ""} \xB7 S ${count2("S")}/A ${count2("A")}/B ${count2("B")} \xB7 +${portfolio.addedTokens} token \xB7 \u672C\u91D1 ${money(portfolio.funding?.requiredCapital)} \xB7 \u635F\u8017 ${money(portfolio.funding?.expectedNetLoss)}`);
           pick5.type = "button";
           pick5.dataset.profile = portfolio.profile;
           pick5.setAttribute("aria-pressed", String(result.selectedProfile === portfolio.profile));
@@ -19268,6 +19354,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       busy = true;
       stopRequested = false;
       mismatchReason = null;
+      checkpointAt = -Infinity;
       generate.disabled = true;
       exportButton.disabled = true;
       stop6.hidden = false;
@@ -19399,6 +19486,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                     priceBasis,
                     forecastReference: forecastEvidence ? { ...forecastEvidence } : null
                   };
+                  recordCheckpoint(last);
                   previewBox.open = !result2.route.length;
                   render(last);
                 }
@@ -19452,6 +19540,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 priceBasis,
                 forecastReference: forecastEvidence ? { ...forecastEvidence } : null
               };
+              recordCheckpoint(last);
               render(last);
             }
           },
@@ -19557,11 +19646,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!event.isTrusted || busy) return;
       try {
         updateForecastNote();
+        reconcileSaved();
         const state = read(), current2 = binding && same28(binding) && pricesUsable(planInputs);
         const payload = buildGalleryAnalysisSnapshot({
           ...state,
           targets: current2 && planInputs ? planInputs : state.targets,
-          plan: current2 && last ? { ...last, executionSteps: [...visited.values()] } : null
+          plan: current2 && last ? { ...last, executionSteps: [...visited.values()] } : null,
+          planningState: {
+            status: current2 && last ? last.retainedChanges ? "retained" : "current" : "unavailable",
+            usable: !!(current2 && last),
+            reason: current2 && last ? last.retainedChanges ? "FC27_GALLERY_ROADMAP_LOCAL_UPDATE_PENDING" : void 0 : mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : "FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT"
+          }
         });
         const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
         download(document.defaultView, document, JSON.stringify(payload, null, 2), filename);
@@ -30258,7 +30353,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var DEFAULT_MAX_CRITICAL_ENTRIES = 120;
   var MAX_TRANSACTION_RESULTS = 40;
   var MAX_PERFORMANCE_ENTRIES = 40;
-  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-reconcile"].includes(entry.event) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
+  var MAX_ROADMAP_ENTRIES = 20;
+  var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile"].includes(entry.event);
+  var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || roadmapEntry(entry) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
   var NUMBER_FIELDS = Object.freeze([
@@ -30279,6 +30376,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "referenceCompletedCount",
     "referencePendingCount",
     "reconciledCount",
+    "portfolioCount",
+    "comparisonCount",
     "pendingWriteCount",
     "unconsumedPurchaseCount",
     "contributedCount",
@@ -30378,7 +30477,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "beamWidth",
     "maxEvaluations"
   ]);
-  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion", "purchasesSettled", "forecastSnapshot", "forecastExpired"]);
+  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion", "purchasesSettled", "forecastSnapshot", "forecastExpired", "comparisonPending"]);
   var boundedString = (value, max = MAX_STRING_LENGTH) => {
     if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
     return value.slice(0, max);
@@ -30448,6 +30547,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let criticalEntries = [];
     let transactionResults = [];
     let performanceEntries = [];
+    let roadmapEntries = [];
     let planning = [];
     let loaded = false;
     let loading = null;
@@ -30461,6 +30561,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           criticalEntries = (Array.isArray(saved.criticalEntries) ? saved.criticalEntries : []).slice(-maxCriticalEntries).map(validSavedEntry).filter(Boolean);
           transactionResults = (Array.isArray(saved.transactionResults) ? saved.transactionResults : []).slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
           performanceEntries = (Array.isArray(saved.performanceEntries) ? saved.performanceEntries : []).slice(-MAX_PERFORMANCE_ENTRIES).map(validSavedEntry).filter(performanceEntry);
+          roadmapEntries = (Array.isArray(saved.roadmapEntries) ? saved.roadmapEntries : performanceEntries).filter(roadmapEntry).slice(-MAX_ROADMAP_ENTRIES).map(validSavedEntry).filter(Boolean);
           planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map((row) => {
             const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
             return event && replay ? { event, replay } : null;
@@ -30482,6 +30583,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
         transactionResults: transactionResults.map((entry) => ({ ...entry })),
         performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
+        roadmapEntries: roadmapEntries.map((entry) => ({ ...entry })),
         planning: structuredClone(planning)
       };
       return Promise.resolve().then(() => gmSetValue(key2, payload)).catch(() => void 0);
@@ -30505,6 +30607,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
         if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
+        if (roadmapEntry(entry)) roadmapEntries = [...roadmapEntries, entry].slice(-MAX_ROADMAP_ENTRIES);
         if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
         await persist();
       }).catch(() => void 0);
@@ -30528,7 +30631,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
         transactionResults: transactionResults.map((entry) => ({ ...entry })),
         planning: structuredClone(planning),
-        performanceEntries: performanceEntries.map((entry) => ({ ...entry }))
+        performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
+        roadmapEntries: roadmapEntries.map((entry) => ({ ...entry }))
       };
     };
     return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key: key2 });
@@ -38432,7 +38536,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.70" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.71" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -38774,8 +38878,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.70"}`,
-    version: "27.0.70",
+    title: `FC Automation Tool ${"27.0.71"}`,
+    version: "27.0.71",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

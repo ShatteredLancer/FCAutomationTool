@@ -7,7 +7,7 @@ const accountFacts = ['collected', 'inClub', 'held', 'firstOwned', 'gradingScore
 // Explicit allowlist: never serialize a detail, native card, context or journal.
 // One public version dictionary avoids repeating cards across club/league sets.
 export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = null, version = null, galleryLevel = null,
-  catalogFetchedAt = null, now = Date.now() } = {}) {
+  catalogFetchedAt = null, planningState = null, now = Date.now() } = {}) {
   if (!catalog?.categories || !Array.isArray(targets)) throw Error('FC27_GALLERY_EXPORT_INPUT_INVALID');
   const versions = new Map(), bySet = new Map(targets.map(target => [target.set.id, target]));
   const collections = catalog.categories.flatMap(category => category.sets.map(set => {
@@ -61,8 +61,11 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
     coverage: { total: collections.length, loaded: collections.filter(set => set.status === 'observed').length,
       complete: collections.filter(set => set.progressComplete && !set.stale).length },
     collections, versions: [...versions.values()],
-    roadmap: plan ? { ...pick(plan, ['status', 'partial', 'coverage', 'baselineTokens', 'addedTokens', 'claimState', 'tokenBasis', 'generatedAt', 'fastReferences', 'priceBasis', 'demandDriven', 'quotesExpired','selectedProfile','retainedChanges']),
-      portfolios:(plan.portfolios ?? []).slice(0,3).map(value=>({...pick(value,['profile','label','status','objective','addedTokens','claimState','searchComplete']),
+    planningState:{status:['current','retained','unavailable','expired'].includes(planningState?.status) ? planningState.status : plan?'current':'unavailable',
+      usable:planningState?.usable===true || !planningState && !!plan,
+      ...(/^FC27_[A-Z0-9_]{1,120}$/.test(planningState?.reason ?? '')?{reason:planningState.reason}:!plan?{reason:'FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT'}:{})},
+    roadmap: plan ? { ...pick(plan, ['status', 'partial', 'coverage', 'baselineTokens', 'addedTokens', 'claimState', 'tokenBasis', 'generatedAt', 'fastReferences', 'priceBasis', 'demandDriven', 'quotesExpired','selectedProfile','retainedChanges','comparisonPending']),
+      portfolios:(plan.portfolios ?? []).slice(0,3).map(value=>({...pick(value,['profile','label','status','objective','addedTokens','claimState','searchComplete','comparisonPending']),
         funding:pick(value.funding,['requiredCapital','totalPurchase','expectedNetLoss','feasible','saleBasis']),
         route:value.route.map(row=>({...pick(row,['setId','targetGrade','addedTokens']),purchaseVersionIds:row.cycles.map(cycle=>cycle.eaId)}))})),
       executionSteps:(plan.executionSteps ?? []).map(value=>pick(value,['setId','targetGrade','state'])),

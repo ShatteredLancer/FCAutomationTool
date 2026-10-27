@@ -74,12 +74,15 @@ export function createGalleryRoadmapSession() {
     async run({targets,options,maxMs,current=()=>true,checkpoint=current,stopped=()=>false,progress=()=>{},
       onResult=()=>{},clock=()=>performance.now(),schedule,quantumMs=40}={}){
       bind(targets,options);const start=clock(),remaining=()=>Math.max(0,maxMs-(clock()-start));let result,published=-Infinity,turns=0;
-      const snapshot=()=>runGalleryPlan(snapshotSteps(options),{current,checkpoint,maxMs:remaining(),progress,now:clock,...(schedule?{schedule}:{})});
-      while(pending().length && (remaining()>0 || turns===0) && !stopped()){
-        const entry=await advance({options,maxMs:Math.max(1,remaining()),current,checkpoint,stopped,progress,clock,schedule,quantumMs});
+      const snapshot=()=>runGalleryPlan(snapshotSteps(options),{current,checkpoint,maxMs:Math.min(Math.max(1,remaining()),quantumMs),progress,now:clock,...(schedule?{schedule}:{})});
+      while((pending().length || !result || result.comparisonPending) && (remaining()>0 || turns===0) && !stopped()){
+        const entry=pending().length ? await advance({options,maxMs:Math.max(1,remaining()),current,checkpoint,stopped,progress,clock,schedule,quantumMs}) : null;
         turns++;
-        if(!entry)break;
-        if(!result || clock()-published>=250){result=await snapshot();if(result)onResult(result);published=clock();}
+        if(!entry && pending().length)break;
+        if(!pending().length || !result || clock()-published>=250){
+          const first=!result;result=await snapshot();
+          if(result && (first || clock()-published>=250 || !result.comparisonPending)){onResult(result);published=clock();}
+        }
       }
       result=await snapshot();if(result)onResult(result);return result;
     }};

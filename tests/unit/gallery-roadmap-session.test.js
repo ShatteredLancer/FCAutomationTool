@@ -5,6 +5,56 @@ import {reconcileGalleryRoadmapInputs,retainGalleryRoadmap} from '../../src/gall
 const finish=steps=>{let next;do{next=steps.next();}while(!next.done);return next.value;};
 const option=(grade,tokens,items)=>({grade,requestedGrade:grade,projectedTokens:tokens,score:100,items:items.map(([eaId,price])=>({eaId,price}))});
 const row=(id,options)=>({setId:id,name:id,baselineTokens:0,options});
+const pause=steps=>{let next=steps.next();if(!next.done)next=steps.next(true);while(!next.done)next=steps.next(true);return next.value;};
+
+it('keeps verified portfolio routes when an expanded global comparison pauses',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])]),row('b',[option('S',28,[[2,1000]])])],capital:2000};
+  expect(finish(work.run(input)).result.route).toHaveLength(2);
+  const next=pause(work.run({...input,rows:[...input.rows,row('c',[option('S',28,[[3,1000]])])]}));
+  expect(next.complete).toBe(false);expect(next.result.route.length).toBeGreaterThan(0);
+  expect(next.result.portfolios).toHaveLength(3);
+});
+
+it('removes changed options but retains unrelated portfolios at a comparison deadline',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])]),row('b',[option('S',28,[[2,1000]])])],capital:2000};
+  finish(work.run(input));
+  const next=pause(work.run({...input,rows:[row('a',[]),input.rows[1],row('c',[option('S',28,[[3,1000]])])]}));
+  expect(next.result.route.map(value=>value.setId)).toEqual(['b']);
+  expect(next.result.funding.totalPurchase).toBe(1000);
+});
+
+it('publishes a newly accepted partial route before the first full portfolio comparison finishes',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])]),row('b',[option('S',28,[[2,1000]])])],capital:2000};
+  const steps=work.run(input);let next=steps.next();
+  while(!next.done && !(next.value?.completed>0))next=steps.next();
+  expect(next.done).toBe(false);next=steps.next(true);while(!next.done)next=steps.next(true);
+  expect(next.value.result.route.length).toBeGreaterThan(0);
+  expect(next.value.result.portfolios).toHaveLength(3);
+  expect(next.value.result.portfolios.every(value=>value.route.length>0)).toBe(true);
+});
+
+it('does not replace a stronger retained route with the first weaker checkpoint of a new generation',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])]),row('b',[option('S',28,[[2,1000]])])],capital:2000};
+  finish(work.run(input));const steps=work.run({...input,rows:[...input.rows,row('c',[option('S',28,[[3,1000]])])]});
+  let next=steps.next();while(!next.done && next.value?.portfolio?.route.length!==1)next=steps.next();
+  expect(next.done).toBe(false);next=steps.next(true);while(!next.done)next=steps.next(true);
+  expect(next.value.result.addedTokens).toBeGreaterThanOrEqual(56);
+});
+
+it('coalesces changed candidate pools while continuing an already running comparison cursor',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])]),row('b',[option('S',28,[[2,1000]])])],capital:3000};
+  const a=work.run(input),first=a.next();expect(first.value.comparisons).toBe(1);a.next(true);
+  const expanded={...input,rows:[...input.rows,row('c',[option('S',28,[[3,1000]])])]},b=work.run(expanded),next=b.next();
+  expect(next.value.comparisons).toBeGreaterThan(first.value.comparisons);b.next(true);
+  let result,turns=0;do{result=pause(work.run(expanded));}while(!result.complete && ++turns<100);
+  expect(result.complete).toBe(true);expect(result.result.route).toHaveLength(3);
+});
+
+it('clears comparisons and retained routes on changed budget assumptions',()=>{
+  const work=createGalleryPortfolioWork(),input={rows:[row('a',[option('S',28,[[1,1000]])])],capital:2000};
+  finish(work.run(input));const result=pause(work.run({...input,capital:500}));
+  expect(result.result.route).toEqual([]);expect(finish(work.run({...input,capital:500})).result.route).toEqual([]);
+});
 const target=(id=1)=>({set:{id:`futgg:${id}`,name:`Set ${id}`,requiredCards:1,grades:['D','C','B','A','S'].map((name,i)=>({name,threshold:10*(i+1),rewards:[{type:'event_token_1',count:1,value:[0,0,5,8,15][i]}]}))},
   status:'observed',catalog:{source:'futgg',revision:'r',tags:[{id:1,name:'No-op',bonusType:'ITEM_SCORE_PERCENTAGE',thresholdType:'ITEM_COUNT',rules:[{attribute:'RARE',type:'COUNT',target:'ATTRIBUTE',values:['999']}],tiers:[{minItems:1,bonus:1}]}]},
   progress:{season:'27',setId:id,complete:true,poolComplete:true,rows:[{eaId:id,playerEaId:id,gradingScore:100,collected:false,firstOwned:false,rarityEaId:1}]},prices:{[id]:1000},

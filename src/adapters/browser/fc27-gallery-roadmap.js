@@ -94,8 +94,16 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   dialog.addEventListener('close', stopForecastClock);
   let stage = 'idle', stopRequested = false;
   let mismatchReason = null;
+  let checkpointAt=-Infinity;
   const mismatch = reason => { mismatchReason ??= reason; return false; };
   const diagnose = value => { try { Promise.resolve(onDiagnostic(value)).catch(() => {}); } catch { /* Diagnostics never control planning. */ } };
+  const recordCheckpoint=result=>{
+    if(Date.now()-checkpointAt<5000)return;checkpointAt=Date.now();
+    diagnose({event:'roadmap-checkpoint',phase:'planning',status:result.coverage.stopped?'partial':'success',
+      acceptedCount:result.route.length,portfolioCount:result.portfolios?.length ?? 0,comparisonPending:!!result.comparisonPending,
+      comparisonCount:result.comparisons,referenceInspectedCount:result.coverage.inspected,
+      referenceCompletedCount:result.coverage.completed,referencePendingCount:result.coverage.total-(result.coverage.completed ?? result.coverage.inspected)});
+  };
   const parse = field => field.value.trim() === '' ? null : Number(field.value);
   const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
   const capture = state => ({ scope: state.scope, revision: state.catalog?.revision, source: state.catalog?.source,
@@ -133,12 +141,13 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     rebuild.hidden=!last;
     result=chooseGalleryPortfolio(result,selectedProfile);
     output.replaceChildren();
+    if(result.comparisonPending)add(document,output,'p','全局路线仍在后台比较；已核验且仍有效的方案保留，可继续分析，不从空白重来。');
     if(result.portfolios?.length){
       const choices=add(document,output,'div');choices.className='gallery-roadmap-portfolios';
       add(document,choices,'p','同一全局候选库的路线对比：默认 S → A → B，先比较同档目标。共享精确版本只计一次采购；资金按实际顺序与逐卡回售假设计算。未核验的 S 不算不可做，A/B 仅为当前已核验范围的候选。');
       for(const portfolio of result.portfolios){
         const count=grade=>portfolio.route.filter(row=>row.targetGrade===grade).length;
-        const pick=add(document,choices,'button',`${portfolio.label} · S ${count('S')}/A ${count('A')}/B ${count('B')} · +${portfolio.addedTokens} token · 本金 ${money(portfolio.funding?.requiredCapital)} · 损耗 ${money(portfolio.funding?.expectedNetLoss)}`);
+        const pick=add(document,choices,'button',`${portfolio.label}${portfolio.comparisonPending?'（基线待优化）':''} · S ${count('S')}/A ${count('A')}/B ${count('B')} · +${portfolio.addedTokens} token · 本金 ${money(portfolio.funding?.requiredCapital)} · 损耗 ${money(portfolio.funding?.expectedNetLoss)}`);
         pick.type='button';pick.dataset.profile=portfolio.profile;pick.setAttribute('aria-pressed',String(result.selectedProfile===portfolio.profile));
         pick.addEventListener('click',event=>{if(!event.isTrusted)return;selectedProfile=portfolio.profile;
           let value=result;
@@ -267,7 +276,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     if ([options.capital, options.lossLimit].some(value => value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 1000000000))) {
       status.textContent = '请输入非负整数金币金额。可周转金币不是累计采购上限。'; return;
     }
-    const token = ++epoch; busy = true; stopRequested = false; mismatchReason = null; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
+    const token = ++epoch; busy = true; stopRequested = false; mismatchReason = null; checkpointAt=-Infinity; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
     rebuild.disabled=true;
     let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0, planningLimitMs = null;
     for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
@@ -344,7 +353,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
             onPreview: result => { if (!valid()) return;referenceOverview=result;renderPreview(result);referenceView?.collapse(); },
             onResult: result => { if (valid()) { last={...chooseGalleryPortfolio(result,selectedProfile),referenceOverview,
               generatedAt:Date.now(),timings,priceBasis,forecastReference:forecastEvidence?{...forecastEvidence}:null};
-              previewBox.open = !result.route.length; render(last); } },
+              recordCheckpoint(last);previewBox.open = !result.route.length; render(last); } },
             progress: value => { if (!valid()) return;
               status.textContent = value.phase === 'pricing' ? `按需深度 · ${value.name} · ${value.source ?? ''} 查价 ${value.index ?? 0}/${value.quoteTotal ?? '?'} · 已完成 ${value.completed}/${value.total}`
                 : `按需深度 · 本地核验 ${value.name ?? ''} ${value.grade ?? ''}`;
@@ -369,7 +378,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       stageStarted = planStarted;
       const result = await work.run({targets,options,current,checkpoint:valid,maxMs,stopped:()=>stopRequested,
         onResult:result=>{if(valid()){last={...chooseGalleryPortfolio(result,selectedProfile),generatedAt:Date.now(),timings,priceBasis,
-          forecastReference:forecastEvidence?{...forecastEvidence}:null};render(last);}},progress: value => {
+          forecastReference:forecastEvidence?{...forecastEvidence}:null};recordCheckpoint(last);render(last);}},progress: value => {
           status.textContent = value.phase === 'route' ? `3/3 · 组合整体路线 · 已选 ${value.completed}/${value.total} 个目标 · 比对 ${value.comparisons} 次`
             : `3/3 · 全目录分析 ${value.completed ?? 0}/${value.total ?? targets.length} · ${value.name ?? ''} ${value.grade ?? ''} · 已检查 ${value.gradesChecked ?? 0} 档`;
           progress.max = value.total || targets.length || 1; progress.value = value.completed ?? 0;
@@ -432,9 +441,13 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     if (!event.isTrusted || busy) return;
     try {
       updateForecastNote();
+      reconcileSaved();
       const state = read(), current = binding && same(binding) && pricesUsable(planInputs);
       const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current && planInputs ? planInputs : state.targets,
-        plan: current && last ? {...last,executionSteps:[...visited.values()]} : null });
+        plan: current && last ? {...last,executionSteps:[...visited.values()]} : null,
+        planningState:{status:current && last ? last.retainedChanges?'retained':'current':'unavailable',usable:!!(current && last),
+          reason:current && last ? last.retainedChanges?'FC27_GALLERY_ROADMAP_LOCAL_UPDATE_PENDING':undefined
+            : mismatchReason?`FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED`:'FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT'} });
       const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, '-')}.json`;
       download(document.defaultView, document, JSON.stringify(payload, null, 2), filename);
       status.textContent = `已导出 ${payload.coverage.loaded}/${payload.coverage.total} 个合集快照；未加载和未知项已标记，不含账号或交易日志。`;

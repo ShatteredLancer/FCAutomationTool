@@ -1,0 +1,14 @@
+{
+  "sourceVersion": "27.0.70",
+  "analysisExportedAt": 1793091124053,
+  "analysis": {
+    "coverage": { "total": 196, "loaded": 196, "complete": 196 },
+    "versionCount": 6700,
+    "roadmap": null
+  },
+  "performanceGroups": [
+    { "area": "pricing", "event": "futbin-batch-result", "count": 7 },
+    { "area": "pricing", "event": "quote-batch", "count": 33 }
+  ],
+  "evidence": "Reduced real export shape and retained performance counts only. No private cards, account, prices or exact frozen planning input."
+}

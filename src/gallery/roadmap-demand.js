@@ -124,7 +124,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
       checking();
       onPhase('planning');
       let published=-Infinity;
-      if(!preflight.pending().length){preview=await run(preflight.snapshotSteps(options));if(preview){onPreview(preview);published=clock();}}
+      if(!preflight.pending().length){preview=await run(preflight.snapshotSteps(options),quantumMs);if(preview){onPreview(preview);published=clock();}}
       for(const job of jobs)job.deferred=false;
       for (const [id, quote] of quotes) if (quote.expiresAt <= now()) attempted.delete(id);
       for (const job of jobs) if (job.input && job.ids.some(id => quotes.has(id) && !fresh(id, now()))) {
@@ -139,7 +139,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
         refreshJobs();
         const job = jobs.filter(job => !job.done && !job.deferred).sort((a, b) => a.tier-b.tier || a.turns-b.turns || a.rank-b.rank)[0];
         if(advanced && (!preview || job && !preview.rows.some(row=>row.setId===job.target.set.id) || clock()-published>=250)){
-          preview=await run(preflight.snapshotSteps(options));
+          preview=await run(preflight.snapshotSteps(options),quantumMs);
           if(preview){onPreview(preview);published=clock();}
         }
         if (!job) {if(!preflight.pending().length)break;continue;}
@@ -203,13 +203,13 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
           if (!job.done) { job.tier = Math.min(96, job.tier * 2); job.input = null; job.result = null; job.work.clear(); }
         }
         if(clock()-published>=200 || !job.shown.coverage.stopped){
-          const result = await run(resultSteps(options, now(), true));
+          const result = await run(resultSteps(options, now(), true),quantumMs);
           if (result) onResult(result);
         }
         if(!preflight.pending().length && jobs.every(job=>job.done||job.deferred))break;
       }
       onPhase('planning');
-      preview=await run(preflight.snapshotSteps(options));if(preview)onPreview(preview);
+      preview=await run(preflight.snapshotSteps(options),quantumMs);if(preview)onPreview(preview);
       const result = await run(resultSteps(options, now(), preflight.pending().length>0 || jobs.some(job => !job.done)));
       return { result, preview };
     },

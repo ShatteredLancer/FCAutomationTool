@@ -9,11 +9,11 @@ export function selectGalleryRoadmap(input) {
 }
 
 export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimit = null, resaleDiscountBps = 0,
-  previousSelection = [], profile = null } = {}) {
+  previousSelection = [], profile = null, resumeOnly = false } = {}) {
   if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
     return { status: 'unavailable', reason: 'input-invalid', route: [] };
   }
-  const selected = new Map(), unavailable = [], skipped = new Map();
+  const selected = new Map(), skipped = new Map();
   const priority = option => profile ? ({ S:5, A:4, B:3, C:2, D:1 }[option.grade] ?? 0) : 0;
   const facts=new WeakMap();
   const info=option=>{
@@ -33,7 +33,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
     return forecastGalleryTurnover({ capital, resaleDiscountBps, ...(profile ? { optimizeOrder: false } : {}),
       steps: entries.map(([setId,entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items })) });
   };
-  const singles = rows.flatMap(row => {
+  const singles = resumeOnly ? [] : rows.flatMap(row => {
     const options=profile ? [...new Map((row.options ?? []).map(option=>[JSON.stringify([option.grade,option.projectedTokens,option.score,
       option.items?.map(item=>[item.eaId,item.price]).sort((a,b)=>a[0]-b[0]),option.estimated,option.referenceVerified,option.searchComplete]),option])).values()] : row.options ?? [];
     return options.map(option=>({row,option}));
@@ -61,7 +61,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
   for (const saved of previousSelection) {
     const row = rows.find(row => row.setId === saved.setId);
     const option = row?.options.find(option => JSON.stringify(option) === JSON.stringify(saved.option));
-    if (option) selected.set(row.setId, { row, option });
+    if (option && option.projectedTokens > row.baselineTokens) selected.set(row.setId, { row, option });
   }
   if (selected.size) {
     funding = forecast(selected);
@@ -71,7 +71,9 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
     gain = [...selected.values()].reduce((sum, entry) => sum + entry.option.projectedTokens - entry.row.baselineTokens, 0);
   }
   let selectionStopped = false, comparisons = 0;
-  for (;;) {
+  const snapshot = () => selectionSnapshot({ rows,selected:representative?.selected ?? selected,funding:representative?.funding ?? funding,
+    gain:representative?.gain ?? gain,profile,selectionStopped,comparisons,skipped });
+  for (;!resumeOnly;) {
     let best = null;
     const choices = [...singles.map(entry=>[entry]), ...(profile && pairChecks<128 ? paired.slice(0,128-pairChecks) : [])];
     search: for (const additions of choices) {
@@ -113,9 +115,14 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
       || (profile==='capital' ? funding.requiredCapital===representative.funding.requiredCapital
         : profile==='tokens' ? gain===representative.gain : funding.expectedNetLoss===representative.funding.expectedNetLoss) && gain>representative.gain))
       representative={ selected:new Map(selected),funding,gain };
+    if(profile && !selectionStopped && (yield {phase:'route',completed:selected.size,total:rows.length,comparisons,portfolio:snapshot()})) selectionStopped=true;
     if (selectionStopped) break;
   }
   if(representative){selected.clear();for(const entry of representative.selected)selected.set(...entry);funding=representative.funding;gain=representative.gain;}
+  return snapshot();
+}
+
+function selectionSnapshot({rows,selected,funding,gain,profile,selectionStopped,comparisons,skipped}) {
   const route = funding.steps.map((step, index) => {
     const { row, option } = selected.get(step.setId);
     return { ...step, order: index + 1, name: row.name, categoryId: row.categoryId,
@@ -125,7 +132,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
       claimState: 'unknown', estimated: option.estimated !== false, searchComplete: option.searchComplete === true,
       referenceVerified: option.referenceVerified === true };
   });
-  for (const row of rows) if (!(row.options?.length > 0) && row.reason) unavailable.push({ setId: row.setId, name: row.name, reason: row.reason });
+  const unavailable = rows.filter(row => !(row.options?.length > 0) && row.reason).map(row => ({ setId: row.setId, name: row.name, reason: row.reason }));
   return { status: route.length ? 'ready' : 'no-route', objective: profile ? `grade-first-${profile}` : 'low-forecast-loss-per-added-token',
     claimState: 'unknown', tokenBasis: 'catalog-increase-not-unclaimed-balance',
     baselineTokens: rows.reduce((sum, row) => sum + (row.baselineTokens ?? 0), 0), addedTokens: gain,

@@ -4,14 +4,16 @@ const DEFAULT_MAX_ENTRIES = 300;
 const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
 const MAX_PERFORMANCE_ENTRIES = 40;
+const MAX_ROADMAP_ENTRIES = 20;
+const roadmapEntry = entry => entry?.area === 'gallery' && ['roadmap-plan','roadmap-phase','roadmap-checkpoint','roadmap-reconcile'].includes(entry.event);
 const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', 'futbin-batch-result'].includes(entry.event)
-  || entry?.area === 'gallery' && ['roadmap-plan', 'roadmap-phase','roadmap-reconcile'].includes(entry.event)
+  || roadmapEntry(entry)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
-  'referenceInspectedCount','referenceCompletedCount','referencePendingCount','reconciledCount',
+  'referenceInspectedCount','referenceCompletedCount','referencePendingCount','reconciledCount','portfolioCount','comparisonCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
@@ -25,7 +27,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'co
   'targetScore', 'currentScore', 'cycleCountBefore', 'cycleCountAfter', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'wrongPileCount', 'identityMismatchCount', 'factoryMismatchCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled', 'forecastSnapshot', 'forecastExpired']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled', 'forecastSnapshot', 'forecastExpired','comparisonPending']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
@@ -84,6 +86,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   let criticalEntries = [];
   let transactionResults = [];
   let performanceEntries = [];
+  let roadmapEntries = [];
   let planning = [];
   let loaded = false;
   let loading = null;
@@ -100,6 +103,8 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
           .slice(-MAX_TRANSACTION_RESULTS).map(validSavedEntry).filter(Boolean);
         performanceEntries = (Array.isArray(saved.performanceEntries) ? saved.performanceEntries : [])
           .slice(-MAX_PERFORMANCE_ENTRIES).map(validSavedEntry).filter(performanceEntry);
+        roadmapEntries = (Array.isArray(saved.roadmapEntries) ? saved.roadmapEntries : performanceEntries)
+          .filter(roadmapEntry).slice(-MAX_ROADMAP_ENTRIES).map(validSavedEntry).filter(Boolean);
         planning = (Array.isArray(saved.planning) ? saved.planning : []).slice(-4).map(row => {
           const event = validSavedEntry(row.event), replay = createGalleryPlanReplay(row.replay?.input);
           return event && replay ? { event, replay } : null;
@@ -113,6 +118,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       entries: entries.map(entry => ({ ...entry })), criticalEntries: criticalEntries.map(entry => ({ ...entry })),
       transactionResults: transactionResults.map(entry => ({ ...entry })),
       performanceEntries: performanceEntries.map(entry => ({ ...entry })),
+      roadmapEntries: roadmapEntries.map(entry => ({ ...entry })),
       planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
@@ -140,6 +146,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
         transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
       }
       if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
+      if (roadmapEntry(entry)) roadmapEntries = [...roadmapEntries, entry].slice(-MAX_ROADMAP_ENTRIES);
       if (replay) planning = [...planning, { event: entry, replay }].slice(-4);
       await persist();
     }).catch(() => undefined);
@@ -161,6 +168,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })),
     transactionResults: transactionResults.map(entry => ({ ...entry })), planning: structuredClone(planning),
     performanceEntries: performanceEntries.map(entry => ({ ...entry })),
+    roadmapEntries: roadmapEntries.map(entry => ({ ...entry })),
   }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

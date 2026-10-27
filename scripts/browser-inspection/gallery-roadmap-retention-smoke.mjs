@@ -17,9 +17,11 @@ export async function exerciseGalleryRoadmapRetention(context,directory,entryFil
         progress:{season:'27',setId:i+1,complete:true,poolComplete:true,rows:(i===2?[1,2]:[i+1]).map(eaId=>({eaId,playerEaId:eaId,gradingScore:100,collected:false,firstOwned:false,rarityEaId:1}))}}));
       globalThis.retainCalls={prepare:0,reference:0,quote:0};globalThis.retainEvents=[];globalThis.enableRetainQuotes=false;
       globalThis.updateRetainCollection=()=>{targets[0].progress={...targets[0].progress,rows:targets[0].progress.rows.map(row=>({...row,collected:true,inClub:false}))};targets[0].progressKey='acquired-and-sold';};
+      globalThis.updateRetainSecond=()=>{targets[1].progress={...targets[1].progress,rows:targets[1].progress.rows.map(row=>({...row,collected:true,inClub:false}))};targets[1].progressKey='beta-acquired';};
       globalThis.RetainFixture.mountGalleryRoadmap({document:globalThis.document,parent:globalThis.document.body,button:globalThis.document.querySelector('#open'),
         read:()=>({active:true,scope:'fixture-account',catalog,targets}),prepare:async()=>{globalThis.retainCalls.prepare++;},readTimeout:async()=>30000,
         onDiagnostic:row=>globalThis.retainEvents.push(row),openSet:(...args)=>{globalThis.retainHandoff=args;},
+        download:(_window,_document,text)=>{globalThis.retainExport=JSON.parse(text);},
         loadPrices:async ids=>{globalThis.retainCalls.quote++;if(!globalThis.enableRetainQuotes)throw Error('Unexpected quote in reference mode');
           return{source:'public-references',policy:{source:'futbin'},prices:Object.fromEntries(ids.map(id=>[id,500])),freshPrices:Object.fromEntries(ids.map(id=>[id,500])),references:{},expiresAt:Date.now()+300000};},
         referenceService:{load:async()=>{globalThis.retainCalls.reference++;return{source:'fodder',basis:'empty-collection-public-reference',platform:'console',fetchedAt:Date.now(),expiresAt:Date.now()+300000,
@@ -59,6 +61,12 @@ export async function exerciseGalleryRoadmapRetention(context,directory,entryFil
     await page.getByRole('button',{name:'继续分析剩余',exact:true}).click();
     await page.waitForFunction(()=>!globalThis.document.querySelector('.gallery-roadmap-controls + .row button').disabled);
     assert.deepEqual(await page.evaluate(()=>globalThis.retainCalls),deep,'Reference/deep mode switches reuse the same catalogue calculation');
+    await page.evaluate(()=>globalThis.updateRetainSecond());
+    await page.getByRole('button',{name:'导出分析快照',exact:true}).click();
+    const exported=await page.evaluate(()=>globalThis.retainExport);
+    assert.ok(exported.roadmap,'Export reconciles local material changes instead of silently dropping the retained plan');
+    assert.equal(exported.planningState.status,'retained');
+    assert.ok(!exported.roadmap.route.some(row=>row.setId==='futgg:2'),'Changed routes are withdrawn before exporting');
     console.log('Gallery retained-return Chrome passed: global alternatives, S target-only handoff, acquired then sold, shared collection update, no repeat global sync/quotes; synthetic only.');
   }finally{await page.close();}
 }

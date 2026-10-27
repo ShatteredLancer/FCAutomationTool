@@ -11,6 +11,15 @@ const target = extra => ({ set, status: 'observed', fetchedAt: 4000, scope: 'DO_
   prices: { 11: 1000 }, priceSnapshot: { expiresAt: 6000, policy: { source: 'futbin' }, platform: 'console' },
   runtimeCards: new Map([['DO_NOT_EXPORT', {}]]), journal: { cookie: 'DO_NOT_EXPORT' }, ...extra });
 
+it('explains missing or retained planning output without exporting private state fields',()=>{
+  const missing=buildGalleryAnalysisSnapshot({catalog,targets:[target()],now:5000});
+  expect(missing.planningState).toEqual({status:'unavailable',usable:false,reason:'FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT'});
+  const retained=buildGalleryAnalysisSnapshot({catalog,targets:[target()],planningState:{status:'retained',usable:true,
+    reason:'FC27_GALLERY_ROADMAP_LOCAL_UPDATE_PENDING',account:'DO_NOT_EXPORT'},now:5000});
+  expect(retained.planningState).toEqual({status:'retained',usable:true,reason:'FC27_GALLERY_ROADMAP_LOCAL_UPDATE_PENDING'});
+  expect(JSON.stringify(retained)).not.toContain('DO_NOT_EXPORT');
+});
+
 it('exports historical collection separately from current holding and leaves claims unknown', () => {
   const result = buildGalleryAnalysisSnapshot({ catalog, targets: [target()], now: 5000 });
   expect(result.versions[0]).toMatchObject({ eaId: 11, collected: true, inClub: false, firstOwned: null, evidenceAt: 3000 });
