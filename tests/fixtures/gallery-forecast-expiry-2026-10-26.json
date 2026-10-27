@@ -1,0 +1,12 @@
+{
+  "version": "27.0.67",
+  "timing": {
+    "reference": 3679,
+    "sync": 228006,
+    "planning": 71490,
+    "total": 303467,
+    "deadline": 300000
+  },
+  "reason": "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED",
+  "evidence": "Reduced diagnostic timing. Browser replay uses synthetic cards/rules and no private account inputs."
+}

@@ -30,6 +30,14 @@ it('retains the configured roadmap limit and explicit expiry instead of an unexp
     deadlineMs: 30000, reason: 'FC27_GALLERY_ROADMAP_QUOTES_EXPIRED' }));
 });
 
+it('retains forecast-only capture and expired-cache facts without changing their timestamps', async () => {
+  const t = harness();
+  await t.log.record({ area: 'gallery', event: 'roadmap-plan', status: 'success', forecastSnapshot: true,
+    forecastExpired: true, fetchedAt: 1000, capturedAt: 1500, expiresAt: 2000, account: 'private-account' });
+  expect((await t.log.exportPayload()).performanceEntries).toContainEqual(expect.objectContaining({
+    forecastSnapshot: true, forecastExpired: true, fetchedAt: 1000, capturedAt: 1500, expiresAt: 2000 }));
+});
+
 it('retains material failure counts through export and reload without raw entity evidence', async () => {
   const t = harness();
   await t.log.record({ area: 'streamlined', event: 'contribution-transaction', phase: 'contribution-validation',

@@ -34,7 +34,9 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
         source: forecast ? 'fodder' : quote?.policy?.source ?? null,
         expiresAt: forecast ? target.forecastPriceExpiresAt : quote?.expiresAt ?? null,
         fresh: !forecast && quote?.expiresAt != null && quote.expiresAt > now,
-        ...(forecast ? { forecast: true, marketObservedAt: null, fetchedAt: target.forecastPriceFetchedAt } : {}) });
+        ...(forecast ? { forecast: true, marketObservedAt: null, fetchedAt: target.forecastPriceFetchedAt,
+          capturedAt: target.forecastPriceCapturedAt ?? null,
+          cacheExpired: target.forecastPriceExpiresAt != null && target.forecastPriceExpiresAt <= now } : {}) });
     }
     return { setId: set.id, categoryId: category.id, name: set.name, requiredCards: set.requiredCards,
       conditions: set.conditions ?? null, slug: set.slug ?? null, description: set.description ?? null,
@@ -46,7 +48,7 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
       progressComplete: detail?.complete === true, poolComplete: detail?.poolComplete === true,
       candidateOnly: detail?.candidateOnly === true, poolSize: detail?.poolSize ?? null,
       versionIds: (detail?.rows ?? []).map(row => row.eaId), prices,
-      publicReference: target?.publicReference ? { ...pick(target.publicReference, ['source', 'basis', 'platform', 'fetchedAt', 'expiresAt', 'marketObservedAt']),
+      publicReference: target?.publicReference ? { ...pick(target.publicReference, ['source', 'basis', 'platform', 'fetchedAt', 'expiresAt', 'marketObservedAt', 'forecastOnly', 'capturedAt']),
         grades: target.publicReference.grades.map(grade => pick(grade, ['grade', 'cost', 'ids'])) } : null };
   }));
   return { schema: 1, kind: 'gallery-analysis', season: '27', applicationVersion: version, exportedAt: now,
@@ -60,6 +62,8 @@ export function buildGalleryAnalysisSnapshot({ catalog, targets = [], plan = nul
       complete: collections.filter(set => set.progressComplete && !set.stale).length },
     collections, versions: [...versions.values()],
     roadmap: plan ? { ...pick(plan, ['status', 'partial', 'coverage', 'baselineTokens', 'addedTokens', 'claimState', 'tokenBasis', 'generatedAt', 'fastReferences', 'priceBasis']),
+      forecastReference: plan.forecastReference ? { ...pick(plan.forecastReference, ['source', 'forecastOnly', 'fetchedAt', 'capturedAt', 'expiresAt']),
+        cacheExpired: plan.forecastReference.expiresAt <= now } : null,
       timings: pick(plan.timings, ['referenceMs', 'syncMs', 'priceMs', 'planningMs']),
       route: (plan.route ?? []).map(row => ({ ...pick(row, ['setId', 'name', 'order', 'currentGrade', 'targetGrade',
         'currentScore', 'projectedScore', 'baselineTokens', 'projectedTokens', 'addedTokens', 'claimState']),

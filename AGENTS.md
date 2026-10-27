@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-27 Gallery 27.0.68：用户明确允许整体只读估算使用本轮捕获的Fodder价，过期标记可见，执行前仍独立核价。.67新日志确认deadline300000，前置同步228–231秒后计算68–71秒就参考到期；先UI时间回放失败，再分开只读估价与实际报价。仅快模式在参考尚有效时clone捕获forecastOnly/capturedAt，保留原fetchedAt/expiresAt；长同步/计算/续算/导出和目标移交可继续，启动已过期的参考不接受。深度独立报价到期仍挡，Club移交只传setId/grade，核价/预算/限价/锁卡/交易不变。被动时间标记与JSON/诊断标cacheExpired、fresh=false，不造fresh quote、不改服务TTL/请求或GM存储。9类Chrome场景包括超5分钟同步、过期续算、闲置到期、独立报价和账号/材料漂移。真实账号全路线与同步性能仍待升级验收；见docs/FC27_FODDER_REFERENCE_ZH.md的.68计划。
+
 2026-10-26 Gallery 27.0.67：.66日志reference3.6s/sync87.1s成功/planning212.4s blocked，总303.4s且缺实际配置时限/原因；与5分钟参考过期吻合，但未证实唯一现场原因。先失败回归：已完成合集后进入65已收集/21人计分，10单位截止无响应，持续到100单位输入失效后整轮null。整体路线增加冻结输入专属内存continuation与评分memo，baseline/reference/grade任一嵌套yield可暂停，已完成行/档位保留，继续不重算暂停工作；完成合集释放memo，输入/预算/模式/账号变化或失败清理，不进GM/JSON。仅整体路线在JS片段内每微步查账号/页面，片段开始/让出前后/最终完整核验，避免每裸yield重建196合集；其它调用者默认行为不变。诊断记录deadlineMs、明确过期/变化、部分完成计数；原TTL/计分/节点/预算/限价/交易保护不变。同步87秒不是本次已解决事项，实际配置时限及完整路线/耗时待更新验证；详见docs/FC27_FODDER_REFERENCE_ZH.md的.67计划与验收。
 
 2026-10-26 Gallery 27.0.66：.65新诊断快模式无新独立查价，但两轮本地planning在78/118ms内泛化失败；同步169/50秒是独立耗时问题。生产UI离线Chrome和跨scorer/roadmap/scheduler单测先失败复现：已有计分卡多于阵容人数，底层裸yield越过12ms片段后被当作对象进度读取phase，确定TypeError。调度器对裸yield仍schedule/截止/取消，只不发布不存在的记录，不改求解或计分顺序。诊断保留固定异常类、已完成阶段不被后续失败改成failed；不导出异常原文/stack。FSU、原核价/预算/限价、交易/Journal、收集核验与缓存TTL不变；不是现场每张卡的精确重放，同步等待优化仍未完成。详见docs/FC27_FODDER_REFERENCE_ZH.md的.66计划/证据与实机gap。

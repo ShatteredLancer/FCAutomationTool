@@ -111,6 +111,8 @@ if (help) {
       await exerciseGalleryJoint(context, out);
       const { exerciseGalleryRoadmap } = await import('./gallery-roadmap-smoke.mjs');
       await exerciseGalleryRoadmap(context, out);
+      const { exerciseGalleryForecastClock } = await import('./gallery-forecast-clock-smoke.mjs');
+      await exerciseGalleryForecastClock(context, out);
       const { exerciseGalleryReplan } = await import('./gallery-replan-smoke.mjs');
       await exerciseGalleryReplan(context, out);
       const { exerciseGalleryCostReplay } = await import('./gallery-cost-replay-smoke.mjs');

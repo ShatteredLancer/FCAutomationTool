@@ -50,3 +50,16 @@ it('does not mutate data or copy plan receipts/permits into an analysis export',
   expect(result.roadmap.route[0].purchaseVersionIds).toEqual([11]);
   expect(JSON.stringify(input)).toBe(before);
 });
+
+it('exports expired read-only forecast evidence without extending time or manufacturing a fresh quote', () => {
+  const reference = { source: 'fodder', forecastOnly: true, fetchedAt: 1000, capturedAt: 1500, expiresAt: 2000,
+    scope: 'DO_NOT_EXPORT', grades: [] };
+  const input = { catalog, now: 5000, targets: [target({ forecastPriceBasis: 'fodder-public-estimate',
+    publicReference: reference, priceSnapshot: null, forecastPriceFetchedAt: 1000,
+    forecastPriceExpiresAt: 2000, forecastPriceCapturedAt: 1500 })], plan: { route: [], forecastReference: reference } };
+  const before = JSON.stringify(input), exported = buildGalleryAnalysisSnapshot(input);
+  expect(exported.collections[0].prices[0]).toMatchObject({ forecast: true, fresh: false,
+    fetchedAt: 1000, capturedAt: 1500, expiresAt: 2000, cacheExpired: true, marketObservedAt: null });
+  expect(exported.roadmap.forecastReference).toMatchObject({ forecastOnly: true, cacheExpired: true, expiresAt: 2000 });
+  expect(JSON.stringify(exported)).not.toContain('DO_NOT_EXPORT'); expect(JSON.stringify(input)).toBe(before);
+});

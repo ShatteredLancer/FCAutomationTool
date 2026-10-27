@@ -10,7 +10,7 @@ const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', '
 const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
-const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'processingMs', 'schedulingMs',
+const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
@@ -24,7 +24,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'co
   'targetScore', 'currentScore', 'cycleCountBefore', 'cycleCountAfter', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'wrongPileCount', 'identityMismatchCount', 'factoryMismatchCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled', 'forecastSnapshot', 'forecastExpired']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;

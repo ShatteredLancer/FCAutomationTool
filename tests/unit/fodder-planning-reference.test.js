@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { fodderGallery, futggGallery } from '../fixtures/fc27-gallery.js';
 import { normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
-import { normalizeFodderPlanningReference, attachFodderPlanningReferences, forecastFodderReferencePrices } from '../../src/gallery/fodder-planning-reference.js';
+import { normalizeFodderPlanningReference, attachFodderPlanningReferences, forecastFodderReferencePrices,
+  captureFodderForecastSnapshot, isCapturedFodderForecastTarget } from '../../src/gallery/fodder-planning-reference.js';
 import { createFc27FodderReference } from '../../src/adapters/browser/fc27-fodder-reference.js';
 import observed from '../fixtures/fodder-public-reference-2026-10-26.json';
 
@@ -97,4 +98,35 @@ it('does not use expired/missing estimates or mix platforms in one capital forec
   expect(forecastFodderReferencePrices([{ publicReference: ref }], 301001)[0].prices).toEqual({});
   expect(forecastFodderReferencePrices([{}], 1001)[0].prices).toEqual({});
   expect(() => forecastFodderReferencePrices([{ publicReference: ref }, { publicReference: { ...ref, platform: 'console' } }], 1001)).toThrow('FC27_FODDER_REFERENCE_INVALID');
+});
+
+it('captures a fresh detached forecast before sync and retains its original expiry after a long sync', () => {
+  const { index, proposals } = data();
+  const original = normalizeFodderPlanningReference(index, proposals, { platform: 'console', fetchedAt: 1000 });
+  const before = JSON.stringify(original), captured = captureFodderForecastSnapshot(original, 1001);
+  const matched = { set: captured.sets[0].set }, unmapped = { set: { ...matched.set, name: 'Unmapped' } };
+  const [forecast, unknown] = forecastFodderReferencePrices(attachFodderPlanningReferences([matched, unmapped], captured, 500000), 500000);
+  expect(forecast).toMatchObject({ prices: { 1: 200, 2: 300 }, priceSnapshot: null,
+    forecastPriceFetchedAt: 1000, forecastPriceExpiresAt: 301000, forecastPriceCapturedAt: 1001 });
+  expect(isCapturedFodderForecastTarget(forecast, 500000)).toBe(true);
+  expect(unknown.prices).toEqual({}); expect(unknown.forecastPriceExpiresAt).toBeNull();
+  expect(JSON.stringify(original)).toBe(before); expect(original.forecastOnly).toBeUndefined();
+  captured.sets[0].grades[0].prices[0] = 999;
+  expect(original.sets[0].grades[0].prices[0]).toBe(200);
+});
+
+it('never captures an already expired or future reference at the start of a forecast', () => {
+  const { index, proposals } = data();
+  const original = normalizeFodderPlanningReference(index, proposals, { platform: 'pc', fetchedAt: 1000 });
+  for (const at of [999, 301000, 301001]) expect(() => captureFodderForecastSnapshot(original, at)).toThrow('FC27_FODDER_REFERENCE_INVALID');
+});
+
+it('does not treat incomplete markers or independent quote snapshots as captured forecast permission', () => {
+  const { index, proposals } = data();
+  const snapshot = captureFodderForecastSnapshot(normalizeFodderPlanningReference(index, proposals, { platform: 'pc', fetchedAt: 1000 }), 1001);
+  const [target] = forecastFodderReferencePrices(attachFodderPlanningReferences([{ set: snapshot.sets[0].set }], snapshot, 1002), 1002);
+  for (const change of [t => { delete t.forecastPriceCapturedAt; }, t => { t.priceSnapshot = { expiresAt: 301000 }; },
+    t => { t.publicReference.capturedAt = t.publicReference.expiresAt; }, t => { t.publicReference.platform = 'unknown'; }]) {
+    const altered = structuredClone(target); change(altered); expect(isCapturedFodderForecastTarget(altered, 500000)).toBe(false);
+  }
 });

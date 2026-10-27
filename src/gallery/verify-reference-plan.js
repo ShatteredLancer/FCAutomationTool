@@ -1,14 +1,17 @@
 import { summarizeGalleryScoreSteps } from './scoring.js';
 import { isGalleryOwned } from './planner.js';
+import { isCapturedFodderForecastTarget } from './fodder-planning-reference.js';
 
 // Revalidate a public empty-collection lineup against the current exact local
 // versions, ownership and rules. Price inputs are explicitly either forecast
 // estimates or independent quotes; neither grants spending authority. No
 // foreign score or aggregate public cost proves a personal plan.
-export function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize = summarizeGalleryScoreSteps } = {}) {
+export function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize = summarizeGalleryScoreSteps,
+  allowCapturedForecast = false } = {}) {
   const { progress, prices, set, catalog } = target;
   if (target.publicReference?.basis !== 'empty-collection-public-reference'
-      || target.publicReference.expiresAt <= Date.now() || progress?.complete === false
+      || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target))
+      || progress?.complete === false
       || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
   const rows = new Map(progress.rows.map(row => [row.eaId, row]));
   if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;

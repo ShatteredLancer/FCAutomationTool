@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.67
+// @version      27.0.68
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.67", at: Date.now(), status: 'started',
+    state = { version: "27.0.68", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -17521,10 +17521,135 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/gallery/fodder-planning-reference.js
+  var invalid2 = () => {
+    throw Error("FC27_FODDER_REFERENCE_INVALID");
+  };
+  var integer16 = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n >= min && n <= max;
+  var key = (category, slug2) => `${category}/${slug2}`;
+  var signature2 = (set) => JSON.stringify([
+    set.slug,
+    set.name,
+    set.requiredCards,
+    set.grades.map((grade) => [grade.name, grade.threshold, galleryCumulativeRewardQuantity(set, grade.threshold, "event_token_1")])
+  ]);
+  function isCapturedFodderForecast(reference, now = Date.now()) {
+    return reference?.source === "fodder" && reference.basis === "empty-collection-public-reference" && ["pc", "console"].includes(reference.platform) && reference.forecastOnly === true && integer16(reference.fetchedAt) && integer16(reference.expiresAt) && integer16(reference.capturedAt) && reference.fetchedAt <= reference.capturedAt && reference.capturedAt < reference.expiresAt && reference.capturedAt <= now;
+  }
+  function captureFodderForecastSnapshot(snapshot, now = Date.now()) {
+    if (snapshot?.source !== "fodder" || snapshot.basis !== "empty-collection-public-reference" || !["pc", "console"].includes(snapshot.platform) || !Array.isArray(snapshot.sets) || !integer16(now) || !integer16(snapshot.fetchedAt) || !integer16(snapshot.expiresAt) || snapshot.fetchedAt > now || snapshot.expiresAt <= now) invalid2();
+    return { ...structuredClone(snapshot), forecastOnly: true, capturedAt: now };
+  }
+  function isCapturedFodderForecastTarget(target, now = Date.now()) {
+    return target?.forecastPriceBasis === "fodder-public-estimate" && target.priceSnapshot == null && isCapturedFodderForecast(target.publicReference, now) && target.forecastPriceCapturedAt === target.publicReference.capturedAt;
+  }
+  function normalizeFodderPlanningReference(index, input, { platform, fetchedAt } = {}) {
+    if (!["pc", "console"].includes(platform) || !integer16(fetchedAt) || !Array.isArray(input?.sets) || input.sets.length > 4096) invalid2();
+    const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
+    const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
+    for (const row of input.sets) {
+      const id12 = key(row?.category, row?.slug), set = definitions.get(id12);
+      if (!set || seen.has(id12) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
+      seen.add(id12);
+      const grades3 = [], names = /* @__PURE__ */ new Set();
+      for (const grade of row.grades) {
+        const definition2 = set.grades.find((g) => g.name === grade?.grade);
+        if (!definition2 || names.has(grade.grade) || grade.tokens !== (definition2.rewards[0]?.value ?? 0)) invalid2();
+        names.add(grade.grade);
+        if (grade.cost === null) {
+          grades3.push({ grade: grade.grade, cost: null, ids: [] });
+          continue;
+        }
+        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id13) => !integer16(id13, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6)) || grade.prices.reduce((sum2, price2) => sum2 + price2, 0) !== grade.cost) invalid2();
+        grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
+      }
+      sets2.push({ key: id12, set, grades: grades3 });
+    }
+    return {
+      source: "fodder",
+      basis: "empty-collection-public-reference",
+      platform,
+      fetchedAt,
+      expiresAt: fetchedAt + 3e5,
+      marketObservedAt: null,
+      sets: sets2
+    };
+  }
+  function attachFodderPlanningReferences(targets, snapshot, now = Date.now()) {
+    if (snapshot?.basis !== "empty-collection-public-reference" || snapshot.expiresAt <= now && !isCapturedFodderForecast(snapshot, now)) return targets;
+    const groups = /* @__PURE__ */ new Map();
+    for (const row of snapshot.sets) {
+      const s = signature2(row.set);
+      groups.set(s, [...groups.get(s) ?? [], row]);
+    }
+    const localCounts = /* @__PURE__ */ new Map();
+    for (const target of targets) {
+      const s = signature2(target.set);
+      localCounts.set(s, (localCounts.get(s) ?? 0) + 1);
+    }
+    return targets.map((target) => {
+      const s = signature2(target.set), matches2 = groups.get(s);
+      return matches2?.length === 1 && localCounts.get(s) === 1 ? {
+        ...target,
+        publicReference: {
+          source: snapshot.source,
+          basis: snapshot.basis,
+          platform: snapshot.platform,
+          fetchedAt: snapshot.fetchedAt,
+          expiresAt: snapshot.expiresAt,
+          marketObservedAt: null,
+          ...isCapturedFodderForecast(snapshot, now) ? { forecastOnly: true, capturedAt: snapshot.capturedAt } : {},
+          grades: matches2[0].grades
+        }
+      } : target;
+    });
+  }
+  function forecastFodderReferencePrices(targets, now = Date.now()) {
+    const prices = {}, conflicts = /* @__PURE__ */ new Set(), platforms = /* @__PURE__ */ new Set();
+    const usable = (reference) => reference?.basis === "empty-collection-public-reference" && (reference.expiresAt > now || isCapturedFodderForecast(reference, now));
+    let expiresAt = Infinity, fetchedAt = Infinity;
+    for (const target of targets) {
+      const reference = target.publicReference;
+      if (!usable(reference)) continue;
+      platforms.add(reference.platform);
+      expiresAt = Math.min(expiresAt, reference.expiresAt);
+      fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
+      for (const grade of reference.grades) {
+        if (grade.cost == null) continue;
+        if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6))) invalid2();
+        grade.ids.forEach((id12, i) => {
+          if (!integer16(id12, 1)) invalid2();
+          if (prices[id12] != null && prices[id12] !== grade.prices[i]) conflicts.add(id12);
+          prices[id12] = Math.max(prices[id12] ?? 0, grade.prices[i]);
+        });
+      }
+    }
+    if (platforms.size > 1) invalid2();
+    return targets.map((target) => {
+      const valid3 = usable(target.publicReference);
+      return {
+        ...target,
+        priceSnapshot: null,
+        prices: valid3 ? { ...prices } : {},
+        forecastPriceBasis: "fodder-public-estimate",
+        forecastPriceExpiresAt: valid3 && Number.isFinite(expiresAt) ? expiresAt : null,
+        forecastPriceFetchedAt: valid3 && Number.isFinite(fetchedAt) ? fetchedAt : null,
+        forecastPriceCapturedAt: isCapturedFodderForecast(target.publicReference, now) ? target.publicReference.capturedAt : null,
+        forecastPriceConflictCount: conflicts.size
+      };
+    });
+  }
+
   // src/gallery/verify-reference-plan.js
-  function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize: summarize2 = summarizeGalleryScoreSteps } = {}) {
+  function* verifyGalleryReferenceSteps({
+    target,
+    proposal,
+    capital = null,
+    summarize: summarize2 = summarizeGalleryScoreSteps,
+    allowCapturedForecast = false
+  } = {}) {
     const { progress, prices, set, catalog } = target;
-    if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
+    if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target)) || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
     const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
     if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;
     const existing = progress.rows.filter(isGalleryOwned), selected = [], items = [];
@@ -17700,7 +17825,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           target: { ...target, progress: planningProgress },
           proposal,
           capital,
-          summarize: scorer.steps
+          summarize: scorer.steps,
+          allowCapturedForecast: fastReferences
         })) : { complete: true, value: null };
         if (!reference.complete) {
           row.reason ??= "search-time-exhausted";
@@ -17844,7 +17970,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           source: forecast ? "fodder" : quote2?.policy?.source ?? null,
           expiresAt: forecast ? target.forecastPriceExpiresAt : quote2?.expiresAt ?? null,
           fresh: !forecast && quote2?.expiresAt != null && quote2.expiresAt > now,
-          ...forecast ? { forecast: true, marketObservedAt: null, fetchedAt: target.forecastPriceFetchedAt } : {}
+          ...forecast ? {
+            forecast: true,
+            marketObservedAt: null,
+            fetchedAt: target.forecastPriceFetchedAt,
+            capturedAt: target.forecastPriceCapturedAt ?? null,
+            cacheExpired: target.forecastPriceExpiresAt != null && target.forecastPriceExpiresAt <= now
+          } : {}
         });
       }
       return {
@@ -17873,7 +18005,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         versionIds: (detail?.rows ?? []).map((row) => row.eaId),
         prices,
         publicReference: target?.publicReference ? {
-          ...pick4(target.publicReference, ["source", "basis", "platform", "fetchedAt", "expiresAt", "marketObservedAt"]),
+          ...pick4(target.publicReference, ["source", "basis", "platform", "fetchedAt", "expiresAt", "marketObservedAt", "forecastOnly", "capturedAt"]),
           grades: target.publicReference.grades.map((grade) => pick4(grade, ["grade", "cost", "ids"]))
         } : null
       };
@@ -17907,6 +18039,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       versions: [...versions.values()],
       roadmap: plan ? {
         ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis"]),
+        forecastReference: plan.forecastReference ? {
+          ...pick4(plan.forecastReference, ["source", "forecastOnly", "fetchedAt", "capturedAt", "expiresAt"]),
+          cacheExpired: plan.forecastReference.expiresAt <= now
+        } : null,
         timings: pick4(plan.timings, ["referenceMs", "syncMs", "priceMs", "planningMs"]),
         route: (plan.route ?? []).map((row) => ({
           ...pick4(row, [
@@ -17961,109 +18097,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       anchor.remove();
       runtime.setTimeout(() => runtime.URL.revokeObjectURL(url), 1e3);
     }
-  }
-
-  // src/gallery/fodder-planning-reference.js
-  var invalid2 = () => {
-    throw Error("FC27_FODDER_REFERENCE_INVALID");
-  };
-  var integer16 = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n >= min && n <= max;
-  var key = (category, slug2) => `${category}/${slug2}`;
-  var signature2 = (set) => JSON.stringify([
-    set.slug,
-    set.name,
-    set.requiredCards,
-    set.grades.map((grade) => [grade.name, grade.threshold, galleryCumulativeRewardQuantity(set, grade.threshold, "event_token_1")])
-  ]);
-  function normalizeFodderPlanningReference(index, input, { platform, fetchedAt } = {}) {
-    if (!["pc", "console"].includes(platform) || !integer16(fetchedAt) || !Array.isArray(input?.sets) || input.sets.length > 4096) invalid2();
-    const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
-    const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
-    for (const row of input.sets) {
-      const id12 = key(row?.category, row?.slug), set = definitions.get(id12);
-      if (!set || seen.has(id12) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
-      seen.add(id12);
-      const grades3 = [], names = /* @__PURE__ */ new Set();
-      for (const grade of row.grades) {
-        const definition2 = set.grades.find((g) => g.name === grade?.grade);
-        if (!definition2 || names.has(grade.grade) || grade.tokens !== (definition2.rewards[0]?.value ?? 0)) invalid2();
-        names.add(grade.grade);
-        if (grade.cost === null) {
-          grades3.push({ grade: grade.grade, cost: null, ids: [] });
-          continue;
-        }
-        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id13) => !integer16(id13, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6)) || grade.prices.reduce((sum2, price2) => sum2 + price2, 0) !== grade.cost) invalid2();
-        grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
-      }
-      sets2.push({ key: id12, set, grades: grades3 });
-    }
-    return {
-      source: "fodder",
-      basis: "empty-collection-public-reference",
-      platform,
-      fetchedAt,
-      expiresAt: fetchedAt + 3e5,
-      marketObservedAt: null,
-      sets: sets2
-    };
-  }
-  function attachFodderPlanningReferences(targets, snapshot, now = Date.now()) {
-    if (snapshot?.basis !== "empty-collection-public-reference" || snapshot.expiresAt <= now) return targets;
-    const groups = /* @__PURE__ */ new Map();
-    for (const row of snapshot.sets) {
-      const s = signature2(row.set);
-      groups.set(s, [...groups.get(s) ?? [], row]);
-    }
-    const localCounts = /* @__PURE__ */ new Map();
-    for (const target of targets) {
-      const s = signature2(target.set);
-      localCounts.set(s, (localCounts.get(s) ?? 0) + 1);
-    }
-    return targets.map((target) => {
-      const s = signature2(target.set), matches2 = groups.get(s);
-      return matches2?.length === 1 && localCounts.get(s) === 1 ? {
-        ...target,
-        publicReference: {
-          source: snapshot.source,
-          basis: snapshot.basis,
-          platform: snapshot.platform,
-          fetchedAt: snapshot.fetchedAt,
-          expiresAt: snapshot.expiresAt,
-          marketObservedAt: null,
-          grades: matches2[0].grades
-        }
-      } : target;
-    });
-  }
-  function forecastFodderReferencePrices(targets, now = Date.now()) {
-    const prices = {}, conflicts = /* @__PURE__ */ new Set(), platforms = /* @__PURE__ */ new Set();
-    let expiresAt = Infinity, fetchedAt = Infinity;
-    for (const target of targets) {
-      const reference = target.publicReference;
-      if (reference?.basis !== "empty-collection-public-reference" || reference.expiresAt <= now) continue;
-      platforms.add(reference.platform);
-      expiresAt = Math.min(expiresAt, reference.expiresAt);
-      fetchedAt = Math.min(fetchedAt, reference.fetchedAt);
-      for (const grade of reference.grades) {
-        if (grade.cost == null) continue;
-        if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price2) => !integer16(price2, 150, 15e6))) invalid2();
-        grade.ids.forEach((id12, i) => {
-          if (!integer16(id12, 1)) invalid2();
-          if (prices[id12] != null && prices[id12] !== grade.prices[i]) conflicts.add(id12);
-          prices[id12] = Math.max(prices[id12] ?? 0, grade.prices[i]);
-        });
-      }
-    }
-    if (platforms.size > 1) invalid2();
-    return targets.map((target) => ({
-      ...target,
-      priceSnapshot: null,
-      prices: target.publicReference?.expiresAt > now ? { ...prices } : {},
-      forecastPriceBasis: "fodder-public-estimate",
-      forecastPriceExpiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
-      forecastPriceFetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : null,
-      forecastPriceConflictCount: conflicts.size
-    }));
   }
 
   // src/adapters/browser/fc27-gallery-reference-table.js
@@ -18193,11 +18226,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     status.setAttribute("role", "status");
     const timing = add(document, dialog, "small");
     timing.setAttribute("role", "status");
+    const forecastNote = add(document, dialog, "p");
+    forecastNote.className = "gallery-forecast-note";
+    forecastNote.setAttribute("role", "status");
+    forecastNote.hidden = true;
+    Object.assign(forecastNote.style, { border: "1px solid currentColor", borderRadius: "4px", padding: "8px" });
     const referenceBox = add(document, dialog, "div");
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
     const work = createGalleryRoadmapWork();
+    let forecastEvidence = null, forecastClock = null;
+    const updateForecastNote = () => {
+      forecastNote.hidden = !forecastEvidence;
+      if (!forecastEvidence) {
+        forecastNote.textContent = "";
+        return;
+      }
+      const expired = Date.now() >= forecastEvidence.expiresAt;
+      forecastNote.dataset.expired = String(expired);
+      forecastNote.dataset.fetchedAt = String(forecastEvidence.fetchedAt);
+      forecastNote.textContent = `Fodder \u53C2\u8003\u4F30\u4EF7\u8BFB\u53D6\u4E8E ${new Date(forecastEvidence.fetchedAt).toLocaleString(void 0, { hour12: false, timeZoneName: "short" })} \xB7 ${expired ? "\u53C2\u8003\u7F13\u5B58\u5DF2\u8FC7\u671F\uFF0C\u672C\u8F6E\u4ECD\u4EC5\u4F5C\u4F30\u7B97" : "\u672C\u8F6E\u53EA\u8BFB\u4F30\u7B97\u5FEB\u7167"}\u3002\u4E0D\u662F\u5B9E\u65F6\u6210\u4EA4\u4EF7\uFF1B\u8FDB\u5165\u4FF1\u4E50\u90E8/\u8D2D\u4E70\u524D\u91CD\u65B0\u6838\u4EF7\u3002`;
+    };
+    const stopForecastClock = () => {
+      if (forecastClock !== null) document.defaultView.clearInterval(forecastClock);
+      forecastClock = null;
+    };
+    dialog.addEventListener("close", stopForecastClock);
     let stage = "idle", stopRequested = false;
     let mismatchReason = null;
     const mismatch2 = (reason) => {
@@ -18240,13 +18295,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return target.status === before[5] || mismatch2("READINESS");
       });
     };
-    const quotesFresh = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
+    const pricesUsable = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || isCapturedFodderForecastTarget(target) || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
     const invalidate = () => {
       epoch2++;
       work.clear();
       last = null;
       planInputs = null;
       binding = null;
+      forecastEvidence = null;
+      updateForecastNote();
       output.replaceChildren();
       referenceBox.replaceChildren();
       timing.textContent = "";
@@ -18284,7 +18341,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
         open.type = "button";
         open.addEventListener("click", (event) => {
-          if (!event.isTrusted || !binding || !same28(binding) || !quotesFresh(planInputs)) {
+          if (!event.isTrusted || !binding || !same28(binding) || !pricesUsable(planInputs)) {
             status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
             return;
           }
@@ -18347,10 +18404,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const field of [capital, lossLimit, discount, deep]) field.addEventListener("change", invalidate);
     button?.addEventListener("click", (event) => {
       if (!event.isTrusted) return;
-      if (binding && (!same28(binding) || !quotesFresh(planInputs))) invalidate();
+      if (binding && (!same28(binding) || !pricesUsable(planInputs))) invalidate();
       const state = read();
       status.textContent = state.catalog ? `\u5168\u76EE\u5F55 ${state.targets.length} \u4E2A\u5408\u96C6\u3002\u70B9\u51FB\u751F\u6210\u540E\u81EA\u52A8\u590D\u7528\u6536\u96C6\u7F13\u5B58\u3001\u8865\u5145\u6570\u636E\u4E0E\u62A5\u4EF7\uFF1B\u53EF\u968F\u65F6\u505C\u6B62\u3002` : "\u516C\u5F00\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165\uFF0C\u8BF7\u5148\u7B49\u5F85 Gallery \u540C\u6B65\u3002";
       if (!dialog.open) dialog.showModal();
+      updateForecastNote();
+      if (forecastClock === null) forecastClock = document.defaultView.setInterval(updateForecastNote, 1e3);
     });
     generate.addEventListener("click", async (event) => {
       if (!event.isTrusted || busy) return;
@@ -18383,9 +18442,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       };
       try {
         onBusyChange(true);
-        const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && quotesFresh(planInputs);
+        const resume = last?.coverage.stopped && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
         if (!resume) {
           work.clear();
+          forecastEvidence = null;
+          updateForecastNote();
           last = null;
           binding = null;
           planInputs = null;
@@ -18397,11 +18458,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const at12 = performance.now();
             stageStarted = at12;
             try {
-              referenceSnapshot = await referenceService.load({ isCurrent: current2 });
+              const loaded = await referenceService.load({ isCurrent: current2 });
               if (!current2()) return;
+              referenceSnapshot = options.deep ? loaded : captureFodderForecastSnapshot(loaded);
+              if (!options.deep) {
+                forecastEvidence = {
+                  source: "fodder",
+                  forecastOnly: true,
+                  fetchedAt: referenceSnapshot.fetchedAt,
+                  capturedAt: referenceSnapshot.capturedAt,
+                  expiresAt: referenceSnapshot.expiresAt
+                };
+                updateForecastNote();
+              }
               const targets2 = attachFodderPlanningReferences(read().targets, referenceSnapshot);
               referenceView = renderGalleryReferenceTable(document, referenceBox, targets2, referenceSnapshot);
             } catch {
+              referenceSnapshot = null;
+              forecastEvidence = null;
+              updateForecastNote();
               if (current2()) referenceBox.textContent = "Fodder \u53C2\u8003\u6682\u4E0D\u53EF\u7528\uFF1B\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\uFF0C\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u67E5\u4EF7\u3002";
             }
             timings.referenceMs = Math.round(performance.now() - at12);
@@ -18420,7 +18495,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const state = read();
         if (!state.catalog) throw Error("\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165");
         binding = capture(state);
-        const valid3 = () => current2() && same28(binding) && (stage !== "planning" || quotesFresh(targets));
+        const valid3 = () => current2() && same28(binding) && (stage !== "planning" || pricesUsable(targets));
         let targets = resume ? planInputs : structuredClone(state.targets);
         targetCount = targets.length;
         if (!resume && referenceSnapshot) targets = attachFodderPlanningReferences(targets, referenceSnapshot);
@@ -18450,7 +18525,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           completedPhases.add("pricing");
         }
         if (!valid3()) return;
-        if (!quotesFresh(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
+        if (!pricesUsable(targets)) throw Error("FC27_GALLERY_ROADMAP_QUOTES_EXPIRED");
         const maxMs = await readTimeout();
         planningLimitMs = maxMs;
         stage = "planning";
@@ -18474,12 +18549,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           } }
         );
         if (!result || !valid3()) {
-          failureReason = !quotesFresh(targets) ? "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" : "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED";
-          status.textContent = !quotesFresh(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
+          failureReason = !pricesUsable(targets) ? "FC27_GALLERY_ROADMAP_QUOTES_EXPIRED" : "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED";
+          status.textContent = !pricesUsable(targets) ? "\u516C\u5F00\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848\uFF1B\u672A\u8FDB\u884C\u4E70\u5356\u3002" : "\u6570\u636E\u3001\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002";
           return;
         }
         timings.planningMs = Math.round(performance.now() - planStarted);
-        last = { ...result, generatedAt: Date.now(), timings, priceBasis };
+        last = {
+          ...result,
+          generatedAt: Date.now(),
+          timings,
+          priceBasis,
+          forecastReference: forecastEvidence ? { ...forecastEvidence } : null
+        };
         planInputs = targets;
         fingerprint = JSON.stringify(options);
         render(last);
@@ -18515,6 +18596,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           count: targetCount,
           durationMs: Math.round(performance.now() - startedAt),
           deadlineMs: planningLimitMs,
+          forecastSnapshot: !!forecastEvidence,
+          forecastExpired: !!forecastEvidence && Date.now() >= forecastEvidence.expiresAt,
+          fetchedAt: forecastEvidence?.fetchedAt,
+          capturedAt: forecastEvidence?.capturedAt,
+          expiresAt: forecastEvidence?.expiresAt,
           responseCount: completed ? last.coverage.inspected : 0,
           acceptedCount: completed ? last.route.length : 0,
           reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : completed && last.coverage.stopped ? stopRequested ? "FC27_GALLERY_ROADMAP_STOPPED" : "FC27_GALLERY_ROADMAP_TIME_LIMIT" : void 0),
@@ -18529,6 +18615,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         stop6.hidden = true;
         progress.hidden = true;
         for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+        updateForecastNote();
         if (!completed || !last.coverage.stopped) work.clear();
         onBusyChange(false);
       }
@@ -18536,7 +18623,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     exportButton.addEventListener("click", (event) => {
       if (!event.isTrusted || busy) return;
       try {
-        const state = read(), current2 = binding && same28(binding) && quotesFresh(planInputs);
+        const state = read(), current2 = binding && same28(binding) && pricesUsable(planInputs);
         const payload = buildGalleryAnalysisSnapshot({ ...state, targets: current2 && planInputs ? planInputs : state.targets, plan: current2 ? last : null });
         const filename = `FCAT-Gallery-analysis-${new Date(payload.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
         download(document.defaultView, document, JSON.stringify(payload, null, 2), filename);
@@ -18554,6 +18641,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       dispose: () => {
         if (busy) cancel();
         epoch2++;
+        stopForecastClock();
         work.clear();
         dialog.close();
         dialog.remove();
@@ -29245,6 +29333,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "retryAt",
     "durationMs",
     "deadlineMs",
+    "capturedAt",
     "processingMs",
     "schedulingMs",
     "pendingWriteCount",
@@ -29346,7 +29435,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "beamWidth",
     "maxEvaluations"
   ]);
-  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion", "purchasesSettled"]);
+  var BOOLEAN_FIELDS = Object.freeze(["cached", "stale", "recheck", "searchComplete", "optimalWithinPool", "optimizationBudgetExhausted", "scopeTruncated", "beamTruncated", "budgetExhausted", "timeExhausted", "onlyUntradeable", "exactVersion", "purchasesSettled", "forecastSnapshot", "forecastExpired"]);
   var boundedString = (value, max = MAX_STRING_LENGTH) => {
     if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;
     return value.slice(0, max);
@@ -37400,7 +37489,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.67" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.68" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -37742,8 +37831,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.67"}`,
-    version: "27.0.67",
+    title: `FC Automation Tool ${"27.0.68"}`,
+    version: "27.0.68",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

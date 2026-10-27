@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { planGalleryRoadmapSteps } from '../../src/gallery/roadmap.js';
+import { verifyGalleryReferenceSteps } from '../../src/gallery/verify-reference-plan.js';
 const finish = steps => { let step; do { step = steps.next(); } while (!step.done); return step.value; };
 const target = () => {
   const grades = ['D','C','B','A','S'].map((name, i) => ({ name, threshold: 10 + i * 10,
@@ -56,4 +57,19 @@ it('deep mode preserves a cheaper local solution and rejects a reference above p
     totalPrice: 500, items: [{ eaId: 7, price: 500 }] }] }; }
   expect(finish(planGalleryRoadmapSteps({ targets: [target()], gradePlanner: cheaper })).funding.totalPurchase).toBe(500);
   expect(finish(planGalleryRoadmapSteps({ targets: [target()], fastReferences: true, capital: 1500 })).route).toEqual([]);
+});
+
+it('uses an expired captured estimate only for the explicitly forecast-only overall path', () => {
+  const t = target();
+  t.publicReference = { ...t.publicReference, source: 'fodder', platform: 'console', forecastOnly: true,
+    fetchedAt: 1000, capturedAt: 1001, expiresAt: 301000 };
+  t.forecastPriceBasis = 'fodder-public-estimate'; t.forecastPriceCapturedAt = 1001; t.priceSnapshot = null;
+  const proposal = t.publicReference.grades[0];
+  expect(finish(verifyGalleryReferenceSteps({ target: t, proposal }))).toBeNull();
+  expect(finish(verifyGalleryReferenceSteps({ target: t, proposal, allowCapturedForecast: true }))).toMatchObject({ reached: true, totalPrice: 3000 });
+  expect(finish(planGalleryRoadmapSteps({ targets: [t], fastReferences: true })).route).toHaveLength(1);
+  function* noIndependentPlan() { return { status: 'partial', plans: [] }; }
+  expect(finish(planGalleryRoadmapSteps({ targets: [t], gradePlanner: noIndependentPlan })).route).toEqual([]);
+  t.priceSnapshot = { expiresAt: 301000 };
+  expect(finish(verifyGalleryReferenceSteps({ target: t, proposal, allowCapturedForecast: true }))).toBeNull();
 });

@@ -45,7 +45,8 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
       if (row.checkedGrades.includes(grade.name)) continue;
       const proposal = target.publicReference?.grades.find(row => row.grade === grade.name && row.cost != null);
       const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
-        target: { ...target, progress: planningProgress }, proposal, capital, summarize: scorer.steps })) : { complete: true, value: null };
+        target: { ...target, progress: planningProgress }, proposal, capital, summarize: scorer.steps,
+        allowCapturedForecast: fastReferences })) : { complete: true, value: null };
       if (!reference.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
       const verified = reference.value;
       const local = !fastReferences ? yield* work.run(target, `grade:${grade.name}`,

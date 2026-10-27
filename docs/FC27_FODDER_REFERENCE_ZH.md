@@ -1,4 +1,4 @@
-# Fodder 公共规划参考与生成体验（27.0.67；保留此前实施记录）
+# Fodder 公共规划参考与生成体验（27.0.68；保留此前实施记录）
 
 ## 已确认需求 / 不变量
 
@@ -138,3 +138,36 @@
 - 证据保留在忽略的artifacts：gallery-roadmap-deadline-67-red/green.log、gallery-roadmap-work-67-unit-final.log、gallery-roadmap-work-67-browser.log、gallery-roadmap-work-67-verify.log、gallery-roadmap-work-67-browser-full.log、gallery-roadmap-67-score-differential.log。新fixture只保存本轮阶段/耗时，configuredDeadlineMs与expiryConfirmed仍为null。
 - 提交前续算reason复查证据：gallery-roadmap-resume-reason-67-red/green.log；最终全套验证见gallery-roadmap-work-67-verify-final.log，Chrome最终复跑结果另在gallery-roadmap-work-67-browser-final.log核对。
 - 恢复/实机gap：尝试只读查看当前EA页的配置时限时，浏览器tab连接超时；未刷新、点击生成或修改设置，实际配置仍未知。新的deadlineMs与明确过期/变化原因用于下轮诊断。真实完整196合集路线、耗时和同步87秒是否持续仍待更新后验收，未宣称已完全解决账户现场性能。
+
+## 23:29 新诊断 / 当时待确认的估算时效语义（2026-10-26；次日已确认）
+
+- 当前HEAD与origin/main均abd1cda /27.0.67，工作区调查开始时干净；本节只记录诊断和恢复点，尚未修改生产代码、升版或提交推送。
+- 新诊断确认实际deadlineMs=300000。19:50一轮reference2208/sync231018/planning68439ms，总301985ms；20:29一轮reference3679/sync228006/planning71490ms，总303467ms。两次同步均success，最终都明确FC27_GALLERY_ROADMAP_QUOTES_EXPIRED，不是前两版的空进度异常，也不是300秒计算时限已用满。
+- Fodder估价在同步前读取，服务缓存有效期300000ms；同步已耗约228–231秒，之后约68–71秒计算就撞上参考到期。总运行时间与有效期冲突已确认；全目录同步196卡池的串行回读也仍是独立性能成本。旧auto-relist上下文错误集中于18:05–19:44，不当作20:29规划失败的原因，不修改其写入/恢复机制。
+- 已离线重放本轮精确阶段时间和300秒设置，固定合成单卡输入、0副作用，在生产整体方案UI重现同一QUOTES_EXPIRED。证据：忽略的artifacts/gallery-reference-clock-68-repro.mjs、gallery-reference-clock-68-repro.log、gallery-reference-clock-68-timing.json。此重放证明两个时钟/门禁的相互作用，不宣称重放了私人卡库或实际CPU耗时。
+- 已向用户提出唯一产品选择，尚待回复：①推荐只读整体估算允许继续使用本轮捕获的Fodder价格，显式显示读取时间和过期标记；进入俱乐部/实际购买仍按原价源重新核价，单卡/总预算、独立报价和交易保护不变。②保留5分钟硬截止，到期重新读取参考。前者会改变现有只读预测的时效门禁，确认前不悄悄放宽。
+- 恢复前先核对最新用户答复、main及本地改动。获选后再写对应实现/验收计划，覆盖长同步、计算中到期、已过期快照的展示/导出/续算/俱乐部移交、深度独立报价仍拒绝到期、账号/目录/材料变化仍失效、未知参考仍不补0和0交易副作用；按既有政策验证后提交推送main。不延长购买报价、预算、保护或交易授权。
+
+## 27.0.68 当前计划（2026-10-27，用户已确认）
+
+- 用户明确选择“允许只读估算继续，执行前重新核价”。只改变整体快模式的估价使用方式：本轮开始时捕获当时尚未到期的Fodder参考，保留原fetchedAt/expiresAt并明确forecastOnly/capturedAt；同步或本地计算期间过期仍可完成、查看、导出、同页续算及带目标进入俱乐部。不是续期/伪造fresh quote，不接受启动时已过期的参考。
+- 深度模式的独立报价仍到期即失效；Club移交只传setId/grade，原独立价源/预算/单卡限价、购买时鲜检、锁卡、FSU和交易/Journal完全不改。账号/目录/材料漂移仍停止旧分析。Fodder服务的5分钟缓存和公共匿名请求不改，不新增请求或GM大对象。
+- 实施顺序：①真实阶段时间的UI回归先失败（已复现QUOTES_EXPIRED）；②增加受限的本轮只读捕获/验证标记，接通attach/预测/本地验证与续算；③界面被动更新时间/过期标记，JSON和诊断保留原期限且fresh=false；④覆盖同步本身超5分钟、计算途中到期、继续与导出/移交、启动已过期/无参考、深度独立过期、数据/账号变化、0买卖；⑤完整verify/Chrome/主线与公开产物验证后提交推送main。
+- 当前main/本机abd1cda /27.0.67。只继承本任务的未提交诊断文档，保留全部历史证据。真实账号196合集完整路线与同步230秒的性能仍是升级验收gap，本次不修改同步策略。
+
+### 27.0.68 实现 / 验证状态
+
+| 场景 | 已验证结果 | 不变的边界 / 差距 |
+|---|---|---|
+| 原日志228秒同步＋计算直到303秒 | 生产UI离线时钟回放先失败，修复后生成路线并标参考缓存已过期 | 同卡/规则与时钟为合成，不是现场CPU或私人卡库回放 |
+| 同步本身超过5分钟、计算中参考到期 | 捕获发生在同步前，原始时间保留，本地仍核验并生成 | 启动捕获时已过期/未来/缺字段参考仍拒绝，不补0 |
+| 过期后同页继续 | Chrome完成，无重复同步/参考请求或独立查价 | 仍守原配置时限和账号/目录/材料绑定；不跨刷新保留work |
+| 完成后闲置到期 | 无需重新点击，提示被动更新为已过期；导出fresh=false/cacheExpired=true，原fetchedAt/expiresAt不变 | 未把估算伪装成实时行情或审批 |
+| 过期估算→合集移交 | 只传setId/grade，原独立价格/购买管线未改 | 不传估算价格、配额或许可；无实际买卖验收 |
+| 深度独立报价及账号/材料漂移 | 深度报价过期仍挡；Fodder过期但独立报价新鲜可用；账号/材料变化仍挡 | 快照标记不成为通用报价放行条件 |
+| 归档/隐私/缓存完整性 | 新单测验证detached clone、错误marker/已有quote不得当快照、JSON/诊断仅白名单时间/布尔值 | 原服务5分钟缓存/匿名空owned请求/GM与Journal不改 |
+
+- 完整npm run verify通过：437文件、5230通过、39跳过；4workers/原10秒testTimeout不变；根dist/版本与FSU26.09.10资产通过。完整离线Chrome通过，包含上述9类时钟场景及原Gallery/Streamlined/Puzzle流程，无EA账户访问或买卖/移卡/领取。
+- 首次局部lint发现新离线测试中的document不是Node全局，已按真实浏览器来源改为globalThis.document；未关闭no-undef或放宽ignore。最终完整lint/语法/架构验证通过。
+- 本地忽略证据：gallery-forecast-clock-68-red/green/scenarios.log、gallery-forecast-capture-68-unit/verify/browser.log、gallery-forecast-68-roadmap-regression.log及fc27-browser/gallery-forecast-clock.png。新fixture仅保留已提供诊断的阶段耗时/时限，不含账号或卡片数据。
+- 当前已完成代码与离线验收；提交前复查main、意图文件、版本与公开下载hash。真实账号完整196合集路线、总耗时和长同步仍待升级后验证；本次不宣称已优化同步速度，未安装/刷新用户现有页面或修改其设置/交易记录。
