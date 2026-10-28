@@ -870,13 +870,19 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const maxMs = await planningTimeout(current, output);
       if (maxMs == null || !run.capturePrices()) return;
       const binding = run.binding();
-      const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
+      const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade,
+        ...(gradePlanner === planGalleryGrade ? { lineupSearch: true } : {}) };
+      const started = performance.now();
+      run.captureReplay(input);
         const plan = gradePlanner === planGalleryGrade
           ? await runGalleryPlan(planGalleryGradeSteps(input), { current: run.current, checkpoint: current, maxMs,
-            progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } })
+            progress: value => { output.textContent = value.seedWork ? `正在建立候选组合… ${count(value.seedWork)} 个计分步骤`
+              : value.scoringWork ? `正在计分复核… ${count(value.scoringWork)} 个内部步骤`
+              : `正在计算… ${count(value.evaluations)} 个${value.completeLineups ? '完整组合' : '候选'} · ${Math.floor((performance.now() - started) / 1000)} 秒${value.bestPrice != null ? ` · 当前候选最低 ${count(value.bestPrice)} 金币（待最终复核）` : ''}`; } })
           : await gradePlanner(input);
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
           replayInput: input,
+          durationMs: Math.floor(performance.now() - started), deadlineMs: maxMs,
           status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
           reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
           count: plan.candidateCount, requestedCount: plan.requestedCandidates,
@@ -921,19 +927,24 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         if (maxMs == null || !run.capturePrices()) return;
         const binding = run.binding();
         const isCurrent = current;
-        const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
+        const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value),
+          lineupSearch: gradePlanner === planGalleryGrade }, {
           current: isCurrent, timeoutMs: maxMs,
           progress: state => { overview.textContent = `正在计算各档费用… ${state.completed}/${state.total}`; },
           runGrade: async ({ steps, grade, index, total, timeoutMs }) => {
             const started = performance.now();
+            run.captureReplay({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value),
+              targetGrade: grade.name, lineupSearch: gradePlanner === planGalleryGrade });
             const labelProgress = state => {
               const elapsed = Math.min(timeoutMs, Math.floor(performance.now() - started));
-              const detail = state.scoringWork ? ` · 计分 ${count(state.scoringWork)} 次` : ` · ${count(state.evaluations)} 个候选`;
+              const detail = state.seedWork ? ` · 候选计分 ${count(state.seedWork)} 步`
+                : state.scoringWork ? ` · 复核 ${count(state.scoringWork)} 个内部步骤`
+                : ` · ${count(state.evaluations)} 个${state.completeLineups ? '完整组合' : '候选'}${state.bestPrice != null ? ` · 候选 ${count(state.bestPrice)} 金币` : ''}`;
               overview.textContent = `正在计算各档费用… ${index + 1}/${total} · ${grade.name} 档 ${Math.floor(elapsed / 1000)}/${Math.ceil(timeoutMs / 1000)} 秒${detail}`;
             };
             labelProgress({ evaluations: 0 });
-            const result = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
-            return result ? { ...result, elapsedMs: Math.floor(performance.now() - started) } : result;
+            const gradeResult = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+            return gradeResult ? { ...gradeResult, elapsedMs: Math.floor(performance.now() - started) } : gradeResult;
           },
         });
         if (plan && current()) {
@@ -1028,7 +1039,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const setPlanningRun = (set, value, output, surface, event = 'grade-plan') => {
     ++planningEpoch;
     const identity = scope(), expectedMaterial = materialBinding(value, set);
-    let expectedBinding = null, reason = null, failed = false, reported = false;
+    let expectedBinding = null, reason = null, failed = false, reported = false, replayInput = null;
     const stop = code => { reason ??= code; return false; };
     const current = () => {
       if (reason) return false;
@@ -1047,6 +1058,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       return true;
     };
     return { current, checkpoint, stop, binding: () => expectedBinding,
+      captureReplay(input) { replayInput = input; },
       capturePrices() {
         if (!checkpoint()) return false;
         // A harmless sync may replace the detail while the price read was
@@ -1065,7 +1077,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       report() {
         if (!reason || reported) return;
         reported = true;
-        void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason });
+        void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason, replayInput });
         if (disposed || identity !== scope() || runningPlanSurfaces.get(set.id) !== surface) return;
         const messages = {
           FC27_GALLERY_PLAN_USER_CANCELLED: '计算已取消，可重新生成。',

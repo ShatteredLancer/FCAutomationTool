@@ -66,7 +66,8 @@ export function createGalleryPlanReplay(input) {
         return { name: grade.name, threshold: grade.threshold, rewards, rewardsComplete: grade.rewardsComplete === true };
       }) }, catalog: { source: 'futgg', tags }, progress: { season: '27', setId: Number(set.id.slice(6)),
         complete: progress.complete !== false, candidateOnly: progress.candidateOnly === true,
-        poolComplete: progress.poolComplete !== false, rows }, prices: quotes, targetGrade };
+        poolComplete: progress.poolComplete !== false, rows }, prices: quotes, targetGrade,
+        ...(!joint && target.lineupSearch === true ? { lineupSearch: true } : {}) };
     });
     if (joint && input.budget != null && !integer(input.budget)) return null;
     if (rewardMode && !clean.some(target => target.set.grades.some(grade => grade.rewards.some(reward =>

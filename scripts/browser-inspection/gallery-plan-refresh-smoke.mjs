@@ -164,6 +164,9 @@ export async function exerciseGalleryPlanRefresh(context, directory, only = null
         if (['rules', 'rules-return', 'tags', 'material', 'compute-material', 'compute-expiry', 'expiry-return', 'overview-expiry-return', 'notice-account'].includes(scenario)) {
           assert.match(await host.locator('.gallery-plan').innerText(), /更新|变化/);
           assert.ok((await page.evaluate(() => globalThis.clubEvents)).some(event => event.status === 'cancelled' && /CHANGED/.test(event.reason)));
+          if (['compute-expiry', 'expiry-return'].includes(scenario)) assert.equal(await page.evaluate(() =>
+            globalThis.clubEvents.find(event => event.status === 'cancelled').replayInput?.lineupSearch), true,
+          'An interrupted computation must retain its sanitized-replay input as well');
         } else if (scenario.startsWith('cancel') || scenario.startsWith('error')) {
           assert.match(output, scenario.startsWith('cancel') ? /已取消/ : /失败|暂不可/);
           if (scenario.endsWith('-return')) {

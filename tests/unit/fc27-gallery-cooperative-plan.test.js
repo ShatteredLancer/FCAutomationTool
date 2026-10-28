@@ -140,6 +140,8 @@ it('continues yielding after a nested score deadline and returns a truthful part
   let ticks = 0, yields = 0;
   const result = await runGalleryPlan(planGalleryGradeSteps(value), { now: () => ticks++, maxMs: 1,
     schedule: async () => { yields++; } });
-  expect(yields).toBeGreaterThan(100);
+  // Deadline requests still yield/finish the nested score, but must not wait
+  // for one timer per microstep (the old >100 assertion required that bug).
+  expect(yields).toBeGreaterThan(0); expect(yields).toBeLessThan(100);
   expect(result).toMatchObject({ status: 'partial', timeExhausted: true, searchComplete: false });
 });

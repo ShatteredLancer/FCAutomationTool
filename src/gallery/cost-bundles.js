@@ -1,11 +1,11 @@
-const priced = candidates => candidates.filter(row => Number.isSafeInteger(row.price) && row.price > 0)
+const priced = (candidates, allowZero = false) => candidates.filter(row => Number.isSafeInteger(row.price) && (allowZero ? row.price >= 0 : row.price > 0))
   .slice().sort((a, b) => a.price - b.price || (b.score ?? 0) - (a.score ?? 0) || a.id - b.id);
 
 // Enumerate a fixed-size priced pool in nondecreasing total cost. Index vectors
 // uniquely identify combinations; expanding only increasing indices avoids
 // permutations. Callers bound iteration and independently verify every score.
-export function* galleryCostBundles(candidates, size, limit) {
-  const rows = priced(candidates);
+export function* galleryCostBundles(candidates, size, limit, { allowZero = false } = {}) {
+  const rows = priced(candidates, allowZero);
   if (size < 1 || size > rows.length || limit < 1) return;
   const heap = [], seen = new Set(); let sequence = 0;
   const before = (a, b) => a.cost < b.cost || a.cost === b.cost && a.sequence < b.sequence;
@@ -50,8 +50,8 @@ export function* galleryCostBundles(candidates, size, limit) {
 
 // Jump straight to a complete cheap bundle containing a rule group. This
 // reaches multi-card tiers even when every intermediate swap loses points.
-export function* galleryBonusBundles(candidates, size, limit) {
-  const rows = priced(candidates), groups = new Map(), seen = new Set();
+export function* galleryBonusBundles(candidates, size, limit, { allowZero = false } = {}) {
+  const rows = priced(candidates, allowZero), groups = new Map(), seen = new Set();
   // Price bands also seed several affordable score upgrades together, before
   // thousands of equal-price low-score combinations consume the search budget.
   for (const price of new Set(rows.map(row => row.price))) {

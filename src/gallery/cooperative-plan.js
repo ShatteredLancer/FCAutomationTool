@@ -13,8 +13,11 @@ export async function runGalleryPlan(steps, { current = () => true, progress = (
       if (!current()) return null;
       const next = steps.next(finish);
       if (next.done) return current() && (!checkpoint || checkpoint()) ? next.value : null;
-      const time = now(); finish = time - started >= maxMs;
-      if (time - slice >= sliceMs || finish) {
+      const time = now(), deadlineReached = !finish && time - started >= maxMs;
+      finish ||= deadlineReached;
+      // Ask the nested iterator to finish once, then retain normal slicing.
+      // A latched deadline is not a reason to await a timer on every yield.
+      if (time - slice >= sliceMs || deadlineReached) {
         if (checkpoint && !checkpoint()) return null;
         // Scoring uses bare yields solely as cooperative checkpoints. Keep
         // scheduling/cancellation, without publishing an absent UI record.

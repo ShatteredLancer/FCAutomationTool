@@ -66,7 +66,7 @@ function frontier(states, width, measure) {
 // retained so a bonus that needs two or three coordinated replacements is not
 // lost merely because its first replacement has lower score.
 export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure, maxEvaluations,
-  beamWidth = 24, candidateLimit = 96, maxDepth = 12, seedSteps = null }) {
+  beamWidth = 24, candidateLimit = 96, maxDepth = 12, seedSteps = null, allowZeroCosts = false }) {
   let evaluations = 0, stopped = false, truncated = maxDepth < initial.ids.length;
   const plans = [], reached = new Map(), seen = new Set([bundleKey(initial.ids)]);
   const better = (a, b) => {
@@ -110,8 +110,8 @@ export function* refineGalleryCostSteps({ initial, candidates, evaluate, measure
   }
   const seedLimit = Math.min(512, Math.floor(maxEvaluations / 4));
   const orderedLimit = Math.min(512, Math.floor(maxEvaluations / 4));
-  const seedSources = [galleryBonusBundles(candidates, initial.ids.length, seedLimit),
-    galleryCostBundles(candidates, initial.ids.length, orderedLimit)];
+  const seedSources = [galleryBonusBundles(candidates, initial.ids.length, seedLimit, { allowZero: allowZeroCosts }),
+    galleryCostBundles(candidates, initial.ids.length, orderedLimit, { allowZero: allowZeroCosts })];
   for (const source of seedSources) {
     if (stopped) break;
     for (const ids of source) {

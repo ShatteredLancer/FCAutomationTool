@@ -4,6 +4,7 @@ import { selectGalleryCandidatePool } from './candidate-pool.js';
 import { galleryPriceBandSeedSteps } from './price-band-seeds.js';
 import { trimGalleryPlanSteps } from './trim-plan.js';
 import { gallerySetRewardSummary } from './catalog-rewards.js';
+import { searchGalleryLineupCosts } from './lineup-cost-search.js';
 
 // Gallery planning is deliberately bounded and read only.  A plan is a
 // proposal for the UI; it never reserves coins, creates EA entities or starts
@@ -86,7 +87,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
 }
 
 export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, targetGrade,
-  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null } = {}) {
+  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null, lineupSearch = false } = {}) {
   if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 100000) {
     return { status: 'unavailable', reason: 'search-options-invalid' };
@@ -211,7 +212,44 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
     if (cheapest.summary?.full === true && scoreOf(cheapest) >= threshold) plans.push(cheapest);
   }
   let budgetExhausted = false, beamTruncated = false, timeExhausted = scoreDeadline;
-  if (cheapestSeed && !cheapestSeed.unknownPrice && candidates.length > requiredSlots
+  let completeLineups = false;
+  if (lineupSearch && cheapestSeed && !timeExhausted && maxEvaluations - evaluations > maxPlans
+      && !(cheapestSeed.summary?.full && scoreOf(cheapestSeed) >= threshold)) {
+    const work = searchGalleryLineupCosts({ existing, candidates, set, catalog, compiled, threshold,
+      maxEvaluations: maxEvaluations - evaluations - maxPlans });
+    let next;
+    try {
+      next = work.next();
+      while (!next.done) {
+        const stop = yield { evaluations: evaluations + next.value.evaluations, completeLineups: true,
+          seedWork: next.value.seedWork, bestPrice: next.value.bestPrice };
+        timeExhausted ||= stop === true;
+        next = work.next(stop);
+      }
+    } finally { work.return(); }
+    if (next.value) {
+      completeLineups = true;
+      evaluations += next.value.evaluations;
+      budgetExhausted ||= next.value.stopped && !timeExhausted;
+      beamTruncated ||= next.value.truncated === true;
+      const seen = new Set(), byId = new Map(candidates.map(candidate => [candidate.id, candidate]));
+      for (const lineup of next.value.plans) {
+        const picked = lineup.ids.filter(id => byId.has(id)), key = picked.slice().sort((a, b) => a - b).join(',');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const chosen = picked.map(id => byId.get(id));
+        const selected = chosen.map(candidate => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
+        const summary = yield* summaryFor(selected); evaluations++;
+        const state = { ids: picked, selected, nextIndex: candidates.length, price: lineup.cost, unknownPrice: false, summary,
+          items: chosen.map(candidate => ({ ...candidate.row, score: candidate.score.value, scoreSource: candidate.score.source, price: candidate.price })) };
+        if (summary?.full && scoreOf(state) >= threshold) plans.push(state);
+        if (rank(state, bestSeen, threshold) < 0) bestSeen = state;
+        if (seen.size >= maxPlans) break;
+      }
+      timeExhausted ||= scoreDeadline;
+    }
+  }
+  if (!completeLineups && cheapestSeed && !cheapestSeed.unknownPrice && candidates.length > requiredSlots
       && !timeExhausted && !(cheapestSeed.summary?.full && scoreOf(cheapestSeed) >= threshold)) {
     const byId = new Map(candidates.map(candidate => [candidate.row.eaId, candidate]));
     const refinement = refineGalleryCostSteps({ initial: { ...cheapestSeed, cost: cheapestSeed.price, missingPrices: false },
@@ -253,7 +291,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   // Filling the missing slots is the cheap starting point, not a purchase
   // ceiling: a full low-score collection can still need lineup upgrades.
   for (let depth = 0; depth < set.requiredCards && states.length && evaluations < maxEvaluations
-      && !timeExhausted && !cheapestReached; depth++) {
+      && !timeExhausted && !cheapestReached && !completeLineups; depth++) {
     const next = [];
     expansion: for (const state of states) for (let index = state.nextIndex; index < candidates.length; index++) {
       if (evaluations >= maxEvaluations) { budgetExhausted = true; break expansion; }
@@ -289,7 +327,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   }
   budgetExhausted ||= evaluations >= maxEvaluations && states.some(state => state.ids.length < set.requiredCards && state.nextIndex < candidates.length);
   let removedPurchases = 0;
-  if (plans.length && !timeExhausted && !cheapestReached && evaluations < maxEvaluations) {
+  if (plans.length && !timeExhausted && !cheapestReached && !completeLineups && evaluations < maxEvaluations) {
     const initial = plans.slice().sort((a, b) => rank(a, b, threshold))[0];
     const trim = trimGalleryPlanSteps({ initial, maxEvaluations: Math.min(64, maxEvaluations - evaluations),
       price: id => asPrice(prices, id) ?? 0,

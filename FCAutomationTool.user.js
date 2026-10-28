@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.73
+// @version      27.0.74
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.73", at: Date.now(), status: 'started',
+    state = { version: "27.0.74", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13298,9 +13298,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (!current2()) return null;
         const next = steps.next(finish);
         if (next.done) return current2() && (!checkpoint || checkpoint()) ? next.value : null;
-        const time2 = now();
-        finish = time2 - started >= maxMs;
-        if (time2 - slice >= sliceMs || finish) {
+        const time2 = now(), deadlineReached = !finish && time2 - started >= maxMs;
+        finish ||= deadlineReached;
+        if (time2 - slice >= sliceMs || deadlineReached) {
           if (checkpoint && !checkpoint()) return null;
           if (next.value !== void 0) progress(next.value);
           await schedule();
@@ -13475,9 +13475,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/cost-bundles.js
-  var priced = (candidates) => candidates.filter((row) => Number.isSafeInteger(row.price) && row.price > 0).slice().sort((a, b) => a.price - b.price || (b.score ?? 0) - (a.score ?? 0) || a.id - b.id);
-  function* galleryCostBundles(candidates, size, limit) {
-    const rows = priced(candidates);
+  var priced = (candidates, allowZero = false) => candidates.filter((row) => Number.isSafeInteger(row.price) && (allowZero ? row.price >= 0 : row.price > 0)).slice().sort((a, b) => a.price - b.price || (b.score ?? 0) - (a.score ?? 0) || a.id - b.id);
+  function* galleryCostBundles(candidates, size, limit, { allowZero = false } = {}) {
+    const rows = priced(candidates, allowZero);
     if (size < 1 || size > rows.length || limit < 1) return;
     const heap = [], seen = /* @__PURE__ */ new Set();
     let sequence = 0;
@@ -13524,8 +13524,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
     }
   }
-  function* galleryBonusBundles(candidates, size, limit) {
-    const rows = priced(candidates), groups = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
+  function* galleryBonusBundles(candidates, size, limit, { allowZero = false } = {}) {
+    const rows = priced(candidates, allowZero), groups = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
     for (const price2 of new Set(rows.map((row) => row.price))) {
       groups.set(`price:${price2}`, rows.filter((row) => row.price <= price2).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.price - b.price || a.id - b.id));
     }
@@ -13621,7 +13621,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     beamWidth = 24,
     candidateLimit = 96,
     maxDepth = 12,
-    seedSteps = null
+    seedSteps = null,
+    allowZeroCosts = false
   }) {
     let evaluations = 0, stopped = false, truncated = maxDepth < initial.ids.length;
     const plans = [], reached = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set([bundleKey(initial.ids)]);
@@ -13669,8 +13670,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const seedLimit = Math.min(512, Math.floor(maxEvaluations / 4));
     const orderedLimit = Math.min(512, Math.floor(maxEvaluations / 4));
     const seedSources = [
-      galleryBonusBundles(candidates, initial.ids.length, seedLimit),
-      galleryCostBundles(candidates, initial.ids.length, orderedLimit)
+      galleryBonusBundles(candidates, initial.ids.length, seedLimit, { allowZero: allowZeroCosts }),
+      galleryCostBundles(candidates, initial.ids.length, orderedLimit, { allowZero: allowZeroCosts })
     ];
     for (const source of seedSources) {
       if (stopped) break;
@@ -13969,6 +13970,82 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     return { quantity: targets.reduce((sum2, target) => sum2 + target.quantity, 0), targets };
   }
 
+  // src/gallery/lineup-cost-search.js
+  function* searchGalleryLineupCosts({ existing, candidates, set, catalog, compiled, threshold, maxEvaluations }) {
+    const required2 = set.requiredCards;
+    const byId = /* @__PURE__ */ new Map();
+    for (const row of existing) if (row.gradingScore > 0) byId.set(row.eaId, { row, price: 0 });
+    for (const candidate of candidates) if (candidate.price > 0 && candidate.score.value > 0) {
+      byId.set(candidate.id, { row: { ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }, price: candidate.price });
+    }
+    if (byId.size < required2 || ![...byId.values()].some((value) => value.price > 0)) return null;
+    const pool = [...byId].map(([id12, value]) => ({
+      id: id12,
+      price: value.price,
+      score: value.row.gradingScore,
+      diversityKeys: galleryRuleKeys(value.row, compiled.tags)
+    }));
+    let bestPrice = null;
+    const evaluate2 = (ids2) => {
+      const rows = ids2.map((id12) => byId.get(id12).row), summary3 = evaluateGalleryLineup(rows, compiled);
+      const cost = ids2.reduce((sum2, id12) => sum2 + byId.get(id12).price, 0);
+      if (summary3.total >= threshold && (bestPrice === null || cost < bestPrice)) bestPrice = cost;
+      return {
+        ids: ids2,
+        cost,
+        missingPrices: false,
+        score: summary3.total,
+        diversityKey: summary3.tags.map((tag) => `${tag.id}:${tag.count}:${tag.pct}`).join("|")
+      };
+    };
+    const initial = evaluate2(pool.slice().sort((a, b) => a.price - b.price || b.score - a.score || a.id - b.id).slice(0, required2).map((row) => row.id));
+    function* seeds2() {
+      let work = 0;
+      for (const price2 of galleryPriceBands(pool)) {
+        const rows = [...byId.values()].filter((value) => value.price <= price2).map((value) => ({ ...value.row, collected: true }));
+        const scorer = summarizeGalleryScoreSteps({ set, catalog, progress: {
+          season: "27",
+          complete: true,
+          setId: catalog.source === "fodder" ? set.id : Number(set.id.split(":").at(-1)),
+          rows
+        } });
+        let next2;
+        try {
+          next2 = scorer.next();
+          while (!next2.done) {
+            if ((yield { work: ++work }) || work >= 16e3) return;
+            next2 = scorer.next();
+          }
+        } finally {
+          scorer.return();
+        }
+        if (next2.value.full && (yield { ids: next2.value.lineup.map((row) => row.eaId), work })) return;
+      }
+    }
+    const search = refineGalleryCostSteps({
+      initial,
+      candidates: pool,
+      evaluate: evaluate2,
+      maxEvaluations,
+      seedSteps: seeds2(),
+      allowZeroCosts: true,
+      measure: (state) => ({
+        reached: state.score >= threshold,
+        progress: Math.min(1, state.score / Math.max(1, threshold)),
+        diversityKey: state.diversityKey
+      })
+    });
+    let next;
+    try {
+      next = search.next();
+      while (!next.done) next = search.next(yield { ...next.value, bestPrice });
+    } finally {
+      search.return();
+    }
+    const result = next.value;
+    return { ...result, plans: result.plans.sort((a, b) => a.cost - b.cost || b.score - a.score) };
+  }
+
   // src/gallery/planner.js
   var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
@@ -14050,7 +14127,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     beamWidth = 96,
     maxCandidates = 250,
     maxEvaluations = 3e4,
-    scoreSummarizer = null
+    scoreSummarizer = null,
+    lineupSearch = false
   } = {}) {
     if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 1e5) {
       return { status: "unavailable", reason: "search-options-invalid" };
@@ -14213,7 +14291,64 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (cheapest.summary?.full === true && scoreOf2(cheapest) >= threshold) plans.push(cheapest);
     }
     let budgetExhausted = false, beamTruncated = false, timeExhausted = scoreDeadline;
-    if (cheapestSeed && !cheapestSeed.unknownPrice && candidates.length > requiredSlots && !timeExhausted && !(cheapestSeed.summary?.full && scoreOf2(cheapestSeed) >= threshold)) {
+    let completeLineups = false;
+    if (lineupSearch && cheapestSeed && !timeExhausted && maxEvaluations - evaluations > maxPlans && !(cheapestSeed.summary?.full && scoreOf2(cheapestSeed) >= threshold)) {
+      const work = searchGalleryLineupCosts({
+        existing,
+        candidates,
+        set,
+        catalog,
+        compiled,
+        threshold,
+        maxEvaluations: maxEvaluations - evaluations - maxPlans
+      });
+      let next;
+      try {
+        next = work.next();
+        while (!next.done) {
+          const stop6 = yield {
+            evaluations: evaluations + next.value.evaluations,
+            completeLineups: true,
+            seedWork: next.value.seedWork,
+            bestPrice: next.value.bestPrice
+          };
+          timeExhausted ||= stop6 === true;
+          next = work.next(stop6);
+        }
+      } finally {
+        work.return();
+      }
+      if (next.value) {
+        completeLineups = true;
+        evaluations += next.value.evaluations;
+        budgetExhausted ||= next.value.stopped && !timeExhausted;
+        beamTruncated ||= next.value.truncated === true;
+        const seen = /* @__PURE__ */ new Set(), byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+        for (const lineup of next.value.plans) {
+          const picked = lineup.ids.filter((id12) => byId.has(id12)), key2 = picked.slice().sort((a, b) => a - b).join(",");
+          if (seen.has(key2)) continue;
+          seen.add(key2);
+          const chosen = picked.map((id12) => byId.get(id12));
+          const selected = chosen.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
+          const summary3 = yield* summaryFor(selected);
+          evaluations++;
+          const state = {
+            ids: picked,
+            selected,
+            nextIndex: candidates.length,
+            price: lineup.cost,
+            unknownPrice: false,
+            summary: summary3,
+            items: chosen.map((candidate) => ({ ...candidate.row, score: candidate.score.value, scoreSource: candidate.score.source, price: candidate.price }))
+          };
+          if (summary3?.full && scoreOf2(state) >= threshold) plans.push(state);
+          if (rank(state, bestSeen, threshold) < 0) bestSeen = state;
+          if (seen.size >= maxPlans) break;
+        }
+        timeExhausted ||= scoreDeadline;
+      }
+    }
+    if (!completeLineups && cheapestSeed && !cheapestSeed.unknownPrice && candidates.length > requiredSlots && !timeExhausted && !(cheapestSeed.summary?.full && scoreOf2(cheapestSeed) >= threshold)) {
       const byId = new Map(candidates.map((candidate) => [candidate.row.eaId, candidate]));
       const refinement = refineGalleryCostSteps({
         initial: { ...cheapestSeed, cost: cheapestSeed.price, missingPrices: false },
@@ -14270,7 +14405,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     let scoringBounded = base.summary.selection === "bounded-search";
     let scoreUncertain = base.summary.low.total !== base.summary.high.total || base.summary.ruleDifference;
     const cheapestReached = cheapestSeed?.summary?.full === true && scoreOf2(cheapestSeed) >= threshold;
-    for (let depth = 0; depth < set.requiredCards && states4.length && evaluations < maxEvaluations && !timeExhausted && !cheapestReached; depth++) {
+    for (let depth = 0; depth < set.requiredCards && states4.length && evaluations < maxEvaluations && !timeExhausted && !cheapestReached && !completeLineups; depth++) {
       const next = [];
       expansion: for (const state of states4) for (let index = state.nextIndex; index < candidates.length; index++) {
         if (evaluations >= maxEvaluations) {
@@ -14313,7 +14448,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     budgetExhausted ||= evaluations >= maxEvaluations && states4.some((state) => state.ids.length < set.requiredCards && state.nextIndex < candidates.length);
     let removedPurchases = 0;
-    if (plans.length && !timeExhausted && !cheapestReached && evaluations < maxEvaluations) {
+    if (plans.length && !timeExhausted && !cheapestReached && !completeLineups && evaluations < maxEvaluations) {
       const initial = plans.slice().sort((a, b) => rank(a, b, threshold))[0];
       const trim = trimGalleryPlanSteps({
         initial,
@@ -21010,19 +21145,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const maxMs = await planningTimeout(current2, output);
           if (maxMs == null || !run.capturePrices()) return;
           const binding = run.binding();
-          const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
+          const input = {
+            set,
+            catalog: result.catalog,
+            progress: value.progress,
+            prices: planningPrices(value),
+            targetGrade: chosenGrade,
+            ...gradePlanner === planGalleryGrade ? { lineupSearch: true } : {}
+          };
+          const started = performance.now();
+          run.captureReplay(input);
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
             current: run.current,
             checkpoint: current2,
             maxMs,
             progress: (value2) => {
-              output.textContent = value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value2.evaluations} \u4E2A\u5019\u9009`;
+              output.textContent = value2.seedWork ? `\u6B63\u5728\u5EFA\u7ACB\u5019\u9009\u7EC4\u5408\u2026 ${count2(value2.seedWork)} \u4E2A\u8BA1\u5206\u6B65\u9AA4` : value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u590D\u6838\u2026 ${count2(value2.scoringWork)} \u4E2A\u5185\u90E8\u6B65\u9AA4` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${count2(value2.evaluations)} \u4E2A${value2.completeLineups ? "\u5B8C\u6574\u7EC4\u5408" : "\u5019\u9009"} \xB7 ${Math.floor((performance.now() - started) / 1e3)} \u79D2${value2.bestPrice != null ? ` \xB7 \u5F53\u524D\u5019\u9009\u6700\u4F4E ${count2(value2.bestPrice)} \u91D1\u5E01\uFF08\u5F85\u6700\u7EC8\u590D\u6838\uFF09` : ""}`;
             }
           }) : await gradePlanner(input);
           if (plan) void diag({
             event: "grade-plan",
             phase: "planner",
             replayInput: input,
+            durationMs: Math.floor(performance.now() - started),
+            deadlineMs: maxMs,
             status: plan.status === "ready" || plan.status === "achieved" ? "success" : "blocked",
             reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? "") ? `FC27_GALLERY_${plan.reason.replaceAll("-", "_").toUpperCase()}` : void 0,
             count: plan.candidateCount,
@@ -21090,7 +21236,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (maxMs == null || !run.capturePrices()) return;
           const binding = run.binding();
           const isCurrent = current2;
-          const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
+          const plan = await runGalleryGradeOverview({
+            set,
+            catalog: result.catalog,
+            progress: value.progress,
+            prices: planningPrices(value),
+            lineupSearch: gradePlanner === planGalleryGrade
+          }, {
             current: isCurrent,
             timeoutMs: maxMs,
             progress: (state2) => {
@@ -21098,14 +21250,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             },
             runGrade: async ({ steps, grade, index, total, timeoutMs }) => {
               const started = performance.now();
+              run.captureReplay({
+                set,
+                catalog: result.catalog,
+                progress: value.progress,
+                prices: planningPrices(value),
+                targetGrade: grade.name,
+                lineupSearch: gradePlanner === planGalleryGrade
+              });
               const labelProgress = (state2) => {
                 const elapsed = Math.min(timeoutMs, Math.floor(performance.now() - started));
-                const detail = state2.scoringWork ? ` \xB7 \u8BA1\u5206 ${count2(state2.scoringWork)} \u6B21` : ` \xB7 ${count2(state2.evaluations)} \u4E2A\u5019\u9009`;
+                const detail = state2.seedWork ? ` \xB7 \u5019\u9009\u8BA1\u5206 ${count2(state2.seedWork)} \u6B65` : state2.scoringWork ? ` \xB7 \u590D\u6838 ${count2(state2.scoringWork)} \u4E2A\u5185\u90E8\u6B65\u9AA4` : ` \xB7 ${count2(state2.evaluations)} \u4E2A${state2.completeLineups ? "\u5B8C\u6574\u7EC4\u5408" : "\u5019\u9009"}${state2.bestPrice != null ? ` \xB7 \u5019\u9009 ${count2(state2.bestPrice)} \u91D1\u5E01` : ""}`;
                 overview.textContent = `\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026 ${index + 1}/${total} \xB7 ${grade.name} \u6863 ${Math.floor(elapsed / 1e3)}/${Math.ceil(timeoutMs / 1e3)} \u79D2${detail}`;
               };
               labelProgress({ evaluations: 0 });
-              const result2 = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
-              return result2 ? { ...result2, elapsedMs: Math.floor(performance.now() - started) } : result2;
+              const gradeResult = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+              return gradeResult ? { ...gradeResult, elapsedMs: Math.floor(performance.now() - started) } : gradeResult;
             }
           });
           if (plan && current2()) {
@@ -21200,7 +21360,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const setPlanningRun = (set, value, output, surface, event = "grade-plan") => {
       ++planningEpoch;
       const identity5 = scope2(), expectedMaterial = materialBinding(value, set);
-      let expectedBinding = null, reason = null, failed2 = false, reported = false;
+      let expectedBinding = null, reason = null, failed2 = false, reported = false, replayInput = null;
       const stop6 = (code2) => {
         reason ??= code2;
         return false;
@@ -21224,6 +21384,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         checkpoint,
         stop: stop6,
         binding: () => expectedBinding,
+        captureReplay(input) {
+          replayInput = input;
+        },
         capturePrices() {
           if (!checkpoint()) return false;
           const latest = details.get(set.id);
@@ -21240,7 +21403,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         report() {
           if (!reason || reported) return;
           reported = true;
-          void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason });
+          void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason, replayInput });
           if (disposed || identity5 !== scope2() || runningPlanSurfaces.get(set.id) !== surface) return;
           const messages2 = {
             FC27_GALLERY_PLAN_USER_CANCELLED: "\u8BA1\u7B97\u5DF2\u53D6\u6D88\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\u3002",
@@ -30398,40 +30561,47 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         const quotes = {};
         for (const row of rows) if (integer17(prices[row.eaId]) && prices[row.eaId] > 0) quotes[row.eaId] = prices[row.eaId];
-        return { set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
-          if (!gradeName(grade.name) || !integer17(grade.threshold)) throw Error("invalid");
-          if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
-          if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error("invalid");
-          const rewards2 = grade.rewards.map((reward) => {
-            if (!/^[a-z][a-z0-9_]{0,99}$/.test(reward.type) || !galleryRewardIdentity(reward)) throw Error("invalid");
-            const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
-            for (const key2 of ["assetId", "teamEaId", "resourceId"]) {
-              if (reward[key2] != null) {
-                if (!integer17(reward[key2])) throw Error("invalid");
-                value[key2] = reward[key2];
+        return {
+          set: { id: set.id, requiredCards: set.requiredCards, grades: set.grades.map((grade) => {
+            if (!gradeName(grade.name) || !integer17(grade.threshold)) throw Error("invalid");
+            if (!rewardMode) return { name: grade.name, threshold: grade.threshold };
+            if (!Array.isArray(grade.rewards) || grade.rewards.length > 32) throw Error("invalid");
+            const rewards2 = grade.rewards.map((reward) => {
+              if (!/^[a-z][a-z0-9_]{0,99}$/.test(reward.type) || !galleryRewardIdentity(reward)) throw Error("invalid");
+              const value = { type: reward.type, count: reward.count, value: reward.value, label: reward.type };
+              for (const key2 of ["assetId", "teamEaId", "resourceId"]) {
+                if (reward[key2] != null) {
+                  if (!integer17(reward[key2])) throw Error("invalid");
+                  value[key2] = reward[key2];
+                }
               }
-            }
-            for (const key2 of ["itemType", "itemCategory"]) {
-              if (reward[key2] != null) {
-                if (!(integer17(reward[key2]) || typeof reward[key2] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key2]))) throw Error("invalid");
-                value[key2] = reward[key2];
+              for (const key2 of ["itemType", "itemCategory"]) {
+                if (reward[key2] != null) {
+                  if (!(integer17(reward[key2]) || typeof reward[key2] === "string" && /^[a-zA-Z0-9_-]{1,60}$/.test(reward[key2]))) throw Error("invalid");
+                  value[key2] = reward[key2];
+                }
               }
-            }
-            if (reward.untradeable != null) {
-              if (typeof reward.untradeable !== "boolean") throw Error("invalid");
-              value.untradeable = reward.untradeable;
-            }
-            return value;
-          });
-          return { name: grade.name, threshold: grade.threshold, rewards: rewards2, rewardsComplete: grade.rewardsComplete === true };
-        }) }, catalog: { source: "futgg", tags }, progress: {
-          season: "27",
-          setId: Number(set.id.slice(6)),
-          complete: progress.complete !== false,
-          candidateOnly: progress.candidateOnly === true,
-          poolComplete: progress.poolComplete !== false,
-          rows
-        }, prices: quotes, targetGrade };
+              if (reward.untradeable != null) {
+                if (typeof reward.untradeable !== "boolean") throw Error("invalid");
+                value.untradeable = reward.untradeable;
+              }
+              return value;
+            });
+            return { name: grade.name, threshold: grade.threshold, rewards: rewards2, rewardsComplete: grade.rewardsComplete === true };
+          }) },
+          catalog: { source: "futgg", tags },
+          progress: {
+            season: "27",
+            setId: Number(set.id.slice(6)),
+            complete: progress.complete !== false,
+            candidateOnly: progress.candidateOnly === true,
+            poolComplete: progress.poolComplete !== false,
+            rows
+          },
+          prices: quotes,
+          targetGrade,
+          ...!joint && target.lineupSearch === true ? { lineupSearch: true } : {}
+        };
       });
       if (joint && input.budget != null && !integer17(input.budget)) return null;
       if (rewardMode && !clean.some((target) => target.set.grades.some((grade) => grade.rewards.some((reward) => galleryRewardIdentity(reward)?.key === input.catalogRewardKey)))) return null;
@@ -38637,7 +38807,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.73" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.74" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -38979,8 +39149,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.73"}`,
-    version: "27.0.73",
+    title: `FC Automation Tool ${"27.0.74"}`,
+    version: "27.0.74",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
