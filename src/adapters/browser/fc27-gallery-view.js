@@ -876,12 +876,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       run.captureReplay(input);
         const plan = gradePlanner === planGalleryGrade
           ? await runGalleryPlan(planGalleryGradeSteps(input), { current: run.current, checkpoint: current, maxMs,
+            onTiming: values => { for (const [key, value] of Object.entries(values)) run.metrics[key] = Math.round(value); },
             progress: value => { output.textContent = value.seedWork ? `正在建立候选组合… ${count(value.seedWork)} 个计分步骤`
               : value.scoringWork ? `正在计分复核… ${count(value.scoringWork)} 个内部步骤`
               : `正在计算… ${count(value.evaluations)} 个${value.completeLineups ? '完整组合' : '候选'} · ${Math.floor((performance.now() - started) / 1000)} 秒${value.bestPrice != null ? ` · 当前候选最低 ${count(value.bestPrice)} 金币（待最终复核）` : ''}`; } })
           : await gradePlanner(input);
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
           replayInput: input,
+          ...run.metrics,
           durationMs: Math.floor(performance.now() - started), deadlineMs: maxMs,
           status: plan.status === 'ready' || plan.status === 'achieved' ? 'success' : 'blocked',
           reason: /^[a-z]+(?:-[a-z]+)*$/.test(plan.reason ?? '') ? `FC27_GALLERY_${plan.reason.replaceAll('-', '_').toUpperCase()}` : undefined,
@@ -943,7 +945,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
               overview.textContent = `正在计算各档费用… ${index + 1}/${total} · ${grade.name} 档 ${Math.floor(elapsed / 1000)}/${Math.ceil(timeoutMs / 1000)} 秒${detail}`;
             };
             labelProgress({ evaluations: 0 });
-            const gradeResult = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+            const gradeResult = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress,
+              onTiming: values => { for (const [key, value] of Object.entries(values)) run.metrics[key] = (run.metrics[key] ?? 0) + Math.round(value); } });
             return gradeResult ? { ...gradeResult, elapsedMs: Math.floor(performance.now() - started) } : gradeResult;
           },
         });
@@ -1038,12 +1041,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   // recheck at cooperative slice boundaries, not on every scoring micro-yield.
   const setPlanningRun = (set, value, output, surface, event = 'grade-plan') => {
     ++planningEpoch;
-    const identity = scope(), expectedMaterial = materialBinding(value, set);
+    const identity = scope(), expectedMaterial = materialBinding(value, set), metrics = {};
     let expectedBinding = null, reason = null, failed = false, reported = false, replayInput = null;
     const stop = code => { reason ??= code; return false; };
     const current = () => {
       if (reason) return false;
-      if (identity !== scope()) return stop('FC27_GALLERY_PLAN_ACCOUNT_CHANGED');
       if (disposed || !active || selectedSetId !== set.id || jointMode || !output.isConnected) return stop('FC27_GALLERY_PLAN_VIEW_CHANGED');
       // A followed, unrelated set can invalidate joint planning's epoch.
       // This single-set run is owned by its own surface, not that global epoch.
@@ -1051,13 +1053,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       return true;
     };
     const checkpoint = () => {
+      if (identity !== scope()) return stop('FC27_GALLERY_PLAN_ACCOUNT_CHANGED');
       if (!current()) return false;
       const latest = details.get(set.id), liveSet = currentGallerySet(set.id);
       if (!liveSet || materialBinding(latest, liveSet) !== expectedMaterial) return stop('FC27_GALLERY_PLAN_INPUT_CHANGED');
       if (expectedBinding !== null && planBinding(latest, liveSet) !== expectedBinding) return stop('FC27_GALLERY_PLAN_QUOTES_CHANGED');
       return true;
     };
-    return { current, checkpoint, stop, binding: () => expectedBinding,
+    return { current, checkpoint, stop, metrics, binding: () => expectedBinding,
       captureReplay(input) { replayInput = input; },
       capturePrices() {
         if (!checkpoint()) return false;
@@ -1077,7 +1080,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       report() {
         if (!reason || reported) return;
         reported = true;
-        void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason, replayInput });
+        void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason, replayInput, ...metrics });
         if (disposed || identity !== scope() || runningPlanSurfaces.get(set.id) !== surface) return;
         const messages = {
           FC27_GALLERY_PLAN_USER_CANCELLED: '计算已取消，可重新生成。',

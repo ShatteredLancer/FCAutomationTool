@@ -9,7 +9,7 @@ import { createGalleryRoadmapWork } from './roadmap-work.js';
 // A deadline keeps the completed rows, explicitly identifying unfinished work.
 export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLimit = null, resaleDiscountBps = 0,
   gradePlanner = planGalleryGradeSteps, previousRows = [], previousSelection = [], fastReferences = false,
-  work = createGalleryRoadmapWork(), rowsOnly = false } = {}) {
+  work = createGalleryRoadmapWork(), rowsOnly = false, referenceRefine = true, retainWork = false } = {}) {
   work.bind(targets, capital, gradePlanner, fastReferences);
   const rows = [], key = 'event_token_1';
   const previous = new Map(previousRows.map(row => [row.setId, structuredClone(row)]));
@@ -45,9 +45,9 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
     for (const grade of grades) {
       if (row.checkedGrades.includes(grade.name)) continue;
       const proposal = target.publicReference?.grades.find(row => row.grade === grade.name && row.cost != null);
-      const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
+      const reference = proposal ? yield* work.run(target, `reference:${grade.name}:${referenceRefine ? 'refine' : 'verify'}`, () => verifyGalleryReferenceSteps({
         target: { ...target, progress: planningProgress }, proposal, capital, summarize: scorer.steps,
-        allowCapturedForecast: fastReferences })) : { complete: true, value: null };
+        allowCapturedForecast: fastReferences, refine: referenceRefine })) : { complete: true, value: null };
       if (!reference.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
       const verified = reference.value;
       const local = !fastReferences ? yield* work.run(target, `grade:${grade.name}`,
@@ -75,7 +75,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
         setId: set.id, name: set.name, grade: grade.name, gradesChecked })) { stopped = true; break; }
     }
     row.analysisComplete = grades.every(grade => row.checkedGrades.includes(grade.name));
-    if (row.analysisComplete) work.release(target);
+    if (row.analysisComplete && !retainWork) work.release(target);
     if (stopped) break;
     if (yield { phase: 'roadmap', completed: index + 1, total: targets.length, setId: set.id,
       name: set.name, gradesChecked }) { stopped = true; break; }

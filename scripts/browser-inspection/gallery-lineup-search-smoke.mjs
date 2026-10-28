@@ -56,6 +56,7 @@ export async function exerciseGalleryLineupSearch(context, directory) {
       assert.ok(observation.event.bestScore >= 4000);
       assert.ok(observation.event.evaluations <= 30000);
       assert.ok(observation.beats > 0, 'Planning must yield so the page keeps painting');
+      assert.ok(observation.scopeReads < 5000, `Account reads must follow slice boundaries, not every pure scoring step: ${observation.scopeReads}`);
       assert.match(await host.locator('.gallery-plan-output').innerText(), /找到 \d+ 个候选方案/);
       assert.equal(requests, 0);
       assert.deepEqual(errors, []);

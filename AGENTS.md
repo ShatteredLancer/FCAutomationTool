@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-28 Gallery 27.0.75：纯计算current只读本地取消/表面，昂贵scope/材料/冻结报价检查在片前/让出前后/最终；网络current不改。整体session先全目录参考核验，再逐合集原scorer删冗余；完整公开阵容可作为保守witness，本地验分不信外部score，第一遍结束强制发布基线。verify/refine各自continuation键、保留baseline、阶段间释放临时scorer memo，Stop不丢已验路线，需优化状态不冒充完成。多余自有卡（含0分）可能有加成价值，不按正分过滤跳过优化。profile路线比较用单job不可变输入的8前缀增量现金流，选中/输出仍原完整forecast；成本/本金/税/共享冲突/SAB顺序不改。原20条ring补最多13个公开setId/阶段/时间，深拷贝/白名单恢复，无新GM对象。控制UI上下文读38691→536，三路线64合集9组差分完全一致；实机耗时/全196合集升级验收待做。详见docs/FC27_GALLERY_TWO_PASS_ZH.md。
+
 2026-10-28 Gallery 27.0.74：单合集/各档费用显式lineupSearch，其他默认求解不改；固定人数完整组合做成本/加成种子及替换，已有卡0新增成本、缺卡必须正报价，有限赢家仍原scorer复核，候选/节点/未知/首任保护不放宽。保留一次有界价格带暖启动以免丢低成本多卡加成路线；成本回放13850回归曾失败，修复后通过，不能只看Brentford。deadline边界只触发一次，之后仍正常分片/取消/冻结报价检查，不每微步等timer。新算法标志白名单进入原4条脱敏replay，取消也保留已冻结计算输入，未增加ring或GM大对象。控制33卡原366783/255464步骤降到约38k/33k，最终Chrome约2.0/1.7秒且5200/9100成本不劣；非实机精确冻结重放。预算/限价/TTL、FSU/锁卡、买卖/Journal不改。详见docs/FC27_GALLERY_LINEUP_SEARCH_ZH.md。
 
 2026-10-28 Gallery 27.0.73：.72遗漏终态后的切窗重绘，以及全目录revision仍在单合集表面key。生产UI先红复现到期提示被visibilitychange清空、无关revision后筛选取消；单合集/各档费用期间例行检查合并延后，结束补刷，显式观察/真实输入/报价到期保护不变。表面仅绑定当前合集语义；20合集内存提示隔离账号/来源、重试清除、不新增GM快照。未改solver、TTL、预算/限价、FSU/锁卡、买卖/Journal；后台计时/算法速度不宣称已解决。计划及控制性能回放见 docs/FC27_GALLERY_PLAN_REFRESH_ZH.md 的.73段。

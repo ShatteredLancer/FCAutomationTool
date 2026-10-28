@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.74
+// @version      27.0.75
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.74", at: Date.now(), status: 'started',
+    state = { version: "27.0.75", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13288,28 +13288,53 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     schedule = () => new Promise((resolve) => setTimeout(resolve, 0)),
     sliceMs = 12,
     maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
-    checkpoint = null
+    checkpoint = null,
+    onTiming = null
   } = {}) {
     const started = now();
     let slice = started, finish = false;
+    const timing = onTiming ? { processingMs: 0, schedulingMs: 0, validationMs: 0, microSteps: 0, checkpointCount: 0 } : null;
+    const wallStarted = timing ? performance.now() : 0;
+    const check = () => {
+      if (!checkpoint) return true;
+      if (!timing) return checkpoint();
+      const at11 = performance.now();
+      try {
+        timing.checkpointCount++;
+        return checkpoint();
+      } finally {
+        timing.validationMs += performance.now() - at11;
+      }
+    };
     try {
-      if (checkpoint && !checkpoint()) return null;
+      if (!check()) return null;
       for (; ; ) {
+        const at11 = timing ? performance.now() : 0;
         if (!current2()) return null;
         const next = steps.next(finish);
-        if (next.done) return current2() && (!checkpoint || checkpoint()) ? next.value : null;
+        if (timing) {
+          timing.processingMs += performance.now() - at11;
+          timing.microSteps++;
+        }
+        if (next.done) return current2() && check() ? next.value : null;
         const time2 = now(), deadlineReached = !finish && time2 - started >= maxMs;
         finish ||= deadlineReached;
         if (time2 - slice >= sliceMs || deadlineReached) {
-          if (checkpoint && !checkpoint()) return null;
+          if (!check()) return null;
           if (next.value !== void 0) progress(next.value);
+          const beforeWait = timing ? performance.now() : 0;
           await schedule();
-          if (checkpoint && !checkpoint()) return null;
+          if (timing) timing.schedulingMs += performance.now() - beforeWait;
+          if (!check()) return null;
           slice = now();
         }
       }
     } finally {
       steps.return();
+      if (timing) try {
+        onTiming({ ...timing, durationMs: performance.now() - wallStarted });
+      } catch {
+      }
     }
   }
 
@@ -17924,6 +17949,70 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/gallery/turnover-estimator.js
+  function createGalleryTurnoverEstimator(options = {}) {
+    const config = { ...options, optimizeOrder: false };
+    const empty2 = forecastGalleryTurnover({ ...config, steps: [] });
+    const compiled = /* @__PURE__ */ new WeakMap();
+    let previous = [], prefixes = /* @__PURE__ */ new Map(), processedCycles = 0, reusedSteps = 0;
+    const full = (steps) => forecastGalleryTurnover({ ...config, steps });
+    return {
+      stats: () => ({ processedCycles, reusedSteps, prefixCount: prefixes.size }),
+      estimate(steps) {
+        if (empty2.status !== "estimated" || !Array.isArray(steps) || steps.length > 4096) return full(steps);
+        let common = 0;
+        while (common < steps.length && common < previous.length && steps[common]?.setId === previous[common].setId && steps[common]?.items === previous[common].items) common++;
+        let start = 0, loss = 0, required2 = 0, versions = /* @__PURE__ */ new Map();
+        for (const [index, state] of prefixes) if (index <= common && index > start) {
+          start = index;
+          loss = state.loss;
+          required2 = state.required;
+          versions = new Map(state.versions);
+        }
+        reusedSteps += start;
+        const next = new Map([...prefixes].filter(([index]) => index <= start));
+        const stride = Math.max(1, Math.ceil(steps.length / 8));
+        for (let i = start; i < steps.length; i++) {
+          const step = steps[i];
+          if (typeof step?.setId !== "string" || !step.setId || !Array.isArray(step.items)) return full(steps);
+          if (!compiled.has(step.items)) compiled.set(
+            step.items,
+            forecastGalleryTurnover({
+              resaleDiscountBps: config.resaleDiscountBps,
+              taxBps: config.taxBps,
+              optimizeOrder: false,
+              steps: [{ setId: "forecast", items: step.items }]
+            })
+          );
+          const solo = compiled.get(step.items);
+          if (solo.status !== "estimated") return full(steps);
+          for (const cycle of solo.steps[0].cycles) {
+            processedCycles++;
+            const before = versions.get(cycle.eaId);
+            if (before && (before.price !== cycle.price || before.resalePrice !== cycle.resalePrice)) return full(steps);
+            if (before) continue;
+            versions.set(cycle.eaId, cycle);
+            required2 = Math.max(required2, loss + cycle.price);
+            loss += cycle.price - cycle.expectedSaleNet;
+          }
+          const index = i + 1;
+          if (versions.size <= 8192 && (index % stride === 0 || index === steps.length))
+            next.set(index, { loss, required: required2, versions: new Map(versions) });
+        }
+        previous = steps.map((step) => ({ setId: step.setId, items: step.items }));
+        prefixes = new Map([...next].slice(-8));
+        const requiredCapital = Math.max(0, required2), capital = config.capital ?? null;
+        return {
+          status: "estimated",
+          requiredCapital,
+          expectedNetLoss: loss,
+          feasible: capital === null ? null : capital >= requiredCapital,
+          capitalShortfall: capital === null ? null : Math.max(0, requiredCapital - capital)
+        };
+      }
+    };
+  }
+
   // src/gallery/roadmap-selection.js
   function* selectGalleryRoadmapSteps({
     rows = [],
@@ -17951,16 +18040,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       return facts2.get(option);
     };
-    const forecast = (trial) => {
+    const orderedSteps = (trial) => {
       const entries2 = [...trial];
       if (profile) entries2.sort((a, b) => priority(b[1].option) - priority(a[1].option) || info(b[1].option).weight - info(a[1].option).weight || a[0].localeCompare(b[0]));
-      return forecastGalleryTurnover({
-        capital,
-        resaleDiscountBps,
-        ...profile ? { optimizeOrder: false } : {},
-        steps: entries2.map(([setId, entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items }))
-      });
+      return entries2.map(([setId, entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items }));
     };
+    const forecast = (trial) => forecastGalleryTurnover({
+      capital,
+      resaleDiscountBps,
+      ...profile ? { optimizeOrder: false } : {},
+      steps: orderedSteps(trial)
+    });
+    const estimator = profile ? createGalleryTurnoverEstimator({ capital, resaleDiscountBps }) : null;
+    const estimateTrial = (trial) => estimator ? estimator.estimate(orderedSteps(trial)) : forecast(trial);
     const singles = resumeOnly ? [] : rows.flatMap((row) => {
       const options = profile ? [...new Map((row.options ?? []).map((option) => [JSON.stringify([
         option.grade,
@@ -18029,7 +18121,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const added = additions.reduce((n, { row: row2, option: option2 }) => n + option2.projectedTokens - (selected.get(row2.setId)?.option.projectedTokens ?? row2.baselineTokens), 0);
         const trial = new Map(selected);
         for (const entry of additions) trial.set(entry.row.setId, entry);
-        const estimate = forecast(trial);
+        const estimate = estimateTrial(trial);
         if (estimate.status !== "estimated" || estimate.feasible === false || lossLimit !== null && estimate.expectedNetLoss > lossLimit) {
           skipped.set(row.setId, {
             setId: row.setId,
@@ -18066,7 +18158,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!best) break;
       selected.clear();
       for (const entry of best.trial) selected.set(...entry);
-      funding = best.estimate;
+      funding = forecast(selected);
       gain += best.added;
       if (profile && (!representative || (profile === "tokens" ? gain > representative.gain : profile === "capital" ? funding.requiredCapital < representative.funding.requiredCapital : funding.expectedNetLoss < representative.funding.expectedNetLoss) || (profile === "capital" ? funding.requiredCapital === representative.funding.requiredCapital : profile === "tokens" ? gain === representative.gain : funding.expectedNetLoss === representative.funding.expectedNetLoss) && gain > representative.gain))
         representative = { selected: new Map(selected), funding, gain };
@@ -18135,7 +18227,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     proposal,
     capital = null,
     summarize: summarize2 = summarizeGalleryScoreSteps,
-    allowCapturedForecast = false
+    allowCapturedForecast = false,
+    refine = true
   } = {}) {
     const { progress, prices, set, catalog } = target;
     if (target.publicReference?.basis !== "empty-collection-public-reference" || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target)) || progress?.complete === false || !Array.isArray(proposal?.ids) || !proposal.ids.length) return null;
@@ -18158,10 +18251,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         rows: [...existing.map((row) => ({ ...row, collected: true })), ...picked]
       } });
     };
-    let summary3 = yield* measure(selected);
     const threshold = set.grades.find((grade) => grade.name === proposal.grade)?.threshold;
+    if (threshold == null) return null;
+    let summary3 = null;
+    if (!refine && proposal.ids.length === set.requiredCards) {
+      const purchased = new Map(selected.map((row) => [row.eaId, row]));
+      summary3 = yield* summarize2({ set, catalog, progress: {
+        ...progress,
+        rows: proposal.ids.map((id12) => purchased.get(id12) ?? { ...rows.get(id12), collected: true })
+      } });
+    }
+    if (!summary3?.full || summary3.low?.total < threshold) summary3 = yield* measure(selected);
     if (!summary3?.full || summary3.low?.total < threshold || threshold == null) return null;
-    if (existing.length) for (const item2 of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
+    if (refine && existing.length) for (const item2 of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
       const trial = yield* measure(selected.filter((row) => row.eaId !== item2.eaId));
       if (trial?.full && trial.low?.total >= threshold) {
         selected.splice(selected.findIndex((row) => row.eaId === item2.eaId), 1);
@@ -18211,6 +18313,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!values8.has(key2)) values8.set(key2, create());
         return values8.get(key2);
       },
+      releaseMemos(target) {
+        groups.get(target)?.values.clear();
+      },
       *run(target, key2, create) {
         const entries2 = group(target).entries;
         if (!entries2.has(key2)) {
@@ -18251,7 +18356,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     previousSelection = [],
     fastReferences = false,
     work = createGalleryRoadmapWork(),
-    rowsOnly = false
+    rowsOnly = false,
+    referenceRefine = true,
+    retainWork = false
   } = {}) {
     work.bind(targets, capital, gradePlanner, fastReferences);
     const rows = [], key2 = "event_token_1";
@@ -18312,12 +18419,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const grade of grades3) {
         if (row.checkedGrades.includes(grade.name)) continue;
         const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
-        const reference = proposal ? yield* work.run(target, `reference:${grade.name}`, () => verifyGalleryReferenceSteps({
+        const reference = proposal ? yield* work.run(target, `reference:${grade.name}:${referenceRefine ? "refine" : "verify"}`, () => verifyGalleryReferenceSteps({
           target: { ...target, progress: planningProgress },
           proposal,
           capital,
           summarize: scorer.steps,
-          allowCapturedForecast: fastReferences
+          allowCapturedForecast: fastReferences,
+          refine: referenceRefine
         })) : { complete: true, value: null };
         if (!reference.complete) {
           row.reason ??= "search-time-exhausted";
@@ -18373,7 +18481,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
-      if (row.analysisComplete) work.release(target);
+      if (row.analysisComplete && !retainWork) work.release(target);
       if (stopped) break;
       if (yield {
         phase: "roadmap",
@@ -18518,7 +18626,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     ]);
   }
   function createGalleryRoadmapSession() {
-    let entries2 = [], cursor = 0, optionsKey = null, version = 0, cached = null;
+    let entries2 = [], cursor = 0, optionsKey = null, version = 0, cached = null, comparisonTiming = {};
     const knownOwned = /* @__PURE__ */ new Set();
     const portfolioWork = createGalleryPortfolioWork();
     const clear = () => {
@@ -18528,6 +18636,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       optionsKey = null;
       version++;
       cached = null;
+      comparisonTiming = {};
       portfolioWork.clear();
       knownOwned.clear();
     };
@@ -18549,7 +18658,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (before?.key === fingerprint) return before;
         before?.work.clear();
         changed.push(target.set.id);
-        return { target, key: fingerprint, input: [target], work: createGalleryRoadmapWork(), result: null, turns: 0 };
+        return { target, key: fingerprint, input: [target], work: createGalleryRoadmapWork(), result: null, turns: 0, verified: false, phase: "verify" };
       });
       for (const entry of previous.values()) entry.work.clear();
       if (changed.length || previous.size) {
@@ -18559,9 +18668,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       cursor %= Math.max(1, entries2.length);
       return changed;
     };
-    const pending2 = () => entries2.filter((entry) => !entry.result || entry.result.coverage.stopped);
+    const pending2 = () => entries2.filter((entry) => entry.phase !== "done");
+    const describe = (value) => {
+      const pendingTasks = pending2().slice(0, 13).map((entry) => ({
+        setId: entry.target.set.id,
+        name: entry.target.set.name,
+        phase: entry.phase,
+        turns: entry.turns,
+        ...Object.fromEntries(Object.entries(entry.timing ?? {}).map(([key2, value2]) => [key2, Math.round(value2)]))
+      }));
+      const timings = entries2.reduce((sum2, entry) => {
+        for (const [key2, value2] of Object.entries(entry.timing ?? {})) sum2[key2] = (sum2[key2] ?? 0) + value2;
+        return sum2;
+      }, { ...comparisonTiming });
+      return {
+        ...value,
+        pendingTasks,
+        ...Object.fromEntries(Object.entries(timings).map(([key2, value2]) => [key2, Math.round(value2)])),
+        coverage: {
+          ...value.coverage,
+          completed: entries2.filter((entry) => entry.phase === "done").length,
+          verified: entries2.filter((entry) => entry.verified).length,
+          optimizationPending: entries2.filter((entry) => entry.verified && entry.phase !== "done").length
+        }
+      };
+    };
     const snapshotSteps = function* (options, stopped = pending2().length > 0) {
-      if (cached?.version === version && cached.stopped === stopped) return structuredClone(cached.result);
+      if (cached?.version === version && cached.stopped === stopped) return describe(structuredClone(cached.result));
       const rows = entries2.flatMap((entry) => entry.result?.rows ?? []);
       const compared = yield* portfolioWork.run({ rows, ...options }), result = compared.result;
       const value = {
@@ -18573,14 +18706,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           total: entries2.length,
           inspected: rows.length,
           available: rows.filter((row) => row.currentScore !== null).length,
-          completed: entries2.filter((entry) => entry.result && !entry.result.coverage.stopped).length,
+          completed: entries2.filter((entry) => entry.phase === "done").length,
+          verified: entries2.filter((entry) => entry.verified).length,
+          optimizationPending: entries2.filter((entry) => entry.verified && entry.phase !== "done").length,
           missing: rows.filter((row) => row.reason === "progress-unavailable").length,
           gradesChecked: rows.reduce((n, row) => n + (row.checkedGrades?.length ?? 0), 0),
           stopped: stopped || result.selectionStopped
         }
       };
       if (!result.selectionStopped) cached = { version, stopped, result: structuredClone(value) };
-      return value;
+      return describe(value);
     };
     const advance = async ({
       options,
@@ -18594,21 +18729,48 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       clock = () => performance.now(),
       schedule
     } = {}) => {
+      const verifying = entries2.some((entry) => !entry.verified);
       for (let count2 = 0; count2 < entries2.length; count2++) {
         const entry = entries2[cursor++ % entries2.length];
-        if (entry.result && !entry.result.coverage.stopped) continue;
+        if (entry.phase === "done" || verifying && entry.verified) continue;
+        if (entry.phase === "refine" && !entry.refinementStarted) {
+          entry.result = { ...entry.result, rows: entry.result.rows.map((row) => ({ ...row, analysisComplete: false, checkedGrades: [] })) };
+          entry.refinementStarted = true;
+        }
         const generator = planGalleryRoadmapSteps({
           ...options,
           targets: entry.input,
           fastReferences: true,
           work: entry.work,
           rowsOnly: true,
+          referenceRefine: entry.phase === "refine",
+          retainWork: entry.phase === "verify",
           previousRows: entry.result?.rows,
           previousSelection: entry.result?.selectedOptions
         });
+        const label = (value) => progress({
+          ...value,
+          completed: entries2.filter((value2) => entry.phase === "refine" ? value2.phase === "done" : value2.verified).length,
+          total: entries2.length,
+          setId: entry.target.set.id,
+          name: entry.target.set.name,
+          taskPhase: entry.phase
+        });
+        label({ phase: "roadmap" });
         const computed = await runGalleryPlan(
           { next: (finish) => generator.next(finish || stopped()), return: () => generator.return() },
-          { current: current2, checkpoint, maxMs: Math.min(maxMs, quantumMs), progress, now: clock, ...schedule ? { schedule } : {} }
+          {
+            current: current2,
+            checkpoint,
+            maxMs: Math.min(maxMs, quantumMs),
+            progress: label,
+            now: clock,
+            ...schedule ? { schedule } : {},
+            onTiming: (values8) => {
+              entry.timing ??= {};
+              for (const [key2, value] of Object.entries(values8)) entry.timing[key2] = (entry.timing[key2] ?? 0) + value;
+            }
+          }
         );
         entry.turns++;
         if (!computed) throw Error("FC27_GALLERY_ROADMAP_CONTEXT_CHANGED");
@@ -18617,6 +18779,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           cached = null;
         }
         entry.result = computed;
+        if (!computed.coverage.stopped) {
+          if (entry.phase === "verify") {
+            entry.verified = true;
+            const owned2 = entry.target.progress?.rows?.filter(isGalleryOwned).length ?? 0;
+            const useful = computed.rows.some((row) => row.options?.some((option) => option.items.length > 0 && owned2 + option.items.length > entry.target.set.requiredCards));
+            entry.phase = useful ? "refine" : "done";
+            if (useful) entry.work.releaseMemos(entry.target);
+          } else entry.phase = "done";
+          version++;
+          cached = null;
+          if (entry.phase === "done") entry.work.clear();
+        }
+        for (const row of computed.rows) row.optimizationPending = entry.verified && entry.phase !== "done";
         return entry;
       }
       return null;
@@ -18646,15 +18821,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         bind(targets, options);
         const start = clock(), remaining = () => Math.max(0, maxMs - (clock() - start));
         let result, published = -Infinity, turns = 0;
-        const snapshot = () => runGalleryPlan(snapshotSteps(options), { current: current2, checkpoint, maxMs: Math.min(Math.max(1, remaining()), quantumMs), progress, now: clock, ...schedule ? { schedule } : {} });
+        const snapshot = async () => {
+          const value = await runGalleryPlan(snapshotSteps(options), {
+            current: current2,
+            checkpoint,
+            maxMs: Math.min(Math.max(1, remaining()), quantumMs),
+            progress,
+            now: clock,
+            ...schedule ? { schedule } : {},
+            onTiming: (values8) => {
+              for (const [key2, value2] of Object.entries(values8)) comparisonTiming[key2] = (comparisonTiming[key2] ?? 0) + value2;
+            }
+          });
+          return value ? describe(value) : value;
+        };
         while ((pending2().length || !result || result.comparisonPending) && (remaining() > 0 || turns === 0) && !stopped()) {
           const entry = pending2().length ? await advance({ options, maxMs: Math.max(1, remaining()), current: current2, checkpoint, stopped, progress, clock, schedule, quantumMs }) : null;
           turns++;
           if (!entry && pending2().length) break;
-          if (!pending2().length || !result || clock() - published >= 250) {
+          const firstCoverage = entry && entries2.every((entry2) => entry2.verified) && result?.coverage.verified !== entries2.length;
+          if (firstCoverage || !pending2().length || !result || clock() - published >= 250) {
             const first = !result;
             result = await snapshot();
-            if (result && (first || clock() - published >= 250 || !result.comparisonPending)) {
+            if (result && (firstCoverage || first || clock() - published >= 250 || !result.comparisonPending)) {
               onResult(result);
               published = clock();
             }
@@ -18890,6 +19079,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         options,
         load,
         current: current2 = () => true,
+        computeCurrent = current2,
         checkpoint = current2,
         stopped = () => false,
         maxMs,
@@ -18916,7 +19106,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const run = async (steps, limit = remaining()) => {
           const result2 = await runGalleryPlan(
             { next: (finish) => steps.next(finish || stopped()), return: () => steps.return() },
-            { current: current2, checkpoint, maxMs: Math.min(remaining(), limit), progress, ...schedule ? { schedule } : {}, now: clock }
+            { current: computeCurrent, checkpoint, maxMs: Math.min(remaining(), limit), progress, ...schedule ? { schedule } : {}, now: clock }
           );
           checking();
           return result2;
@@ -18943,7 +19133,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         while (remaining() > 0 && !stopped()) {
           checking();
           onPhase("planning");
-          const advanced = await preflight.advance({ options, current: current2, checkpoint, stopped, maxMs: remaining(), quantumMs, progress, clock, schedule });
+          const advanced = await preflight.advance({ options, current: computeCurrent, checkpoint, stopped, maxMs: remaining(), quantumMs, progress, clock, schedule });
           refreshJobs();
           const job = jobs.filter((job2) => !job2.done && !job2.deferred).sort((a, b) => a.tier - b.tier || a.turns - b.turns || a.rank - b.rank)[0];
           if (advanced && (!preview || job && !preview.rows.some((row) => row.setId === job.target.set.id) || clock() - published >= 250)) {
@@ -19238,6 +19428,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         comparisonPending: !!result.comparisonPending,
         comparisonCount: result.comparisons,
         referenceInspectedCount: result.coverage.inspected,
+        referenceVerifiedCount: result.coverage.verified,
+        optimizationPendingCount: result.coverage.optimizationPending,
+        processingMs: result.processingMs,
+        schedulingMs: result.schedulingMs,
+        validationMs: result.validationMs,
+        microSteps: result.microSteps,
+        checkpointCount: result.checkpointCount,
+        pendingTasks: result.pendingTasks,
         referenceCompletedCount: result.coverage.completed,
         referencePendingCount: result.coverage.total - (result.coverage.completed ?? result.coverage.inspected)
       });
@@ -19297,6 +19495,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       result = chooseGalleryPortfolio(result, selectedProfile);
       output2.replaceChildren();
       if (result.comparisonPending) add(document, output2, "p", "\u5168\u5C40\u8DEF\u7EBF\u4ECD\u5728\u540E\u53F0\u6BD4\u8F83\uFF1B\u5DF2\u6838\u9A8C\u4E14\u4ECD\u6709\u6548\u7684\u65B9\u6848\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u4ECE\u7A7A\u767D\u91CD\u6765\u3002");
+      if (result.coverage.verified != null) add(document, output2, "p", `\u53C2\u8003\u6838\u9A8C ${result.coverage.verified}/${result.coverage.total} \xB7 \u5F85\u4F18\u5316 ${result.coverage.optimizationPending ?? 0} \u4E2A\u5408\u96C6\uFF1B\u5DF2\u6838\u9A8C\u8DEF\u7EBF\u4FDD\u7559\uFF0C\u4F18\u5316\u9010\u5408\u96C6\u7EE7\u7EED\u3002`);
+      if (result.pendingTasks?.length) {
+        const detail = add(document, output2, "details");
+        add(document, detail, "summary", `\u5F85\u5B8C\u6210\u5408\u96C6\uFF08\u663E\u793A\u524D ${result.pendingTasks.length} \u4E2A\uFF09`);
+        for (const task of result.pendingTasks) add(document, detail, "p", `${task.name ?? task.setId} \xB7 ${task.phase === "verify" ? "\u53C2\u8003\u6838\u9A8C" : "\u5220\u5197\u4F59\u4F18\u5316"} \xB7 \u8BA1\u7B97 ${((task.processingMs ?? 0) / 1e3).toFixed(2)}\u79D2 / \u7B49\u5F85 ${((task.schedulingMs ?? 0) / 1e3).toFixed(2)}\u79D2 / \u590D\u6838 ${((task.validationMs ?? 0) / 1e3).toFixed(2)}\u79D2`);
+      }
       if (result.portfolios?.length) {
         const choices = add(document, output2, "div");
         choices.className = "gallery-roadmap-portfolios";
@@ -19509,6 +19713,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (state.scope !== context) return mismatch2("ACCOUNT");
         return token === epoch2 && state.active && dialog.open;
       };
+      const computeCurrent = () => token === epoch2 && dialog.open;
       try {
         onBusyChange(true);
         const resume = (last?.retainedChanges || last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same28(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
@@ -19602,6 +19807,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               load: loadPrices,
               maxMs: maxMs2,
               current: current2,
+              computeCurrent,
               checkpoint: valid3,
               stopped: () => stopRequested,
               onPhase: phaseChange,
@@ -19662,7 +19868,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const result = await work.run({
           targets,
           options,
-          current: current2,
+          current: computeCurrent,
           checkpoint: valid3,
           maxMs,
           stopped: () => stopRequested,
@@ -19680,7 +19886,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           },
           progress: (value) => {
-            status.textContent = value.phase === "route" ? `3/3 \xB7 \u7EC4\u5408\u6574\u4F53\u8DEF\u7EBF \xB7 \u5DF2\u9009 ${value.completed}/${value.total} \u4E2A\u76EE\u6807 \xB7 \u6BD4\u5BF9 ${value.comparisons} \u6B21` : `3/3 \xB7 \u5168\u76EE\u5F55\u5206\u6790 ${value.completed ?? 0}/${value.total ?? targets.length} \xB7 ${value.name ?? ""} ${value.grade ?? ""} \xB7 \u5DF2\u68C0\u67E5 ${value.gradesChecked ?? 0} \u6863`;
+            status.textContent = value.phase === "route" ? `3/3 \xB7 \u7EC4\u5408\u6574\u4F53\u8DEF\u7EBF \xB7 \u5DF2\u9009 ${value.completed}/${value.total} \u4E2A\u76EE\u6807 \xB7 \u6BD4\u5BF9 ${value.comparisons} \u6B21` : `3/3 \xB7 ${value.taskPhase === "refine" ? "\u5220\u5197\u4F59\u4F18\u5316" : "\u53C2\u8003\u6838\u9A8C"} ${value.completed ?? 0}/${value.total ?? targets.length} \xB7 ${value.name ?? ""} ${value.grade ?? ""} \xB7 \u5DF2\u68C0\u67E5 ${value.gradesChecked ?? 0} \u6863`;
             progress.max = value.total || targets.length || 1;
             progress.value = value.completed ?? 0;
           }
@@ -19752,6 +19958,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           candidateLimit: completed && last.demandDriven ? last.deepCoverage.candidateLimit : void 0,
           referenceInspectedCount: completed ? last.referenceOverview?.coverage.inspected ?? last.coverage.inspected : void 0,
           referenceCompletedCount: completed ? last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected : void 0,
+          referenceVerifiedCount: completed ? last.referenceOverview?.coverage.verified ?? last.coverage.verified : void 0,
+          optimizationPendingCount: completed ? last.referenceOverview?.coverage.optimizationPending ?? last.coverage.optimizationPending : void 0,
+          processingMs: completed ? last.processingMs : void 0,
+          schedulingMs: completed ? last.schedulingMs : void 0,
+          validationMs: completed ? last.validationMs : void 0,
+          microSteps: completed ? last.microSteps : void 0,
+          checkpointCount: completed ? last.checkpointCount : void 0,
+          pendingTasks: completed ? last.pendingTasks : void 0,
           referencePendingCount: completed ? targetCount - (last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected) : void 0,
           reason: failureReason ?? (mismatchReason ? "FC27_GALLERY_ROADMAP_CONTEXT_CHANGED" : completed && last.coverage.stopped ? stopRequested ? "FC27_GALLERY_ROADMAP_STOPPED" : "FC27_GALLERY_ROADMAP_TIME_LIMIT" : void 0),
           localReason: mismatchReason ? `FC27_GALLERY_ROADMAP_${mismatchReason}_CHANGED` : void 0
@@ -21159,6 +21373,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             current: run.current,
             checkpoint: current2,
             maxMs,
+            onTiming: (values8) => {
+              for (const [key2, value2] of Object.entries(values8)) run.metrics[key2] = Math.round(value2);
+            },
             progress: (value2) => {
               output.textContent = value2.seedWork ? `\u6B63\u5728\u5EFA\u7ACB\u5019\u9009\u7EC4\u5408\u2026 ${count2(value2.seedWork)} \u4E2A\u8BA1\u5206\u6B65\u9AA4` : value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u590D\u6838\u2026 ${count2(value2.scoringWork)} \u4E2A\u5185\u90E8\u6B65\u9AA4` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${count2(value2.evaluations)} \u4E2A${value2.completeLineups ? "\u5B8C\u6574\u7EC4\u5408" : "\u5019\u9009"} \xB7 ${Math.floor((performance.now() - started) / 1e3)} \u79D2${value2.bestPrice != null ? ` \xB7 \u5F53\u524D\u5019\u9009\u6700\u4F4E ${count2(value2.bestPrice)} \u91D1\u5E01\uFF08\u5F85\u6700\u7EC8\u590D\u6838\uFF09` : ""}`;
             }
@@ -21167,6 +21384,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             event: "grade-plan",
             phase: "planner",
             replayInput: input,
+            ...run.metrics,
             durationMs: Math.floor(performance.now() - started),
             deadlineMs: maxMs,
             status: plan.status === "ready" || plan.status === "achieved" ? "success" : "blocked",
@@ -21264,7 +21482,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 overview.textContent = `\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026 ${index + 1}/${total} \xB7 ${grade.name} \u6863 ${Math.floor(elapsed / 1e3)}/${Math.ceil(timeoutMs / 1e3)} \u79D2${detail}`;
               };
               labelProgress({ evaluations: 0 });
-              const gradeResult = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+              const gradeResult = await runGalleryPlan(steps, {
+                current: run.current,
+                checkpoint: isCurrent,
+                maxMs: timeoutMs,
+                progress: labelProgress,
+                onTiming: (values8) => {
+                  for (const [key2, value2] of Object.entries(values8)) run.metrics[key2] = (run.metrics[key2] ?? 0) + Math.round(value2);
+                }
+              });
               return gradeResult ? { ...gradeResult, elapsedMs: Math.floor(performance.now() - started) } : gradeResult;
             }
           });
@@ -21359,7 +21585,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const materialBinding = (value, set) => planBinding({ ...value, prices: {}, priceSnapshot: null }, set);
     const setPlanningRun = (set, value, output, surface, event = "grade-plan") => {
       ++planningEpoch;
-      const identity5 = scope2(), expectedMaterial = materialBinding(value, set);
+      const identity5 = scope2(), expectedMaterial = materialBinding(value, set), metrics = {};
       let expectedBinding = null, reason = null, failed2 = false, reported = false, replayInput = null;
       const stop6 = (code2) => {
         reason ??= code2;
@@ -21367,12 +21593,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       };
       const current2 = () => {
         if (reason) return false;
-        if (identity5 !== scope2()) return stop6("FC27_GALLERY_PLAN_ACCOUNT_CHANGED");
         if (disposed || !active || selectedSetId !== set.id || jointMode || !output.isConnected) return stop6("FC27_GALLERY_PLAN_VIEW_CHANGED");
         if (runningPlanSurfaces.get(set.id) !== surface) return stop6("FC27_GALLERY_PLAN_REPLACED");
         return true;
       };
       const checkpoint = () => {
+        if (identity5 !== scope2()) return stop6("FC27_GALLERY_PLAN_ACCOUNT_CHANGED");
         if (!current2()) return false;
         const latest = details.get(set.id), liveSet = currentGallerySet(set.id);
         if (!liveSet || materialBinding(latest, liveSet) !== expectedMaterial) return stop6("FC27_GALLERY_PLAN_INPUT_CHANGED");
@@ -21383,6 +21609,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         current: current2,
         checkpoint,
         stop: stop6,
+        metrics,
         binding: () => expectedBinding,
         captureReplay(input) {
           replayInput = input;
@@ -21403,7 +21630,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         report() {
           if (!reason || reported) return;
           reported = true;
-          void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason, replayInput });
+          void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason, replayInput, ...metrics });
           if (disposed || identity5 !== scope2() || runningPlanSurfaces.get(set.id) !== surface) return;
           const messages2 = {
             FC27_GALLERY_PLAN_USER_CANCELLED: "\u8BA1\u7B97\u5DF2\u53D6\u6D88\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\u3002",
@@ -30646,6 +30873,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "referenceInspectedCount",
     "referenceCompletedCount",
     "referencePendingCount",
+    "referenceVerifiedCount",
+    "optimizationPendingCount",
+    "validationMs",
+    "microSteps",
+    "checkpointCount",
     "reconciledCount",
     "portfolioCount",
     "comparisonCount",
@@ -30792,10 +31024,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const key2 of BOOLEAN_FIELDS) {
       if (typeof input[key2] === "boolean") entry[key2] = input[key2];
     }
+    if (input.area === "gallery" && Array.isArray(input.pendingTasks)) entry.pendingTasks = input.pendingTasks.slice(0, 13).flatMap((task) => {
+      const id12 = Number.isSafeInteger(task?.setId) && task.setId > 0 && task.setId < 1e9 ? task.setId : typeof task?.setId === "string" && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
+      if (id12 === null || !["verify", "refine"].includes(task.phase)) return [];
+      const value = { setId: id12, phase: task.phase };
+      for (const key2 of ["turns", "durationMs", "processingMs", "schedulingMs", "validationMs", "microSteps", "checkpointCount"])
+        if (Number.isSafeInteger(task[key2]) && task[key2] >= 0) value[key2] = task[key2];
+      return [Object.freeze(value)];
+    });
     if (typeof input.version === "string" && /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(input.version)) entry.version = input.version;
     if (!entry.area || !entry.event) return null;
     return Object.freeze(entry);
   }
+  var copyEntry = (entry) => ({ ...entry, ...entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map((task) => ({ ...task })) } : {} });
   function validSavedEntry(value) {
     return sanitizeEntry(value, () => value?.at);
   }
@@ -30850,11 +31091,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         product: "FC Automation Tool",
         season: "27",
         version: version ?? null,
-        entries: entries2.map((entry) => ({ ...entry })),
-        criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
-        transactionResults: transactionResults.map((entry) => ({ ...entry })),
-        performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
-        roadmapEntries: roadmapEntries.map((entry) => ({ ...entry })),
+        entries: entries2.map(copyEntry),
+        criticalEntries: criticalEntries.map(copyEntry),
+        transactionResults: transactionResults.map(copyEntry),
+        performanceEntries: performanceEntries.map(copyEntry),
+        roadmapEntries: roadmapEntries.map(copyEntry),
         planning: structuredClone(planning)
       };
       return Promise.resolve().then(() => gmSetValue(key2, payload)).catch(() => void 0);
@@ -30887,7 +31128,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const snapshot = async () => {
       await writing;
       await load();
-      return entries2.map((entry) => ({ ...entry }));
+      return entries2.map(copyEntry);
     };
     const exportPayload = async () => {
       const exportedEntries = await snapshot();
@@ -30899,11 +31140,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         exportedAt: now(),
         redaction: "Bounded events, critical trade events, planning performance summaries and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.",
         entries: exportedEntries,
-        criticalEntries: criticalEntries.map((entry) => ({ ...entry })),
-        transactionResults: transactionResults.map((entry) => ({ ...entry })),
+        criticalEntries: criticalEntries.map(copyEntry),
+        transactionResults: transactionResults.map(copyEntry),
         planning: structuredClone(planning),
-        performanceEntries: performanceEntries.map((entry) => ({ ...entry })),
-        roadmapEntries: roadmapEntries.map((entry) => ({ ...entry }))
+        performanceEntries: performanceEntries.map(copyEntry),
+        roadmapEntries: roadmapEntries.map(copyEntry)
       };
     };
     return Object.freeze({ record, snapshot, exportPayload, count: () => entries2.length, key: key2 });
@@ -38807,7 +39048,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.74" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.75" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -39149,8 +39390,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.74"}`,
-    version: "27.0.74",
+    title: `FC Automation Tool ${"27.0.75"}`,
+    version: "27.0.75",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

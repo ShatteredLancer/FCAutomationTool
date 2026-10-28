@@ -7,7 +7,7 @@ import { isCapturedFodderForecastTarget } from './fodder-planning-reference.js';
 // estimates or independent quotes; neither grants spending authority. No
 // foreign score or aggregate public cost proves a personal plan.
 export function* verifyGalleryReferenceSteps({ target, proposal, capital = null, summarize = summarizeGalleryScoreSteps,
-  allowCapturedForecast = false } = {}) {
+  allowCapturedForecast = false, refine = true } = {}) {
   const { progress, prices, set, catalog } = target;
   if (target.publicReference?.basis !== 'empty-collection-public-reference'
       || target.publicReference.expiresAt <= Date.now() && !(allowCapturedForecast && isCapturedFodderForecastTarget(target))
@@ -30,12 +30,22 @@ export function* verifyGalleryReferenceSteps({ target, proposal, capital = null,
     return yield* summarize({ set, catalog, progress: { ...progress,
       rows: [...existing.map(row => ({ ...row, collected: true })), ...picked] } });
   };
-  let summary = yield* measure(selected);
   const threshold = set.grades.find(grade => grade.name === proposal.grade)?.threshold;
+  if (threshold == null) return null;
+  let summary = null;
+  if (!refine && proposal.ids.length === set.requiredCards) {
+    const purchased = new Map(selected.map(row => [row.eaId, row]));
+    // A complete public lineup is a conservative witness, even when extra
+    // owned cards might make another lineup better. It is independently
+    // rescored locally; the later pass can improve/trim it with all owned.
+    summary = yield* summarize({ set, catalog, progress: { ...progress,
+      rows: proposal.ids.map(id => purchased.get(id) ?? { ...rows.get(id), collected: true }) } });
+  }
+  if (!summary?.full || summary.low?.total < threshold) summary = yield* measure(selected);
   if (!summary?.full || summary.low?.total < threshold || threshold == null) return null;
   // Existing cards outside the public lineup may make some purchases redundant.
   // One bounded expensive-first removal pass is enough for the fast overview.
-  if (existing.length) for (const item of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
+  if (refine && existing.length) for (const item of items.slice().sort((a, b) => b.price - a.price).slice(0, 32)) {
     const trial = yield* measure(selected.filter(row => row.eaId !== item.eaId));
     if (trial?.full && trial.low?.total >= threshold) {
       selected.splice(selected.findIndex(row => row.eaId === item.eaId), 1);

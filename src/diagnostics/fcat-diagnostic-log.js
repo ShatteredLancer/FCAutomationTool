@@ -13,7 +13,8 @@ const MAX_STRING_LENGTH = 160;
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
-  'referenceInspectedCount','referenceCompletedCount','referencePendingCount','reconciledCount','portfolioCount','comparisonCount',
+  'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
+  'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
@@ -63,10 +64,21 @@ function sanitizeEntry(input, now) {
   for (const key of BOOLEAN_FIELDS) {
     if (typeof input[key] === 'boolean') entry[key] = input[key];
   }
+  if (input.area === 'gallery' && Array.isArray(input.pendingTasks)) entry.pendingTasks = input.pendingTasks.slice(0,13).flatMap(task => {
+    const id=Number.isSafeInteger(task?.setId) && task.setId>0 && task.setId<1000000000 ? task.setId
+      : typeof task?.setId==='string' && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
+    if(id===null || !['verify','refine'].includes(task.phase))return [];
+    const value={setId:id,phase:task.phase};
+    for(const key of ['turns','durationMs','processingMs','schedulingMs','validationMs','microSteps','checkpointCount'])
+      if(Number.isSafeInteger(task[key]) && task[key]>=0)value[key]=task[key];
+    return [Object.freeze(value)];
+  });
   if (typeof input.version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(input.version)) entry.version = input.version;
   if (!entry.area || !entry.event) return null;
   return Object.freeze(entry);
 }
+
+const copyEntry = entry => ({ ...entry, ...(entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map(task => ({ ...task })) } : {}) });
 
 function validSavedEntry(value) {
   return sanitizeEntry(value, () => value?.at);
@@ -115,10 +127,10 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   })().finally(() => { loading = null; });
   const persist = () => {
     const payload = { schema: 1, product: 'FC Automation Tool', season: '27', version: version ?? null,
-      entries: entries.map(entry => ({ ...entry })), criticalEntries: criticalEntries.map(entry => ({ ...entry })),
-      transactionResults: transactionResults.map(entry => ({ ...entry })),
-      performanceEntries: performanceEntries.map(entry => ({ ...entry })),
-      roadmapEntries: roadmapEntries.map(entry => ({ ...entry })),
+      entries: entries.map(copyEntry), criticalEntries: criticalEntries.map(copyEntry),
+      transactionResults: transactionResults.map(copyEntry),
+      performanceEntries: performanceEntries.map(copyEntry),
+      roadmapEntries: roadmapEntries.map(copyEntry),
       planning: structuredClone(planning) };
     return Promise.resolve().then(() => gmSetValue(key, payload)).catch(() => undefined);
   };
@@ -154,7 +166,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
   };
   const snapshot = async () => {
     await writing; await load();
-    return entries.map(entry => ({ ...entry }));
+    return entries.map(copyEntry);
   };
   const exportPayload = async () => {
     const exportedEntries = await snapshot();
@@ -165,10 +177,10 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
     version: version ?? null,
     exportedAt: now(),
     redaction: 'Bounded events, critical trade events, planning performance summaries and four Gallery planning replays. URLs, credentials, account identifiers and raw card objects are excluded.',
-    entries: exportedEntries, criticalEntries: criticalEntries.map(entry => ({ ...entry })),
-    transactionResults: transactionResults.map(entry => ({ ...entry })), planning: structuredClone(planning),
-    performanceEntries: performanceEntries.map(entry => ({ ...entry })),
-    roadmapEntries: roadmapEntries.map(entry => ({ ...entry })),
+    entries: exportedEntries, criticalEntries: criticalEntries.map(copyEntry),
+    transactionResults: transactionResults.map(copyEntry), planning: structuredClone(planning),
+    performanceEntries: performanceEntries.map(copyEntry),
+    roadmapEntries: roadmapEntries.map(copyEntry),
   }; };
   return Object.freeze({ record, snapshot, exportPayload, count: () => entries.length, key });
 }

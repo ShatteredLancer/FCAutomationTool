@@ -109,7 +109,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
   };
   return {
     clear, validResult, bind,
-    async run({ targets, options, load, current = () => true, checkpoint = current, stopped = () => false, maxMs,
+    async run({ targets, options, load, current = () => true, computeCurrent = current, checkpoint = current, stopped = () => false, maxMs,
       progress = () => {}, onPreview = () => {}, onResult = () => {}, onPhase = () => {},
       now = Date.now, clock = () => performance.now(), schedule, gradePlanner, quantumMs = 40 } = {}) {
       const key = JSON.stringify({...options,deep:undefined});
@@ -118,7 +118,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
       const checking = () => { if (!current() || !checkpoint()) throw Error('FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'); };
       const run = async (steps,limit=remaining()) => {
         const result = await runGalleryPlan({ next: finish => steps.next(finish || stopped()), return: () => steps.return() },
-          { current, checkpoint, maxMs: Math.min(remaining(),limit), progress, ...(schedule ? { schedule } : {}), now: clock });
+          { current: computeCurrent, checkpoint, maxMs: Math.min(remaining(),limit), progress, ...(schedule ? { schedule } : {}), now: clock });
         checking(); return result;
       };
       checking();
@@ -135,7 +135,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
       while (remaining() > 0 && !stopped()) {
         checking();
         onPhase('planning');
-        const advanced=await preflight.advance({options,current,checkpoint,stopped,maxMs:remaining(),quantumMs,progress,clock,schedule});
+        const advanced=await preflight.advance({options,current:computeCurrent,checkpoint,stopped,maxMs:remaining(),quantumMs,progress,clock,schedule});
         refreshJobs();
         const job = jobs.filter(job => !job.done && !job.deferred).sort((a, b) => a.tier-b.tier || a.turns-b.turns || a.rank-b.rank)[0];
         if(advanced && (!preview || job && !preview.rows.some(row=>row.setId===job.target.set.id) || clock()-published>=250)){

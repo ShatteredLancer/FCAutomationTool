@@ -12,6 +12,23 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('bounds and restores public pending task timings without identities or nested aliasing',async()=>{
+  const t=harness();
+  await t.log.record({area:'gallery',event:'roadmap-checkpoint',referenceVerifiedCount:183,optimizationPendingCount:13,
+    validationMs:25,microSteps:30000,checkpointCount:100,
+    pendingTasks:Array.from({length:20},(_,i)=>({setId:`futgg:${i+1}`,phase:i%2?'verify':'refine',turns:i,
+      processingMs:20,schedulingMs:30,validationMs:4,name:'private-name',account:'private-account',path:'private-path'}))});
+  const payload=await t.log.exportPayload(),entry=payload.roadmapEntries[0];
+  expect(entry.pendingTasks).toHaveLength(13);expect(entry.pendingTasks[0]).toEqual({setId:1,phase:'refine',turns:0,processingMs:20,schedulingMs:30,validationMs:4});
+  expect(entry).toMatchObject({referenceVerifiedCount:183,optimizationPendingCount:13,validationMs:25,microSteps:30000,checkpointCount:100});
+  expect(JSON.stringify(payload)).not.toContain('private-');
+  entry.pendingTasks[0].setId=999;entry.pendingTasks.pop();
+  expect((await t.log.exportPayload()).roadmapEntries[0].pendingTasks[0].setId).toBe(1);
+  const restored=createFcatDiagnosticLog({gmGetValue:t.get,gmSetValue:t.set});
+  expect((await restored.exportPayload()).roadmapEntries[0].pendingTasks).toHaveLength(13);
+  expect((await restored.exportPayload()).roadmapEntries[0].pendingTasks[0].setId).toBe(1);
+});
+
 it('retains single-set interruptions in the existing bounded planning ring after directory and quote floods', async () => {
   expect(planRefreshIncident.syntheticReproduction.reason).toBe('FC27_GALLERY_GRADE_PLANNER_FAILED');
   expect(planRefreshIncident.singlePlan.bestScore).toBeGreaterThan(planRefreshIncident.singlePlan.targetScore);

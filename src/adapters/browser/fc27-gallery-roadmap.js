@@ -102,6 +102,9 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     diagnose({event:'roadmap-checkpoint',phase:'planning',status:result.coverage.stopped?'partial':'success',
       acceptedCount:result.route.length,portfolioCount:result.portfolios?.length ?? 0,comparisonPending:!!result.comparisonPending,
       comparisonCount:result.comparisons,referenceInspectedCount:result.coverage.inspected,
+      referenceVerifiedCount:result.coverage.verified,optimizationPendingCount:result.coverage.optimizationPending,
+      processingMs:result.processingMs,schedulingMs:result.schedulingMs,validationMs:result.validationMs,
+      microSteps:result.microSteps,checkpointCount:result.checkpointCount,pendingTasks:result.pendingTasks,
       referenceCompletedCount:result.coverage.completed,referencePendingCount:result.coverage.total-(result.coverage.completed ?? result.coverage.inspected)});
   };
   const parse = field => field.value.trim() === '' ? null : Number(field.value);
@@ -142,6 +145,11 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     result=chooseGalleryPortfolio(result,selectedProfile);
     output.replaceChildren();
     if(result.comparisonPending)add(document,output,'p','全局路线仍在后台比较；已核验且仍有效的方案保留，可继续分析，不从空白重来。');
+    if(result.coverage.verified!=null)add(document,output,'p',`参考核验 ${result.coverage.verified}/${result.coverage.total} · 待优化 ${result.coverage.optimizationPending ?? 0} 个合集；已核验路线保留，优化逐合集继续。`);
+    if(result.pendingTasks?.length){
+      const detail=add(document,output,'details');add(document,detail,'summary',`待完成合集（显示前 ${result.pendingTasks.length} 个）`);
+      for(const task of result.pendingTasks)add(document,detail,'p',`${task.name ?? task.setId} · ${task.phase==='verify'?'参考核验':'删冗余优化'} · 计算 ${((task.processingMs ?? 0)/1000).toFixed(2)}秒 / 等待 ${((task.schedulingMs ?? 0)/1000).toFixed(2)}秒 / 复核 ${((task.validationMs ?? 0)/1000).toFixed(2)}秒`);
+    }
     if(result.portfolios?.length){
       const choices=add(document,output,'div');choices.className='gallery-roadmap-portfolios';
       add(document,choices,'p','同一全局候选库的路线对比：默认 S → A → B，先比较同档目标。共享精确版本只计一次采购；资金按实际顺序与逐卡回售假设计算。未核验的 S 不算不可做，A/B 仅为当前已核验范围的候选。');
@@ -289,6 +297,9 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       if (state.scope !== context) return mismatch('ACCOUNT');
       return token === epoch && state.active && dialog.open;
     };
+    // Only pure synchronous DTO work uses this inexpensive guard. Async
+    // reads still use current(); every compute slice/final result uses valid.
+    const computeCurrent = () => token === epoch && dialog.open;
     try {
       onBusyChange(true);
       const resume = (last?.retainedChanges || last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same(binding) && fingerprint === JSON.stringify(options)
@@ -348,7 +359,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
           phase = next; phaseStarted = at; stage = next === 'pricing' ? 'demand-pricing' : 'planning'; stageStarted = at;
         };
         try {
-          const value = await demand.run({ targets, options, load: loadPrices, maxMs, current, checkpoint: valid,
+          const value = await demand.run({ targets, options, load: loadPrices, maxMs, current, computeCurrent, checkpoint: valid,
             stopped: () => stopRequested, onPhase: phaseChange,
             onPreview: result => { if (!valid()) return;referenceOverview=result;renderPreview(result);referenceView?.collapse(); },
             onResult: result => { if (valid()) { last={...chooseGalleryPortfolio(result,selectedProfile),referenceOverview,
@@ -376,11 +387,11 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       stage = 'planning';
       const planStarted = performance.now();
       stageStarted = planStarted;
-      const result = await work.run({targets,options,current,checkpoint:valid,maxMs,stopped:()=>stopRequested,
+      const result = await work.run({targets,options,current:computeCurrent,checkpoint:valid,maxMs,stopped:()=>stopRequested,
         onResult:result=>{if(valid()){last={...chooseGalleryPortfolio(result,selectedProfile),generatedAt:Date.now(),timings,priceBasis,
           forecastReference:forecastEvidence?{...forecastEvidence}:null};recordCheckpoint(last);render(last);}},progress: value => {
           status.textContent = value.phase === 'route' ? `3/3 · 组合整体路线 · 已选 ${value.completed}/${value.total} 个目标 · 比对 ${value.comparisons} 次`
-            : `3/3 · 全目录分析 ${value.completed ?? 0}/${value.total ?? targets.length} · ${value.name ?? ''} ${value.grade ?? ''} · 已检查 ${value.gradesChecked ?? 0} 档`;
+            : `3/3 · ${value.taskPhase==='refine'?'删冗余优化':'参考核验'} ${value.completed ?? 0}/${value.total ?? targets.length} · ${value.name ?? ''} ${value.grade ?? ''} · 已检查 ${value.gradesChecked ?? 0} 档`;
           progress.max = value.total || targets.length || 1; progress.value = value.completed ?? 0;
         } });
       if (!result || !valid()) {
@@ -422,6 +433,11 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         candidateLimit: completed && last.demandDriven ? last.deepCoverage.candidateLimit : undefined,
         referenceInspectedCount:completed ? (last.referenceOverview?.coverage.inspected ?? last.coverage.inspected) : undefined,
         referenceCompletedCount:completed ? (last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected) : undefined,
+        referenceVerifiedCount:completed ? (last.referenceOverview?.coverage.verified ?? last.coverage.verified) : undefined,
+        optimizationPendingCount:completed ? (last.referenceOverview?.coverage.optimizationPending ?? last.coverage.optimizationPending) : undefined,
+        processingMs:completed?last.processingMs:undefined,schedulingMs:completed?last.schedulingMs:undefined,
+        validationMs:completed?last.validationMs:undefined,microSteps:completed?last.microSteps:undefined,
+        checkpointCount:completed?last.checkpointCount:undefined,pendingTasks:completed?last.pendingTasks:undefined,
         referencePendingCount:completed ? targetCount-(last.referenceOverview?.coverage.completed ?? last.coverage.completed ?? last.coverage.inspected) : undefined,
         reason: failureReason ?? (mismatchReason ? 'FC27_GALLERY_ROADMAP_CONTEXT_CHANGED'
           : completed && last.coverage.stopped ? stopRequested ? 'FC27_GALLERY_ROADMAP_STOPPED' : 'FC27_GALLERY_ROADMAP_TIME_LIMIT' : undefined),

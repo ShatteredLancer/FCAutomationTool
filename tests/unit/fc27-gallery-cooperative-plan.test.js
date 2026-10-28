@@ -145,3 +145,26 @@ it('continues yielding after a nested score deadline and returns a truthful part
   expect(yields).toBeGreaterThan(0); expect(yields).toBeLessThan(100);
   expect(result).toMatchObject({ status: 'partial', timeExhausted: true, searchComplete: false });
 });
+
+it('reports bounded slice timings without changing checks, yields or results', async () => {
+  const run = async onTiming => {
+    let time=0,checks=0,waits=0;
+    function* steps(){for(let n=0;n<20;n++)yield;return 42;}
+    const value=await runGalleryPlan(steps(),{now:()=>++time,sliceMs:4,checkpoint:()=>{checks++;return true;},
+      schedule:async()=>{waits++;},onTiming});
+    return {value,checks,waits};
+  };
+  let timing;
+  expect(await run(value=>{timing=value;})).toEqual(await run(null));
+  expect(timing.microSteps).toBe(21);expect(timing.checkpointCount).toBeGreaterThan(2);
+  for(const key of ['processingMs','schedulingMs','validationMs','durationMs'])expect(timing[key]).toBeGreaterThanOrEqual(0);
+  expect(await run(()=>{throw Error('observation only');})).toEqual(await run(null));
+});
+
+it('reports timing on account invalidation without publishing a computed result',async()=>{
+  let valid=true,timing,time=0;
+  function* steps(){for(let n=0;n<20;n++)yield;return 42;}
+  expect(await runGalleryPlan(steps(),{current:()=>true,checkpoint:()=>valid,sliceMs:2,now:()=>++time,
+    schedule:async()=>{valid=false;},onTiming:value=>{timing=value;}})).toBeNull();
+  expect(timing.checkpointCount).toBe(3);expect(timing.microSteps).toBeLessThan(21);
+});

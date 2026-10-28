@@ -1,4 +1,5 @@
 import { forecastGalleryTurnover } from './turnover-budget.js';
+import { createGalleryTurnoverEstimator } from './turnover-estimator.js';
 
 // Select a read-only route from verified grade proposals, not raw web posts.
 // The loss-per-added-token heuristic is bounded; no global optimum is claimed.
@@ -25,14 +26,17 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
     }
     return facts.get(option);
   };
-  const forecast = trial => {
+  const orderedSteps = trial => {
     const entries = [...trial];
     if (profile) entries.sort((a,b) => priority(b[1].option) - priority(a[1].option)
       || info(b[1].option).weight-info(a[1].option).weight
       || a[0].localeCompare(b[0]));
-    return forecastGalleryTurnover({ capital, resaleDiscountBps, ...(profile ? { optimizeOrder: false } : {}),
-      steps: entries.map(([setId,entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items })) });
+    return entries.map(([setId,entry]) => ({ setId, items: profile ? info(entry.option).items : entry.option.items }));
   };
+  const forecast = trial => forecastGalleryTurnover({ capital, resaleDiscountBps,
+    ...(profile ? { optimizeOrder: false } : {}), steps: orderedSteps(trial) });
+  const estimator = profile ? createGalleryTurnoverEstimator({ capital, resaleDiscountBps }) : null;
+  const estimateTrial = trial => estimator ? estimator.estimate(orderedSteps(trial)) : forecast(trial);
   const singles = resumeOnly ? [] : rows.flatMap(row => {
     const options=profile ? [...new Map((row.options ?? []).map(option=>[JSON.stringify([option.grade,option.projectedTokens,option.score,
       option.items?.map(item=>[item.eaId,item.price]).sort((a,b)=>a[0]-b[0]),option.estimated,option.referenceVerified,option.searchComplete]),option])).values()] : row.options ?? [];
@@ -83,7 +87,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
         || option.projectedTokens <= (selected.get(row.setId)?.option.projectedTokens ?? row.baselineTokens))) continue;
       const added=additions.reduce((n,{row,option})=>n+option.projectedTokens-(selected.get(row.setId)?.option.projectedTokens ?? row.baselineTokens),0);
       const trial = new Map(selected); for(const entry of additions) trial.set(entry.row.setId,entry);
-      const estimate = forecast(trial);
+      const estimate = estimateTrial(trial);
       if (estimate.status !== 'estimated' || estimate.feasible === false || lossLimit !== null && estimate.expectedNetLoss > lossLimit) {
         skipped.set(row.setId, { setId: row.setId, name: row.name,
           reason: estimate.status !== 'estimated' ? estimate.reason : estimate.feasible === false ? 'capital-gap' : 'loss-limit',
@@ -108,7 +112,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
     }
     if (!best) break;
     selected.clear(); for (const entry of best.trial) selected.set(...entry);
-    funding = best.estimate; gain += best.added;
+    funding = forecast(selected); gain += best.added;
     if(profile && (!representative || (profile==='tokens' ? gain>representative.gain
       : profile==='capital' ? funding.requiredCapital<representative.funding.requiredCapital
       : funding.expectedNetLoss<representative.funding.expectedNetLoss)

@@ -24,6 +24,12 @@ export function createGalleryRoadmapWork() {
       if (!values.has(key)) values.set(key, create());
       return values.get(key);
     },
+    releaseMemos(target) {
+      // Completed baseline/reference values are separate from the transient
+      // scorer caches. Do not retain every collection's large scoring memo
+      // while the first global verification pass visits the rest.
+      groups.get(target)?.values.clear();
+    },
     *run(target, key, create) {
       const entries = group(target).entries;
       if (!entries.has(key)) { const entry = { steps: create(), done: false }; entries.set(key, entry); pending.add(entry); }
