@@ -83,7 +83,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== 'hidden' }) {
   const node = id => shadow.getElementById(id);
   let roadmap = null, roadmapTarget = null, levelPanel = null;
-  let roadmapBusy = false, roadmapRefreshDeferred = false;
+  let roadmapBusy = false, catalogRefreshDeferred = false;
   const runningPlanSurfaces = new Map();
   const roadmapProgressKeys = new WeakMap();
   const roadmapProgressKey = progress => {
@@ -708,23 +708,33 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const renderPlan = (target, value, set, summary) => {
     if (typeof gradePlanner !== 'function' || !value?.progress || !result?.catalog) return;
-    const surfaceKey = JSON.stringify([scope(), set, result.catalog.revision,
-      galleryPlanningStateKey({ ...value, prices: {}, priceSnapshot: null })]);
+    const surfaceKey = materialBinding(value, set);
     const running = runningPlanSurfaces.get(set.id);
     if (running?.key === surfaceKey) { target.append(running.section); return; }
-    if (running) { planningEpoch++; runningPlanSurfaces.delete(set.id); }
+    if (running) {
+      planningEpoch++; runningPlanSurfaces.delete(set.id);
+      rememberPlanNotice(set.id, { event: running.event, grade: running.grade,
+        message: '收集状态或目录已更新，旧计算已停止，请重新生成。' });
+    }
     const section = add(target, 'section', '', 'gallery-plan');
     add(section, 'strong', '指定等级补卡方案');
     const row = add(section, 'div', '', 'row');
     const select = document.createElement('select');
     for (const grade of set.grades) { const option = document.createElement('option'); option.value = grade.name; option.textContent = `${grade.name} · ${count(grade.threshold)} 分`; select.append(option); }
     if (summary?.nextGrade) select.value = summary.nextGrade;
+    const notice = planNotices.get(set.id);
+    if (notice?.grade && set.grades.some(grade => grade.name === notice.grade)) {
+      select.value = notice.grade; select.dataset.edited = 'true';
+    }
     if (roadmapTarget?.setId === set.id && set.grades.some(grade => grade.name === roadmapTarget.grade)) {
       select.value = roadmapTarget.grade;
+      select.dataset.edited = 'true';
       add(section, 'small', `整体路线目标 ${roadmapTarget.grade}；如需周转，可先少量买入并确认收集后再卖回，不要求一次买齐。`);
     }
     select.addEventListener('change', () => {
       select.dataset.edited = 'true';
+      rememberPlanNotice(set.id, { grade: select.value });
+      section.querySelectorAll('.gallery-plan-notice').forEach(node => node.remove());
       if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
     });
     row.append(select);
@@ -741,7 +751,6 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       jointAdd.title = '已加入联合目标';
     });
     const output = add(section, 'div', '', 'gallery-plan-output'); output.setAttribute('aria-live', 'polite');
-    if (running) output.textContent = '收集状态或目录已更新，旧计算已停止，请重新生成。';
     const overview = add(section, 'div', '', 'gallery-grade-overview'); overview.setAttribute('aria-live', 'polite');
     const rewardText = snapshot => {
       if (!snapshot) return '请重新生成';
@@ -842,11 +851,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       showOverview(saved.overview);
       if (saved.overviewBinding !== planBinding(value, set)) add(overview, 'small', '数据或报价已更新，保留上次各档费用；请重新计算。', 'gallery-unknown');
     }
+    if (notice?.message) add(notice.event === 'grade-overview' ? overview : output, 'small', notice.message, 'gallery-unknown gallery-plan-notice');
     button.addEventListener('click', async event => {
       if (!event.isTrusted) return;
+      rememberPlanNotice(set.id, { grade: select.value });
+      section.querySelectorAll('.gallery-plan-notice').forEach(node => node.remove());
       button.disabled = true; output.replaceChildren(); add(output, 'small', '正在计算…');
       overviewButton.disabled = true; select.disabled = true;
-      const chosenGrade = select.value, surface = { key: surfaceKey, section };
+      const chosenGrade = select.value, surface = { key: surfaceKey, section, grade: chosenGrade, event: 'grade-plan' };
       runningPlanSurfaces.set(set.id, surface);
       const run = setPlanningRun(set, value, output, surface);
       activePlans++;
@@ -888,15 +900,17 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         }
         if (!plan) run.stop('FC27_GALLERY_PLAN_INTERRUPTED');
       } catch (error) { run.fail(error); }
-      finally { run.report(); activePlans = Math.max(0, activePlans - 1); button.disabled = false; overviewButton.disabled = false; select.disabled = false; cancel.remove();
-        if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id); }
+      finally { run.report(); button.disabled = false; overviewButton.disabled = false; select.disabled = false; cancel.remove();
+        finishSetPlanning(set.id, surface); }
     });
     overviewButton.addEventListener('click', async event => {
       if (!event.isTrusted || overviewButton.disabled) return;
+      rememberPlanNotice(set.id, { grade: select.value });
+      section.querySelectorAll('.gallery-plan-notice').forEach(node => node.remove());
       const cached = loadPlanningPrices ? null : overviewCache.get(overviewKey);
       if (cached) { showOverview(cached); return; }
       overviewButton.disabled = true; button.disabled = true; select.disabled = true; overview.textContent = '正在计算各档费用…';
-      const surface = { key: surfaceKey, section };
+      const surface = { key: surfaceKey, section, grade: select.value, event: 'grade-overview' };
       runningPlanSurfaces.set(set.id, surface);
       const run = setPlanningRun(set, value, overview, surface, 'grade-overview');
       const current = run.checkpoint;
@@ -933,8 +947,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         }
         if (!plan) run.stop('FC27_GALLERY_PLAN_INTERRUPTED');
       } catch (error) { run.fail(error); }
-      finally { run.report(); activePlans = Math.max(0, activePlans - 1); overviewButton.disabled = false; button.disabled = false; select.disabled = false;
-        if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id); }
+      finally { run.report(); overviewButton.disabled = false; button.disabled = false; select.disabled = false;
+        finishSetPlanning(set.id, surface); }
     });
   };
   const setIconSelections = new Map();
@@ -994,6 +1008,14 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   // Planning output is independent from the DOM. A sync/render cycle may
   // replace the detail subtree, but it must not erase the user's last plan.
   const planCache = new Map();
+  // Small, account-scoped choices/notices only, not quotes/approvals or a new
+  // persistent history. A redraw must not change the requested grade or erase
+  // why a plan stopped. Retry clears the notice, account/source clear both.
+  const planNotices = new Map();
+  const rememberPlanNotice = (id, notice) => {
+    planNotices.delete(id); planNotices.set(id, notice);
+    while (planNotices.size > 20) planNotices.delete(planNotices.keys().next().value);
+  };
   const restoringPlans = new Map();
   const setIdentity = set => ({ id: set?.id, name: set?.name, slug: set?.slug, requiredCards: set?.requiredCards,
     rules: set?.rules,
@@ -1044,7 +1066,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         if (!reason || reported) return;
         reported = true;
         void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason });
-        if (identity !== scope() || !output.isConnected || runningPlanSurfaces.get(set.id) !== surface) return;
+        if (disposed || identity !== scope() || runningPlanSurfaces.get(set.id) !== surface) return;
         const messages = {
           FC27_GALLERY_PLAN_USER_CANCELLED: '计算已取消，可重新生成。',
           FC27_GALLERY_PLAN_INPUT_CHANGED: '当前合集规则或收集状态已更新，计算已停止，请重新生成。',
@@ -1052,9 +1074,21 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           FC27_GALLERY_PLAN_VIEW_CHANGED: '已离开当前合集，计算已停止。',
           FC27_GALLERY_PLAN_REPLACED: '已开始其他计算，本次计算已停止。',
         };
-        output.textContent = messages[reason] ?? (failed ? `方案生成失败：${reason}。请重试或导出诊断日志。` : '本次计算已中断，可重新生成；未进行购买。');
+        const message = messages[reason] ?? (failed ? `方案生成失败：${reason}。请重试或导出诊断日志。` : '本次计算已中断，可重新生成；未进行购买。');
+        rememberPlanNotice(set.id, { event, message, grade: surface.grade });
+        if (output.isConnected) {
+          output.replaceChildren();
+          add(output, 'small', message, 'gallery-unknown gallery-plan-notice');
+        }
       },
     };
+  };
+  const finishSetPlanning = (id, surface) => {
+    activePlans = Math.max(0, activePlans - 1);
+    if (runningPlanSurfaces.get(id) === surface) runningPlanSurfaces.delete(id);
+    if (catalogRefreshDeferred) queueMicrotask(() => {
+      if (!activePlans && !roadmapBusy && active && !disposed && catalogRefreshDeferred) check();
+    });
   };
   const savePlanCache = (set, value, patch) => {
     const current = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
@@ -1400,7 +1434,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const checkScope = () => {
     const next = scope();
     if (next === currentScope) return true;
-    scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear(); planCache.clear();
+    scoreQueue.cancel(); scoredSets.clear(); overviewCache.clear(); planCache.clear(); planNotices.clear();
     currentScope = next; selection++; selectedSetId = null; details.clear(); comparisonViews.clear();
     runningPlanSurfaces.clear();
     roadmapTarget = null; roadmap?.close();
@@ -1962,7 +1996,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const changed = diffGalleryCatalog(previous?.catalog, catalog);
     const sourceChanged = previous?.source && previous.source !== value.source;
     const removed = new Set(changed?.removed ?? []);
-    for (const id of removed) setIconSelections.delete(id);
+    for (const id of removed) { setIconSelections.delete(id); planNotices.delete(id); }
     const requirementChanges = new Set(changed?.requirements ?? []);
     const selectedStillExists = selectedSetId != null && catalog.categories.some(category =>
       category.sets.some(set => set.id === selectedSetId));
@@ -1975,7 +2009,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     if (sourceChanged || selectedRemoved) {
       disposeNativeCards();
       selectedCards.clear(); selectionSource = null; selectionBudget = ''; cardPage = 1;
-      if (sourceChanged) { details.clear(); invalidated.clear(); setIconSelections.clear(); planCache.clear(); comparisonViews.clear(); }
+      if (sourceChanged) { details.clear(); invalidated.clear(); setIconSelections.clear(); planCache.clear(); planNotices.clear(); comparisonViews.clear(); }
       if (sourceChanged) {
         jointTargets.clear(); node('gallery-joint-budget').value = ''; targetsIdentity = null; ++targetsEpoch; restoringTargets = false;
         node('gallery-joint-budget').disabled = false; targetStatus('');
@@ -2065,8 +2099,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const check = () => {
     checkScope();
     if (active && visible()) {
-      if (roadmapBusy) { roadmapRefreshDeferred = true; return; }
-      roadmapRefreshDeferred = false; void load(false);
+      if (roadmapBusy || activePlans) { catalogRefreshDeferred = true; return; }
+      catalogRefreshDeferred = false; void load(false);
     }
   };
   const setActive = value => {
@@ -2113,7 +2147,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       roadmapBusy = busy;
       if (!busy && !disposed && active) queueMicrotask(() => {
         if (roadmapBusy || disposed || !active) return;
-        if (roadmapRefreshDeferred) check();
+        if (catalogRefreshDeferred) check();
         void refreshShared();
       });
     },

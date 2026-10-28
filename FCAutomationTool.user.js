@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.72
+// @version      27.0.73
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.72", at: Date.now(), status: 'started',
+    state = { version: "27.0.73", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -19930,7 +19930,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }) {
     const node = (id12) => shadow.getElementById(id12);
     let roadmap = null, roadmapTarget = null, levelPanel = null;
-    let roadmapBusy = false, roadmapRefreshDeferred = false;
+    let roadmapBusy = false, catalogRefreshDeferred = false;
     const runningPlanSurfaces = /* @__PURE__ */ new Map();
     const roadmapProgressKeys = /* @__PURE__ */ new WeakMap();
     const roadmapProgressKey = (progress) => {
@@ -20794,12 +20794,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const renderPlan = (target, value, set, summary3) => {
       if (typeof gradePlanner !== "function" || !value?.progress || !result?.catalog) return;
-      const surfaceKey = JSON.stringify([
-        scope2(),
-        set,
-        result.catalog.revision,
-        galleryPlanningStateKey({ ...value, prices: {}, priceSnapshot: null })
-      ]);
+      const surfaceKey = materialBinding(value, set);
       const running = runningPlanSurfaces.get(set.id);
       if (running?.key === surfaceKey) {
         target.append(running.section);
@@ -20808,6 +20803,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (running) {
         planningEpoch++;
         runningPlanSurfaces.delete(set.id);
+        rememberPlanNotice(set.id, {
+          event: running.event,
+          grade: running.grade,
+          message: "\u6536\u96C6\u72B6\u6001\u6216\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002"
+        });
       }
       const section = add3(target, "section", "", "gallery-plan");
       add3(section, "strong", "\u6307\u5B9A\u7B49\u7EA7\u8865\u5361\u65B9\u6848");
@@ -20820,12 +20820,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         select.append(option);
       }
       if (summary3?.nextGrade) select.value = summary3.nextGrade;
+      const notice = planNotices.get(set.id);
+      if (notice?.grade && set.grades.some((grade) => grade.name === notice.grade)) {
+        select.value = notice.grade;
+        select.dataset.edited = "true";
+      }
       if (roadmapTarget?.setId === set.id && set.grades.some((grade) => grade.name === roadmapTarget.grade)) {
         select.value = roadmapTarget.grade;
+        select.dataset.edited = "true";
         add3(section, "small", `\u6574\u4F53\u8DEF\u7EBF\u76EE\u6807 ${roadmapTarget.grade}\uFF1B\u5982\u9700\u5468\u8F6C\uFF0C\u53EF\u5148\u5C11\u91CF\u4E70\u5165\u5E76\u786E\u8BA4\u6536\u96C6\u540E\u518D\u5356\u56DE\uFF0C\u4E0D\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002`);
       }
       select.addEventListener("change", () => {
         select.dataset.edited = "true";
+        rememberPlanNotice(set.id, { grade: select.value });
+        section.querySelectorAll(".gallery-plan-notice").forEach((node2) => node2.remove());
         if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
       });
       row.append(select);
@@ -20851,7 +20859,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       const output = add3(section, "div", "", "gallery-plan-output");
       output.setAttribute("aria-live", "polite");
-      if (running) output.textContent = "\u6536\u96C6\u72B6\u6001\u6216\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF0C\u65E7\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002";
       const overview = add3(section, "div", "", "gallery-grade-overview");
       overview.setAttribute("aria-live", "polite");
       const rewardText = (snapshot) => {
@@ -20976,14 +20983,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         showOverview(saved.overview);
         if (saved.overviewBinding !== planBinding(value, set)) add3(overview, "small", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u4FDD\u7559\u4E0A\u6B21\u5404\u6863\u8D39\u7528\uFF1B\u8BF7\u91CD\u65B0\u8BA1\u7B97\u3002", "gallery-unknown");
       }
+      if (notice?.message) add3(notice.event === "grade-overview" ? overview : output, "small", notice.message, "gallery-unknown gallery-plan-notice");
       button.addEventListener("click", async (event) => {
         if (!event.isTrusted) return;
+        rememberPlanNotice(set.id, { grade: select.value });
+        section.querySelectorAll(".gallery-plan-notice").forEach((node2) => node2.remove());
         button.disabled = true;
         output.replaceChildren();
         add3(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
         overviewButton.disabled = true;
         select.disabled = true;
-        const chosenGrade = select.value, surface = { key: surfaceKey, section };
+        const chosenGrade = select.value, surface = { key: surfaceKey, section, grade: chosenGrade, event: "grade-plan" };
         runningPlanSurfaces.set(set.id, surface);
         const run = setPlanningRun(set, value, output, surface);
         activePlans++;
@@ -21049,16 +21059,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           run.fail(error2);
         } finally {
           run.report();
-          activePlans = Math.max(0, activePlans - 1);
           button.disabled = false;
           overviewButton.disabled = false;
           select.disabled = false;
           cancel.remove();
-          if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id);
+          finishSetPlanning(set.id, surface);
         }
       });
       overviewButton.addEventListener("click", async (event) => {
         if (!event.isTrusted || overviewButton.disabled) return;
+        rememberPlanNotice(set.id, { grade: select.value });
+        section.querySelectorAll(".gallery-plan-notice").forEach((node2) => node2.remove());
         const cached = loadPlanningPrices ? null : overviewCache.get(overviewKey);
         if (cached) {
           showOverview(cached);
@@ -21068,7 +21079,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         button.disabled = true;
         select.disabled = true;
         overview.textContent = "\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026";
-        const surface = { key: surfaceKey, section };
+        const surface = { key: surfaceKey, section, grade: select.value, event: "grade-overview" };
         runningPlanSurfaces.set(set.id, surface);
         const run = setPlanningRun(set, value, overview, surface, "grade-overview");
         const current2 = run.checkpoint;
@@ -21111,11 +21122,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           run.fail(error2);
         } finally {
           run.report();
-          activePlans = Math.max(0, activePlans - 1);
           overviewButton.disabled = false;
           button.disabled = false;
           select.disabled = false;
-          if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id);
+          finishSetPlanning(set.id, surface);
         }
       });
     };
@@ -21170,6 +21180,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const comparisonViews = /* @__PURE__ */ new Map();
     const overviewCache = /* @__PURE__ */ new Map();
     const planCache = /* @__PURE__ */ new Map();
+    const planNotices = /* @__PURE__ */ new Map();
+    const rememberPlanNotice = (id12, notice) => {
+      planNotices.delete(id12);
+      planNotices.set(id12, notice);
+      while (planNotices.size > 20) planNotices.delete(planNotices.keys().next().value);
+    };
     const restoringPlans = /* @__PURE__ */ new Map();
     const setIdentity = (set) => ({
       id: set?.id,
@@ -21225,7 +21241,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (!reason || reported) return;
           reported = true;
           void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason });
-          if (identity5 !== scope2() || !output.isConnected || runningPlanSurfaces.get(set.id) !== surface) return;
+          if (disposed || identity5 !== scope2() || runningPlanSurfaces.get(set.id) !== surface) return;
           const messages2 = {
             FC27_GALLERY_PLAN_USER_CANCELLED: "\u8BA1\u7B97\u5DF2\u53D6\u6D88\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\u3002",
             FC27_GALLERY_PLAN_INPUT_CHANGED: "\u5F53\u524D\u5408\u96C6\u89C4\u5219\u6216\u6536\u96C6\u72B6\u6001\u5DF2\u66F4\u65B0\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002",
@@ -21233,9 +21249,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             FC27_GALLERY_PLAN_VIEW_CHANGED: "\u5DF2\u79BB\u5F00\u5F53\u524D\u5408\u96C6\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002",
             FC27_GALLERY_PLAN_REPLACED: "\u5DF2\u5F00\u59CB\u5176\u4ED6\u8BA1\u7B97\uFF0C\u672C\u6B21\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002"
           };
-          output.textContent = messages2[reason] ?? (failed2 ? `\u65B9\u6848\u751F\u6210\u5931\u8D25\uFF1A${reason}\u3002\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002` : "\u672C\u6B21\u8BA1\u7B97\u5DF2\u4E2D\u65AD\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\uFF1B\u672A\u8FDB\u884C\u8D2D\u4E70\u3002");
+          const message = messages2[reason] ?? (failed2 ? `\u65B9\u6848\u751F\u6210\u5931\u8D25\uFF1A${reason}\u3002\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002` : "\u672C\u6B21\u8BA1\u7B97\u5DF2\u4E2D\u65AD\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\uFF1B\u672A\u8FDB\u884C\u8D2D\u4E70\u3002");
+          rememberPlanNotice(set.id, { event, message, grade: surface.grade });
+          if (output.isConnected) {
+            output.replaceChildren();
+            add3(output, "small", message, "gallery-unknown gallery-plan-notice");
+          }
         }
       };
+    };
+    const finishSetPlanning = (id12, surface) => {
+      activePlans = Math.max(0, activePlans - 1);
+      if (runningPlanSurfaces.get(id12) === surface) runningPlanSurfaces.delete(id12);
+      if (catalogRefreshDeferred) queueMicrotask(() => {
+        if (!activePlans && !roadmapBusy && active && !disposed && catalogRefreshDeferred) check();
+      });
     };
     const savePlanCache = (set, value, patch) => {
       const current2 = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
@@ -21733,6 +21761,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       scoredSets.clear();
       overviewCache.clear();
       planCache.clear();
+      planNotices.clear();
       currentScope = next;
       selection++;
       selectedSetId = null;
@@ -22475,7 +22504,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const changed = diffGalleryCatalog(previous?.catalog, catalog);
       const sourceChanged = previous?.source && previous.source !== value.source;
       const removed = new Set(changed?.removed ?? []);
-      for (const id12 of removed) setIconSelections.delete(id12);
+      for (const id12 of removed) {
+        setIconSelections.delete(id12);
+        planNotices.delete(id12);
+      }
       const requirementChanges = new Set(changed?.requirements ?? []);
       const selectedStillExists = selectedSetId != null && catalog.categories.some((category) => category.sets.some((set) => set.id === selectedSetId));
       const selectedRemoved = selectedSetId != null && !selectedStillExists;
@@ -22495,6 +22527,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           invalidated.clear();
           setIconSelections.clear();
           planCache.clear();
+          planNotices.clear();
           comparisonViews.clear();
         }
         if (sourceChanged) {
@@ -22600,11 +22633,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const check = () => {
       checkScope();
       if (active && visible()) {
-        if (roadmapBusy) {
-          roadmapRefreshDeferred = true;
+        if (roadmapBusy || activePlans) {
+          catalogRefreshDeferred = true;
           return;
         }
-        roadmapRefreshDeferred = false;
+        catalogRefreshDeferred = false;
         void load(false);
       }
     };
@@ -22692,7 +22725,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         roadmapBusy = busy;
         if (!busy && !disposed && active) queueMicrotask(() => {
           if (roadmapBusy || disposed || !active) return;
-          if (roadmapRefreshDeferred) check();
+          if (catalogRefreshDeferred) check();
           void refreshShared();
         });
       },
@@ -38604,7 +38637,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.72" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.73" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -38946,8 +38979,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.72"}`,
-    version: "27.0.72",
+    title: `FC Automation Tool ${"27.0.73"}`,
+    version: "27.0.73",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
