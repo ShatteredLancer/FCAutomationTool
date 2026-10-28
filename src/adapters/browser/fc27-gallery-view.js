@@ -529,7 +529,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const priceForPlan = async (value, set, current, output) => {
     if (!loadPlanningPrices) return;
     const [priced] = await priceGalleryPlanningTargets([{ set, progress: value.progress }], { load: loadPlanningPrices, current,
-      onProgress: state => { output.textContent = `读取 ${state.source} 报价 ${state.index}/${state.total}`; } });
+      onProgress: state => { if (current()) output.textContent = `读取 ${state.source} 报价 ${state.index}/${state.total}`; } });
     if (!current()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
     Object.assign(value, { priceSnapshot: priced.priceSnapshot, prices: priced.prices });
   };
@@ -848,20 +848,19 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       overviewButton.disabled = true; select.disabled = true;
       const chosenGrade = select.value, surface = { key: surfaceKey, section };
       runningPlanSurfaces.set(set.id, surface);
-      const token = ++planningEpoch, identity = scope(), revision = result;
+      const run = setPlanningRun(set, value, output, surface);
       activePlans++;
-      const current = () => !disposed && active && token === planningEpoch && identity === scope()
-        && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
+      const current = run.checkpoint;
       const cancel = add(row, 'button', '取消'); cancel.type = 'button';
-      cancel.addEventListener('click', () => { planningEpoch++; output.replaceChildren(); add(output, 'small', '计算已取消'); });
+      cancel.addEventListener('click', () => { run.stop('FC27_GALLERY_PLAN_USER_CANCELLED'); planningEpoch++; run.report(); });
       try {
       await priceForPlan(value, set, current, output);
       const maxMs = await planningTimeout(current, output);
-      if (maxMs == null) return;
-      const binding = planBinding(value, set);
+      if (maxMs == null || !run.capturePrices()) return;
+      const binding = run.binding();
       const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
         const plan = gradePlanner === planGalleryGrade
-          ? await runGalleryPlan(planGalleryGradeSteps(input), { current, maxMs,
+          ? await runGalleryPlan(planGalleryGradeSteps(input), { current: run.current, checkpoint: current, maxMs,
             progress: value => { output.textContent = value.scoringWork ? `正在计分… ${count(value.scoringWork)} 次评估` : `正在计算… ${value.evaluations} 个候选`; } })
           : await gradePlanner(input);
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
@@ -887,24 +886,27 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           output.scrollIntoView({ block: 'nearest' });
           if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
         }
-      } catch { void diag({ event: 'grade-plan', phase: 'planner', status: 'failed', reason: 'FC27_GALLERY_GRADE_PLANNER_FAILED' }); if (current()) show({ status: 'unavailable', reason: 'planner-failed' }); }
-      finally { activePlans = Math.max(0, activePlans - 1); button.disabled = false; overviewButton.disabled = false; select.disabled = false; cancel.remove();
+        if (!plan) run.stop('FC27_GALLERY_PLAN_INTERRUPTED');
+      } catch (error) { run.fail(error); }
+      finally { run.report(); activePlans = Math.max(0, activePlans - 1); button.disabled = false; overviewButton.disabled = false; select.disabled = false; cancel.remove();
         if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id); }
     });
     overviewButton.addEventListener('click', async event => {
       if (!event.isTrusted || overviewButton.disabled) return;
       const cached = loadPlanningPrices ? null : overviewCache.get(overviewKey);
       if (cached) { showOverview(cached); return; }
-      overviewButton.disabled = true; overview.textContent = '正在计算各档费用…';
-      const token = ++planningEpoch, identity = scope(), revision = result;
-      const current = () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && overview.isConnected;
+      overviewButton.disabled = true; button.disabled = true; select.disabled = true; overview.textContent = '正在计算各档费用…';
+      const surface = { key: surfaceKey, section };
+      runningPlanSurfaces.set(set.id, surface);
+      const run = setPlanningRun(set, value, overview, surface, 'grade-overview');
+      const current = run.checkpoint;
       activePlans++;
       try {
         await priceForPlan(value, set, current, overview);
         const maxMs = await planningTimeout(current, overview);
-        if (maxMs == null) return;
-        const binding = planBinding(value, set);
-        const isCurrent = () => !disposed && active && token === planningEpoch && identity === scope() && revision === result && overview.isConnected;
+        if (maxMs == null || !run.capturePrices()) return;
+        const binding = run.binding();
+        const isCurrent = current;
         const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
           current: isCurrent, timeoutMs: maxMs,
           progress: state => { overview.textContent = `正在计算各档费用… ${state.completed}/${state.total}`; },
@@ -916,11 +918,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
               overview.textContent = `正在计算各档费用… ${index + 1}/${total} · ${grade.name} 档 ${Math.floor(elapsed / 1000)}/${Math.ceil(timeoutMs / 1000)} 秒${detail}`;
             };
             labelProgress({ evaluations: 0 });
-            const result = await runGalleryPlan(steps, { current: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+            const result = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
             return result ? { ...result, elapsedMs: Math.floor(performance.now() - started) } : result;
           },
         });
-        if (plan && token === planningEpoch) {
+        if (plan && current()) {
           if (plan.status === 'observed' || plan.status === 'partial') {
             overviewCache.set(overviewKey, plan);
             savePlanCache(set, value, { overviewBinding: binding, overview: plan });
@@ -929,8 +931,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           showOverview(plan);
           if (plan.status === 'partial') add(overview, 'small', '费用计算未完成；已显示部分档位，可单独选择目标档位计算。', 'gallery-unknown');
         }
-      } catch { if (token === planningEpoch) overview.textContent = '各档费用暂不可用'; }
-      finally { activePlans = Math.max(0, activePlans - 1); overviewButton.disabled = false; }
+        if (!plan) run.stop('FC27_GALLERY_PLAN_INTERRUPTED');
+      } catch (error) { run.fail(error); }
+      finally { run.report(); activePlans = Math.max(0, activePlans - 1); overviewButton.disabled = false; button.disabled = false; select.disabled = false;
+        if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id); }
     });
   };
   const setIconSelections = new Map();
@@ -995,6 +999,63 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     rules: set?.rules,
     grades: (set?.grades ?? []).map(grade => ({ name: grade.name, threshold: grade.threshold, rewards: grade.rewards })) });
   const planBinding = (value, set) => JSON.stringify([scope(), result?.source, setIdentity(set), result?.catalog?.tags, galleryPlanningStateKey(value)]);
+  const materialBinding = (value, set) => planBinding({ ...value, prices: {}, priceSnapshot: null }, set);
+  // Catalog observations may be new objects with identical business content.
+  // Revalidate only this set/rules/material; freeze quotes after our read and
+  // recheck at cooperative slice boundaries, not on every scoring micro-yield.
+  const setPlanningRun = (set, value, output, surface, event = 'grade-plan') => {
+    ++planningEpoch;
+    const identity = scope(), expectedMaterial = materialBinding(value, set);
+    let expectedBinding = null, reason = null, failed = false, reported = false;
+    const stop = code => { reason ??= code; return false; };
+    const current = () => {
+      if (reason) return false;
+      if (identity !== scope()) return stop('FC27_GALLERY_PLAN_ACCOUNT_CHANGED');
+      if (disposed || !active || selectedSetId !== set.id || jointMode || !output.isConnected) return stop('FC27_GALLERY_PLAN_VIEW_CHANGED');
+      // A followed, unrelated set can invalidate joint planning's epoch.
+      // This single-set run is owned by its own surface, not that global epoch.
+      if (runningPlanSurfaces.get(set.id) !== surface) return stop('FC27_GALLERY_PLAN_REPLACED');
+      return true;
+    };
+    const checkpoint = () => {
+      if (!current()) return false;
+      const latest = details.get(set.id), liveSet = currentGallerySet(set.id);
+      if (!liveSet || materialBinding(latest, liveSet) !== expectedMaterial) return stop('FC27_GALLERY_PLAN_INPUT_CHANGED');
+      if (expectedBinding !== null && planBinding(latest, liveSet) !== expectedBinding) return stop('FC27_GALLERY_PLAN_QUOTES_CHANGED');
+      return true;
+    };
+    return { current, checkpoint, stop, binding: () => expectedBinding,
+      capturePrices() {
+        if (!checkpoint()) return false;
+        // A harmless sync may replace the detail while the price read was
+        // pending. Associate these same fresh quotes with its current twin.
+        const latest = details.get(set.id);
+        if (!loadPlanningPrices && planBinding(latest, set) !== planBinding(value, set)) return stop('FC27_GALLERY_PLAN_QUOTES_CHANGED');
+        if (latest !== value) Object.assign(latest, { priceSnapshot: value.priceSnapshot, prices: value.prices });
+        expectedBinding = planBinding(value, set);
+        return checkpoint();
+      },
+      fail(error) {
+        if (!checkpoint()) return;
+        failed = true;
+        stop(/^FC27_[A-Z0-9_]+$/.test(error?.message ?? '') ? error.message : 'FC27_GALLERY_GRADE_PLANNER_FAILED');
+      },
+      report() {
+        if (!reason || reported) return;
+        reported = true;
+        void diag({ event, phase: 'planner', status: failed ? 'failed' : 'cancelled', reason });
+        if (identity !== scope() || !output.isConnected || runningPlanSurfaces.get(set.id) !== surface) return;
+        const messages = {
+          FC27_GALLERY_PLAN_USER_CANCELLED: '计算已取消，可重新生成。',
+          FC27_GALLERY_PLAN_INPUT_CHANGED: '当前合集规则或收集状态已更新，计算已停止，请重新生成。',
+          FC27_GALLERY_PLAN_QUOTES_CHANGED: '报价已更新或到期，计算已停止，请重新生成以核价。',
+          FC27_GALLERY_PLAN_VIEW_CHANGED: '已离开当前合集，计算已停止。',
+          FC27_GALLERY_PLAN_REPLACED: '已开始其他计算，本次计算已停止。',
+        };
+        output.textContent = messages[reason] ?? (failed ? `方案生成失败：${reason}。请重试或导出诊断日志。` : '本次计算已中断，可重新生成；未进行购买。');
+      },
+    };
+  };
   const savePlanCache = (set, value, patch) => {
     const current = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
     const next = { ...current, ...patch, binding: patch.binding ?? current.binding, stale: false };

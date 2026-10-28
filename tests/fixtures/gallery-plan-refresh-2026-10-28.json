@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "version": "27.0.71",
+  "singlePlan": { "status": "success", "candidateCount": 33, "quotedCount": 31, "targetScore": 1100, "bestScore": 1125, "bestPrice": 31650 },
+  "laterQuoteBatch": { "requestedCount": 23, "count": 0, "requests": 0, "cached": true },
+  "syntheticReproduction": { "sameCatalog": true, "refreshedDuringQuotes": true, "visibleOutput": "quote-progress", "reason": "FC27_GALLERY_GRADE_PLANNER_FAILED" },
+  "limits": "This is a reduced diagnostic summary plus independently reproduced UI behavior, not proof of every live failure. count zero denotes no newly requested uncached versions."
+}

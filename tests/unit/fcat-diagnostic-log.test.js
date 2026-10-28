@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 import roadmapIncident from '../fixtures/gallery-roadmap-empty-export-2026-10-27.json' with {type:'json'};
+import planRefreshIncident from '../fixtures/gallery-plan-refresh-2026-10-28.json' with { type: 'json' };
 
 function harness(options = {}) {
   const store = new Map();
@@ -10,6 +11,24 @@ function harness(options = {}) {
   const log = createFcatDiagnosticLog({ gmGetValue: get, gmSetValue: set, version: '27.0.2', now: () => time, ...options });
   return { log, store, get, set, advance: value => { time += value; } };
 }
+
+it('retains single-set interruptions in the existing bounded planning ring after directory and quote floods', async () => {
+  expect(planRefreshIncident.syntheticReproduction.reason).toBe('FC27_GALLERY_GRADE_PLANNER_FAILED');
+  expect(planRefreshIncident.singlePlan.bestScore).toBeGreaterThan(planRefreshIncident.singlePlan.targetScore);
+  const t = harness();
+  for (const event of ['grade-plan', 'grade-overview']) await t.log.record({ area: 'gallery', event, phase: 'planner',
+    status: 'cancelled', reason: 'FC27_GALLERY_PLAN_INPUT_CHANGED', account: 'private-account', stack: 'private-stack' });
+  for (let count = 0; count < 320; count++) {
+    await t.log.record({ area: 'gallery', event: 'pool-request', status: 'success', count });
+    await t.log.record({ area: 'pricing', event: 'quote-batch', status: 'success', count });
+  }
+  const restored = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
+  const payload = await restored.exportPayload();
+  expect(payload.roadmapEntries.map(row => row.event)).toEqual(['grade-plan', 'grade-overview']);
+  expect(JSON.stringify(payload)).not.toContain('private-');
+  for (let count = 0; count < 24; count++) await restored.record({ area: 'gallery', event: 'grade-plan', status: 'cancelled' });
+  expect((await restored.exportPayload()).roadmapEntries).toHaveLength(20);
+});
 
 it('retains a separately bounded roadmap trail after pricing evicts the shared performance ring',async()=>{
   const t=harness();

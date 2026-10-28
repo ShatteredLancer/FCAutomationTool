@@ -5,7 +5,7 @@ const DEFAULT_MAX_CRITICAL_ENTRIES = 120;
 const MAX_TRANSACTION_RESULTS = 40;
 const MAX_PERFORMANCE_ENTRIES = 40;
 const MAX_ROADMAP_ENTRIES = 20;
-const roadmapEntry = entry => entry?.area === 'gallery' && ['roadmap-plan','roadmap-phase','roadmap-checkpoint','roadmap-reconcile'].includes(entry.event);
+const roadmapEntry = entry => entry?.area === 'gallery' && ['roadmap-plan','roadmap-phase','roadmap-checkpoint','roadmap-reconcile','grade-plan','grade-overview'].includes(entry.event);
 const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', 'futbin-batch-result'].includes(entry.event)
   || roadmapEntry(entry)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));

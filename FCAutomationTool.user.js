@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.71
+// @version      27.0.72
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.71", at: Date.now(), status: 'started',
+    state = { version: "27.0.72", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -20589,7 +20589,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         load: loadPlanningPrices,
         current: current2,
         onProgress: (state2) => {
-          output.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
+          if (current2()) output.textContent = `\u8BFB\u53D6 ${state2.source} \u62A5\u4EF7 ${state2.index}/${state2.total}`;
         }
       });
       if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
@@ -20985,24 +20985,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         select.disabled = true;
         const chosenGrade = select.value, surface = { key: surfaceKey, section };
         runningPlanSurfaces.set(set.id, surface);
-        const token = ++planningEpoch, identity5 = scope2(), revision = result;
+        const run = setPlanningRun(set, value, output, surface);
         activePlans++;
-        const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && output.isConnected && selectedSetId === set.id && !jointMode;
+        const current2 = run.checkpoint;
         const cancel = add3(row, "button", "\u53D6\u6D88");
         cancel.type = "button";
         cancel.addEventListener("click", () => {
+          run.stop("FC27_GALLERY_PLAN_USER_CANCELLED");
           planningEpoch++;
-          output.replaceChildren();
-          add3(output, "small", "\u8BA1\u7B97\u5DF2\u53D6\u6D88");
+          run.report();
         });
         try {
           await priceForPlan(value, set, current2, output);
           const maxMs = await planningTimeout(current2, output);
-          if (maxMs == null) return;
-          const binding = planBinding(value, set);
+          if (maxMs == null || !run.capturePrices()) return;
+          const binding = run.binding();
           const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade };
           const plan = gradePlanner === planGalleryGrade ? await runGalleryPlan(planGalleryGradeSteps(input), {
-            current: current2,
+            current: run.current,
+            checkpoint: current2,
             maxMs,
             progress: (value2) => {
               output.textContent = value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u2026 ${count2(value2.scoringWork)} \u6B21\u8BC4\u4F30` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${value2.evaluations} \u4E2A\u5019\u9009`;
@@ -21043,10 +21044,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             output.scrollIntoView({ block: "nearest" });
             if (planCache.get(set.id)?.overview) showOverview(planCache.get(set.id).overview);
           }
-        } catch {
-          void diag({ event: "grade-plan", phase: "planner", status: "failed", reason: "FC27_GALLERY_GRADE_PLANNER_FAILED" });
-          if (current2()) show({ status: "unavailable", reason: "planner-failed" });
+          if (!plan) run.stop("FC27_GALLERY_PLAN_INTERRUPTED");
+        } catch (error2) {
+          run.fail(error2);
         } finally {
+          run.report();
           activePlans = Math.max(0, activePlans - 1);
           button.disabled = false;
           overviewButton.disabled = false;
@@ -21063,16 +21065,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return;
         }
         overviewButton.disabled = true;
+        button.disabled = true;
+        select.disabled = true;
         overview.textContent = "\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026";
-        const token = ++planningEpoch, identity5 = scope2(), revision = result;
-        const current2 = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected;
+        const surface = { key: surfaceKey, section };
+        runningPlanSurfaces.set(set.id, surface);
+        const run = setPlanningRun(set, value, overview, surface, "grade-overview");
+        const current2 = run.checkpoint;
         activePlans++;
         try {
           await priceForPlan(value, set, current2, overview);
           const maxMs = await planningTimeout(current2, overview);
-          if (maxMs == null) return;
-          const binding = planBinding(value, set);
-          const isCurrent = () => !disposed && active && token === planningEpoch && identity5 === scope2() && revision === result && overview.isConnected;
+          if (maxMs == null || !run.capturePrices()) return;
+          const binding = run.binding();
+          const isCurrent = current2;
           const plan = await runGalleryGradeOverview({ set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value) }, {
             current: isCurrent,
             timeoutMs: maxMs,
@@ -21087,11 +21093,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 overview.textContent = `\u6B63\u5728\u8BA1\u7B97\u5404\u6863\u8D39\u7528\u2026 ${index + 1}/${total} \xB7 ${grade.name} \u6863 ${Math.floor(elapsed / 1e3)}/${Math.ceil(timeoutMs / 1e3)} \u79D2${detail}`;
               };
               labelProgress({ evaluations: 0 });
-              const result2 = await runGalleryPlan(steps, { current: isCurrent, maxMs: timeoutMs, progress: labelProgress });
+              const result2 = await runGalleryPlan(steps, { current: run.current, checkpoint: isCurrent, maxMs: timeoutMs, progress: labelProgress });
               return result2 ? { ...result2, elapsedMs: Math.floor(performance.now() - started) } : result2;
             }
           });
-          if (plan && token === planningEpoch) {
+          if (plan && current2()) {
             if (plan.status === "observed" || plan.status === "partial") {
               overviewCache.set(overviewKey, plan);
               savePlanCache(set, value, { overviewBinding: binding, overview: plan });
@@ -21100,11 +21106,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             showOverview(plan);
             if (plan.status === "partial") add3(overview, "small", "\u8D39\u7528\u8BA1\u7B97\u672A\u5B8C\u6210\uFF1B\u5DF2\u663E\u793A\u90E8\u5206\u6863\u4F4D\uFF0C\u53EF\u5355\u72EC\u9009\u62E9\u76EE\u6807\u6863\u4F4D\u8BA1\u7B97\u3002", "gallery-unknown");
           }
-        } catch {
-          if (token === planningEpoch) overview.textContent = "\u5404\u6863\u8D39\u7528\u6682\u4E0D\u53EF\u7528";
+          if (!plan) run.stop("FC27_GALLERY_PLAN_INTERRUPTED");
+        } catch (error2) {
+          run.fail(error2);
         } finally {
+          run.report();
           activePlans = Math.max(0, activePlans - 1);
           overviewButton.disabled = false;
+          button.disabled = false;
+          select.disabled = false;
+          if (runningPlanSurfaces.get(set.id) === surface) runningPlanSurfaces.delete(set.id);
         }
       });
     };
@@ -21169,6 +21180,63 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       grades: (set?.grades ?? []).map((grade) => ({ name: grade.name, threshold: grade.threshold, rewards: grade.rewards }))
     });
     const planBinding = (value, set) => JSON.stringify([scope2(), result?.source, setIdentity(set), result?.catalog?.tags, galleryPlanningStateKey(value)]);
+    const materialBinding = (value, set) => planBinding({ ...value, prices: {}, priceSnapshot: null }, set);
+    const setPlanningRun = (set, value, output, surface, event = "grade-plan") => {
+      ++planningEpoch;
+      const identity5 = scope2(), expectedMaterial = materialBinding(value, set);
+      let expectedBinding = null, reason = null, failed2 = false, reported = false;
+      const stop6 = (code2) => {
+        reason ??= code2;
+        return false;
+      };
+      const current2 = () => {
+        if (reason) return false;
+        if (identity5 !== scope2()) return stop6("FC27_GALLERY_PLAN_ACCOUNT_CHANGED");
+        if (disposed || !active || selectedSetId !== set.id || jointMode || !output.isConnected) return stop6("FC27_GALLERY_PLAN_VIEW_CHANGED");
+        if (runningPlanSurfaces.get(set.id) !== surface) return stop6("FC27_GALLERY_PLAN_REPLACED");
+        return true;
+      };
+      const checkpoint = () => {
+        if (!current2()) return false;
+        const latest = details.get(set.id), liveSet = currentGallerySet(set.id);
+        if (!liveSet || materialBinding(latest, liveSet) !== expectedMaterial) return stop6("FC27_GALLERY_PLAN_INPUT_CHANGED");
+        if (expectedBinding !== null && planBinding(latest, liveSet) !== expectedBinding) return stop6("FC27_GALLERY_PLAN_QUOTES_CHANGED");
+        return true;
+      };
+      return {
+        current: current2,
+        checkpoint,
+        stop: stop6,
+        binding: () => expectedBinding,
+        capturePrices() {
+          if (!checkpoint()) return false;
+          const latest = details.get(set.id);
+          if (!loadPlanningPrices && planBinding(latest, set) !== planBinding(value, set)) return stop6("FC27_GALLERY_PLAN_QUOTES_CHANGED");
+          if (latest !== value) Object.assign(latest, { priceSnapshot: value.priceSnapshot, prices: value.prices });
+          expectedBinding = planBinding(value, set);
+          return checkpoint();
+        },
+        fail(error2) {
+          if (!checkpoint()) return;
+          failed2 = true;
+          stop6(/^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_GRADE_PLANNER_FAILED");
+        },
+        report() {
+          if (!reason || reported) return;
+          reported = true;
+          void diag({ event, phase: "planner", status: failed2 ? "failed" : "cancelled", reason });
+          if (identity5 !== scope2() || !output.isConnected || runningPlanSurfaces.get(set.id) !== surface) return;
+          const messages2 = {
+            FC27_GALLERY_PLAN_USER_CANCELLED: "\u8BA1\u7B97\u5DF2\u53D6\u6D88\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\u3002",
+            FC27_GALLERY_PLAN_INPUT_CHANGED: "\u5F53\u524D\u5408\u96C6\u89C4\u5219\u6216\u6536\u96C6\u72B6\u6001\u5DF2\u66F4\u65B0\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002",
+            FC27_GALLERY_PLAN_QUOTES_CHANGED: "\u62A5\u4EF7\u5DF2\u66F4\u65B0\u6216\u5230\u671F\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u6838\u4EF7\u3002",
+            FC27_GALLERY_PLAN_VIEW_CHANGED: "\u5DF2\u79BB\u5F00\u5F53\u524D\u5408\u96C6\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002",
+            FC27_GALLERY_PLAN_REPLACED: "\u5DF2\u5F00\u59CB\u5176\u4ED6\u8BA1\u7B97\uFF0C\u672C\u6B21\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002"
+          };
+          output.textContent = messages2[reason] ?? (failed2 ? `\u65B9\u6848\u751F\u6210\u5931\u8D25\uFF1A${reason}\u3002\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002` : "\u672C\u6B21\u8BA1\u7B97\u5DF2\u4E2D\u65AD\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\uFF1B\u672A\u8FDB\u884C\u8D2D\u4E70\u3002");
+        }
+      };
+    };
     const savePlanCache = (set, value, patch) => {
       const current2 = planCache.get(set.id) ?? { binding: planBinding(value, set), overviewBinding: planBinding(value, set), plan: null, overview: null, stale: false };
       const next = { ...current2, ...patch, binding: patch.binding ?? current2.binding, stale: false };
@@ -30354,7 +30422,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var MAX_TRANSACTION_RESULTS = 40;
   var MAX_PERFORMANCE_ENTRIES = 40;
   var MAX_ROADMAP_ENTRIES = 20;
-  var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile"].includes(entry.event);
+  var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile", "grade-plan", "grade-overview"].includes(entry.event);
   var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || roadmapEntry(entry) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
   var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint"]);
@@ -38536,7 +38604,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.71" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.72" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -38878,8 +38946,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.71"}`,
-    version: "27.0.71",
+    title: `FC Automation Tool ${"27.0.72"}`,
+    version: "27.0.72",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
