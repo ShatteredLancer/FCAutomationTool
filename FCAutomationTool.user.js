@@ -10878,7 +10878,7 @@
               armed = false;
             }
           }
-          const marketFailure = purchaseSuggestion.status === "blocked" && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG))/.test(purchaseSuggestion.reason ?? "");
+          const marketFailure = purchaseSuggestion.status === "blocked" && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG)|FC27_BUY_REFERENCE_PRICE_)/.test(purchaseSuggestion.reason ?? "");
           return { ...preview, ...marketFailure ? { status: "blocked", reason: purchaseSuggestion.reason } : {}, purchaseSuggestion };
         }
         return preview;
@@ -10889,6 +10889,14 @@
           privateData = data;
         }
       );
+      if (privateData?.inputs?.inventory && report?.plan) {
+        const activeReservations = reservations.value.targets.filter((entry) => entry.itemRefs.length > 0);
+        report.plan.reservations = {
+          excludedCachedItems: Math.max(0, (report.inventory?.cachedPlayers ?? 0) - privateData.inputs.inventory.items.length),
+          activeTargets: activeReservations.length,
+          references: activeReservations.reduce((total, entry) => total + entry.itemRefs.length, 0)
+        };
+      }
       if (privateData?.conceptResult) return {
         ...privateData.conceptResult,
         materialValue: privateData.procurementSummary?.materialValue,
@@ -11410,6 +11418,9 @@
             localReason: searchEvidence.valueReason,
             initialEstimatedCost: searchEvidence.initialMaterialValue,
             evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
+            reservationExcludedCount: searchEvidence.plan?.reservations?.excludedCachedItems,
+            reservationTargetCount: searchEvidence.plan?.reservations?.activeTargets,
+            reservationReferenceCount: searchEvidence.plan?.reservations?.references,
             combinationNodes: search.combinationNodes,
             placementNodes: search.placementNodes,
             evaluationNodes: search.evaluations,
@@ -24239,6 +24250,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (result?.reason === "FC27_PUZZLE_SERVER_SQUAD_CHANGED") return "\u89E3\u9898\u671F\u95F4\u670D\u52A1\u5668\u9635\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u672C\u6B21\u672A\u8986\u76D6\uFF1B\u8BF7\u6838\u5BF9\u5F53\u524D\u9635\u5BB9\u540E\u518D\u8BD5\u3002";
     if (result?.reason === "FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED") return "\u672C\u6B21\u670D\u52A1\u5668\u9635\u5BB9\u6838\u5BF9\u5DF2\u5931\u6548\uFF0C\u672A\u4FDD\u5B58\uFF1B\u8BF7\u91CD\u65B0\u70B9\u51FB\u89E3\u9898\u586B\u5145\u3002";
     if (result?.reason === "FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED") return "\u8BE5\u9635\u5BB9\u672A\u901A\u8FC7\u9009\u6750\u590D\u6838\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u66FF\u6362\u53D7\u4FDD\u62A4\u5361\u3002";
+    if (result?.reason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") return "\u8865\u5361\u53C2\u8003\u62A5\u4EF7\u5728\u89C4\u5212\u7ED3\u675F\u524D\u8FC7\u671F\uFF1B\u672C\u6B21\u6CA1\u6709\u53EF\u7528\u8865\u5361\u65B9\u6848\uFF0C\u8BF7\u518D\u6B21\u70B9\u51FB\u89E3\u9898\u4EE5\u5237\u65B0\u62A5\u4EF7\u5E76\u91CD\u65B0\u89C4\u5212\u3002";
     if (["FC27_PUZZLE_SEARCH_LIMIT", "FC27_PUZZLE_CONSTRAINT_SHORTAGE", "SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND"].includes(result?.reason)) {
       const composition = result.policy?.materialComposition?.filter((rule) => rule.count > 0).map((rule) => `${rule.count} ${{ 1: "\u94DC", 2: "\u94F6", 3: "\u91D1" }[rule.quality] ?? ""}`).join("\uFF0B");
       const scope2 = [composition ? `\u4F18\u5148 ${composition}` : "", Number.isInteger(result.policy?.maxRating) ? `\u6700\u9AD8 ${result.policy.maxRating}` : ""].filter(Boolean).join("\uFF0C");
@@ -24266,7 +24278,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     FC27_MARKET_READ_BLOCKED: "\u8D44\u6599\u6216\u62A5\u4EF7\u8BFB\u53D6\u88AB\u505C\u6B62\uFF0C\u672A\u5B8C\u6210\u67E5\u8BE2",
     FC27_PURCHASE_CACHE_UNVERIFIED: "\u8865\u5361\u7F13\u5B58\u6821\u9A8C\u5931\u8D25\uFF0C\u672A\u91CD\u65B0\u67E5\u8BE2",
     FC27_PURCHASE_READ_UNCONFIRMED: "\u4E4B\u524D\u7684\u67E5\u8BE2\u5C1A\u672A\u786E\u8BA4\uFF0C\u672A\u91CD\u590D\u8BF7\u6C42",
-    FC27_PURCHASE_CACHE_EXPIRED: "\u8D44\u6599\u6216\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u672A\u91C7\u7528\u65E7\u4EF7\u683C"
+    FC27_PURCHASE_CACHE_EXPIRED: "\u8D44\u6599\u6216\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u672A\u91C7\u7528\u65E7\u4EF7\u683C",
+    FC27_BUY_REFERENCE_PRICE_EXPIRED: "\u53C2\u8003\u62A5\u4EF7\u5728\u89C4\u5212\u7ED3\u675F\u524D\u8FC7\u671F\uFF1B\u672A\u91C7\u7528\u8FC7\u671F\u4EF7\u683C\uFF0C\u4E5F\u672A\u6267\u884C\u8D2D\u4E70"
   };
   function formatFc27PuzzleNativeResult(result) {
     const message = resultText(result);
@@ -24279,6 +24292,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (Object.hasOwn(purchase, "quoteCeiling")) lines.push(purchase.quoteCeiling === null ? "\u5355\u5361\u62A5\u4EF7\uFF1A\u4E0D\u9650\u3002" : `\u5355\u5361\u62A5\u4EF7\u4E0A\u9650\uFF1A${countText(purchase.quoteCeiling)} \u91D1\u5E01\u3002`);
     const inventory = result.plan;
     if (inventory) lines.push(`\u5E93\u5B58\u521D\u7B5B ${countText(inventory.safeCandidates)} \u4EBA\uFF1B\u641C\u7D22\u8282\u70B9 ${countText(inventory.nodes)}\u3002`);
+    const reservations = inventory?.reservations;
+    if (reservations && Number.isSafeInteger(reservations.excludedCachedItems) && reservations.excludedCachedItems > 0) {
+      lines.push(`\u53E6\u6709 ${countText(reservations.excludedCachedItems)} \u5F20\u7F13\u5B58\u5361\u88AB\u5176\u5B83 Puzzle \u9635\u5BB9\u9884\u7559\uFF1B\u5171 ${countText(reservations.activeTargets)} \u4E2A\u6709\u5361\u9884\u7559\u76EE\u6807\u3001${countText(reservations.references)} \u6761\u9884\u7559\u5F15\u7528\u3002`);
+    }
     const d = purchase.diagnostics;
     if (d) {
       if (d.failureSource === "cache") lines.push("\u672C\u6B21\u8BFB\u53D6\u7684\u662F\u5386\u53F2\u5931\u8D25\u8BB0\u5F55\uFF0C\u672A\u91CD\u65B0\u53D1\u9001\u8BE5\u67E5\u8BE2\u3002");
@@ -24290,6 +24307,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (runtimeFailure) {
         lines.push("\u8FD9\u662F\u8FD0\u884C\u65F6\u517C\u5BB9\u6027\u68C0\u67E5\u5931\u8D25\uFF0C\u4E0D\u662F\u5E93\u5B58\u65E0\u89E3\uFF1B\u672C\u6B21\u6CA1\u6709\u53D1\u9001\u5E02\u573A\u8BF7\u6C42\u3002\u5237\u65B0 Web App \u540E\u518D\u6B21\u70B9\u51FB\u53EF\u91CD\u65B0\u63A2\u6D4B\u3002");
       }
+      if (reason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") {
+        lines.push("\u4E2D\u95F4\u4F30\u4EF7\u4E0D\u80FD\u4F5C\u4E3A\u53EF\u8D2D\u4E70\u65B9\u6848\u3002\u518D\u6B21\u70B9\u51FB\u4F1A\u6309\u5F53\u524D\u62A5\u4EF7\u91CD\u65B0\u89C4\u5212\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u91CD\u590D\u8D2D\u4E70\u3002");
+      }
       const stage = {
         "repair-seed": "\u5BFB\u627E\u5E93\u5B58\u57FA\u7840\u9635\u5BB9",
         "query-planning": "\u89C4\u5212\u8D44\u6599\u67E5\u8BE2",
@@ -24300,6 +24320,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const route = { repair: "\u5C40\u90E8\u66FF\u6362 1\u20132 \u5F20", joint: "\u5E93\u5B58\u4E0E\u5019\u9009\u8054\u5408\u6C42\u89E3" }[d.route] ?? "\u5C1A\u672A\u786E\u5B9A";
       lines.push(`\u505C\u5728${stage}\uFF1B${route}\u3002\u8D44\u6599 ${countText(d.catalogPages)} \u9875\uFF0C\u53BB\u91CD\u5019\u9009 ${countText(d.catalogCandidates)}\uFF0C\u8D44\u6599\u9884\u7B5B\u5408\u683C ${countText(d.usableCandidates)}\u3002`);
       if (code(d.localReason)) lines.push(`\u672C\u5730\u7ED3\u679C\uFF1A${d.localReason}\uFF1B\u68C0\u67E5 ${countText(d.checks)} \u6B21 / \u8282\u70B9 ${countText(d.nodes)}${d.truncated === true ? "\uFF08\u641C\u7D22\u6216\u7ED3\u679C\u622A\u65AD\uFF09" : ""}\u3002`);
+      if (d.localReason === "FC27_PUZZLE_SEARCH_LIMIT") lines.push("\u672C\u5730\u7EC4\u5408\u641C\u7D22\u8FBE\u5230\u4E0A\u9650\uFF0C\u7ED3\u679C\u4E0D\u5B8C\u6574\uFF1B\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u5E02\u573A\u65E0\u89E3\uFF0C\u4E5F\u4E0D\u80FD\u636E\u6B64\u786E\u8BA4\u6700\u4F4E\u4EF7\u3002");
       lines.push(`\u67E5\u8BE2\u5C1D\u8BD5\uFF1A\u8D44\u6599 ${countText(d.catalogAttempts)}\u3001\u62A5\u4EF7 ${countText(d.quoteAttempts)}\uFF1B\u7F13\u5B58 ${countText(d.cacheHits)}\u3002`);
       if (d.excludedUnavailable > 0) lines.push(`\u5DF2\u6392\u9664 ${countText(d.excludedUnavailable)} \u4E2A\u65E0\u53EF\u7528\u6302\u724C\u7684\u5019\u9009\uFF1B\u672C\u5730\u91CD\u65B0\u89C4\u5212 ${countText(d.replans)} \u6B21\u3002`);
     }
@@ -31201,6 +31222,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "acceptedInventoryCount",
     "eligibleInventoryCount",
     "filteredInventoryCount",
+    "reservationExcludedCount",
+    "reservationTargetCount",
+    "reservationReferenceCount",
     "routeInventoryCount",
     "routeMarketCount",
     "routeMaterialValue",

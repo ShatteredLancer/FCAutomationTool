@@ -470,16 +470,24 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
               return { ...preview, purchaseSuggestion, status: result.status, reason: result.reason };
             } finally { armed = false; }
           }
-          // Do not hide a bounded market read failure behind the solver's
-          // earlier search-limit reason. The search was only incomplete
-          // because the exact EA quote response could not be verified.
+          // Do not hide bounded procurement failures behind the earlier
+          // inventory result. In particular, an expired reference after a
+          // capped local search is the actionable blocker, not proof of no plan.
           const marketFailure = purchaseSuggestion.status === 'blocked'
-            && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG))/.test(purchaseSuggestion.reason ?? '');
+            && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG)|FC27_BUY_REFERENCE_PRICE_)/.test(purchaseSuggestion.reason ?? '');
           return { ...preview, ...(marketFailure ? { status: 'blocked', reason: purchaseSuggestion.reason } : {}), purchaseSuggestion };
         }
         return preview;
       }) : await inspectFc27VerifiedPuzzlePlan(root, puzzleOptions,
         async (_projection, data) => { privateData = data; });
+      if (privateData?.inputs?.inventory && report?.plan) {
+        const activeReservations = reservations.value.targets.filter(entry => entry.itemRefs.length > 0);
+        report.plan.reservations = {
+          excludedCachedItems: Math.max(0, (report.inventory?.cachedPlayers ?? 0) - privateData.inputs.inventory.items.length),
+          activeTargets: activeReservations.length,
+          references: activeReservations.reduce((total, entry) => total + entry.itemRefs.length, 0),
+        };
+      }
       if (privateData?.conceptResult) return { ...privateData.conceptResult,
         materialValue: privateData.procurementSummary?.materialValue, inventoryValue: privateData.procurementSummary?.inventoryValue,
         valueReason: privateData.procurementSummary?.valueReason,
@@ -877,6 +885,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           localReason: searchEvidence.valueReason,
           initialEstimatedCost: searchEvidence.initialMaterialValue,
           evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
+          reservationExcludedCount: searchEvidence.plan?.reservations?.excludedCachedItems,
+          reservationTargetCount: searchEvidence.plan?.reservations?.activeTargets,
+          reservationReferenceCount: searchEvidence.plan?.reservations?.references,
           combinationNodes: search.combinationNodes, placementNodes: search.placementNodes,
           evaluationNodes: search.evaluations, boundNodes: search.bounds,
           strategyAttempts: searchEvidence.plan?.strategyAttempts ?? searchEvidence.strategyAttempts,

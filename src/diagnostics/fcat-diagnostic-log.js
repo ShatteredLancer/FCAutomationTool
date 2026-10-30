@@ -21,6 +21,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'co
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
   'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',
+  'reservationExcludedCount', 'reservationTargetCount', 'reservationReferenceCount',
   'routeInventoryCount', 'routeMarketCount', 'routeMaterialValue', 'rating', 'unitScore', 'minBatches', 'repeatPurchaseCount',
   'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount', 'excludedGoldRangeCount', 'fsuGoldMax', 'fsuGoldMin', 'inventoryMaxRating',
   'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',

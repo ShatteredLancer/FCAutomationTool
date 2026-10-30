@@ -52,6 +52,7 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_SERVER_SQUAD_CHANGED') return '解题期间服务器阵容发生变化，本次未覆盖；请核对当前阵容后再试。';
   if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
+  if (result?.reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') return '补卡参考报价在规划结束前过期；本次没有可用补卡方案，请再次点击解题以刷新报价并重新规划。';
   if (['FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(result?.reason)) {
     const composition = result.policy?.materialComposition?.filter(rule => rule.count > 0)
       .map(rule => `${rule.count} ${({ 1: '铜', 2: '银', 3: '金' })[rule.quality] ?? ''}`).join('＋');
@@ -84,6 +85,7 @@ const purchaseReasons = {
   FC27_PURCHASE_CACHE_UNVERIFIED: '补卡缓存校验失败，未重新查询',
   FC27_PURCHASE_READ_UNCONFIRMED: '之前的查询尚未确认，未重复请求',
   FC27_PURCHASE_CACHE_EXPIRED: '资料或报价已过期，未采用旧价格',
+  FC27_BUY_REFERENCE_PRICE_EXPIRED: '参考报价在规划结束前过期；未采用过期价格，也未执行购买',
 };
 
 // Display only the existing aggregate result. Never query EA to explain a stop.
@@ -99,6 +101,10 @@ export function formatFc27PuzzleNativeResult(result) {
     ? '单卡报价：不限。' : `单卡报价上限：${countText(purchase.quoteCeiling)} 金币。`);
   const inventory = result.plan;
   if (inventory) lines.push(`库存初筛 ${countText(inventory.safeCandidates)} 人；搜索节点 ${countText(inventory.nodes)}。`);
+  const reservations = inventory?.reservations;
+  if (reservations && Number.isSafeInteger(reservations.excludedCachedItems) && reservations.excludedCachedItems > 0) {
+    lines.push(`另有 ${countText(reservations.excludedCachedItems)} 张缓存卡被其它 Puzzle 阵容预留；共 ${countText(reservations.activeTargets)} 个有卡预留目标、${countText(reservations.references)} 条预留引用。`);
+  }
   const d = purchase.diagnostics;
   if (d) {
     if (d.failureSource === 'cache') lines.push('本次读取的是历史失败记录，未重新发送该查询。');
@@ -110,11 +116,15 @@ export function formatFc27PuzzleNativeResult(result) {
     if (runtimeFailure) {
       lines.push('这是运行时兼容性检查失败，不是库存无解；本次没有发送市场请求。刷新 Web App 后再次点击可重新探测。');
     }
+    if (reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') {
+      lines.push('中间估价不能作为可购买方案。再次点击会按当前报价重新规划，不会自动重复购买。');
+    }
     const stage = ({ 'repair-seed': '寻找库存基础阵容', 'query-planning': '规划资料查询',
       'catalog-read': '读取球员资料', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
     const route = ({ repair: '局部替换 1–2 张', joint: '库存与候选联合求解' })[d.route] ?? '尚未确定';
     lines.push(`停在${stage}；${route}。资料 ${countText(d.catalogPages)} 页，去重候选 ${countText(d.catalogCandidates)}，资料预筛合格 ${countText(d.usableCandidates)}。`);
     if (code(d.localReason)) lines.push(`本地结果：${d.localReason}；检查 ${countText(d.checks)} 次 / 节点 ${countText(d.nodes)}${d.truncated === true ? '（搜索或结果截断）' : ''}。`);
+    if (d.localReason === 'FC27_PUZZLE_SEARCH_LIMIT') lines.push('本地组合搜索达到上限，结果不完整；不能据此判断市场无解，也不能据此确认最低价。');
     lines.push(`查询尝试：资料 ${countText(d.catalogAttempts)}、报价 ${countText(d.quoteAttempts)}；缓存 ${countText(d.cacheHits)}。`);
     if (d.excludedUnavailable > 0) lines.push(`已排除 ${countText(d.excludedUnavailable)} 个无可用挂牌的候选；本地重新规划 ${countText(d.replans)} 次。`);
   }

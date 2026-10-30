@@ -165,6 +165,27 @@ it('exports native Puzzle search and pre-request market failures without raw inv
   expect(x.calls).toHaveLength(0);
 });
 
+it('reports aggregate cross-Challenge reservations without exposing reserved item identities', async () => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.75' });
+  const x = fixture({ diagnosticLog });
+  const scope = traditionalJournalScope(readFc27Context(x.root));
+  const reservationKey = `fcat-fc27-puzzle-reservations:${scope}`;
+  const refs = Object.values(x.root.repositories.Item.club.items._collection)
+    .map(item => ({ id: item.id, definitionId: item.definitionId }));
+  x.data.set(reservationKey, { schema: 1, targets: [{ setId: 999, challengeId: 1000, itemRefs: refs }] });
+  x.root.UTHttpRequest = function unreviewedRequest() { throw new Error('must not run'); };
+  const result = await x.fill();
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_MARKET_METHOD_0_CHANGED',
+    plan: { safeCandidates: 0, reservations: { excludedCachedItems: 11, activeTargets: 1, references: 11 } } });
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toEqual(expect.arrayContaining([expect.objectContaining({ area: 'puzzle', event: 'solve-result',
+    reservationExcludedCount: 11, reservationTargetCount: 1, reservationReferenceCount: 11 })]));
+  expect(JSON.stringify(payload)).not.toMatch(/definitionId|itemRefs|accountScope/);
+  expect(x.calls).toHaveLength(0);
+});
+
 it.each(['throw', 'reject'])('keeps native fill behavior when optional diagnostics %s', async mode => {
   const diagnosticLog = { record: () => {
     if (mode === 'throw') throw new Error('log unavailable');

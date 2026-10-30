@@ -44,6 +44,31 @@ it('shows the procurement failure alongside the inventory failure and bounded se
   expect(text).not.toContain('无法在选材限制内组成阵容');
 });
 
+it('explains reserved inventory and does not hide an expired price behind an inventory shortage', () => {
+  const text = formatFc27PuzzleNativeResult({ reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED',
+    plan: { safeCandidates: 0, nodes: 0, reservations: { excludedCachedItems: 233, activeTargets: 21, references: 233 } },
+    purchaseSuggestion: { status: 'blocked', reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED', diagnostics: {
+      stage: 'local-market-search', route: 'joint', catalogPages: 3, catalogCandidates: 57,
+      usableCandidates: 54, localReason: 'FC27_PUZZLE_SEARCH_LIMIT', nodes: 50000, truncated: true,
+      catalogAttempts: 3, quoteAttempts: 0, cacheHits: 0,
+    } } });
+  expect(text).toContain('233 张');
+  expect(text).toContain('21 个');
+  expect(text).toContain('参考报价在规划结束前过期');
+  expect(text).toContain('搜索达到上限');
+  expect(text).toContain('不能据此判断市场无解');
+  expect(text).toContain('57');
+  expect(text).toContain('54');
+});
+
+it('does not infer a search limit from price expiry without search evidence', () => {
+  const text = formatFc27PuzzleNativeResult({ reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED',
+    purchaseSuggestion: { status: 'blocked', reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED',
+      diagnostics: { stage: 'quote-read', route: 'joint' } } });
+  expect(text).toContain('参考报价在规划结束前过期');
+  expect(text).not.toContain('搜索达到上限');
+});
+
 it.each(['FC27_PURCHASE_QUOTES_UNAVAILABLE', 'FC27_MARKET_HTTP_429', 'FC27_MARKET_READ_BLOCKED', 'FC27_PURCHASE_CACHE_UNVERIFIED'])(
   'retains the actual procurement stop code %s instead of reporting only shortage', reason => {
     expect(formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE',
