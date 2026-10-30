@@ -1,6 +1,6 @@
 {
   "name": "fc-automation-tool",
-  "version": "27.0.76",
+  "version": "27.0.77",
   "description": "Tampermonkey automation for configurable EA FC Web App SBC, pack and Player Pick workflows.",
   "private": true,
   "license": "MIT",

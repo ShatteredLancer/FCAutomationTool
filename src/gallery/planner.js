@@ -100,7 +100,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   if (threshold == null) return { status: 'unavailable', reason: 'target-grade-unknown' };
   const compiled = compileGalleryScoringRules(catalog);
   if (compiled.status !== 'ready') return { status: 'unavailable', reason: compiled.reason };
-  const score = scoreSummarizer ?? createGalleryScoreSummarizer(catalog), summaries = new Map();
+  const score = scoreSummarizer ?? createGalleryScoreSummarizer(catalog, { fastTotals: lineupSearch }), summaries = new Map();
   let scoringWork = 0, scoreDeadline = false;
   const summaryFor = function* (selected) {
     // Inputs are fixed for this generator. Preserve selected order so the
@@ -233,13 +233,24 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       budgetExhausted ||= next.value.stopped && !timeExhausted;
       beamTruncated ||= next.value.truncated === true;
       const seen = new Set(), byId = new Map(candidates.map(candidate => [candidate.id, candidate]));
-      for (const lineup of next.value.plans) {
+      const finalists = next.value.plans.length ? next.value.plans : next.value.bestState ? [next.value.bestState] : [];
+      for (const lineup of finalists) {
         const picked = lineup.ids.filter(id => byId.has(id)), key = picked.slice().sort((a, b) => a - b).join(',');
         if (seen.has(key)) continue;
         seen.add(key);
         const chosen = picked.map(id => byId.get(id));
         const selected = chosen.map(candidate => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
-        const summary = yield* summaryFor(selected); evaluations++;
+        // A below-target witness is display-only. Validate its exact full
+        // scoring lineup rather than re-running the 80+-owned-card subset
+        // search only to report a conservative best-known score. Reached
+        // purchase plans retain the original full owned+selected validation.
+        const summary = lineup.score < threshold
+          ? yield* score.steps({ set, catalog, progress: { ...progress, complete: true,
+            rows: lineup.ids.map(id => ({ ...(byId.get(id)?.row ?? existing.find(row => row.eaId === id)),
+              gradingScore: byId.get(id)?.score.value ?? existing.find(row => row.eaId === id)?.gradingScore,
+              ...(byId.has(id) ? { firstOwned: false } : {}), collected: true })) } })
+          : yield* summaryFor(selected);
+        evaluations++;
         const state = { ids: picked, selected, nextIndex: candidates.length, price: lineup.cost, unknownPrice: false, summary,
           items: chosen.map(candidate => ({ ...candidate.row, score: candidate.score.value, scoreSource: candidate.score.source, price: candidate.price })) };
         if (summary?.full && scoreOf(state) >= threshold) plans.push(state);

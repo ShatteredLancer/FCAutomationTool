@@ -1088,6 +1088,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           FC27_GALLERY_PLAN_QUOTES_CHANGED: '报价已更新或到期，计算已停止，请重新生成以核价。',
           FC27_GALLERY_PLAN_VIEW_CHANGED: '已离开当前合集，计算已停止。',
           FC27_GALLERY_PLAN_REPLACED: '已开始其他计算，本次计算已停止。',
+          FC27_GALLERY_PLAN_PRICE_UNAVAILABLE: '当前所选价格来源没有返回可用报价，尚未开始计算；未购买。请稍后重试或检查价格来源。',
+          FC27_GALLERY_PLAN_PRICE_TIMEOUT: '本轮查价已达到 90 秒上限，所选来源未返回可用报价；未购买。可稍后重新生成。',
         };
         const message = messages[reason] ?? (failed ? `方案生成失败：${reason}。请重试或导出诊断日志。` : '本次计算已中断，可重新生成；未进行购买。');
         rememberPlanNotice(set.id, { event, message, grade: surface.grade });

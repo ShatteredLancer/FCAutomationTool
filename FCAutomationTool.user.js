@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.76
+// @version      27.0.77
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.76", at: Date.now(), status: 'started',
+    state = { version: "27.0.77", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -14101,9 +14101,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const initial = evaluate2(pool.slice().sort((a, b) => a.price - b.price || b.score - a.score || a.id - b.id).slice(0, required2).map((row) => row.id));
     function* seeds2() {
       let work = 0;
-      for (const price2 of galleryPriceBands(pool)) {
+      const summary3 = createGalleryScoreSummarizer(catalog, { fastTotals: true });
+      const bands = galleryPriceBands(pool);
+      if (existing.length >= required2 * 2 && candidates.length >= required2 * 2) bands.unshift(Infinity);
+      for (const price2 of bands) {
         const rows = [...byId.values()].filter((value) => value.price <= price2).map((value) => ({ ...value.row, collected: true }));
-        const scorer = summarizeGalleryScoreSteps({ set, catalog, progress: {
+        const scorer = summary3.steps({ set, catalog, progress: {
           season: "27",
           complete: true,
           setId: catalog.source === "fodder" ? set.id : Number(set.id.split(":").at(-1)),
@@ -14240,7 +14243,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (threshold == null) return { status: "unavailable", reason: "target-grade-unknown" };
     const compiled = compileGalleryScoringRules(catalog);
     if (compiled.status !== "ready") return { status: "unavailable", reason: compiled.reason };
-    const score2 = scoreSummarizer ?? createGalleryScoreSummarizer(catalog), summaries = /* @__PURE__ */ new Map();
+    const score2 = scoreSummarizer ?? createGalleryScoreSummarizer(catalog, { fastTotals: lineupSearch }), summaries = /* @__PURE__ */ new Map();
     let scoringWork = 0, scoreDeadline = false;
     const summaryFor = function* (selected) {
       const key2 = selected.map((row) => row.eaId).join(",");
@@ -14424,13 +14427,23 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         budgetExhausted ||= next.value.stopped && !timeExhausted;
         beamTruncated ||= next.value.truncated === true;
         const seen = /* @__PURE__ */ new Set(), byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-        for (const lineup of next.value.plans) {
+        const finalists = next.value.plans.length ? next.value.plans : next.value.bestState ? [next.value.bestState] : [];
+        for (const lineup of finalists) {
           const picked = lineup.ids.filter((id12) => byId.has(id12)), key2 = picked.slice().sort((a, b) => a - b).join(",");
           if (seen.has(key2)) continue;
           seen.add(key2);
           const chosen = picked.map((id12) => byId.get(id12));
           const selected = chosen.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
-          const summary3 = yield* summaryFor(selected);
+          const summary3 = lineup.score < threshold ? yield* score2.steps({ set, catalog, progress: {
+            ...progress,
+            complete: true,
+            rows: lineup.ids.map((id12) => ({
+              ...byId.get(id12)?.row ?? existing.find((row) => row.eaId === id12),
+              gradingScore: byId.get(id12)?.score.value ?? existing.find((row) => row.eaId === id12)?.gradingScore,
+              ...byId.has(id12) ? { firstOwned: false } : {},
+              collected: true
+            }))
+          } }) : yield* summaryFor(selected);
           evaluations++;
           const state = {
             ids: picked,
@@ -17247,26 +17260,43 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/planning-prices.js
-  async function loadGalleryPriceSnapshot(inputRows, { load, current: current2 = () => true, onProgress = () => {
-  } }) {
+  async function loadGalleryPriceSnapshot(inputRows, {
+    load,
+    current: current2 = () => true,
+    onProgress = () => {
+    },
+    purpose = null,
+    deadlineAt = null,
+    force = false,
+    policy = null,
+    now = () => Date.now()
+  }) {
     const rows = new Map(inputRows.map((row) => [row.eaId, row]));
     const ids2 = [...rows.keys()], snapshot = { source: "public-references", prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
     for (let start = 0; start < ids2.length; start += 250) {
       if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+      if (deadlineAt !== null && now() >= deadlineAt) {
+        snapshot.budgetExpired = true;
+        break;
+      }
       const batch = ids2.slice(start, start + 250);
       const part = await load(batch, {
         rows: batch.map((id12) => rows.get(id12)),
-        ...snapshot.policy ? { policy: snapshot.policy } : {},
+        ...snapshot.policy ?? policy ? { policy: snapshot.policy ?? policy } : {},
+        ...purpose ? { purpose } : {},
+        ...deadlineAt !== null ? { deadlineAt } : {},
+        ...force ? { force: true } : {},
         isCurrent: current2,
         onProgress: (value) => onProgress({ ...value, index: start + value.index, total: ids2.length })
       });
       if (!current2()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
-      if (part?.source !== "public-references" || !part.policy || snapshot.policy && JSON.stringify(part.policy) !== JSON.stringify(snapshot.policy))
+      if (part?.source !== "public-references" || !part.policy || (snapshot.policy ?? policy) && JSON.stringify(part.policy) !== JSON.stringify(snapshot.policy ?? policy))
         throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
       snapshot.policy = part.policy;
       Object.assign(snapshot.prices, part.prices);
       Object.assign(snapshot.freshPrices, part.freshPrices);
       Object.assign(snapshot.references, part.references);
+      if (part.budgetExpired) snapshot.budgetExpired = true;
       if (part.expiresAt != null) snapshot.expiresAt = Math.min(snapshot.expiresAt ?? Infinity, part.expiresAt);
     }
     return snapshot;
@@ -17274,7 +17304,35 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   async function priceGalleryPlanningTargets(targets, options) {
     const owned2 = new Set(targets.flatMap((target) => target.progress.rows.filter(isGalleryOwned).map((row) => row.eaId)));
     const rows = targets.flatMap((target) => target.progress.rows.filter((row) => row.collected === false && !owned2.has(row.eaId)));
-    const snapshot = await loadGalleryPriceSnapshot(rows, options);
+    const now = options.now ?? (() => Date.now());
+    const bounded2 = { ...options, now, purpose: "gallery-plan", deadlineAt: now() + 9e4 };
+    const snapshot = await loadGalleryPriceSnapshot(rows, bounded2);
+    const renew = [...new Map(rows.filter((row) => {
+      const quote2 = snapshot.references[row.eaId]?.quotes?.[snapshot.policy?.source];
+      return snapshot.freshPrices[row.eaId] > 0 && quote2 && !quote2.error && Number.isSafeInteger(quote2.fetchedAt) && Number.isSafeInteger(quote2.expiresAt) && quote2.expiresAt - now() < Math.min(6e4, (quote2.expiresAt - quote2.fetchedAt) / 3);
+    }).map((row) => [row.eaId, row])).values()];
+    if (renew.length) {
+      const fresh = await loadGalleryPriceSnapshot(renew, { ...bounded2, force: true, policy: snapshot.policy });
+      for (const row of renew) {
+        delete snapshot.prices[row.eaId];
+        delete snapshot.freshPrices[row.eaId];
+      }
+      Object.assign(snapshot.prices, fresh.prices);
+      Object.assign(snapshot.freshPrices, fresh.freshPrices);
+      Object.assign(snapshot.references, fresh.references);
+      if (fresh.budgetExpired) snapshot.budgetExpired = true;
+    }
+    for (const id12 of Object.keys(snapshot.freshPrices)) {
+      const quote2 = snapshot.references[id12]?.quotes?.[snapshot.policy?.source];
+      if (quote2 && (quote2.error || quote2.fetchedAt > now() || quote2.expiresAt <= now())) {
+        delete snapshot.prices[id12];
+        delete snapshot.freshPrices[id12];
+      }
+    }
+    const expiries = Object.keys(snapshot.freshPrices).map((id12) => snapshot.references[id12]?.quotes?.[snapshot.policy?.source]?.expiresAt).filter((value) => Number.isSafeInteger(value));
+    if (expiries.length) snapshot.expiresAt = Math.min(...expiries);
+    if (rows.length && !Object.keys(snapshot.freshPrices).length)
+      throw Error(snapshot.budgetExpired ? "FC27_GALLERY_PLAN_PRICE_TIMEOUT" : "FC27_GALLERY_PLAN_PRICE_UNAVAILABLE");
     return targets.map((target) => ({ ...target, prices: { ...snapshot.freshPrices }, priceSnapshot: snapshot }));
   }
 
@@ -21712,7 +21770,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             FC27_GALLERY_PLAN_INPUT_CHANGED: "\u5F53\u524D\u5408\u96C6\u89C4\u5219\u6216\u6536\u96C6\u72B6\u6001\u5DF2\u66F4\u65B0\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002",
             FC27_GALLERY_PLAN_QUOTES_CHANGED: "\u62A5\u4EF7\u5DF2\u66F4\u65B0\u6216\u5230\u671F\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u4EE5\u6838\u4EF7\u3002",
             FC27_GALLERY_PLAN_VIEW_CHANGED: "\u5DF2\u79BB\u5F00\u5F53\u524D\u5408\u96C6\uFF0C\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002",
-            FC27_GALLERY_PLAN_REPLACED: "\u5DF2\u5F00\u59CB\u5176\u4ED6\u8BA1\u7B97\uFF0C\u672C\u6B21\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002"
+            FC27_GALLERY_PLAN_REPLACED: "\u5DF2\u5F00\u59CB\u5176\u4ED6\u8BA1\u7B97\uFF0C\u672C\u6B21\u8BA1\u7B97\u5DF2\u505C\u6B62\u3002",
+            FC27_GALLERY_PLAN_PRICE_UNAVAILABLE: "\u5F53\u524D\u6240\u9009\u4EF7\u683C\u6765\u6E90\u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u62A5\u4EF7\uFF0C\u5C1A\u672A\u5F00\u59CB\u8BA1\u7B97\uFF1B\u672A\u8D2D\u4E70\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\u6216\u68C0\u67E5\u4EF7\u683C\u6765\u6E90\u3002",
+            FC27_GALLERY_PLAN_PRICE_TIMEOUT: "\u672C\u8F6E\u67E5\u4EF7\u5DF2\u8FBE\u5230 90 \u79D2\u4E0A\u9650\uFF0C\u6240\u9009\u6765\u6E90\u672A\u8FD4\u56DE\u53EF\u7528\u62A5\u4EF7\uFF1B\u672A\u8D2D\u4E70\u3002\u53EF\u7A0D\u540E\u91CD\u65B0\u751F\u6210\u3002"
           };
           const message = messages2[reason] ?? (failed2 ? `\u65B9\u6848\u751F\u6210\u5931\u8D25\uFF1A${reason}\u3002\u8BF7\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002` : "\u672C\u6B21\u8BA1\u7B97\u5DF2\u4E2D\u65AD\uFF0C\u53EF\u91CD\u65B0\u751F\u6210\uFF1B\u672A\u8FDB\u884C\u8D2D\u4E70\u3002");
           rememberPlanNotice(set.id, { event, message, grade: surface.grade });
@@ -31778,7 +31838,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const purpose = options.purpose ?? "gallery";
       const policy = options.policy ?? (purpose === "listing" ? { ...settings, source: settings.listingSource } : settings);
       if (!publicPriceSourceEnabled(settings, policy.source)) throw Error(`FC27_PUBLIC_PRICE_${policy.source.toUpperCase()}_DISABLED`);
-      const sources3 = (options.sources ?? (["puzzle", "purchase", "roadmap"].includes(purpose) ? [policy.source] : [policy.source, policy.source === "futbin" ? "futgg" : "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
+      const sources3 = (options.sources ?? (["puzzle", "purchase", "roadmap", "gallery-plan"].includes(purpose) ? [policy.source] : [policy.source, policy.source === "futbin" ? "futgg" : "futbin"])).filter((source) => publicPriceSourceEnabled(settings, source));
       if (!sources3.length) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
       const snapshot = await service.load(ids2, {
         ...options,
@@ -39123,7 +39183,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.76" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.77" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -39465,8 +39525,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.76"}`,
-    version: "27.0.76",
+    title: `FC Automation Tool ${"27.0.77"}`,
+    version: "27.0.77",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

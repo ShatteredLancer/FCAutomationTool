@@ -40,13 +40,15 @@ it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined', 'roadmap'])(
   expect(f.transport.getPrices).not.toHaveBeenCalled();
 });
 
-it.each(['futbin', 'futgg'])('demand roadmap reads only the selected %s authority, leaving dual-source Gallery display unchanged', async source => {
+it.each(['roadmap', 'gallery-plan'])('demand %s reads only the selected authority, leaving dual-source Gallery display unchanged', async purpose => {
+ for (const source of ['futbin', 'futgg']) {
   const f = fixture(); await f.service.saveSettings({ readSources: 'both', source });
-  const result = await f.service.load([f.player.definitionId], { purpose: 'roadmap', rows: [f.player] });
+  const result = await f.service.load([f.player.definitionId], { purpose, rows: [f.player] });
   expect(result.requestedSources).toEqual([source]);
   expect(result.policy.source).toBe(source);
   if (source === 'futbin') { expect(f.gm).toHaveBeenCalled(); expect(f.transport.getPrices).not.toHaveBeenCalled(); }
   else { expect(f.gm).not.toHaveBeenCalled(); expect(f.transport.getPrices).toHaveBeenCalled(); }
+ }
 });
 
 it('reads the selected authority first in Both without changing either price source', async () => {

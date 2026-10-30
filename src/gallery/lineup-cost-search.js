@@ -1,4 +1,4 @@
-import { evaluateGalleryLineup, galleryRuleKeys, summarizeGalleryScoreSteps } from './scoring.js';
+import { evaluateGalleryLineup, galleryRuleKeys, createGalleryScoreSummarizer } from './scoring.js';
 import { refineGalleryCostSteps } from './cost-search.js';
 import { galleryPriceBands } from './price-band-seeds.js';
 
@@ -30,9 +30,16 @@ export function* searchGalleryLineupCosts({ existing, candidates, set, catalog, 
   // This warm start is bounded once, not repeated for every purchase superset.
   function* seeds() {
     let work = 0;
-    for (const price of galleryPriceBands(pool)) {
+    const summary = createGalleryScoreSummarizer(catalog, { fastTotals: true });
+    const bands = galleryPriceBands(pool);
+    // Large already-full leagues often need several replacements rather than
+    // one nominal missing slot. Give the complete priced pool one scoring
+    // witness before a cheap band spends the shared 16k warm-start budget.
+    // The normal cost search still compares cheaper candidates afterward.
+    if (existing.length >= required * 2 && candidates.length >= required * 2) bands.unshift(Infinity);
+    for (const price of bands) {
       const rows = [...byId.values()].filter(value => value.price <= price).map(value => ({ ...value.row, collected: true }));
-      const scorer = summarizeGalleryScoreSteps({ set, catalog, progress: { season: '27', complete: true,
+      const scorer = summary.steps({ set, catalog, progress: { season: '27', complete: true,
         setId: catalog.source === 'fodder' ? set.id : Number(set.id.split(':').at(-1)), rows } });
       let next;
       try {
