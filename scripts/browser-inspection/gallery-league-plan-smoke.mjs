@@ -7,7 +7,10 @@ import { futggGallery } from '../../tests/fixtures/fc27-gallery.js';
 // Full production UI and planner; synthetic league/quotes, no EA requests.
 export async function exerciseGalleryLeaguePlan(context, directory) {
   const root = path.resolve(import.meta.dirname, '../..');
-  const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
+  const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
+    export { mountFc27AcceptancePanel } from './src/adapters/browser/fc27-acceptance-panel.js';
+    export { loadGalleryPriceSnapshot } from './src/gallery/planning-prices.js';
+  ` },
     bundle: true, write: false, format: 'iife', globalName: 'LeagueFixture', target: 'chrome120' });
   const input = futggGallery(), set = input.data.categories[0].sets[0];
   set.requiredCards = 30; set.name = 'Synthetic league';
@@ -29,12 +32,17 @@ export async function exerciseGalleryLeaguePlan(context, directory) {
           galleryScore: i < 80 ? 1 : i < 359 ? 2 : 100, overall: 75, rarityEaId: 1,
           nationEaId: 1, clubEaId: 1, leagueEaId: 1, positions: ['ST'], collected: i < 80,
           firstOwned: false, holographic: false }));
-        globalThis.leagueReads = []; globalThis.leagueEvents = [];
+        globalThis.leagueReads = []; globalThis.leagueEvents = []; globalThis.leagueEagerReads = 0;
         globalThis.leaguePanel = globalThis.LeagueFixture.mountFc27AcceptancePanel({ document: globalThis.document,
           hostId: 'league-fixture', targets: () => [], galleryAccountScope: () => 'fixture',
           galleryCatalog: { peek: async () => null, load: async () => ({ status: 'observed', source: 'futgg', catalog, fetchedAt: Date.now() }) },
-          gallerySetLoader: async () => ({ status: 'observed', scope: 'fixture', progress: { source: 'futgg', season: '27', setId: 30,
-            complete: true, rows, totals: { total: 389, collected: 80, missing: 309, unknown: 0 } } }),
+          gallerySetLoader: async () => {
+            const priceSnapshot = await globalThis.LeagueFixture.loadGalleryPriceSnapshot(rows, { autoDisplay: true,
+              load: async () => { globalThis.leagueEagerReads++; throw Error('Eager display pricing would occupy the planning queue'); } });
+            return { status: 'observed', scope: 'fixture', priceSnapshot, prices: priceSnapshot.prices,
+              progress: { source: 'futgg', season: '27', setId: 30, complete: true, rows,
+                totals: { total: 389, collected: 80, missing: 309, unknown: 0 } } };
+          },
           galleryPlanningPrices: async (ids, options) => {
             globalThis.leagueReads.push({ ids, purpose: options.purpose, deadlineAt: options.deadlineAt, force: !!options.force });
             const now = Date.now(), prices = {}, references = {};
@@ -55,6 +63,8 @@ export async function exerciseGalleryLeaguePlan(context, directory) {
       await host.locator('#tab-gallery').click();
       await host.locator('#gallery-categories button').first().click();
       await host.locator('[data-set-id="futgg:30"]').getByRole('button', { name: '查看卡片', exact: true }).click();
+      assert.equal(await page.evaluate(() => globalThis.leagueEagerReads), 0);
+      assert.equal(await host.getByText('大合集展示报价按需读取；点击“生成方案”时按所选来源核价，不预查全目录。', { exact: true }).isVisible(), true);
       await host.locator('.gallery-plan select').first().selectOption('B');
       await host.getByRole('button', { name: '生成方案', exact: true }).click();
       await page.waitForFunction(() => !globalThis.document.querySelector('#league-fixture').shadowRoot.querySelector('.gallery-plan .row button').disabled,

@@ -80,6 +80,21 @@ it('keeps a feasible low-quality composition ahead of higher-quality alternative
   expect(result.selected.every(ref => ref.rating < 65)).toBe(true);
 });
 
+it.each([150, 500, 600])('compares full squad cost across native-valid quality vectors, preferring the low tier only on a tie (%i)', price => {
+  const { input, entries } = minimumQualityFixture(1);
+  input.challenge.rawRequirements = [marketRow(3, 1)]; entries[0].rating = 60;
+  const extra = { ...entries[1], definitionId: 6000, rating: 80 };
+  const prices = new Map([...entries.map((card, index) => [card.definitionId, index ? 500 : 200]), [extra.definitionId, price]]);
+  const result = suggestFc27PuzzleJointPurchases(input, [...entries, extra], { prices });
+  expect(result.status).toBe('suggested');
+  const chosen = result.plans[0].purchases;
+  expect(chosen.reduce((sum, card) => sum + prices.get(card.definitionId), 0)).toBe(price < 500 ? 4850 : 5200);
+  expect(chosen.some(card => card.definitionId === 6000)).toBe(price < 500);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(prepareFc27PuzzleConceptDraft(input, { ...result.plans[0], purchases: chosen.map(card => ({
+    ...card, estimatedUnitPrice: prices.get(card.definitionId) })) }).status).toBe('prepared');
+});
+
 it('retains explicit native quality ceilings, FSU gold range, locks/main squad and personal caps', () => {
   const { input, entries, owned } = minimumQualityFixture(2);
   input.challenge.rawRequirements.push(marketRow(3, 2, -1, 1));

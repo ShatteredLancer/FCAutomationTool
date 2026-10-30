@@ -363,6 +363,7 @@ const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePa
       platform = /^pc:/i.test(context.platform) ? 'pc' : 'console';
       const priceScope = publicPrices.scope();
       priceSnapshot = await loadGalleryPriceSnapshot(pool.pool.items, {
+        autoDisplay: true,
         load: (ids, options) => publicPrices.load(ids, { ...options, purpose: 'display' }),
         current: () => publicPrices.scope() === priceScope,
       });

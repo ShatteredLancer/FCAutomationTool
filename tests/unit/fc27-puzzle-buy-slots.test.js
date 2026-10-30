@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { puzzleBuyMatchesSlots, puzzleBuySlotRefs } from '../../src/fc27/puzzle-buy-slots.js';
+import { puzzleBuyMatchesSlots, puzzleBuySlotRefs, puzzleBuyReplacementOnly } from '../../src/fc27/puzzle-buy-slots.js';
 
 it('accepts all asynchronous subsets of six acknowledged native replacements, not just all or none', () => {
   const record = { base: { slots: Array.from({ length: 6 }, (_, slot) => ({ slot, kind: 'concept', definitionId: 100 + slot })) },
@@ -11,4 +11,15 @@ it('accepts all asynchronous subsets of six acknowledged native replacements, no
   expect(puzzleBuyMatchesSlots(record, [{ ...next[0], id: 999 }, ...old.slice(1)])).toBe(false);
   expect(puzzleBuyMatchesSlots(record, [null, ...old.slice(1)])).toBe(false);
   expect(puzzleBuyMatchesSlots(record, [old[1], old[0], ...old.slice(2)])).toBe(false);
+});
+
+it('distinguishes known Club replacement delay from every unknown write state', () => {
+  const record = { phase: 'saved', applied: [], entries: [{ state: 'club', slot: 0, itemId: 10 }, { state: 'waiting', slot: 1 }] };
+  expect(puzzleBuyReplacementOnly(record)).toBe(true);
+  for (const state of ['buy-pending', 'bought', 'move-pending', 'move-rejected']) {
+    expect(puzzleBuyReplacementOnly({ ...record, entries: [record.entries[0], { state }] })).toBe(false);
+  }
+  expect(puzzleBuyReplacementOnly({ ...record, phase: 'save-pending' })).toBe(false);
+  expect(puzzleBuyReplacementOnly({ ...record, applied: [record.entries[0]] })).toBe(false);
+  expect(puzzleBuyReplacementOnly({ ...record, applied: [{ ...record.entries[0], itemId: 99 }] })).toBe(false);
 });

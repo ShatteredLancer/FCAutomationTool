@@ -1,6 +1,7 @@
 // One batch is bound to one account, saved concept draft and current squad.
 // No EA objects cross this boundary. A dispatch marker precedes each mutation.
 import { ensurePurchasePriceApproval, purchaseApprovedPrice, validatePurchasePriceApproval, purchasePriceApprovalFor } from './purchase-price-approval.js';
+import { puzzleBuyReplacementOnly } from './puzzle-buy-slots.js';
 import { validatePurchaseAttempts, beginPurchaseAttempt, finishPurchaseAttempt, failPurchaseWithoutAttempt,
   purchaseAttemptResults, purchaseRetryKey, applyPurchaseRetry, recordPurchaseSearch, freezePurchaseSearchCap } from './purchase-attempts.js';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -236,7 +237,7 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           await store(puzzleBuyPendingKey(scope), null);
           return { status: acquired.length === record.entries.length ? 'purchased' : 'partial',
             ...record.lastResult, ...await priceResult(), ...summary(record), saved: acquired.length > 0 && record.applied.length === acquired.length,
-            replacementPending: record.applied.length !== acquired.length, submitted: false };
+            replacementPending: record.applied.length !== acquired.length, replacementOnly: puzzleBuyReplacementOnly(record), submitted: false };
         });
       } catch (e) {
         // Diagnostic only. Mandatory dispatch evidence has already been stored.

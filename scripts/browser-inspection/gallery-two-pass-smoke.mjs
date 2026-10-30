@@ -13,8 +13,22 @@ export async function exerciseGalleryTwoPass(context,directory){
     await page.evaluate(()=>{
       globalThis.twoPass={hold:true,scope:'fixture',sync:0,references:0,quotes:0,events:[],release:null};
       const state=globalThis.twoPass,realTimer=globalThis.setTimeout;
+      const shouldHold=()=>state.hold && globalThis.document.querySelector('.gallery-roadmap-status')?.textContent.includes('删冗余优化');
+      const NativeChannel=globalThis.MessageChannel;
+      if(typeof NativeChannel==='function') globalThis.MessageChannel=function(){
+        const channel=new NativeChannel(),post=channel.port2.postMessage.bind(channel.port2);
+        channel.port2.postMessage=(...args)=>{
+          if(shouldHold()) state.release=()=>{state.release=null;post(...args);};else post(...args);
+        };
+        return channel;
+      };
+      if(typeof globalThis.scheduler?.yield==='function'){
+        const nativeYield=globalThis.scheduler.yield.bind(globalThis.scheduler);
+        globalThis.scheduler.yield=()=>shouldHold()
+          ? new Promise(resolve=>{state.release=()=>{state.release=null;resolve();};}) : nativeYield();
+      }
       globalThis.setTimeout=(callback,delay,...args)=>{
-        if(delay===0 && state.hold && globalThis.document.querySelector('.gallery-roadmap-status')?.textContent.includes('删冗余优化')){
+        if(delay===0 && shouldHold()){
           state.release=()=>{state.release=null;realTimer(callback,0,...args);};return -1;
         }
         return realTimer(callback,delay,...args);

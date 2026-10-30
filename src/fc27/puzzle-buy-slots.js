@@ -16,3 +16,12 @@ export function puzzleBuyMatchesSlots(record, slots) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   return slots.every((slot, i) => same(slot, old[i]) || same(slot, next[i]));
 }
+
+// A known Club receipt awaiting native concept replacement is not an unknown
+// payment. Only this precise state may expose failed-card retry beside repair.
+export function puzzleBuyReplacementOnly(record) {
+  return ['ready', 'saved'].includes(record?.phase) && Array.isArray(record.entries) && Array.isArray(record.applied)
+    && record.entries.every(entry => ['waiting', 'club'].includes(entry.state))
+    && record.applied.every(entry => entry.state === 'club' && record.entries.some(row => JSON.stringify(row) === JSON.stringify(entry)))
+    && record.entries.filter(entry => entry.state === 'club').length > record.applied.length;
+}

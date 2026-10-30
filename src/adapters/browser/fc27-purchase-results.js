@@ -127,14 +127,15 @@ export function mountFc27PurchaseResults({ document, parent, refreshPrices, retr
     if (!outcome) return;
     add(content, 'p', `累计已支出 ${amount(outcome.spent ?? 0)} 金币 · 剩余预算 ${context?.remainingBudget == null ? '按可用余额' : amount(context.remainingBudget)}`);
     const recovery = outcome.status === 'recovery-required' || outcome.recovery || outcome.replacementPending || rows.some(uncertain);
-    const canRetry = !busy && !recovery && !!context;
+    const retryBlocked = outcome.status === 'recovery-required' || rows.some(uncertain) || recovery && outcome.replacementOnly !== true;
+    const canRetry = !busy && !retryBlocked && !!context;
     if (!busy && rows.some(recovered)) {
       const done = add(content, 'details'); done.className = 'purchase-completed'; add(done, 'summary', `已完成 ${rows.filter(recovered).length} 张`);
       rows.filter(recovered).forEach(row => rowView(done, row, false));
     }
     rows.filter(row => busy || !recovered(row)).forEach(row => rowView(content, row, canRetry && failed(row)));
     const actions = add(content, 'div'); actions.className = 'purchase-actions';
-    if (!recovery && rows.some(failed) && context) {
+    if (!retryBlocked && rows.some(failed) && context) {
       const mode = add(actions, 'select'); mode.disabled = busy;
       for (const [value, text] of [['fixed', '加固定金币'], ['percent', '加百分比']]) { const option = add(mode, 'option', text); option.value = value; }
       const premium = add(actions, 'input'); premium.type = 'number'; premium.min = '0'; premium.value = '0'; premium.disabled = busy; premium.setAttribute('aria-label', '批量溢价');
@@ -164,8 +165,9 @@ export function mountFc27PurchaseResults({ document, parent, refreshPrices, retr
       });
     }
     if (!busy && (recovery || rows.some(row => row.state === 'waiting' && !row.attempt?.failed))) {
-      button(content, recovery ? '核对并继续' : '继续未处理', () => resume());
+      button(content, outcome.replacementOnly === true && !retryBlocked ? '核对已购卡替换' : recovery ? '核对并继续' : '继续未处理', () => resume());
     }
+    if (outcome.replacementOnly === true && !retryBlocked) add(content, 'small', '已购卡的成交已确认，概念卡替换尚未完成；可只重试未买到的卡，已购卡不会重买。');
     if (rows.some(row => row.state === 'acquired')) add(content, 'small', '买入已确认；部分卡当前不在 Club/Unassigned，未宣称已入库，也不会重买。');
     if (outcome?.collection?.status === 'pending') add(content, 'small', '画廊计分待 EA 同步，不影响已确认成交。');
     error = add(content, 'p'); error.className = 'purchase-error'; error.setAttribute('role', 'status');

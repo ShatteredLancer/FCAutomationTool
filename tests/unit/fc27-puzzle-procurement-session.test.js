@@ -6,6 +6,7 @@ import clubAffinity from '../fixtures/fc27-puzzle-club-affinity-2026-10-09.json'
 import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
 import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
+import { marketRow } from '../helpers/fc27-market-fixture.js';
 
 function fixture() {
   const input = puzzleFillFixture(); input.challenge.rawRequirements[1].pairs[0].values = [33];
@@ -32,6 +33,35 @@ function publicPrices(x, priceOf) {
         fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null,
       }])) }])) }));
 }
+
+it.each(['mixed', 'native-gold-quality', 'native-exact-gold-count'])('compares a cheap lower-tier league route without bypassing %s', async mode => {
+  // Live FUTNEXT Set78/121 illustrates 5 capped gold + 6 bronze at rating75/
+  // chem26. IDs, positions, clubs and prices here are synthetic, not its squad.
+  const x = fixture(); x.input.inventory.items = []; x.input.policy.maxRating = 82;
+  const club = marketRow(12, 9, 2); club.pairs[0].values = [9, 1];
+  x.input.challenge.setId = 78; x.input.challenge.id = 121;
+  x.input.challenge.rawRequirements = [club, marketRow(11, 13, 2), marketRow(5, 4), marketRow(6, 3), marketRow(19, 75), marketRow(35, 26)];
+  if (mode === 'native-gold-quality') x.input.challenge.rawRequirements.push(marketRow(3, 3, -1, 2));
+  if (mode === 'native-exact-gold-count') x.input.challenge.rawRequirements.push(marketRow(17, 3, 11, 2));
+  const entries = Array.from({ length: 17 }, (_, i) => ({ definitionId: 9000 + i, rating: i < 11 ? 80 : 64,
+    rarity: 0, nationId: 1, leagueId: 13, teamId: i < 11 ? 9 : 500,
+    positions: [5], groups: [], special: false, evolution: false, cosmetic: false }));
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27', source: 'ea-defid',
+    query, observedAt: x.now, entries: entries.filter(row => query.level === (row.rating < 65 ? 'bronze' : 'gold')
+      && (!query.team || row.teamId === query.team) && (!query.league || row.leagueId === query.league)
+      && (!query.nation || row.nationId === query.nation)).slice(query.start, query.start + query.count) }));
+  const session = createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices: publicPrices(x, id => id < 9011 ? 800 : 200) });
+  const result = await session.plan(x.input, { optimizeMaterialValue: true });
+  expect(result.status, JSON.stringify(result)).toBe('suggested');
+  expect(result.diagnostics.initialEstimatedCost).toBe(8800);
+  expect(result.plans[0].estimatedCost).toBe(mode === 'mixed' ? 5200 : 8800);
+  expect(result.plans[0].purchases.filter(card => card.rating < 65)).toHaveLength(mode === 'mixed' ? 6 : 0);
+  expect(result.plans[0].teamFacts.teamRating).toBeGreaterThanOrEqual(75);
+  expect(result.plans[0].teamFacts.chemistry).toBeGreaterThanOrEqual(26);
+  expect(x.transport.readCatalogPage.mock.calls.some(([query]) => query.level === 'bronze' && query.league === 13)).toBe(mode === 'mixed');
+  expect(x.transport.readCatalogPage.mock.calls.length).toBeLessThanOrEqual(3);
+  expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
+});
 
 it.each([250, 251, 256, 257])('bounds %i owned definitions to the real 250-ID public loader contract', async count => {
   const x = fixture(); x.input.inventory.items[10].positions = [5];

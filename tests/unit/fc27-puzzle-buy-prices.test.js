@@ -9,7 +9,7 @@ import ceilingCase from '../fixtures/fc27-purchase-ceiling-2026-10-16.json';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 vi.mock('../../src/adapters/ea/fc27-transaction-transport.js', () => ({ verifyFc27Methods: async () => () => {} }));
 vi.mock('../../src/adapters/ea/fc27-local-read.js', () => ({ readFc27Context: () => ({ season: '27', accountScope: 'account', platform: 'pc' }) }));
-async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, filterByCap = false, onEvent = () => {} } = {}) {
+async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, filterByCap = false, onEvent = () => {}, skipRejectedListings = false } = {}) {
   const state = { prices: [600,500], coins: 10000, time: 1000, bids: [], searches: [] };
   const quote = (source, price) => ({ schema: 2, source, definitionId: 10, season: '27', platform: 'pc', price,
     fetchedAt: 900, sourceUpdatedAt: null, expiresAt: 300900, error: null });
@@ -30,12 +30,15 @@ async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, fil
       });
       return observable({ success: true, data: { items } });
     }
-    bid(item, price) { state.bids.push(price); return observable({ success: true, data: { itemIds: [item.id] } }); }
+    bid(item, price) { state.bids.push(price); if (state.bidReply) return observable(state.bidReply); return state.rejectTrades?.includes(item.getAuctionData().tradeId)
+      ? observable({ success: false, status: state.rejectStatus ?? 461, error: { code: 461 } })
+      : observable({ success: true, data: { itemIds: [item.id] } }); }
     move() {}
   }
   const root = { services: { Item: new ItemService(), User: { getUser: () => ({ getCurrency: () => ({ amount: state.coins }) }) }, PIN: { sendData() {} } },
     repositories: { Item: { numItemsInCache: () => 0 } }, MAX_NEW_ITEMS: 100,
     ItemPile: { CLUB: 7, PURCHASED: 6 }, GameCurrency: { COINS: 'COINS' }, PINEventType: { PAGE_VIEW: 1 }, PIN_PAGEVIEW_EVT_TYPE: 1,
+    UtasErrorCode: { PERMISSION_DENIED: 461 },
     SearchType: { PLAYER: 'player' }, SearchCategory: { ANY: 'any' }, ItemSearchFeature: { MARKET: 'market' },
     UTCurrencyInputControl: { PRICE_TIERS: priceTiers, getIncrementAboveVal: n => n + 50, getIncrementBelowVal: n => n - 50 },
     UTSearchCriteriaDTO: class {}, UTBucketedItemSearchViewModel: class {
@@ -44,10 +47,38 @@ async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, fil
     } };
   const details = { _rating: 80, nationId: 1, teamId: 1, leagueId: 1, preferredPosition: 1 };
   const adapter = await createFc27PuzzleBuyAdapter(root, { canWrite: () => true, verifyCurrent: () => {},
-    playerDetails: new Map([[10, details]]), referencePrice: () => quotePrice, now: () => state.time, wait: async () => {}, excludeOffer, onEvent });
+    playerDetails: new Map([[10, details]]), referencePrice: () => quotePrice, now: () => state.time, wait: async () => {}, excludeOffer, onEvent, skipRejectedListings });
   await adapter.verifySquad(record);
   return { state, record, adapter, root, cards, details, reference };
 }
+
+it('skips the exact explicitly rejected stale listing before the price walk and finds another within the same cap', async () => {
+  const f = await fixture({ skipRejectedListings: true, filterByCap: true });
+  f.state.prices = [150, 200]; f.state.rejectTrades = ['1000'];
+  const first = await f.adapter.find(10, 200);
+  expect(await f.adapter.buy(first)).toMatchObject({ status: 'rejected', reason: 'FC27_BUY_LISTING_UNAVAILABLE' });
+  const second = await f.adapter.find(10, 200);
+  expect(second).toMatchObject({ tradeId: '1001', price: 200 });
+  expect(await f.adapter.buy(second)).toMatchObject({ status: 'bought' });
+  expect(f.state.bids).toEqual([150, 200]);
+});
+
+it.each([401,403,429])('does not reinterpret HTTP %i as permission to skip and automatically rebid', async status => {
+  const f = await fixture({ skipRejectedListings: true, filterByCap: true });
+  f.state.prices = [150, 200]; f.state.rejectTrades = ['1000']; f.state.rejectStatus = status;
+  const first = await f.adapter.find(10, 200); await f.adapter.buy(first);
+  expect(await f.adapter.find(10, 200)).toMatchObject({ tradeId: '1000', price: 150 });
+  expect(f.state.bids).toEqual([150]);
+});
+
+it('keeps an unmatched success receipt unknown in both the result and diagnostic', async () => {
+  const events = [], f = await fixture({ skipRejectedListings: true, onEvent: event => events.push(event) });
+  f.state.prices = [150]; f.state.bidReply = { success: true, data: { itemIds: [999] } };
+  expect(await f.adapter.buy(await f.adapter.find(10, 200))).toEqual({ status: 'unknown' });
+  expect(events.find(event => event.stage === 'bid')).toMatchObject({ status: 'unknown' });
+  expect(await f.adapter.find(10, 200)).toMatchObject({ tradeId: '1000' });
+  expect(f.state.bids).toEqual([150]);
+});
 
 it.each(ceilingCase.retryCaps)('selects and bids 650 under an explicitly approved %i retry ceiling', async cap => {
   const events = [];

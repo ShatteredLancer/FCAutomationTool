@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey, puzzleBuyHistoryKey } from '../../src/fc27/puzzle-buy-session.js';
+import { createPurchasePriceApproval } from '../../src/fc27/purchase-price-approval.js';
 
 function fixture(count = 2) {
   const scope = 'account'; const context = { season: '27', accountScope: 'account', platform: 'pc' };
@@ -20,6 +21,30 @@ function fixture(count = 2) {
   const run = (options = {}) => session().execute(target, { approved: true, budget: 400, expectedOperationId: 'test', ...options });
   return { run, adapter, data, draft, locations, target, scope, stop: () => { stopped = true; } };
 }
+
+it('uses the existing allowance after a last-card listing rejection and never rebuys seven confirmed Club receipts', async () => {
+  const f = fixture(8), references = {};
+  for (const entry of f.draft.plan.slots) references[entry.definitionId] = { definitionId: entry.definitionId, season: '27', platform: 'pc',
+    quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, definitionId: entry.definitionId, season: '27', platform: 'pc',
+      source, price: 200, fetchedAt: 900, expiresAt: 300000, sourceUpdatedAt: null, error: null }])) };
+  const grant = createPurchasePriceApproval({ scope: f.scope, season: '27', platform: 'pc', definitionIds: f.draft.plan.slots.map(row => row.definitionId),
+    references, policy: { source: 'futgg', purchaseAttempts: 5 }, now: 1000 });
+  let rejected = false;
+  f.adapter.buy.mockImplementation(async entry => {
+    if (entry.definitionId === 907 && !rejected) { rejected = true; return { status: 'rejected', reason: 'FC27_BUY_LISTING_UNAVAILABLE', httpStatus: 461 }; }
+    f.locations.set(entry.itemId, 'purchased'); return { ...entry, status: 'bought' };
+  });
+  f.adapter.save.mockResolvedValue({ applied: [] });
+  const session = createFc27PuzzleBuySession({ scope: f.scope, context: f.draft.plan.context,
+    get: async (key, fallback) => structuredClone(f.data.get(key) ?? fallback), set: async (key, value) => f.data.set(key, structuredClone(value)),
+    exclusive: async (_scope, task) => task(), loadDraft: async () => f.draft, assertCurrent: () => {},
+    preparePrices: async () => grant, createAdapter: async () => f.adapter });
+  const approved = { approved: true, budget: 2000, expectedOperationId: 'test' };
+  expect(await session.execute(f.target, approved)).toMatchObject({ status: 'purchased', purchased: 8, spent: 1600, replacementOnly: true });
+  expect(f.adapter.buy.mock.calls.map(([entry]) => entry.definitionId)).toEqual([900, 901, 902, 903, 904, 905, 906, 907, 907]);
+  expect(await session.execute(f.target, approved)).toMatchObject({ purchased: 8, spent: 1600 });
+  expect(f.adapter.buy).toHaveBeenCalledTimes(9);
+});
 
 it('buys serially, records exact receipts, moves to Club and saves once without submitting', async () => {
   const x = fixture(); const result = await x.run();

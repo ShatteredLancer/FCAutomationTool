@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { runGalleryPlan } from '../../src/gallery/cooperative-plan.js';
 import { planGalleryGrade, planGalleryGradeSteps } from '../../src/gallery/planner.js';
 import { planGalleryJoint, planGalleryJointSteps } from '../../src/gallery/joint-planner.js';
@@ -11,6 +11,35 @@ const set = { id: 'futgg:30', requiredCards: 3, grades: [{ name: 'C', threshold:
 const progress = { season: '27', setId: 30, complete: true, rows: [1, 2, 3, 4].map(eaId =>
   ({ eaId, overall: 80, gradingScore: eaId * 60, firstOwned: false, collected: eaId < 3 })) };
 const input = { set, catalog, progress, targetGrade: 'C', prices: {3: 200, 4: 300} };
+
+it('prefers ordinary message tasks so native yield continuations cannot starve UI timers', async () => {
+  const posted = vi.fn(); let at = 0;
+  vi.stubGlobal('scheduler', { yield: () => { throw Error('prioritized continuation starves timer'); } });
+  vi.stubGlobal('setTimeout', () => { throw Error('background timer throttled'); });
+  vi.stubGlobal('MessageChannel', class {
+    constructor() {
+      this.port1 = { close() {} };
+      this.port2 = { close() {}, postMessage: () => { posted(); queueMicrotask(() => this.port1.onmessage()); } };
+    }
+  });
+  try {
+    function* work() { for (let i = 0; i < 40; i++) yield { evaluations: i }; return { status: 'ready' }; }
+    expect(await runGalleryPlan(work(), { now: () => ++at, sliceMs: 5 })).toEqual({ status: 'ready' });
+    expect(posted).toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('uses a native cooperative task yield instead of a throttled default timer', async () => {
+  const yieldTask = vi.fn(async () => {}); let at = 0;
+  vi.stubGlobal('MessageChannel', undefined);
+  vi.stubGlobal('scheduler', { yield: yieldTask });
+  vi.stubGlobal('setTimeout', () => { throw Error('background timer throttled'); });
+  try {
+    function* work() { for (let i = 0; i < 40; i++) yield { evaluations: i }; return { status: 'ready' }; }
+    expect(await runGalleryPlan(work(), { now: () => ++at, sliceMs: 5 })).toEqual({ status: 'ready' });
+    expect(yieldTask).toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
 
 it('keeps roadmap scoring time slices cooperative without treating bare yields as progress records', async () => {
   const target = { status: 'observed', catalog,

@@ -37,6 +37,26 @@ export async function exerciseGalleryPlanRefresh(context, directory, only = null
         globalThis.clubCatalog = catalog; globalThis.clubQuoteError = false; globalThis.clubHold = true;
         const timeout = globalThis.setTimeout;
         globalThis.clubComputePaused = false; globalThis.clubPauseCompute = false;
+        const NativeChannel = globalThis.MessageChannel;
+        if (typeof NativeChannel === 'function') globalThis.MessageChannel = function () {
+          const channel = new NativeChannel(), post = channel.port2.postMessage.bind(channel.port2);
+          channel.port2.postMessage = (...args) => {
+            if (globalThis.clubPauseCompute && !globalThis.clubComputePaused) {
+              globalThis.clubComputePaused = true; globalThis.clubResumeCompute = () => post(...args);
+            } else post(...args);
+          };
+          return channel;
+        };
+        if (typeof globalThis.scheduler?.yield === 'function') {
+          const nativeYield = globalThis.scheduler.yield.bind(globalThis.scheduler);
+          globalThis.scheduler.yield = () => {
+            if (globalThis.clubPauseCompute && !globalThis.clubComputePaused) {
+              globalThis.clubComputePaused = true;
+              return new Promise(resolve => { globalThis.clubResumeCompute = resolve; });
+            }
+            return nativeYield();
+          };
+        }
         globalThis.setTimeout = (callback, ms, ...args) => {
           if (ms === 0 && globalThis.clubPauseCompute && !globalThis.clubComputePaused) {
             globalThis.clubComputePaused = true;

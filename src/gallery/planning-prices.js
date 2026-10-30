@@ -3,9 +3,13 @@ import { isGalleryOwned } from './planner.js';
 // Quote the same candidate set used for cost comparison. Never start this on
 // category/tab navigation. The public service deduplicates across these sets.
 export async function loadGalleryPriceSnapshot(inputRows, { load, current = () => true, onProgress = () => {},
-  purpose = null, deadlineAt = null, force = false, policy = null, now = () => Date.now() }) {
+  purpose = null, deadlineAt = null, force = false, policy = null, autoDisplay = false, now = () => Date.now() }) {
   const rows = new Map(inputRows.map(row => [row.eaId, row]));
   const ids = [...rows.keys()], snapshot = { source: 'public-references', prices: {}, freshPrices: {}, references: {}, expiresAt: null, policy: null };
+  // Detail navigation must not reserve hundreds of shared quote promises
+  // ahead of the user's bounded planning job. Explicit price/plan reads keep
+  // their full candidate scope; small club auto-display stays unchanged.
+  if (autoDisplay && ids.length > 64) return { ...snapshot, deferred: true };
   for (let start = 0; start < ids.length; start += 250) {
     if (!current()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
     if (deadlineAt !== null && now() >= deadlineAt) { snapshot.budgetExpired = true; break; }

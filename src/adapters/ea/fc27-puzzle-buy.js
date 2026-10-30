@@ -52,7 +52,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   refreshReference = null, now = () => Date.now(), onSearch = () => {},
   verifyCurrent: verifyCurrentOverride = null, verifySquad: verifySquadOverride = null,
   collectionState = null, confirmCollection = null, playerDetails = null,
-  preflightReceiptRead = false, excludeOffer = null,
+  preflightReceiptRead = false, excludeOffer = null, skipRejectedListings = false,
   attempts = 5, onEvent = () => {}, wait = (min, max) => new Promise(resolve => setTimeout(resolve,
     Math.floor(Math.random() * (max * 1000 - min * 1000 + 1)) + min * 1000)) } = {}) {
   const context = readFc27Context(root); const service = root.services.Item;
@@ -69,6 +69,12 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
   // This constructs the guarded transport only; it performs no request.
   let club = preflightReceiptRead === true ? await createFc27ClubReadTransport(root) : null;
   const auctions = new Map(); const auctionCaps = new Map(); const confirmedMoves = new Set();
+  const rejectedListings = new Set();
+  const offerKey = (definitionId, itemId, tradeId) => `${definitionId}:${itemId}:${tradeId}`;
+  const rememberRejected = entry => {
+    if (skipRejectedListings && rejectedListings.size < 256)
+      rejectedListings.add(offerKey(entry.definitionId, entry.itemId, entry.tradeId));
+  };
   let closed = false; let currentRecord = null;
   const diagnostic = (stage, values = {}) => { onEvent({ stage, ...values }); };
   const pin = pgid => root.services.PIN.sendData(root.PINEventType.PAGE_VIEW, { type: root.PIN_PAGEVIEW_EVT_TYPE, pgid });
@@ -172,6 +178,12 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
             searchCeiling: maxBuy, attempt: ++searchAttempt, attemptLimit: attempts,
             ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
           if (reply.success && (!Array.isArray(reply.data?.items) || reply.data.items.some(card => card.definitionId !== definitionId))) fail('FC27_BUY_QUOTE_UNVERIFIED');
+          if (reply.success && skipRejectedListings) {
+            const items = reply.data.items.filter(card => !rejectedListings.has(offerKey(definitionId, card.id, String(card.getAuctionData()?.tradeId))));
+            if (items.length !== reply.data.items.length) diagnostic('offer-filter', { definitionId, count: items.length,
+              skippedCount: reply.data.items.length - items.length });
+            return { ...reply, data: { ...reply.data, items } };
+          }
           return reply;
         } });
       // EA may return a stale/out-of-filter entity. Never interpret it as
@@ -199,6 +211,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       const item = auctions.get(entry.tradeId); const auction = item?.getAuctionData();
       if (!item || item.id !== entry.itemId || item.definitionId !== entry.definitionId || String(auction.tradeId) !== entry.tradeId
           || auction.buyNowPrice !== entry.price) {
+        rememberRejected(entry);
         return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' };
       }
       const cap = auctionCaps.get(entry.tradeId);
@@ -206,16 +219,22 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       const authority = approvedCap(entry.definitionId, cap.maxBuy, item, cap.fresh);
       if (authority.maxBuy === null || entry.price > authority.maxBuy) return { status: 'rejected', reason: authority.reason ?? 'FC27_BUY_PRICE_CAP_EXCEEDED' };
       if (!auction.canBuy(coins())) return { status: 'rejected', reason: 'FC27_BUY_INSUFFICIENT_COINS' };
-      if (!(auction.getSecondsRemaining() > 0)) return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' };
+      if (!(auction.getSecondsRemaining() > 0)) { rememberRejected(entry); return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' }; }
       pin('Item - Detail View');
       const reply = await observe(() => { verifyCurrent(currentRecord); return service.bid(item, entry.price); }, true);
-      diagnostic('bid', { definitionId: entry.definitionId, price: entry.price, ...responseCodes(reply) });
-      if (reply?.success === true && Array.isArray(reply.data?.itemIds) && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId) {
+      const confirmed = reply?.success === true && Array.isArray(reply.data?.itemIds)
+        && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId;
+      diagnostic('bid', { definitionId: entry.definitionId, price: entry.price, ...responseCodes(reply),
+        status: confirmed ? 'bought' : reply?.success === false ? 'rejected' : 'unknown' });
+      if (confirmed) {
         return { status: 'bought', itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
       }
-      if (reply?.success === false) return { status: 'rejected', ...responseCodes(reply),
-        reason: reply.error?.code !== undefined && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED
-          ? 'FC27_BUY_LISTING_UNAVAILABLE' : 'FC27_BUY_REJECTED' };
+      if (reply?.success === false) {
+        const reason = reply.error?.code !== undefined && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED
+          ? 'FC27_BUY_LISTING_UNAVAILABLE' : 'FC27_BUY_REJECTED';
+        if (reason === 'FC27_BUY_LISTING_UNAVAILABLE' && ![401,403,429].includes(reply.status)) rememberRejected(entry);
+        return { status: 'rejected', ...responseCodes(reply), reason };
+      }
       return { status: 'unknown' };
     },
     async locate(entry, { allowAbsent = false } = {}) {

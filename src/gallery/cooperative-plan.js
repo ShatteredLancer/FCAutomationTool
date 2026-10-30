@@ -1,10 +1,19 @@
 import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from './planning-settings.js';
+import { yieldStreamlinedTask as yieldPlanningTask } from '../streamlined/scheduling.js';
+
+function yieldGalleryTask() {
+  // Native yield continuations can outrank ready timer tasks across an entire
+  // search. Prefer ordinary message tasks for timer/UI fairness without the
+  // hidden-tab timer clamp; retain the shared helper's API fallback/cleanup.
+  const { MessageChannel } = globalThis;
+  return yieldPlanningTask(typeof MessageChannel === 'function' ? { MessageChannel } : globalThis);
+}
 
 // Preserve the planner's evaluation sequence while yielding to the browser.
 // A deadline asks the generator to finish with its best partial candidates;
 // invalidation discards the computation instead of publishing stale results.
 export async function runGalleryPlan(steps, { current = () => true, progress = () => {},
-  now = () => performance.now(), schedule = () => new Promise(resolve => setTimeout(resolve, 0)),
+  now = () => performance.now(), schedule = yieldGalleryTask,
   sliceMs = 12, maxMs = DEFAULT_GALLERY_PLANNING_TIMEOUT_MS, checkpoint = null, onTiming = null } = {}) {
   const started = now(); let slice = started, finish = false;
   const timing = onTiming ? { processingMs: 0, schedulingMs: 0, validationMs: 0, microSteps: 0, checkpointCount: 0 } : null;

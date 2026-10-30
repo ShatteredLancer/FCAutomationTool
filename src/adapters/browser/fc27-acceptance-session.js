@@ -21,7 +21,7 @@ import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '.
 import { assertPuzzleBuyTargetAvailable } from '../../fc27/puzzle-buy-lifecycle.js';
 import { maintainFc27PuzzlePurchases } from './fc27-puzzle-buy-lifecycle.js';
 import { createFc27PuzzleBuyAdapter, readFc27PuzzleBuyPlan } from '../ea/fc27-puzzle-buy.js';
-import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
+import { puzzleBuyMatchesSlots, puzzleBuyReplacementOnly } from '../../fc27/puzzle-buy-slots.js';
 import { readFc27PurchasePageSlots } from '../ea/fc27-puzzle-page.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
@@ -676,7 +676,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
         balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
         priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
       }) } : {}),
-      recovery: pending, completed: remaining.length === 0 && !pending };
+      recovery: pending, replacementOnly: puzzleBuyReplacementOnly(record), completed: remaining.length === 0 && !pending };
   };
   return Object.freeze({
     inspectPuzzlePurchases: target => run(() => inspectPurchases(target)),
@@ -709,7 +709,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
               return await createFc27PuzzleBuyAdapter(root, { assertTarget, referencePrice, onSearch: callbacks.onSearch,
                 refreshReference: publicPrices ? async (definitionId, policy) =>
                   (await publicPrices.load([definitionId], { purpose: 'puzzle', policy, isCurrent: () => { assertTarget(); return !buyStopped; } })).references[definitionId] : null,
-                attempts: settings.queriesNumber,
+                attempts: settings.queriesNumber, skipRejectedListings: true,
                 onEvent: event => { if (events.length < 300) events.push(event); },
                 canWrite: () => liveEnabled === true && armed && persistence.inspect().active,
               });
@@ -746,6 +746,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
               definitionId: event.definitionId, referencePrice: event.referencePrice, searchCeiling: event.searchCeiling,
               maxBuy: event.maxBuy, attempt: event.attempt, attemptLimit: event.attemptLimit,
               count: event.count, httpStatus: event.httpStatus, errorCode: event.errorCode });
+          }
+          for (const event of events.filter(event => ['bid', 'move', 'offer-filter'].includes(event.stage)).slice(-40)) {
+            await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-receipt', phase: event.stage,
+              definitionId: event.definitionId, actualPrice: event.price, status: event.status,
+              httpStatus: event.httpStatus, errorCode: event.errorCode, count: event.count, skippedCount: event.skippedCount });
           }
           await diagnosticLog?.record?.({ area: 'puzzle', event: 'buy-result',
             setId: target.setId, challengeId: target.challengeId, status: result?.status, reason: result?.reason,

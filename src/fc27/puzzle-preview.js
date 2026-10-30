@@ -212,17 +212,24 @@ export function* iterateFc27PuzzleCandidateRoutes(input) {
     return yield* iteratePuzzleRoutes({ ...input, materialRules: preferred });
   const first = yield* iteratePuzzleRoutes({ ...input, maxNodes: Math.max(1, Math.floor(maxNodes / 3)), materialRules: preferred,
     onProgress: value => input.onProgress?.({ ...value, maxNodes }) });
-  if (first.status === 'preview') return { ...first, maxNodes, materialPreference: 'minimum-quality',
+  const incumbent = first.status === 'preview';
+  if (incumbent && (!input.procurement?.priceAware || first.estimatedCost === 0)) return { ...first, maxNodes, materialPreference: 'minimum-quality',
     ...(input.procurement ? { searchComplete: false, optimalWithinPool: false } : {}) };
-  if (!['SAFE_MATERIAL_SHORTAGE','FC27_PUZZLE_CONSTRAINT_SHORTAGE','FC27_PUZZLE_NO_PLAN_FOUND','FC27_PUZZLE_SEARCH_LIMIT'].includes(first.reason)) return first;
+  if (!incumbent && !['SAFE_MATERIAL_SHORTAGE','FC27_PUZZLE_CONSTRAINT_SHORTAGE','FC27_PUZZLE_NO_PLAN_FOUND','FC27_PUZZLE_SEARCH_LIMIT'].includes(first.reason)) return first;
   const spent = first.nodes ?? 0, remaining = maxNodes - spent;
   if (remaining < 1) return { ...first, maxNodes };
   const metrics = first.search ?? {}, sum = search => Object.fromEntries(['combinationNodes','placementNodes','evaluations','bounds']
     .map(key => [key, (metrics[key] ?? 0) + (search?.[key] ?? 0)]));
   const result = yield* iteratePuzzleRoutes({ ...input, maxNodes: remaining, materialRules: [], nativeQualityFallback: true,
+    ...(incumbent ? { procurement: { ...input.procurement, budget: Math.min(input.procurement.budget, first.estimatedCost - 1) } } : {}),
     onProgress: value => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes, search: sum(value.search) }) });
-  return { ...result, maxNodes, nodes: spent + (result.nodes ?? 0), search: sum(result.search),
-    materialPreference: 'native-quality-fallback',
+  // The low-quality vector is a tie-break, not permission to discard a
+  // cheaper native-valid squad. Keep the known feasible incumbent if the
+  // bounded monetary comparison cannot improve it; no extra node budget.
+  const keepFirst = incumbent && (result.status !== 'preview' || result.estimatedCost >= first.estimatedCost);
+  return { ...(keepFirst ? first : result), maxNodes, nodes: spent + (result.nodes ?? 0), search: sum(result.search),
+    ...(incumbent ? { searchComplete: false, optimalWithinPool: false } : {}),
+    materialPreference: keepFirst ? 'minimum-quality' : incumbent ? 'native-cost-improvement' : 'native-quality-fallback',
     strategyAttempts: (first.strategyAttempts ?? 1) + (result.strategyAttempts ?? 1) };
 }
 

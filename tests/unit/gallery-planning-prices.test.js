@@ -15,6 +15,15 @@ it('quotes all 341 display cards including collected cards in legal batches', as
   expect(result.expiresAt).toBe(4000);
   expect(loader.mock.calls[1][1].policy).toEqual({ source: 'futbin' });
 });
+
+it('does not start an eager full-league price job merely by opening its detail page', async () => {
+  const loader = vi.fn(load), rows = Array.from({ length: 389 }, (_, i) => ({ eaId: i + 1 }));
+  const snapshot = await loadGalleryPriceSnapshot(rows, { load: loader, autoDisplay: true });
+  expect(loader).not.toHaveBeenCalled();
+  expect(snapshot).toMatchObject({ deferred: true, prices: {}, freshPrices: {}, references: {}, expiresAt: null });
+  await loadGalleryPriceSnapshot(rows.slice(0, 33), { load: loader, autoDisplay: true });
+  expect(loader).toHaveBeenCalledTimes(1);
+});
 it('rejects interrupted or changed-source display batches instead of publishing a mixed snapshot', async () => {
   const rows = Array.from({ length: 251 }, (_, i) => ({ eaId: i + 1 }));
   const loader = vi.fn(async ids => ({ ...await load(ids), policy: { source: ids[0] === 1 ? 'futgg' : 'futbin' } }));

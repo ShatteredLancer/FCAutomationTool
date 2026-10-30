@@ -88,9 +88,18 @@ export async function exercisePurchaseResults(context, directory) {
     assert.equal(await page.getByRole('button', { name: '核对并继续', exact: true }).count(), 0);
     assert.equal(await page.getByText('买入已确认；部分卡当前不在 Club/Unassigned，未宣称已入库，也不会重买。', { exact: true }).isVisible(), true);
     assert.equal(await page.getByText('画廊计分待 EA 同步，不影响已确认成交。', { exact: true }).isVisible(), true);
+    await page.evaluate(() => {
+      const value = structuredClone(globalThis.resultFixture);
+      value.recovery = true; value.replacementPending = true; value.replacementOnly = true;
+      globalThis.resultsUI.show(value);
+    });
+    assert.equal(await page.getByRole('button', { name: /重试所选/ }).isVisible(), true,
+      'Known Club receipts awaiting concept replacement must not hide failed-card retry');
+    assert.equal(await row(1).locator('input[type=checkbox]').count(), 0);
     for (const state of ['buy-pending','bought','move-pending','move-rejected']) {
       await page.evaluate(state => {
         const value = structuredClone(globalThis.resultFixture); value.results[0].state = state;
+        value.replacementOnly = true;
         globalThis.resultsUI.show(value);
       }, state);
       assert.equal(await page.getByRole('button', { name: /重试所选/ }).count(), 0);

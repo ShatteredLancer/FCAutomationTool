@@ -4,6 +4,8 @@ import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, sug
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
+import { parseFc27SbcRequirements } from './sbc-requirements.js';
+import { allowedFc27MarketTiers } from './market-query-route.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
 
 const safeReason = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message ?? '') ? error.message : 'FC27_PURCHASE_READ_FAILED';
@@ -19,10 +21,27 @@ const refinementCards = plan => plan.purchases
 const matchesQuery = (card, query) => (!query.team || query.team === card.teamId)
   && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId)
   && query.level === (card.rating < 65 ? 'bronze' : card.rating < 75 ? 'silver' : 'gold');
-function refinementQueries(plan, pages, used) {
+function refinementQueries(plan, pages, used, input) {
   const queries = [];
   const add = query => { if (!used.some(old => same(old, query)) && !queries.some(old => same(old, query))) queries.push(query); };
   const cards = refinementCards(plan);
+  const required = input.challenge.slotCount - input.challenge.brickIndices.length;
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required);
+  const rating = parsed.status === 'observed' ? Math.max(0, ...parsed.rules
+    .filter(rule => ['min-team-rating', 'exact-team-rating'].includes(rule.kind)).map(rule => rule.value)) : 0;
+  if (cards.length && rating > 0 && rating <= 75) {
+    const lower = allowedFc27MarketTiers(parsed.rules, input.policy).find(tier => tier.max < 75
+      && !parsed.rules.some(rule => rule.kind === 'quality-count' && rule.mode !== 'max' && rule.count >= required
+        && !rule.qualities.includes(tier.level === 'bronze' ? 1 : 2)));
+    const league = parsed.rules.find(rule => rule.kind === 'from-leagues' && rule.mode === 'min' && rule.count > 0)?.ids[0]
+      ?? plan.purchases.map(card => card.leagueId).sort((a,b) =>
+        plan.purchases.filter(card => card.leagueId === b).length - plan.purchases.filter(card => card.leagueId === a).length)[0];
+    // A rating-75 squad need not contain eleven golds. Spend one remaining
+    // lane on a cheap connected tier before deepening the same gold page.
+    // This is candidate discovery only; original full rating/chemistry and
+    // material verification still decide whether any mix is actually valid.
+    if (lower && id(league)) add({ start: 0, count: 20, level: lower.level, league });
+  }
   for (const card of cards) {
     for (const page of pages.filter(page => matchesQuery(card, page.query)
       || page.entries.some(entry => entry.definitionId === card.definitionId))) {
@@ -433,7 +452,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
             return finishIncumbent();
           }
-          pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries), ...pendingQueries]
+          pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries]
             .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
               && all.findIndex(other => same(other, candidate)) === index);
         } else if (seed.status !== 'ready' && usedQueries.length < 3) {

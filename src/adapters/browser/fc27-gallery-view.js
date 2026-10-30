@@ -1496,7 +1496,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const summary = scoreSummary(value, set, 3);
     if (value.status !== 'observed') add(target, 'small', `账号状态未同步 · ${value.reason ?? '读取失败'}`, 'gallery-unknown');
     if (value.priceError) add(target, 'small', `价格读取失败 · ${value.priceError}`, 'gallery-unknown');
-    if (value.priceSnapshot?.stale || priceExpired(value)) add(target, 'small', '报价快照待更新', 'gallery-unknown');
+    if (value.priceSnapshot?.deferred) add(target, 'small', '大合集展示报价按需读取；点击“生成方案”时按所选来源核价，不预查全目录。', 'gallery-unknown');
+    else if (value.priceSnapshot?.stale || priceExpired(value)) add(target, 'small', '报价快照待更新', 'gallery-unknown');
     const first = progress.rows[0];
     const emblems = add(headingIdentity, 'div', '', 'gallery-emblems');
     image(emblems, asset('club', first?.clubEaId), '俱乐部徽章', 'gallery-emblem');
