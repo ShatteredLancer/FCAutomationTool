@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-10-30 Puzzle 27.0.76：用户授权最低铜/银改为优先配比，不再额外强制全铜/全银；puzzleMaterialRules仅是搜索偏好DTO，不能放回概念/填阵最终硬校验。先原低品质搜索，有原生允许且安全池支持的其它品质向量时才预留fallback份额；preferred与native fallback共同使用原maxNodes/统计/进度，不给每遍新50k，未知事实/原生exact/max品质仍阻断。缺料单一优先品质＋club需求保留club锚点；需求卡可查询原生/个人上限允许的较高品质，普通补位仍低品质＋所需国籍，OR不是AND，仍最多3×20页；不合原生品质的已知卡不能充当锚点。两截图同形完整Session先红后绿、概念/owned填阵复核通过，球员/阵型/价格合成，不是现场逐卡解；120采购细分记录已被121后续成功覆盖，不据此捏造缺卡名单。FSU/锁卡/主阵容、最高评分/金卡范围、特殊卡、报价预算/写事务/Journal不改，无真实购卡/保存/提交。旧“多余高品质必拒绝”测试改为偏好与原生显式上限双向断言；细节见docs/FC27_PUZZLE_MINIMUM_QUALITY_ZH.md。
+
 2026-10-28 Gallery 27.0.75：纯计算current只读本地取消/表面，昂贵scope/材料/冻结报价检查在片前/让出前后/最终；网络current不改。整体session先全目录参考核验，再逐合集原scorer删冗余；完整公开阵容可作为保守witness，本地验分不信外部score，第一遍结束强制发布基线。verify/refine各自continuation键、保留baseline、阶段间释放临时scorer memo，Stop不丢已验路线，需优化状态不冒充完成。多余自有卡（含0分）可能有加成价值，不按正分过滤跳过优化。profile路线比较用单job不可变输入的8前缀增量现金流，选中/输出仍原完整forecast；成本/本金/税/共享冲突/SAB顺序不改。原20条ring补最多13个公开setId/阶段/时间，深拷贝/白名单恢复，无新GM对象。控制UI上下文读38691→536，三路线64合集9组差分完全一致；实机耗时/全196合集升级验收待做。详见docs/FC27_GALLERY_TWO_PASS_ZH.md。
 
 2026-10-28 Gallery 27.0.74：单合集/各档费用显式lineupSearch，其他默认求解不改；固定人数完整组合做成本/加成种子及替换，已有卡0新增成本、缺卡必须正报价，有限赢家仍原scorer复核，候选/节点/未知/首任保护不放宽。保留一次有界价格带暖启动以免丢低成本多卡加成路线；成本回放13850回归曾失败，修复后通过，不能只看Brentford。deadline边界只触发一次，之后仍正常分片/取消/冻结报价检查，不每微步等timer。新算法标志白名单进入原4条脱敏replay，取消也保留已冻结计算输入，未增加ring或GM大对象。控制33卡原366783/255464步骤降到约38k/33k，最终Chrome约2.0/1.7秒且5200/9100成本不劣；非实机精确冻结重放。预算/限价/TTL、FSU/锁卡、买卖/Journal不改。详见docs/FC27_GALLERY_LINEUP_SEARCH_ZH.md。

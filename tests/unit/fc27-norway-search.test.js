@@ -18,10 +18,14 @@ function fixture() {
   return input;
 }
 
-it('does not silently add gold or lower the real Norway chemistry target when the budget is exhausted', () => {
+it('retains the real Norway chemistry target when a native-valid higher-quality fallback is needed', () => {
   const input = fixture();
   const result = previewFc27PuzzleSquad(input);
-  expect(result).toMatchObject({status:'blocked',reason:'FC27_PUZZLE_SEARCH_LIMIT',selected:[]});
+  expect(result).toMatchObject({status:'preview',materialPreference:'native-quality-fallback'});
+  expect(result.teamFacts.chemistry).toBeGreaterThanOrEqual(18);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(result.selected.every(ref=>ref.rating<=82)).toBe(true);
+  expect(prepareFc27PuzzleFillPlan(input,result).status).toBe('prepared');
   expect(input.challenge.rawRequirements.find(rule => rule.pairs[0].key === 35).pairs[0].values).toEqual([18]);
 });
 

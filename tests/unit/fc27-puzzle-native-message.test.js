@@ -39,6 +39,7 @@ it('shows the procurement failure alongside the inventory failure and bounded se
         usableCandidates: 20, localReason: 'FC27_PURCHASE_REPAIR_NO_PLAN', checks: 20000, nodes: null,
         truncated: true, catalogAttempts: 0, quoteAttempts: 0, cacheHits: 3 } } });
   for (const fragment of ['11 铜', '40', 'FC27_PURCHASE_REPAIR_NO_PLAN', '局部替换', '48', '20', '20000', '缓存 3']) expect(text).toContain(fragment);
+  expect(text).toContain('优先 11 铜'); expect(text).not.toContain('未自动增加高品质卡');
   expect(text).toContain('不代表整个市场无解');
   expect(text).not.toContain('无法在选材限制内组成阵容');
 });

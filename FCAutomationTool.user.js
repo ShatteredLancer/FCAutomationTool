@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.75
+// @version      27.0.76
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.75", at: Date.now(), status: 'started',
+    state = { version: "27.0.76", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3531,6 +3531,18 @@
     }
     return [];
   }
+  function puzzleHasQualityAlternative(rules, required2, candidates, preferred) {
+    if (!preferred.length) return false;
+    const counts = [1, 2, 3].map((quality3) => new Set(candidates.filter((item2) => (item2.rating < 65 ? 1 : item2.rating < 75 ? 2 : 3) === quality3).map((item2) => item2.definitionId)).size);
+    const native = rules.filter((rule) => ["all-quality", "min-quality", "max-quality", "quality-count"].includes(rule.kind));
+    for (let gold = 0; gold <= Math.min(required2, counts[2]); gold++) for (let silver = 0; silver <= Math.min(required2 - gold, counts[1]); silver++) {
+      const vector = [required2 - gold - silver, silver, gold];
+      if (vector[0] > counts[0] || vector.every((count2, index) => count2 === preferred[index].count)) continue;
+      const squad = vector.flatMap((count2, index) => Array.from({ length: count2 }, () => ({ quality: index + 1 })));
+      if (matchFc27SbcRequirements({ requirements: native, squad }).status === "satisfied") return true;
+    }
+    return false;
+  }
 
   // src/fc27/puzzle-evaluator.js
   var integer6 = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -3972,7 +3984,46 @@
     const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
     return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
   }
-  function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
+  function* iterateFc27PuzzleCandidateRoutes(input) {
+    const maxNodes = input.maxNodes ?? DEFAULT_MAX_NODES;
+    const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, input.pool.required);
+    const preferred = parsed.status === "observed" ? puzzleMaterialRules(parsed.rules, input.pool.required) : [];
+    const canUpgrade = preferred.length && puzzleHasQualityAlternative(parsed.rules, input.pool.required, input.pool.candidates, preferred);
+    if (!preferred.length || !canUpgrade || !integer7(maxNodes, 1, 25e4))
+      return yield* iteratePuzzleRoutes({ ...input, materialRules: preferred });
+    const first = yield* iteratePuzzleRoutes({
+      ...input,
+      maxNodes: Math.max(1, Math.floor(maxNodes / 3)),
+      materialRules: preferred,
+      onProgress: (value) => input.onProgress?.({ ...value, maxNodes })
+    });
+    if (first.status === "preview") return {
+      ...first,
+      maxNodes,
+      materialPreference: "minimum-quality",
+      ...input.procurement ? { searchComplete: false, optimalWithinPool: false } : {}
+    };
+    if (!["SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_CONSTRAINT_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND", "FC27_PUZZLE_SEARCH_LIMIT"].includes(first.reason)) return first;
+    const spent = first.nodes ?? 0, remaining = maxNodes - spent;
+    if (remaining < 1) return { ...first, maxNodes };
+    const metrics = first.search ?? {}, sum2 = (search) => Object.fromEntries(["combinationNodes", "placementNodes", "evaluations", "bounds"].map((key2) => [key2, (metrics[key2] ?? 0) + (search?.[key2] ?? 0)]));
+    const result = yield* iteratePuzzleRoutes({
+      ...input,
+      maxNodes: remaining,
+      materialRules: [],
+      nativeQualityFallback: true,
+      onProgress: (value) => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes, search: sum2(value.search) })
+    });
+    return {
+      ...result,
+      maxNodes,
+      nodes: spent + (result.nodes ?? 0),
+      search: sum2(result.search),
+      materialPreference: "native-quality-fallback",
+      strategyAttempts: (first.strategyAttempts ?? 1) + (result.strategyAttempts ?? 1)
+    };
+  }
+  function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
     const { challenge, pool, groupMatcher, clubLinks } = options;
     const procurementMode = !!options.procurement;
     const required2 = pool.required;
@@ -3983,7 +4034,7 @@
     const hints = [null];
     const hintCandidates = filterUnaryCandidates(
       pool.candidates,
-      [...rules.rules, ...puzzleMaterialRules(rules.rules, required2)].filter((rule) => itemKinds.has(rule.kind)),
+      [...rules.rules, ...options.materialRules ?? []].filter((rule) => itemKinds.has(rule.kind)),
       required2,
       groupMatcher,
       createFc27ClubResolver(clubLinks)
@@ -4090,7 +4141,9 @@
     searchHint = null,
     pool,
     procurement = null,
-    onProgress = null
+    onProgress = null,
+    materialRules = [],
+    nativeQualityFallback = false
   } = {}) {
     if (!integer7(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
@@ -4102,7 +4155,6 @@
     if (parsed.rules.some((rule) => ["from-clubs", "same-club", "distinct-clubs"].includes(rule.kind)) && !resolveClub) {
       return blocked2("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
     }
-    const materialRules = puzzleMaterialRules(parsed.rules, required2);
     const itemRules = [...parsed.rules, ...materialRules].filter((rule) => itemKinds.has(rule.kind));
     if (!isFc27PuzzleSearchHintValid(searchHint, pool.candidates, clubLinks)) {
       return blocked2("FC27_PUZZLE_STRATEGY_INVALID");
@@ -4158,7 +4210,7 @@
       scarce.push({ minimum: rule.value, matching: candidates.filter((item2) => (groups.get(relationValue(rule, item2, resolveClub))?.size ?? 0) >= rule.value) });
     }
     const forced = new Set(scarce.filter((entry) => new Set(entry.matching.map((item2) => item2.definitionId)).size === entry.minimum).flatMap((entry) => entry.matching));
-    const mixedClubRequirements = materialRules.filter((rule) => rule.count > 0).length > 1 && parsed.rules.some((rule) => rule.kind === "from-clubs" && rule.mode !== "max" && rule.count > 0);
+    const mixedClubRequirements = (nativeQualityFallback || materialRules.filter((rule) => rule.count > 0).length > 1) && parsed.rules.some((rule) => rule.kind === "from-clubs" && rule.mode !== "max" && rule.count > 0);
     const compulsoryScores = new Map(candidates.map((item2) => [item2, 0]));
     if (mixedClubRequirements && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
       for (const entry of scarce.filter((entry2) => entry2.minimum < required2)) {
@@ -4822,10 +4874,6 @@
     if (pool.status !== "candidates" || pool.candidates.length !== required2) return fail9("FC27_PUZZLE_FILL_MATERIAL_PROTECTED");
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required2);
     if (parsed.status !== "observed") return fail9(parsed.reason);
-    const materialRules = puzzleMaterialRules(parsed.rules, required2);
-    if (materialRules.length && matchFc27SbcRequirements({ requirements: materialRules, squad: squad.filter(Boolean) }).status !== "satisfied") {
-      return fail9("FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED");
-    }
     const needsFacts = parsed.rules.some((rule) => [
       "min-team-rating",
       "max-team-rating",
@@ -5350,12 +5398,13 @@
     { level: "gold", min: 75, max: 99 }
   ]);
   var stop3 = (reason) => ({ status: "blocked", reason, queries: [], complete: false, executable: false });
+  var allowedFc27MarketTiers = (rules, policy) => levels.filter(({ min, max }, index) => min <= policy.maxRating && !(min >= 75 && Array.isArray(policy.goldRange) && Math.min(max, policy.maxRating, policy.goldRange[1]) < policy.goldRange[0]) && !rules.some((rule) => rule.kind === "all-quality" && (max < rule.minRating || min > rule.maxRating) || rule.kind === "min-quality" && max < rule.minRating || rule.kind === "max-quality" && min > rule.maxRating || rule.kind === "quality-count" && ["max", "exact"].includes(rule.mode) && rule.count === 0 && rule.qualities.includes(index + 1)));
   function planFc27MarketQueryRoute({ challenge, policy } = {}) {
     const required2 = challenge?.slotCount - (challenge?.brickIndices?.length ?? NaN);
     const parsed = parseFc27SbcRequirements(challenge?.rawRequirements, required2);
     if (parsed.status !== "observed") return stop3(parsed.reason);
     if (!Number.isSafeInteger(policy?.maxRating) || policy.maxRating < 1 || policy.maxRating > 99 || !Array.isArray(policy.excludedLeagueIds)) return stop3("FC27_MARKET_POLICY_UNVERIFIED");
-    const allowed = levels.filter(({ min, max }) => min <= policy.maxRating && !parsed.rules.some((rule) => rule.kind === "all-quality" && (max < rule.minRating || min > rule.maxRating) || rule.kind === "min-quality" && max < rule.minRating || rule.kind === "max-quality" && min > rule.maxRating));
+    const allowed = allowedFc27MarketTiers(parsed.rules, policy);
     if (!allowed.length) return stop3("FC27_MARKET_QUALITY_UNAVAILABLE");
     const priority = (level2) => {
       const quality3 = level2 === "bronze" ? 1 : level2 === "silver" ? 2 : 3;
@@ -5569,7 +5618,6 @@
     if (seed.squad.some((item2) => item2 && !pool.candidates.some((candidate) => candidate.id === item2.id && JSON.stringify({ ...candidate, slot: item2.slot }) === JSON.stringify(item2)))) return stop4("FC27_PURCHASE_REPAIR_INPUTS_CHANGED");
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
     if (parsed.status !== "observed") return stop4(parsed.reason);
-    const material = puzzleMaterialRules(parsed.rules, required(input));
     const candidates = marketCandidates(input, entries2);
     if (prices) candidates.sort((a, b) => prices.get(a.definitionId) - prices.get(b.definitionId));
     const slots = seed.squad.flatMap((item2, index) => item2 ? [index] : []);
@@ -5601,7 +5649,6 @@
       reportProgress();
       const players = squad.filter(Boolean);
       if (new Set(players.map((item2) => item2.definitionId)).size !== players.length) return;
-      if (material.length && matchFc27SbcRequirements({ requirements: material, squad: players }).status !== "satisfied") return;
       const facts2 = factsOf(input, squad);
       if (facts2.status !== "observed") return;
       const validation = matchFc27SbcRequirements({
@@ -5717,6 +5764,34 @@
     const chemistryNeeded = parsed.rules.some((rule) => rule.kind === "min-chemistry" && rule.value > 0);
     const nations = parsed.rules.filter((rule) => rule.kind === "from-nations" && rule.mode === "min" && rule.count > 0).flatMap((rule) => rule.ids);
     const clubs = parsed.rules.filter((rule) => rule.kind === "from-clubs" && rule.mode === "min" && rule.count > 0);
+    if (!cappedClubs && clubs.length && tiers2.length === 1) {
+      const resolveClub = createFc27ClubResolver(input.clubLinks);
+      if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
+      const permitted = allowedFc27MarketTiers(parsed.rules, input.policy).map((tier) => tier.level).reverse();
+      const candidates = [...pool.candidates, ...marketCandidates(input, entries2)].filter((item2) => permitted.includes(levelOf(quality2(item2.rating))));
+      const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
+      const push = (query) => {
+        if (unused(query)) add3(query);
+      };
+      for (const rule of clubs) {
+        const groups = new Set(rule.ids.map(resolveClub));
+        const matching = candidates.filter((item2) => groups.has(resolveClub(item2.teamId)));
+        if (new Set(matching.map((item2) => item2.definitionId)).size >= rule.count) continue;
+        const lane = permitted.flatMap((level2) => rule.ids.map((team) => ({ start: 0, count: 20, level: level2, team }))).find(unused);
+        if (lane && queries.length < 2) add3(lane);
+      }
+      const counts = /* @__PURE__ */ new Map();
+      for (const item2 of candidates) counts.set(item2.nationId, (counts.get(item2.nationId) ?? 0) + 1);
+      const nation = nations[0] ?? [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+      const filler = { start: 0, count: 20, level: tiers2[0], ...positive7(nation) ? { nation } : {} };
+      push(filler);
+      const leagueIds = new Set(candidates.map((item2) => item2.leagueId));
+      const minimumLeagues = Math.max(0, ...parsed.rules.filter((rule) => rule.kind === "distinct-leagues" && rule.mode !== "max").map((rule) => rule.value), ...parsed.rules.filter((rule) => rule.kind === "same-league" && rule.mode === "max").map((rule) => Math.ceil(required(input) / rule.value)));
+      if (positive7(nation) && usedQueries.some((query) => query.nation === nation && query.level === tiers2[0]) && leagueIds.size < minimumLeagues) push({ start: 0, count: 20, level: tiers2[0] });
+      if (positive7(nation)) push({ ...filler, start: 20 });
+      else push({ start: 0, count: 20, level: tiers2[0] });
+      return { status: "ready", executable: false, queries, complete: false };
+    }
     if (!cappedClubs && chemistryNeeded && tiers2.length > 1 && clubs.length) {
       const resolveClub = createFc27ClubResolver(input.clubLinks);
       if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
@@ -7191,7 +7266,7 @@
     }) : { status: "observed", teamRating: null, chemistry: null };
     if (facts2.status !== "observed") return blocked6(facts2.reason);
     const validation = matchFc27SbcRequirements({
-      requirements: [...parsed.rules, ...puzzleMaterialRules(parsed.rules, squad.filter(Boolean).length)],
+      requirements: parsed.rules,
       squad: squad.filter(Boolean),
       clubLinks: input.clubLinks,
       chemistry: facts2.chemistry,
@@ -23966,11 +24041,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (result?.reason === "FC27_PUZZLE_EXISTING_SQUAD_BLOCKED") return "\u5F53\u524D\u9635\u5BB9\u5DF2\u6709\u7403\u5458\uFF0C\u672A\u8986\u76D6\u539F\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_PUZZLE_SERVER_SQUAD_CHANGED") return "\u89E3\u9898\u671F\u95F4\u670D\u52A1\u5668\u9635\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u672C\u6B21\u672A\u8986\u76D6\uFF1B\u8BF7\u6838\u5BF9\u5F53\u524D\u9635\u5BB9\u540E\u518D\u8BD5\u3002";
     if (result?.reason === "FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED") return "\u672C\u6B21\u670D\u52A1\u5668\u9635\u5BB9\u6838\u5BF9\u5DF2\u5931\u6548\uFF0C\u672A\u4FDD\u5B58\uFF1B\u8BF7\u91CD\u65B0\u70B9\u51FB\u89E3\u9898\u586B\u5145\u3002";
-    if (result?.reason === "FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED") return "\u9635\u5BB9\u4E0D\u7B26\u5408\u9009\u6750\u7B56\u7565\uFF0C\u672A\u589E\u52A0\u9AD8\u54C1\u8D28\u5361\u8865\u4F4D\u3002";
+    if (result?.reason === "FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED") return "\u8BE5\u9635\u5BB9\u672A\u901A\u8FC7\u9009\u6750\u590D\u6838\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u66FF\u6362\u53D7\u4FDD\u62A4\u5361\u3002";
     if (["FC27_PUZZLE_SEARCH_LIMIT", "FC27_PUZZLE_CONSTRAINT_SHORTAGE", "SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND"].includes(result?.reason)) {
       const composition = result.policy?.materialComposition?.filter((rule) => rule.count > 0).map((rule) => `${rule.count} ${{ 1: "\u94DC", 2: "\u94F6", 3: "\u91D1" }[rule.quality] ?? ""}`).join("\uFF0B");
-      const scope2 = [composition, Number.isInteger(result.policy?.maxRating) ? `\u6700\u9AD8 ${result.policy.maxRating}` : ""].filter(Boolean).join("\uFF0C");
-      const message = result.reason === "FC27_PUZZLE_SEARCH_LIMIT" ? "\u672C\u6B21\u641C\u7D22\u8FBE\u5230\u4E0A\u9650\uFF0C\u5C1A\u672A\u627E\u5230\u6EE1\u8DB3\u5168\u90E8\u6761\u4EF6\u7684\u9635\u5BB9\uFF1B\u4E0D\u80FD\u5224\u5B9A\u65E0\u89E3\uFF0C\u672A\u4FEE\u6539\u9635\u5BB9\u3002" : "\u672C\u6B21\u5E93\u5B58\u89E3\u9898\u672A\u627E\u5230\u7B26\u5408\u9009\u6750\u9650\u5236\u7684\u9635\u5BB9\uFF0C\u672A\u81EA\u52A8\u589E\u52A0\u9AD8\u54C1\u8D28\u5361\u3002";
+      const scope2 = [composition ? `\u4F18\u5148 ${composition}` : "", Number.isInteger(result.policy?.maxRating) ? `\u6700\u9AD8 ${result.policy.maxRating}` : ""].filter(Boolean).join("\uFF0C");
+      const message = result.reason === "FC27_PUZZLE_SEARCH_LIMIT" ? "\u672C\u6B21\u641C\u7D22\u8FBE\u5230\u4E0A\u9650\uFF0C\u5C1A\u672A\u627E\u5230\u6EE1\u8DB3\u5168\u90E8\u6761\u4EF6\u7684\u9635\u5BB9\uFF1B\u4E0D\u80FD\u5224\u5B9A\u65E0\u89E3\uFF0C\u672A\u4FEE\u6539\u9635\u5BB9\u3002" : "\u672C\u6B21\u5E93\u5B58\u89E3\u9898\u672A\u627E\u5230\u6EE1\u8DB3\u5168\u90E8\u6761\u4EF6\u7684\u9635\u5BB9\uFF1B\u4F4E\u54C1\u8D28\u4F18\u5148\uFF0C\u9AD8\u54C1\u8D28\u4ECD\u53D7\u8BC4\u5206\u548C\u6750\u6599\u4FDD\u62A4\u9650\u5236\u3002";
       return scope2 ? `${scope2}\uFF1A${message}` : message;
     }
     if (result?.reason === "FC27_PUZZLE_CHALLENGE_COMPLETED") return "\u5F53\u524D SBC \u5B50\u9635\u5DF2\u5B8C\u6210\uFF0C\u4E0D\u4F1A\u6539\u7528\u5176\u4ED6\u5B50\u9635\u3002";
@@ -39048,7 +39123,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.75" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.76" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -39390,8 +39465,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.75"}`,
-    version: "27.0.75",
+    title: `FC Automation Tool ${"27.0.76"}`,
+    version: "27.0.76",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

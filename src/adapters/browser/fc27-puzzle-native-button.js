@@ -51,14 +51,14 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED') return '当前阵容已有球员，未覆盖原阵容。';
   if (result?.reason === 'FC27_PUZZLE_SERVER_SQUAD_CHANGED') return '解题期间服务器阵容发生变化，本次未覆盖；请核对当前阵容后再试。';
   if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
-  if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '阵容不符合选材策略，未增加高品质卡补位。';
+  if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
   if (['FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(result?.reason)) {
     const composition = result.policy?.materialComposition?.filter(rule => rule.count > 0)
       .map(rule => `${rule.count} ${({ 1: '铜', 2: '银', 3: '金' })[rule.quality] ?? ''}`).join('＋');
-    const scope = [composition, Number.isInteger(result.policy?.maxRating) ? `最高 ${result.policy.maxRating}` : ''].filter(Boolean).join('，');
+    const scope = [composition ? `优先 ${composition}` : '', Number.isInteger(result.policy?.maxRating) ? `最高 ${result.policy.maxRating}` : ''].filter(Boolean).join('，');
     const message = result.reason === 'FC27_PUZZLE_SEARCH_LIMIT'
       ? '本次搜索达到上限，尚未找到满足全部条件的阵容；不能判定无解，未修改阵容。'
-      : '本次库存解题未找到符合选材限制的阵容，未自动增加高品质卡。';
+      : '本次库存解题未找到满足全部条件的阵容；低品质优先，高品质仍受评分和材料保护限制。';
     return scope ? `${scope}：${message}` : message;
   }
   if (result?.reason === 'FC27_PUZZLE_CHALLENGE_COMPLETED') return '当前 SBC 子阵已完成，不会改用其他子阵。';

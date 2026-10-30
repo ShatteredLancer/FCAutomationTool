@@ -1,6 +1,6 @@
 import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
   finishPuzzleSearch, finishPuzzleSearchCooperatively } from './puzzle-preview.js';
-import { planFc27MarketQueryRoute } from './market-query-route.js';
+import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
@@ -142,7 +142,6 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
       && JSON.stringify({ ...candidate, slot: item.slot }) === JSON.stringify(item)))) return stop('FC27_PURCHASE_REPAIR_INPUTS_CHANGED');
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  const material = puzzleMaterialRules(parsed.rules, required(input));
   const candidates = marketCandidates(input, entries);
   if (prices) candidates.sort((a, b) => prices.get(a.definitionId) - prices.get(b.definitionId));
   const slots = seed.squad.flatMap((item, index) => item ? [index] : []);
@@ -162,7 +161,6 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
     checks++; reportProgress();
     const players = squad.filter(Boolean);
     if (new Set(players.map(item => item.definitionId)).size !== players.length) return;
-    if (material.length && matchFc27SbcRequirements({ requirements: material, squad: players }).status !== 'satisfied') return;
     const facts = factsOf(input, squad);
     if (facts.status !== 'observed') return;
     const validation = matchFc27SbcRequirements({ requirements: parsed.rules, squad: players,
@@ -258,6 +256,41 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
   const nations = parsed.rules.filter(rule => rule.kind === 'from-nations' && rule.mode === 'min' && rule.count > 0)
     .flatMap(rule => rule.ids);
   const clubs = parsed.rules.filter(rule => rule.kind === 'from-clubs' && rule.mode === 'min' && rule.count > 0);
+  if (!cappedClubs && clubs.length && tiers.length === 1) {
+    const resolveClub = createFc27ClubResolver(input.clubLinks);
+    if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
+    const permitted = allowedFc27MarketTiers(parsed.rules, input.policy).map(tier => tier.level).reverse();
+    const candidates = [...pool.candidates, ...marketCandidates(input, entries)]
+      .filter(item => permitted.includes(levelOf(quality(item.rating))));
+    const unused = query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query));
+    const push = query => { if (unused(query)) add(query); };
+    // Missing-tier pages must not displace compulsory identities. Read a
+    // wider allowed tier for a small club obligation, not for all fillers.
+    for (const rule of clubs) {
+      const groups = new Set(rule.ids.map(resolveClub));
+      const matching = candidates.filter(item => groups.has(resolveClub(item.teamId)));
+      if (new Set(matching.map(item => item.definitionId)).size >= rule.count) continue;
+      const lane = permitted.flatMap(level => rule.ids.map(team => ({ start: 0, count: 20, level, team }))).find(unused);
+      if (lane && queries.length < 2) add(lane);
+    }
+    const counts = new Map();
+    for (const item of candidates) counts.set(item.nationId, (counts.get(item.nationId) ?? 0) + 1);
+    const nation = nations[0] ?? [...counts].sort((a,b) => b[1]-a[1] || a[0]-b[0])[0]?.[0];
+    const filler = { start: 0, count: 20, level: tiers[0], ...(positive(nation) ? { nation } : {}) };
+    push(filler);
+    const leagueIds = new Set(candidates.map(item => item.leagueId));
+    const minimumLeagues = Math.max(0,...parsed.rules.filter(rule => rule.kind==='distinct-leagues' && rule.mode!=='max')
+      .map(rule=>rule.value),...parsed.rules.filter(rule=>rule.kind==='same-league' && rule.mode==='max')
+      .map(rule=>Math.ceil(required(input)/rule.value)));
+    // Once the required nationality page has been covered, do not spend the
+    // last page deepening a one-league pool that cannot meet diversity/caps.
+    if (positive(nation) && usedQueries.some(query=>query.nation===nation && query.level===tiers[0])
+        && leagueIds.size<minimumLeagues) push({start:0,count:20,level:tiers[0]});
+    // Otherwise widen the same low-tier national pool. Three pages total.
+    if (positive(nation)) push({ ...filler, start: 20 });
+    else push({ start: 0, count: 20, level: tiers[0] });
+    return { status: 'ready', executable: false, queries, complete: false };
+  }
   if (!cappedClubs && chemistryNeeded && tiers.length > 1 && clubs.length) {
     const resolveClub = createFc27ClubResolver(input.clubLinks);
     if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');

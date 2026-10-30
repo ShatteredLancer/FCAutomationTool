@@ -52,10 +52,13 @@ it('keeps both verification passes under the same identity, ownership, quote and
 });
 
 it('covers 196 references before refinement and retains pending phase/timing metadata',async()=>{
-  const session=createGalleryRoadmapSession();session.bind(Array.from({length:196},(_,i)=>target(i+1)),{});
-  for(let i=0;i<196;i++)await session.advance({options:{},maxMs:10000});
+  // This locks phase coverage/metadata, not 196-collection portfolio search.
+  // Zero loss allowance still verifies all references but rejects every paid
+  // route in one comparison pass. Full cashflow/routing has separate tests.
+  const options={lossLimit:0},session=createGalleryRoadmapSession();session.bind(Array.from({length:196},(_,i)=>target(i+1)),options);
+  for(let i=0;i<196;i++)await session.advance({options,maxMs:10000});
   expect(session.entries().every(entry=>entry.verified && entry.phase==='refine')).toBe(true);
-  const baseline=finish(session.snapshotSteps({}));
+  const baseline=finish(session.snapshotSteps(options));
   expect(baseline.coverage).toMatchObject({verified:196,completed:0,optimizationPending:196});
   expect(baseline.pendingTasks).toHaveLength(13);
   expect(baseline.pendingTasks[0]).toMatchObject({setId:'futgg:1',phase:'refine',turns:1});

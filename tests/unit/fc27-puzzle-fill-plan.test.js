@@ -3,7 +3,7 @@ import { prepareFc27PuzzleFillPlan, validateFc27PuzzleFillPlan } from '../../src
 import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 
-it('rejects excess gold even when EA minimum-quality requirements are satisfied', () => {
+it('accepts native-valid higher quality but still rejects an explicit native gold maximum', () => {
   const input = puzzleFillFixture(); input.policy.maxRating = 82;
   input.challenge.rawRequirements = [
     { count: -1, scope: 0, pairs: [{ key: 3, values: [2] }] },
@@ -14,9 +14,9 @@ it('rejects excess gold even when EA minimum-quality requirements are satisfied'
   expect(prepareFc27PuzzleFillPlan(input, preview).status).toBe('prepared');
   input.inventory.items[2].rating = 80;
   preview.selected.find(ref => ref.id === input.inventory.items[2].id).rating = 80;
-  expect(prepareFc27PuzzleFillPlan(input, preview)).toMatchObject({
-    status: 'blocked', reason: 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED',
-  });
+  expect(prepareFc27PuzzleFillPlan(input, preview).status).toBe('prepared');
+  input.challenge.rawRequirements.push({count:2,scope:1,pairs:[{key:17,values:[3]}]});
+  expect(prepareFc27PuzzleFillPlan(input, preview).status).toBe('blocked');
 });
 
 function fixture() {

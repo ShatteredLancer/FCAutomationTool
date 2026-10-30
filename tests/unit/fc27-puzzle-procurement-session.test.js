@@ -106,11 +106,11 @@ it('optimizes total material value while preserving the separately priced cash p
   expect(x.transport.readQuotePage).not.toHaveBeenCalled();
 });
 
-it('uses the third linked quality page and fully validates an all-market squad with no owned candidates', async () => {
+it('uses the third linked quality page for an explicit exact-gold count with no owned candidates', async () => {
   const x = fixture(); x.input.inventory.items = []; x.input.policy.maxRating = 82;
   x.input.challenge.rawRequirements = [
     { count: -1, scope: 0, pairs: [{ key: 3, values: [2] }] },
-    { count: 6, scope: 0, pairs: [{ key: 17, values: [3] }] },
+    { count: 6, scope: 2, pairs: [{ key: 17, values: [3] }] },
     { count: -1, scope: 0, pairs: [{ key: 35, values: [22] }] },
   ];
   x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27',

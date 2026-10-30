@@ -1,7 +1,6 @@
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements } from './sbc-requirements.js';
-import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -54,7 +53,7 @@ function assess(input, slots, owned, purchases) {
   const facts = needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation,
     chemistry: input.chemistry, rating: input.chemistry?.rating }) : { status: 'observed', teamRating: null, chemistry: null };
   if (facts.status !== 'observed') return blocked(facts.reason);
-  const validation = matchFc27SbcRequirements({ requirements: [...parsed.rules, ...puzzleMaterialRules(parsed.rules, squad.filter(Boolean).length)],
+  const validation = matchFc27SbcRequirements({ requirements: parsed.rules,
     squad: squad.filter(Boolean), clubLinks: input.clubLinks, chemistry: facts.chemistry, teamRating: facts.teamRating });
   return validation.status === 'satisfied' ? { status: 'verified', teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } }
     : blocked(validation.reason);

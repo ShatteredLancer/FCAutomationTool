@@ -1,5 +1,5 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { puzzleMaterialRules } from './puzzle-material-policy.js';
+import { puzzleMaterialRules, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
 import { createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
 
@@ -203,7 +203,30 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
   return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
 }
 
-export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
+export function* iterateFc27PuzzleCandidateRoutes(input) {
+  const maxNodes = input.maxNodes ?? DEFAULT_MAX_NODES;
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, input.pool.required);
+  const preferred = parsed.status === 'observed' ? puzzleMaterialRules(parsed.rules, input.pool.required) : [];
+  const canUpgrade = preferred.length && puzzleHasQualityAlternative(parsed.rules, input.pool.required, input.pool.candidates, preferred);
+  if (!preferred.length || !canUpgrade || !integer(maxNodes, 1, 250000))
+    return yield* iteratePuzzleRoutes({ ...input, materialRules: preferred });
+  const first = yield* iteratePuzzleRoutes({ ...input, maxNodes: Math.max(1, Math.floor(maxNodes / 3)), materialRules: preferred,
+    onProgress: value => input.onProgress?.({ ...value, maxNodes }) });
+  if (first.status === 'preview') return { ...first, maxNodes, materialPreference: 'minimum-quality',
+    ...(input.procurement ? { searchComplete: false, optimalWithinPool: false } : {}) };
+  if (!['SAFE_MATERIAL_SHORTAGE','FC27_PUZZLE_CONSTRAINT_SHORTAGE','FC27_PUZZLE_NO_PLAN_FOUND','FC27_PUZZLE_SEARCH_LIMIT'].includes(first.reason)) return first;
+  const spent = first.nodes ?? 0, remaining = maxNodes - spent;
+  if (remaining < 1) return { ...first, maxNodes };
+  const metrics = first.search ?? {}, sum = search => Object.fromEntries(['combinationNodes','placementNodes','evaluations','bounds']
+    .map(key => [key, (metrics[key] ?? 0) + (search?.[key] ?? 0)]));
+  const result = yield* iteratePuzzleRoutes({ ...input, maxNodes: remaining, materialRules: [], nativeQualityFallback: true,
+    onProgress: value => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes, search: sum(value.search) }) });
+  return { ...result, maxNodes, nodes: spent + (result.nodes ?? 0), search: sum(result.search),
+    materialPreference: 'native-quality-fallback',
+    strategyAttempts: (first.strategyAttempts ?? 1) + (result.strategyAttempts ?? 1) };
+}
+
+function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
   const { challenge, pool, groupMatcher, clubLinks } = options;
   const procurementMode = !!options.procurement;
   const required = pool.required;
@@ -217,7 +240,7 @@ export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES
   // explicit caller/AI hint still selects exactly its requested traversal.
   const hints = [null];
   const hintCandidates = filterUnaryCandidates(pool.candidates,
-    [...rules.rules, ...puzzleMaterialRules(rules.rules, required)].filter(rule => itemKinds.has(rule.kind)),
+    [...rules.rules, ...(options.materialRules ?? [])].filter(rule => itemKinds.has(rule.kind)),
     required, groupMatcher, createFc27ClubResolver(clubLinks));
   for (const [strategy, field] of [['league', 'leagueId'], ['nation', 'nationId']]) {
     const groups = new Map();
@@ -287,7 +310,8 @@ export function* iterateFc27PuzzleCandidateRoutes({ maxNodes = DEFAULT_MAX_NODES
 export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc27PuzzleCandidates(input));
 
 export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
-  maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null } = {}) {
+  maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null,
+  materialRules = [], nativeQualityFallback = false } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   // Planning amounts use the same public-price domain as procurement: at
@@ -301,7 +325,6 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   if (parsed.rules.some(rule => ['from-clubs', 'same-club', 'distinct-clubs'].includes(rule.kind)) && !resolveClub) {
     return blocked('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
   }
-  const materialRules = puzzleMaterialRules(parsed.rules, required);
   const itemRules = [...parsed.rules, ...materialRules].filter(rule => itemKinds.has(rule.kind));
   // Validate against the safe input pool, not the propagated pool: a known
   // traversal preference can lose all members without becoming malformed.
@@ -386,7 +409,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   }
   const forced = new Set(scarce.filter(entry => new Set(entry.matching.map(item => item.definitionId)).size === entry.minimum)
     .flatMap(entry => entry.matching));
-  const mixedClubRequirements = materialRules.filter(rule => rule.count > 0).length > 1
+  const mixedClubRequirements = (nativeQualityFallback || materialRules.filter(rule => rule.count > 0).length > 1)
     && parsed.rules.some(rule => rule.kind === 'from-clubs' && rule.mode !== 'max' && rule.count > 0);
   const compulsoryScores = new Map(candidates.map(item => [item, 0]));
   if (mixedClubRequirements && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {

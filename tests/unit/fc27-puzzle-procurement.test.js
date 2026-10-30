@@ -180,6 +180,8 @@ it('prioritizes missing bronze and covers required silver without requiring a co
   expect(result.plans[0].selectedOwned).toHaveLength(10);
   expect(result.plans[0].purchases[0]).not.toHaveProperty('id');
   expect(input.policy.onlyUntradeable).toBe(true);
+  expect(suggestFc27PuzzleJointPurchases(input, [{ ...card, rating: 68 }]).status).toBe('suggested');
+  input.challenge.rawRequirements.push(marketRow(17,2,3,1));
   expect(suggestFc27PuzzleJointPurchases(input, [{ ...card, rating: 68 }]).plans).toEqual([]);
 });
 

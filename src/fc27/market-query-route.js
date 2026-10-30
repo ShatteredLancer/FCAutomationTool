@@ -5,6 +5,12 @@ const levels = Object.freeze([{ level: 'bronze', min: 1, max: 64 },
   { level: 'silver', min: 65, max: 74 }, { level: 'gold', min: 75, max: 99 }]);
 const stop = reason => ({ status: 'blocked', reason, queries: [], complete: false, executable: false });
 
+export const allowedFc27MarketTiers = (rules, policy) => levels.filter(({ min, max }, index) => min <= policy.maxRating
+  && !(min >= 75 && Array.isArray(policy.goldRange) && Math.min(max, policy.maxRating, policy.goldRange[1]) < policy.goldRange[0])
+  && !rules.some(rule => rule.kind === 'all-quality' && (max < rule.minRating || min > rule.maxRating)
+    || rule.kind === 'min-quality' && max < rule.minRating || rule.kind === 'max-quality' && min > rule.maxRating
+    || rule.kind === 'quality-count' && ['max','exact'].includes(rule.mode) && rule.count === 0 && rule.qualities.includes(index + 1)));
+
 // A route is a bounded sample, not a proof that the market contains every
 // solution. The first lane targets an explicit requirement; another lane
 // retains general fillers for chemistry and position combinations.
@@ -15,10 +21,7 @@ export function planFc27MarketQueryRoute({ challenge, policy } = {}) {
   if (!Number.isSafeInteger(policy?.maxRating) || policy.maxRating < 1 || policy.maxRating > 99
       || !Array.isArray(policy.excludedLeagueIds)) return stop('FC27_MARKET_POLICY_UNVERIFIED');
 
-  const allowed = levels.filter(({ min, max }) => min <= policy.maxRating
-    && !parsed.rules.some(rule => rule.kind === 'all-quality' && (max < rule.minRating || min > rule.maxRating)
-      || rule.kind === 'min-quality' && max < rule.minRating
-      || rule.kind === 'max-quality' && min > rule.maxRating));
+  const allowed = allowedFc27MarketTiers(parsed.rules, policy);
   if (!allowed.length) return stop('FC27_MARKET_QUALITY_UNAVAILABLE');
   const priority = level => {
     const quality = level === 'bronze' ? 1 : level === 'silver' ? 2 : 3;

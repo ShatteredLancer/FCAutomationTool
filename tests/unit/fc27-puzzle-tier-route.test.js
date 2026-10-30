@@ -23,8 +23,11 @@ it('covers eight bronze and three silver around an owned national link instead o
   ]);
 });
 
-it('solves the observed mixed-quality shape through the full procurement route and reuses reads on a repeated attempt', async () => {
+it('solves an exact-silver variant of the observed shape through procurement and reuses reads', async () => {
   const { input, pages } = mixedQualityFixture();
+  // Keep exercising a genuine shortage; the observed native minimum now has
+  // an owned-only higher-quality solution. This variant explicitly caps silver.
+  input.challenge.rawRequirements.find(row=>row.pairs[0].key===17).scope=2;
   expect(previewFc27PuzzleSquad(input).reason).toBe('FC27_PUZZLE_SEARCH_LIMIT');
   const records = new Map(); const reads = []; const progress = [];
   const session = createFc27PuzzleProcurementSession({ get: async (key, fallback) => records.get(key) ?? fallback,

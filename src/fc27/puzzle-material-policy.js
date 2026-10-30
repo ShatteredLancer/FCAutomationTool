@@ -2,9 +2,9 @@ import { matchFc27SbcRequirements } from './sbc-requirements.js';
 
 export const DEFAULT_PUZZLE_MAX_RATING = 82;
 
-// User material protection, separate from EA eligibility: a minimum-quality
-// squad keeps fillers at that quality and uses only the higher tiers required
-// by explicit quality counts. Never upgrade fillers to solve other constraints.
+// Preferred low-quality composition, not an extra EA eligibility requirement.
+// Search this vector first; a native-quality fallback can use higher safe
+// materials when necessary. Never use it to reject a final native-valid squad.
 export function puzzleMaterialRules(rules, required) {
   if (!rules.some(rule => rule.kind === 'min-quality')) return [];
   const qualityRules = rules.filter(rule => ['all-quality', 'min-quality', 'max-quality', 'quality-count'].includes(rule.kind));
@@ -21,4 +21,20 @@ export function puzzleMaterialRules(rules, required) {
   }
   // Inconsistent native quality rules remain unsatisfiable in the native matcher.
   return [];
+}
+
+// Bounded quality-vector feasibility only. Do not spend another search slice
+// if native exact/max counts or the safe pool already rule out every upgrade.
+export function puzzleHasQualityAlternative(rules, required, candidates, preferred) {
+  if (!preferred.length) return false;
+  const counts = [1,2,3].map(quality => new Set(candidates.filter(item =>
+    (item.rating < 65 ? 1 : item.rating < 75 ? 2 : 3) === quality).map(item => item.definitionId)).size);
+  const native = rules.filter(rule => ['all-quality','min-quality','max-quality','quality-count'].includes(rule.kind));
+  for (let gold = 0; gold <= Math.min(required, counts[2]); gold++) for (let silver = 0; silver <= Math.min(required-gold,counts[1]); silver++) {
+    const vector = [required-gold-silver,silver,gold];
+    if (vector[0] > counts[0] || vector.every((count,index) => count === preferred[index].count)) continue;
+    const squad = vector.flatMap((count,index) => Array.from({length:count},()=>({quality:index+1})));
+    if (matchFc27SbcRequirements({requirements:native,squad}).status === 'satisfied') return true;
+  }
+  return false;
 }

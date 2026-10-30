@@ -18,7 +18,7 @@ it.each([
   expect(rules).toEqual(before);
 });
 
-it('keeps native eligibility distinct from the user protection against extra gold', () => {
+it('keeps native eligibility distinct from the optional low-quality search preference', () => {
   const rules = parse([row(3, [2]), row(17, [3], 2)]);
   const squad = Array.from({ length: 11 }, (_, i) => ({ rating: i < 3 ? 80 : 70 }));
   expect(matchFc27SbcRequirements({ requirements: rules, squad }).status).toBe('satisfied');

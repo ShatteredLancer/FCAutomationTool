@@ -93,14 +93,18 @@ it('uses exactly two capped gold cards and silver fillers for minimum silver plu
   expect(result.status).toBe('preview');
   expect(result.selected.map(item => item.rating).sort((a, b) => a - b)).toEqual([70, 75, 80]);
   input.inventory.items[3].rating = 81;
+  expect(previewFc27PuzzleSquad(input)).toMatchObject({ status: 'preview',materialPreference:'native-quality-fallback' });
+  input.challenge.rawRequirements.push(row(17,3,2,1));
   expect(previewFc27PuzzleSquad(input)).toMatchObject({ status: 'blocked', selected: [] });
 });
 
-it.each([1, 2])('keeps minimum quality %i fillers in that tier instead of upgrading for chemistry', quality => {
+it.each([1, 2])('allows a protected-policy-compliant upgrade above minimum quality %i when chemistry needs it', quality => {
   const input = fixture(); input.policy.maxRating = 82;
   input.challenge.rawRequirements = [row(3, quality), row(35, 14)];
   input.inventory.items.forEach((item, i) => { item.rating = i < 3 ? (quality === 1 ? 60 : 70) : 80; });
   input.evaluateSquad = squad => ({ chemistry: squad.some(item => item.rating === 80) ? 33 : 0 });
+  expect(previewFc27PuzzleSquad(input)).toMatchObject({status:'preview',materialPreference:'native-quality-fallback'});
+  input.policy.maxRating=74;
   expect(previewFc27PuzzleSquad(input).status).toBe('blocked');
 });
 function fixture() {

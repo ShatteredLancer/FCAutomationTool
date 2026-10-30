@@ -10,8 +10,8 @@ function marqueeInput() {
   const input = puzzleFillFixture();
   input.challenge.rawRequirements = structuredClone(observation.rawRequirements);
   // Preserve the broad bronze/silver search regression using a synthetic
-  // maximum-silver rule. The recorded minimum-bronze case below now requires
-  // eight bronze fillers under the user's stricter material policy.
+  // maximum-silver rule. The recorded minimum-bronze case below now allows
+  // necessary silver replacements under the native-quality fallback.
   const quality = input.challenge.rawRequirements.find(rule => rule.pairs[0].key === 3);
   quality.scope = 1; quality.pairs[0].values = [2];
   input.challenge.formation = structuredClone(observation.layout.formation);
@@ -36,10 +36,12 @@ it('finds a valid synthetic Marquee variant within the budget instead of spendin
   expect(prepareFc27PuzzleFillPlan(input, result).status).toBe('prepared');
 });
 
-it('reports the bronze filler shortage in the original recorded requirements without upgrading to silver', () => {
+it('finds a native-valid silver fallback for the original minimum-bronze requirements', () => {
   const input = marqueeInput(); input.challenge.rawRequirements = structuredClone(observation.rawRequirements);
-  expect(previewFc27PuzzleSquad(input)).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
-    deficits: expect.arrayContaining([expect.objectContaining({ source: expect.objectContaining({ policy: 'minimum-quality-fillers', quality: 1 }) })]) });
+  const result = previewFc27PuzzleSquad(input);
+  expect(result).toMatchObject({status:'preview',materialPreference:'native-quality-fallback'});
+  expect(result.nodes).toBeLessThanOrEqual(50000);
+  expect(prepareFc27PuzzleFillPlan(input,result).status).toBe('prepared');
 });
 
 it('preserves a single explicit traversal and returns search-limit, not shortage, when starts exhaust their shared budget', () => {

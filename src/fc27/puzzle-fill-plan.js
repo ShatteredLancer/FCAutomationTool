@@ -1,5 +1,4 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements } from './sbc-requirements.js';
 
@@ -59,10 +58,6 @@ function assess(scope, selected, items) {
   if (pool.status !== 'candidates' || pool.candidates.length !== required) return fail('FC27_PUZZLE_FILL_MATERIAL_PROTECTED');
   const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required);
   if (parsed.status !== 'observed') return fail(parsed.reason);
-  const materialRules = puzzleMaterialRules(parsed.rules, required);
-  if (materialRules.length && matchFc27SbcRequirements({ requirements: materialRules, squad: squad.filter(Boolean) }).status !== 'satisfied') {
-    return fail('FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED');
-  }
   const needsFacts = parsed.rules.some(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating',
     'min-chemistry', 'max-chemistry', 'exact-chemistry'].includes(rule.kind));
   const facts = needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation, chemistry, rating: chemistry?.rating })
