@@ -22,6 +22,35 @@ function fixture(count = 2) {
   return { run, adapter, data, draft, locations, target, scope, stop: () => { stopped = true; } };
 }
 
+it.each([false, true])('defers a known empty listing until after other cards without raising caps (supply returns=%s)', async returns => {
+  const x = fixture(3), references = {};
+  for (const slot of x.draft.plan.slots) references[slot.definitionId] = { definitionId: slot.definitionId, season: '27', platform: 'pc',
+    quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source, definitionId: slot.definitionId,
+      season: '27', platform: 'pc', price: 200, fetchedAt: 900, expiresAt: 300000, sourceUpdatedAt: null, error: null }])) };
+  const approval = createPurchasePriceApproval({ scope: x.scope, season: '27', platform: 'pc', references,
+    definitionIds: x.draft.plan.slots.map(slot => slot.definitionId), policy: { source: 'futgg', purchaseAttempts: 3 }, now: 1000 });
+  const find = x.adapter.find.getMockImplementation();
+  x.adapter.find.mockImplementation(async (id, cap) => {
+    expect(cap).toBe(200);
+    if (id === 900 && (!returns || x.adapter.buy.mock.calls.length < 2)) return null;
+    return find(id, cap);
+  });
+  const phases = [];
+  const session = createFc27PuzzleBuySession({ scope: x.scope, context: x.draft.plan.context, deferNoListing: true,
+    get: async (key, fallback) => structuredClone(x.data.get(key) ?? fallback), set: async (key, value) => x.data.set(key, structuredClone(value)),
+    exclusive: async (_scope, task) => task(), loadDraft: async () => x.draft, assertCurrent: () => {},
+    preparePrices: async () => approval, createAdapter: async () => x.adapter, onProgress: value => phases.push(value.phase) });
+  const result = await session.execute(x.target, { approved: true, budget: 600, expectedOperationId: 'test' });
+  expect(x.adapter.find.mock.calls.map(([id]) => id)).toEqual([900, 901, 902, 900]);
+  expect(result).toMatchObject({ status: returns ? 'purchased' : 'partial', purchased: returns ? 3 : 2, spent: returns ? 600 : 400 });
+  expect(phases).toContain('deferred');
+  expect(x.adapter.buy.mock.calls.map(([entry]) => entry.definitionId)).toEqual(returns ? [901, 902, 900] : [901, 902]);
+  if (!returns) expect(x.data.get(puzzleBuyKey(x.scope, x.target)).attempts[900]).toMatchObject({ used: 2, failed: true });
+  const bids = x.adapter.buy.mock.calls.length, searches = x.adapter.find.mock.calls.length;
+  await session.execute(x.target, { approved: true, budget: 600, expectedOperationId: 'test' });
+  expect(x.adapter.buy).toHaveBeenCalledTimes(bids); expect(x.adapter.find).toHaveBeenCalledTimes(searches);
+});
+
 it('uses the existing allowance after a last-card listing rejection and never rebuys seven confirmed Club receipts', async () => {
   const f = fixture(8), references = {};
   for (const entry of f.draft.plan.slots) references[entry.definitionId] = { definitionId: entry.definitionId, season: '27', platform: 'pc',

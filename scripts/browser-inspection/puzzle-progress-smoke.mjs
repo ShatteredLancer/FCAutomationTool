@@ -10,9 +10,25 @@ export async function exercisePuzzleProgress(context) {
       export { shortageFixture } from './tests/helpers/fc27-puzzle-shortage-fixture.js';
       export { mountFc27PuzzleNativeButton } from './src/adapters/browser/fc27-puzzle-native-button.js';
       export { suggestFc27PuzzleJointPurchasesCooperatively } from './src/fc27/puzzle-procurement.js';
+      export { finishPuzzleSearchCooperatively } from './src/fc27/puzzle-preview.js';
     ` }, bundle: true, write: false, format: 'iife', globalName: 'PuzzleProgressSmoke', target: 'chrome120' });
     await page.setContent('<!doctype html><title>Puzzle progress offline</title><main><button id="anchor">Submit (fixture only)</button></main>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    const scheduling = await page.evaluate(async () => {
+      const original = globalThis.setTimeout; let clampedTimers = 0, checks = 0;
+      globalThis.setTimeout = (fn, delay, ...args) => {
+        if (delay === 0) clampedTimers++;
+        return original(fn, delay === 0 ? 100 : delay, ...args);
+      };
+      try {
+        function* steps() { for (let index = 0; index < 12; index++) yield; return 'same-result'; }
+        const result = await globalThis.PuzzleProgressSmoke.finishPuzzleSearchCooperatively(steps(), {
+          sliceMs: 0, assertCurrent: () => { checks++; },
+        });
+        return { result, clampedTimers, checks };
+      } finally { globalThis.setTimeout = original; }
+    });
+    assert.equal(scheduling.result, 'same-result'); assert.equal(scheduling.clampedTimers, 0); assert.ok(scheduling.checks >= 24);
     await page.evaluate(() => {
       const api = globalThis.PuzzleProgressSmoke;
       globalThis.progressEvidence = { paints: [], requests: 0, done: false, current: true };
@@ -47,5 +63,6 @@ export async function exercisePuzzleProgress(context) {
       'Search counts must be painted on multiple animation frames, not just stored in callbacks');
     assert.equal(evidence.requests, 0);
     console.log('Puzzle cooperative progress smoke passed: trusted button, painted node updates, same 50000 budget, no EA access.');
+    console.log('Puzzle browser scheduling passed: default pure solver avoids simulated hidden-tab zero-timer clamping and retains context checks.');
   } finally { await page.close(); }
 }

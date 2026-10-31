@@ -19,6 +19,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'co
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue', 'initialMaterialValue', 'coveragePages', 'hintNodes', 'hintPairs',
+  'positionSkippedCount', 'seedMs', 'catalogMs', 'pricingMs', 'searchMs', 'hintMs',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
   'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',
   'reservationExcludedCount', 'reservationTargetCount', 'reservationReferenceCount',

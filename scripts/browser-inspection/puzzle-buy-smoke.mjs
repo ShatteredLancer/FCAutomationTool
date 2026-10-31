@@ -22,6 +22,7 @@ export async function exercisePuzzleBuyButton(context, root) {
         inspect: async () => state.blocked ? { status: 'blocked', reason: 'FC27_BUY_SQUAD_CHANGED' }
           : ({ status: 'ready', operationId: 'test', total: 2, remaining: 2, spent: 0, budget: 400 }),
         buy: (target, approval, callbacks) => {
+          state.progress = callbacks.onProgress;
           state.buys.push({ setId: target.setId, challengeId: target.challengeId, approval, current: callbacks.isCurrent() });
           callbacks.onProgress({ purchased: 1, total: 2, spent: 200, phase: 'search', index: 2,
             failures: [{ slot: 1, definitionId: 902, reason: 'FC27_BUY_LISTING_UNAVAILABLE' }] });
@@ -52,6 +53,12 @@ export async function exercisePuzzleBuyButton(context, root) {
     assert.equal(await page.locator('.ut-squad-slot-view[index="1"] .fcat-cards-buyerror .icon_untradeable').count(), 1);
     assert.equal(await page.locator('.ut-click-shield').evaluate(node => node.classList.contains('showing')), true);
     assert.equal(await page.evaluate(() => globalThis.buySmoke.foreground), 'search:2/2');
+    await page.evaluate(() => {
+      const state = globalThis.buySmoke;
+      state.progress({ purchased: 1, total: 2, spent: 200, phase: 'deferred', deferredCount: 1, failures: [] });
+      state.progress({ purchased: 1, total: 2, spent: 200, phase: 'progress', deferredCount: 1, failures: [] });
+    });
+    assert.match(await box.innerText(), /最后按原限价复查/);
     await box.getByRole('button', { name: '停止购买' }).click();
     assert.equal(await page.evaluate(() => globalThis.buySmoke.stops), 1);
     await page.evaluate(() => globalThis.buySmoke.finish());

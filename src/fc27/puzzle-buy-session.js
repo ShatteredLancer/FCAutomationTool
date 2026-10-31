@@ -15,7 +15,7 @@ export const puzzleBuyHistoryKey = (scope, target) => `${puzzleBuyKey(scope, tar
 const settled = record => Array.isArray(record?.entries) && record.entries.every(e => !['buy-pending', 'bought', 'move-pending'].includes(e.state)) && record.phase !== 'save-pending';
 
 export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive, loadDraft,
-  createAdapter, assertCurrent, preparePrices = null, shouldStop = () => false, onProgress = () => {} } = {}) {
+  createAdapter, assertCurrent, preparePrices = null, shouldStop = () => false, onProgress = () => {}, deferNoListing = false } = {}) {
   const store = async (key, value) => {
     await set(key, structuredClone(value));
     if (!same(await get(key, null), value)) fail('FC27_BUY_JOURNAL_UNCONFIRMED');
@@ -127,6 +127,8 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
             try {
               const index = entry ? record.entries.indexOf(entry) : -1;
               onProgress({ ...summary(record), failures: failures.map(item => ({ ...item })), phase,
+                ...(deferNoListing ? { deferredCount: record.entries.filter(item => deferred.has(item.slot) && item.state === 'waiting'
+                  && record.attempts?.[item.definitionId]?.failed !== true).length } : {}),
                 results: purchaseAttemptResults({ ...record, lastResult: { failures } }),
                 index: index >= 0 ? index + 1 : null, total: record.entries.length,
                 ...(entry ? { slot: entry.slot, definitionId: entry.definitionId } : {}), ...extra });
@@ -134,9 +136,10 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
           };
           let stopReason = null;
           const failures = [];
+          const queue = record.entries.slice(), deferred = new Set();
           try {
-            for (let cursor = 0; cursor < record.entries.length; cursor++) {
-              const entry = record.entries[cursor];
+            for (let cursor = 0; cursor < queue.length; cursor++) {
+              const entry = queue[cursor];
               if (entry.state === 'club') continue;
               if (retry && entry.state === 'waiting' && !retry.items.some(item => item.definitionId === entry.definitionId)) continue;
               try {
@@ -180,6 +183,22 @@ export function createFc27PuzzleBuySession({ scope, context, get, set, exclusive
                   const failure = { slot: entry.slot, definitionId: entry.definitionId, reason: quote?.reason ?? 'FC27_BUY_NO_LISTING',
                     httpStatus: quote?.httpStatus, errorCode: quote?.errorCode };
                   const again = finishPurchaseAttempt(record, entry.definitionId, failure); await persist();
+                  // A confirmed empty search has dispatched no purchase.
+                  // Let other cards settle before ONE same-cap recheck, rather
+                  // than burning the allowance on adjacent identical searches.
+                  // Unknown receipts, rejected bids and HTTP errors never enter
+                  // this queue; durable attempt limits remain authoritative.
+                  if (again && deferNoListing && failure.reason === 'FC27_BUY_NO_LISTING'
+                      && (failure.httpStatus == null || failure.httpStatus === 200) && failure.errorCode == null) {
+                    if (!deferred.has(entry.slot)) {
+                      deferred.add(entry.slot); queue.push(entry);
+                      report('deferred', entry, failure);
+                    } else {
+                      failPurchaseWithoutAttempt(record, entry.definitionId, failure.reason); await persist();
+                      failures.push(failure); report('failed', entry, failure);
+                    }
+                    continue;
+                  }
                   if (again) cursor--; else failures.push(failure);
                   report(again ? 'retrying' : 'failed', entry, failure); continue;
                 }

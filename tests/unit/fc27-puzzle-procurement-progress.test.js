@@ -1,10 +1,26 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { suggestFc27PuzzleJointPurchases, suggestFc27PuzzleJointPurchasesCooperatively,
   findFc27PuzzleRepairSeedCooperatively } from '../../src/fc27/puzzle-procurement.js';
-import { previewFc27PuzzleSquad, previewFc27PuzzleSquadCooperatively } from '../../src/fc27/puzzle-preview.js';
+import { previewFc27PuzzleSquad, previewFc27PuzzleSquadCooperatively, finishPuzzleSearchCooperatively } from '../../src/fc27/puzzle-preview.js';
 import { shortageFixture } from '../helpers/fc27-puzzle-shortage-fixture.js';
 import { formatFc27PuzzleProgress } from '../../src/adapters/browser/fc27-puzzle-native-button.js';
+
+it('uses browser message tasks rather than hidden-tab-clamped zero timers for pure Puzzle work', async () => {
+  let messages = 0, closes = 0;
+  class Channel {
+    port1 = { close: () => { closes++; }, onmessage: null };
+    port2 = { close: () => { closes++; }, postMessage: () => { messages++; queueMicrotask(() => this.port1.onmessage()); } };
+  }
+  vi.stubGlobal('document', {}); vi.stubGlobal('MessageChannel', Channel);
+  const timer = vi.spyOn(globalThis, 'setTimeout');
+  try {
+    function* steps() { yield; return 'same-result'; }
+    expect(await finishPuzzleSearchCooperatively(steps())).toBe('same-result');
+    expect(timer).not.toHaveBeenCalled();
+    expect(messages).toBeGreaterThan(0); expect(closes).toBe(messages * 2);
+  } finally { timer.mockRestore(); vi.unstubAllGlobals(); }
+});
 
 // Synthetic cardinality/chemistry regression derived from the 2026-10-03
 // diagnostic: 60 safe owned + 59 catalog versions, 3 silver / 8 bronze, 14 chem.

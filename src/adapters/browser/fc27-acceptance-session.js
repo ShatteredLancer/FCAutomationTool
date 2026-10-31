@@ -705,7 +705,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
       try {
         const settings = await readPuzzleSettings();
         const buyer = createFc27PuzzleBuySession({ scope, context, get: gmGetValue, set: gmSetValue,
-          exclusive: persistence.exclusive, assertCurrent: assertTarget, shouldStop: () => buyStopped, onProgress,
+          exclusive: persistence.exclusive, assertCurrent: assertTarget, shouldStop: () => buyStopped, onProgress, deferNoListing: true,
           preparePrices: publicPrices ? record => {
             publicPrices.remember(record.base.purchases);
             return publicPrices.preparePurchase(record, { isCurrent: () => { assertTarget(); return !buyStopped; },
@@ -929,6 +929,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           ownedCount: purchase.ownedCount, priceSource: d?.priceSource,
           initialEstimatedCost: d?.initialEstimatedCost, refinementPasses: d?.refinementPasses,
           initialMaterialValue: d?.initialMaterialValue, coveragePages: d?.coveragePages, hintNodes: d?.hintNodes, hintPairs: d?.hintPairs,
+          positionSkippedCount: d?.positionSkippedCount, seedMs: d?.seedMs, catalogMs: d?.catalogMs,
+          pricingMs: d?.pricingMs, searchMs: d?.searchMs, hintMs: d?.hintMs,
           optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
           searchComplete: d?.searchComplete, optimalWithinPool: d?.optimalWithinPool,
           cached: purchase.cacheHits > 0 });

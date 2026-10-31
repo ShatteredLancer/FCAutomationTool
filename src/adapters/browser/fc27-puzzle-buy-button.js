@@ -3,7 +3,7 @@ import { mountFc27PurchaseResults } from './fc27-purchase-results.js';
 import { purchaseDialogMarkup, purchaseDialogStyles, updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
 const reasons = {
   FC27_BUY_BUDGET_EXCEEDED: '已到本次预算；可修改预算后继续剩余购买。',
-  FC27_BUY_NO_LISTING: '部分版本在价格范围内暂无挂牌，已继续处理其余球员。',
+  FC27_BUY_NO_LISTING: '部分版本在价格范围内暂无挂牌，已继续处理其余球员；未自动提高限价。',
   FC27_BUY_RATE_LIMITED: 'EA 限流，已停止，没有自动重试。',
   FC27_BUY_STOPPED: '已停止，已购买结果保留。',
   FC27_BUY_ALREADY_OWNED: '缺失版本已在 Club 中，请先替换对应概念卡，避免重复购买。',
@@ -137,7 +137,8 @@ export function mountFc27PuzzleBuyButton({ document, readTarget, inspect, buy, s
         onProgress: progress => { try { if (!refreshPrices) foregroundProgress?.update?.(progress); } catch { /* Presentation cannot change a transaction. */ }
           resultView?.show(progress, { running: true });
           if (resultDialog) updatePurchaseDialogProgress(resultDialog, progress);
-          message(`已购买 ${progress.purchased}/${progress.total}，已花费 ${progress.spent} 金币。`);
+          message(`已购买 ${progress.purchased}/${progress.total}，已花费 ${progress.spent} 金币。${progress.deferredCount > 0
+            ? ` 暂缓 ${progress.deferredCount} 张缺货卡，先处理其他球员，最后按原限价复查。` : ''}`);
           markFailures(selected, progress.failures); },
       });
       output.textContent = result?.status === 'purchased'

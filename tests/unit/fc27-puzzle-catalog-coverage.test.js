@@ -4,6 +4,7 @@ import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
 import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
+import { puzzleMarketValueCandidates } from '../../src/fc27/puzzle-procurement.js';
 
 function fixture() {
   const input = puzzleFillFixture(), now = input.now;
@@ -57,6 +58,40 @@ it('widens the real first-page 65/75 sample through fresh native reads before ac
   expect(result.diagnostics.nodes).toBeLessThanOrEqual(70000);
   expect(result.diagnostics.hintNodes).toBeLessThanOrEqual(24000);
   expect(result.globalMinimumProven).toBe(false);
+});
+
+it('does not quote versions with no usable position when the native chemistry minimum requires all seven in position', async () => {
+  const x = fixture();
+  const slots = x.input.challenge.formation.positions.filter((_position, index) => !x.input.challenge.brickIndices.includes(index));
+  const impossible = new Set(observed.pages.flatMap(page => page.entries).filter(card => !card.positions.some(position => slots.includes(position)))
+    .map(card => card.definitionId));
+  expect(impossible.size).toBeGreaterThan(0);
+  const result = await createFc27PuzzleProcurementSession(x.options).plan(x.input, { optimizeMaterialValue: true });
+  expect(result.status).toBe('suggested');
+  expect(x.loadPublicPrices.mock.calls.flatMap(([ids]) => ids).filter(id => impossible.has(id))).toEqual([]);
+  expect(result.plans[0].materialValue).toBeLessThanOrEqual(6000);
+});
+
+it.each([18,19,20])('only prunes off-position price candidates when the native chemistry floor proves it at %i/7', minimum => {
+  const x = fixture(); x.input.challenge.rawRequirements.find(rule => rule.pairs[0].key === 35).pairs[0].values = [minimum];
+  const wing = { ...observed.pages[0].entries[0], definitionId: 8000901, positions: [25] };
+  const result = puzzleMarketValueCandidates(x.input, [wing]);
+  expect(result.some(card => card.definitionId === wing.definitionId)).toBe(minimum <= 18);
+});
+
+it('does not infer a position-pruning proof from unsupported chemistry profiles', () => {
+  const x = fixture(); x.input.chemistry.profiles.complete = false;
+  const wing = { ...observed.pages[0].entries[0], definitionId: 8000901, positions: [25] };
+  expect(puzzleMarketValueCandidates(x.input, [wing])).toHaveLength(1);
+});
+
+it('does not price provably unusable owned cards or mislabel them as unknown material value', async () => {
+  const x = fixture(), extra = { ...x.input.inventory.items[0], id: 1001, definitionId: 8000901, positions: [25] };
+  x.input.inventory.items.push(extra); x.prices.set(extra.definitionId, 200);
+  const result = await createFc27PuzzleProcurementSession(x.options).plan(x.input, { optimizeMaterialValue: true });
+  expect(result.status).toBe('suggested');
+  expect(x.loadPublicPrices.mock.calls.flatMap(([ids]) => ids)).not.toContain(extra.definitionId);
+  expect(result.diagnostics).toMatchObject({ unknownCount: 0, scopeTruncated: false });
 });
 
 it.each(['empty', 'expensive'])('retains the freshly priced incumbent when historical directions are now %s', async mode => {

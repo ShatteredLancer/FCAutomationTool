@@ -2,7 +2,7 @@ import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
   finishPuzzleSearch, finishPuzzleSearchCooperatively } from './puzzle-preview.js';
 import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
+import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
@@ -17,8 +17,24 @@ const poolOf = input => collectSafeTraditionalCandidates({ ...input, challenge: 
   mechanism: 'traditional', requirements: [{ kind: 'player-count', count: required(input) }] } });
 export const puzzleOwnedValueCandidates = input => {
   const pool = poolOf(input);
-  return pool.status === 'candidates' ? pool.candidates : [];
+  return pool.status === 'candidates' ? priceEligiblePositions(input, pool.candidates) : [];
 };
+// With ordinary 3-point chemistry, e.g. 20/7, even ONE off-position card
+// makes the native minimum unreachable (6*3 < 20). Only prune after the
+// existing native-config validator can establish that bound; otherwise keep
+// the original pool, including low-chemistry challenges and unknown profiles.
+function priceEligiblePositions(input, candidates) {
+  try {
+    const count = required(input), parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, count);
+    if (parsed.status !== 'observed') return candidates;
+    const minimum = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind)).map(rule => rule.value));
+    if (minimum <= 3 * (count - 1)) return candidates;
+    const slots = input.challenge.formation.positions.flatMap((_position, index) => input.challenge.brickIndices.includes(index) ? [] : [index]);
+    if (!createFc27PuzzlePartialChemistryBound({ candidates, slots, formation: input.challenge.formation, chemistry: input.chemistry })) return candidates;
+    return candidates.filter(card => slots.some(slot => card.positions.includes(input.challenge.formation.positions[slot])));
+  } catch { return candidates; }
+}
+export const puzzleMarketValueCandidates = (input, entries) => priceEligiblePositions(input, marketCandidates(input, entries));
 const validValue = value => Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE;
 // Price refinement is detached planning only. Its budget is material value,
 // never a purchase allowance, and the original feasible squad is an incumbent.
@@ -142,7 +158,7 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
       && JSON.stringify({ ...candidate, slot: item.slot }) === JSON.stringify(item)))) return stop('FC27_PURCHASE_REPAIR_INPUTS_CHANGED');
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  const candidates = marketCandidates(input, entries);
+  const candidates = prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
   if (prices) candidates.sort((a, b) => prices.get(a.definitionId) - prices.get(b.definitionId));
   const slots = seed.squad.flatMap((item, index) => item ? [index] : []);
   const plans = []; const combinations = new Set(); let checks = 0; let lastProgressAt = 0;
@@ -467,7 +483,7 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  const market = marketCandidates(input, entries);
+  const market = prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
   // A shortage route with no eligible public versions cannot produce a
   // purchase plan. Avoid running the bounded squad solver over the owned
   // inventory in this case; the caller will report the empty candidate pool

@@ -1,6 +1,6 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
-  puzzleOwnedValueCandidates, refineFc27PuzzleOwnedValue } from './puzzle-procurement.js';
+  puzzleOwnedValueCandidates, puzzleMarketValueCandidates, refineFc27PuzzleOwnedValue } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
@@ -143,7 +143,13 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       authRecoveries: 0, failureSource: null, httpStatus: null, eaCode: null, retryAfterSeconds: null,
       failurePhase: null, excludedUnavailable: 0, replans: 0, searchComplete: null,
       optimalWithinPool: null, estimatedCost: null, priceSource: null, search: null,
-      initialEstimatedCost: null, refinementPasses: 0, optimizationBudgetExhausted: false, catalogQueries: [] };
+      initialEstimatedCost: null, refinementPasses: 0, optimizationBudgetExhausted: false, catalogQueries: [],
+      seedMs: 0, catalogMs: 0, pricingMs: 0, searchMs: 0, hintMs: 0 };
+    const measure = async (key, task) => {
+      const started = now();
+      try { return await task(); }
+      finally { diagnostics[key] += Math.max(0, now() - started); }
+    };
     let quoteCompleted = 0; let quoteTotal = 0; let catalogTotal = 3;
     const reportProgress = value => {
       if (typeof onProgress !== 'function') return;
@@ -163,8 +169,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const scope = traditionalJournalScope(input.context);
       assertCurrent();
       reportProgress();
-      const seed = await findFc27PuzzleRepairSeedCooperatively(input,
-        value => reportProgress({ ...value, phase: 'repair-seed' }), { assertCurrent });
+      const seed = await measure('seedMs', () => findFc27PuzzleRepairSeedCooperatively(input,
+        value => reportProgress({ ...value, phase: 'repair-seed' }), { assertCurrent }));
       if (seed.status !== 'ready' && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_UNAVAILABLE') return finish(seed);
       diagnostics.route = seed.status === 'ready' ? 'repair' : 'joint';
       diagnostics.stage = 'query-planning';
@@ -226,6 +232,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         }
       };
       const entries = new Map(); const quotes = new Map(); const usedQueries = [];
+      const positionSkipped = new Set();
       const pages = []; let incumbent = null; let searchSpent = 0;
       const searchBudget = seed.status === 'ready' ? 20000 : 50000;
       const unavailable = new Set(); let hadPlans = false;
@@ -237,9 +244,9 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       if (totalValueMode) {
         diagnostics.stage = 'quote-read'; diagnostics.objective = 'material-value';
         try {
-          const valued = await ownedValues(input, { assertCurrent, onProgress: value => {
+          const valued = await measure('pricingMs', () => ownedValues(input, { assertCurrent, onProgress: value => {
             quoteCompleted = value.index; quoteTotal = value.total; reportProgress();
-          } });
+          } }));
           const allOwned = new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size;
           diagnostics.unknownCount = allOwned - valued.prices.size;
           totalValueMode = diagnostics.unknownCount === 0;
@@ -262,11 +269,15 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           estimatedUnitPrice: materialPrices.get(ref.definitionId) }))] };
       if (jointSearch) diagnostics.route = 'joint';
       const priceCandidates = async candidates => {
+        const eligible = puzzleMarketValueCandidates(input, candidates), kept = new Set(eligible.map(card => card.definitionId));
+        for (const card of candidates) if (!kept.has(card.definitionId)) positionSkipped.add(card.definitionId);
+        diagnostics.positionSkippedCount = positionSkipped.size;
+        candidates = eligible;
         if (!candidates.length) return;
         diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
-        const snapshot = await loadPublicPrices(candidates.map(item => item.definitionId), { purpose: 'puzzle', rows: candidates,
+        const snapshot = await measure('pricingMs', () => loadPublicPrices(candidates.map(item => item.definitionId), { purpose: 'puzzle', rows: candidates,
           ...(publicPolicy ? { policy: publicPolicy } : {}), isCurrent: () => { assertCurrent(); return true; },
-          onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } });
+          onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } }));
         assertCurrent();
         const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? 'console' : null;
         const approved = createPurchasePriceApproval({ scope, season: '27', platform, policy: snapshot.policy,
@@ -286,11 +297,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         if (coverageChecked || !totalValueMode || !loadCachedPrices || !list
             || !refinementCards(refinementPlan(incumbent[0])).length) return;
         coverageChecked = true; diagnostics.stage = 'catalog-hints'; reportProgress();
-        const hint = await readFc27PuzzleCatalogHints({ input, list, get, now, usedQueries,
+        const hint = await measure('hintMs', () => readFc27PuzzleCatalogHints({ input, list, get, now, usedQueries,
           prices: new Map([...quotes].filter(([, quote]) => id(quote.price)).map(([id, quote]) => [id, quote.price])),
           materialPrices, costCeiling: planCost(incumbent[0]), assertCurrent,
           readPrices: ids => loadCachedPrices(ids, { policy: publicPolicy,
-            isCurrent: () => { assertCurrent(); return true; } }) });
+            isCurrent: () => { assertCurrent(); return true; } }) }));
         diagnostics.hintNodes = hint.nodes; diagnostics.hintPairs = hint.pairs;
         const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input)
           .sort((a, b) => ['team', 'nation', 'league'].filter(key => b[key]).length
@@ -301,7 +312,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.coveragePages = 0;
         const fresh = new Map();
         for (const query of directions) {
-          const previousHits = cacheHits, page = await cachedRead('catalog', query);
+          const previousHits = cacheHits, page = await measure('catalogMs', () => cachedRead('catalog', query));
           if (page?.status !== 'observed' || page.season !== '27' || page.source !== 'ea-defid' || !same(page.query, query)
               || !id(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 86400000
               || !Array.isArray(page.entries) || page.entries.length > query.count
@@ -328,13 +339,13 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         const candidates = marketCandidates(input, [...fresh.values()]);
         await priceCandidates(candidates.filter(card => !references.has(card.definitionId)));
         diagnostics.stage = 'local-market-search'; diagnostics.refinementPasses++;
-        const result = await suggestFc27PuzzleJointPurchasesCooperatively(input,
+        const result = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input,
           [...fresh.values()].filter(card => !unavailable.has(card.definitionId)), {
             prices: new Map([...quotes].map(([id, quote]) => [id, quote.price])), materialPrices,
             maxNodes: 20000, costCeiling: planCost(incumbent[0]), priceSource: publicPolicy.source,
             assertCurrent, yieldControl: yieldPuzzleHintTask,
             onProgress: value => reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 20000 }),
-          });
+          }));
         assertCurrent(); searchSpent += result.nodes ?? 0; diagnostics.nodes = searchSpent;
         diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
         for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += result.search?.[key] ?? 0;
@@ -393,7 +404,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         }
         const query = pendingQueries.shift();
         const previousHits = cacheHits;
-        const page = await cachedRead('catalog', query); usedQueries.push(query);
+        const page = await measure('catalogMs', () => cachedRead('catalog', query)); usedQueries.push(query);
         if (page?.status !== 'observed' || page.season !== '27' || page.source !== 'ea-defid'
             || !same(page.query, query) || !id(page.observedAt) || page.observedAt > now()
             || now() - page.observedAt > 86400000 || !Array.isArray(page.entries) || page.entries.length > query.count
@@ -438,11 +449,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget,
             ...(seed.status === 'ready' ? { checks: searchSpent + (value.checks ?? 0) } : {}) } : value);
           reportProgress();
-          const suggestion = !jointSearch ? await suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
+          const suggestion = await measure('searchMs', () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
             ...searchOptions, assertCurrent, prices, onProgress: searchProgress })
-            : await suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent, prices,
+            : suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent, prices,
               priceSource: publicPolicy?.source ?? null,
-              onProgress: searchProgress });
+              onProgress: searchProgress }));
           diagnostics.usableCandidates = suggestion.marketCandidates ?? null;
           diagnostics.localReason = suggestion.reason ?? null;
           diagnostics.checks = suggestion.checks ?? null;
@@ -483,7 +494,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             quoteCompleted = plan.purchases.filter(item => quotes.get(item.definitionId)?.price > 0).length;
             for (const item of plan.purchases) {
               if (!quotes.has(item.definitionId)) {
-                const quote = await cachedRead('quote', { definitionId: item.definitionId, start: 0, count: 20, maxBuy: quoteCeiling });
+                const quote = await measure('pricingMs', () => cachedRead('quote', { definitionId: item.definitionId, start: 0, count: 20, maxBuy: quoteCeiling }));
                 if (quote?.status !== 'observed' || quote.season !== '27' || quote.platform !== input.context.platform
                     || quote.source !== 'ea-visible-buy-now' || quote.definitionId !== item.definitionId
                     || !id(quote.observedAt) || quote.observedAt > now() || now() - quote.observedAt > 600000

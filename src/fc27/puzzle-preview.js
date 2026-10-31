@@ -16,10 +16,23 @@ export function finishPuzzleSearch(iterator) {
   return step.value;
 }
 
-// The same iterator drives synchronous callers and the native cooperative UI.
-// A timer yields a browser task (a resolved Promise would not permit painting).
+function yieldPuzzleTask() {
+  // Ordinary browser message tasks avoid hidden-tab timer clamping without
+  // using microtask/native-yield priority that can starve UI timers. Node and
+  // hosts without channels retain the original timer path.
+  if (globalThis.document && typeof globalThis.MessageChannel === 'function') return new Promise((resolve, reject) => {
+    const channel = new globalThis.MessageChannel();
+    const close = () => { channel.port1.close(); channel.port2.close(); };
+    channel.port1.onmessage = () => { close(); resolve(); };
+    try { channel.port2.postMessage(null); } catch (error) { close(); reject(error); }
+  });
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// Same iterator/evaluation order and native cancellation checks, only a
+// different browser task primitive. No network or transaction pacing here.
 export async function finishPuzzleSearchCooperatively(iterator, { assertCurrent = () => {},
-  yieldControl = () => new Promise(resolve => setTimeout(resolve, 0)), sliceMs = 8 } = {}) {
+  yieldControl = yieldPuzzleTask, sliceMs = 8 } = {}) {
   let deadline = 0;
   try {
     for (;;) {

@@ -28,7 +28,7 @@ export async function exercisePuzzleCoverage(context) {
         chemistry: input.chemistry, rating: input.chemistry.rating });
       input.boundSquad = squad => api.boundFc27PuzzleChemistry({ squad, formation: input.challenge.formation,
         chemistry: input.chemistry, rating: input.chemistry.rating });
-      const scope = api.traditionalJournalScope(input.context), store = new Map(), prices = new Map(data.prices), queries = [];
+      const scope = api.traditionalJournalScope(input.context), store = new Map(), prices = new Map(data.prices), queries = [], quoted = [];
       const get = async (key, fallback) => structuredClone(store.get(key) ?? fallback);
       const set = async (key, value) => store.set(key, structuredClone(value));
       for (const page of data.pages) {
@@ -45,8 +45,8 @@ export async function exercisePuzzleCoverage(context) {
         readFutbin: async definitionId => ({ definitionId, price: prices.get(definitionId) ?? null }) });
       const result = await api.createFc27PuzzleProcurementSession({ get, set, list: async () => [...store.keys()], now: () => now,
         loadCachedPrices: (ids, options) => service.cachedEstimates(ids, { ...options, platform: 'pc' }),
-        loadPublicPrices: (ids, options) => service.load(ids, { ...options, platform: 'pc', sources: ['futbin'],
-          policy: options.policy ?? { source: 'futbin', futbinPlatform: 'ps' } }),
+        loadPublicPrices: (ids, options) => { quoted.push(...ids); return service.load(ids, { ...options, platform: 'pc', sources: ['futbin'],
+          policy: options.policy ?? { source: 'futbin', futbinPlatform: 'ps' } }); },
         createTransport: async () => ({ readCatalogPage: async query => {
           queries.push(query);
           const page = data.pages.find(page => JSON.stringify(page.query) === JSON.stringify(query));
@@ -56,14 +56,19 @@ export async function exercisePuzzleCoverage(context) {
         } }),
       }).plan(input, { optimizeMaterialValue: true });
       const plan = result.plans?.[0];
+      const positions = input.challenge.formation.positions.filter((_position, slot) => !input.challenge.brickIndices.includes(slot));
+      const unusable = new Set(data.pages.flatMap(page => page.entries).filter(card => !card.positions.some(position => positions.includes(position)))
+        .map(card => card.definitionId));
       return { status: result.status, reason: result.reason, value: plan?.materialValue, chemistry: plan?.teamFacts.chemistry,
         draft: plan ? api.prepareFc27PuzzleConceptDraft(input, plan).status : null, queries: queries.length,
-        nodes: result.diagnostics.nodes, hintNodes: result.diagnostics.hintNodes, globalMinimumProven: result.globalMinimumProven };
+        nodes: result.diagnostics.nodes, hintNodes: result.diagnostics.hintNodes, globalMinimumProven: result.globalMinimumProven,
+        badQuotes: quoted.filter(id => unusable.has(id)).length, skipped: result.diagnostics.positionSkippedCount };
     });
     assert.equal(result.status, 'suggested', JSON.stringify(result));
     assert.ok(result.value <= 6000 && result.chemistry >= 20);
     assert.equal(result.draft, 'prepared'); assert.equal(result.queries, 2);
     assert.ok(result.nodes <= 70000 && result.hintNodes <= 24000); assert.equal(result.globalMinimumProven, false);
+    assert.equal(result.badQuotes, 0); assert.ok(result.skipped > 0);
     console.log(`Puzzle catalogue coverage Chrome passed: frozen public-fact subset -> ${result.value}, chemistry ${result.chemistry}, 2 fresh-shaped reads, native concept validation; not live prices or exact full account replay.`);
   } finally { await page.close(); }
 }
