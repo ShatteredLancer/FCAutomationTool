@@ -90,7 +90,10 @@ const purchaseReasons = {
 
 // Display only the existing aggregate result. Never query EA to explain a stop.
 export function formatFc27PuzzleNativeResult(result) {
-  const message = resultText(result);
+  const exhaustedCostSearch = result?.status === 'concept-filled'
+    && result.procurementSummary?.diagnostics?.optimizationBudgetExhausted === true;
+  const message = resultText(result) + (exhaustedCostSearch
+    ? '\n搜索预算已用尽，当前仅为已找到的可行方案，未确认最低材料成本。' : '');
   const purchase = result?.purchaseSuggestion;
   if (purchase?.status !== 'blocked') return message;
   const reason = code(purchase.reason);

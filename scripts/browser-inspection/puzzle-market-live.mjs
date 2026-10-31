@@ -32,6 +32,7 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
     'src/domain/player-rarity.js', 'src/fc27/prelaunch-contract.js', 'src/fc27/sbc-requirements.js',
     'src/fc27/traditional-preview.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-evaluator.js',
     'src/fc27/market-query-route.js', 'src/fc27/puzzle-material-policy.js', 'src/fc27/puzzle-procurement-policy.js',
+    'src/fc27/puzzle-price-starts.js',
     'src/fc27/puzzle-procurement.js', 'src/fc27/puzzle-query-affinity.js']);
   if (Object.keys(bundle.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) {
     throw new Error('Unreviewed puzzle market route dependency');

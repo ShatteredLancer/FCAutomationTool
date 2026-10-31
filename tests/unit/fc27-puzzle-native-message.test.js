@@ -14,6 +14,13 @@ it('keeps old string stage progress compatible', () => {
   expect(formatFc27PuzzleProgress('planning')).toContain('正在解题');
 });
 
+it('identifies a saved feasible cost plan that exhausted optimization without inventing this state when evidence is absent', () => {
+  const result = { status: 'concept-filled', purchaseCount: 5, estimatedCost: 11700, materialValue: 14300, inventoryValue: 2600 };
+  expect(formatFc27PuzzleNativeResult({ ...result, procurementSummary: { diagnostics: { optimizationBudgetExhausted: true } } }))
+    .toContain('搜索预算已用尽');
+  expect(formatFc27PuzzleNativeResult(result)).not.toContain('搜索预算已用尽');
+});
+
 it('distinguishes an internal planning contract error from insufficient materials', () => {
   const text = formatFc27PuzzleNativeResult({ reason: 'SAFE_MATERIAL_SHORTAGE',
     purchaseSuggestion: { status: 'blocked', reason: 'FC27_MARKET_POLICY_INVALID' } });

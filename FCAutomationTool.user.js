@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.78
+// @version      27.0.79
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.78", at: Date.now(), status: 'started',
+    state = { version: "27.0.79", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3748,6 +3748,56 @@
     };
   }
 
+  // src/fc27/puzzle-price-starts.js
+  function pricedPuzzleGroupStarts({ candidates, rules, formation, brickIndices, costOf: costOf2, resolveClub }) {
+    if (!Array.isArray(formation?.positions) || !Array.isArray(brickIndices)) return [];
+    const slots = formation.positions.filter((_position, index) => !brickIndices.includes(index));
+    if (!slots.length || slots.length > 11) return [];
+    const counts = new Uint8Array(1 << slots.length);
+    for (let mask = 1; mask < counts.length; mask++) counts[mask] = counts[mask >>> 1] + (mask & 1);
+    const ranked = [];
+    for (const rule of rules.filter((rule2) => rule2.kind.startsWith("same-") && rule2.mode !== "max" && rule2.value >= 2)) {
+      const strategy = { "same-nation": "nation", "same-league": "league", "same-club": "club" }[rule.kind];
+      if (!strategy || rule.value > slots.length) continue;
+      const groups = /* @__PURE__ */ new Map();
+      for (const card of candidates) {
+        const key2 = strategy === "club" ? resolveClub?.(card.teamId ?? card.clubId) : card[strategy === "nation" ? "nationId" : "leagueId"];
+        if (!Number.isSafeInteger(key2) || key2 < 1) continue;
+        if (!groups.has(key2)) groups.set(key2, /* @__PURE__ */ new Map());
+        const old = groups.get(key2).get(card.definitionId);
+        if (!old || costOf2(card) < costOf2(old)) groups.get(key2).set(card.definitionId, card);
+      }
+      for (const [groupId, byId] of groups) {
+        if (byId.size < rule.value) continue;
+        let states4 = /* @__PURE__ */ new Map([[0, 0]]);
+        for (const card of byId.values()) {
+          const cost2 = costOf2(card);
+          if (!Number.isSafeInteger(cost2) || cost2 < 0) continue;
+          const fits = slots.reduce((mask, position, index) => mask | (card.positions?.includes(position) ? 1 << index : 0), 0);
+          const next = new Map(states4);
+          for (const [mask, spent] of states4) {
+            if (counts[mask] >= rule.value) continue;
+            for (let free = fits & ~mask; free; free &= free - 1) {
+              const target = mask | free & -free, price2 = spent + cost2;
+              if (price2 < (next.get(target) ?? Infinity)) next.set(target, price2);
+            }
+          }
+          states4 = next;
+        }
+        const cost = Math.min(Infinity, ...[...states4].filter(([mask]) => counts[mask] === rule.value).map(([, price2]) => price2));
+        const average = cost / rule.value;
+        if (Number.isFinite(cost)) ranked.push({ hint: { strategy, groupId }, costFirst: true, average });
+      }
+    }
+    const seen = /* @__PURE__ */ new Set();
+    return ranked.sort((a, b) => a.average - b.average).filter((row) => {
+      const key2 = `${row.hint.strategy}:${row.hint.groupId}`;
+      if (seen.has(key2)) return false;
+      seen.add(key2);
+      return true;
+    }).slice(0, 2).map((row) => ({ hint: row.hint, costFirst: true }));
+  }
+
   // src/fc27/puzzle-preview.js
   var DEFAULT_MAX_NODES = 5e4;
   var MAX_PUZZLE_QUOTE_PRICE = 15e6;
@@ -4052,6 +4102,19 @@
       }
       hints.push(...[...groups].filter(([, ids2]) => ids2.size >= 2).sort((a, b) => b[1].size - a[1].size || a[0] - b[0]).slice(0, 2).map(([groupId]) => ({ strategy, groupId })));
     }
+    const pricedGroups = options.procurement?.priceAware ? pricedPuzzleGroupStarts({
+      candidates: hintCandidates,
+      rules: rules.rules,
+      formation: challenge.formation,
+      brickIndices: challenge.brickIndices,
+      costOf: options.procurement.costOf,
+      resolveClub: createFc27ClubResolver(clubLinks)
+    }) : [];
+    const routes = [
+      ...options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : [],
+      ...pricedGroups,
+      ...hints.map((hint) => ({ hint, costFirst: false }))
+    ];
     let nodes = 0;
     let result;
     let bestResult = null;
@@ -4068,17 +4131,18 @@
           safeCandidates: pool.candidates.length,
           required: required2,
           attempt: progress.attempt,
-          attempts: hints.length
+          attempts: routes.length
         });
       } catch {
       }
     };
-    for (const [index, hint] of hints.entries()) {
-      const budget = Math.floor((maxNodes - nodes) / (hints.length - index));
+    for (const [index, { hint, costFirst }] of routes.entries()) {
+      const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
       result = yield* iterateFc27PuzzleCandidates({
         ...options,
         maxNodes: budget,
         searchHint: hint,
+        costFirst,
         ...bestResult && bestResult.estimatedCost > 0 ? { procurement: {
           ...options.procurement,
           budget: Math.min(options.procurement.budget, bestResult.estimatedCost - 1)
@@ -4126,12 +4190,12 @@
         nodes,
         maxNodes,
         search,
-        strategyAttempts: hints.length,
+        strategyAttempts: routes.length,
         searchComplete: false,
         optimalWithinPool: false
       };
     }
-    return { ...result, nodes, maxNodes, search, strategyAttempts: hints.length };
+    return { ...result, nodes, maxNodes, search, strategyAttempts: routes.length };
   }
   function* iterateFc27PuzzleCandidates({
     challenge,
@@ -4147,7 +4211,8 @@
     procurement = null,
     onProgress = null,
     materialRules = [],
-    nativeQualityFallback = false
+    nativeQualityFallback = false,
+    costFirst = false
   } = {}) {
     if (!integer7(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
@@ -4240,7 +4305,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (costFirst ? quoted.get(a) - quoted.get(b) : 0) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -24282,7 +24347,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     FC27_BUY_REFERENCE_PRICE_EXPIRED: "\u53C2\u8003\u62A5\u4EF7\u5728\u89C4\u5212\u7ED3\u675F\u524D\u8FC7\u671F\uFF1B\u672A\u91C7\u7528\u8FC7\u671F\u4EF7\u683C\uFF0C\u4E5F\u672A\u6267\u884C\u8D2D\u4E70"
   };
   function formatFc27PuzzleNativeResult(result) {
-    const message = resultText(result);
+    const exhaustedCostSearch = result?.status === "concept-filled" && result.procurementSummary?.diagnostics?.optimizationBudgetExhausted === true;
+    const message = resultText(result) + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
     const purchase = result?.purchaseSuggestion;
     if (purchase?.status !== "blocked") return message;
     const reason = code(purchase.reason);
@@ -39274,7 +39340,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.78" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.79" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -39616,8 +39682,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.78"}`,
-    version: "27.0.78",
+    title: `FC Automation Tool ${"27.0.79"}`,
+    version: "27.0.79",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

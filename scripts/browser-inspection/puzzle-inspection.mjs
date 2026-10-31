@@ -24,6 +24,7 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
     'src/adapters/ea/fc27-club-read.js', 'src/adapters/ea/fc27-puzzle-verify.js', 'src/fc27/puzzle-fill-plan.js',
     'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-team-facts-probe.js', 'src/fc27/puzzle-material-policy.js',
+    'src/fc27/puzzle-price-starts.js',
     'src/adapters/browser/fc27-puzzle-result-panel.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) throw new Error('Unreviewed Puzzle inspection dependency');
   const payload = await page.evaluate(`(async () => { ${result.outputFiles[0].text}

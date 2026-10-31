@@ -56,7 +56,8 @@ export async function inspectPuzzleWithAi(page, setId, challengeId, { settings =
     'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-traditional-read.js', 'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js',
     'src/domain/player-rarity.js', 'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-preview.js',
-    'src/fc27/sbc-requirements.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-material-policy.js', 'src/fc27/puzzle-evaluator.js']);
+    'src/fc27/sbc-requirements.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-material-policy.js', 'src/fc27/puzzle-evaluator.js',
+    'src/fc27/puzzle-price-starts.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) throw new Error('Unreviewed AI inspection dependency');
   const key = `__fcat_puzzle_${randomUUID().replaceAll('-', '')}`;
   try {

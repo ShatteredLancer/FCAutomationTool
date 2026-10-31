@@ -2,6 +2,7 @@ import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { puzzleMaterialRules, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
 import { createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
+import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
 
 const DEFAULT_MAX_NODES = 50000;
 // EA amount domain only; keep the detached solver independent of procurement
@@ -260,6 +261,17 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
       .sort((a, b) => b[1].size - a[1].size || a[0] - b[0]).slice(0, 2)
       .map(([groupId]) => ({ strategy, groupId })));
   }
+  // Monetary searches need a real price-led start. Every existing start
+  // ranked connectivity/scarcity ahead of price and could spend its entire
+  // share preserving the same expensive anchor. Keep those feasibility
+  // starts, but share their original total budget with a cheap-first route
+  // and at most two compulsory-group starts ranked by priced position cover.
+  const pricedGroups = options.procurement?.priceAware ? pricedPuzzleGroupStarts({ candidates: hintCandidates,
+    rules: rules.rules, formation: challenge.formation, brickIndices: challenge.brickIndices,
+    costOf: options.procurement.costOf, resolveClub: createFc27ClubResolver(clubLinks) }) : [];
+  const routes = [...(options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : []),
+    ...pricedGroups,
+    ...hints.map(hint => ({ hint, costFirst: false }))];
   let nodes = 0; let result; let bestResult = null; let hadTruncatedRoute = false;
   const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
   const reportProgress = progress => {
@@ -267,11 +279,11 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
     try { onProgress({ ...progress, nodes: nodes + progress.nodes,
       search: Object.fromEntries(Object.keys(search).map(key => [key, search[key] + (progress.search?.[key] ?? 0)])),
       maxNodes, safeCandidates: pool.candidates.length, required, attempt: progress.attempt,
-      attempts: hints.length }); } catch { /* Progress presentation cannot affect the search. */ }
+      attempts: routes.length }); } catch { /* Progress presentation cannot affect the search. */ }
   };
-  for (const [index, hint] of hints.entries()) {
-    const budget = Math.floor((maxNodes - nodes) / (hints.length - index));
-    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint,
+  for (const [index, { hint, costFirst }] of routes.entries()) {
+    const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
+    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst,
       ...(bestResult && bestResult.estimatedCost > 0 ? { procurement: { ...options.procurement,
         budget: Math.min(options.procurement.budget, bestResult.estimatedCost - 1) } } : {}),
       onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
@@ -305,10 +317,10 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
     hadTruncatedRoute = true;
   }
   if (procurementMode && bestResult) {
-    return { ...bestResult, nodes, maxNodes, search, strategyAttempts: hints.length,
+    return { ...bestResult, nodes, maxNodes, search, strategyAttempts: routes.length,
       searchComplete: false, optimalWithinPool: false };
   }
-  return { ...result, nodes, maxNodes, search, strategyAttempts: hints.length };
+  return { ...result, nodes, maxNodes, search, strategyAttempts: routes.length };
 }
 
 // Internal detached search seam shared by owned-only and procurement previews.
@@ -318,7 +330,7 @@ export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc2
 
 export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null,
-  materialRules = [], nativeQualityFallback = false } = {}) {
+  materialRules = [], nativeQualityFallback = false, costFirst = false } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   // Planning amounts use the same public-price domain as procurement: at
@@ -462,6 +474,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
       || Number(positionFit(b)) - Number(positionFit(a))
+      || (costFirst ? quoted.get(a) - quoted.get(b) : 0)
       || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
       || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
       || quoted.get(a) - quoted.get(b)

@@ -9,6 +9,7 @@ export async function exercisePuzzleMinimumQuality(context) {
     const root = path.resolve(import.meta.dirname, '../..');
     const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
       export { minimumQualityFixture } from './tests/helpers/fc27-puzzle-minimum-quality-fixture.js';
+      export { pricedChemistryFixture } from './tests/helpers/fc27-puzzle-priced-chemistry-fixture.js';
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
       export { prepareFc27PuzzleConceptDraft, validateFc27PuzzleConceptDraft } from './src/fc27/puzzle-concept-draft.js';
       export { suggestFc27PuzzleJointPurchases } from './src/fc27/puzzle-procurement.js';
@@ -90,8 +91,47 @@ export async function exercisePuzzleMinimumQuality(context) {
     assert.equal(mixedRoute.bronze, 6); assert.ok(mixedRoute.facts.teamRating >= 75 && mixedRoute.facts.chemistry >= 26);
     assert.ok(mixedRoute.nodes <= 50000 && mixedRoute.queries.length <= 3);
     assert.ok(mixedRoute.queries.some(query => query.level === 'bronze' && query.league === 13));
+    const pricedChemistry = await page.evaluate(async () => {
+      const api = globalThis.MinimumQualitySmoke, { input, entries, prices } = api.pricedChemistryFixture();
+      const direct = api.suggestFc27PuzzleJointPurchases(input, entries, { prices });
+      const store = new Map(), queries = []; let writes = 0;
+      const write = () => { writes++; throw Error('No EA writes in fixture'); };
+      const result = await api.createFc27PuzzleProcurementSession({ now: () => input.now,
+        get: async (key, fallback) => structuredClone(store.get(key) ?? fallback), set: async (key, value) => store.set(key, structuredClone(value)),
+        createTransport: async () => ({ readCatalogPage: async query => {
+          queries.push(query);
+          const rows = entries.filter(card => query.level === (card.rating < 75 ? 'silver' : 'gold')
+            && (!query.nation || card.nationId === query.nation) && (!query.league || card.leagueId === query.league)
+            && (!query.team || card.teamId === query.team)).slice(query.start, query.start + query.count);
+          return { status: 'observed', source: 'ea-defid', season: '27', query, observedAt: input.now,
+            entries: rows, pageEndObserved: rows.length < query.count };
+        }, buy: write, move: write, save: write, submit: write }),
+        loadPublicPrices: async ids => ({ policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+          { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source,
+            { schema: 2, source, definitionId, season: '27', platform: 'pc', price: prices.get(definitionId),
+              fetchedAt: input.now, sourceUpdatedAt: null, expiresAt: input.now + 300000, error: null }])) }])) }),
+      }).plan(input, { optimizeMaterialValue: true });
+      const multi = api.pricedChemistryFixture();
+      const ratings = [78,70,81,82,82,72,68], nations = [2,2,3,4,4,2,2];
+      const teams = [3,4,3,5,5,4,4], leagues = [3,4,3,3,3,4,4], costs = [850,600,650,850,750,850,850];
+      for (let i=0;i<7;i++) {
+        Object.assign(multi.entries.find(card => card.definitionId === 10000+i),
+          { rating: ratings[i], nationId: nations[i], teamId: teams[i], leagueId: leagues[i] });
+        multi.prices.set(10000+i, costs[i]);
+      }
+      const multiResult = api.suggestFc27PuzzleJointPurchases(multi.input, multi.entries, { prices: multi.prices });
+      return { status: result.status, directCost: direct.estimatedCost, directNodes: direct.nodes, cost: result.plans?.[0]?.materialValue,
+        nodes: result.diagnostics.nodes, chemistry: result.plans?.[0]?.teamFacts.chemistry, queries: queries.length, writes,
+        multiCost: multiResult.estimatedCost, multiChemistry: multiResult.plans[0]?.teamFacts.chemistry, multiNodes: multiResult.nodes };
+    });
+    assert.equal(pricedChemistry.status, 'suggested'); assert.equal(pricedChemistry.directCost, 2100);
+    assert.equal(pricedChemistry.cost, 2100); assert.ok(pricedChemistry.directNodes <= 50000 && pricedChemistry.nodes <= 50000);
+    assert.ok(pricedChemistry.chemistry >= 20 && pricedChemistry.queries <= 3); assert.equal(pricedChemistry.writes, 0);
+    assert.ok(pricedChemistry.multiCost <= 5400 && pricedChemistry.multiChemistry >= 20 && pricedChemistry.multiNodes <= 50000);
     console.log('Puzzle minimum-quality Chrome passed: two screenshot-shaped native-valid mixed squads, club/nation lanes, three-page/50k bounds, concept revalidation and cached repeat; synthetic only, no EA writes.');
     console.log('Puzzle monetary quality comparison Chrome passed: feasible 5200 low-tier incumbent improves to 4850 within the same node ceiling; no live price claim.');
     console.log('Puzzle rating-75 route Chrome passed: gold-only 8800 incumbent improves to 5200 via 5 gold/6 bronze, native full rating/chemistry, same three-page/50k budget; synthetic, no EA access.');
+    console.log(`Puzzle priced chemistry Chrome passed: 7-player dense-expensive control 13250 -> ${pricedChemistry.cost}, direct nodes ${pricedChemistry.directNodes}, Session nodes ${pricedChemistry.nodes}, pages ${pricedChemistry.queries}; synthetic, no EA writes.`);
+    console.log(`Puzzle multi-nation price-led group Chrome passed: ${pricedChemistry.multiCost} coins / chemistry ${pricedChemistry.multiChemistry}, ${pricedChemistry.multiNodes} nodes; synthetic public-shape control, not live prices.`);
   } finally { await page.close(); }
 }
