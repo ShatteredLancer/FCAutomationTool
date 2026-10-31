@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.79
+// @version      27.0.80
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.79", at: Date.now(), status: 'started',
+    state = { version: "27.0.80", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7432,7 +7432,7 @@
     try {
       if (typeof get !== "function" || typeof scope2 !== "string" || !validTarget(target)) return null;
       const record = await get(fc27ConceptDraftKey(scope2, target), null);
-      if (!record || record.schema !== 1 || record.scope !== scope2 || record.phase !== "saved" || record.submitted !== false || !accountMatches(record, context) || record.plan?.challenge?.setId !== target.setId || record.plan?.challenge?.id !== target.challengeId) return null;
+      if (!record || record.schema !== 1 || record.scope !== scope2 || record.phase !== "saved" || record.submitted !== false || record.invalidation !== void 0 || !accountMatches(record, context) || record.plan?.challenge?.setId !== target.setId || record.plan?.challenge?.id !== target.challengeId) return null;
       const refs3 = Array.isArray(record.plan?.slots) ? record.plan.slots.filter((ref) => ref?.kind === "owned" && validReservationId(ref.id) && validReservationId(ref.definitionId) && Number.isSafeInteger(ref.slot) && ref.slot >= 0 && ref.slot < 11).map((ref) => ({ id: ref.id, definitionId: ref.definitionId })) : [];
       if (!refs3.length || refs3.length > 11 || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || new Set(refs3.map((ref) => ref.definitionId)).size !== refs3.length) return null;
       return refs3;
@@ -7602,7 +7602,17 @@
             }
             if (!record || record.schema !== 1 || record.scope !== scope2 || record.submitted !== false || !same11(targetOf(record.plan), target) || !["saved", "save-pending"].includes(record.phase) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId) || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0 || record.updatedAt > now() || !same11(record.plan?.context, context) || !accountMatches(record, record.plan?.context) || pending2?.account && !accountMatches(pending2, record.plan?.context) || pending2 && pending2.operationId !== record.operationId) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
             validate2(record.plan, record.plan, record.plan.owned);
-            if (restartIfEmpty && !pending2 && record.phase === "saved" && (await readCurrent(record.plan)).squadEmpty === true) {
+            if (record.invalidation !== void 0) {
+              const invalidation = record.invalidation;
+              if (pending2 || record.phase !== "saved" || invalidation?.schema !== 1 || invalidation.reason !== "local-squad-cleared" || !Number.isSafeInteger(invalidation.at) || invalidation.at < record.updatedAt || invalidation.at > now()) fail13("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+              return { status: "reset", reason: "FC27_PUZZLE_LOCAL_SQUAD_CLEARED", ...target, saved: false, submitted: false };
+            }
+            if (restartIfEmpty && !pending2 && record.phase === "saved" && (await readCurrent(record.plan, { layoutOnly: true })).squadEmpty === true) {
+              assertCurrent();
+              await store(keyOf2(scope2, target), {
+                ...record,
+                invalidation: { schema: 1, reason: "local-squad-cleared", at: now() }
+              });
               assertCurrent();
               return { status: "reset", reason: "FC27_PUZZLE_LOCAL_SQUAD_CLEARED", ...target, saved: false, submitted: false };
             }
@@ -10620,7 +10630,7 @@
         assertTarget();
         return liveEnabled === true && armed && persistence.inspect().active;
       } }),
-      readCurrent: async (plan) => {
+      readCurrent: async (plan, { layoutOnly = false } = {}) => {
         unchanged();
         assertTarget();
         if (expectedSettings && JSON.stringify(await readPuzzleSettings()) !== JSON.stringify(expectedSettings)) {
@@ -10631,6 +10641,7 @@
         if (!snapshot || snapshot.challenge.status !== "IN_PROGRESS" || snapshot.challenge.eligibilityOperation !== "AND") {
           throw new Error("FC27_CONCEPT_INPUTS_CHANGED");
         }
+        if (layoutOnly) return { squadEmpty: snapshot.layout.squadEmpty };
         const links = readFc27PuzzleClubLinks(root);
         return {
           context,
@@ -10797,6 +10808,9 @@
       if (available !== true) return blocked9("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked9("FC27_PUZZLE_FILL_TARGET_CHANGED");
+      if (nativeOnly && pageSnapshot.challenge.status === "IN_PROGRESS" && pageSnapshot.layout.squadEmpty !== true) {
+        return { ...blocked9("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED"), saved: false, submitted: false };
+      }
       const reservations = await migratePuzzleReservations(setId, challengeId);
       if (nativeOnly && pageSnapshot?.layout?.squadEmpty === true) {
         await releasePuzzleReservations({ setId, challengeId });
@@ -39340,7 +39354,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.79" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.80" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -39682,8 +39696,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.79"}`,
-    version: "27.0.79",
+    title: `FC Automation Tool ${"27.0.80"}`,
+    version: "27.0.80",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

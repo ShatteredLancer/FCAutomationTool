@@ -14,11 +14,11 @@ function fixture() {
       academyEnrolled: false, slot: 10, quantity: 1, observedBuyNow: 500 }], purchaseCount: 1,
   };
   const values = new Map(); let provider;
-  const state = { lost: false, occupied: false, syncFailed: false, cleared: false, manual: false, writes: 0, reads: 0 };
+  const state = { lost: false, occupied: false, syncFailed: false, cleared: false, manual: false, pageEmpty: true, writes: 0, reads: 0 };
   const session = createFc27PuzzleConceptSession({ scope: 'ea:test', context: input.context, get: async (key, fallback) => structuredClone(values.get(key) ?? fallback),
     set: async (key, value) => values.set(key, structuredClone(value)), exclusive: async (_scope, task) => task(),
     checkOtherTransactions: async () => true, operationId: () => 'concept-op',
-    assertCurrent: () => true, readCurrent: async plan => ({ ...input, challenge: plan.challenge, squadEmpty: true }),
+    assertCurrent: () => true, readCurrent: async plan => ({ ...input, challenge: plan.challenge, squadEmpty: state.pageEmpty }),
     createProvider: async () => {
       provider = { cancel: () => {}, validateItems: async ({ selected }) => ({ context: input.context, fresh: true,
         observedAt: Date.now(), items: selected.map(ref => input.inventory.items.find(item => item.id === ref.id)) }),
@@ -120,6 +120,54 @@ it('treats a locally empty page as a new solve intent while retaining the termin
   const before = structuredClone([...x.values]); const reads = x.state.reads;
   expect(await x.session.recover({ setId: 19, challengeId: 43 }, { restartIfEmpty: true })).toMatchObject({
     status: 'reset', reason: 'FC27_PUZZLE_LOCAL_SQUAD_CLEARED', saved: false,
+  });
+  const key = fc27ConceptDraftKey('ea:test', { setId: 19, challengeId: 43 });
+  const { invalidation, ...retained } = x.values.get(key);
+  expect(retained).toEqual(new Map(before).get(key));
+  expect(invalidation).toEqual({ schema: 1, reason: 'local-squad-cleared', at: expect.any(Number) });
+  expect(invalidation.at).toBeGreaterThanOrEqual(retained.updatedAt);
+  expect(invalidation.at).toBeLessThanOrEqual(Date.now());
+  expect([...x.values].filter(([name]) => name !== key)).toEqual(before.filter(([name]) => name !== key));
+  expect(x.state.reads).toBe(reads);
+});
+
+it('does not revive a locally cleared draft after a failed re-solve and session restart', async () => {
+  const x = fixture(); await x.session.save(x.input, x.suggestion);
+  const target = { setId: 19, challengeId: 43 };
+  const reads = x.state.reads;
+  expect(await x.session.recover(target, { restartIfEmpty: true })).toMatchObject({ status: 'reset' });
+  // A failed re-solve writes no replacement. Reopening the native editor can
+  // expose the previously saved server pitch again; that is not new approval.
+  x.state.pageEmpty = false;
+  expect(await x.session.recover(target, { restartIfEmpty: true })).toMatchObject({ status: 'reset', saved: false });
+  expect(x.state.reads).toBe(reads);
+  expect(await readFc27ConceptReservation(async (key, fallback) => x.values.get(key) ?? fallback,
+    'ea:test', target, x.input.context)).toBeNull();
+  expect(x.state.writes).toBe(1);
+});
+
+it('replaces an inactive draft only after a newly approved save succeeds', async () => {
+  const x = fixture(); await x.session.save(x.input, x.suggestion);
+  const target = { setId: 19, challengeId: 43 }, key = fc27ConceptDraftKey('ea:test', target);
+  await x.session.recover(target, { restartIfEmpty: true });
+  expect(x.values.get(key).invalidation).toBeTruthy();
+  expect(await x.session.save(x.input, x.suggestion)).toMatchObject({ status: 'concept-filled', saved: true });
+  expect(x.values.get(key).invalidation).toBeUndefined();
+  expect((await x.session.recover(target)).restored).toBe(true);
+  expect(x.state.writes).toBe(2);
+});
+
+it.each(['pending', 'invalid-time'])('keeps inconsistent inactive evidence blocked: %s', async kind => {
+  const x = fixture(); await x.session.save(x.input, x.suggestion);
+  const target = { setId: 19, challengeId: 43 }, key = fc27ConceptDraftKey('ea:test', target);
+  await x.session.recover(target, { restartIfEmpty: true });
+  if (kind === 'pending') x.values.set(fc27ConceptPendingKey('ea:test', target), {
+    ...target, operationId: x.values.get(key).operationId,
+  });
+  else x.values.get(key).invalidation.at = -1;
+  const before = structuredClone([...x.values]), reads = x.state.reads;
+  expect(await x.session.recover(target, { restartIfEmpty: true })).toMatchObject({
+    status: 'blocked', reason: 'FC27_CONCEPT_JOURNAL_UNCONFIRMED',
   });
   expect([...x.values]).toEqual(before);
   expect(x.state.reads).toBe(reads);

@@ -93,6 +93,8 @@ if (help) {
       await exercisePuzzleAffinity(context);
       const { exercisePuzzleMinimumQuality } = await import('./puzzle-minimum-quality-smoke.mjs');
       await exercisePuzzleMinimumQuality(context);
+      const { exercisePuzzleInvalidation } = await import('./puzzle-invalidation-smoke.mjs');
+      await exercisePuzzleInvalidation(context);
       const { exerciseStreamlined } = await import('./streamlined-smoke.mjs');
       await exerciseStreamlined(context);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');

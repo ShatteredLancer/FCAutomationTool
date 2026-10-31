@@ -34,7 +34,7 @@ export async function readFc27ConceptReservation(get, scope, target, context) {
     if (typeof get !== 'function' || typeof scope !== 'string' || !validTarget(target)) return null;
     const record = await get(fc27ConceptDraftKey(scope, target), null);
     if (!record || record.schema !== 1 || record.scope !== scope || record.phase !== 'saved'
-        || record.submitted !== false || !accountMatches(record, context)
+        || record.submitted !== false || record.invalidation !== undefined || !accountMatches(record, context)
         || record.plan?.challenge?.setId !== target.setId || record.plan?.challenge?.id !== target.challengeId) return null;
     const refs = Array.isArray(record.plan?.slots) ? record.plan.slots
       .filter(ref => ref?.kind === 'owned' && validReservationId(ref.id) && validReservationId(ref.definitionId)
@@ -185,8 +185,21 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
               || pending?.account && !accountMatches(pending, record.plan?.context)
               || pending && pending.operationId !== record.operationId) fail('FC27_CONCEPT_JOURNAL_UNCONFIRMED');
           validate(record.plan, record.plan, record.plan.owned);
+          // Clearing the editor is an explicit decision to stop using this
+          // plan, even if re-solving later fails. Keep the saved evidence but
+          // never turn an old server pitch back into an active cached plan.
+          if (record.invalidation !== undefined) {
+            const invalidation = record.invalidation;
+            if (pending || record.phase !== 'saved' || invalidation?.schema !== 1
+                || invalidation.reason !== 'local-squad-cleared' || !Number.isSafeInteger(invalidation.at)
+                || invalidation.at < record.updatedAt || invalidation.at > now()) fail('FC27_CONCEPT_JOURNAL_UNCONFIRMED');
+            return { status: 'reset', reason: 'FC27_PUZZLE_LOCAL_SQUAD_CLEARED', ...target, saved: false, submitted: false };
+          }
           if (restartIfEmpty && !pending && record.phase === 'saved'
-              && (await readCurrent(record.plan)).squadEmpty === true) {
+              && (await readCurrent(record.plan, { layoutOnly: true })).squadEmpty === true) {
+            assertCurrent();
+            await store(keyOf(scope, target), { ...record,
+              invalidation: { schema: 1, reason: 'local-squad-cleared', at: now() } });
             assertCurrent();
             return { status: 'reset', reason: 'FC27_PUZZLE_LOCAL_SQUAD_CLEARED', ...target, saved: false, submitted: false };
           }

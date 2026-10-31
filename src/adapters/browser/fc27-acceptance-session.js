@@ -223,7 +223,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
     createProvider: () => createFc27TraditionalProvider(root, { canWrite: () => {
       unchanged(); assertTarget(); return liveEnabled === true && armed && persistence.inspect().active;
     } }),
-    readCurrent: async plan => {
+    readCurrent: async (plan, { layoutOnly = false } = {}) => {
       unchanged(); assertTarget();
       if (expectedSettings && JSON.stringify(await readPuzzleSettings()) !== JSON.stringify(expectedSettings)) {
         throw new Error('FC27_PUZZLE_FILL_INPUTS_CHANGED');
@@ -233,6 +233,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       if (!snapshot || snapshot.challenge.status !== 'IN_PROGRESS' || snapshot.challenge.eligibilityOperation !== 'AND') {
         throw new Error('FC27_CONCEPT_INPUTS_CHANGED');
       }
+      // Invalidating an old plan needs the exact current layout, not a valid
+      // new material policy. A broken new policy must not revive the old plan.
+      if (layoutOnly) return { squadEmpty: snapshot.layout.squadEmpty };
       const links = readFc27PuzzleClubLinks(root);
       return { context, challenge: { ...plan.challenge, rawRequirements: snapshot.challenge.requirements,
         formation: snapshot.layout.formation, brickIndices: snapshot.layout.simpleBrickIndices },
@@ -358,6 +361,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
       // a second Set catalog GET is both redundant and prone to EA 429.
       const pageSnapshot = nativeOnly ? readFc27PuzzlePageSnapshot(root, { setId, challengeId }) : null;
       if (nativeOnly && !pageSnapshot) return blocked('FC27_PUZZLE_FILL_TARGET_CHANGED');
+      if (nativeOnly && pageSnapshot.challenge.status === 'IN_PROGRESS' && pageSnapshot.layout.squadEmpty !== true) {
+        return { ...blocked('FC27_PUZZLE_EXISTING_SQUAD_BLOCKED'), saved: false, submitted: false };
+      }
       // Backfill reservations from terminal concept drafts written before the
       // reservation index existed. This is local GM storage only; malformed or
       // account-mismatched drafts are ignored and no EA request is added.
@@ -834,8 +840,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
         if (!result) {
           result = await conceptSession(assertTarget).recover(target, { restartIfEmpty: true });
         }
-        // A terminal draft must not repopulate a locally cleared editor. Keep
-        // its evidence until a new save succeeds; pending saves still recover.
+        // A locally cleared terminal draft is durably inactive. Retain its
+        // evidence, not its permission to restore; pending saves still recover.
         if (result?.status === 'reset') result = null;
         if (!result) {
           const preview = await preparePuzzle(target, assertTarget, progress, true);
