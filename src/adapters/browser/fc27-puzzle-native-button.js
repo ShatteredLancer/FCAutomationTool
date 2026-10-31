@@ -4,6 +4,7 @@ export const formatFc27PuzzleProgress = progress => {
   if (typeof progress === 'string') return stageText[progress] ?? '正在处理…';
   if (!progress || typeof progress !== 'object') return '正在处理…';
   const procurementPhases = { 'repair-seed': '正在寻找补卡起点…', 'query-planning': '正在规划卡池查询…',
+    'catalog-hints': '正在比较其他低价卡群，历史资料仅用于选择查询方向…',
     'catalog-read': '正在读取候选卡池…', 'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
   const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
   const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);

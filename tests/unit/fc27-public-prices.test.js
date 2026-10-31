@@ -18,6 +18,21 @@ function fixture({ legacy = true } = {}) {
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
 
+it('exposes expired cached hints through the account price policy without requests or storage changes', async () => {
+  const f = fixture({ legacy: false });
+  await f.service.load([f.player.definitionId], { purpose: 'puzzle', rows: [f.player] });
+  f.advance();
+  const before = structuredClone([...f.data]), requests = f.gm.mock.calls.length;
+  const hints = await f.service.cachedEstimates([f.player.definitionId]);
+  expect(hints).toEqual({ hintOnly: true, prices: new Map([[f.player.definitionId, 650]]) });
+  expect(f.gm).toHaveBeenCalledTimes(requests);
+  expect(f.transport.getPrices).not.toHaveBeenCalled();
+  expect([...f.data]).toEqual(before);
+  await f.service.saveSettings({ futbinPlatform: 'pc', readSources: 'futbin' });
+  expect((await f.service.cachedEstimates([f.player.definitionId])).prices.size).toBe(0);
+  expect(f.gm).toHaveBeenCalledTimes(requests);
+});
+
 it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined', 'roadmap'])('uses default FUTBIN batches for %s and shares page hits with other purposes', async purpose => {
   const f = fixture({ legacy: false });
   const rows = Array.from({ length: 14 }, (_, i) => ({ ...f.player, definitionId: i + 1000, rating: 84 }));

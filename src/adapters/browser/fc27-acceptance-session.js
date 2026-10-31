@@ -103,7 +103,7 @@ const readCachedCatalog = async (gmGetValue, scope, setId, challengeId = undefin
 };
 
 // Kept in the userscript sandbox. No page-global command, permit or GM bridge.
-export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRequest, lockManager, diagnosticLog, publicPrices = null, liveEnabled = false }) {
+export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmListValues = null, gmRequest, lockManager, diagnosticLog, publicPrices = null, liveEnabled = false }) {
   const context = readFc27Context(root);
   const scope = traditionalJournalScope(context);
   const referencePrice = createFsuReferencePrice({ season: context.season, platform: context.platform,
@@ -120,7 +120,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
   const puzzlePolicyKey = `fcat-fc27-puzzle-policy:${scope}`;
   const procurement = createFc27PuzzleProcurementSession({ createTransport: options => createFc27MarketReadTransport(root, options),
     loadPublicPrices: publicPrices ? (ids, options) => publicPrices.load(ids, options) : null,
-    get: gmGetValue, set: gmSetValue });
+    loadCachedPrices: typeof publicPrices?.cachedEstimates === 'function' ? (ids, options) => publicPrices.cachedEstimates(ids, options) : null,
+    list: gmListValues, get: gmGetValue, set: gmSetValue });
   const readPuzzleSettings = async () => {
     const value = await gmGetValue(puzzlePolicyKey, null);
     if (value === null) return { maxRating: DEFAULT_PUZZLE_MAX_RATING, quoteCeiling: DEFAULT_PUZZLE_QUOTE_CEILING, queriesNumber: 5 };
@@ -927,10 +928,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmRe
           estimatedCost: purchase.estimatedCost ?? d?.estimatedCost, purchaseCount: purchase.purchaseCount,
           ownedCount: purchase.ownedCount, priceSource: d?.priceSource,
           initialEstimatedCost: d?.initialEstimatedCost, refinementPasses: d?.refinementPasses,
+          initialMaterialValue: d?.initialMaterialValue, coveragePages: d?.coveragePages, hintNodes: d?.hintNodes, hintPairs: d?.hintPairs,
           optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
           searchComplete: d?.searchComplete, optimalWithinPool: d?.optimalWithinPool,
           cached: purchase.cacheHits > 0 });
-        for (const [index, query] of (d?.catalogQueries ?? []).slice(0, 3).entries()) await diagnosticLog?.record?.({
+        for (const [index, query] of (d?.catalogQueries ?? []).slice(0, 5).entries()) await diagnosticLog?.record?.({
           area: 'puzzle', event: 'catalog-query', setId: target.setId, challengeId: target.challengeId,
           attempt: index + 1, phase: query.level, queryTeamId: query.team, queryNationId: query.nation,
           queryLeagueId: query.league, offset: query.start, requestedCount: query.count,

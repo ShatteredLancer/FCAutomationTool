@@ -1,0 +1,479 @@
+{
+  "description": "Public native catalogue facts and frozen mixed-time prices, not live offers. Owned rows are synthetic definition/physical IDs with equivalent rating/link/position shape, not actual account inventory. No account identity or original physical item data. One fallback page is explicitly synthetic.",
+  "challenge": {
+    "schema": 1,
+    "mechanism": "traditional-puzzle",
+    "requirementsOperation": "AND",
+    "completed": false,
+    "setId": 75,
+    "id": 115,
+    "slotCount": 11,
+    "formation": {
+      "id": 5,
+      "positions": [0,3,5,5,7,14,14,23,25,25,27]
+    },
+    "brickIndices": [7,8,9,10],
+    "rawRequirements": [
+      {
+        "count": -1,
+        "scope": 0,
+        "pairs": [
+          {
+            "key": 4,
+            "values": [4]
+          }
+        ]
+      },
+      {
+        "count": -1,
+        "scope": 1,
+        "pairs": [
+          {
+            "key": 5,
+            "values": [5]
+          }
+        ]
+      },
+      {
+        "count": -1,
+        "scope": 0,
+        "pairs": [
+          {
+            "key": 8,
+            "values": [2]
+          }
+        ]
+      },
+      {
+        "count": 4,
+        "scope": 0,
+        "pairs": [
+          {
+            "key": 17,
+            "values": [3]
+          }
+        ]
+      },
+      {
+        "count": -1,
+        "scope": 0,
+        "pairs": [
+          {
+            "key": 3,
+            "values": [2]
+          }
+        ]
+      },
+      {
+        "count": -1,
+        "scope": 0,
+        "pairs": [
+          {
+            "key": 35,
+            "values": [20]
+          }
+        ]
+      }
+    ]
+  },
+  "chemistry": {
+    "parameters": [
+      {
+        "id": 1,
+        "thresholds": [
+          {
+            "requirement": 2,
+            "points": 1
+          },
+          {
+            "requirement": 5,
+            "points": 1
+          },
+          {
+            "requirement": 8,
+            "points": 1
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "thresholds": [
+          {
+            "requirement": 3,
+            "points": 1
+          },
+          {
+            "requirement": 5,
+            "points": 1
+          },
+          {
+            "requirement": 8,
+            "points": 1
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "thresholds": [
+          {
+            "requirement": 2,
+            "points": 1
+          },
+          {
+            "requirement": 4,
+            "points": 1
+          },
+          {
+            "requirement": 7,
+            "points": 1
+          }
+        ]
+      }
+    ],
+    "links": {
+      "schema": 1,
+      "complete": true,
+      "links": [[116009,1],[116015,2],[116010,5],[116016,7],[116343,9],[116017,10],[116012,11],[116011,18],[116014,19],[115995,21],[116002,25],[132533,28],[116003,31],[115996,32],[132865,36],[116004,38],[116280,45],[116282,52],[132588,64],[116033,66],[116037,70],[116417,71],[116034,73],[131724,76],[116019,88],[132867,89],[132866,169],[131386,171],[115998,175],[132370,219],[131358,234],[116327,240],[116325,241],[131720,242],[116326,243],[131359,245],[116332,260],[131360,266],[116328,448],[131733,452],[116336,457],[116339,461],[116329,463],[116331,467],[116337,481],[116306,698],[132816,711],[131361,894],[132889,919],[116416,1738],[131725,1799],[116013,1808],[132831,1809],[115997,1824],[132589,1831],[132891,1908],[115999,10029],[131391,110832],[131478,111065],[116302,111140],[116300,111144],[116035,111817],[116021,112172],[116307,112606]]
+    },
+    "maxChemistryPerPlayer": 3,
+    "profilesEnabled": true,
+    "profiles": {
+      "complete": true,
+      "entries": [
+        {
+          "id": 1,
+          "maxChem": false,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "maxChem": true,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 0
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "maxChem": true,
+          "applicableRarityIds": [],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 2,
+              "contribution": 1
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "maxChem": false,
+          "applicableRarityIds": [69],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 1
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 2
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "maxChem": true,
+          "applicableRarityIds": [44],
+          "rules": [
+            {
+              "parameterId": 1,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 2,
+              "calculationType": 1,
+              "contribution": 3
+            },
+            {
+              "parameterId": 3,
+              "calculationType": 1,
+              "contribution": 3
+            }
+          ]
+        }
+      ]
+    },
+    "identities": {
+      "legendClubId": 112658,
+      "legendLeagueId": 2118,
+      "heroClubId": 114605,
+      "hallOfFutClubId": 132794
+    },
+    "superChemRarityIds": [],
+    "rating": {
+      "floatCalculationEnabled": true
+    }
+  },
+  "clubLinks": {
+    "schema": 1,
+    "complete": true,
+    "links": [[116009,1],[116015,2],[116010,5],[116016,7],[116343,9],[116017,10],[116012,11],[116011,18],[116014,19],[115995,21],[116002,25],[132533,28],[116003,31],[115996,32],[132865,36],[116004,38],[116280,45],[116282,52],[132588,64],[116033,66],[116037,70],[116417,71],[116034,73],[131724,76],[116019,88],[132867,89],[132866,169],[131386,171],[115998,175],[132370,219],[131358,234],[116327,240],[116325,241],[131720,242],[116326,243],[131359,245],[116332,260],[131360,266],[116328,448],[131733,452],[116336,457],[116339,461],[116329,463],[116331,467],[116337,481],[116306,698],[132816,711],[131361,894],[132889,919],[116416,1738],[131725,1799],[116013,1808],[132831,1809],[115997,1824],[132589,1831],[132891,1908],[115999,10029],[131391,110832],[131478,111065],[116302,111140],[116300,111144],[116035,111817],[116021,112172],[116307,112606]]
+  },
+  "pages": [
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "silver"
+      },
+      "ageHours": 0,
+      "entries": [
+        {"definitionId":243464,"rating":65,"rarity":0,"nationId":95,"leagueId":39,"teamId":688,"positions":[12,14,18,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":75565,"rating":65,"rarity":0,"nationId":45,"leagueId":54,"teamId":462,"positions":[3,5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":231301,"rating":65,"rarity":0,"nationId":53,"leagueId":1003,"teamId":110968,"positions":[3,10,12,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272977,"rating":65,"rarity":0,"nationId":7,"leagueId":4,"teamId":110913,"positions":[16,18,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":257247,"rating":65,"rarity":0,"nationId":195,"leagueId":60,"teamId":1929,"positions":[12,16,18,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":71258,"rating":65,"rarity":0,"nationId":13,"leagueId":1,"teamId":1786,"positions":[12,14,16,18,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":84444,"rating":65,"rarity":0,"nationId":57,"leagueId":1014,"teamId":114578,"positions":[3],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":76821,"rating":65,"rarity":0,"nationId":52,"leagueId":353,"teamId":1877,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":81512,"rating":65,"rarity":0,"nationId":54,"leagueId":68,"teamId":113142,"positions":[3,7,12,16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":239700,"rating":65,"rarity":0,"nationId":21,"leagueId":2076,"teamId":1826,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":74792,"rating":65,"rarity":0,"nationId":52,"leagueId":353,"teamId":110404,"positions":[12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":278362,"rating":65,"rarity":0,"nationId":13,"leagueId":4,"teamId":681,"positions":[3,12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":80312,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":10020,"positions":[3,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":257863,"rating":65,"rarity":0,"nationId":14,"leagueId":61,"teamId":1928,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":270937,"rating":65,"rarity":0,"nationId":50,"leagueId":60,"teamId":1917,"positions":[14,16,18,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":69990,"rating":65,"rarity":0,"nationId":61,"leagueId":332,"teamId":101059,"positions":[12,16,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":72027,"rating":65,"rarity":0,"nationId":14,"leagueId":60,"teamId":1926,"positions":[5,7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":267761,"rating":65,"rarity":0,"nationId":4,"leagueId":80,"teamId":111822,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":73490,"rating":65,"rarity":0,"nationId":37,"leagueId":66,"teamId":110749,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":277311,"rating":65,"rarity":0,"nationId":45,"leagueId":54,"teamId":100852,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "gold"
+      },
+      "ageHours": 0,
+      "entries": [
+        {"definitionId":208335,"rating":75,"rarity":0,"nationId":21,"leagueId":19,"teamId":25,"positions":[3,5,10],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":77163,"rating":75,"rarity":0,"nationId":10,"leagueId":31,"teamId":1745,"positions":[3,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":264330,"rating":75,"rarity":0,"nationId":22,"leagueId":63,"teamId":393,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":245132,"rating":75,"rarity":0,"nationId":49,"leagueId":332,"teamId":101047,"positions":[3,5,10],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246186,"rating":75,"rarity":0,"nationId":54,"leagueId":1014,"teamId":517,"positions":[25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":211368,"rating":75,"rarity":0,"nationId":38,"leagueId":308,"teamId":234,"positions":[16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":269181,"rating":75,"rarity":0,"nationId":27,"leagueId":16,"teamId":111817,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":263829,"rating":75,"rarity":0,"nationId":38,"leagueId":31,"teamId":110556,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":250941,"rating":75,"rarity":0,"nationId":117,"leagueId":19,"teamId":1831,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":266282,"rating":75,"rarity":0,"nationId":10,"leagueId":39,"teamId":114640,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":222875,"rating":75,"rarity":0,"nationId":110,"leagueId":4,"teamId":673,"positions":[5,7,16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":224030,"rating":75,"rarity":0,"nationId":18,"leagueId":16,"teamId":111817,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":251690,"rating":75,"rarity":0,"nationId":14,"leagueId":13,"teamId":1800,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":143076,"rating":75,"rarity":0,"nationId":52,"leagueId":32,"teamId":110912,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":256402,"rating":75,"rarity":0,"nationId":52,"leagueId":13,"teamId":7,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":212442,"rating":75,"rarity":0,"nationId":38,"leagueId":14,"teamId":110,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272785,"rating":75,"rarity":0,"nationId":18,"leagueId":16,"teamId":69,"positions":[5,7],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":275137,"rating":75,"rarity":0,"nationId":18,"leagueId":350,"teamId":112387,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272207,"rating":75,"rarity":0,"nationId":45,"leagueId":2216,"teamId":116343,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":199803,"rating":75,"rarity":0,"nationId":21,"leagueId":19,"teamId":23,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "gold",
+        "nation": 45
+      },
+      "ageHours": 0,
+      "entries": [
+        {"definitionId":236492,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":480,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":244407,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":452,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272207,"rating":75,"rarity":0,"nationId":45,"leagueId":2216,"teamId":116343,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272038,"rating":75,"rarity":0,"nationId":45,"leagueId":2222,"teamId":131391,"positions":[7],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":273875,"rating":75,"rarity":0,"nationId":45,"leagueId":31,"teamId":1745,"positions":[7,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272109,"rating":75,"rarity":0,"nationId":45,"leagueId":2222,"teamId":116327,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":224146,"rating":75,"rarity":0,"nationId":45,"leagueId":66,"teamId":110745,"positions":[10,14,18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":192678,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":452,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":235312,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":573,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":219953,"rating":75,"rarity":0,"nationId":45,"leagueId":54,"teamId":1861,"positions":[12,16,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":260463,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":242,"positions":[10,14,18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":241856,"rating":75,"rarity":0,"nationId":45,"leagueId":54,"teamId":453,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":279026,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":448,"positions":[3,12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":236760,"rating":75,"rarity":0,"nationId":45,"leagueId":31,"teamId":205,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":240900,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":452,"positions":[3,5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":199564,"rating":75,"rarity":0,"nationId":45,"leagueId":39,"teamId":697,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":50575178,"rating":75,"rarity":0,"nationId":45,"leagueId":53,"teamId":480,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":261224,"rating":75,"rarity":0,"nationId":45,"leagueId":14,"teamId":110,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246139,"rating":75,"rarity":0,"nationId":45,"leagueId":63,"teamId":1884,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":277339,"rating":75,"rarity":0,"nationId":45,"leagueId":2222,"teamId":116327,"positions":[3,7,12,16],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "gold",
+        "team": 449
+      },
+      "ageHours": 192,
+      "entries": [
+        {"definitionId":267430,"rating":75,"rarity":0,"nationId":56,"leagueId":53,"teamId":449,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":252324,"rating":76,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[12,14,16,18,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":267860,"rating":76,"rarity":0,"nationId":52,"leagueId":53,"teamId":449,"positions":[5,7],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":203747,"rating":76,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[3,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":258534,"rating":76,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":241867,"rating":77,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[3,7,12,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246608,"rating":77,"rarity":0,"nationId":83,"leagueId":53,"teamId":449,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246606,"rating":77,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246657,"rating":77,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":198951,"rating":77,"rarity":0,"nationId":110,"leagueId":53,"teamId":449,"positions":[16,25,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":235945,"rating":78,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":245902,"rating":78,"rarity":0,"nationId":25,"leagueId":53,"teamId":449,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":198141,"rating":79,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":237034,"rating":79,"rarity":0,"nationId":56,"leagueId":53,"teamId":449,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":212602,"rating":79,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":277537,"rating":79,"rarity":0,"nationId":54,"leagueId":53,"teamId":449,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":226226,"rating":80,"rarity":0,"nationId":52,"leagueId":53,"teamId":449,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":264432,"rating":81,"rarity":0,"nationId":129,"leagueId":53,"teamId":449,"positions":[16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":255475,"rating":81,"rarity":0,"nationId":54,"leagueId":53,"teamId":449,"positions":[12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":226456,"rating":81,"rarity":0,"nationId":45,"leagueId":53,"teamId":449,"positions":[10,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    },
+    {
+      "query": {
+        "start": 0,
+        "count": 20,
+        "level": "silver",
+        "nation": 38
+      },
+      "ageHours": 384,
+      "entries": [
+        {"definitionId":256204,"rating":65,"rarity":0,"nationId":38,"leagueId":330,"teamId":100757,"positions":[12,14,18,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":269744,"rating":65,"rarity":0,"nationId":38,"leagueId":10,"teamId":100638,"positions":[12,14,18,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272613,"rating":65,"rarity":0,"nationId":38,"leagueId":330,"teamId":110072,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":71981,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":717,"positions":[3,12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":79690,"rating":65,"rarity":0,"nationId":38,"leagueId":16,"teamId":74,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":77733,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":1888,"positions":[3,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":80138,"rating":65,"rarity":0,"nationId":38,"leagueId":189,"teamId":897,"positions":[12,14,18,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":80312,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":10020,"positions":[3,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":277976,"rating":65,"rarity":0,"nationId":38,"leagueId":330,"teamId":110072,"positions":[7],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":276658,"rating":65,"rarity":0,"nationId":38,"leagueId":189,"teamId":10032,"positions":[7,16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":78453,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":1900,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":79608,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":1900,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":197062,"rating":65,"rarity":0,"nationId":38,"leagueId":2149,"teamId":113297,"positions":[3,5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":245278,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":1893,"positions":[3,5,7,10],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":73882,"rating":65,"rarity":0,"nationId":38,"leagueId":308,"teamId":10020,"positions":[3,12,23],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":269409,"rating":66,"rarity":0,"nationId":38,"leagueId":330,"teamId":113449,"positions":[10,12,14,18],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":276452,"rating":66,"rarity":0,"nationId":38,"leagueId":330,"teamId":308,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":273918,"rating":66,"rarity":0,"nationId":38,"leagueId":308,"teamId":717,"positions":[25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":241976,"rating":66,"rarity":0,"nationId":38,"leagueId":308,"teamId":1896,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":73629,"rating":66,"rarity":0,"nationId":38,"leagueId":308,"teamId":1438,"positions":[25],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    }
+  ],
+  "prices": [[143076,800],[192678,2400],[197062,400],[198141,900],[199564,4300],[199803,1100],[203747,2000],[208335,4300],[212442,1000],[212602,1100],[219953,750],[222875,1200],[224030,1200],[224146,1100],[226226,650],[226456,700],[231301,700],[235312,3400],[235945,850],[236492,3100],[236760,2400],[237034,700],[239700,800],[240900,5000],[241856,1300],[241867,1200],[241976,350],[243464,750],[244407,2000],[245132,1500],[245278,350],[245902,900],[246139,1100],[246186,750],[246606,1100],[246608,1100],[246657,950],[250941,950],[251690,950],[252324,1000],[255475,750],[256204,350],[256402,950],[257247,600],[257863,850],[258534,1300],[260463,1900],[261224,1200],[263829,950],[264330,750],[264432,700],[266282,1200],[267430,1100],[267761,600],[267860,950],[269181,2500],[269409,350],[269744,500],[270937,550],[272038,7400],[272109,4400],[272207,3200],[272613,350],[272785,1800],[272977,600],[273875,1700],[273918,350],[275137,3500],[276452,350],[276658,400],[277311,700],[277339,5300],[277537,1000],[277976,450],[278362,600],[279026,3000],[50575178,4100],[69990,850],[71258,600],[71981,350],[72027,3900],[73490,650],[73629,6600],[73882,450],[74792,600],[75565,1000],[76821,1000],[77163,2500],[77733,350],[78453,450],[79608,350],[80138,350],[81512,600],[84444,1000],[8000101,950],[8000102,1700],[244205,750],[279836,650],[271952,1100],[267273,1100],[235405,2800],[261654,1200],[246885,1200],[276119,1100],[259748,1200],[244889,1000],[227890,1500],[264944,950],[189117,1700],[242332,1900],[275888,1400],[201389,1100],[252326,1800],[261837,900],[277426,650]],
+  "owned": [
+    {"id":1,"definitionId":8000101,"type":"player","pile":"club","rating":82,"rarity":0,"nationId":45,"leagueId":2222,"teamId":116336,"positions":[5,10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false,"concept":false,"academyEnrolled":false,"activeTrade":false,"limitedUse":false,"loans":-1,"tradeable":false,"state":"free","locked":null,"activeSquad":null,"protected":false},
+    {"id":2,"definitionId":8000102,"type":"player","pile":"club","rating":76,"rarity":0,"nationId":45,"leagueId":53,"teamId":479,"positions":[7,16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false,"concept":false,"academyEnrolled":false,"activeTrade":false,"limitedUse":false,"loans":-1,"tradeable":false,"state":"free","locked":null,"activeSquad":null,"protected":false}
+  ],
+  "fallbackPages": [
+    {
+      "query": {
+        "start": 20,
+        "count": 20,
+        "level": "gold"
+      },
+      "entries": [
+        {"definitionId":244205,"rating":75,"rarity":0,"nationId":52,"leagueId":353,"teamId":111020,"positions":[18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":279836,"rating":75,"rarity":0,"nationId":52,"leagueId":1014,"teamId":517,"positions":[14,16,18,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":271952,"rating":75,"rarity":0,"nationId":21,"leagueId":2215,"teamId":116003,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":267273,"rating":75,"rarity":0,"nationId":95,"leagueId":2221,"teamId":116300,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":235405,"rating":75,"rarity":0,"nationId":25,"leagueId":13,"teamId":94,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":261654,"rating":75,"rarity":0,"nationId":129,"leagueId":53,"teamId":452,"positions":[3,5,10],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":246885,"rating":75,"rarity":0,"nationId":52,"leagueId":19,"teamId":28,"positions":[3,5,10,12],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":276119,"rating":75,"rarity":0,"nationId":21,"leagueId":19,"teamId":28,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":259748,"rating":75,"rarity":0,"nationId":12,"leagueId":31,"teamId":189,"positions":[5],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":244889,"rating":75,"rarity":0,"nationId":7,"leagueId":10,"teamId":246,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":227890,"rating":75,"rarity":0,"nationId":38,"leagueId":308,"teamId":237,"positions":[7,16,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":264944,"rating":75,"rarity":0,"nationId":18,"leagueId":2218,"teamId":116033,"positions":[10,14,18,25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":189117,"rating":75,"rarity":0,"nationId":47,"leagueId":39,"teamId":113018,"positions":[0],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":242332,"rating":75,"rarity":0,"nationId":95,"leagueId":31,"teamId":205,"positions":[10,14],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":275888,"rating":75,"rarity":0,"nationId":4,"leagueId":2218,"teamId":131724,"positions":[16,18,25,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":201389,"rating":75,"rarity":0,"nationId":27,"leagueId":31,"teamId":54,"positions":[7,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":252326,"rating":75,"rarity":0,"nationId":60,"leagueId":39,"teamId":111065,"positions":[7,10,16],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":261837,"rating":75,"rarity":0,"nationId":38,"leagueId":2228,"teamId":131358,"positions":[25],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":277426,"rating":75,"rarity":0,"nationId":38,"leagueId":4,"teamId":231,"positions":[12,16,23,27],"groups":[],"special":false,"evolution":false,"cosmetic":false},
+        {"definitionId":272785,"rating":75,"rarity":0,"nationId":18,"leagueId":16,"teamId":69,"positions":[5,7],"groups":[],"special":false,"evolution":false,"cosmetic":false}
+      ],
+      "pageEndObserved": false
+    },
+    {
+      "query": {
+        "start": 20,
+        "count": 20,
+        "level": "gold",
+        "nation": 45
+      },
+      "entries": [],
+      "pageEndObserved": true,
+      "provenance": "Synthetic empty continuation control; no recorded response exists for this query."
+    }
+  ]
+}

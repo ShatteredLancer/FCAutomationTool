@@ -71,6 +71,7 @@ import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, readFc27Str
 
 // A new Tampermonkey identity: no legacy or Acceptance storage migration.
 const dependencies = { root: unsafeWindow, gmGetValue: GM_getValue, gmSetValue: GM_setValue,
+  gmListValues: typeof GM_listValues === 'function' ? GM_listValues : null,
   gmRequest: GM_xmlhttpRequest,
   lockManager: unsafeWindow.navigator.locks, liveEnabled: __FCAT_LIVE_ENABLED__ };
 const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: __FCAT_VERSION__ });

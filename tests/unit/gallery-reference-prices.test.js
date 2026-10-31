@@ -1,6 +1,35 @@
 import { it, expect, vi } from 'vitest';
 import { normalizeGalleryPricePolicy, galleryReferenceQuote, createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 
+it('reads expired cached estimates only as hints, without requests, writes, TTL changes or fresh approval rows', async () => {
+  const old = { schema: 2, source: 'futbin', season: '27', platform: 'pc', futbinPlatform: 'ps', definitionId: 1,
+    price: 250, fetchedAt: 1000, expiresAt: 301000, sourceUpdatedAt: null, error: null };
+  const get = vi.fn(async () => structuredClone(old)), set = vi.fn();
+  const readFutbin = vi.fn(async definitionId => ({ definitionId, price: 900 }));
+  const service = createGalleryReferencePrices({ get, set, readFutbin, now: () => 86400000 });
+  const policy = { source: 'futbin', futbinPlatform: 'ps' };
+  const hint = await service.cachedEstimates([1], { platform: 'pc', policy });
+  expect(hint).toEqual({ hintOnly: true, prices: new Map([[1, 250]]) });
+  expect(readFutbin).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled();
+  expect(get.mock.calls[0][0]).toBe('fcat-public-quotes-v2:27:pc:futbin:1:ps');
+  expect(old.expiresAt).toBe(301000);
+  const fresh = await service.load([1], { platform: 'pc', policy, sources: ['futbin'] });
+  expect(fresh.prices).toEqual({ 1: 900 });
+  expect(readFutbin).toHaveBeenCalledTimes(1);
+});
+
+it.each(['source', 'platform', 'version', 'error', 'future', 'too-old'])('rejects a %s mismatch in optional historical estimates', async mode => {
+  const row = { schema: 2, source: 'futbin', season: '27', platform: 'pc', futbinPlatform: 'ps', definitionId: 1,
+    price: 250, fetchedAt: 1000, expiresAt: 301000, sourceUpdatedAt: null, error: null };
+  if (mode === 'source') row.source = 'futgg';
+  if (mode === 'platform') row.futbinPlatform = 'pc';
+  if (mode === 'version') row.definitionId = 2;
+  if (mode === 'error') row.error = 'FC27_PUBLIC_PRICE_HTTP_429';
+  if (mode === 'future') row.fetchedAt = 9999999999;
+  const service = createGalleryReferencePrices({ get: async () => row, now: () => mode === 'too-old' ? 31 * 86400000 : 86400000 });
+  expect((await service.cachedEstimates([1], { platform: 'pc', policy: { source: 'futbin', futbinPlatform: 'ps' } })).prices.size).toBe(0);
+});
+
 it('isolates FUTBIN provider failures by reference platform', async () => {
   const readFutbin = vi.fn(async (definitionId, _row, options) => {
     if (options.futbinPlatform === 'ps') throw Error('FC27_PUBLIC_PRICE_HTTP_429');

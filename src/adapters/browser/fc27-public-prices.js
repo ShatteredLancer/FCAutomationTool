@@ -140,6 +140,13 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       }
     },
     load,
+    async cachedEstimates(ids, options = {}) {
+      const captured = capture(), settings = await policyStore.read(captured.scope); captured.assert();
+      const policy = options.policy ?? settings;
+      if (!publicPriceSourceEnabled(settings, policy.source)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
+      return service.cachedEstimates(ids, { season: captured.context.season, platform: captured.platform, policy,
+        isCurrent: () => { captured.assert(); return options.isCurrent?.() ?? true; } });
+    },
     async preparePurchase(record, options = {}) {
       const captured = capture();
       if (record.scope !== captured.scope) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');

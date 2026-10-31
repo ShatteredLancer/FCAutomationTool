@@ -144,6 +144,25 @@ export function createGalleryReferencePrices({ readFutgg, readFutbin, readFutbin
     return Promise.all(ids.map(id => pending.get(keyOf(source, options, id))));
   };
   return Object.freeze({
+    // Query-direction hints only. No requests, writes, TTL projection or
+    // approval-shaped references; expired prices must never authorize buys.
+    async cachedEstimates(ids, { season = '27', platform, policy = {}, isCurrent = () => true } = {}) {
+      policy = normalizeGalleryPricePolicy(policy);
+      if (season !== '27' || !['pc', 'console'].includes(platform) || !Array.isArray(ids)
+          || ids.length > 1280 || ids.some(id => !positive(id))) throw Error('FC27_PUBLIC_PRICE_INPUT_INVALID');
+      const options = { season, platform, ...(policy.source === 'futbin' && policy.futbinPlatform
+        ? { futbinPlatform: policy.futbinPlatform } : {}) }, prices = new Map();
+      for (const id of new Set(ids)) {
+        if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+        const key = keyOf(policy.source, options, id);
+        let row = cache.get(key);
+        if (!row) { try { row = await get(key, null); } catch { /* Optional historical hint. */ } }
+        if (valid(row, policy.source, options, id) && row.error === null && validPrice(row.price)
+            && now() - row.fetchedAt <= 30 * 86400000) prices.set(id, row.price);
+      }
+      if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+      return { hintOnly: true, prices };
+    },
     async load(ids, { season = '27', platform, rows = [], policy = {}, force = false,
       sources = ['futgg', 'futbin'], forceSources = [], purpose = 'gallery',
       isCurrent = () => true, onProgress = () => {}, quoteTtlMs = ttlMs, futbinBatch = true, deadlineAt = null } = {}) {
