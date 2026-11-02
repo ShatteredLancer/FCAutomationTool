@@ -249,7 +249,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           } }));
           const allOwned = new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size;
           diagnostics.unknownCount = allOwned - valued.prices.size;
-          totalValueMode = diagnostics.unknownCount === 0;
+          // A fully priced incumbent permits a strict lower-cost comparison
+          // within the known-price subset. Unquoted owned cards are excluded
+          // by the joint solver, never treated as zero-cost material. Do not
+          // turn the 250-ID read limit into an "owned is free" objective switch.
+          totalValueMode = diagnostics.unknownCount === 0 || materialCeiling !== null;
           materialPrices = totalValueMode ? valued.prices : null;
           if (valued.approval) {
             publicPolicy = valued.approval.policy;
@@ -260,7 +264,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.unknownCount = new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size;
           diagnostics.localReason = safeReason(error);
         }
-        diagnostics.scopeTruncated = !totalValueMode;
+        diagnostics.scopeTruncated = diagnostics.unknownCount > 0;
         diagnostics.objective = totalValueMode ? 'material-value' : 'additional-coins';
       }
       const planCost = plan => totalValueMode ? plan.materialValue : plan.estimatedCost;

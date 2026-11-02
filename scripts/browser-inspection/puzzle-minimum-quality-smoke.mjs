@@ -10,7 +10,7 @@ export async function exercisePuzzleMinimumQuality(context) {
     const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
       export { minimumQualityFixture } from './tests/helpers/fc27-puzzle-minimum-quality-fixture.js';
       export { pricedChemistryFixture } from './tests/helpers/fc27-puzzle-priced-chemistry-fixture.js';
-      export { goldClubFixture } from './tests/helpers/fc27-puzzle-gold-club-fixture.js';
+      export { goldClubFixture, largeGoldClubFixture } from './tests/helpers/fc27-puzzle-gold-club-fixture.js';
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
       export { prepareFc27PuzzleConceptDraft, validateFc27PuzzleConceptDraft } from './src/fc27/puzzle-concept-draft.js';
       export { suggestFc27PuzzleJointPurchases } from './src/fc27/puzzle-procurement.js';
@@ -87,6 +87,42 @@ export async function exercisePuzzleMinimumQuality(context) {
     assert.ok(goldClub.localNodes < 500 && goldClub.localReason !== 'FC27_PUZZLE_SEARCH_LIMIT');
     assert.ok(goldClub.queries.length <= 3 && goldClub.queries.every(query => query.level === 'gold'));
     console.log(`Puzzle dominant-tier/league-cap Chrome passed: 7-gold/8-player shape, ${goldClub.queries.length} gold pages, ${goldClub.nodes} nodes, local rejection ${goldClub.localNodes} nodes, cached repeat, native concept revalidation, no EA writes; synthetic only.`);
+    const partialValues = await page.evaluate(async () => {
+      const api = globalThis.MinimumQualitySmoke, results = [];
+      for (const count of [250,251]) {
+        const { input,pages } = api.largeGoldClubFixture(count), store = new Map(), batchSizes = [];
+        let writes = 0;
+        const write = () => { writes++; throw Error('Read-only fixture'); };
+        const result = await api.createFc27PuzzleProcurementSession({ now: () => input.now,
+          get: async (key,fallback) => structuredClone(store.get(key) ?? fallback),
+          set: async (key,value) => store.set(key,structuredClone(value)),
+          createTransport: async () => ({ readCatalogPage: async query => ({ status:'observed',source:'ea-defid',season:'27',query,
+            observedAt:input.now,entries:pages.find(row => JSON.stringify(row.query) === JSON.stringify(query))?.entries ?? [] }),
+            readQuotePage:write,buy:write,move:write,save:write,submit:write }),
+          loadPublicPrices: async ids => {
+            batchSizes.push(ids.length);
+            return { policy:{source:'futbin'},references:Object.fromEntries(ids.map(definitionId => [definitionId,
+              {definitionId,season:'27',platform:'pc',quotes:Object.fromEntries(['futgg','futbin'].map(source => [source,
+                {schema:2,source,definitionId,season:'27',platform:'pc',price:definitionId>=2001&&definitionId<4000?200:2000,
+                  fetchedAt:input.now,expiresAt:input.now+300000,sourceUpdatedAt:null,error:null}]))}])) };
+          },
+        }).plan(input,{optimizeMaterialValue:true,materialCeiling:16000});
+        const plan = result.plans?.[0], draft = plan ? api.prepareFc27PuzzleConceptDraft(input,plan) : null;
+        const fresh = plan?.selectedOwned.map(ref => input.inventory.items.find(item => item.id === ref.id)) ?? [];
+        const verified = draft?.status === 'prepared' ? api.validateFc27PuzzleConceptDraft(draft,input,fresh) : null;
+        results.push({count,status:result.status,objective:result.diagnostics.objective,scopeTruncated:result.diagnostics.scopeTruncated,
+          cost:plan?.materialValue,chemistry:plan?.teamFacts.chemistry,nodes:result.diagnostics.nodes,batchSizes,writes,
+          draft:draft?.status,verified:verified?.status});
+      }
+      return results;
+    });
+    for (const row of partialValues) {
+      assert.equal(row.status,'suggested'); assert.equal(row.objective,'material-value');
+      assert.equal(row.scopeTruncated,row.count>250); assert.ok(row.cost < 16000);
+      assert.ok(row.chemistry>=22 && row.nodes<=50000 && row.batchSizes.every(size=>size<=250));
+      assert.equal(row.draft,'prepared'); assert.equal(row.verified,'verified'); assert.equal(row.writes,0);
+    }
+    console.log(`Puzzle bounded valuation Chrome passed: 250/251 safe versions, known-price subset, costs ${partialValues.map(row=>row.cost).join('/')}, <=250 per quote, native concept revalidation, no EA writes; synthetic only.`);
     const cost = await page.evaluate(() => {
       const api = globalThis.MinimumQualitySmoke, { input, entries } = api.minimumQualityFixture(1);
       input.challenge.rawRequirements = input.challenge.rawRequirements.filter(rule => rule.pairs[0].key === 3);

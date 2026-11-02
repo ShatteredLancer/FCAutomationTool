@@ -29,3 +29,12 @@ export function goldClubFixture() {
     ...pages[1].entries.slice(4,7), input.inventory.items.find(item => item.positions[0] === 15)];
   return { input, pages, known };
 }
+
+// Large-inventory valuation boundary control. Not a real-account replay.
+export function largeGoldClubFixture(count = 251) {
+  const { input, pages, known } = goldClubFixture(), base = input.inventory.items[0];
+  input.inventory.items = known.map((item, index) => ({ ...base, ...item, id: index + 1, definitionId: 1001 + index }));
+  for (let index = 8; index < count; index++) input.inventory.items.push({ ...base, id: index + 1, definitionId: 10000 + index,
+    rating: 78, teamId: 10000 + index, leagueId: 10000 + index, nationId: 1, positions: [5] });
+  return { input, pages };
+}

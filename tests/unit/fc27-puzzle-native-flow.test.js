@@ -113,14 +113,22 @@ it('runs the real page reader, planner, session and provider with one selected-C
 });
 
 it('keeps the native owned save contract and reports total material value after public-price refinement', async () => {
+  const store=new Map();
+  const diagnosticLog=createFcatDiagnosticLog({gmGetValue:(key,fallback)=>store.get(key)??fallback,
+    gmSetValue:(key,value)=>store.set(key,value),version:'27.0.84'});
   const publicPrices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' },
     references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId, season: '27', platform: 'pc',
       quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source,
         definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: Date.now(),
         sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
-  const x = fixture({ publicPrices });
-  expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false,
+  const x = fixture({ publicPrices,diagnosticLog });
+  const result=await x.fill();
+  expect(result).toMatchObject({ status: 'filled', saved: true, submitted: false,
     materialValue: 2200, inventoryValue: 2200 });
+  expect(result.procurementSummary).toBeDefined();
+  const payload=await diagnosticLog.exportPayload();
+  expect(payload.entries).toEqual(expect.arrayContaining([expect.objectContaining({area:'puzzle',event:'procurement-result',
+    status:result.procurementSummary.status,reason:result.procurementSummary.reason})]));
   expect(publicPrices.load.mock.calls.length).toBeGreaterThanOrEqual(1);
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
   expect(x.calls.some(call => call.kind === 'bid')).toBe(false);

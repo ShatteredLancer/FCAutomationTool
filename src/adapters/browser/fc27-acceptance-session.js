@@ -429,6 +429,17 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           } })) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
           if (compareOwnedCost) {
             const best = purchaseSuggestion.plans?.[0];
+            // A retained owned baseline still needs the comparison outcome.
+            // Keep only the existing aggregate diagnostic contract, never the
+            // rejected private plan or an implicit purchase authorization.
+            try {
+              privateData.procurementSummary = { status: purchaseSuggestion.status, reason: purchaseSuggestion.reason,
+                requests: purchaseSuggestion.requests, cacheHits: purchaseSuggestion.cacheHits,
+                diagnostics: { ...purchaseSuggestion.diagnostics },
+                ...(best ? { purchaseCount: best.purchaseCount, ownedCount: best.selectedOwned?.length,
+                  estimatedCost: best.estimatedCost, materialValue: best.materialValue ?? null,
+                  inventoryValue: best.inventoryValue ?? null, valueReason: best.valueReason } : {}) };
+            } catch { /* Optional diagnostics cannot change the selected squad. */ }
             const improves = purchaseSuggestion.status === 'suggested' && Number.isSafeInteger(best?.materialValue)
               && best.materialValue < preview.materialValue && purchaseSuggestion.diagnostics?.priceSource === preview.priceSource
               && preview.valueExpiresAt > Date.now();
@@ -603,6 +614,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         else native.cancel();
       }
       return { ...report, catalogSource: catalogRead.source,
+        ...(privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {}),
         materialValue: privateData?.preview?.materialValue, inventoryValue: privateData?.preview?.inventoryValue,
         initialMaterialValue: privateData?.preview?.initialMaterialValue,
         valueReason: privateData?.preview?.valueReason,
@@ -860,6 +872,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
             result = await executePuzzle({ approved: true, action: 'fill-only', count: 1,
               setId: target.setId, challengeId: target.challengeId, maxPlayers: preparedPuzzle.plan.selected.length,
               maxRating: preparedPuzzle.plan.policy.maxRating });
+            if (preview.procurementSummary) result = { ...result, procurementSummary: preview.procurementSummary };
             if (result.status === 'filled') result = preview.valueExpiresAt > Date.now()
               ? { ...result, materialValue: preview.materialValue, inventoryValue: preview.inventoryValue, valueReason: preview.valueReason }
               : { ...result, ...(preview.valueReason ? { valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' } : {}) };

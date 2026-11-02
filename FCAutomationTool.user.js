@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.83
+// @version      27.0.84
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.83", at: Date.now(), status: 'started',
+    state = { version: "27.0.84", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6895,7 +6895,7 @@
               } }));
               const allOwned = new Set(puzzleOwnedValueCandidates(input).map((item2) => item2.definitionId)).size;
               diagnostics.unknownCount = allOwned - valued.prices.size;
-              totalValueMode = diagnostics.unknownCount === 0;
+              totalValueMode = diagnostics.unknownCount === 0 || materialCeiling !== null;
               materialPrices = totalValueMode ? valued.prices : null;
               if (valued.approval) {
                 publicPolicy = valued.approval.policy;
@@ -6908,7 +6908,7 @@
               diagnostics.unknownCount = new Set(puzzleOwnedValueCandidates(input).map((item2) => item2.definitionId)).size;
               diagnostics.localReason = safeReason3(error2);
             }
-            diagnostics.scopeTruncated = !totalValueMode;
+            diagnostics.scopeTruncated = diagnostics.unknownCount > 0;
             diagnostics.objective = totalValueMode ? "material-value" : "additional-coins";
           }
           const planCost = (plan) => totalValueMode ? plan.materialValue : plan.estimatedCost;
@@ -11292,6 +11292,24 @@
           })) ?? blocked9("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
           if (compareOwnedCost) {
             const best = purchaseSuggestion.plans?.[0];
+            try {
+              privateData.procurementSummary = {
+                status: purchaseSuggestion.status,
+                reason: purchaseSuggestion.reason,
+                requests: purchaseSuggestion.requests,
+                cacheHits: purchaseSuggestion.cacheHits,
+                diagnostics: { ...purchaseSuggestion.diagnostics },
+                ...best ? {
+                  purchaseCount: best.purchaseCount,
+                  ownedCount: best.selectedOwned?.length,
+                  estimatedCost: best.estimatedCost,
+                  materialValue: best.materialValue ?? null,
+                  inventoryValue: best.inventoryValue ?? null,
+                  valueReason: best.valueReason
+                } : {}
+              };
+            } catch {
+            }
             const improves = purchaseSuggestion.status === "suggested" && Number.isSafeInteger(best?.materialValue) && best.materialValue < preview.materialValue && purchaseSuggestion.diagnostics?.priceSource === preview.priceSource && preview.valueExpiresAt > Date.now();
             if (!improves) {
               preview = preview.valueExpiresAt > Date.now() ? { ...preview, valueReason: "FC27_PUZZLE_VALUE_BASELINE_RETAINED" } : { ...preview, materialValue: null, inventoryValue: null, valueReason: "FC27_BUY_REFERENCE_PRICE_EXPIRED" };
@@ -11507,6 +11525,7 @@
       return {
         ...report,
         catalogSource: catalogRead.source,
+        ...privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {},
         materialValue: privateData?.preview?.materialValue,
         inventoryValue: privateData?.preview?.inventoryValue,
         initialMaterialValue: privateData?.preview?.initialMaterialValue,
@@ -11863,6 +11882,7 @@
                 maxPlayers: preparedPuzzle.plan.selected.length,
                 maxRating: preparedPuzzle.plan.policy.maxRating
               });
+              if (preview.procurementSummary) result = { ...result, procurementSummary: preview.procurementSummary };
               if (result.status === "filled") result = preview.valueExpiresAt > Date.now() ? { ...result, materialValue: preview.materialValue, inventoryValue: preview.inventoryValue, valueReason: preview.valueReason } : { ...result, ...preview.valueReason ? { valueReason: "FC27_BUY_REFERENCE_PRICE_EXPIRED" } : {} };
             }
           }
@@ -39743,7 +39763,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.83" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.84" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -40085,8 +40105,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.83"}`,
-    version: "27.0.83",
+    title: `FC Automation Tool ${"27.0.84"}`,
+    version: "27.0.84",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
