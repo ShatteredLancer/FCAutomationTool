@@ -362,6 +362,51 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
     const resolveClub = createFc27ClubResolver(input.clubLinks);
     if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
     const candidates = [...pool.candidates, ...marketCandidates(input, entries)];
+    const dominant = parsed.rules.filter(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
+      && rule.qualities.length === 1 && rule.count > required(input) / 2)
+      .sort((a, b) => b.count - a.count)[0];
+    const leagueCap = Math.min(required(input), ...parsed.rules.filter(rule => rule.kind === 'same-league' && rule.mode !== 'min')
+      .map(rule => rule.value));
+    if (chemistryNeeded && dominant && leagueCap < dominant.count
+        && !parsed.rules.some(rule => ['from-clubs', 'from-leagues', 'from-nations'].includes(rule.kind))) {
+      // A dominant tier cannot all come from one league under its native cap.
+      // Grow that tier across known dense clubs, including clubs currently
+      // represented only by a lower tier. These are discovery hints, never
+      // eligibility facts or proof of supply. Preserve all three read limits.
+      const level = levelOf(dominant.qualities[0]);
+      if (allowedFc27MarketTiers(parsed.rules, input.policy).some(tier => tier.level === level)) {
+        const leagues = new Map(), groups = new Map();
+        for (const item of candidates) {
+          if (!positive(item.teamId) || !positive(item.leagueId)) continue;
+          if (!groups.has(item.teamId)) groups.set(item.teamId, { team: item.teamId, league: item.leagueId, all: new Set(), tier: new Set() });
+          const group = groups.get(item.teamId); group.all.add(item.definitionId);
+          if (levelOf(quality(item.rating)) !== level) continue;
+          group.tier.add(item.definitionId);
+          if (!leagues.has(item.leagueId)) leagues.set(item.leagueId, new Set());
+          leagues.get(item.leagueId).add(item.definitionId);
+        }
+        const unused = query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query));
+        const ranked = [...groups.values()].sort((a, b) =>
+          Number((leagues.get(a.league)?.size ?? 0) >= leagueCap) - Number((leagues.get(b.league)?.size ?? 0) >= leagueCap)
+          || b.tier.size - a.tier.size || b.all.size - a.all.size || a.team - b.team);
+        const otherMissing = missing.filter(rule => !rule.qualities.includes(dominant.qualities[0]));
+        if (ranked.length && ranked.every(group => (leagues.get(group.league)?.size ?? 0) >= leagueCap)
+            && [...leagues.values()].reduce((sum, ids) => sum + Math.min(leagueCap, ids.size), 0) < dominant.count) {
+          const query = { start: 0, count: 20, level };
+          if (unused(query)) add(query);
+        }
+        for (const group of ranked) {
+          const query = { start: 0, count: 20, level, team: group.team };
+          if (queries.length < 3 - Math.min(1, otherMissing.length) && unused(query)) add(query);
+        }
+        if (!queries.length) {
+          const query = { start: 0, count: 20, level };
+          if (unused(query)) add(query);
+        }
+        for (const rule of otherMissing) add({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+        if (queries.length) return { status: 'ready', executable: false, queries, complete: false };
+      }
+    }
     if (clubs.length && tiers.length > 1) {
       const unused = query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query));
       // OR clubs share one requirement. Reserve one identity lane at a time;

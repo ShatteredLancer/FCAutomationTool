@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.82
+// @version      27.0.83
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.82", at: Date.now(), status: 'started',
+    state = { version: "27.0.83", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -4364,6 +4364,17 @@
       entry.used = 0;
       for (let i = candidates.length - 1; i >= 0; i--) entry.suffix[i] = entry.suffix[i + 1] + Number(entry.matches[i]);
     }
+    const sameCaps = new Map(relations.filter((rule) => rule.kind.startsWith("same-") && rule.mode !== "min").map((rule) => [rule, counted.filter((entry) => entry.rule.mode !== "max" && entry.rule.count > 0).map((entry) => ({
+      entry,
+      groups: groupSuffixIndex(rule, candidates, resolveClub)
+    }))]));
+    for (const predicates of sameCaps.values()) for (const predicate2 of predicates) {
+      for (const [group, indices] of predicate2.groups) {
+        const matching = indices.filter((index) => predicate2.entry.matches[index]);
+        if (matching.length) predicate2.groups.set(group, matching);
+        else predicate2.groups.delete(group);
+      }
+    }
     const slots = Array.from({ length: challenge.slotCount }, (_, index) => index).filter((index) => !challenge.brickIndices.includes(index));
     const chosen = [];
     const definitions = /* @__PURE__ */ new Set();
@@ -4443,6 +4454,15 @@
         const actual = rule.kind.startsWith("distinct-") ? counts.size : Math.max(0, ...counts.values());
         if (rule.mode !== "min" && actual > rule.value || rule.mode !== "max" && actual + remaining < rule.value) return;
         if (groupCaps.has(rule) && remainingGroupCapacity(groupCaps.get(rule), counts, start, rule.value - counts.size) < remaining) return;
+        for (const { entry, groups } of sameCaps.get(rule) ?? []) {
+          if (entry.used >= entry.rule.count) continue;
+          let capacity = 0;
+          for (const [group, indices] of groups) {
+            capacity += Math.min(Math.max(0, rule.value - (counts.get(group) ?? 0)), suffixSize(indices, start));
+            if (entry.used + Math.min(remaining, capacity) >= entry.rule.count) break;
+          }
+          if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
+        }
       }
       if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
       if (chosen.length === required2) {
@@ -5944,6 +5964,41 @@
       const resolveClub = createFc27ClubResolver(input.clubLinks);
       if (!resolveClub) return stop4("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
       const candidates = [...pool.candidates, ...marketCandidates(input, entries2)];
+      const dominant = parsed.rules.filter((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.qualities.length === 1 && rule.count > required(input) / 2).sort((a, b) => b.count - a.count)[0];
+      const leagueCap = Math.min(required(input), ...parsed.rules.filter((rule) => rule.kind === "same-league" && rule.mode !== "min").map((rule) => rule.value));
+      if (chemistryNeeded && dominant && leagueCap < dominant.count && !parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind))) {
+        const level2 = levelOf(dominant.qualities[0]);
+        if (allowedFc27MarketTiers(parsed.rules, input.policy).some((tier) => tier.level === level2)) {
+          const leagues2 = /* @__PURE__ */ new Map(), groups = /* @__PURE__ */ new Map();
+          for (const item2 of candidates) {
+            if (!positive7(item2.teamId) || !positive7(item2.leagueId)) continue;
+            if (!groups.has(item2.teamId)) groups.set(item2.teamId, { team: item2.teamId, league: item2.leagueId, all: /* @__PURE__ */ new Set(), tier: /* @__PURE__ */ new Set() });
+            const group = groups.get(item2.teamId);
+            group.all.add(item2.definitionId);
+            if (levelOf(quality2(item2.rating)) !== level2) continue;
+            group.tier.add(item2.definitionId);
+            if (!leagues2.has(item2.leagueId)) leagues2.set(item2.leagueId, /* @__PURE__ */ new Set());
+            leagues2.get(item2.leagueId).add(item2.definitionId);
+          }
+          const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
+          const ranked = [...groups.values()].sort((a, b) => Number((leagues2.get(a.league)?.size ?? 0) >= leagueCap) - Number((leagues2.get(b.league)?.size ?? 0) >= leagueCap) || b.tier.size - a.tier.size || b.all.size - a.all.size || a.team - b.team);
+          const otherMissing = missing.filter((rule) => !rule.qualities.includes(dominant.qualities[0]));
+          if (ranked.length && ranked.every((group) => (leagues2.get(group.league)?.size ?? 0) >= leagueCap) && [...leagues2.values()].reduce((sum2, ids2) => sum2 + Math.min(leagueCap, ids2.size), 0) < dominant.count) {
+            const query = { start: 0, count: 20, level: level2 };
+            if (unused(query)) add3(query);
+          }
+          for (const group of ranked) {
+            const query = { start: 0, count: 20, level: level2, team: group.team };
+            if (queries.length < 3 - Math.min(1, otherMissing.length) && unused(query)) add3(query);
+          }
+          if (!queries.length) {
+            const query = { start: 0, count: 20, level: level2 };
+            if (unused(query)) add3(query);
+          }
+          for (const rule of otherMissing) add3({ start: 0, count: 20, level: levelOf(rule.qualities[0]) });
+          if (queries.length) return { status: "ready", executable: false, queries, complete: false };
+        }
+      }
       if (clubs.length && tiers2.length > 1) {
         const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
         for (const rule of clubs) {
@@ -39688,7 +39743,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.82" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.83" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -40030,8 +40085,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.82"}`,
-    version: "27.0.82",
+    title: `FC Automation Tool ${"27.0.83"}`,
+    version: "27.0.83",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

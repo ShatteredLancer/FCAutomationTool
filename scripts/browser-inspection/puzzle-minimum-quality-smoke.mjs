@@ -10,6 +10,7 @@ export async function exercisePuzzleMinimumQuality(context) {
     const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
       export { minimumQualityFixture } from './tests/helpers/fc27-puzzle-minimum-quality-fixture.js';
       export { pricedChemistryFixture } from './tests/helpers/fc27-puzzle-priced-chemistry-fixture.js';
+      export { goldClubFixture } from './tests/helpers/fc27-puzzle-gold-club-fixture.js';
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
       export { prepareFc27PuzzleConceptDraft, validateFc27PuzzleConceptDraft } from './src/fc27/puzzle-concept-draft.js';
       export { suggestFc27PuzzleJointPurchases } from './src/fc27/puzzle-procurement.js';
@@ -50,6 +51,42 @@ export async function exercisePuzzleMinimumQuality(context) {
       assert.ok(row.queries.length<=3); assert.ok(row.queries.some(query=>query.team===1001));
       assert.ok(row.queries.some(query=>query.nation===row.nation));
     }
+    const goldClub = await page.evaluate(async () => {
+      const api = globalThis.MinimumQualitySmoke, { input, pages } = api.goldClubFixture();
+      const store = new Map(), queries = []; let writes = 0;
+      const write = () => { writes++; throw Error('Read-only fixture'); };
+      const local = api.suggestFc27PuzzleJointPurchases(input, pages[0].entries,
+        { prices: new Map(pages[0].entries.map(card => [card.definitionId, 200])) });
+      const session = api.createFc27PuzzleProcurementSession({ now: () => input.now,
+        get: async (key, fallback) => structuredClone(store.get(key) ?? fallback),
+        set: async (key, value) => store.set(key, structuredClone(value)),
+        createTransport: async () => ({ readCatalogPage: async query => {
+          queries.push(query); return { status: 'observed', source: 'ea-defid', season: '27', query,
+            observedAt: input.now, entries: pages.find(row => JSON.stringify(row.query) === JSON.stringify(query))?.entries ?? [] };
+        }, readQuotePage: write, buy: write, move: write, save: write, submit: write }),
+        loadPublicPrices: async ids => ({ policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+          { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source,
+            { schema: 2, source, definitionId, season: '27', platform: 'pc', price: source === 'futbin' ? 200 : null,
+              fetchedAt: input.now, expiresAt: input.now + 300000, sourceUpdatedAt: null,
+              error: source === 'futbin' ? null : 'FC27_PUBLIC_PRICE_NOT_REQUESTED' }])) }])) }),
+      });
+      const first = await session.plan(input, { optimizeMaterialValue: true });
+      const draft = first.plans?.[0] ? api.prepareFc27PuzzleConceptDraft(input, first.plans[0]) : null;
+      const freshOwned = first.plans?.[0]?.selectedOwned.map(ref => input.inventory.items.find(item => item.id === ref.id)) ?? [];
+      const verified = draft?.status === 'prepared' ? api.validateFc27PuzzleConceptDraft(draft, input, freshOwned) : null;
+      const second = await session.plan(input, { optimizeMaterialValue: true });
+      return { status: first.status, repeated: second.status, repeatedRequests: second.requests, queries, writes,
+        nodes: first.diagnostics.nodes, localNodes: local.nodes, localReason: local.reason,
+        draft: draft?.status, verified: verified?.status, chemistry: first.plans?.[0]?.teamFacts.chemistry,
+        gold: [...(first.plans?.[0]?.selectedOwned ?? []), ...(first.plans?.[0]?.purchases ?? [])].filter(card => card.rating >= 75).length };
+    });
+    assert.equal(goldClub.status, 'suggested'); assert.equal(goldClub.repeated, 'suggested');
+    assert.equal(goldClub.repeatedRequests, 0); assert.equal(goldClub.writes, 0);
+    assert.ok(goldClub.gold >= 7 && goldClub.chemistry >= 22 && goldClub.nodes <= 50000);
+    assert.equal(goldClub.draft, 'prepared'); assert.equal(goldClub.verified, 'verified');
+    assert.ok(goldClub.localNodes < 500 && goldClub.localReason !== 'FC27_PUZZLE_SEARCH_LIMIT');
+    assert.ok(goldClub.queries.length <= 3 && goldClub.queries.every(query => query.level === 'gold'));
+    console.log(`Puzzle dominant-tier/league-cap Chrome passed: 7-gold/8-player shape, ${goldClub.queries.length} gold pages, ${goldClub.nodes} nodes, local rejection ${goldClub.localNodes} nodes, cached repeat, native concept revalidation, no EA writes; synthetic only.`);
     const cost = await page.evaluate(() => {
       const api = globalThis.MinimumQualitySmoke, { input, entries } = api.minimumQualityFixture(1);
       input.challenge.rawRequirements = input.challenge.rawRequirements.filter(rule => rule.pairs[0].key === 3);

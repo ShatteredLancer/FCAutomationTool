@@ -532,6 +532,21 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     entry.suffix = Array(candidates.length + 1).fill(0); entry.used = 0;
     for (let i = candidates.length - 1; i >= 0; i--) entry.suffix[i] = entry.suffix[i + 1] + Number(entry.matches[i]);
   }
+  // Couple item minima (e.g. seven gold) to same-group upper bounds (e.g.
+  // four per league). Plain suffix headcount counted unusable fifth/sixth
+  // league members, leaving 50k dead combinations before any placement.
+  // Group suffixes count physical copies and ignore other conflicts, so this
+  // is an optimistic capacity bound, never a new material restriction.
+  const sameCaps = new Map(relations.filter(rule => rule.kind.startsWith('same-') && rule.mode !== 'min')
+    .map(rule => [rule, counted.filter(entry => entry.rule.mode !== 'max' && entry.rule.count > 0).map(entry => ({ entry,
+      groups: groupSuffixIndex(rule, candidates, resolveClub),
+    }))]));
+  for (const predicates of sameCaps.values()) for (const predicate of predicates) {
+    for (const [group, indices] of predicate.groups) {
+      const matching = indices.filter(index => predicate.entry.matches[index]);
+      if (matching.length) predicate.groups.set(group, matching); else predicate.groups.delete(group);
+    }
+  }
   const slots = Array.from({ length: challenge.slotCount }, (_, index) => index).filter(index => !challenge.brickIndices.includes(index));
   const chosen = []; const definitions = new Set(); let nodes = 0; let found = null; let unavailable = null; let exhausted = false;
   let deferredPlacements = false;
@@ -589,6 +604,15 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       // remaining slot within the distinct-group cap. Reject dead branches
       // before enumerating their combinations or expensive chemistry layouts.
       if (groupCaps.has(rule) && remainingGroupCapacity(groupCaps.get(rule), counts, start, rule.value - counts.size) < remaining) return;
+      for (const { entry, groups } of sameCaps.get(rule) ?? []) {
+        if (entry.used >= entry.rule.count) continue;
+        let capacity = 0;
+        for (const [group, indices] of groups) {
+          capacity += Math.min(Math.max(0, rule.value - (counts.get(group) ?? 0)), suffixSize(indices, start));
+          if (entry.used + Math.min(remaining, capacity) >= entry.rule.count) break;
+        }
+        if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
+      }
     }
     if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
     if (chosen.length === required) {
