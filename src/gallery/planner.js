@@ -77,6 +77,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
   return {
     targetGrade, threshold, reached, currentScore, addedScore: Number.isFinite(scoreOf(state)) ? scoreOf(state) - currentScore : null,
     score: Number.isFinite(scoreOf(state)) ? scoreOf(state) : null,
+    lineupComplete: state.summary?.full === true,
     items: state.items.map(item => ({ ...item })),
     totalPrice: missingPriceIds.length ? null : state.price,
     missingPriceIds, estimated,
@@ -87,7 +88,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
 }
 
 export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, targetGrade,
-  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null, lineupSearch = false } = {}) {
+  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null, lineupSearch = false, scoreProbe = false } = {}) {
   if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 100000) {
     return { status: 'unavailable', reason: 'search-options-invalid' };
@@ -388,6 +389,8 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
         totalPrice: best.unknownPrice ? null : best.price, missingCards: best.ids.length,
         items: best.items.map(item => ({ eaId: item.eaId, name: item.name ?? null,
           score: item.score ?? item.gradingScore ?? null, price: item.price ?? null })) } : null,
+      ...(scoreProbe && best?.summary?.full === true && !best.unknownPrice
+        ? {bestScoringCandidate:materialize(best,targetGrade,threshold,scoreOf(base))}:{}),
       missingPriceCount: requestedCandidates - quotedCandidateCount,
       candidateCount: candidates.length, omittedCandidates, requestedCandidates, quotedCandidateCount,
       scoreSourceCounts, evaluations, searchComplete: searchComplete && unknownRows.length === 0,

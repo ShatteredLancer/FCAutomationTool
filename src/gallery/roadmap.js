@@ -9,9 +9,10 @@ import { createGalleryRoadmapWork } from './roadmap-work.js';
 // A deadline keeps the completed rows, explicitly identifying unfinished work.
 export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLimit = null, resaleDiscountBps = 0,
   gradePlanner = planGalleryGradeSteps, previousRows = [], previousSelection = [], fastReferences = false,
-  work = createGalleryRoadmapWork(), rowsOnly = false, referenceRefine = true, retainWork = false } = {}) {
+  work = createGalleryRoadmapWork(), rowsOnly = false, referenceRefine = true, retainWork = false, objective = 'tokens' } = {}) {
   work.bind(targets, capital, gradePlanner, fastReferences);
   const rows = [], key = 'event_token_1';
+  const scoreMode = objective === 'score';
   const previous = new Map(previousRows.map(row => [row.setId, structuredClone(row)]));
   let stopped = false, gradesChecked = 0;
   for (const [index, target] of targets.entries()) {
@@ -37,8 +38,21 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
     row.currentGrade = currentGrade?.name ?? null; row.currentScore = base.low.total;
     row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key) : 0;
     row.collectionUnknown = !!base.collectionUnknown;
+    if(scoreMode){
+      // A known complete lineup may still have an uncertain First Owner bonus.
+      // Compare the new low bound with the old high bound, not two optimistic deltas.
+      row.scoreBaseline=base.collectionUnknown?null:base.full?(base.high?.total ?? base.low.total):0;
+      row.scoreUncertain=base.low.total!==base.high?.total;
+    }
     row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
-    const grades = set.grades.filter(grade => galleryCumulativeRewardQuantity(set, grade.threshold, key) > row.baselineTokens);
+    const grades = set.grades.filter(grade => scoreMode ? grade.threshold>(row.scoreBaseline ?? Infinity)
+      : galleryCumulativeRewardQuantity(set, grade.threshold, key) > row.baselineTokens);
+    if(scoreMode && row.scoreBaseline!==null && (!fastReferences || referenceRefine)){
+      // Two bounded local score probes also cover improvements inside a grade
+      // and above S. They are NOT Gallery XP or level thresholds.
+      for(const threshold of [...new Set([row.scoreBaseline+1,Math.max(row.scoreBaseline+1,Math.ceil(row.scoreBaseline*1.5))])])
+        if(threshold<=100000000)grades.push({name:`points:${threshold}`,threshold,numeric:true});
+    }
     if(rowsOnly)grades.sort((a,b)=>({S:5,A:4,B:3,C:2,D:1}[b.name] ?? 0)-({S:5,A:4,B:3,C:2,D:1}[a.name] ?? 0));
     const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter(card =>
       isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
@@ -50,10 +64,11 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
         allowCapturedForecast: fastReferences, refine: referenceRefine })) : { complete: true, value: null };
       if (!reference.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
       const verified = reference.value;
-      const local = !fastReferences ? yield* work.run(target, `grade:${grade.name}`,
-        () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1, scoreSummarizer: scorer })) : null;
+      const local = !fastReferences || scoreMode && grade.numeric ? yield* work.run(target, `grade:${grade.name}`,
+        () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.numeric?grade.threshold:grade.name,
+          ...(grade.numeric?{maxEvaluations:6000,beamWidth:48,lineupSearch:true,scoreProbe:true}:{}), maxPlans: 1, scoreSummarizer: scorer })) : null;
       if (local && !local.complete) { row.reason ??= 'search-time-exhausted'; stopped = true; break; }
-      const result = fastReferences ? verified ? { status: 'ready', plans: [verified], searchComplete: false }
+      const result = !local ? verified ? { status: 'ready', plans: [verified], searchComplete: false }
         : { status: 'partial', reason: 'deep-analysis-pending', plans: [] }
         : local.value;
       if (!fastReferences && verified && result.status !== 'achieved'
@@ -61,11 +76,13 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
         result.status = 'ready'; result.plans = [verified]; result.searchComplete = false;
       }
       gradesChecked++;
-      const candidate = result.plans?.[0];
-      if (result.status === 'ready' && candidate?.reached && candidate.totalPrice !== null) {
+      const candidate = result.plans?.[0] ?? (scoreMode?result.bestScoringCandidate:null);
+      if ((result.status === 'ready' && candidate?.reached || scoreMode && candidate?.lineupComplete && candidate.score>row.scoreBaseline)
+          && candidate.totalPrice !== null && (!scoreMode || row.scoreBaseline!==null && candidate.score>row.scoreBaseline)) {
         const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
-        row.options = row.options.filter(option => option.requestedGrade !== grade.name);
-        row.options.push({ grade: reached?.name ?? grade.name, requestedGrade: grade.name, score: candidate.score, items: candidate.items,
+        const requested=grade.numeric?grade.threshold:grade.name;
+        row.options = row.options.filter(option => option.requestedGrade !== requested);
+        row.options.push({ grade: reached?.name ?? (grade.numeric?'计分':grade.name), requestedGrade: requested, score: candidate.score, items: candidate.items,
           projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key),
           estimated: candidate.estimated, referenceVerified: candidate.referenceVerified === true, searchComplete: result.searchComplete === true });
       } else row.reason = result.reason ?? 'grade-proposal-unavailable';
@@ -81,7 +98,7 @@ export function* planGalleryRoadmapSteps({ targets = [], capital = null, lossLim
       name: set.name, gradesChecked }) { stopped = true; break; }
   }
   const plan = rowsOnly ? { status:'candidates',route:[],selectedOptions:[],selectionStopped:false }
-    : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
+    : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection, objective, profile:scoreMode?'score':null });
   return { ...plan, rows, fastReferences, coverage: { total: targets.length, inspected: rows.length,
     available: rows.filter(row => row.currentScore !== null).length,
     missing: rows.filter(row => row.reason === 'progress-unavailable').length,

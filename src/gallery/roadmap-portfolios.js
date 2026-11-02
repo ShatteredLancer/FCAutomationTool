@@ -1,11 +1,12 @@
 import { selectGalleryRoadmapSteps } from './roadmap-selection.js';
 const profiles=[['tokens','多拿 token'],['loss','省损耗'],['capital','少占本金']];
+const profilesFor=input=>input.objective==='score' ? [['score','增分性价比'],['score-gain','多增分'],['score-capital','少占本金增分']] : profiles;
 
 // These are alternatives over ONE shared catalogue candidate pool. Never sum
 // independent club shopping lists or count a shared exact version twice.
 export function* planGalleryPortfoliosSteps(input) {
   const portfolios=[]; let stopped=false;
-  for(const [profile,label] of profiles) {
+  for(const [profile,label] of profilesFor(input)) {
     const iterator=selectGalleryRoadmapSteps({ ...input, previousSelection:[],profile });let next,signal;
     try{for(;;){
       next=iterator.next(signal);if(next.done)break;
@@ -17,7 +18,7 @@ export function* planGalleryPortfoliosSteps(input) {
     if(stopped) break;
     if(yield {phase:'route',completed:value.route.length,total:input.rows.length,portfolio:{...value,profile,label}}){stopped=true;break;}
   }
-  const selected=portfolios.find(value=>value.profile===(input.selectedProfile ?? 'tokens')) ?? portfolios[0];
+  const selected=portfolios.find(value=>value.profile===(input.selectedProfile ?? (input.objective==='score'?'score':'tokens'))) ?? portfolios[0];
   return { ...selected, portfolios, selectionStopped:stopped, selectedProfile:selected.profile };
 }
 
@@ -38,22 +39,24 @@ export function createGalleryPortfolioWork(){
   };
   const accept=(input,candidate)=>{
     const next=projectOne(input,candidate),before=shown.has(candidate.profile)?projectOne(input,shown.get(candidate.profile)):null;
-    const priority=value=>Math.max(0,...value.route.map(row=>({S:5,A:4,B:3,C:2,D:1}[row.targetGrade] ?? 0)));
-    const metric=value=>candidate.profile==='tokens'?-value.addedTokens:candidate.profile==='loss'?value.funding?.expectedNetLoss:value.funding?.requiredCapital;
+    const priority=value=>input.objective==='score'?0:Math.max(0,...value.route.map(row=>({S:5,A:4,B:3,C:2,D:1}[row.targetGrade] ?? 0)));
+    const metric=value=>candidate.profile==='score' ? value.lossPer100k ?? Infinity : candidate.profile==='score-gain' ? -value.addedScore
+      :candidate.profile==='tokens'?-value.addedTokens:candidate.profile==='loss'?value.funding?.expectedNetLoss:value.funding?.requiredCapital;
+    const gain=value=>input.objective==='score'?value.addedScore:value.addedTokens;
     const better=!before?.route.length || next.route.length>0 && (priority(next)>priority(before)
-      || priority(next)===priority(before) && (metric(next)<metric(before) || metric(next)===metric(before) && next.addedTokens>=before.addedTokens));
+      || priority(next)===priority(before) && (metric(next)<metric(before) || metric(next)===metric(before) && gain(next)>=gain(before)));
     shown.set(candidate.profile,better?next:before);
   };
   const project=(input,pending)=>{
-    let portfolios=profiles.filter(([profile])=>shown.has(profile)).map(([profile])=>projectOne(input,shown.get(profile)));
+    let portfolios=profilesFor(input).filter(([profile])=>shown.has(profile)).map(([profile])=>projectOne(input,shown.get(profile)));
     const baseline=portfolios.find(value=>value.route.length>0);
-    if(pending && baseline)portfolios=profiles.map(([profile,label])=>{
+    if(pending && baseline)portfolios=profilesFor(input).map(([profile,label])=>{
       const existing=portfolios.find(value=>value.profile===profile);
-      return existing?.route.length ? existing : {...baseline,profile,label,objective:`grade-first-${profile}`,comparisonPending:true};
+      return existing?.route.length ? existing : {...baseline,profile,label,objective:`${input.objective==='score'?'score-estimate':'grade-first'}-${profile}`,comparisonPending:true};
     });
     const fallback=selectGalleryRoadmapSteps({...input,rows:[],resumeOnly:true}).next().value;
-    const selected=portfolios.find(value=>value.profile===(input.selectedProfile ?? 'tokens')) ?? portfolios[0] ?? fallback;
-    return {...selected,portfolios,selectedProfile:selected.profile ?? 'tokens',selectionStopped:pending,comparisonPending:pending};
+    const selected=portfolios.find(value=>value.profile===(input.selectedProfile ?? (input.objective==='score'?'score':'tokens'))) ?? portfolios[0] ?? fallback;
+    return {...selected,portfolios,selectedProfile:selected.profile ?? (input.objective==='score'?'score':'tokens'),selectionStopped:pending,comparisonPending:pending};
   };
   return {clear,*run(input){
     const nextKey=JSON.stringify(input),nextOptions=JSON.stringify({...input,rows:undefined});

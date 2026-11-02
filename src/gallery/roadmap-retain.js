@@ -12,7 +12,10 @@ const filterRoute=(plan,keep)=>{
   const funding=forecastGalleryTurnover({steps,
     capital:plan.funding.capital,resaleDiscountBps:plan.funding.resaleDiscountBps,optimizeOrder:false});
   return {...plan,status:selected.length?'ready':'no-route',funding,route:funding.steps.map((step,index)=>({...byId.get(step.setId),...step,order:index+1})),
-    addedTokens:selected.reduce((n,row)=>n+row.addedTokens,0),selectedOptions:(plan.selectedOptions ?? []).filter(row=>byId.has(row.setId))};
+    addedTokens:selected.reduce((n,row)=>n+row.addedTokens,0),
+    ...(plan.planningObjective==='score'?{addedScore:selected.reduce((n,row)=>n+row.addedScore,0),
+      lossPer100k:selected.some(row=>row.addedScore>0)?funding.expectedNetLoss*100000/selected.reduce((n,row)=>n+row.addedScore,0):null}:{}),
+    selectedOptions:(plan.selectedOptions ?? []).filter(row=>byId.has(row.setId))};
 };
 export function filterGalleryRoadmapRoutes(result,keep){
   return {...filterRoute(result,keep),portfolios:result.portfolios?.map(plan=>filterRoute(plan,keep))};
@@ -27,7 +30,8 @@ export function retainGalleryRoadmap(result,affected){
     unavailable:[...(result.unavailable ?? []).filter(row=>!ids.has(row.setId)),...result.rows.filter(row=>ids.has(row.setId)).map(row=>({setId:row.setId,name:row.name,reason:'collection-updated'}))],
     skipped:(result.skipped ?? []).filter(row=>!ids.has(row.setId)),
     coverage:{...result.coverage,available:ready.filter(row=>row.currentScore!==null).length,completed:ready.filter(row=>row.analysisComplete).length,stopped:true},
-    rows:result.rows.map(row=>ids.has(row.setId)?{...row,currentScore:null,currentGrade:null,options:[],reason:'collection-updated',analysisComplete:false,checkedGrades:[]}:row),
+    rows:result.rows.map(row=>ids.has(row.setId)?{...row,currentScore:null,currentGrade:null,
+      ...(result.planningObjective==='score'?{scoreBaseline:null}:{}),options:[],reason:'collection-updated',analysisComplete:false,checkedGrades:[]}:row),
     referenceOverview:result.referenceOverview?retainGalleryRoadmap(result.referenceOverview,affected):undefined};
 }
 

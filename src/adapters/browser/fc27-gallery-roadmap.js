@@ -42,6 +42,11 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   };
   const capital = input('可周转金币', '可留空，先看所需本金');
   const lossLimit = input('最多预计损耗（可选）', '留空不限，不等于采购总额');
+  const goalLabel=add(document,controls,'label','规划目标'),goal=add(document,goalLabel,'select');
+  goal.setAttribute('aria-label','规划目标');
+  for(const [value,text] of [['tokens','拿 token（S → A → B）'],['score','冲级增分（本地计分估算）']]){
+    const option=add(document,goal,'option',text);option.value=value;
+  }
   const discountLabel = add(document, controls, 'label', '回售价假设');
   const discount = add(document, discountLabel, 'select');
   for (const [value, text] of [[0, '按买入价卖回，仅估税费'], [500, '比买入价低 5%，另扣税'], [1000, '比买入价低 10%，另扣税']]) {
@@ -68,10 +73,12 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   const previewBox = add(document, dialog, 'details'); previewBox.className = 'gallery-roadmap-preview'; previewBox.hidden = true;
   const output = add(document, dialog, 'div'); output.setAttribute('aria-live', 'polite');
   let epoch = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
-  const work = createGalleryRoadmapSession();
-  const demand = createGalleryDemandWork({referenceSession:work});
+  let work = createGalleryRoadmapSession();
+  let demand = createGalleryDemandWork({referenceSession:work});
   let selectedProfile='tokens';
-  const visited=new Map();
+  let visited=new Map(),activeGoal='tokens';
+  const goalStates=new Map();
+  const clearOtherGoals=()=>{for(const state of goalStates.values()){state.work.clear();state.demand.clear();}goalStates.clear();};
   let forecastEvidence = null, forecastClock = null;
   const updateForecastNote = () => {
     if (!busy && last?.demandDriven && (last.route.some(row => row.items.some(item => item.roadmapQuote?.expiresAt <= Date.now()))
@@ -108,7 +115,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       referenceCompletedCount:result.coverage.completed,referencePendingCount:result.coverage.total-(result.coverage.completed ?? result.coverage.inspected)});
   };
   const parse = field => field.value.trim() === '' ? null : Number(field.value);
-  const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
+  const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked,objective:goal.value });
   const capture = state => ({ scope: state.scope, revision: state.catalog?.revision, source: state.catalog?.source,
     targets: state.targets.map(target => [target.set.id, target.progressKey ?? target.progress, target.pool?.revision,
       !!target.stale, !!target.poolStale, target.status]) });
@@ -133,7 +140,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     || target.status !== 'observed' || isCapturedFodderForecastTarget(target)
     || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null
     || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
-  const invalidate = () => { epoch++; work.clear(); demand.clear(); last = null; planInputs = null; binding = null;
+  const invalidate = () => { epoch++; clearOtherGoals();work.clear(); demand.clear(); last = null; planInputs = null; binding = null;
     visited.clear();
     rebuild.hidden=true;
     previewBox.replaceChildren(); previewBox.hidden = true;
@@ -143,7 +150,9 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     const output = outputNode;
     rebuild.hidden=!last;
     result=chooseGalleryPortfolio(result,selectedProfile);
+    const scoreMode=result.planningObjective==='score';
     output.replaceChildren();
+    if(scoreMode)add(document,output,'p','冲级增分：比较完整合集的本地计算分增量，不强制 S/A/B 排序；不是 EA 全局 XP，暂不换算等级或声称已到 Lv.10。首任不确定时用原分上界对比新分下界，收集状态未知的合集暂不计增分。');
     if(result.comparisonPending)add(document,output,'p','全局路线仍在后台比较；已核验且仍有效的方案保留，可继续分析，不从空白重来。');
     if(result.coverage.verified!=null)add(document,output,'p',`参考核验 ${result.coverage.verified}/${result.coverage.total} · 待优化 ${result.coverage.optimizationPending ?? 0} 个合集；已核验路线保留，优化逐合集继续。`);
     if(result.pendingTasks?.length){
@@ -152,10 +161,10 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     }
     if(result.portfolios?.length){
       const choices=add(document,output,'div');choices.className='gallery-roadmap-portfolios';
-      add(document,choices,'p','同一全局候选库的路线对比：默认 S → A → B，先比较同档目标。共享精确版本只计一次采购；资金按实际顺序与逐卡回售假设计算。未核验的 S 不算不可做，A/B 仅为当前已核验范围的候选。');
+      add(document,choices,'p',scoreMode?'同一候选库按增分性价比、多增分、少占本金比较；共享卡只计一次采购，各合集增分分别计算，不当成 EA 等级经验。':'同一全局候选库的路线对比：默认 S → A → B，先比较同档目标。共享精确版本只计一次采购；资金按实际顺序与逐卡回售假设计算。未核验的 S 不算不可做，A/B 仅为当前已核验范围的候选。');
       for(const portfolio of result.portfolios){
         const count=grade=>portfolio.route.filter(row=>row.targetGrade===grade).length;
-        const pick=add(document,choices,'button',`${portfolio.label}${portfolio.comparisonPending?'（基线待优化）':''} · S ${count('S')}/A ${count('A')}/B ${count('B')} · +${portfolio.addedTokens} token · 本金 ${money(portfolio.funding?.requiredCapital)} · 损耗 ${money(portfolio.funding?.expectedNetLoss)}`);
+        const pick=add(document,choices,'button',`${portfolio.label}${portfolio.comparisonPending?'（基线待优化）':''} · ${scoreMode?`+${money(portfolio.addedScore)} 计算分`:`S ${count('S')}/A ${count('A')}/B ${count('B')}`} · +${portfolio.addedTokens} token · 本金 ${money(portfolio.funding?.requiredCapital)} · 损耗 ${money(portfolio.funding?.expectedNetLoss)}`);
         pick.type='button';pick.dataset.profile=portfolio.profile;pick.setAttribute('aria-pressed',String(result.selectedProfile===portfolio.profile));
         pick.addEventListener('click',event=>{if(!event.isTrusted)return;selectedProfile=portfolio.profile;
           let value=result;
@@ -169,32 +178,32 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     if (result.demandDriven) add(document, output, 'h3', `按需深度结果 · 已核价 ${result.deepCoverage.quoted} 个版本 · 已完成 ${result.deepCoverage.completed}/${result.deepCoverage.eligible} 个已就绪合集 · 参考待完成 ${result.deepCoverage.referencePending ?? 0}`);
     if (result.demandDriven) add(document, output, 'p', '每合集按 24 → 48 → 96 个候选逐步扩展，已完成仅指本轮有界检查；未查版本仍可能更优。下方金额只来自尚有效的独立报价，与上方参考全貌分开。');
     const metric = add(document, output, 'div'); metric.className = 'gallery-roadmap-metrics';
-    for (const [label, value] of [['目录新增 token', result.addedTokens], ['所需周转本金', result.funding?.requiredCapital],
+    for (const [label, value] of [[scoreMode?'新增完整合集计算分（非 XP）':'目录新增 token',scoreMode?result.addedScore:result.addedTokens], ['所需周转本金', result.funding?.requiredCapital],
       ['预计净损耗', result.funding?.expectedNetLoss], ['累计采购额（非本金）', result.funding?.totalPurchase]]) {
       const card = add(document, metric, 'article'); add(document, card, 'small', label); add(document, card, 'strong', money(value));
     }
     add(document, output, 'p', `覆盖 ${result.coverage.inspected}/${result.coverage.total} 个合集；已完成 ${result.coverage.completed ?? result.deepCoverage?.completed ?? result.coverage.inspected}，可计分 ${result.coverage.available}。${result.partial ? '当前为部分分析，待核实或未完成的合集另列。' : ''}`);
     if (result.fastReferences) add(document, output, 'p', '快速首轮已本地核验组合、扣除已有卡；金额按 Fodder 逐卡参考价估算，行情年龄未知，不是实际购买限价。进入合集/购买前按原价格来源独立核价；深度优化可继续比较。');
-    add(document, output, 'p', '路线按 S/A/B 优先级在同一全局候选库内比较，包含共享版本和周转税损；搜索有界，不保证全市场最优。Token 为相对当前收集快照的目录增量，不是已领余额或保证可领取数量。');
+    add(document, output, 'p', scoreMode?`每新增十万本地计算分预计损耗 ${money(result.lossPer100k==null?null:Math.round(result.lossPer100k))}；仅比较已核验候选，不保证全局最优。等级门槛与精确 XP 未确认，token 增量不换算为 XP。`:'路线按 S/A/B 优先级在同一全局候选库内比较，包含共享版本和周转税损；搜索有界，不保证全市场最优。Token 为相对当前收集快照的目录增量，不是已领余额或保证可领取数量。');
     add(document, output, 'p', '本金按逐卡买入 → 确认收集 → 卖出到账 → 下一张模拟；并非要求一次买齐。回售价仅是假设，价格波动和未成交都会改变资金需求。');
     if (!result.route.length) add(document, output, 'p', !result.partial && !result.unavailable.length && !result.skipped.length
-      ? '当前已分析范围没有确认的目录 token 升级缺口；无需为已达档重复买入，奖励领取状态仍待核实。'
+      ? scoreMode?'当前已分析范围未找到有完整报价、正向计分增量的路线；不代表全画廊无法提分。':'当前已分析范围没有确认的目录 token 升级缺口；无需为已达档重复买入，奖励领取状态仍待核实。'
       : '当前已分析范围未得到可确认的升级路线；不代表全画廊无方案。请看待核实项目，或继续分析剩余合集。');
     const tableWrap = add(document, output, 'div'); tableWrap.className = 'gallery-roadmap-table';
     const table = add(document, tableWrap, 'table'), head = add(document, table, 'tr');
-    for (const text of ['顺序 / 合集', '现状 → 目标', '新增 token', '本批新买 / 复用', '执行入口']) add(document, head, 'th', text);
+    for (const text of ['顺序 / 合集', '现状 → 目标', scoreMode?'新增计算分':'新增 token', '本批新买 / 复用', '执行入口']) add(document, head, 'th', text);
     for (const step of result.route) {
       const tr = add(document, table, 'tr');
       add(document, tr, 'th', `${step.order}. ${step.name}`);
-      add(document, tr, 'td', `${step.currentGrade ?? '未达档'} → ${step.targetGrade}`);
-      add(document, tr, 'td', `+${step.addedTokens}`);
+      add(document, tr, 'td', scoreMode?`${step.scoreUncertain?'≤ ':''}${money(step.currentScore)} → ${money(step.projectedScore)} 分（${step.targetGrade}）`:`${step.currentGrade ?? '未达档'} → ${step.targetGrade}`);
+      add(document, tr, 'td', `+${scoreMode?money(step.addedScore):step.addedTokens}`);
       add(document, tr, 'td', `${step.cycles.length} 张 / ${step.reusedIds.length} 张`);
       const td = add(document, tr, 'td'), open = add(document, td, 'button', '进入俱乐部 / 合集'); open.type = 'button';
       open.addEventListener('click', event => {
         if (!event.isTrusted || !binding || !same(binding) || !pricesUsable(planInputs)
             || result.demandDriven && step.items.some(item => item.roadmapQuote?.expiresAt <= Date.now())) { status.textContent = '数据、账号或报价已变化，请重新生成路线。'; return; }
-        visited.set(step.setId,{setId:step.setId,name:step.name,targetGrade:step.targetGrade});
-        dialog.close(); openSet(step.setId, step.targetGrade);
+        visited.set(step.setId,{setId:step.setId,name:step.name,targetGrade:step.targetGrade,...(scoreMode?{scoreTarget:step.scoreTarget}:{})});
+        dialog.close(); if(scoreMode)openSet(step.setId,step.targetGrade,step.scoreTarget);else openSet(step.setId,step.targetGrade);
       });
       const cards = add(document, output, 'details');
       add(document, cards, 'summary', `${step.order}. ${step.name} · 补卡与逐卡周转明细`);
@@ -226,15 +235,17 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       const ranks={S:5,A:4,B:3,C:2,D:1};
       for(const step of visited.values()){
         const observed=[...(result.freeCheck ?? []),...(result.referenceOverview?.freeCheck ?? [])].find(row=>row.setId===step.setId);
-        const reached=(ranks[observed?.grade] ?? 0)>=(ranks[step.targetGrade] ?? Infinity);
+        const reached=Number.isSafeInteger(step.scoreTarget)
+          ? Number.isSafeInteger(observed?.currentScore) && observed.currentScore>=step.scoreTarget
+          : (ranks[observed?.grade] ?? 0)>=(ranks[step.targetGrade] ?? Infinity);
         step.state=reached?'local-score-reached':'entered';
-        add(document,log,'p',`${step.name} · 目标 ${step.targetGrade} · ${reached?'本地计分已达目标，奖励待核实':'已进入，待核对/继续完成'}`);
+        add(document,log,'p',`${step.name} · 目标 ${step.scoreTarget ? `${money(step.scoreTarget)} 计算分（非 XP）` : step.targetGrade} · ${reached?'本地计分已达目标，奖励待核实':'已进入，待核对/继续完成'}`);
       }
     }
   };
   const renderPreview=result=>{
     previewBox.hidden=false;previewBox.open=true;previewBox.replaceChildren();
-    add(document,previewBox,'summary',`全局参考预览 · ${result.coverage.inspected}/${result.coverage.total} 合集 · +${result.addedTokens} token · 点击展开/收起`);
+    add(document,previewBox,'summary',`全局参考预览 · ${result.coverage.inspected}/${result.coverage.total} 合集 · ${result.planningObjective==='score'?`+${money(result.addedScore)} 计算分`:`+${result.addedTokens} token`} · 点击展开/收起`);
     const body=add(document,previewBox,'div');render(result,body);
     add(document,body,'p','参考预览与独立核价分开；所有已核验候选统一比较，未完成项会继续加入同一全局计划。未查版本不当作零成本。');
   };
@@ -261,6 +272,21 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
   close.addEventListener('click', event => { if (event.isTrusted) { if (busy) cancel(); epoch++; dialog.close(); } });
   dialog.addEventListener('cancel', () => { if (busy) cancel(); epoch++; });
   for (const field of [capital, lossLimit, discount]) field.addEventListener('change', invalidate);
+  goal.addEventListener('change',()=>{
+    if(busy)return;epoch++;
+    goalStates.set(activeGoal,{work,demand,last,binding,planInputs,fingerprint,selectedProfile,visited,forecastEvidence,deep:deep.checked});
+    activeGoal=goal.value;const saved=goalStates.get(activeGoal);goalStates.delete(activeGoal);
+    work=saved?.work ?? createGalleryRoadmapSession();demand=saved?.demand ?? createGalleryDemandWork({referenceSession:work});
+    last=saved?.last ?? null;binding=saved?.binding ?? null;planInputs=saved?.planInputs ?? null;fingerprint=saved?.fingerprint ?? null;
+    selectedProfile=saved?.selectedProfile ?? (activeGoal==='score'?'score':'tokens');visited=saved?.visited ?? new Map();
+    forecastEvidence=saved?.forecastEvidence ?? null;if(saved)deep.checked=saved.deep;
+    previewBox.replaceChildren();previewBox.hidden=true;output.replaceChildren();timing.textContent='';rebuild.hidden=!last;
+    if(last){reconcileSaved();if(last && pricesUsable(planInputs)){if(last.referenceOverview)renderPreview(last.referenceOverview);render(last);}
+      else if(last){last=null;work.clear();demand.clear();planInputs=null;binding=null;forecastEvidence=null;rebuild.hidden=true;}}
+    generate.textContent=last?.coverage.stopped?'继续分析剩余':last?'重新生成整体方案':'生成整体方案';updateForecastNote();
+    status.textContent=last?'已恢复此目标的保留路线；账号/材料/报价仍按原规则复核。'
+      :activeGoal==='score'?'冲级增分模式：按完整合集本地计算分比较；等级/XP 不作猜测。':'已切回拿 token 模式，保留 S → A → B 优先级。';
+  });
   deep.addEventListener('change',()=>{
     if(!last||!binding||!planInputs){invalidate();return;}
     reconcileSaved();if(!last)return;
@@ -274,6 +300,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     const state = read();
     status.textContent = state.catalog ? `全目录 ${state.targets.length} 个合集。点击生成后自动复用收集缓存、补充数据与报价；可随时停止。` : '公开目录尚未载入，请先等待 Gallery 同步。';
     if (!dialog.open) dialog.showModal();
+    if(!changed && last && pricesUsable(planInputs)){if(last.referenceOverview)renderPreview(last.referenceOverview);render(last);}
     updateForecastNote();
     if (forecastClock === null) forecastClock = document.defaultView.setInterval(updateForecastNote, 1000);
     if(changed)void start(event);
@@ -287,7 +314,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     const token = ++epoch; busy = true; stopRequested = false; mismatchReason = null; checkpointAt=-Infinity; generate.disabled = true; exportButton.disabled = true; stop.hidden = false; progress.hidden = false;
     rebuild.disabled=true;
     let completed = false, failureReason = null, priceBasis = 'unknown', targetCount = 0, planningLimitMs = null;
-    for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+    for (const field of [capital, lossLimit, discount, deep,goal]) field.disabled = true;
     const completedPhases = new Set();
     const startedAt = performance.now(), timings = {}, tick = () => { timing.textContent = `已用 ${((performance.now() - startedAt) / 1000).toFixed(1)} 秒 · ${stage === 'preparing' ? '同步收集' : ['pricing','demand-pricing'].includes(stage) ? '独立查价' : stage === 'planning' ? '本地核验/规划' : '读取公共参考'}`; };
     let stageStarted = startedAt;
@@ -446,7 +473,7 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       if (stopRequested && stage !== 'planning' && stage !== 'demand-pricing') status.textContent = '数据读取已停止；未进行买卖。';
       busy = false; stage = 'idle'; generate.disabled = false; exportButton.disabled = false; stop.hidden = true; progress.hidden = true;
       rebuild.disabled=false;rebuild.hidden=!last;
-      for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+      for (const field of [capital, lossLimit, discount, deep,goal]) field.disabled = false;
       updateForecastNote();
       onBusyChange(false);
     }
@@ -470,5 +497,5 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
     } catch { status.textContent = '快照导出未完成；请先读取目录。'; }
   });
   return { close: () => { if (busy) cancel(); invalidate(); dialog.close(); },
-    dispose: () => { if (busy) cancel(); epoch++; stopForecastClock(); work.clear(); demand.clear(); dialog.close(); dialog.remove(); } };
+    dispose: () => { if (busy) cancel(); epoch++; clearOtherGoals();stopForecastClock(); work.clear(); demand.clear(); dialog.close(); dialog.remove(); } };
 }

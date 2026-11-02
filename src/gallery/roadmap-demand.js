@@ -57,7 +57,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
     const options = job.result?.rows?.[0]?.options ?? [];
     // No usable route or an untested alternative with an unknown/lower cost
     // warrants another bounded tier, not a catalog-wide speculative read.
-    if (!options.length) return true;
+    if (!options.length || binding?.scoreMode) return true;
     const best = Math.min(...options.map(option => option.items.reduce((n, row) => n + row.price, 0)));
     return job.target.progress.rows.some(row => row.collected === false && !isGalleryOwned(row)
       && !job.ids.includes(row.eaId) && (!priced(job.target.prices?.[row.eaId]) || job.target.prices[row.eaId] < best));
@@ -91,7 +91,7 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
     const changed=preflight.bind(targets,options),ids=new Set(changed),present=new Set(targets.map(target=>target.set.id));
     jobs=jobs.filter(job=>{if(ids.has(job.target.set.id)||!present.has(job.target.set.id)){job.work.clear();return false;}return true;});
     for(const target of targets)if(ids.has(target.set.id))for(const row of target.progress?.rows ?? [])if(!fresh(row.eaId,Date.now()))attempted.delete(row.eaId);
-    binding={targets,key};preview=null;return changed;
+    binding={targets,key,scoreMode:options.objective==='score'};preview=null;return changed;
   };
   const refreshJobs=()=>{
     const known=new Set(jobs.map(job=>job.target.set.id));
@@ -101,9 +101,9 @@ export function createGalleryDemandWork({referenceSession=null}={}) {
       if(!row || !(row.analysisComplete || row.options?.some(option=>option.grade==='S')) || row.currentScore===null||row.reason==='progress-unavailable'
           || target.progress.complete===false)continue;
       const top=Math.max(...target.set.grades.map(grade=>galleryCumulativeRewardQuantity(target.set,grade.threshold,'event_token_1')));
-      if(!(top>row.baselineTokens))continue;
+      if(binding.scoreMode ? row.collectionUnknown || !target.progress.rows.some(card=>card.collected===false && !isGalleryOwned(card)) : !(top>row.baselineTokens))continue;
       const best=row.options.slice().sort((a,b)=>({S:5,A:4,B:3}[b.grade] ?? 0)-({S:5,A:4,B:3}[a.grade] ?? 0))[0];
-      const rank=best ? best.items.reduce((n,item)=>n+item.price,0)/Math.max(1,best.projectedTokens-row.baselineTokens) : Infinity;
+      const rank=best ? best.items.reduce((n,item)=>n+item.price,0)/Math.max(1,binding.scoreMode?best.score-(row.scoreBaseline ?? row.currentScore):best.projectedTokens-row.baselineTokens) : Infinity;
       jobs.push({target,forecast:row,rank,ids:[],tier:24,work:createGalleryRoadmapWork(),done:false,turns:0});
     }
   };

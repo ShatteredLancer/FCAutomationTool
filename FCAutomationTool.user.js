@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.84
+// @version      27.0.85
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.84", at: Date.now(), status: 'started',
+    state = { version: "27.0.85", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -14794,6 +14794,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       currentScore,
       addedScore: Number.isFinite(scoreOf2(state)) ? scoreOf2(state) - currentScore : null,
       score: Number.isFinite(scoreOf2(state)) ? scoreOf2(state) : null,
+      lineupComplete: state.summary?.full === true,
       items: state.items.map((item2) => ({ ...item2 })),
       totalPrice: missingPriceIds.length ? null : state.price,
       missingPriceIds,
@@ -14814,7 +14815,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     maxCandidates = 250,
     maxEvaluations = 3e4,
     scoreSummarizer = null,
-    lineupSearch = false
+    lineupSearch = false,
+    scoreProbe = false
   } = {}) {
     if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 1e5) {
       return { status: "unavailable", reason: "search-options-invalid" };
@@ -15216,6 +15218,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             price: item2.price ?? null
           }))
         } : null,
+        ...scoreProbe && best?.summary?.full === true && !best.unknownPrice ? { bestScoringCandidate: materialize(best, targetGrade, threshold, scoreOf2(base)) } : {},
         missingPriceCount: requestedCandidates - quotedCandidateCount,
         candidateCount: candidates.length,
         omittedCandidates,
@@ -18341,18 +18344,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         .../^FC27_[A-Z0-9_]{1,120}$/.test(planningState?.reason ?? "") ? { reason: planningState.reason } : !plan ? { reason: "FC27_GALLERY_ROADMAP_NO_RETAINED_RESULT" } : {}
       },
       roadmap: plan ? {
-        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired", "selectedProfile", "retainedChanges", "comparisonPending"]),
+        ...pick4(plan, ["status", "partial", "coverage", "baselineTokens", "addedTokens", "claimState", "tokenBasis", "generatedAt", "fastReferences", "priceBasis", "demandDriven", "quotesExpired", "selectedProfile", "retainedChanges", "comparisonPending", "planningObjective", "addedScore", "scoreBasis", "lossPer100k"]),
         portfolios: (plan.portfolios ?? []).slice(0, 3).map((value) => ({
-          ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete", "comparisonPending"]),
+          ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete", "comparisonPending", "planningObjective", "addedScore", "scoreBasis", "lossPer100k"]),
           funding: pick4(value.funding, ["requiredCapital", "totalPurchase", "expectedNetLoss", "feasible", "saleBasis"]),
-          route: value.route.map((row) => ({ ...pick4(row, ["setId", "targetGrade", "addedTokens"]), purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId) }))
+          route: value.route.map((row) => ({ ...pick4(row, ["setId", "targetGrade", "addedTokens", "scoreTarget", "addedScore"]), purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId) }))
         })),
-        executionSteps: (plan.executionSteps ?? []).map((value) => pick4(value, ["setId", "targetGrade", "state"])),
+        executionSteps: (plan.executionSteps ?? []).map((value) => pick4(value, ["setId", "targetGrade", "state", "scoreTarget"])),
         deepCoverage: plan.deepCoverage ? pick4(plan.deepCoverage, ["eligible", "completed", "quoted", "candidateLimit", "pending", "referencePending"]) : null,
         referenceOverview: plan.referenceOverview ? {
-          ...pick4(plan.referenceOverview, ["status", "partial", "coverage", "addedTokens"]),
+          ...pick4(plan.referenceOverview, ["status", "partial", "coverage", "addedTokens", "planningObjective", "addedScore", "scoreBasis"]),
           requiredCapital: plan.referenceOverview.funding?.requiredCapital ?? null,
-          route: plan.referenceOverview.route.map((row) => pick4(row, ["setId", "targetGrade", "addedTokens"]))
+          route: plan.referenceOverview.route.map((row) => pick4(row, ["setId", "targetGrade", "addedTokens", "scoreTarget", "addedScore"]))
         } : null,
         forecastReference: plan.forecastReference ? {
           ...pick4(plan.forecastReference, ["source", "forecastOnly", "fetchedAt", "capturedAt", "expiresAt"]),
@@ -18371,7 +18374,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             "baselineTokens",
             "projectedTokens",
             "addedTokens",
-            "claimState"
+            "claimState",
+            "scoreTarget",
+            "addedScore",
+            "scoreUncertain"
           ]),
           purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId),
           ...plan.demandDriven ? { quotedItems: row.items.map((item2) => ({
@@ -18741,13 +18747,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     resaleDiscountBps = 0,
     previousSelection = [],
     profile = null,
-    resumeOnly = false
+    resumeOnly = false,
+    objective = "tokens"
   } = {}) {
     if (!Array.isArray(rows) || lossLimit !== null && (!Number.isSafeInteger(lossLimit) || lossLimit < 0)) {
       return { status: "unavailable", reason: "input-invalid", route: [] };
     }
     const selected = /* @__PURE__ */ new Map(), skipped = /* @__PURE__ */ new Map();
-    const priority = (option) => profile ? { S: 5, A: 4, B: 3, C: 2, D: 1 }[option.grade] ?? 0 : 0;
+    const scoreMode = objective === "score";
+    const strategy = scoreMode ? profile === "score-gain" ? "tokens" : profile === "score-capital" ? "capital" : null : profile;
+    const baseline = (row) => scoreMode ? row.scoreBaseline ?? row.currentScore : row.baselineTokens;
+    const knownBaseline = (row) => !row.collectionUnknown && Number.isSafeInteger(baseline(row)) && baseline(row) >= 0;
+    const quantity = (option) => scoreMode ? option.score : option.projectedTokens;
+    const priority = (option) => profile && !scoreMode ? { S: 5, A: 4, B: 3, C: 2, D: 1 }[option.grade] ?? 0 : 0;
     const facts2 = /* @__PURE__ */ new WeakMap();
     const info = (option) => {
       if (!facts2.has(option)) {
@@ -18774,6 +18786,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const estimator = profile ? createGalleryTurnoverEstimator({ capital, resaleDiscountBps }) : null;
     const estimateTrial = (trial) => estimator ? estimator.estimate(orderedSteps(trial)) : forecast(trial);
     const singles = resumeOnly ? [] : rows.flatMap((row) => {
+      if (scoreMode && !knownBaseline(row)) return [];
       const options = profile ? [...new Map((row.options ?? []).map((option) => [JSON.stringify([
         option.grade,
         option.projectedTokens,
@@ -18783,7 +18796,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         option.referenceVerified,
         option.searchComplete
       ]), option])).values()] : row.options ?? [];
-      return options.map((option) => ({ row, option }));
+      return options.filter((option) => !scoreMode || Number.isSafeInteger(option.score) && option.score > baseline(row)).map((option) => ({ row, option }));
     });
     const paired = [], seenPairs = /* @__PURE__ */ new Set(), memberships = /* @__PURE__ */ new Map();
     if (profile) for (const entry of singles) for (const item2 of entry.option.items ?? []) {
@@ -18792,7 +18805,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       memberships.set(item2.eaId, group);
     }
     if (profile) for (const group of memberships.values()) {
-      const candidates = group.slice().sort((a, b) => priority(b.option) - priority(a.option) || b.option.projectedTokens - a.option.projectedTokens || a.row.setId.localeCompare(b.row.setId)).slice(0, 12);
+      const candidates = group.slice().sort((a, b) => priority(b.option) - priority(a.option) || quantity(b.option) - quantity(a.option) || a.row.setId.localeCompare(b.row.setId)).slice(0, 12);
       for (let a = 0; a < candidates.length; a++) for (let b = a + 1; b < candidates.length; b++) {
         const pair = [candidates[a], candidates[b]];
         if (pair[0].row.setId === pair[1].row.setId) continue;
@@ -18804,21 +18817,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
     }
-    paired.sort((a, b) => Math.max(...b.map((entry) => priority(entry.option))) - Math.max(...a.map((entry) => priority(entry.option))) || b.reduce((n, entry) => n + entry.option.projectedTokens - entry.row.baselineTokens, 0) - a.reduce((n, entry) => n + entry.option.projectedTokens - entry.row.baselineTokens, 0) || a.map((entry) => entry.row.setId).join().localeCompare(b.map((entry) => entry.row.setId).join()));
+    paired.sort((a, b) => Math.max(...b.map((entry) => priority(entry.option))) - Math.max(...a.map((entry) => priority(entry.option))) || b.reduce((n, entry) => n + quantity(entry.option) - baseline(entry.row), 0) - a.reduce((n, entry) => n + quantity(entry.option) - baseline(entry.row), 0) || a.map((entry) => entry.row.setId).join().localeCompare(b.map((entry) => entry.row.setId).join()));
     let pairChecks = 0, representative = null;
     let funding = forecastGalleryTurnover({ capital, resaleDiscountBps }), gain = 0;
     if (funding.status !== "estimated") return { status: "unavailable", reason: funding.reason, route: [] };
     for (const saved of previousSelection) {
       const row = rows.find((row2) => row2.setId === saved.setId);
       const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
-      if (option && option.projectedTokens > row.baselineTokens) selected.set(row.setId, { row, option });
+      if (option && (!scoreMode || knownBaseline(row)) && quantity(option) > baseline(row)) selected.set(row.setId, { row, option });
     }
     if (selected.size) {
       funding = forecast(selected);
       if (funding.status !== "estimated" || funding.feasible === false || lossLimit !== null && funding.expectedNetLoss > lossLimit) {
         return { status: "unavailable", reason: "resume-input-invalid", route: [] };
       }
-      gain = [...selected.values()].reduce((sum2, entry) => sum2 + entry.option.projectedTokens - entry.row.baselineTokens, 0);
+      gain = [...selected.values()].reduce((sum2, entry) => sum2 + quantity(entry.option) - baseline(entry.row), 0);
     }
     let selectionStopped = false, comparisons = 0;
     const snapshot = () => selectionSnapshot({
@@ -18827,6 +18840,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       funding: representative?.funding ?? funding,
       gain: representative?.gain ?? gain,
       profile,
+      scoreMode,
       selectionStopped,
       comparisons,
       skipped
@@ -18837,8 +18851,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       search: for (const additions of choices) {
         const { row, option } = additions[0];
         if (additions.length > 1) pairChecks++;
-        if (additions.some(({ row: row2, option: option2 }) => !Array.isArray(option2.items) || option2.projectedTokens <= (selected.get(row2.setId)?.option.projectedTokens ?? row2.baselineTokens))) continue;
-        const added = additions.reduce((n, { row: row2, option: option2 }) => n + option2.projectedTokens - (selected.get(row2.setId)?.option.projectedTokens ?? row2.baselineTokens), 0);
+        if (additions.some(({ row: row2, option: option2 }) => !Array.isArray(option2.items) || quantity(option2) <= (selected.has(row2.setId) ? quantity(selected.get(row2.setId).option) : baseline(row2)))) continue;
+        const added = additions.reduce((n, { row: row2, option: option2 }) => n + quantity(option2) - (selected.has(row2.setId) ? quantity(selected.get(row2.setId).option) : baseline(row2)), 0);
         const trial = new Map(selected);
         for (const entry of additions) trial.set(entry.row.setId, entry);
         const estimate = estimateTrial(trial);
@@ -18867,7 +18881,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           ratio: incrementalLoss / added,
           priority: Math.max(...additions.map((entry) => priority(entry.option)))
         };
-        const better = !best || value.priority > best.priority || value.priority === best.priority && (profile === "capital" ? estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && value.ratio < best.ratio : profile === "tokens" ? added > best.added || added === best.added && value.ratio < best.ratio : profile === "loss" ? estimate.expectedNetLoss < best.estimate.expectedNetLoss || estimate.expectedNetLoss === best.estimate.expectedNetLoss && added > best.added : value.ratio < best.ratio || value.ratio === best.ratio && (estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && row.setId.localeCompare(best.row.setId) < 0));
+        const better = !best || value.priority > best.priority || value.priority === best.priority && (strategy === "capital" ? estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && value.ratio < best.ratio : strategy === "tokens" ? added > best.added || added === best.added && value.ratio < best.ratio : strategy === "loss" ? estimate.expectedNetLoss < best.estimate.expectedNetLoss || estimate.expectedNetLoss === best.estimate.expectedNetLoss && added > best.added : value.ratio < best.ratio || value.ratio === best.ratio && (estimate.requiredCapital < best.estimate.requiredCapital || estimate.requiredCapital === best.estimate.requiredCapital && row.setId.localeCompare(best.row.setId) < 0));
         if (better) best = value;
         comparisons++;
         if (yield { phase: "route", completed: selected.size, total: rows.length, comparisons }) {
@@ -18880,7 +18894,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const entry of best.trial) selected.set(...entry);
       funding = forecast(selected);
       gain += best.added;
-      if (profile && (!representative || (profile === "tokens" ? gain > representative.gain : profile === "capital" ? funding.requiredCapital < representative.funding.requiredCapital : funding.expectedNetLoss < representative.funding.expectedNetLoss) || (profile === "capital" ? funding.requiredCapital === representative.funding.requiredCapital : profile === "tokens" ? gain === representative.gain : funding.expectedNetLoss === representative.funding.expectedNetLoss) && gain > representative.gain))
+      if (profile && (!representative || (scoreMode && strategy === null ? funding.expectedNetLoss / gain < representative.funding.expectedNetLoss / representative.gain || funding.expectedNetLoss / gain === representative.funding.expectedNetLoss / representative.gain && gain > representative.gain : strategy === "tokens" ? gain > representative.gain : strategy === "capital" ? funding.requiredCapital < representative.funding.requiredCapital : funding.expectedNetLoss < representative.funding.expectedNetLoss) || (!scoreMode || strategy !== null) && (strategy === "capital" ? funding.requiredCapital === representative.funding.requiredCapital : strategy === "tokens" ? gain === representative.gain : funding.expectedNetLoss === representative.funding.expectedNetLoss) && gain > representative.gain))
         representative = { selected: new Map(selected), funding, gain };
       if (profile && !selectionStopped && (yield { phase: "route", completed: selected.size, total: rows.length, comparisons, portfolio: snapshot() })) selectionStopped = true;
       if (selectionStopped) break;
@@ -18893,7 +18907,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     return snapshot();
   }
-  function selectionSnapshot({ rows, selected, funding, gain, profile, selectionStopped, comparisons, skipped }) {
+  function selectionSnapshot({ rows, selected, funding, gain, profile, scoreMode, selectionStopped, comparisons, skipped }) {
     const route = funding.steps.map((step, index) => {
       const { row, option } = selected.get(step.setId);
       return {
@@ -18903,26 +18917,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         categoryId: row.categoryId,
         currentGrade: row.currentGrade,
         targetGrade: option.grade,
-        currentScore: row.currentScore,
+        currentScore: scoreMode ? row.scoreBaseline ?? row.currentScore : row.currentScore,
         projectedScore: option.score,
         baselineTokens: row.baselineTokens,
         projectedTokens: option.projectedTokens,
         addedTokens: option.projectedTokens - row.baselineTokens,
         items: option.items,
+        ...scoreMode ? { scoreTarget: option.score, addedScore: option.score - (row.scoreBaseline ?? row.currentScore), scoreUncertain: row.scoreUncertain === true } : {},
         claimState: "unknown",
         estimated: option.estimated !== false,
         searchComplete: option.searchComplete === true,
         referenceVerified: option.referenceVerified === true
       };
     });
-    const unavailable = rows.filter((row) => !(row.options?.length > 0) && row.reason).map((row) => ({ setId: row.setId, name: row.name, reason: row.reason }));
+    const unavailable = rows.filter((row) => scoreMode && row.collectionUnknown || !(row.options?.length > 0) && row.reason).map((row) => ({ setId: row.setId, name: row.name, reason: scoreMode && row.collectionUnknown ? "collection-status-unknown" : row.reason }));
     return {
       status: route.length ? "ready" : "no-route",
-      objective: profile ? `grade-first-${profile}` : "low-forecast-loss-per-added-token",
+      objective: scoreMode ? `score-estimate-${profile ?? "efficiency"}` : profile ? `grade-first-${profile}` : "low-forecast-loss-per-added-token",
       claimState: "unknown",
       tokenBasis: "catalog-increase-not-unclaimed-balance",
       baselineTokens: rows.reduce((sum2, row) => sum2 + (row.baselineTokens ?? 0), 0),
-      addedTokens: gain,
+      addedTokens: scoreMode ? route.reduce((sum2, row) => sum2 + row.addedTokens, 0) : gain,
+      ...scoreMode ? {
+        planningObjective: "score",
+        addedScore: gain,
+        scoreBasis: "local-complete-set-score-not-gallery-xp",
+        lossPer100k: gain > 0 ? funding.expectedNetLoss * 1e5 / gain : null
+      } : {},
       funding,
       route,
       selectedOptions: [...selected].map(([setId, entry]) => ({ setId, option: entry.option })),
@@ -18930,12 +18951,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       comparisons,
       skipped: [...skipped.values()].filter((row) => !selected.has(row.setId)),
       unavailable,
-      freeCheck: rows.filter((row) => row.currentGrade).map((row) => ({
+      freeCheck: rows.filter((row) => scoreMode ? !row.collectionUnknown && (row.scoreBaseline ?? row.currentScore) > 0 : row.currentGrade).map((row) => ({
         setId: row.setId,
         name: row.name,
         grade: row.currentGrade,
         catalogTokens: row.baselineTokens,
-        claimState: "unknown"
+        claimState: "unknown",
+        ...scoreMode ? { currentScore: row.collectionUnknown ? null : row.currentScore } : {}
       })),
       searchComplete: false
     };
@@ -19078,10 +19100,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     work = createGalleryRoadmapWork(),
     rowsOnly = false,
     referenceRefine = true,
-    retainWork = false
+    retainWork = false,
+    objective = "tokens"
   } = {}) {
     work.bind(targets, capital, gradePlanner, fastReferences);
     const rows = [], key2 = "event_token_1";
+    const scoreMode = objective === "score";
     const previous = new Map(previousRows.map((row) => [row.setId, structuredClone(row)]));
     let stopped = false, gradesChecked = 0;
     for (const [index, target] of targets.entries()) {
@@ -19132,8 +19156,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       row.currentScore = base.low.total;
       row.baselineTokens = currentGrade ? galleryCumulativeRewardQuantity(set, base.low.total, key2) : 0;
       row.collectionUnknown = !!base.collectionUnknown;
+      if (scoreMode) {
+        row.scoreBaseline = base.collectionUnknown ? null : base.full ? base.high?.total ?? base.low.total : 0;
+        row.scoreUncertain = base.low.total !== base.high?.total;
+      }
       row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
-      const grades3 = set.grades.filter((grade) => galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
+      const grades3 = set.grades.filter((grade) => scoreMode ? grade.threshold > (row.scoreBaseline ?? Infinity) : galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
+      if (scoreMode && row.scoreBaseline !== null && (!fastReferences || referenceRefine)) {
+        for (const threshold of [.../* @__PURE__ */ new Set([row.scoreBaseline + 1, Math.max(row.scoreBaseline + 1, Math.ceil(row.scoreBaseline * 1.5))])])
+          if (threshold <= 1e8) grades3.push({ name: `points:${threshold}`, threshold, numeric: true });
+      }
       if (rowsOnly) grades3.sort((a, b) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[b.name] ?? 0) - ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[a.name] ?? 0));
       const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
       for (const grade of grades3) {
@@ -19153,30 +19185,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           break;
         }
         const verified = reference.value;
-        const local = !fastReferences ? yield* work.run(
+        const local = !fastReferences || scoreMode && grade.numeric ? yield* work.run(
           target,
           `grade:${grade.name}`,
-          () => gradePlanner({ ...target, progress: planningProgress, targetGrade: grade.name, maxPlans: 1, scoreSummarizer: scorer })
+          () => gradePlanner({
+            ...target,
+            progress: planningProgress,
+            targetGrade: grade.numeric ? grade.threshold : grade.name,
+            ...grade.numeric ? { maxEvaluations: 6e3, beamWidth: 48, lineupSearch: true, scoreProbe: true } : {},
+            maxPlans: 1,
+            scoreSummarizer: scorer
+          })
         ) : null;
         if (local && !local.complete) {
           row.reason ??= "search-time-exhausted";
           stopped = true;
           break;
         }
-        const result = fastReferences ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : local.value;
+        const result = !local ? verified ? { status: "ready", plans: [verified], searchComplete: false } : { status: "partial", reason: "deep-analysis-pending", plans: [] } : local.value;
         if (!fastReferences && verified && result.status !== "achieved" && (!result.plans?.[0] || result.plans[0].totalPrice == null || verified.totalPrice < result.plans[0].totalPrice)) {
           result.status = "ready";
           result.plans = [verified];
           result.searchComplete = false;
         }
         gradesChecked++;
-        const candidate = result.plans?.[0];
-        if (result.status === "ready" && candidate?.reached && candidate.totalPrice !== null) {
+        const candidate = result.plans?.[0] ?? (scoreMode ? result.bestScoringCandidate : null);
+        if ((result.status === "ready" && candidate?.reached || scoreMode && candidate?.lineupComplete && candidate.score > row.scoreBaseline) && candidate.totalPrice !== null && (!scoreMode || row.scoreBaseline !== null && candidate.score > row.scoreBaseline)) {
           const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
-          row.options = row.options.filter((option) => option.requestedGrade !== grade.name);
+          const requested = grade.numeric ? grade.threshold : grade.name;
+          row.options = row.options.filter((option) => option.requestedGrade !== requested);
           row.options.push({
-            grade: reached?.name ?? grade.name,
-            requestedGrade: grade.name,
+            grade: reached?.name ?? (grade.numeric ? "\u8BA1\u5206" : grade.name),
+            requestedGrade: requested,
             score: candidate.score,
             items: candidate.items,
             projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key2),
@@ -19215,7 +19255,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         break;
       }
     }
-    const plan = rowsOnly ? { status: "candidates", route: [], selectedOptions: [], selectionStopped: false } : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection });
+    const plan = rowsOnly ? { status: "candidates", route: [], selectedOptions: [], selectionStopped: false } : yield* selectGalleryRoadmapSteps({ rows, capital, lossLimit, resaleDiscountBps, previousSelection, objective, profile: scoreMode ? "score" : null });
     return { ...plan, rows, fastReferences, coverage: {
       total: targets.length,
       inspected: rows.length,
@@ -19228,10 +19268,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/gallery/roadmap-portfolios.js
   var profiles = [["tokens", "\u591A\u62FF token"], ["loss", "\u7701\u635F\u8017"], ["capital", "\u5C11\u5360\u672C\u91D1"]];
+  var profilesFor = (input) => input.objective === "score" ? [["score", "\u589E\u5206\u6027\u4EF7\u6BD4"], ["score-gain", "\u591A\u589E\u5206"], ["score-capital", "\u5C11\u5360\u672C\u91D1\u589E\u5206"]] : profiles;
   function* planGalleryPortfoliosSteps(input) {
     const portfolios = [];
     let stopped = false;
-    for (const [profile, label] of profiles) {
+    for (const [profile, label] of profilesFor(input)) {
       const iterator = selectGalleryRoadmapSteps({ ...input, previousSelection: [], profile });
       let next, signal;
       try {
@@ -19252,7 +19293,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         break;
       }
     }
-    const selected = portfolios.find((value) => value.profile === (input.selectedProfile ?? "tokens")) ?? portfolios[0];
+    const selected = portfolios.find((value) => value.profile === (input.selectedProfile ?? (input.objective === "score" ? "score" : "tokens"))) ?? portfolios[0];
     return { ...selected, portfolios, selectionStopped: stopped, selectedProfile: selected.profile };
   }
   function chooseGalleryPortfolio(result, profile) {
@@ -19276,21 +19317,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const accept = (input, candidate) => {
       const next = projectOne(input, candidate), before = shown.has(candidate.profile) ? projectOne(input, shown.get(candidate.profile)) : null;
-      const priority = (value2) => Math.max(0, ...value2.route.map((row) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 })[row.targetGrade] ?? 0));
-      const metric = (value2) => candidate.profile === "tokens" ? -value2.addedTokens : candidate.profile === "loss" ? value2.funding?.expectedNetLoss : value2.funding?.requiredCapital;
-      const better = !before?.route.length || next.route.length > 0 && (priority(next) > priority(before) || priority(next) === priority(before) && (metric(next) < metric(before) || metric(next) === metric(before) && next.addedTokens >= before.addedTokens));
+      const priority = (value2) => input.objective === "score" ? 0 : Math.max(0, ...value2.route.map((row) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 })[row.targetGrade] ?? 0));
+      const metric = (value2) => candidate.profile === "score" ? value2.lossPer100k ?? Infinity : candidate.profile === "score-gain" ? -value2.addedScore : candidate.profile === "tokens" ? -value2.addedTokens : candidate.profile === "loss" ? value2.funding?.expectedNetLoss : value2.funding?.requiredCapital;
+      const gain = (value2) => input.objective === "score" ? value2.addedScore : value2.addedTokens;
+      const better = !before?.route.length || next.route.length > 0 && (priority(next) > priority(before) || priority(next) === priority(before) && (metric(next) < metric(before) || metric(next) === metric(before) && gain(next) >= gain(before)));
       shown.set(candidate.profile, better ? next : before);
     };
     const project3 = (input, pending2) => {
-      let portfolios = profiles.filter(([profile]) => shown.has(profile)).map(([profile]) => projectOne(input, shown.get(profile)));
+      let portfolios = profilesFor(input).filter(([profile]) => shown.has(profile)).map(([profile]) => projectOne(input, shown.get(profile)));
       const baseline = portfolios.find((value2) => value2.route.length > 0);
-      if (pending2 && baseline) portfolios = profiles.map(([profile, label]) => {
+      if (pending2 && baseline) portfolios = profilesFor(input).map(([profile, label]) => {
         const existing = portfolios.find((value2) => value2.profile === profile);
-        return existing?.route.length ? existing : { ...baseline, profile, label, objective: `grade-first-${profile}`, comparisonPending: true };
+        return existing?.route.length ? existing : { ...baseline, profile, label, objective: `${input.objective === "score" ? "score-estimate" : "grade-first"}-${profile}`, comparisonPending: true };
       });
       const fallback = selectGalleryRoadmapSteps({ ...input, rows: [], resumeOnly: true }).next().value;
-      const selected = portfolios.find((value2) => value2.profile === (input.selectedProfile ?? "tokens")) ?? portfolios[0] ?? fallback;
-      return { ...selected, portfolios, selectedProfile: selected.profile ?? "tokens", selectionStopped: pending2, comparisonPending: pending2 };
+      const selected = portfolios.find((value2) => value2.profile === (input.selectedProfile ?? (input.objective === "score" ? "score" : "tokens"))) ?? portfolios[0] ?? fallback;
+      return { ...selected, portfolios, selectedProfile: selected.profile ?? (input.objective === "score" ? "score" : "tokens"), selectionStopped: pending2, comparisonPending: pending2 };
     };
     return { clear, *run(input) {
       const nextKey = JSON.stringify(input), nextOptions = JSON.stringify({ ...input, rows: void 0 });
@@ -19503,7 +19545,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (entry.phase === "verify") {
             entry.verified = true;
             const owned2 = entry.target.progress?.rows?.filter(isGalleryOwned).length ?? 0;
-            const useful = computed.rows.some((row) => row.options?.some((option) => option.items.length > 0 && owned2 + option.items.length > entry.target.set.requiredCards));
+            const useful = options.objective === "score" && computed.rows.some((row) => !row.collectionUnknown && row.currentScore !== null) && entry.target.progress?.rows.some((row) => row.collected === false && !isGalleryOwned(row)) || computed.rows.some((row) => row.options?.some((option) => option.items.length > 0 && owned2 + option.items.length > entry.target.set.requiredCards));
             entry.phase = useful ? "refine" : "done";
             if (useful) entry.work.releaseMemos(entry.target);
           } else entry.phase = "done";
@@ -19596,6 +19638,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       funding,
       route: funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 })),
       addedTokens: selected.reduce((n, row) => n + row.addedTokens, 0),
+      ...plan.planningObjective === "score" ? {
+        addedScore: selected.reduce((n, row) => n + row.addedScore, 0),
+        lossPer100k: selected.some((row) => row.addedScore > 0) ? funding.expectedNetLoss * 1e5 / selected.reduce((n, row) => n + row.addedScore, 0) : null
+      } : {},
       selectedOptions: (plan.selectedOptions ?? []).filter((row) => byId.has(row.setId))
     };
   };
@@ -19617,7 +19663,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       unavailable: [...(result.unavailable ?? []).filter((row) => !ids2.has(row.setId)), ...result.rows.filter((row) => ids2.has(row.setId)).map((row) => ({ setId: row.setId, name: row.name, reason: "collection-updated" }))],
       skipped: (result.skipped ?? []).filter((row) => !ids2.has(row.setId)),
       coverage: { ...result.coverage, available: ready.filter((row) => row.currentScore !== null).length, completed: ready.filter((row) => row.analysisComplete).length, stopped: true },
-      rows: result.rows.map((row) => ids2.has(row.setId) ? { ...row, currentScore: null, currentGrade: null, options: [], reason: "collection-updated", analysisComplete: false, checkedGrades: [] } : row),
+      rows: result.rows.map((row) => ids2.has(row.setId) ? {
+        ...row,
+        currentScore: null,
+        currentGrade: null,
+        ...result.planningObjective === "score" ? { scoreBaseline: null } : {},
+        options: [],
+        reason: "collection-updated",
+        analysisComplete: false,
+        checkedGrades: []
+      } : row),
       referenceOverview: result.referenceOverview ? retainGalleryRoadmap(result.referenceOverview, affected) : void 0
     };
   }
@@ -19710,7 +19765,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const usefulExpansion = (job) => {
       if (!candidatesRemain(job) || job.ids.length >= 96) return false;
       const options = job.result?.rows?.[0]?.options ?? [];
-      if (!options.length) return true;
+      if (!options.length || binding?.scoreMode) return true;
       const best = Math.min(...options.map((option) => option.items.reduce((n, row) => n + row.price, 0)));
       return job.target.progress.rows.some((row) => row.collected === false && !isGalleryOwned(row) && !job.ids.includes(row.eaId) && (!priced2(job.target.prices?.[row.eaId]) || job.target.prices[row.eaId] < best));
     };
@@ -19769,7 +19824,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const target of targets) if (ids2.has(target.set.id)) {
         for (const row of target.progress?.rows ?? []) if (!fresh(row.eaId, Date.now())) attempted.delete(row.eaId);
       }
-      binding = { targets, key: key2 };
+      binding = { targets, key: key2, scoreMode: options.objective === "score" };
       preview = null;
       return changed;
     };
@@ -19784,9 +19839,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (!row || !(row.analysisComplete || row.options?.some((option) => option.grade === "S")) || row.currentScore === null || row.reason === "progress-unavailable" || target.progress.complete === false) continue;
         const top = Math.max(...target.set.grades.map((grade) => galleryCumulativeRewardQuantity(target.set, grade.threshold, "event_token_1")));
-        if (!(top > row.baselineTokens)) continue;
+        if (binding.scoreMode ? row.collectionUnknown || !target.progress.rows.some((card) => card.collected === false && !isGalleryOwned(card)) : !(top > row.baselineTokens)) continue;
         const best = row.options.slice().sort((a, b) => ({ S: 5, A: 4, B: 3 }[b.grade] ?? 0) - ({ S: 5, A: 4, B: 3 }[a.grade] ?? 0))[0];
-        const rank3 = best ? best.items.reduce((n, item2) => n + item2.price, 0) / Math.max(1, best.projectedTokens - row.baselineTokens) : Infinity;
+        const rank3 = best ? best.items.reduce((n, item2) => n + item2.price, 0) / Math.max(1, binding.scoreMode ? best.score - (row.scoreBaseline ?? row.currentScore) : best.projectedTokens - row.baselineTokens) : Infinity;
         jobs.push({ target, forecast: row, rank: rank3, ids: [], tier: 24, work: createGalleryRoadmapWork(), done: false, turns: 0 });
       }
     };
@@ -20041,6 +20096,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const capital = input("\u53EF\u5468\u8F6C\u91D1\u5E01", "\u53EF\u7559\u7A7A\uFF0C\u5148\u770B\u6240\u9700\u672C\u91D1");
     const lossLimit = input("\u6700\u591A\u9884\u8BA1\u635F\u8017\uFF08\u53EF\u9009\uFF09", "\u7559\u7A7A\u4E0D\u9650\uFF0C\u4E0D\u7B49\u4E8E\u91C7\u8D2D\u603B\u989D");
+    const goalLabel = add(document, controls, "label", "\u89C4\u5212\u76EE\u6807"), goal = add(document, goalLabel, "select");
+    goal.setAttribute("aria-label", "\u89C4\u5212\u76EE\u6807");
+    for (const [value, text5] of [["tokens", "\u62FF token\uFF08S \u2192 A \u2192 B\uFF09"], ["score", "\u51B2\u7EA7\u589E\u5206\uFF08\u672C\u5730\u8BA1\u5206\u4F30\u7B97\uFF09"]]) {
+      const option = add(document, goal, "option", text5);
+      option.value = value;
+    }
     const discountLabel = add(document, controls, "label", "\u56DE\u552E\u4EF7\u5047\u8BBE");
     const discount = add(document, discountLabel, "select");
     for (const [value, text5] of [[0, "\u6309\u4E70\u5165\u4EF7\u5356\u56DE\uFF0C\u4EC5\u4F30\u7A0E\u8D39"], [500, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 5%\uFF0C\u53E6\u6263\u7A0E"], [1e3, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 10%\uFF0C\u53E6\u6263\u7A0E"]]) {
@@ -20095,10 +20156,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const output = add(document, dialog, "div");
     output.setAttribute("aria-live", "polite");
     let epoch2 = 0, busy = false, last = null, binding = null, planInputs = null, fingerprint = null;
-    const work = createGalleryRoadmapSession();
-    const demand = createGalleryDemandWork({ referenceSession: work });
+    let work = createGalleryRoadmapSession();
+    let demand = createGalleryDemandWork({ referenceSession: work });
     let selectedProfile = "tokens";
-    const visited = /* @__PURE__ */ new Map();
+    let visited = /* @__PURE__ */ new Map(), activeGoal = "tokens";
+    const goalStates = /* @__PURE__ */ new Map();
+    const clearOtherGoals = () => {
+      for (const state of goalStates.values()) {
+        state.work.clear();
+        state.demand.clear();
+      }
+      goalStates.clear();
+    };
     let forecastEvidence = null, forecastClock = null;
     const updateForecastNote = () => {
       if (!busy && last?.demandDriven && (last.route.some((row) => row.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) || !last.quotesExpired && !demand.validResult())) {
@@ -20161,7 +20230,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
     };
     const parse = (field) => field.value.trim() === "" ? null : Number(field.value);
-    const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked });
+    const params = () => ({ capital: parse(capital), lossLimit: parse(lossLimit), resaleDiscountBps: Number(discount.value), deep: deep.checked, objective: goal.value });
     const capture = (state) => ({
       scope: state.scope,
       revision: state.catalog?.revision,
@@ -20192,6 +20261,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const pricesUsable = (targets) => (targets ?? []).every((target) => !target.progress?.rows || target.stale || target.poolStale || target.status !== "observed" || isCapturedFodderForecastTarget(target) || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) == null || (target.forecastPriceExpiresAt ?? target.priceSnapshot?.expiresAt) > Date.now());
     const invalidate = () => {
       epoch2++;
+      clearOtherGoals();
       work.clear();
       demand.clear();
       last = null;
@@ -20213,7 +20283,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const output2 = outputNode;
       rebuild.hidden = !last;
       result = chooseGalleryPortfolio(result, selectedProfile);
+      const scoreMode = result.planningObjective === "score";
       output2.replaceChildren();
+      if (scoreMode) add(document, output2, "p", "\u51B2\u7EA7\u589E\u5206\uFF1A\u6BD4\u8F83\u5B8C\u6574\u5408\u96C6\u7684\u672C\u5730\u8BA1\u7B97\u5206\u589E\u91CF\uFF0C\u4E0D\u5F3A\u5236 S/A/B \u6392\u5E8F\uFF1B\u4E0D\u662F EA \u5168\u5C40 XP\uFF0C\u6682\u4E0D\u6362\u7B97\u7B49\u7EA7\u6216\u58F0\u79F0\u5DF2\u5230 Lv.10\u3002\u9996\u4EFB\u4E0D\u786E\u5B9A\u65F6\u7528\u539F\u5206\u4E0A\u754C\u5BF9\u6BD4\u65B0\u5206\u4E0B\u754C\uFF0C\u6536\u96C6\u72B6\u6001\u672A\u77E5\u7684\u5408\u96C6\u6682\u4E0D\u8BA1\u589E\u5206\u3002");
       if (result.comparisonPending) add(document, output2, "p", "\u5168\u5C40\u8DEF\u7EBF\u4ECD\u5728\u540E\u53F0\u6BD4\u8F83\uFF1B\u5DF2\u6838\u9A8C\u4E14\u4ECD\u6709\u6548\u7684\u65B9\u6848\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u5206\u6790\uFF0C\u4E0D\u4ECE\u7A7A\u767D\u91CD\u6765\u3002");
       if (result.coverage.verified != null) add(document, output2, "p", `\u53C2\u8003\u6838\u9A8C ${result.coverage.verified}/${result.coverage.total} \xB7 \u5F85\u4F18\u5316 ${result.coverage.optimizationPending ?? 0} \u4E2A\u5408\u96C6\uFF1B\u5DF2\u6838\u9A8C\u8DEF\u7EBF\u4FDD\u7559\uFF0C\u4F18\u5316\u9010\u5408\u96C6\u7EE7\u7EED\u3002`);
       if (result.pendingTasks?.length) {
@@ -20224,10 +20296,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (result.portfolios?.length) {
         const choices = add(document, output2, "div");
         choices.className = "gallery-roadmap-portfolios";
-        add(document, choices, "p", "\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u7684\u8DEF\u7EBF\u5BF9\u6BD4\uFF1A\u9ED8\u8BA4 S \u2192 A \u2192 B\uFF0C\u5148\u6BD4\u8F83\u540C\u6863\u76EE\u6807\u3002\u5171\u4EAB\u7CBE\u786E\u7248\u672C\u53EA\u8BA1\u4E00\u6B21\u91C7\u8D2D\uFF1B\u8D44\u91D1\u6309\u5B9E\u9645\u987A\u5E8F\u4E0E\u9010\u5361\u56DE\u552E\u5047\u8BBE\u8BA1\u7B97\u3002\u672A\u6838\u9A8C\u7684 S \u4E0D\u7B97\u4E0D\u53EF\u505A\uFF0CA/B \u4EC5\u4E3A\u5F53\u524D\u5DF2\u6838\u9A8C\u8303\u56F4\u7684\u5019\u9009\u3002");
+        add(document, choices, "p", scoreMode ? "\u540C\u4E00\u5019\u9009\u5E93\u6309\u589E\u5206\u6027\u4EF7\u6BD4\u3001\u591A\u589E\u5206\u3001\u5C11\u5360\u672C\u91D1\u6BD4\u8F83\uFF1B\u5171\u4EAB\u5361\u53EA\u8BA1\u4E00\u6B21\u91C7\u8D2D\uFF0C\u5404\u5408\u96C6\u589E\u5206\u5206\u522B\u8BA1\u7B97\uFF0C\u4E0D\u5F53\u6210 EA \u7B49\u7EA7\u7ECF\u9A8C\u3002" : "\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u7684\u8DEF\u7EBF\u5BF9\u6BD4\uFF1A\u9ED8\u8BA4 S \u2192 A \u2192 B\uFF0C\u5148\u6BD4\u8F83\u540C\u6863\u76EE\u6807\u3002\u5171\u4EAB\u7CBE\u786E\u7248\u672C\u53EA\u8BA1\u4E00\u6B21\u91C7\u8D2D\uFF1B\u8D44\u91D1\u6309\u5B9E\u9645\u987A\u5E8F\u4E0E\u9010\u5361\u56DE\u552E\u5047\u8BBE\u8BA1\u7B97\u3002\u672A\u6838\u9A8C\u7684 S \u4E0D\u7B97\u4E0D\u53EF\u505A\uFF0CA/B \u4EC5\u4E3A\u5F53\u524D\u5DF2\u6838\u9A8C\u8303\u56F4\u7684\u5019\u9009\u3002");
         for (const portfolio of result.portfolios) {
           const count2 = (grade) => portfolio.route.filter((row) => row.targetGrade === grade).length;
-          const pick5 = add(document, choices, "button", `${portfolio.label}${portfolio.comparisonPending ? "\uFF08\u57FA\u7EBF\u5F85\u4F18\u5316\uFF09" : ""} \xB7 S ${count2("S")}/A ${count2("A")}/B ${count2("B")} \xB7 +${portfolio.addedTokens} token \xB7 \u672C\u91D1 ${money(portfolio.funding?.requiredCapital)} \xB7 \u635F\u8017 ${money(portfolio.funding?.expectedNetLoss)}`);
+          const pick5 = add(document, choices, "button", `${portfolio.label}${portfolio.comparisonPending ? "\uFF08\u57FA\u7EBF\u5F85\u4F18\u5316\uFF09" : ""} \xB7 ${scoreMode ? `+${money(portfolio.addedScore)} \u8BA1\u7B97\u5206` : `S ${count2("S")}/A ${count2("A")}/B ${count2("B")}`} \xB7 +${portfolio.addedTokens} token \xB7 \u672C\u91D1 ${money(portfolio.funding?.requiredCapital)} \xB7 \u635F\u8017 ${money(portfolio.funding?.expectedNetLoss)}`);
           pick5.type = "button";
           pick5.dataset.profile = portfolio.profile;
           pick5.setAttribute("aria-pressed", String(result.selectedProfile === portfolio.profile));
@@ -20248,7 +20320,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const metric = add(document, output2, "div");
       metric.className = "gallery-roadmap-metrics";
       for (const [label, value] of [
-        ["\u76EE\u5F55\u65B0\u589E token", result.addedTokens],
+        [scoreMode ? "\u65B0\u589E\u5B8C\u6574\u5408\u96C6\u8BA1\u7B97\u5206\uFF08\u975E XP\uFF09" : "\u76EE\u5F55\u65B0\u589E token", scoreMode ? result.addedScore : result.addedTokens],
         ["\u6240\u9700\u5468\u8F6C\u672C\u91D1", result.funding?.requiredCapital],
         ["\u9884\u8BA1\u51C0\u635F\u8017", result.funding?.expectedNetLoss],
         ["\u7D2F\u8BA1\u91C7\u8D2D\u989D\uFF08\u975E\u672C\u91D1\uFF09", result.funding?.totalPurchase]
@@ -20259,18 +20331,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       add(document, output2, "p", `\u8986\u76D6 ${result.coverage.inspected}/${result.coverage.total} \u4E2A\u5408\u96C6\uFF1B\u5DF2\u5B8C\u6210 ${result.coverage.completed ?? result.deepCoverage?.completed ?? result.coverage.inspected}\uFF0C\u53EF\u8BA1\u5206 ${result.coverage.available}\u3002${result.partial ? "\u5F53\u524D\u4E3A\u90E8\u5206\u5206\u6790\uFF0C\u5F85\u6838\u5B9E\u6216\u672A\u5B8C\u6210\u7684\u5408\u96C6\u53E6\u5217\u3002" : ""}`);
       if (result.fastReferences) add(document, output2, "p", "\u5FEB\u901F\u9996\u8F6E\u5DF2\u672C\u5730\u6838\u9A8C\u7EC4\u5408\u3001\u6263\u9664\u5DF2\u6709\u5361\uFF1B\u91D1\u989D\u6309 Fodder \u9010\u5361\u53C2\u8003\u4EF7\u4F30\u7B97\uFF0C\u884C\u60C5\u5E74\u9F84\u672A\u77E5\uFF0C\u4E0D\u662F\u5B9E\u9645\u8D2D\u4E70\u9650\u4EF7\u3002\u8FDB\u5165\u5408\u96C6/\u8D2D\u4E70\u524D\u6309\u539F\u4EF7\u683C\u6765\u6E90\u72EC\u7ACB\u6838\u4EF7\uFF1B\u6DF1\u5EA6\u4F18\u5316\u53EF\u7EE7\u7EED\u6BD4\u8F83\u3002");
-      add(document, output2, "p", "\u8DEF\u7EBF\u6309 S/A/B \u4F18\u5148\u7EA7\u5728\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u5185\u6BD4\u8F83\uFF0C\u5305\u542B\u5171\u4EAB\u7248\u672C\u548C\u5468\u8F6C\u7A0E\u635F\uFF1B\u641C\u7D22\u6709\u754C\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
+      add(document, output2, "p", scoreMode ? `\u6BCF\u65B0\u589E\u5341\u4E07\u672C\u5730\u8BA1\u7B97\u5206\u9884\u8BA1\u635F\u8017 ${money(result.lossPer100k == null ? null : Math.round(result.lossPer100k))}\uFF1B\u4EC5\u6BD4\u8F83\u5DF2\u6838\u9A8C\u5019\u9009\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002\u7B49\u7EA7\u95E8\u69DB\u4E0E\u7CBE\u786E XP \u672A\u786E\u8BA4\uFF0Ctoken \u589E\u91CF\u4E0D\u6362\u7B97\u4E3A XP\u3002` : "\u8DEF\u7EBF\u6309 S/A/B \u4F18\u5148\u7EA7\u5728\u540C\u4E00\u5168\u5C40\u5019\u9009\u5E93\u5185\u6BD4\u8F83\uFF0C\u5305\u542B\u5171\u4EAB\u7248\u672C\u548C\u5468\u8F6C\u7A0E\u635F\uFF1B\u641C\u7D22\u6709\u754C\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F18\u3002Token \u4E3A\u76F8\u5BF9\u5F53\u524D\u6536\u96C6\u5FEB\u7167\u7684\u76EE\u5F55\u589E\u91CF\uFF0C\u4E0D\u662F\u5DF2\u9886\u4F59\u989D\u6216\u4FDD\u8BC1\u53EF\u9886\u53D6\u6570\u91CF\u3002");
       add(document, output2, "p", "\u672C\u91D1\u6309\u9010\u5361\u4E70\u5165 \u2192 \u786E\u8BA4\u6536\u96C6 \u2192 \u5356\u51FA\u5230\u8D26 \u2192 \u4E0B\u4E00\u5F20\u6A21\u62DF\uFF1B\u5E76\u975E\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002\u56DE\u552E\u4EF7\u4EC5\u662F\u5047\u8BBE\uFF0C\u4EF7\u683C\u6CE2\u52A8\u548C\u672A\u6210\u4EA4\u90FD\u4F1A\u6539\u53D8\u8D44\u91D1\u9700\u6C42\u3002");
-      if (!result.route.length) add(document, output2, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
+      if (!result.route.length) add(document, output2, "p", !result.partial && !result.unavailable.length && !result.skipped.length ? scoreMode ? "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u627E\u5230\u6709\u5B8C\u6574\u62A5\u4EF7\u3001\u6B63\u5411\u8BA1\u5206\u589E\u91CF\u7684\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u6CD5\u63D0\u5206\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u6CA1\u6709\u786E\u8BA4\u7684\u76EE\u5F55 token \u5347\u7EA7\u7F3A\u53E3\uFF1B\u65E0\u9700\u4E3A\u5DF2\u8FBE\u6863\u91CD\u590D\u4E70\u5165\uFF0C\u5956\u52B1\u9886\u53D6\u72B6\u6001\u4ECD\u5F85\u6838\u5B9E\u3002" : "\u5F53\u524D\u5DF2\u5206\u6790\u8303\u56F4\u672A\u5F97\u5230\u53EF\u786E\u8BA4\u7684\u5347\u7EA7\u8DEF\u7EBF\uFF1B\u4E0D\u4EE3\u8868\u5168\u753B\u5ECA\u65E0\u65B9\u6848\u3002\u8BF7\u770B\u5F85\u6838\u5B9E\u9879\u76EE\uFF0C\u6216\u7EE7\u7EED\u5206\u6790\u5269\u4F59\u5408\u96C6\u3002");
       const tableWrap = add(document, output2, "div");
       tableWrap.className = "gallery-roadmap-table";
       const table = add(document, tableWrap, "table"), head = add(document, table, "tr");
-      for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u590D\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
+      for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", scoreMode ? "\u65B0\u589E\u8BA1\u7B97\u5206" : "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u590D\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
       for (const step of result.route) {
         const tr = add(document, table, "tr");
         add(document, tr, "th", `${step.order}. ${step.name}`);
-        add(document, tr, "td", `${step.currentGrade ?? "\u672A\u8FBE\u6863"} \u2192 ${step.targetGrade}`);
-        add(document, tr, "td", `+${step.addedTokens}`);
+        add(document, tr, "td", scoreMode ? `${step.scoreUncertain ? "\u2264 " : ""}${money(step.currentScore)} \u2192 ${money(step.projectedScore)} \u5206\uFF08${step.targetGrade}\uFF09` : `${step.currentGrade ?? "\u672A\u8FBE\u6863"} \u2192 ${step.targetGrade}`);
+        add(document, tr, "td", `+${scoreMode ? money(step.addedScore) : step.addedTokens}`);
         add(document, tr, "td", `${step.cycles.length} \u5F20 / ${step.reusedIds.length} \u5F20`);
         const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
         open.type = "button";
@@ -20279,9 +20351,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
             return;
           }
-          visited.set(step.setId, { setId: step.setId, name: step.name, targetGrade: step.targetGrade });
+          visited.set(step.setId, { setId: step.setId, name: step.name, targetGrade: step.targetGrade, ...scoreMode ? { scoreTarget: step.scoreTarget } : {} });
           dialog.close();
-          openSet(step.setId, step.targetGrade);
+          if (scoreMode) openSet(step.setId, step.targetGrade, step.scoreTarget);
+          else openSet(step.setId, step.targetGrade);
         });
         const cards = add(document, output2, "details");
         add(document, cards, "summary", `${step.order}. ${step.name} \xB7 \u8865\u5361\u4E0E\u9010\u5361\u5468\u8F6C\u660E\u7EC6`);
@@ -20323,9 +20396,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const ranks = { S: 5, A: 4, B: 3, C: 2, D: 1 };
         for (const step of visited.values()) {
           const observed = [...result.freeCheck ?? [], ...result.referenceOverview?.freeCheck ?? []].find((row) => row.setId === step.setId);
-          const reached = (ranks[observed?.grade] ?? 0) >= (ranks[step.targetGrade] ?? Infinity);
+          const reached = Number.isSafeInteger(step.scoreTarget) ? Number.isSafeInteger(observed?.currentScore) && observed.currentScore >= step.scoreTarget : (ranks[observed?.grade] ?? 0) >= (ranks[step.targetGrade] ?? Infinity);
           step.state = reached ? "local-score-reached" : "entered";
-          add(document, log, "p", `${step.name} \xB7 \u76EE\u6807 ${step.targetGrade} \xB7 ${reached ? "\u672C\u5730\u8BA1\u5206\u5DF2\u8FBE\u76EE\u6807\uFF0C\u5956\u52B1\u5F85\u6838\u5B9E" : "\u5DF2\u8FDB\u5165\uFF0C\u5F85\u6838\u5BF9/\u7EE7\u7EED\u5B8C\u6210"}`);
+          add(document, log, "p", `${step.name} \xB7 \u76EE\u6807 ${step.scoreTarget ? `${money(step.scoreTarget)} \u8BA1\u7B97\u5206\uFF08\u975E XP\uFF09` : step.targetGrade} \xB7 ${reached ? "\u672C\u5730\u8BA1\u5206\u5DF2\u8FBE\u76EE\u6807\uFF0C\u5956\u52B1\u5F85\u6838\u5B9E" : "\u5DF2\u8FDB\u5165\uFF0C\u5F85\u6838\u5BF9/\u7EE7\u7EED\u5B8C\u6210"}`);
         }
       }
     };
@@ -20333,7 +20406,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       previewBox.hidden = false;
       previewBox.open = true;
       previewBox.replaceChildren();
-      add(document, previewBox, "summary", `\u5168\u5C40\u53C2\u8003\u9884\u89C8 \xB7 ${result.coverage.inspected}/${result.coverage.total} \u5408\u96C6 \xB7 +${result.addedTokens} token \xB7 \u70B9\u51FB\u5C55\u5F00/\u6536\u8D77`);
+      add(document, previewBox, "summary", `\u5168\u5C40\u53C2\u8003\u9884\u89C8 \xB7 ${result.coverage.inspected}/${result.coverage.total} \u5408\u96C6 \xB7 ${result.planningObjective === "score" ? `+${money(result.addedScore)} \u8BA1\u7B97\u5206` : `+${result.addedTokens} token`} \xB7 \u70B9\u51FB\u5C55\u5F00/\u6536\u8D77`);
       const body = add(document, previewBox, "div");
       render(result, body);
       add(document, body, "p", "\u53C2\u8003\u9884\u89C8\u4E0E\u72EC\u7ACB\u6838\u4EF7\u5206\u5F00\uFF1B\u6240\u6709\u5DF2\u6838\u9A8C\u5019\u9009\u7EDF\u4E00\u6BD4\u8F83\uFF0C\u672A\u5B8C\u6210\u9879\u4F1A\u7EE7\u7EED\u52A0\u5165\u540C\u4E00\u5168\u5C40\u8BA1\u5212\u3002\u672A\u67E5\u7248\u672C\u4E0D\u5F53\u4F5C\u96F6\u6210\u672C\u3002");
@@ -20380,6 +20453,47 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       epoch2++;
     });
     for (const field of [capital, lossLimit, discount]) field.addEventListener("change", invalidate);
+    goal.addEventListener("change", () => {
+      if (busy) return;
+      epoch2++;
+      goalStates.set(activeGoal, { work, demand, last, binding, planInputs, fingerprint, selectedProfile, visited, forecastEvidence, deep: deep.checked });
+      activeGoal = goal.value;
+      const saved = goalStates.get(activeGoal);
+      goalStates.delete(activeGoal);
+      work = saved?.work ?? createGalleryRoadmapSession();
+      demand = saved?.demand ?? createGalleryDemandWork({ referenceSession: work });
+      last = saved?.last ?? null;
+      binding = saved?.binding ?? null;
+      planInputs = saved?.planInputs ?? null;
+      fingerprint = saved?.fingerprint ?? null;
+      selectedProfile = saved?.selectedProfile ?? (activeGoal === "score" ? "score" : "tokens");
+      visited = saved?.visited ?? /* @__PURE__ */ new Map();
+      forecastEvidence = saved?.forecastEvidence ?? null;
+      if (saved) deep.checked = saved.deep;
+      previewBox.replaceChildren();
+      previewBox.hidden = true;
+      output.replaceChildren();
+      timing.textContent = "";
+      rebuild.hidden = !last;
+      if (last) {
+        reconcileSaved();
+        if (last && pricesUsable(planInputs)) {
+          if (last.referenceOverview) renderPreview(last.referenceOverview);
+          render(last);
+        } else if (last) {
+          last = null;
+          work.clear();
+          demand.clear();
+          planInputs = null;
+          binding = null;
+          forecastEvidence = null;
+          rebuild.hidden = true;
+        }
+      }
+      generate.textContent = last?.coverage.stopped ? "\u7EE7\u7EED\u5206\u6790\u5269\u4F59" : last ? "\u91CD\u65B0\u751F\u6210\u6574\u4F53\u65B9\u6848" : "\u751F\u6210\u6574\u4F53\u65B9\u6848";
+      updateForecastNote();
+      status.textContent = last ? "\u5DF2\u6062\u590D\u6B64\u76EE\u6807\u7684\u4FDD\u7559\u8DEF\u7EBF\uFF1B\u8D26\u53F7/\u6750\u6599/\u62A5\u4EF7\u4ECD\u6309\u539F\u89C4\u5219\u590D\u6838\u3002" : activeGoal === "score" ? "\u51B2\u7EA7\u589E\u5206\u6A21\u5F0F\uFF1A\u6309\u5B8C\u6574\u5408\u96C6\u672C\u5730\u8BA1\u7B97\u5206\u6BD4\u8F83\uFF1B\u7B49\u7EA7/XP \u4E0D\u4F5C\u731C\u6D4B\u3002" : "\u5DF2\u5207\u56DE\u62FF token \u6A21\u5F0F\uFF0C\u4FDD\u7559 S \u2192 A \u2192 B \u4F18\u5148\u7EA7\u3002";
+    });
     deep.addEventListener("change", () => {
       if (!last || !binding || !planInputs) {
         invalidate();
@@ -20398,6 +20512,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const state = read();
       status.textContent = state.catalog ? `\u5168\u76EE\u5F55 ${state.targets.length} \u4E2A\u5408\u96C6\u3002\u70B9\u51FB\u751F\u6210\u540E\u81EA\u52A8\u590D\u7528\u6536\u96C6\u7F13\u5B58\u3001\u8865\u5145\u6570\u636E\u4E0E\u62A5\u4EF7\uFF1B\u53EF\u968F\u65F6\u505C\u6B62\u3002` : "\u516C\u5F00\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165\uFF0C\u8BF7\u5148\u7B49\u5F85 Gallery \u540C\u6B65\u3002";
       if (!dialog.open) dialog.showModal();
+      if (!changed && last && pricesUsable(planInputs)) {
+        if (last.referenceOverview) renderPreview(last.referenceOverview);
+        render(last);
+      }
       updateForecastNote();
       if (forecastClock === null) forecastClock = document.defaultView.setInterval(updateForecastNote, 1e3);
       if (changed) void start(event);
@@ -20420,7 +20538,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress.hidden = false;
       rebuild.disabled = true;
       let completed = false, failureReason = null, priceBasis = "unknown", targetCount = 0, planningLimitMs = null;
-      for (const field of [capital, lossLimit, discount, deep]) field.disabled = true;
+      for (const field of [capital, lossLimit, discount, deep, goal]) field.disabled = true;
       const completedPhases = /* @__PURE__ */ new Set();
       const startedAt = performance.now(), timings = {}, tick = () => {
         timing.textContent = `\u5DF2\u7528 ${((performance.now() - startedAt) / 1e3).toFixed(1)} \u79D2 \xB7 ${stage === "preparing" ? "\u540C\u6B65\u6536\u96C6" : ["pricing", "demand-pricing"].includes(stage) ? "\u72EC\u7ACB\u67E5\u4EF7" : stage === "planning" ? "\u672C\u5730\u6838\u9A8C/\u89C4\u5212" : "\u8BFB\u53D6\u516C\u5171\u53C2\u8003"}`;
@@ -20700,7 +20818,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         progress.hidden = true;
         rebuild.disabled = false;
         rebuild.hidden = !last;
-        for (const field of [capital, lossLimit, discount, deep]) field.disabled = false;
+        for (const field of [capital, lossLimit, discount, deep, goal]) field.disabled = false;
         updateForecastNote();
         onBusyChange(false);
       }
@@ -20743,6 +20861,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       dispose: () => {
         if (busy) cancel();
         epoch2++;
+        clearOtherGoals();
         stopForecastClock();
         work.clear();
         demand.clear();
@@ -21899,11 +22018,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         select.dataset.edited = "true";
         add3(section, "small", `\u6574\u4F53\u8DEF\u7EBF\u76EE\u6807 ${roadmapTarget.grade}\uFF1B\u5982\u9700\u5468\u8F6C\uFF0C\u53EF\u5148\u5C11\u91CF\u4E70\u5165\u5E76\u786E\u8BA4\u6536\u96C6\u540E\u518D\u5356\u56DE\uFF0C\u4E0D\u8981\u6C42\u4E00\u6B21\u4E70\u9F50\u3002`);
       }
+      const cachedGoal = planCache.get(set.id);
+      const scoreTarget = roadmapTarget?.setId === set.id ? roadmapTarget.scoreTarget : cachedGoal?.stale !== true && typeof cachedGoal?.plan?.targetGrade === "number" ? cachedGoal.plan.targetGrade : null;
+      if (Number.isSafeInteger(scoreTarget) && scoreTarget > 0 && scoreTarget <= 1e8) {
+        const option = document.createElement("option");
+        option.value = `points:${scoreTarget}`;
+        option.textContent = `\u51B2\u7EA7\u8BA1\u5206\u76EE\u6807 \xB7 ${count2(scoreTarget)} \u5206\uFF08\u975E XP\uFF09`;
+        select.append(option);
+        select.value = option.value;
+        select.dataset.edited = "true";
+        add3(section, "small", "\u6765\u81EA\u6574\u4F53\u51B2\u7EA7\u8DEF\u7EBF\u7684\u672C\u5730\u8BA1\u5206\u76EE\u6807\uFF0C\u5141\u8BB8\u540C\u6863\u4F4D\u7EE7\u7EED\u63D0\u5206\uFF1B\u8D2D\u4E70\u524D\u4ECD\u72EC\u7ACB\u6838\u4EF7\uFF0C\u4E0D\u4EE3\u8868\u5DF2\u8FBE\u5230\u67D0\u4E2A EA \u7B49\u7EA7\u3002");
+      }
+      const chosenTarget = () => /^points:[1-9]\d{0,8}$/.test(select.value) ? Number(select.value.slice(7)) : select.value;
       select.addEventListener("change", () => {
         select.dataset.edited = "true";
         rememberPlanNotice(set.id, { grade: select.value });
         section.querySelectorAll(".gallery-plan-notice").forEach((node2) => node2.remove());
-        if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
+        if (roadmapTarget?.setId === set.id) {
+          roadmapTarget.grade = select.value;
+          roadmapTarget.scoreTarget = typeof chosenTarget() === "number" ? chosenTarget() : null;
+        }
+        jointAdd.disabled = restoringTargets || value.status !== "observed" || value.stale === true || value.poolStale === true || typeof chosenTarget() === "number";
       });
       row.append(select);
       const button = add3(row, "button", "\u751F\u6210\u65B9\u6848");
@@ -21914,7 +22049,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       jointAdd.type = "button";
       jointAdd.title = "\u52A0\u5165\u8054\u5408\u76EE\u6807";
       jointAdd.setAttribute("aria-label", "\u52A0\u5165\u8054\u5408\u76EE\u6807");
-      jointAdd.disabled = restoringTargets || value.status !== "observed" || value.stale === true || value.poolStale === true;
+      jointAdd.disabled = restoringTargets || value.status !== "observed" || value.stale === true || value.poolStale === true || typeof chosenTarget() === "number";
       jointAdd.addEventListener("click", (event) => {
         if (!event.isTrusted) return;
         if (restoringTargets) return;
@@ -22062,7 +22197,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add3(output, "small", "\u6B63\u5728\u8BA1\u7B97\u2026");
         overviewButton.disabled = true;
         select.disabled = true;
-        const chosenGrade = select.value, surface = { key: surfaceKey, section, grade: chosenGrade, event: "grade-plan" };
+        const chosenGrade = chosenTarget(), surface = { key: surfaceKey, section, grade: chosenGrade, event: "grade-plan" };
         runningPlanSurfaces.set(set.id, surface);
         const run = setPlanningRun(set, value, output, surface);
         activePlans++;
@@ -23886,11 +24021,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       loadPrices: loadPlanningPrices,
       referenceService: galleryReference2,
       readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
-      openSet: (setId, grade) => {
+      openSet: (setId, grade, scoreTarget) => {
         if (checkScope() === false) return;
         const set = currentGallerySet(setId);
         if (!set) return;
-        roadmapTarget = { setId, grade };
+        roadmapTarget = { setId, grade, scoreTarget };
         setJointMode(false);
         void loadSetDetails(set);
       }
@@ -39763,7 +39898,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.84" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.85" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -40105,8 +40240,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.84"}`,
-    version: "27.0.84",
+    title: `FC Automation Tool ${"27.0.85"}`,
+    version: "27.0.85",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

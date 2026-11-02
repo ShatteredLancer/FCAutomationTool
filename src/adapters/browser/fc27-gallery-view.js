@@ -731,18 +731,28 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       select.dataset.edited = 'true';
       add(section, 'small', `整体路线目标 ${roadmapTarget.grade}；如需周转，可先少量买入并确认收集后再卖回，不要求一次买齐。`);
     }
+    const cachedGoal=planCache.get(set.id);
+    const scoreTarget=roadmapTarget?.setId===set.id ? roadmapTarget.scoreTarget
+      : cachedGoal?.stale!==true && typeof cachedGoal?.plan?.targetGrade==='number' ? cachedGoal.plan.targetGrade : null;
+    if(Number.isSafeInteger(scoreTarget) && scoreTarget>0 && scoreTarget<=100000000){
+      const option=document.createElement('option');option.value=`points:${scoreTarget}`;option.textContent=`冲级计分目标 · ${count(scoreTarget)} 分（非 XP）`;
+      select.append(option);select.value=option.value;select.dataset.edited='true';
+      add(section,'small','来自整体冲级路线的本地计分目标，允许同档位继续提分；购买前仍独立核价，不代表已达到某个 EA 等级。');
+    }
+    const chosenTarget=()=>/^points:[1-9]\d{0,8}$/.test(select.value)?Number(select.value.slice(7)):select.value;
     select.addEventListener('change', () => {
       select.dataset.edited = 'true';
       rememberPlanNotice(set.id, { grade: select.value });
       section.querySelectorAll('.gallery-plan-notice').forEach(node => node.remove());
-      if (roadmapTarget?.setId === set.id) roadmapTarget.grade = select.value;
+      if (roadmapTarget?.setId === set.id) {roadmapTarget.grade = select.value;roadmapTarget.scoreTarget=typeof chosenTarget()==='number'?chosenTarget():null;}
+      jointAdd.disabled=restoringTargets || value.status!=='observed' || value.stale===true || value.poolStale===true || typeof chosenTarget()==='number';
     });
     row.append(select);
     const button = add(row, 'button', '生成方案'); button.type = 'button';
     const overviewButton = add(row, 'button', '各档费用'); overviewButton.type = 'button';
     const jointAdd = add(row, 'button', '+', 'gallery-joint-add'); jointAdd.type = 'button';
     jointAdd.title = '加入联合目标'; jointAdd.setAttribute('aria-label', '加入联合目标');
-    jointAdd.disabled = restoringTargets || value.status !== 'observed' || value.stale === true || value.poolStale === true;
+    jointAdd.disabled = restoringTargets || value.status !== 'observed' || value.stale === true || value.poolStale === true || typeof chosenTarget()==='number';
     jointAdd.addEventListener('click', event => {
       if (!event.isTrusted) return;
       if (restoringTargets) return;
@@ -858,7 +868,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       section.querySelectorAll('.gallery-plan-notice').forEach(node => node.remove());
       button.disabled = true; output.replaceChildren(); add(output, 'small', '正在计算…');
       overviewButton.disabled = true; select.disabled = true;
-      const chosenGrade = select.value, surface = { key: surfaceKey, section, grade: chosenGrade, event: 'grade-plan' };
+      const chosenGrade = chosenTarget(), surface = { key: surfaceKey, section, grade: chosenGrade, event: 'grade-plan' };
       runningPlanSurfaces.set(set.id, surface);
       const run = setPlanningRun(set, value, output, surface);
       activePlans++;
@@ -2193,10 +2203,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       applySyncDetails(outcome.details ?? await sync.peekDetails(source));
     }, stopPrepare: () => sync?.stop(), loadPrices: loadPlanningPrices, referenceService: galleryReference,
     readTimeout: async () => (await planningSettings?.read())?.timeoutMs ?? DEFAULT_GALLERY_PLANNING_TIMEOUT_MS,
-    openSet: (setId, grade) => {
+    openSet: (setId, grade,scoreTarget) => {
       if (checkScope() === false) return;
       const set = currentGallerySet(setId); if (!set) return;
-      roadmapTarget = { setId, grade }; setJointMode(false); void loadSetDetails(set);
+      roadmapTarget = { setId, grade,scoreTarget }; setJointMode(false); void loadSetDetails(set);
     } });
   levelPanel = mountGalleryLevel({ document, parent: node('gallery-level-panel'), service: galleryLevel, visible, timers });
   return Object.freeze({ setActive, dispose: () => { disposed = true; selection++; setIconSelections.clear(); scoreQueue.dispose(); clearTimeout(scoreRenderTimer); sync?.stop(); unsubscribeSync?.(); bulkList?.dispose?.();

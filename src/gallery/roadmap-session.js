@@ -91,7 +91,9 @@ export function createGalleryRoadmapSession() {
         if(entry.phase==='verify'){
           entry.verified=true;
           const owned=entry.target.progress?.rows?.filter(isGalleryOwned).length ?? 0;
-          const useful=computed.rows.some(row=>row.options?.some(option=>option.items.length>0 && owned+option.items.length>entry.target.set.requiredCards));
+          const useful=options.objective==='score' && computed.rows.some(row=>!row.collectionUnknown && row.currentScore!==null)
+            && entry.target.progress?.rows.some(row=>row.collected===false && !isGalleryOwned(row))
+            || computed.rows.some(row=>row.options?.some(option=>option.items.length>0 && owned+option.items.length>entry.target.set.requiredCards));
           entry.phase=useful?'refine':'done';
           if(useful)entry.work.releaseMemos(entry.target);
         }else entry.phase='done';
