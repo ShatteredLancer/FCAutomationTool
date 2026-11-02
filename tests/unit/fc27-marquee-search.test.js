@@ -5,6 +5,7 @@ import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
 import { prepareFc27PuzzleFillPlan } from '../../src/fc27/puzzle-fill-plan.js';
+import { planFc27PuzzleShortageQueries } from '../../src/fc27/puzzle-procurement.js';
 
 function marqueeInput() {
   const input = puzzleFillFixture();
@@ -60,4 +61,26 @@ it('does not report an impossible squad when the per-combination placement alloc
   expect(result.reason).toBe('FC27_PUZZLE_SEARCH_LIMIT');
   expect(result.nodes).toBeLessThan(50000);
   expect(result).not.toHaveProperty('deficits');
+});
+
+it('reserves explicit Marquee club and league lanes before generic chemistry fillers', () => {
+  const input = puzzleFillFixture();
+  input.challenge.slotCount = 11;
+  input.challenge.brickIndices = [];
+  input.policy.maxRating = 82;
+  input.policy.goldRange = [75, 82];
+  input.clubLinks = { schema: 1, complete: true, links: [] };
+  input.inventory.items = input.inventory.items.map(item => ({ ...item, teamId: 100 }));
+  input.challenge.rawRequirements = [
+    { count: 2, scope: 0, pairs: [{ key: 12, values: [9, 1] }] },
+    { count: 2, scope: 0, pairs: [{ key: 11, values: [13] }] },
+    { count: -1, scope: 0, pairs: [{ key: 5, values: [4] }] },
+    { count: -1, scope: 0, pairs: [{ key: 6, values: [3] }] },
+    { count: -1, scope: 0, pairs: [{ key: 19, values: [75] }] },
+    { count: -1, scope: 0, pairs: [{ key: 35, values: [26] }] },
+  ];
+  const queries = planFc27PuzzleShortageQueries(input).queries;
+  expect(queries[0]).toMatchObject({ level: 'gold', team: 9 });
+  expect(queries[1]).toMatchObject({ level: 'gold', league: 13 });
+  expect(queries.some(query => query.league === 13)).toBe(true);
 });

@@ -1,7 +1,7 @@
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
-import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder } from './journal.js';
+import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery } from './journal.js';
 
 // Adapter-neutral transaction driver. The production composition supplies a
 // separately guarded writer; a read-only preview never grants approval.
@@ -103,7 +103,12 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           && (isUnsentStreamlinedJournal(record) || record.batches.every(b => ['confirmed', 'rejected'].includes(b.state)) || replaceRemainder)) {
         record = await journal.begin(plan, { replaceRemainder });
       }
-      if (record.plan.fingerprint !== plan.fingerprint) fail('RECOVERY_REQUIRED');
+      if (record.plan.fingerprint !== plan.fingerprint) {
+        const foreign = record.plan.challenge.setId !== plan.challenge.setId || record.plan.challenge.id !== plan.challenge.id
+          || record.plan.challenge.targetScore !== plan.challenge.targetScore;
+        throw Object.assign(Error(foreign ? 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' : 'FC27_STREAMLINED_RECOVERY_REQUIRED'),
+          { recovery: streamlinedContributionRecovery(record) });
+      }
       if (record.batches.some(b => ['pending', 'unknown'].includes(b.state))) fail('RECOVERY_REQUIRED');
       if (record.batches.some(b => b.progressChanged) && record.submittedScore < plan.challenge.targetScore) fail('PROGRESS_CHANGED');
       for (const index of approval.batchIndices) {
@@ -194,8 +199,9 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       return { status: shouldStop() ? 'stopped' : record.submittedScore >= plan.challenge.targetScore ? 'completed' : 'partial', record };
     } catch (error) {
       if (shouldStop() && phase === 'validation' && error?.message === 'FC27_STREAMLINED_CANCELLED') return { status: 'stopped', record };
-      diagnose(phase, 'blocked', record, activeBatch, () => failureDetail(error));
-      return { status: 'blocked', ...failureDetail(error),
+      diagnose(phase, 'blocked', record, activeBatch, () => ({ ...failureDetail(error),
+        ...(error.recovery ? error.recovery : {}) }));
+      return { status: 'blocked', ...failureDetail(error), ...(error.recovery ? { recovery: error.recovery } : {}),
         ...(phase === 'validation' && ['FC27_STREAMLINED_PROGRESS_READ_FAILED', 'FC27_STREAMLINED_PROGRESS_READ_TIMEOUT'].includes(error?.message)
           ? { record } : {}) };
     }
@@ -209,7 +215,8 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       if (typeof release !== 'function') fail('BUSY');
       record = await journal.read(context);
       if (!record) return { status: 'absent' };
-      if (target && (record.plan.challenge.setId !== target.setId || record.plan.challenge.id !== target.challengeId)) {
+      if (target && (record.plan.challenge.setId !== target.setId || record.plan.challenge.id !== target.challengeId
+          || target.targetScore !== undefined && record.plan.challenge.targetScore !== target.targetScore)) {
         // A page-local recovery must not reconcile or display another SBC's
         // account-wide journal. Login recovery has no target and can reconcile
         // that record with its own page-independent adapter.
@@ -217,7 +224,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           return { status: 'absent' };
         }
         return { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED',
-          recovery: { setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id } };
+          recovery: streamlinedContributionRecovery(record) };
       }
       batch = record.batches.find(b => ['pending', 'unknown'].includes(b.state));
       if (!batch) return { status: 'observed', record };

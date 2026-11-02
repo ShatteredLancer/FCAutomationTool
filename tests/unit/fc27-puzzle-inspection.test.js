@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { inspectPuzzlePlan } from '../../scripts/browser-inspection/puzzle-inspection.mjs';
+import { inspectPuzzlePlan, observePuzzleCatalogTraffic } from '../../scripts/browser-inspection/puzzle-inspection.mjs';
 import { inspectEaRatingDifferential } from '../../scripts/browser-inspection/ea-rating-differential.mjs';
 import { inspectEaChemistryDifferential } from '../../scripts/browser-inspection/ea-chemistry-differential.mjs';
 import { inspectEaRequirementDifferential } from '../../scripts/browser-inspection/ea-requirement-differential.mjs';
@@ -14,8 +14,25 @@ beforeEach(() => {
   inspectEaRequirementDifferential.mockResolvedValue({ status: 'unverified', requirementsVerified: false });
 });
 
+it('bounds catalog response evidence and removes its listener even when reading fails', async () => {
+  let listener;
+  const page = { on: vi.fn((event, fn) => { listener = fn; }), off: vi.fn() };
+  const response = (url, status) => ({ url: () => url, status: () => status });
+  const result = await observePuzzleCatalogTraffic(page, async () => {
+    listener(response('https://example.com/ut/game/fc27/sbs/setId/78/challenges', 200));
+    listener(response('https://utas.mob.v2.fut.ea.com/ut/game/fc27/item?private=secret', 200));
+    for (let i = 0; i < 10; i++) listener(response('https://utas.mob.v2.fut.ea.com/ut/game/fc27/sbs/setId/78/challenges?private=secret', 401));
+    return 'read-result';
+  });
+  expect(result).toEqual({ value: 'read-result', catalogTraffic: { observedResponses: 8, statuses: Array(8).fill(401) } });
+  expect(JSON.stringify(result)).not.toMatch(/private|secret|https/);
+  expect(page.off).toHaveBeenCalledWith('response', listener);
+  await expect(observePuzzleCatalogTraffic(page, async () => { throw Error('read-failed'); })).rejects.toThrow('read-failed');
+  expect(page.off).toHaveBeenCalledTimes(2);
+});
+
 it('builds the read-only Puzzle exact validation probe without write calls', async () => {
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: vi.fn(async source => {
       expect(source).toContain('createFc27ClubReadTransport');
       expect(source).toContain('validateFc27PuzzleSelection');
@@ -31,7 +48,7 @@ it('builds the read-only Puzzle exact validation probe without write calls', asy
 });
 
 it('rejects malformed IDs before constructing a browser probe', async () => {
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', evaluate: vi.fn() };
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', evaluate: vi.fn() };
   await expect(inspectPuzzlePlan(page, 0, 43)).rejects.toThrow('FC27_PUZZLE_ID_INVALID');
   expect(page.evaluate).not.toHaveBeenCalled();
 });
@@ -42,7 +59,7 @@ it.each(['verified', 'unverified'])('discards temporary player attributes after 
     plan: { exactValidation: { status: 'verified' } } };
   inspectEaRatingDifferential.mockResolvedValue({ status: 'verified' });
   inspectEaChemistryDifferential.mockResolvedValue({ status, executable: false, chemistryVerified: status === 'verified' });
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: vi.fn(async () => ({ report, transient })) };
   const result = await inspectPuzzlePlan(page, 19, 43);
   expect(inspectEaChemistryDifferential).toHaveBeenCalledExactlyOnceWith(report, transient);
@@ -59,7 +76,7 @@ it.each([true, false])('only clears team-facts Pending after all checks agree an
   inspectEaRatingDifferential.mockResolvedValue({ status: 'verified' });
   inspectEaChemistryDifferential.mockResolvedValue({ status: 'verified' });
   inspectEaRequirementDifferential.mockResolvedValue({ status: 'verified', eaOverall });
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: vi.fn(async () => ({ report, transient: null })) };
   const result = await inspectPuzzlePlan(page, 19, 43);
   expect(result.pending.includes('EA_TEAM_FACTS_DIFFERENTIAL')).toBe(!eaOverall);
@@ -69,7 +86,7 @@ it.each([true, false])('only clears team-facts Pending after all checks agree an
 });
 
 it('does not compare chemistry when the rating prerequisite fails', async () => {
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: vi.fn(async () => ({ report: { status: 'blocked' }, transient: { privateSentinel: 'never-write-this' } })) };
   expect(await inspectPuzzlePlan(page, 19, 43)).toMatchObject({ status: 'blocked', eaChemistryDifferential: {
     reason: 'FC27_EA_CHEMISTRY_RATING_PREREQUISITE', executable: false } });
@@ -77,7 +94,7 @@ it('does not compare chemistry when the rating prerequisite fails', async () => 
 });
 
 it('rejects a malformed envelope without returning its transient attributes', async () => {
-  const page = { url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+  const page = { on: vi.fn(), off: vi.fn(), url: () => 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
     evaluate: vi.fn(async () => ({ report: null, transient: { privateSentinel: 'never-write-this' } })) };
   const result = await inspectPuzzlePlan(page, 19, 43);
   expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_REPORT_UNAVAILABLE', executable: false });

@@ -169,7 +169,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
     void run(async () => {
       const result = typeof setPuzzlePolicy === 'function'
         ? await setPuzzlePolicy({ maxRating: value, quoteCeiling: priceText === '' ? null : Number(priceText),
-          queriesNumber: Number(node('puzzle-queries').value) })
+          queriesNumber: Number(node('puzzle-queries').value), objective: node('puzzle-objective').value })
         : await setPuzzleMaxRating(value);
       return { ...result, reason: result.status === 'observed'
         ? `解题设置已保存：最高评分 ${result.maxRating}；补卡单卡报价${result.quoteCeiling == null ? '不限' : `上限 ${result.quoteCeiling} 金币`}` : result.reason };
@@ -183,6 +183,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
         node('puzzle-rating').value = String(result.maxRating);
         node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
         node('puzzle-queries').value = String(result.queriesNumber ?? 5);
+        node('puzzle-objective').value = result.objective ?? 'additional-coins';
       }
       return result;
     });
@@ -242,6 +243,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
           node('puzzle-rating').value = String(result.maxRating);
           node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
           node('puzzle-queries').value = String(result.queriesNumber ?? 5);
+        node('puzzle-objective').value = result.objective ?? 'additional-coins';
         }
         return result;
       });

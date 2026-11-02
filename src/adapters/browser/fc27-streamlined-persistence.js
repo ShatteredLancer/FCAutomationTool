@@ -33,6 +33,7 @@ export function createFc27StreamlinedPersistence({ context, get, set, lockManage
     },
   });
   const journal = Object.freeze({
+    retire: record => { assertContext(record.context); assertHeld(); return raw.retire(record); },
     read: requested => { assertContext(requested); return (async () => { const record = await raw.read(bound);
       return record && await isArchivedContribution(record) ? null : record; })(); },
     write: (requested, record, revision) => { assertContext(requested); assertHeld(); return (async () => {

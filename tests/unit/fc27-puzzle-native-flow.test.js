@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
+import { addStorageRuntime } from '../helpers/fc27-storage-runtime.js';
 import { createFc27AcceptanceSession } from '../../src/adapters/browser/fc27-acceptance-session.js';
 import { readFc27PuzzlePage, readFc27PuzzlePageSnapshot } from '../../src/adapters/ea/fc27-puzzle-page.js';
 import { inspectFc27PuzzlePlan } from '../../src/adapters/ea/fc27-puzzle-read.js';
-import { planFc27PuzzleShortageQueries } from '../../src/fc27/puzzle-procurement.js';
+import { findFc27PuzzleRepairSeed, planFc27PuzzleRepairQueries, planFc27PuzzleShortageQueries } from '../../src/fc27/puzzle-procurement.js';
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
@@ -102,6 +103,24 @@ function fixture({ bricks = [], gold = false, marquee = false, diagnosticLog, pu
   return { ...x, data, fill, session, controller, detail, restart };
 }
 
+it.each([true, false])('reports the effective FSU league restriction when enabled=%s without changing it', async enabled => {
+  const x = fixture();
+  x.root.info.build.league = enabled;
+  x.root.info.set.shield_league = [13, 31];
+  const target = { setId: x.set.id, challengeId: x.challenge.id };
+  const snapshot = readFc27PuzzlePageSnapshot(x.root, target);
+  let received;
+  const report = await inspectFc27PuzzlePlan(x.root, { ...target, layout: snapshot.layout,
+    catalog: { status: 'observed', challenges: [snapshot.challenge] } }, input => {
+    received = input.policy;
+    return { status: 'blocked', reason: 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', selected: [] };
+  });
+  expect(report.policy).toMatchObject({ onlyUntradeable: true, excludedLeagueIds: enabled ? [13, 31] : [] });
+  expect(report.policy.excludedLeagueIds).not.toBe(received.excludedLeagueIds);
+  expect(x.root.info.build.league).toBe(enabled);
+  expect(x.calls).toEqual([]);
+});
+
 it('runs the real page reader, planner, session and provider with one selected-Club query and no catalog scan', async () => {
   const x = fixture();
   expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false });
@@ -110,6 +129,67 @@ it('runs the real page reader, planner, session and provider with one selected-C
   expect(x.calls.find(call => call.method === 'POST').body.defId.split(',').map(Number).sort((a, b) => a - b))
     .toEqual(Array.from({ length: 11 }, (_, i) => i + 101));
   expect([...x.data.values()].find(value => value?.kind === 'puzzle-fill')).toMatchObject({ phase: 'saved', submitted: false });
+});
+
+function moveFixtureCardToStorage(x, id = 1) {
+  const player = x.state.players.find(item => item.id === id);
+  const storage = addStorageRuntime(x, { payload: [{ ...player, pile: 8 }] });
+  x.state.players = x.state.players.filter(item => item.id !== id);
+  delete x.root.repositories.Item.club.items._collection[id];
+  x.state.playerFactsById ??= {};
+  x.state.playerFactsById[id] = { ...x.state.playerFactsById[id], utasPile: 8 };
+  x.root.repositories.Item.storage._collection[id] = x.root.factories.Item.createItem({ ...player, pile: 8 });
+  x.state.filterClubQueries = true;
+  return storage;
+}
+
+it('carries mixed Club/Storage through the production native session, exact reads, save, page and Journal', async () => {
+  const x = fixture(); moveFixtureCardToStorage(x);
+  expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  const record = [...x.data.values()].find(value => value?.kind === 'puzzle-fill');
+  expect(record).toMatchObject({ phase: 'saved', submitted: false });
+  expect(record.itemRefs).toContainEqual(expect.objectContaining({ id: 1, definitionId: 101, pile: 'storage' }));
+  expect(x.challenge.squad._players.find(slot => slot._item.id === 1)?._item.utasPile).toBe(8);
+  expect(x.calls.some(call => call.url?.includes('skipUserSquadValidation'))).toBe(false);
+});
+
+it.each(['missing', 'version', 'pile', 'http'])('blocks native mixed-pile fill before saving on fresh Storage %s', async kind => {
+  const x = fixture(); const storage = moveFixtureCardToStorage(x);
+  if (kind === 'missing') storage.payload = [];
+  if (kind === 'version') storage.payload[0].resourceId = 999;
+  if (kind === 'pile') {
+    storage.payload[0].pile = 7;
+    x.state.playerFactsById[1].utasPile = 7;
+  }
+  if (kind === 'http') storage.status = 401;
+  const result = await x.fill();
+  expect(result.status).toBe('blocked');
+  expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+  expect(x.calls.some(call => call.method === 'PUT')).toBe(false);
+});
+
+it('recovers an empty-server mixed-pile save only after fresh Storage identity confirmation', async () => {
+  const x = fixture(); const storage = moveFixtureCardToStorage(x);
+  const push = x.calls.push.bind(x.calls);
+  vi.spyOn(x.calls, 'push').mockImplementation(call => {
+    if (call.method === 'PUT') x.challenge.squad._players[0]._item = { id: 999, definitionId: 1999, concept: false };
+    return push(call);
+  });
+  expect(await x.fill()).toMatchObject({ status: 'recovery-required', submitted: false });
+  x.state.saved = Array.from({ length: 23 }, (_, index) => ({ index, itemData: { id: 0, dream: false } }));
+  x.challenge.squad._players.forEach(slot => { slot._item = { id: 0 }; });
+  const next = x.restart();
+  storage.payload = [];
+  let pending = next.inspectRecovery(); await vi.runAllTimersAsync();
+  expect((await pending).status).toBe('blocked');
+  storage.payload = [{ id: 1, resourceId: 101, pile: 8 }];
+  pending = next.inspectRecovery(); await vi.runAllTimersAsync();
+  expect(await pending).toMatchObject({ status: 'recoverable', outcome: 'empty' });
+  pending = next.resolveRecovery(true); await vi.runAllTimersAsync();
+  expect(await pending).toMatchObject({ status: 'resolved', saved: false, submitted: false });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
 });
 
 it('keeps the native owned save contract and reports total material value after public-price refinement', async () => {
@@ -122,6 +202,7 @@ it('keeps the native owned save contract and reports total material value after 
         definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: Date.now(),
         sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
   const x = fixture({ publicPrices,diagnosticLog });
+  await x.session.setPuzzlePolicy({ objective: 'material-value' });
   const result=await x.fill();
   expect(result).toMatchObject({ status: 'filled', saved: true, submitted: false,
     materialValue: 2200, inventoryValue: 2200 });
@@ -137,18 +218,55 @@ it('keeps the native owned save contract and reports total material value after 
 it('does not display an expired owned baseline value after a failed market comparison', async () => {
   let loads = 0;
   const publicPrices = { load: vi.fn(async ids => {
-    if (++loads === 2) vi.setSystemTime(Date.now() + 300001);
-    return { policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId, {
+    loads++;
+    const snapshot = { policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId, {
       definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, {
         schema: 2, source, definitionId, season: '27', platform: 'pc', price: 200,
-        fetchedAt: Date.now(), sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) };
+        fetchedAt: Date.now(), sourceUpdatedAt: null, expiresAt: Date.now() + 1, error: null }])) }])) };
+    vi.setSystemTime(Date.now() + 2);
+    return snapshot;
   }) };
   const x = fixture({ publicPrices });
+  await x.session.setPuzzlePolicy({ objective: 'material-value' });
   const result = await x.fill();
-  expect(loads).toBeGreaterThanOrEqual(2);
-  expect(result).toMatchObject({ status: 'filled', saved: true, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' });
+  expect(loads).toBe(1);
+  expect(result).toMatchObject({ status: 'filled', saved: true });
   expect(result.materialValue).toBeUndefined();
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+});
+
+it('keeps market failure evidence when a priced owned baseline is saved instead', async () => {
+  const store = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: (key, fallback) => store.get(key) ?? fallback,
+    gmSetValue: (key, value) => store.set(key, value), version: '27.0.78' });
+  const publicPrices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId, season: '27', platform: 'pc',
+      quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source,
+        definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: Date.now(),
+        sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
+  const x = fixture({ diagnosticLog, publicPrices });
+  await x.session.setPuzzlePolicy({ objective: 'material-value' });
+  const target = { setId: x.set.id, challengeId: x.challenge.id };
+  const snapshot = readFc27PuzzlePageSnapshot(x.root, target);
+  await inspectFc27PuzzlePlan(x.root, { ...target, layout: snapshot.layout,
+    catalog: { status: 'observed', challenges: [snapshot.challenge] } }, input => {
+    const scope = traditionalJournalScope(input.context);
+    for (const query of planFc27PuzzleShortageQueries(input).queries) {
+      x.data.set(`fcat-fc27-puzzle-market:${scope}:catalog:${JSON.stringify(query)}`, {
+        schema: 1, kind: 'catalog', query, at: Date.now(), state: 'blocked', reason: 'FC27_MARKET_HTTP_429',
+      });
+    }
+    return { status: 'blocked', reason: 'TEST_SETUP', selected: [] };
+  });
+  expect(await x.fill()).toMatchObject({ status: 'filled', saved: true, submitted: false,
+    materialValue: 2200, valueReason: 'FC27_PUZZLE_VALUE_BASELINE_RETAINED' });
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ area: 'puzzle', event: 'procurement-result',
+    setId: 4, challengeId: 16, localReason: 'FC27_MARKET_HTTP_429', httpStatus: 429,
+    source: 'cache', requests: 0 }));
+  expect(JSON.stringify(payload)).not.toMatch(/accountScope|definitionId|selectedOwned|unreviewedRequest|must not run/);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.some(call => ['buy', 'bid'].includes(call.kind))).toBe(false);
 });
 
 it('exports native Puzzle search and pre-request market failures without raw inventory or account data', async () => {
@@ -372,7 +490,7 @@ it('exports procurement cost and selected public versions after a successful con
   expect(payload.entries).toEqual(expect.arrayContaining([
     expect.objectContaining({ area: 'puzzle', event: 'procurement-result', setId: 4, challengeId: 16,
       estimatedCost: 500, initialEstimatedCost: 500, refinementPasses: 0, optimizationBudgetExhausted: false,
-      purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true }),
+      purchaseCount: 1, ownedCount: 10, route: 'joint', searchComplete: true, optimalWithinPool: true }),
     expect.objectContaining({ area: 'puzzle', event: 'procurement-card', definitionId: 901, referencePrice: 500 }),
     expect.objectContaining({ area: 'puzzle', event: 'catalog-query', phase: 'bronze', attempt: 1,
       requestedCount: 20, responseCount: 1, cached: true }),
@@ -640,6 +758,18 @@ it('fills ten owned cards plus one concept on the native pitch and restores with
   await vi.runAllTimersAsync();
   expect(await again).toMatchObject({ status: 'concept-filled', restored: true });
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+});
+
+it('saves and restores a concept draft with Club and Storage without rebuying or resaving', async () => {
+  const x = await missingFixture(); moveFixtureCardToStorage(x);
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', saved: true, submitted: false, purchaseCount: 1 });
+  expect(x.challenge.squad._players.find(slot => slot._item.id === 1)?._item.utasPile).toBe(8);
+  expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+  const again = x.restart().solveAndFillPuzzle({ setId: 4, challengeId: 16 }, { isCurrent: () => true });
+  await vi.runAllTimersAsync();
+  expect(await again).toMatchObject({ status: 'concept-filled', restored: true });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.some(call => ['buy', 'bid', 'move'].includes(call.kind))).toBe(false);
 });
 
 it('preserves procurement diagnostics in the native result and existing local attempt log with no extra requests', async () => {
@@ -1006,4 +1136,23 @@ it('does not request Club data or overwrite the occupied native squad on another
   const x = fixture(); x.challenge.squad._players[0]._item.id = 1;
   expect(await x.fill()).toMatchObject({ reason: 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED', saved: false });
   expect(x.calls).toHaveLength(0);
+});
+
+it('persists both Puzzle optimization targets and rejects unknown targets', async () => {
+  const x = fixture();
+  expect(await x.session.inspectPuzzlePolicy()).toMatchObject({ objective: 'additional-coins' });
+  expect(await x.session.setPuzzlePolicy({ objective: 'material-value' })).toMatchObject({ status: 'observed', objective: 'material-value' });
+  expect(await x.restart().inspectPuzzlePolicy()).toMatchObject({ objective: 'material-value', maxRating: 82 });
+  expect(await x.session.setPuzzlePolicy({ objective: 'unknown' })).toMatchObject({ status: 'blocked' });
+  expect(await x.session.inspectPuzzlePolicy()).toMatchObject({ objective: 'material-value' });
+  expect(await x.session.setPuzzlePolicy({ objective: 'additional-coins' })).toMatchObject({ status: 'observed' });
+});
+
+it('fills a feasible zero-cash squad without market or valuation reads in minimum-purchase mode', async () => {
+  const publicPrices = { load: vi.fn(async () => { throw Error('must not query'); }) };
+  const x = fixture({ publicPrices });
+  const result = await x.fill();
+  expect(result).toMatchObject({ status: 'filled', saved: true, objective: 'additional-coins' });
+  expect(publicPrices.load).not.toHaveBeenCalled();
+  expect(x.calls.some(call => ['buy', 'bid'].includes(call.kind))).toBe(false);
 });

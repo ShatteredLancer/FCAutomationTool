@@ -79,6 +79,36 @@ async function setup(state, { reservedId = 401, copyOfId = null, beforeDispatch 
   return { ...f, session, memory, get, set, old, plan, mutations, createExecution, createPurchaseAdapter, diagnosticLog };
 }
 
+it.each(['ids', 'threshold'])('retires a settled foreign contribution via session without restoring its %s into the current page', async kind => {
+  const f = await setup('consumed'), key = streamlinedJournalKey(f.plan.context);
+  f.memory.delete(streamlinedPurchaseKey(f.plan.context));
+  const prior = structuredClone(f.memory.get(key));
+  const c = { ...prior.plan.challenge, ...(kind === 'ids' ? { setId: 32, id: 62 } : { targetScore: 5500, remainingScore: 5500 }) };
+  const oldPlan = createStreamlinedPlan({ context: prior.context, challenge: c, policy: prior.plan.policy,
+    result: { status: c.targetScore === 200 ? 'ready' : 'partial', items: prior.plan.items, batches: prior.plan.batches, score: 200,
+      progress: streamlinedProgress(c, 200), purchaseCost: 0, materialValue: null, searchComplete: true } });
+  prior.plan = oldPlan;
+  Object.assign(prior.batches[0].receipt, { setId: c.setId, challengeId: c.id });
+  f.memory.set(key, structuredClone(prior));
+  const result = await f.session.recover();
+  expect(result).toMatchObject({ status: 'recovery-required', historyAction: { canArchive: true, kind: 'contribution' },
+    recovery: { setId: c.setId, challengeId: c.id, confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 } });
+  expect(result.preview).toBeUndefined(); expect(f.memory.get(key)).toEqual(prior);
+  expect(await f.session.archiveHistory()).toEqual({ status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' });
+  expect(f.memory.get(`${key}:history:${prior.revision}`)).toEqual(prior);
+  expect((await f.session.recover()).status).toBe('absent');
+  expect(f.mutations).not.toHaveBeenCalled(); expect(f.createPurchaseAdapter).not.toHaveBeenCalled();
+  const session = createFc27StreamlinedSession({ get: f.get, set: f.set, createExecution: f.createExecution,
+    inspect: () => { const input = readFc27StreamlinedInputs(f.root); return { context: input.context, challenge: input.challenge }; },
+    readInputs: settings => readFc27StreamlinedInputs(f.root, settings) });
+  const settings = (await session.readSettings()).settings;
+  const next = await session.plan({ ...settings, objective: 'inventory-first', sources: ['club'] });
+  expect(next.liveExecutionEnabled).toBe(true);
+  expect((await session.contribute({ fingerprint: next.plan.fingerprint, batchIndices: [0] })).status).toBe('completed');
+  expect(f.mutations).toHaveBeenCalledOnce();
+  expect(f.memory.get(`${key}:history:${prior.revision}`)).toEqual(prior);
+});
+
 it('can explicitly retire unrelated stale purchase history without pretending its contribution succeeded', async () => {
   const f = await setup('contribution'), before = structuredClone(f.old);
   const outcome = await f.session.recover();

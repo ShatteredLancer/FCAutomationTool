@@ -22,12 +22,12 @@ const freeze = value => {
 function assess(input, slots, owned, purchases) {
   const { challenge, context, policy } = input;
   if (challenge?.mechanism !== 'traditional-puzzle' || challenge.slotCount !== 11
-      || policy?.onlyUntradeable !== true || !same(challenge.context, context)) return blocked('FC27_CONCEPT_SCOPE_UNVERIFIED');
+      || typeof policy?.onlyUntradeable !== 'boolean' || !same(challenge.context, context)) return blocked('FC27_CONCEPT_SCOPE_UNVERIFIED');
   const pool = collectSafeTraditionalCandidates({ context, policy,
     challenge: { ...challenge, mechanism: 'traditional', requirements: [{ kind: 'player-count', count: slots.filter(Boolean).length }] },
     inventory: { schema: 1, context, kind: 'normalized-inventory', status: 'provisional', items: owned } });
   if (pool.status !== 'candidates' || pool.candidates.length !== owned.length
-      || owned.some(item => item.pile !== 'club' || item.state !== 'free' || fields.some(key => item[key] === undefined))) {
+      || owned.some(item => !['club', 'storage'].includes(item.pile) || item.state !== 'free' || fields.some(key => item[key] === undefined))) {
     return blocked('FC27_CONCEPT_MATERIAL_PROTECTED');
   }
   const squad = slots.map(slot => {

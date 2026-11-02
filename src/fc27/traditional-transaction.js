@@ -46,7 +46,7 @@ function facts(contract, policy, now) {
   if (!Array.isArray(contract.rewards) || contract.rewards.length !== 1) return fail('FC27_ATTEMPT_REWARD_UNVERIFIED');
   const reward = pick(contract.rewards[0], ['scope', 'type', 'value', 'count', 'tradable']);
   if (!validReward(reward)) return fail('FC27_ATTEMPT_REWARD_UNVERIFIED');
-  if (!positive(policy.maxRating) || policy.maxRating > 83 || policy.onlyUntradeable !== true
+  if (!positive(policy.maxRating) || policy.maxRating > 83 || typeof policy.onlyUntradeable !== 'boolean'
       || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200
       || !Array.isArray(contract.challenge.requirements) || contract.challenge.requirements.length > 16
       || !Array.isArray(contract.challenge.brickIndices) || contract.challenge.brickIndices.length > 11) return fail('FC27_ATTEMPT_POLICY_UNVERIFIED');

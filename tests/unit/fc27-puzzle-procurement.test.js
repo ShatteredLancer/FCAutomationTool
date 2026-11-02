@@ -189,7 +189,7 @@ it('does not exhaust a joint search without market candidates or claim market-wi
   const { input } = fixture();
   expect(suggestFc27PuzzleJointPurchases(input, [], { maxNodes: 1 })).toMatchObject({
     status: 'blocked', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN', marketCandidates: 0,
-    nodes: 0, truncated: false, marketWideInfeasibilityProven: false, plans: [],
+    nodes: 0, truncated: false, plans: [],
   });
 });
 

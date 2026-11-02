@@ -1,6 +1,46 @@
 import { expect, it } from 'vitest';
 import { formatFc27PuzzleNativeResult, formatFc27PuzzleProgress } from '../../src/adapters/browser/fc27-puzzle-native-button.js';
 
+const leagueShortage = (rules, policy = { onlyUntradeable: true, excludedLeagueIds: [13, 31] }) => ({
+  status: 'blocked', reason: 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', policy, rules,
+});
+
+it('explains an explicit required league blocked by the current FSU policy without requiring a market failure', () => {
+  const text = formatFc27PuzzleNativeResult(leagueShortage([{ kind: 'from-leagues', ids: [13], count: 2, mode: 'min' }]));
+  expect(text).toContain('仅不可交易');
+  expect(text).toContain('排除联赛 ID：13、31');
+  expect(text).toContain('至少 2 张');
+  expect(text).toContain('与 FSU 排除联赛设置冲突');
+  expect(text).not.toContain('增加搜索节点');
+});
+
+it.each([
+  { kind: 'from-leagues', ids: [13, 10], count: 2, mode: 'min' },
+  { kind: 'from-leagues', ids: [13], count: 2, mode: 'max' },
+  { kind: 'from-leagues', ids: [13], count: 0, mode: 'exact' },
+  { kind: 'from-clubs', ids: [13], count: 2, mode: 'min' },
+  { kind: 'from-leagues', ids: [], count: 2, mode: 'min' },
+])('does not infer a league policy conflict for %j', rule => {
+  expect(formatFc27PuzzleNativeResult(leagueShortage([rule]))).not.toContain('与 FSU 排除联赛设置冲突');
+});
+
+it('detects a positive exact OR league requirement only when all allowed leagues are excluded', () => {
+  const text = formatFc27PuzzleNativeResult(leagueShortage([{ kind: 'from-leagues', ids: [13, 31], count: 2, mode: 'exact' }]));
+  expect(text).toContain('恰好 2 张');
+  expect(text).toContain('与 FSU 排除联赛设置冲突');
+});
+
+it('does not invent missing restrictions or append shortage advice to a successful save', () => {
+  const rules = [{ kind: 'from-leagues', ids: [13], count: 2, mode: 'min' }];
+  for (const policy of [null, { onlyUntradeable: false, excludedLeagueIds: [] }]) {
+    const text = formatFc27PuzzleNativeResult(leagueShortage(rules, policy));
+    expect(text).not.toContain('当前 FSU');
+    expect(text).not.toContain('与 FSU 排除联赛设置冲突');
+  }
+  expect(formatFc27PuzzleNativeResult({ ...leagueShortage(rules), status: 'filled', saved: true }))
+    .toBe('阵容已保存，未提交 SBC。');
+});
+
 it('shows live bounded search progress and stage counters', () => {
   const text = formatFc27PuzzleProgress({ stage: 'planning', nodes: 12544, maxNodes: 50000,
     safeCandidates: 237, search: { combinationNodes: 9210, placementNodes: 2876, evaluations: 458, bounds: 0 } });
@@ -117,6 +157,14 @@ it('shows total material value separately from additional purchases and existing
   expect(message).toContain('新增购卡支出 400');
   expect(message).toContain('整套材料估值 2200');
   expect(message).toContain('现有卡 1800');
+});
+
+it('explains that partial value coverage only optimized the quoted material subset', () => {
+  const message = formatFc27PuzzleNativeResult({ status: 'filled', saved: true, materialValue: 8200,
+    valueCoverageComplete: false, unpricedOwnedCount: 96 });
+  expect(message).toContain('只在已估价候选中优化');
+  expect(message).toContain('96 张未估值');
+  expect(message).toContain('不代表全局最低');
 });
 
 it.each(['cache', 'request'])('explains a %s 401 and the user-triggered recovery without claiming login expired', source => {

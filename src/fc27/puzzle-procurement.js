@@ -7,6 +7,7 @@ import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResol
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 import { planPuzzleNationalityAffinity } from './puzzle-query-affinity.js';
+import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const seeds = new WeakMap();
 const stop = reason => ({ status: 'blocked', reason, executable: false, plans: [] });
@@ -36,25 +37,244 @@ function priceEligiblePositions(input, candidates) {
 }
 export const puzzleMarketValueCandidates = (input, entries) => priceEligiblePositions(input, marketCandidates(input, entries));
 const validValue = value => Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE;
+const candidateKey = item => item.catalogRef ?? item.id;
+// A Club item and a market concept can share the same definitionId while
+// having different economic meaning.  Never collapse those prices into one
+// definitionId map: an owned 84 is valued from inventory, whereas a market 84
+// is valued from its purchase quote.
+const priceFor = (prices, item) => {
+  if (!prices || !item) return null;
+  if (typeof prices === 'function') return prices(item);
+  if (prices instanceof Map) {
+    const byIdentity = prices.get(candidateKey(item));
+    if (Number.isFinite(byIdentity)) return byIdentity;
+    return prices.get(item.definitionId);
+  }
+  return null;
+};
+const qualityRank = rating => rating < 65 ? 1 : rating < 75 ? 2 : 3;
+const sameCandidateRef = (candidate, ref) => candidate && ref
+  && candidateKey(candidate) === candidateKey(ref)
+  && candidate.definitionId === ref.definitionId
+  && candidate.rating === ref.rating
+  && (candidate.catalogRef || candidate.pile === ref.pile);
+const selectedRef = (item, slot) => item.catalogRef ? { catalogRef: item.catalogRef,
+  definitionId: item.definitionId, rating: item.rating, slot } : {
+  id: item.id, definitionId: item.definitionId, pile: item.pile, rating: item.rating, slot };
+function verifiedIncumbent(input, preview, candidates, prices, cashMode = false, onFailure = null) {
+  const reject = reason => { try { onFailure?.(reason); } catch { /* diagnostics only */ } return null; };
+  if (preview?.status !== 'preview' || !Array.isArray(preview.selected) || preview.selected.length !== required(input)) return reject('preview-shape');
+  const squad = Array(input.challenge.slotCount).fill(null);
+  for (const ref of preview.selected) {
+    const item = candidates.find(candidate => sameCandidateRef(candidate, ref));
+    if (!item) return reject('candidate-identity');
+    if (!(validValue(priceFor(prices, item)) || cashMode && !item.catalogRef && priceFor(prices, item) === 0)) return reject('candidate-price');
+    if (!Number.isInteger(ref.slot) || ref.slot < 0 || ref.slot >= squad.length
+        || input.challenge.brickIndices.includes(ref.slot) || squad[ref.slot]) return reject('slot');
+    squad[ref.slot] = { ...item, slot: ref.slot };
+  }
+  if (new Set(squad.filter(Boolean).map(item => item.definitionId)).size !== required(input)) return reject('duplicate-definition');
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+  let facts;
+  try {
+    // Puzzles without chemistry/rating requirements intentionally do not
+    // expose an evaluator from the page reader.  Their incumbent is still
+    // fully verifiable against the parsed player/quality rules; treating a
+    // missing evaluator as an exception used to discard the owned baseline
+    // and fall back to the 20k node market search.
+    facts = typeof input.evaluateSquad === 'function'
+      ? input.evaluateSquad(structuredClone(squad))
+      : { status: 'observed', chemistry: null, teamRating: null };
+  } catch { return reject('evaluate-error'); }
+  const validation = parsed.status === 'observed' && facts?.status === 'observed'
+    ? matchFc27SbcRequirements({ requirements: parsed.rules, squad: squad.filter(Boolean), chemistry: facts.chemistry,
+      teamRating: facts.teamRating, groupMatcher: input.groupMatcher, clubLinks: input.clubLinks }) : null;
+  if (validation?.status !== 'satisfied') return reject(validation?.status === 'unknown' ? 'validation-unknown' : 'validation-failed');
+  return { status: 'preview', selected: squad.flatMap((item, slot) => item ? [selectedRef(item, slot)] : []),
+    validation, teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } };
+}
+// Keep the feasible arrangement as an incumbent. Cheap single-slot changes
+// should not depend on rediscovering the other ten cards in a global DFS.
+function* iterateOwnedReplacements(input, preview, candidates, prices, onProgress, maxNodes = 4000, totalNodes = 20000,
+  { allowEqualPriceQualityDowngrade = false } = {}) {
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+  if (parsed.status !== 'observed') return { preview, nodes: 0 };
+  let current = preview; let nodes = 0; let improved = true;
+  const byId = new Map(candidates.map(item => [candidateKey(item), item]));
+  const ordered = candidates.slice().sort((a, b) => (allowEqualPriceQualityDowngrade
+    ? qualityRank(a.rating) - qualityRank(b.rating) : 0)
+    || priceFor(prices, a) - priceFor(prices, b) || a.definitionId - b.definitionId);
+  // Compare a replacement against the current incumbent using the same
+  // detached-plan ordering as the caller.  This matters for minimum-quality
+  // SBCs: a silver can have the same reference value as a gold, so a strict
+  // coin comparison would discard the lower-quality route even though it is
+  // the material-value objective's preferred result.
+  const metrics = selected => {
+    const owned = selected.filter(ref => !ref.catalogRef);
+    const purchases = selected.filter(ref => ref.catalogRef);
+    const inventoryValue = owned.reduce((sum, ref) => sum + (priceFor(prices,
+      byId.get(candidateKey(ref)) ?? ref) ?? 0), 0);
+    const estimatedCost = purchases.reduce((sum, ref) => sum + (priceFor(prices,
+      byId.get(candidateKey(ref)) ?? ref) ?? 0), 0);
+    return { selectedOwned: owned, purchases, inventoryValue, estimatedCost,
+      materialValue: inventoryValue + estimatedCost, purchaseCount: purchases.length };
+  };
+  // Reserve a portion of the local budget for chemistry-preserving two-card
+  // exchanges. A wide pool could otherwise spend all nodes on single swaps,
+  // never trying the silver-plus-gold pair that preserves chemistry.
+  const singleNodeLimit = Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
+  while (improved && nodes < maxNodes) {
+    improved = false;
+    for (const ref of current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a))) {
+      for (const candidate of ordered) {
+        const candidatePrice = priceFor(prices, candidate), incumbentPrice = priceFor(prices,
+          candidates.find(item => candidateKey(item) === candidateKey(ref)) ?? ref);
+        // Equal-valued lower-quality material is still an improvement for a
+        // minimum-quality requirement: it preserves the same total value while
+        // avoiding an unnecessary gold card.  Higher/equal-quality ties remain
+        // untouched, and the sorted price lane lets us stop once prices rise.
+        if (candidatePrice > incumbentPrice) continue;
+        if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade
+            || qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
+        if (nodes >= singleNodeLimit) break;
+        if (current.selected.some(other => other.definitionId === candidate.definitionId)) continue;
+        nodes++;
+        const selected = current.selected.map(other => other.slot === ref.slot
+          ? selectedRef(candidate, ref.slot) : other);
+        const squad = Array(input.challenge.slotCount).fill(null);
+        for (const other of selected) squad[other.slot] = { ...byId.get(candidateKey(other)), slot: other.slot };
+        let facts;
+        try { facts = typeof input.evaluateSquad === 'function'
+          ? input.evaluateSquad(structuredClone(squad))
+          : { status: 'observed', chemistry: null, teamRating: null }; } catch { facts = null; }
+        const validation = facts?.status === 'observed' ? matchFc27SbcRequirements({ requirements: parsed.rules,
+          squad: squad.filter(Boolean), chemistry: facts.chemistry, teamRating: facts.teamRating,
+          groupMatcher: input.groupMatcher, clubLinks: input.clubLinks }) : null;
+        if (validation?.status === 'satisfied') {
+          const candidatePlan = metrics(selected);
+          const currentPlan = metrics(current.selected);
+          if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade
+            ? 'material-value' : 'additional-coins') < 0) {
+            current = { ...current, selected, validation, teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } };
+            improved = true;
+          }
+        }
+        if (nodes % 128 === 0) {
+          try { onProgress?.({ phase: 'owned-value-search', nodes, maxNodes: totalNodes }); } catch { /* Presentation only. */ }
+        }
+        yield;
+        if (improved) break;
+      }
+      if (improved || nodes >= singleNodeLimit) break;
+    }
+    // Chemistry and group constraints can make either half of a two-card
+    // exchange invalid on its own. Try bounded paired replacements after the
+    // single-card pass; each candidate squad still goes through the complete
+    // EA requirement/evaluator contract before it can become the incumbent.
+    if (!improved && nodes < maxNodes) {
+      const refs = current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
+      pairSearch: for (let left = 0; left < refs.length - 1 && nodes < maxNodes; left++) {
+        for (let right = left + 1; right < refs.length && nodes < maxNodes; right++) {
+          const first = refs[left], second = refs[right];
+          const currentCost = priceFor(prices, candidates.find(item => candidateKey(item) === candidateKey(first)) ?? first)
+            + priceFor(prices, candidates.find(item => candidateKey(item) === candidateKey(second)) ?? second);
+          const occupied = new Set(current.selected.filter(ref => ref.slot !== first.slot && ref.slot !== second.slot)
+            .map(ref => ref.definitionId));
+          const replacements = ordered.filter(candidate => !occupied.has(candidate.definitionId)
+            && candidate.definitionId !== first.definitionId && candidate.definitionId !== second.definitionId);
+          let accepted = false;
+          for (let a = 0; a < replacements.length && nodes < maxNodes; a++) {
+            const candidateA = replacements[a], priceA = priceFor(prices, candidateA);
+            if (priceA >= currentCost) continue;
+            for (let b = a + 1; b < replacements.length && nodes < maxNodes; b++) {
+              const candidateB = replacements[b], priceB = priceFor(prices, candidateB);
+            // Equal total value is a valid material-value improvement when it
+            // replaces a higher-quality card with silver/bronze material.
+            // The final plan comparator decides whether the tie is real; do
+            // not filter it out before the complete EA validation.
+            if (priceA + priceB > currentCost || (!allowEqualPriceQualityDowngrade && priceA + priceB >= currentCost)) continue;
+              if (candidateA.definitionId === candidateB.definitionId) continue;
+              for (const assignment of [[candidateA, candidateB], [candidateB, candidateA]]) {
+                if (nodes >= maxNodes) break;
+                const selected = current.selected.map(ref => ref.slot === first.slot
+                  ? selectedRef(assignment[0], first.slot) : ref.slot === second.slot
+                    ? selectedRef(assignment[1], second.slot) : ref);
+                const squad = Array(input.challenge.slotCount).fill(null);
+                for (const ref of selected) squad[ref.slot] = { ...byId.get(candidateKey(ref)), slot: ref.slot };
+                nodes++;
+                let facts;
+                try { facts = typeof input.evaluateSquad === 'function'
+                  ? input.evaluateSquad(structuredClone(squad))
+                  : { status: 'observed', chemistry: null, teamRating: null }; } catch { facts = null; }
+                const validation = facts?.status === 'observed' ? matchFc27SbcRequirements({ requirements: parsed.rules,
+                  squad: squad.filter(Boolean), chemistry: facts.chemistry, teamRating: facts.teamRating,
+                  groupMatcher: input.groupMatcher, clubLinks: input.clubLinks }) : null;
+                if (validation?.status === 'satisfied') {
+                  const candidatePlan = metrics(selected);
+                  const currentPlan = metrics(current.selected);
+                  if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade
+                    ? 'material-value' : 'additional-coins') < 0) {
+                    current = { ...current, selected, validation,
+                      teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } };
+                    improved = true; accepted = true;
+                  }
+                }
+                if (nodes % 128 === 0) {
+                  try { onProgress?.({ phase: 'owned-value-search', nodes, maxNodes: totalNodes }); } catch { /* Presentation only. */ }
+                }
+                yield;
+                if (accepted) break;
+              }
+              if (accepted) break;
+            }
+            if (accepted) break;
+          }
+          if (accepted) break pairSearch;
+        }
+      }
+    }
+  }
+  return { preview: current, nodes };
+}
 // Price refinement is detached planning only. Its budget is material value,
 // never a purchase allowance, and the original feasible squad is an incumbent.
 export async function refineFc27PuzzleOwnedValue(input, preview, materialPrices, options = {}) {
   const pool = poolOf(input);
   if (preview?.status !== 'preview' || pool.status !== 'candidates' || !(materialPrices instanceof Map)) return preview;
-  const selected = preview.selected.map(ref => pool.candidates.find(item => item.id === ref.id));
+  // A preview may carry either a Club entity id or a catalog reference.  The
+  // former implementation only looked at `id`, which silently discarded a
+  // valid incumbent when the detached solver returned a catalog-shaped ref.
+  // Resolve with the same identity contract used by the market incumbent and
+  // replacement loop, including definition/rating/pile guards.
+  const candidates = [...pool.candidates, ...(Array.isArray(options.candidates) ? options.candidates : [])];
+  const selected = preview.selected.map(ref => candidates.find(item => sameCandidateRef(item, ref)));
   if (selected.some(item => !item || !validValue(materialPrices.get(item.definitionId)))) return { ...preview,
     materialValue: null, valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' };
   const baselineValue = selected.reduce((sum, item) => sum + materialPrices.get(item.definitionId), 0);
-  const candidates = pool.candidates.filter(item => validValue(materialPrices.get(item.definitionId)));
+  const objective = 'material-value';
+  const pricedCandidates = candidates.filter(item => validValue(priceFor(materialPrices, item)));
+  const localNodeLimit = Number.isSafeInteger(options.localNodeLimit) ? options.localNodeLimit : 4000;
+  const local = await finishPuzzleSearchCooperatively(iterateOwnedReplacements(input, preview, pricedCandidates, materialPrices,
+    options.onProgress, localNodeLimit, localNodeLimit, { allowEqualPriceQualityDowngrade: true }), options);
+  const localValue = local.preview.selected.reduce((sum, item) => sum + priceFor(materialPrices,
+    pricedCandidates.find(candidate => sameCandidateRef(candidate, item)) ?? item), 0);
+  if (options.localOnly === true) return { ...preview, ...local.preview, materialValue: localValue,
+    inventoryValue: localValue, initialMaterialValue: baselineValue, nodes: local.nodes, maxNodes: localNodeLimit,
+    searchComplete: false, optimalWithinPool: false, valueSearchComplete: false,
+    valueCandidateCount: pricedCandidates.length, valueReason: 'FC27_PUZZLE_MATERIAL_VALUE_LOCAL_REFINED' };
   const result = await finishPuzzleSearchCooperatively(iterateFc27PuzzleCandidateRoutes({ ...input,
-    pool: { ...pool, candidates }, maxNodes: 20000, onProgress: options.onProgress,
-    procurement: { budget: baselineValue, maxPurchases: required(input), priceAware: true,
-      costOf: item => materialPrices.get(item.definitionId) } }), options);
-  const better = result.status === 'preview' && result.estimatedCost < baselineValue;
-  const { estimatedCost: ignoredEstimate, ...refined } = better ? result : {};
+    pool: { ...pool, candidates: pricedCandidates }, maxNodes: Math.max(1, 20000 - local.nodes),
+    onProgress: value => options.onProgress?.({ ...value, nodes: local.nodes + value.nodes, maxNodes: 20000 }),
+    procurement: { budget: localValue, maxPurchases: required(input), priceAware: true,
+      objective,
+      costOf: item => priceFor(materialPrices, item) } }), options);
+  const better = result.status === 'preview' && result.materialValue < localValue;
+  const { estimatedCost: ignoredEstimate, ...refined } = better ? result : local.preview;
   void ignoredEstimate;
-  return { ...preview, ...refined, materialValue: better ? result.estimatedCost : baselineValue,
-    inventoryValue: better ? result.estimatedCost : baselineValue, initialMaterialValue: baselineValue,
+  return { ...preview, ...refined, materialValue: better ? result.materialValue : localValue,
+    inventoryValue: better ? result.materialValue : localValue, initialMaterialValue: baselineValue,
+    nodes: local.nodes + (result.nodes ?? 0), maxNodes: 20000,
+    search: { ...result.search, evaluations: local.nodes + (result.search?.evaluations ?? 0) },
     valueSearchComplete: result.searchComplete === true, valueCandidateCount: candidates.length,
     valueReason: 'FC27_PUZZLE_MATERIAL_VALUE_REFINED' };
 }
@@ -272,6 +492,50 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
   const nations = parsed.rules.filter(rule => rule.kind === 'from-nations' && rule.mode === 'min' && rule.count > 0)
     .flatMap(rule => rule.ids);
   const clubs = parsed.rules.filter(rule => rule.kind === 'from-clubs' && rule.mode === 'min' && rule.count > 0);
+  // Keep an explicit identity requirement in the bounded market sample when
+  // the safe inventory cannot satisfy it.  The previous chemistry branch
+  // spent its second/third page on a dominant owned nation or league, even
+  // when the challenge explicitly required a league (Marquee 121) or nation.
+  // That made a valid market route look like a generic filler route.  This is
+  // query prioritisation only; it does not claim that the sampled pages prove
+  // a complete solution.
+  const identityField = kind => ({ 'from-nations': 'nationId', 'from-leagues': 'leagueId', 'from-clubs': 'teamId' })[kind];
+  const identityShortageQueries = (candidates, level, resolveClub) => {
+    const rules = parsed.rules.filter(rule => rule.mode === 'min' && rule.count > 0
+      && ['from-nations', 'from-leagues', 'from-clubs'].includes(rule.kind));
+    const lanes = [];
+    for (const rule of rules) {
+      const field = identityField(rule.kind);
+      const ids = [...new Set(rule.ids.filter(positive))];
+      // EA club links apply to compulsory identities as well as chemistry.
+      // Keep the original ID in the query, but count a linked club's safe
+      // owned/public versions toward the same requirement.
+      const identity = id => rule.kind === 'from-clubs' ? resolveClub(id) : id;
+      const groups = new Set(ids.map(identity));
+      const queryField = field.replace('Id', '');
+      // The branch may already have reserved the best lane for this rule.
+      // Do not spend another bounded page on the same identity merely because
+      // the level differs (a common silver/gold duplication in Marquee 120).
+      if (queries.some(query => positive(query?.[queryField]) && groups.has(identity(query[queryField])))) continue;
+      const matching = candidates.filter(item => groups.has(identity(item[field])));
+      const available = new Set(matching.map(item => item.definitionId)).size;
+      if (available >= rule.count) continue;
+      // Values in one rule are alternatives (for example either of the two
+      // clubs in a Marquee fixture), so one bounded lane per rule is enough.
+      // Prefer the alternative with the strongest observed support and move
+      // to the next one on a continuation after its query has been used.
+      const alternatives = ids.map(id => {
+        const support = new Set(candidates.filter(item => identity(item[field]) === identity(id)).map(item => item.definitionId)).size;
+        return { kind: rule.kind, id, support, deficit: Math.max(0, rule.count - available),
+          query: { start: 0, count: 20, level, [queryField]: id } };
+      }).sort((a, b) => b.support - a.support || a.id - b.id);
+      const next = alternatives.find(lane => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(lane.query)))
+        ?? alternatives[0];
+      if (next) lanes.push(next);
+    }
+    return lanes.sort((a, b) => b.deficit - a.deficit || a.support - b.support
+      || a.kind.localeCompare(b.kind) || a.id - b.id).map(lane => lane.query);
+  };
   if (!cappedClubs && clubs.length && tiers.length === 1) {
     const resolveClub = createFc27ClubResolver(input.clubLinks);
     if (!resolveClub) return stop('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
@@ -288,6 +552,14 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
       if (new Set(matching.map(item => item.definitionId)).size >= rule.count) continue;
       const lane = permitted.flatMap(level => rule.ids.map(team => ({ start: 0, count: 20, level, team }))).find(unused);
       if (lane && queries.length < 2) add(lane);
+    }
+    // A two-club Marquee requirement is an OR identity, but either club may
+    // be the only side represented by the first EA catalogue page. Reserve
+    // the remaining identity lane before spending the sample on nationality
+    // or chemistry fillers.  The route remains bounded to three pages.
+    for (const query of identityShortageQueries(candidates, tiers[0], resolveClub)) {
+      if (queries.length >= 3) break;
+      add(query);
     }
     const counts = new Map();
     for (const item of candidates) counts.set(item.nationId, (counts.get(item.nationId) ?? 0) + 1);
@@ -325,6 +597,13 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
         // alternatives could otherwise consume all three identity queries.
         if (queries.length < 2) add({ start: 0, count: 20, level: identityLevel, team: rule.ids[0] });
       }
+    }
+    // Explicit Marquee lanes take precedence over affinity fillers.  In the
+    // Liverpool v Arsenal shape this reserves a page for the required league
+    // after the club lane, rather than querying a dominant owned nation.
+    for (const query of identityShortageQueries(candidates, level, resolveClub)) {
+      if (queries.length >= 3) break;
+      add(query);
     }
     const counts = new Map();
     for (const item of anchors.length ? anchors : candidates.filter(item => levelOf(quality(item.rating)) === level)) {
@@ -519,9 +798,12 @@ export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
 export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
-  costCeiling = null } = {}) {
+  costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
+  if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > 50000) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
+  if (!Number.isSafeInteger(localSearchBudget) || localSearchBudget < 1 || localSearchBudget > 4000)
+    return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
     return stop('FC27_MARKET_POLICY_INVALID');
   const pool = poolOf(input);
@@ -529,37 +811,108 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
   const market = prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
-  // A shortage route with no eligible public versions cannot produce a
-  // purchase plan. Avoid running the bounded squad solver over the owned
-  // inventory in this case; the caller will report the empty candidate pool
-  // and may continue with its normal bounded catalog route.
-  if (!market.length) return { ...stop('FC27_PURCHASE_REPAIR_NO_PLAN'), marketCandidates: 0, nodes: 0,
+  // With no public candidate, only an explicitly supplied feasible incumbent
+  // warrants an owned replacement pass. Ordinary shortage routes keep the
+  // remote fast exit instead of repeating a futile full inventory search.
+  if (!market.length && !incumbent) return { ...stop('FC27_PURCHASE_REPAIR_NO_PLAN'), marketCandidates: 0, nodes: 0,
     truncated: false, marketWideInfeasibilityProven: false };
   // Public quotes, when supplied, price the full eligible candidate pool.
   // The legacy inspection path keeps unit weights, never fabricated coins.
-  const result = yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes,
-    pool: { ...pool, candidates: [...pool.candidates.filter(item => !materialPrices || validValue(materialPrices.get(item.definitionId))), ...market] },
+  const candidates = [...pool.candidates.filter(item => !materialPrices || validValue(materialPrices.get(item.definitionId))), ...market];
+  // Price the exact detached candidate identity.  A market version and an
+  // owned entity may share a definitionId, so a definition keyed map silently
+  // overwrites the inventory value with the market quote (or vice versa).
+  const allPrices = materialPrices || prices ? new Map(candidates.map(item => [candidateKey(item),
+    item.catalogRef ? (prices?.get(item.definitionId) ?? null) : (materialPrices?.get(item.definitionId) ?? 0)])) : null;
+  const objective = materialPrices ? 'material-value' : 'additional-coins';
+  const planMetrics = plan => {
+    const selected = Array.isArray(plan?.selected) ? plan.selected : [];
+    const addedCost = selected.filter(ref => ref.catalogRef).reduce((sum, ref) =>
+      sum + (prices?.get(ref.definitionId) ?? 0), 0);
+    const inventoryValue = materialPrices ? selected.filter(ref => !ref.catalogRef).reduce((sum, ref) =>
+      sum + (materialPrices.get(ref.definitionId) ?? 0), 0) : 0;
+    return { estimatedCost: addedCost, purchaseCount: selected.filter(ref => ref.catalogRef).length,
+      inventoryValue, ...(materialPrices ? { materialValue: addedCost + inventoryValue } : {}) };
+  };
+  let local = null; let localValue = Infinity; let localNodes = 0;
+  if (incumbent && allPrices) {
+    const verified = verifiedIncumbent(input, incumbent, candidates, allPrices, materialPrices === null,
+      reason => onIncumbentCheck?.({ verified: false, reason, candidateCount: candidates.length,
+        selectedCount: Array.isArray(incumbent?.selected) ? incumbent.selected.length : 0 }));
+    if (verified) onIncumbentCheck?.({ verified: true, candidateCount: candidates.length,
+      selectedCount: incumbent.selected.length });
+    localNodes++;
+    yield;
+    if (verified) {
+      local = yield* iterateOwnedReplacements(input, verified, candidates.filter(item => validValue(priceFor(allPrices, item))
+        || !materialPrices && !item.catalogRef && priceFor(allPrices, item) === 0),
+        allPrices, onProgress ? value => onProgress({ ...value, phase: 'local-market-search', nodes: value.nodes + 1 }) : null,
+        Math.min(localSearchBudget, maxNodes - 1), Math.min(localSearchBudget, maxNodes - 1),
+        { allowEqualPriceQualityDowngrade: Boolean(materialPrices) });
+      localNodes += local.nodes;
+      localValue = planMetrics(local.preview)[objective === 'material-value' ? 'materialValue' : 'estimatedCost'];
+    }
+  }
+  if (localOnly && !local) {
+    // This route is specifically chosen when the caller already has a native
+    // verified feasible lineup. If that baseline cannot be revalidated for
+    // bounded replacement, do not silently fall through to the expensive
+    // 20k whole-squad DFS. The caller can retain its original verified plan;
+    // diagnostics expose why replacement was skipped.
+    return { ...stop('FC27_PURCHASE_INCUMBENT_UNVERIFIED'), marketCandidates: market.length,
+      nodes: localNodes, localSearchNodes: 0, safeCandidates: candidates.length,
+      priceSource, searchComplete: false, optimalWithinPool: false };
+  }
+  if (localOnly && local) {
+    const plan = { ...local.preview, ...planMetrics(local.preview) };
+    const squad = Array(input.challenge.slotCount).fill(null);
+    for (const ref of plan.selected) squad[ref.slot] = ref.catalogRef
+      ? market.find(item => item.catalogRef === ref.catalogRef)
+      : pool.candidates.find(item => item.id === ref.id);
+    const addedCost = prices ? squad.filter(item => item?.catalogRef)
+      .reduce((sum, item) => sum + (prices.get(item.definitionId) ?? 0), 0) : plan.estimatedCost;
+    const inventoryValue = materialPrices ? squad.filter(item => item && !item.catalogRef)
+      .reduce((sum, item) => sum + (materialPrices.get(item.definitionId) ?? 0), 0) : null;
+    const values = materialPrices ? { materialValue: addedCost + inventoryValue, inventoryValue } : {};
+    return { status: 'suggested', reason: 'FC27_PURCHASE_LOCAL_REFINEMENT_READY', executable: false,
+      plans: [{ ...projectSuggestion(squad, plan.teamFacts, parsed.rules.length), estimatedCost: addedCost, ...values }],
+      marketCandidates: market.length, nodes: localNodes, localSearchNodes: local.nodes, truncated: true, searchComplete: false,
+      optimalWithinPool: false, estimatedCost: addedCost, ...values, safeCandidates: candidates.length,
+      search: { evaluations: localNodes }, priceSource, marketWideInfeasibilityProven: false };
+  }
+  const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes,
+    pool: { ...pool, candidates },
     procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
-      costCeiling === null ? Infinity : costCeiling - 1) : required(input), maxPurchases: required(input),
-      priceAware: prices instanceof Map,
+      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: required(input),
+      priceAware: prices instanceof Map, objective,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1
-        : materialPrices ? materialPrices.get(item.definitionId) : 0 }, onProgress });
-  if (result.status !== 'preview') return { ...stop(result.reason), marketCandidates: market.length,
-    nodes: result.nodes ?? 0, truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT',
+        : materialPrices ? materialPrices.get(item.definitionId) : 0 },
+    onProgress: onProgress ? value => onProgress({ ...value, nodes: localNodes + value.nodes, maxNodes }) : null })
+    : { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', nodes: 0 };
+  const localPlan = local ? { ...local.preview, ...planMetrics(local.preview) } : null;
+  const resultPlan = result.status === 'preview' ? { ...result, ...planMetrics(result) } : null;
+  const useLocal = localPlan && localValue < (costCeiling ?? Infinity)
+    && (!resultPlan || comparePuzzlePlans(localPlan, resultPlan, objective) <= 0);
+  if (result.status !== 'preview' && !useLocal) return { ...stop(result.reason), marketCandidates: market.length,
+    nodes: localNodes + (result.nodes ?? 0), truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT',
     localReason: result.reason, searchComplete: false, optimalWithinPool: false,
     safeCandidates: result.safeCandidates ?? null, search: result.search ?? null,
     priceSource };
+  const winner = useLocal ? localPlan : resultPlan;
   const squad = Array(input.challenge.slotCount).fill(null);
-  for (const ref of result.selected) squad[ref.slot] = ref.catalogRef
+  for (const ref of winner.selected) squad[ref.slot] = ref.catalogRef
     ? market.find(item => item.catalogRef === ref.catalogRef) : pool.candidates.find(item => item.id === ref.id);
   const addedCost = prices ? squad.filter(item => item?.catalogRef).reduce((sum, item) => sum + prices.get(item.definitionId), 0)
-    : result.estimatedCost;
-  const values = materialPrices ? { materialValue: result.estimatedCost, inventoryValue: result.estimatedCost - addedCost } : {};
+    : winner.estimatedCost;
+  const inventoryValue = materialPrices ? squad.filter(item => item && !item.catalogRef)
+    .reduce((sum, item) => sum + (materialPrices.get(item.definitionId) ?? 0), 0) : null;
+  const values = materialPrices ? { materialValue: addedCost + inventoryValue, inventoryValue } : {};
   return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false,
-    plans: [{ ...projectSuggestion(squad, result.teamFacts, parsed.rules.length),
-      estimatedCost: addedCost, ...values }], marketCandidates: market.length, nodes: result.nodes,
-    truncated: result.searchComplete === false, searchComplete: result.searchComplete === true,
-    optimalWithinPool: result.optimalWithinPool === true, estimatedCost: addedCost, ...values,
-    safeCandidates: result.safeCandidates ?? null, search: result.search ?? null,
+    plans: [{ ...projectSuggestion(squad, winner.teamFacts, parsed.rules.length),
+      estimatedCost: addedCost, ...values }], marketCandidates: market.length, nodes: localNodes + (result.nodes ?? 0),
+    truncated: useLocal || result.searchComplete === false, searchComplete: !useLocal && result.searchComplete === true,
+    optimalWithinPool: !useLocal && result.optimalWithinPool === true, estimatedCost: addedCost, ...values,
+    safeCandidates: result.safeCandidates ?? null, routeBudgets: result.routeBudgets ?? null,
+    search: { ...result.search, evaluations: localNodes + (result.search?.evaluations ?? 0) },
     priceSource, marketWideInfeasibilityProven: false };
 }

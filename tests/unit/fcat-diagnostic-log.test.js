@@ -266,15 +266,18 @@ it('retains the real Puzzle solver reason and candidate counts across Gallery sy
   await t.log.record({ area: 'puzzle', event: 'procurement-result', reason: 'FC27_PURCHASE_REPAIR_NO_PLAN',
     localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, excludedUnavailable: 0, evaluations: 0,
     initialEstimatedCost: 10000, estimatedCost: 200, refinementPasses: 1, optimizationBudgetExhausted: false,
+    inventoryValue: 5600, materialValue: 5800,
     inventory: [{ id: 123 }], token: 'secret' });
   await t.log.record({ area: 'gallery', event: 'pool-request' });
   const payload = await t.log.exportPayload();
   expect(payload.criticalEntries[0]).toMatchObject({ localReason: 'FC27_MARKET_POLICY_INVALID', usableCandidates: 46, evaluations: 0 });
   expect(payload.criticalEntries[0]).toMatchObject({ initialEstimatedCost: 10000, estimatedCost: 200,
-    refinementPasses: 1, optimizationBudgetExhausted: false });
+    inventoryValue: 5600, materialValue: 5800, refinementPasses: 1, optimizationBudgetExhausted: false });
   const reloaded = createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set });
   expect((await reloaded.exportPayload()).criticalEntries[0]).toMatchObject({ initialEstimatedCost: 10000, refinementPasses: 1 });
-  expect(JSON.stringify(payload)).not.toMatch(/inventory|secret/);
+  // Aggregate inventoryValue is safe diagnostic evidence; raw inventory objects
+  // must still be excluded from the export.
+  expect(JSON.stringify(payload)).not.toMatch(/"inventory"\s*:|secret/);
   await t.log.record({ area: 'puzzle', event: 'procurement-result', localReason: 'https://secret.example' });
   expect((await t.log.exportPayload()).criticalEntries[1]).not.toHaveProperty('localReason');
 });
@@ -399,6 +402,20 @@ it('retains Puzzle failures and method evidence after a public quote flood', asy
   expect(payload.transactionResults).toContainEqual(expect.objectContaining({ area: 'puzzle', event: 'solve-result',
     methodPath: 'EAObservable.prototype.notify', observedHash: 'a'.repeat(64) }));
   expect(JSON.stringify(payload)).not.toContain('private-');
+});
+
+it('exports only flat aggregate Puzzle quality counts', async () => {
+  const t = harness();
+  await t.log.record({ area: 'puzzle', event: 'solve-result', setId: 78, challengeId: 120,
+    bronzeCandidates: 0, silverCandidates: 19, goldCandidates: 7, unknownQualityCandidates: 2,
+    bronzeDefinitions: 0, silverDefinitions: 18, goldDefinitions: 7,
+    selectedBronzeCount: 0, selectedSilverCount: 9, selectedGoldCount: 2, selectedUnknownQualityCount: 0,
+    qualityCounts: { bronze: 999 }, rawItems: [{ id: 1 }] });
+  const payload = await t.log.exportPayload();
+  expect(payload.entries[0]).toMatchObject({ silverCandidates: 19, goldCandidates: 7,
+    silverDefinitions: 18, selectedSilverCount: 9, selectedGoldCount: 2 });
+  expect(payload.entries[0]).not.toHaveProperty('qualityCounts');
+  expect(JSON.stringify(payload)).not.toContain('rawItems');
 });
 
 it('retains reviewed-transaction evidence without exporting method source or identities', async () => {

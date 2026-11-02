@@ -128,6 +128,22 @@ it.each(['shortage','protected','special','evolution','tradeable','league','expi
   expect(x.adapter.save).not.toHaveBeenCalled();
 });
 
+it('uses the reviewed FSU setting when Only Untradeable is disabled and revalidates it before submit', async () => {
+  const x = fixture();
+  x.policy.onlyUntradeable = false;
+  x.inventory.items.forEach(item => { item.tradeable = true; });
+  x.adapter.validateItems.mockImplementation(async () => ({ context: x.contract.context, fresh: true,
+    items: structuredClone(x.inventory.items) }));
+  x.adapter.readSavedSquad.mockImplementation(async () => ({ context: x.contract.context, fresh: true,
+    setId: 4, challengeId: 16, ready: true,
+    items: x.inventory.items.map((item, slot) => ({ ...item, slot })) }));
+  const prepared = x.prepare();
+  expect(prepared.status).toBe('prepared');
+  const result = await x.engine.execute(x.approve(prepared).permit);
+  expect(result.status).toBe('completed');
+  expect(x.adapter.submit).toHaveBeenCalledOnce();
+});
+
 it('freezes the exact prepared selection and invalidates expired approvals', async () => {
   const x = fixture(); const plan = x.prepare();
   expect(Object.isFrozen(plan.selected[0])).toBe(true);

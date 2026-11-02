@@ -47,13 +47,23 @@ it.each(['slots', 'definitions', 'items', 'pile', 'submitted', 'phase'])('reject
   if (kind === 'slots') record.itemRefs[1].slot = 0;
   if (kind === 'definitions') record.itemRefs[1].definitionId = 101;
   if (kind === 'items') record.itemRefs[1].id = 1;
-  if (kind === 'pile') record.itemRefs[1].pile = 'storage';
+  if (kind === 'pile') record.itemRefs[1].pile = 'transfer';
   if (kind === 'submitted') record.submitted = true;
   if (kind === 'phase') record.phase = 'completed';
   await x.store.exclusive(x.scope, async () => {
     await expect(x.store.journal.write(x.scope, record)).rejects.toThrow('FC27_PUZZLE_FILL_JOURNAL_UNVERIFIED');
   });
   expect(x.gmSetValue).not.toHaveBeenCalled();
+});
+
+it('round-trips mixed Club and Storage records without changing the schema or pile', async () => {
+  const x = fixture(); x.record.itemRefs[0].pile = 'storage';
+  await x.store.exclusive(x.scope, async () => {
+    await x.store.journal.write(x.scope, x.record);
+    expect(await x.store.journal.read(x.scope)).toEqual(x.record);
+    await x.store.journal.write(x.scope, { ...x.record, phase: 'saved' });
+    expect((await x.store.journal.read(x.scope)).itemRefs[0].pile).toBe('storage');
+  });
 });
 
 it('blocks replacement of uncertain records but allows a new operation after verified save', async () => {

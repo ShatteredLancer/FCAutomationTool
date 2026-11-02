@@ -22,7 +22,7 @@ export function readFc27PuzzlePolicy(root, maxRating = 82, { protectRoster = tru
   const leagues = ownData(ownData(ownData(root, 'info'), 'set'), 'shield_league');
   const protection = protectRoster ? readFc27StreamlinedProtection(root) : null;
   return { schema: 1, context: readFc27Context(root), reviewed: true,
-    maxRating: Math.min(maxRating, report.fsu.policy.goldRange[1]), onlyUntradeable: true,
+    maxRating: Math.min(maxRating, report.fsu.policy.goldRange[1]), onlyUntradeable: report.fsu.policy.onlyUntradeable,
     protectFsuLockedPlayers: protectRoster, protectActiveSquad: protectRoster, storageFirst: report.fsu.policy.storageFirst,
     ...(protection ?? {}),
     goldRange: report.fsu.policy.goldRange,
@@ -131,7 +131,8 @@ export async function previewFc27RunnerSquad(root, { setId, maxRating = 74 } = {
       if (report.status !== 'observed') throw new Error('FC27_RUNNER_INPUTS_CHANGED');
       const context = readFc27Context(root);
       const leagues = ownData(ownData(ownData(root, 'info'), 'set'), 'shield_league');
-      return { schema: 1, context, reviewed: true, maxRating: Math.min(maxRating, report.fsu.policy.goldRange[1]), onlyUntradeable: true,
+      return { schema: 1, context, reviewed: true, maxRating: Math.min(maxRating, report.fsu.policy.goldRange[1]),
+        onlyUntradeable: report.fsu.policy.onlyUntradeable,
         protectFsuLockedPlayers: false, protectActiveSquad: false, storageFirst: report.fsu.policy.storageFirst,
         goldRange: report.fsu.policy.goldRange,
         excludedLeagueIds: report.fsu.policy.excludeDesignatedLeagues

@@ -30,7 +30,7 @@ export function prepareFc27PuzzleConceptPlan({ challenge, plan } = {}) {
         || challenge.brickIndices.includes(item.slot) || !positive(item.definitionId)
         || !integer(item.rating, 1, 99))
       || new Set(entries.map(item => item.definitionId)).size !== required
-      || owned.some(item => !positive(item.id) || item.pile !== 'club' || item.catalogRef !== undefined)
+      || owned.some(item => !positive(item.id) || !['club', 'storage'].includes(item.pile) || item.catalogRef !== undefined)
       || new Set(owned.map(item => item.id)).size !== owned.length
       || purchases.some(item => item.id !== undefined || item.pile !== undefined
         || item.catalogRef !== `fc27:${item.definitionId}` || item.quantity !== 1

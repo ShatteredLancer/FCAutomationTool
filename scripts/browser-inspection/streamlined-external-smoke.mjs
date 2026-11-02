@@ -25,7 +25,14 @@ export async function exerciseStreamlinedExternal(page) {
       assertCurrent() {}, resolveDisplayItem: ref => inventory.find(item => item.id === ref.id) }),
     get: async (_key, fallback) => fallback, set: async () => { evidence.writes++; },
     prices: { load: async () => { evidence.quotes++; throw Error('unexpected quote'); } },
-    createExecution: async () => ({ prepare(plan) { evidence.plan = plan; }, transaction: {
+    createExecution: async () => ({ prepare(plan) { evidence.plan = plan; },
+      inspectContributionHistory: async () => ({ recovery: { setId: 32, challengeId: 62, currentScore: 3860,
+        targetScore: 5500, confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 },
+        historyAction: { canArchive: true, kind: 'contribution' } }),
+      archiveContributionHistory: async () => { evidence.archives = (evidence.archives ?? 0) + 1; evidence.offerHistory = false;
+        return { status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' }; }, transaction: {
+      recover: async () => evidence.offerHistory
+        ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' } : { status: 'absent' },
       execute: async (plan, approval) => { evidence.executed++; evidence.approval = approval;
         return { status: 'partial', record: { context: plan.context, plan, submittedScore: plan.score,
           batches: plan.batches.map((refs, index) => ({ index, refs, state: 'confirmed' })) } };
@@ -98,6 +105,22 @@ export async function exerciseStreamlinedExternal(page) {
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.waitForFunction(() => globalThis.externalSmoke.rendered === globalThis.externalSmoke.disposed);
   await entry.click(); await page.locator('[data-external-list] .external-row').first().waitFor();
+  assert.match(await page.locator('[data-external-summary]').innerText(), /已选外部卡 0 张/);
+  await page.evaluate(() => { globalThis.externalSmoke.offerHistory = true; });
+  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+  const archive = page.getByRole('button', { name: '结束旧贡献余批并归档', exact: true });
+  await archive.waitFor();
+  assert.match(await page.locator('[data-history-note]').innerText(), /没有未知请求/);
+  assert.equal(await page.locator('[data-contribute]').isVisible(), false);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-foreign-history-mobile.png' });
+  await archive.evaluate(button => button.click());
+  assert.equal(await page.evaluate(() => globalThis.externalSmoke.archives ?? 0), 0);
+  await archive.click();
+  assert.equal(await page.evaluate(() => globalThis.externalSmoke.archives), 1);
+  assert.equal(await page.evaluate(() => globalThis.externalSmoke.executed), 1);
+  await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+  await page.locator('[data-external-list] .external-row').first().waitFor();
   assert.match(await page.locator('[data-external-summary]').innerText(), /已选外部卡 0 张/);
   await page.evaluate(() => { globalThis.externalSmoke.current = false; });
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-external-entry')?.isConnected);

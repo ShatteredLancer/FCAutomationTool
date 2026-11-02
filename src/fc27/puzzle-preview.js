@@ -1,14 +1,63 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { puzzleMaterialRules, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
+import { puzzleMaterialRules, puzzleMaterialRuleVectors, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
 import { createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
+import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const DEFAULT_MAX_NODES = 50000;
 // EA amount domain only; keep the detached solver independent of procurement
 // policy/transport dependencies. Priced-joint boundary tests lock agreement.
 const MAX_PUZZLE_QUOTE_PRICE = 15000000;
+// A lower bound for remaining purchase spend. Each requirement is considered
+// independently, then the strongest bound is selected; overlapping rules are
+// never added together, so this cannot overestimate a feasible completion.
+export const createFc27PuzzleCostBound = (costs, counted, requiredCount, definitionIds = costs.map((_cost, index) => index)) => {
+  const suffix = matches => {
+    const rows = Array(costs.length + 1); rows[costs.length] = [0];
+    const byDefinition = new Map();
+    for (let i = costs.length - 1; i >= 0; i--) {
+      if (!matches || matches[i]) {
+        const definitionId = definitionIds[i] ?? i;
+        const previous = byDefinition.get(definitionId);
+        if (previous === undefined || costs[i] < previous) byDefinition.set(definitionId, costs[i]);
+      }
+      const cheapest = [...byDefinition.values()].sort((a, b) => a - b).slice(0, requiredCount);
+      const sums = [0];
+      for (const cost of cheapest) sums.push(sums.at(-1) + cost);
+      rows[i] = sums;
+    }
+    return rows;
+  };
+  const all = suffix(null);
+  const rules = counted.map(entry => ({ entry, yes: suffix(entry.matches), no: suffix(entry.matches.map(value => !value)) }));
+  return (start, remaining) => {
+    let bound = all[start][remaining] ?? Infinity;
+    for (const { entry, yes, no } of rules) {
+      const { rule, used } = entry, mode = rule.mode ?? 'min';
+      const deficit = rule.count - used;
+      const minimum = mode === 'max' ? 0 : Math.max(0, deficit);
+      const maximum = mode === 'min' ? remaining : Math.min(remaining, deficit);
+      let floor = Infinity;
+      for (let count = minimum; count <= maximum; count++) {
+        floor = Math.min(floor, (yes[start][count] ?? Infinity) + (no[start][remaining - count] ?? Infinity));
+      }
+      bound = Math.max(bound, floor);
+    }
+    return bound;
+  };
+};
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+const objectiveValueOf = (plan, objective = 'additional-coins') => objective === 'material-value'
+  ? Number.isFinite(plan?.materialValue) ? plan.materialValue : Infinity
+  : Number.isFinite(plan?.estimatedCost) ? plan.estimatedCost : Infinity;
+const qualityOf = rating => rating < 65 ? 'bronze' : rating < 75 ? 'silver' : 'gold';
+const selectedQualityCounts = items => items.reduce((counts, item) => {
+  const level = Number.isSafeInteger(item?.rating) && item.rating >= 1 && item.rating <= 99
+    ? qualityOf(item.rating) : 'unknown';
+  counts[level] = (counts[level] ?? 0) + 1;
+  return counts;
+}, { bronze: 0, silver: 0, gold: 0, unknown: 0 });
 const blocked = (reason, extra = {}) => ({ status: 'blocked', reason, liveExecutionEnabled: false, selected: [], ...extra });
 export function finishPuzzleSearch(iterator) {
   let step;
@@ -220,31 +269,133 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
 export function* iterateFc27PuzzleCandidateRoutes(input) {
   const maxNodes = input.maxNodes ?? DEFAULT_MAX_NODES;
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, input.pool.required);
-  const preferred = parsed.status === 'observed' ? puzzleMaterialRules(parsed.rules, input.pool.required) : [];
-  const canUpgrade = preferred.length && puzzleHasQualityAlternative(parsed.rules, input.pool.required, input.pool.candidates, preferred);
-  if (!preferred.length || !canUpgrade || !integer(maxNodes, 1, 250000))
-    return yield* iteratePuzzleRoutes({ ...input, materialRules: preferred });
-  const first = yield* iteratePuzzleRoutes({ ...input, maxNodes: Math.max(1, Math.floor(maxNodes / 3)), materialRules: preferred,
-    onProgress: value => input.onProgress?.({ ...value, maxNodes }) });
-  const incumbent = first.status === 'preview';
-  if (incumbent && (!input.procurement?.priceAware || first.estimatedCost === 0)) return { ...first, maxNodes, materialPreference: 'minimum-quality',
+  // Quality-count vectors are needed for the price-aware route. Keep the
+  // inventory-only preview's established route unless the legacy explicit
+  // minimum-quality rule is present, preserving its chemistry-bound budget.
+  const qualityCount = parsed.rules.some(rule => rule.kind === 'quality-count');
+  const preferred = parsed.status === 'observed'
+    && (input.procurement?.priceAware || !qualityCount
+      || parsed.rules.some(rule => rule.kind === 'min-quality'))
+    ? puzzleMaterialRules(parsed.rules, input.pool.required) : [];
+  const vectors = parsed.status === 'observed'
+    ? puzzleMaterialRuleVectors(parsed.rules, input.pool.required) : [];
+  const availableByQuality = [1, 2, 3].map(quality => new Set(input.pool.candidates
+    .filter(item => (item.rating < 65 ? 1 : item.rating < 75 ? 2 : 3) === quality).map(item => item.definitionId)).size);
+  const feasiblePreferred = preferred.length ? vectors.find(vector => vector.every(rule => {
+    const quality = rule.qualities?.[0];
+    return Number.isInteger(quality) && rule.mode === 'exact'
+      && rule.count <= availableByQuality[quality - 1];
+  })) : null;
+  // The theoretical lowest-quality composition is often impossible in the
+  // current safe inventory (for example, all silver with only one silver card).
+  // Searching it first burns the node budget before falling back to all gold.
+  // Start at the lowest composition the unique safe definitions can supply.
+  const inventoryPreferred = feasiblePreferred ?? preferred;
+  // Do not decide whether the preferred vector is useful from the current
+  // Club pool alone.  Procurement adds market candidates after the initial
+  // inventory snapshot; checking only this pool made a valid silver/gold
+  // market route look unavailable and skipped it entirely.  Running the
+  // bounded preferred pass is safe: an actual shortage returns immediately,
+  // after which the native fallback retains the original behaviour.
+  const canUpgrade = inventoryPreferred.length
+    && puzzleHasQualityAlternative(parsed.rules, input.pool.required, input.pool.candidates, inventoryPreferred);
+  if (!inventoryPreferred.length || !integer(maxNodes, 1, 250000))
+    return yield* iteratePuzzleRoutes({ ...input, materialRules: inventoryPreferred });
+  if (!canUpgrade) {
+    // The preferred vector is only a traversal preference.  When the safe
+    // inventory cannot provide that composition, carrying its exact rules
+    // into the fallback turns a legal native all-gold (or mixed) squad into a
+    // false shortage.  Drop the preference entirely and let the original EA
+    // requirements decide the fallback route.
+    const result = yield* iteratePuzzleRoutes({ ...input, materialRules: [], nativeQualityFallback: true });
+    return { ...result, materialPreference: 'native-quality-fallback', qualityVectorAttempts: 1 };
+  }
+  // A preferred quality vector is the main cost-saving route.  Giving it only
+  // one third of the budget made chemistry-heavy SBCs fall through to the
+  // native fallback before the silver/gold composition could be completed;
+  // the fallback then appeared cheaper simply because it was the only route
+  // that reached a leaf.  Reserve a small slice for fallback, while allowing
+  // the preferred route enough room to explore its full material vector.
+  // Keep the native-valid fallback room.  The preference pass is an
+  // optimization hint; it must never consume the budget that the historical
+  // native route needed to find an all-gold solution.  Marquee challenges in
+  // particular can spend many nodes proving a low-tier chemistry route before
+  // the ordinary gold route is reached.
+  const preferredBudget = input.procurement?.priceAware
+    ? Math.max(1, Math.ceil(maxNodes * 0.6))
+    : Math.max(1, Math.floor(maxNodes * 0.25));
+  // `estimatedCost` is cash-only.  In material-value mode the traversal
+  // budget is the complete objective (owned valuation plus purchases), so
+  // using estimatedCost here silently rejected cheaper inventory/market
+  // mixes whenever the first route used a few purchases.  Keep one helper
+  // for every bounded-route comparison and budget hand-off.
+  const objective = input.procurement?.objective ?? 'additional-coins';
+  const objectiveValue = plan => objectiveValueOf(plan, objective);
+  // Keep one feasible low-tier preference before the unrestricted native
+  // fallback. Enumerating every quality vector consumed the price-led route
+  // budget and regressed remote chemistry controls; mixed vectors remain
+  // available to the full native search and bounded incumbent replacements.
+  const materialVectors = [inventoryPreferred];
+  const preferenceSearch = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+  let spent = 0; let first = null; let incumbent = null; let vectorAttempts = 0;
+  for (let index = 0; index < materialVectors.length && spent < preferredBudget; index++) {
+    const remainingVectors = materialVectors.length - index;
+    const laneBudget = Math.max(1, Math.floor((preferredBudget - spent) / remainingVectors));
+    const vectorResult = yield* iteratePuzzleRoutes({ ...input, maxNodes: laneBudget,
+      materialRules: materialVectors[index],
+      ...(incumbent && input.procurement ? { procurement: { ...input.procurement,
+        budget: Math.min(input.procurement.budget, objectiveValue(incumbent)) } } : {}),
+      onProgress: value => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes }) });
+    vectorAttempts++;
+    spent += vectorResult.nodes ?? 0;
+    for (const key of Object.keys(preferenceSearch)) preferenceSearch[key] += vectorResult.search?.[key] ?? 0;
+    if (!first) first = vectorResult;
+    if (vectorResult.status === 'preview'
+        && (!incumbent || comparePuzzlePlans(vectorResult, incumbent, objective) < 0)) incumbent = vectorResult;
+    // A proven-complete route can still be beaten by another quality vector;
+    // continue until all vectors or the shared preference slice are consumed.
+  }
+  first ??= yield* iteratePuzzleRoutes({ ...input, maxNodes: Math.max(1, preferredBudget), materialRules: inventoryPreferred,
+    onProgress: value => input.onProgress?.({ ...value, nodes: value.nodes, maxNodes }) });
+  if (!spent) spent = first.nodes ?? 0;
+  if (!Object.keys(preferenceSearch).some(key => preferenceSearch[key] > 0)) {
+    for (const key of Object.keys(preferenceSearch)) preferenceSearch[key] = first.search?.[key] ?? 0;
+  }
+  const incumbentResult = incumbent ?? first;
+  const hasIncumbent = incumbent?.status === 'preview';
+  // A zero-cash incumbent proves the additional-coins objective immediately.
+  // For material-value we must continue: replacing an expensive owned card
+  // with a cheap market card can lower the total value even when cash spend
+  // on the incumbent is already zero.
+  if (hasIncumbent && (!input.procurement?.priceAware || objective !== 'material-value' && objectiveValue(incumbent) === 0)) return { ...incumbent, maxNodes, nodes: spent,
+    search: preferenceSearch, materialPreference: 'minimum-quality', qualityVectorAttempts: vectorAttempts,
     ...(input.procurement ? { searchComplete: false, optimalWithinPool: false } : {}) };
-  if (!incumbent && !['SAFE_MATERIAL_SHORTAGE','FC27_PUZZLE_CONSTRAINT_SHORTAGE','FC27_PUZZLE_NO_PLAN_FOUND','FC27_PUZZLE_SEARCH_LIMIT'].includes(first.reason)) return first;
-  const spent = first.nodes ?? 0, remaining = maxNodes - spent;
-  if (remaining < 1) return { ...first, maxNodes };
-  const metrics = first.search ?? {}, sum = search => Object.fromEntries(['combinationNodes','placementNodes','evaluations','bounds']
-    .map(key => [key, (metrics[key] ?? 0) + (search?.[key] ?? 0)]));
+  if (!hasIncumbent && !['SAFE_MATERIAL_SHORTAGE','FC27_PUZZLE_CONSTRAINT_SHORTAGE','FC27_PUZZLE_NO_PLAN_FOUND','FC27_PUZZLE_SEARCH_LIMIT'].includes(first.reason)) return first;
+  const remaining = maxNodes - spent;
+  if (remaining < 1) return hasIncumbent ? { ...incumbent, maxNodes, nodes: spent,
+    search: preferenceSearch, searchComplete: false, optimalWithinPool: false,
+    materialPreference: 'minimum-quality', qualityVectorAttempts: vectorAttempts }
+    : { ...first, maxNodes, nodes: spent, search: preferenceSearch };
+  const sum = search => Object.fromEntries(['combinationNodes','placementNodes','evaluations','bounds']
+    .map(key => [key, (preferenceSearch[key] ?? 0) + (search?.[key] ?? 0)]));
   const result = yield* iteratePuzzleRoutes({ ...input, maxNodes: remaining, materialRules: [], nativeQualityFallback: true,
-    ...(incumbent ? { procurement: { ...input.procurement, budget: Math.min(input.procurement.budget, first.estimatedCost - 1) } } : {}),
+    ...(hasIncumbent ? { procurement: { ...input.procurement,
+      budget: Math.min(input.procurement.budget, Math.max(0, objectiveValue(incumbent))) } } : {}),
     onProgress: value => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes, search: sum(value.search) }) });
   // The low-quality vector is a tie-break, not permission to discard a
   // cheaper native-valid squad. Keep the known feasible incumbent if the
   // bounded monetary comparison cannot improve it; no extra node budget.
-  const keepFirst = incumbent && (result.status !== 'preview' || result.estimatedCost >= first.estimatedCost);
-  return { ...(keepFirst ? first : result), maxNodes, nodes: spent + (result.nodes ?? 0), search: sum(result.search),
-    ...(incumbent ? { searchComplete: false, optimalWithinPool: false } : {}),
-    materialPreference: keepFirst ? 'minimum-quality' : incumbent ? 'native-cost-improvement' : 'native-quality-fallback',
-    strategyAttempts: (first.strategyAttempts ?? 1) + (result.strategyAttempts ?? 1) };
+  const keepFirst = hasIncumbent && (result.status !== 'preview'
+    || comparePuzzlePlans(incumbent, result, objective) <= 0);
+  return { ...(keepFirst ? incumbentResult : result), maxNodes, nodes: spent + (result.nodes ?? 0), search: sum(result.search),
+    routeBudgets: { preferred: preferredBudget, fallback: remaining, preferredNodes: spent,
+      fallbackNodes: result.nodes ?? 0, preferredStatus: first.status, fallbackStatus: result.status,
+      preferredEstimatedCost: incumbent?.estimatedCost ?? first.estimatedCost ?? null, fallbackEstimatedCost: result.estimatedCost ?? null,
+      qualityVectorAttempts: vectorAttempts },
+    ...(hasIncumbent ? { searchComplete: false, optimalWithinPool: false } : {}),
+    materialPreference: keepFirst ? 'minimum-quality' : hasIncumbent ? 'native-cost-improvement' : 'native-quality-fallback',
+    ...(input.searchHint === null || input.searchHint === undefined
+      ? { strategyAttempts: (first.strategyAttempts ?? 1) + (result.strategyAttempts ?? 1) } : {}) };
 }
 
 function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, ...options }) {
@@ -297,8 +448,8 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
   for (const [index, { hint, costFirst }] of routes.entries()) {
     const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
     result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst,
-      ...(bestResult && bestResult.estimatedCost > 0 ? { procurement: { ...options.procurement,
-        budget: Math.min(options.procurement.budget, bestResult.estimatedCost - 1) } } : {}),
+      ...(bestResult && objectiveValueOf(bestResult, options.procurement?.objective) > 0 ? { procurement: { ...options.procurement,
+        budget: Math.min(options.procurement.budget, objectiveValueOf(bestResult, options.procurement?.objective) - 1) } } : {}),
       onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
     nodes += result.nodes ?? 0;
     for (const key of Object.keys(search)) search[key] += result.search?.[key] ?? 0;
@@ -308,24 +459,28 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
     // combinations found by the next hint. Non-procurement previews retain
     // their original first-feasible behavior.
     if (procurementMode && result.status === 'preview') {
-      if (!bestResult || result.estimatedCost < bestResult.estimatedCost) bestResult = result;
+      if (!bestResult || comparePuzzlePlans(result, bestResult,
+        options.procurement?.objective ?? 'additional-coins') < 0) bestResult = result;
       if (result.searchComplete === false) hadTruncatedRoute = true;
       if (result.searchComplete !== false) {
         const selected = bestResult ?? result;
-        return { ...selected, nodes, maxNodes, search, strategyAttempts: index + 1,
+        return { ...selected, nodes, maxNodes, search,
+          ...(searchHint === null ? { strategyAttempts: index + 1 } : {}),
           searchComplete: selected.searchComplete === true && !hadTruncatedRoute,
           optimalWithinPool: selected.optimalWithinPool === true && !hadTruncatedRoute };
       }
       continue;
     }
     if (procurementMode && bestResult && result.reason !== 'FC27_PUZZLE_SEARCH_LIMIT') {
-      return { ...bestResult, nodes, maxNodes, search, strategyAttempts: index + 1,
+      return { ...bestResult, nodes, maxNodes, search,
+        ...(searchHint === null ? { strategyAttempts: index + 1 } : {}),
         searchComplete: false, optimalWithinPool: false };
     }
     // Only a budget-limited traversal needs another start. Proven shortage,
     // unsupported facts and complete no-plan results retain their cause.
     if (result.reason !== 'FC27_PUZZLE_SEARCH_LIMIT') {
-      return { ...result, ...(result.nodes !== undefined ? { nodes, maxNodes, search, strategyAttempts: index + 1 } : {}) };
+      return { ...result, ...(result.nodes !== undefined ? { nodes, maxNodes, search,
+        ...(searchHint === null ? { strategyAttempts: index + 1 } : {}) } : {}) };
     }
     hadTruncatedRoute = true;
   }
@@ -410,6 +565,9 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
       || Number(positionFit(b)) - Number(positionFit(a))
       || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
+      // For an otherwise valid SBC, lower quality is the material-saving
+      // route. Keep connectivity and position safety ahead of this only when
+      // they are actually needed; EA's complete evaluator remains final.
       || scores.get(b) - scores.get(a) || a.rating - b.rating
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
@@ -467,9 +625,22 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   if ((forced.size || mixedClubRequirements) && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {
     candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
-      || compulsoryScores.get(b) - compulsoryScores.get(a));
+      || compulsoryScores.get(b) - compulsoryScores.get(a)
+      // Mandatory identity/chemistry ordering is only a traversal hint. Keep
+      // each chemistry start and its position/connectivity priorities before
+      // breaking otherwise equivalent candidates by material quality. Sorting
+      // by rating alone here erased those starts and exhausted valid routes.
+      || (['nation', 'league', 'club'].includes(searchHint?.strategy)
+        ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId)
+          - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0)
+      || Number(positionFit(b)) - Number(positionFit(a))
+      || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
+      || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
+      || a.rating - b.rating
+      || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
-  const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason };
+  const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason,
+    qualityCounts: pool.qualityCounts, qualityDefinitionCounts: pool.qualityDefinitionCounts };
   let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
   if (costs.some(cost => !integer(cost, 0, MAX_PUZZLE_QUOTE_PRICE))) return blocked('FC27_MARKET_QUOTE_INVALID');
   if (procurement?.priceAware) {
@@ -553,11 +724,8 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   let spent = 0; let purchases = 0; let best = null;
   // Optimistic suffix cost bounds ignore uniqueness and rule conflicts, so they
   // can only underestimate remaining spend. They never prove market shortage.
-  const cheapest = procurement ? Array(candidates.length + 1) : null;
-  if (procurement) cheapest[candidates.length] = [];
-  if (procurement) for (let i = candidates.length - 1; i >= 0; i--) {
-    cheapest[i] = [...cheapest[i + 1], costs[i]].sort((a, b) => a - b).slice(0, required);
-  }
+  const costBound = procurement ? createFc27PuzzleCostBound(costs, counted, required,
+    candidates.map(item => item.definitionId)) : null;
   const finished = () => found && !procurement || best?.cost === 0;
   const search = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
   const reportProgress = (force = false) => {
@@ -588,7 +756,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     const remaining = required - chosen.length;
     if (procurement) {
       if (purchases > procurement.maxPurchases || spent > procurement.budget) return;
-      const floor = spent + cheapest[start].slice(0, remaining).reduce((sum, cost) => sum + cost, 0);
+      const floor = spent + costBound(start, remaining);
       if (floor > procurement.budget || best && floor >= best.cost) return;
     }
     for (const { rule, used, suffix } of counted) {
@@ -656,7 +824,30 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
         if (validation.status === 'satisfied') found = { items: chosen.slice(), facts: { chemistry: null, teamRating: null }, validation };
       }
       if (procurement && found) {
-        if (!best || spent < best.cost) best = { ...found, cost: spent, purchases };
+        // `spent` is the objective cost used by the branch bound.  In
+        // material-value mode it includes the reference value of owned cards,
+        // while `estimatedCost` must remain cash-only.  The old candidate
+        // omitted `materialValue`, so comparePuzzlePlans treated every
+        // material route as Infinity and fell back to comparing purchases;
+        // that is why a full buy route could beat a cheaper inventory mix.
+        const selectedOwned = found.items.filter(item => !item.catalogRef);
+        const purchasesList = found.items.filter(item => item.catalogRef);
+        const inventoryValue = selectedOwned.reduce((sum, item) => {
+          const candidateIndex = candidates.indexOf(item);
+          return sum + (candidateIndex >= 0 ? costs[candidateIndex] : 0);
+        }, 0);
+        const estimatedCost = purchasesList.reduce((sum, item) => {
+          const candidateIndex = candidates.indexOf(item);
+          return sum + (candidateIndex >= 0 ? costs[candidateIndex] : 0);
+        }, 0);
+        const candidate = { ...found, estimatedCost, purchaseCount: purchases,
+          inventoryValue, materialValue: inventoryValue + estimatedCost,
+          selectedOwned, purchases: purchasesList };
+        if (!best || comparePuzzlePlans(candidate, best, procurement.objective ?? 'additional-coins') < 0) {
+          best = { ...found, cost: spent, estimatedCost,
+            purchaseCount: purchases, inventoryValue, materialValue: inventoryValue + estimatedCost,
+            selectedOwned, purchases: purchasesList };
+        }
         found = null;
       }
       return;
@@ -665,9 +856,13 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       const item = candidates[index];
       if (definitions.has(item.definitionId)) continue;
       for (const entry of counted) entry.used += Number(entry.matches[index]);
-      spent += costs[index]; purchases += Number(costs[index] > 0);
+      // In material-value mode owned cards carry a reference value, but they
+      // are still zero-cash materials.  Count purchases from the detached
+      // market identity rather than from the objective cost, otherwise an
+      // owned 84/85 consumes the purchase quota and distorts tie-breaks.
+      spent += costs[index]; purchases += Number(Boolean(item.catalogRef));
       chosen.push(item); definitions.add(item.definitionId); yield* visit(index + 1); definitions.delete(item.definitionId); chosen.pop();
-      spent -= costs[index]; purchases -= Number(costs[index] > 0);
+      spent -= costs[index]; purchases -= Number(Boolean(item.catalogRef));
       for (const entry of counted) entry.used -= Number(entry.matches[index]);
     }
   };
@@ -682,7 +877,10 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       definitionId: item.definitionId, pile: item.pile, rating: item.rating, slot: slots[index],
       ...(item.catalogRef ? { catalogRef: item.catalogRef } : {}) })),
     validation: found.validation, teamFacts: found.facts, nodes, maxNodes, search,
-    ...metrics, ...(procurement ? { estimatedCost: found.cost, searchComplete: !exhausted && !deferredPlacements,
+    ...metrics, selectedQualityCounts: selectedQualityCounts(found.items),
+    ...(procurement ? { estimatedCost: found.estimatedCost, purchaseCount: found.purchaseCount,
+      ...(procurement.objective === 'material-value' ? { materialValue: found.cost, inventoryValue: found.inventoryValue } : {}),
+      searchComplete: !exhausted && !deferredPlacements,
       optimalWithinPool: !exhausted && !deferredPlacements } : {}),
     pending: ['EXACT_ITEM_REVALIDATION', 'MARKET_RECEIPT_IF_NEEDED', 'EXPLICIT_TRANSACTION_APPROVAL'] };
 }

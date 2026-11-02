@@ -30,7 +30,7 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
     'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js',
     'src/domain/player-rarity.js', 'src/fc27/prelaunch-contract.js', 'src/fc27/sbc-requirements.js',
-    'src/fc27/traditional-preview.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-evaluator.js',
+    'src/fc27/traditional-preview.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-plan-ranking.js', 'src/fc27/puzzle-evaluator.js',
     'src/fc27/market-query-route.js', 'src/fc27/puzzle-material-policy.js', 'src/fc27/puzzle-procurement-policy.js',
     'src/fc27/puzzle-price-starts.js',
     'src/fc27/puzzle-procurement.js', 'src/fc27/puzzle-query-affinity.js']);

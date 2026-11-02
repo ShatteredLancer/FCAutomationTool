@@ -29,6 +29,23 @@ export async function observePageUi(page) {
   // Only native SBC titles, never the account header or a whole-page text dump.
   result.setTitles = await page.locator('.ut-sbc-set-tile-view .tileHeader').evaluateAll(nodes =>
     nodes.slice(0, 100).map(node => (node.textContent || '').trim().slice(0, 160)));
+  result.challengeActions = await page.locator('.ut-sbc-challenges-view button').evaluateAll(nodes =>
+    nodes.slice(0, 24).map(node => ({
+      text: (node.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 100),
+      disabled: node.disabled === true,
+      visible: node.getClientRects().length > 0 && globalThis.getComputedStyle(node).visibility !== 'hidden',
+      classes: Array.from(node.classList).filter(name => /^[a-zA-Z][a-zA-Z0-9_-]{0,60}$/.test(name)).slice(0, 8),
+      parentClasses: Array.from(node.parentElement?.classList || [])
+        .filter(name => /^[a-zA-Z][a-zA-Z0-9_-]{0,60}$/.test(name)).slice(0, 8),
+    })));
+  result.modalText = await page.locator(SELECTORS.modal).evaluateAll(nodes => nodes.slice(0, 2).map(node => ({
+    title: (node.querySelector('h1,h2,h3,.modal-title,.title')?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 160),
+    text: (node.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 600),
+    buttons: Array.from(node.querySelectorAll('button')).slice(0, 8).map(button => ({
+      text: (button.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 100),
+      disabled: button.disabled === true,
+    })),
+  })));
   result.setActions = await page.locator('.ut-sbc-set-tile-view').evaluateAll(nodes => nodes.slice(0, 100).map(node => ({
     title: (node.querySelector('.tileHeader')?.textContent || '').trim().slice(0, 160),
     classes: Array.from(node.classList).slice(0, 12),
@@ -70,6 +87,27 @@ export async function enterNativeSbc(page, { extensionsDisabled = false } = {}) 
 // their extension isolation contract.
 export async function enterNativeSbcReadOnly(page, { title = '83+ Upgrade' } = {}) {
   const ui = await observePageUi(page);
+  // The native group challenge list has an explicit entry button. It is not
+  // the squad editor: only this proven list may return through the SBC tab.
+  // Never navigate away from an editor, dialog, login or loading surface.
+  let challengeList = false;
+  if (ui?.challenges === true && ui.set === false && ui.streamlined === false
+      && ui.login === false && ui.modal === false && ui.loading === false) {
+    const entry = page.locator('.ut-sbc-challenges-view button.btn-standard.primary')
+      .filter({ hasText: /^Go to Challenge$/ });
+    challengeList = await entry.count() === 1 && await entry.isVisible();
+    if (!challengeList) {
+      // FC27's native challenge list has no navigation button. Its bounded
+      // row container is the proof that this is the list surface, rather than
+      // an editor or a plugin dialog. Do not infer this from arbitrary text.
+      const list = page.locator('.ut-sbc-challenges-view--challenges');
+      const rows = page.locator('.ut-sbc-challenges-view--challenges .ut-sbc-challenge-table-row-view');
+      const listCount = await list.count();
+      const rowCount = await rows.count();
+      challengeList = listCount === 1 && rowCount > 0 && rowCount <= 50
+        && await list.isVisible() && await rows.first().isVisible();
+    }
+  }
   if (ui?.sbc === true && ui.modal === false && ui.loading === false) {
     const tiles = page.locator('.ut-sbc-set-tile-view');
     const count = await tiles.count();
@@ -79,12 +117,22 @@ export async function enterNativeSbcReadOnly(page, { title = '83+ Upgrade' } = {
       const tile = tiles.nth(i), header = tile.locator('.tileHeader');
       if (await header.count() === 1 && (await header.textContent())?.trim() === title && await tile.isVisible()) matches.push(tile);
     }
+    if (matches.length === 0) {
+      // A remembered category can hide an otherwise available set. The native
+      // All filter changes only the visible catalog, never the current squad.
+      const all = page.locator('.ut-sbc-hub-view button.ea-filter-bar-item-view').filter({ hasText: /^All$/ });
+      if (await all.count() === 1 && await all.isVisible()
+          && !(await all.getAttribute('class') ?? '').split(/\s+/).includes('selected')) {
+        await all.click({ timeout: 3000 });
+        return 'ALL_SETS_FILTER_OPENED';
+      }
+    }
     if (matches.length !== 1) return 'SET_TILE_AMBIGUOUS_OR_MISSING';
     return openNativeTile(page, matches[0]);
   }
-  if (!ui || !(ui.home === true || ui.homeView === true || ui.homeSbcTile === true && ui.homeObjectiveTile === true)
+  if (!ui || !(challengeList || ui.home === true || ui.homeView === true || ui.homeSbcTile === true && ui.homeObjectiveTile === true)
       || ui.sbcTab !== true || ui.modal !== false || ui.loading !== false
-      || ui.set !== false || ui.challenges !== false || ui.streamlined !== false) return 'NATIVE_HOME_NOT_CONFIRMED';
+      || ui.set !== false || !challengeList && ui.challenges !== false || ui.streamlined !== false) return 'NATIVE_HOME_NOT_CONFIRMED';
   try {
     await page.locator(SELECTORS.sbcTab).click({ timeout: 3000 });
     await waitForNativeView(page, [SELECTORS.sbc]);

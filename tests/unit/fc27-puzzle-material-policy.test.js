@@ -28,3 +28,21 @@ it('keeps native eligibility distinct from the optional low-quality search prefe
 it('does not invent an all-bronze restriction for a squad with no minimum-quality rule', () => {
   expect(puzzleMaterialRules(parse([row(19, [80])]), 11)).toEqual([]);
 });
+
+it('derives a mixed silver/gold vector for the common minimum-gold count rule', () => {
+  const rules = parse([row(3, [2]), row(17, [3], 6)]);
+  expect(puzzleMaterialRules(rules, 11).map(rule => rule.count)).toEqual([0, 5, 6]);
+});
+
+it('uses a full-squad 65 overall floor when the quality count has no silver rule', () => {
+  const rules = parse([row(26, [65], 11), row(17, [3], 6)]);
+  expect(puzzleMaterialRules(rules, 11).map(rule => rule.count)).toEqual([0, 5, 6]);
+});
+
+it('derives silver-first composition from a minimum-silver overall floor alone', () => {
+  const rules = parse([row(26, [65], 11)]);
+  expect(puzzleMaterialRules(rules, 11).map(rule => rule.count)).toEqual([0, 11, 0]);
+  // The preference never replaces the EA rule or rejects a valid gold squad.
+  expect(matchFc27SbcRequirements({ requirements: rules,
+    squad: Array.from({ length: 11 }, () => ({ rating: 80 })) }).status).toBe('satisfied');
+});

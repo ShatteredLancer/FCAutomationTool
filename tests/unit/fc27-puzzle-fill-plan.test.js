@@ -27,6 +27,21 @@ function fixture() {
   return { input, preview, plan, fresh };
 }
 
+it('preserves Storage refs through exact validation and refuses pile drift or external piles', () => {
+  const input = puzzleFillFixture();
+  input.inventory.items[0].pile = 'storage';
+  const preview = previewFc27PuzzleSquad(input);
+  const plan = prepareFc27PuzzleFillPlan(input, preview);
+  expect(plan.status).toBe('prepared');
+  expect(plan.selected.some(ref => ref.pile === 'storage')).toBe(true);
+  const fresh = structuredClone(input.inventory.items);
+  expect(validateFc27PuzzleFillPlan(plan, input, fresh).status).toBe('verified');
+  fresh[0].pile = 'club';
+  expect(validateFc27PuzzleFillPlan(plan, input, fresh).reason).toBe('FC27_EXACT_ITEMS_CHANGED');
+  input.inventory.items[0].pile = 'transfer';
+  expect(prepareFc27PuzzleFillPlan(input, preview).status).toBe('blocked');
+});
+
 it('revalidates the fixed eleven without trusting cached preview success or exposing an execution permit', () => {
   const x = fixture();
   expect(x.plan).toMatchObject({ status: 'prepared', executable: false,
@@ -127,6 +142,17 @@ it('uses the explicit rating policy for ordinary gold without raising it when ma
   expect(plan.status).toBe('prepared');
   input.policy.maxRating = 79;
   expect(validateFc27PuzzleFillPlan(plan, input, input.inventory.items).status).toBe('blocked');
+});
+
+it('honours FSU Only Untradeable=false through preview and fresh fill validation', () => {
+  const input = puzzleFillFixture();
+  input.policy.onlyUntradeable = false;
+  input.inventory.items.forEach(item => { item.tradeable = true; });
+  const preview = previewFc27PuzzleSquad(input);
+  expect(preview.status).toBe('preview');
+  const plan = prepareFc27PuzzleFillPlan(input, preview);
+  expect(plan.status).toBe('prepared');
+  expect(validateFc27PuzzleFillPlan(plan, input, structuredClone(input.inventory.items)).status).toBe('verified');
 });
 
 it('accepts a fresh same-definition alternate only as extra evidence, never as a replacement', () => {

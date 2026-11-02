@@ -604,7 +604,8 @@ it('binds recovery to the displayed target and invalidates the old preview when 
   const f = recoverySetup(), result = await f.session.plan({ objective: 'lowest-value',});
   f.transaction.recover.mockResolvedValue({ status: 'absent' });
   expect(await f.session.recover()).toEqual({ status: 'absent' });
-  expect(f.transaction.recover).toHaveBeenCalledWith(f.input.context, { setId: f.input.challenge.setId, challengeId: f.input.challenge.id });
+  expect(f.transaction.recover).toHaveBeenCalledWith(f.input.context, { setId: f.input.challenge.setId,
+    challengeId: f.input.challenge.id, targetScore: f.input.challenge.targetScore });
   expect((await f.session.contribute({ fingerprint: result.plan.fingerprint, batchIndices: [0] })).reason)
     .toBe('FC27_STREAMLINED_PLAN_CHANGED');
   expect(f.transaction.execute).not.toHaveBeenCalled();
@@ -616,7 +617,8 @@ it('shows the other target recovery reason without reviving the current preview'
     recovery: { setId: 48, challengeId: 85 } });
   expect(await f.session.recover()).toMatchObject({ status: 'recovery-required',
     reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery: { setId: 48, challengeId: 85 } });
-  expect(f.transaction.recover).toHaveBeenCalledWith(f.input.context, { setId: f.input.challenge.setId, challengeId: f.input.challenge.id });
+  expect(f.transaction.recover).toHaveBeenCalledWith(f.input.context, { setId: f.input.challenge.setId,
+    challengeId: f.input.challenge.id, targetScore: f.input.challenge.targetScore });
   expect(f.prepare).toHaveBeenCalledOnce();
 });
 

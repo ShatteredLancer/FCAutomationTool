@@ -12,6 +12,26 @@ export const STREAMLINED_JOURNAL_SCHEMA = 1;
 export const isUnsentStreamlinedJournal = record => record?.batches?.length > 0
   && record.batches.every(batch => batch.state === 'waiting' && batch.startingScore === undefined
     && batch.receipt === undefined && batch.progressChanged !== true);
+// Explicitly abandoning a never-sent remainder does not undo confirmed work.
+// External moves and procurement have separate journals and are not retired here.
+export function canRetireStreamlinedContribution(record) {
+  const confirmed = record?.batches?.filter(batch => batch.state === 'confirmed') ?? [];
+  return !!record && confirmed.length > 0
+    && record.plan.items.every(item => item.source === 'inventory' && ['club', 'storage'].includes(item.pile) && !item.purchaseReceipt)
+    && !record.plan.execution?.purchaseScope && !record.plan.route?.groups?.some(group => group.source === 'market')
+    && confirmed.every(batch => batch.receipt?.status === 'accepted' && !batch.progressChanged)
+    && Math.max(...confirmed.map(batch => batch.receipt.submittedScore)) === record.submittedScore
+    && record.batches.some(batch => batch.state === 'waiting')
+    && record.batches.every(batch => !batch.progressChanged && (batch.state === 'confirmed' || batch.state === 'rejected'
+      || batch.state === 'waiting' && batch.startingScore === undefined && batch.receipt === undefined));
+}
+export const streamlinedContributionRecovery = record => ({
+  setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id,
+  targetScore: record.plan.challenge.targetScore, currentScore: record.submittedScore,
+  confirmedBatches: record.batches.filter(batch => batch.state === 'confirmed').length,
+  waitingBatches: record.batches.filter(batch => batch.state === 'waiting').length,
+  pendingWriteCount: record.batches.filter(batch => ['pending', 'unknown'].includes(batch.state)).length,
+});
 // A new explicit plan may replace only the never-dispatched remainder of a
 // confirmed stock run, starting at exactly its durable score. Keep the whole
 // old journal first; pending/unknown writes and purchased/external cards are
@@ -41,6 +61,7 @@ export function validateStreamlinedJournal(record, context) {
       || !integer(record.updatedAt) || !integer(record.submittedScore)
       || !Array.isArray(record.batches) || !integer(record.plan?.challenge?.selectionLimit, 1, 1000)) fail('JOURNAL_INVALID');
   assertStreamlinedPlan(record.plan);
+  if (record.retired !== undefined && (record.retired !== true || !canRetireStreamlinedContribution(record))) fail('JOURNAL_INVALID');
   if (!same(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length
         || record.batches.some((batch, i) => !states.includes(batch.state) || batch.index !== i
         || !same(batch.refs, record.plan.batches[i].map(refOf)))
@@ -84,14 +105,35 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now(), can
     });
     tail = task.catch(() => {}); return task;
   };
-  return Object.freeze({ read, write, async begin(plan, { replaceRemainder = false } = {}) {
+  return Object.freeze({ read: async context => { const record = await read(context); return record?.retired ? null : record; }, write,
+    async retire(expected) {
+      const task = tail.then(async () => {
+        const prior = await read(expected.context);
+        if (!same(prior, expected)) fail('JOURNAL_CHANGED');
+        if (!canRetireStreamlinedContribution(prior)) fail('RECOVERY_REQUIRED');
+        const key = `${streamlinedJournalKey(expected.context)}:history:${prior.revision}`;
+        try {
+          const saved = await get(key, null);
+          if (saved != null && !same(saved, prior)) fail('JOURNAL_ARCHIVE_CONFLICT');
+          if (saved == null) await set(key, structuredClone(prior));
+          if (!same(await get(key, null), prior)) fail('JOURNAL_ARCHIVE_FAILED');
+        } catch { fail('JOURNAL_ARCHIVE_FAILED'); }
+        // Keep the revision so later history keys cannot collide after retirement.
+        const retired = validateStreamlinedJournal({ ...prior, retired: true, revision: prior.revision + 1, updatedAt: now() }, expected.context);
+        try {
+          await set(streamlinedJournalKey(expected.context), retired);
+          if (!same(await get(streamlinedJournalKey(expected.context), null), retired)) fail('JOURNAL_READBACK_FAILED');
+        } catch { fail('JOURNAL_WRITE_FAILED'); }
+      });
+      tail = task.catch(() => {}); return task;
+    }, async begin(plan, { replaceRemainder = false } = {}) {
     assertStreamlinedPlan(plan);
     if (plan.items.some(item => item.source !== 'inventory')) fail('PURCHASE_PENDING');
     const prior = await read(plan.context);
     const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint
       && canReplaceStreamlinedRemainder(prior, plan);
     if (replaceRemainder && !replacement) fail('RECOVERY_REQUIRED');
-    if (prior && !isUnsentStreamlinedJournal(prior)
+    if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior)
         && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state)) && !replacement
         && !await canReplaceArchived(prior)) fail('RECOVERY_REQUIRED');
     if (replacement) {

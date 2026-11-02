@@ -51,7 +51,7 @@ export async function inspectPuzzleWithAi(page, setId, challengeId, { settings =
     export { inspectFc27PuzzlePlan, createFc27PuzzleAssistantSession, readFc27Context, readFc27CachedClub, readFc27RunnerPolicy };`;
   const result = await build({ absWorkingDir: root, stdin: { contents: source, resolveDir: root, sourcefile: 'puzzle-ai-inspection.js' },
     bundle: true, write: false, metafile: true, format: 'iife', globalName: 'PuzzleAiRead', target: 'chrome120' });
-  const allowed = new Set(['puzzle-ai-inspection.js', 'src/fc27/puzzle-assistant-session.js', 'src/adapters/ea/fc27-puzzle-read.js',
+  const allowed = new Set(['puzzle-ai-inspection.js', 'src/fc27/puzzle-plan-ranking.js', 'src/fc27/puzzle-assistant-session.js', 'src/adapters/ea/fc27-puzzle-read.js',
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js', 'src/adapters/ea/fc27-fsu-diagnostics.js',
     'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-traditional-read.js', 'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js',

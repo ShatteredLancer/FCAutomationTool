@@ -1,5 +1,5 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
-import { readFc27Context, readFc27CachedClub } from './fc27-local-read.js';
+import { readFc27Context, readFc27CachedClub, readFc27CachedPile } from './fc27-local-read.js';
 import { readFc27PuzzlePolicy } from './fc27-fsu-read.js';
 import { DEFAULT_PUZZLE_MAX_RATING, puzzleMaterialRules } from '../../fc27/puzzle-material-policy.js';
 import { inspectFc27ChallengeCatalog } from './fc27-challenge-catalog.js';
@@ -14,7 +14,7 @@ const enumNames = { 3: 'PLAYER_QUALITY', 4: 'SAME_NATION_COUNT', 5: 'SAME_LEAGUE
   17: 'PLAYER_LEVEL', 18: 'PLAYER_RARITY', 19: 'TEAM_RATING', 25: 'PLAYER_RARITY_GROUP', 26: 'PLAYER_MIN_OVR',
   27: 'PLAYER_EXACT_OVR', 28: 'PLAYER_MAX_OVR', 35: 'CHEMISTRY_POINTS' };
 
-// Compare a read-only Puzzle plan with a fresh Club projection. The planner
+// Compare a read-only Puzzle plan with fresh Club/Storage projections. The planner
 // never receives refreshed EA entities, and this helper deliberately returns
 // only aggregate evidence so item identities cannot escape the adapter.
 export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
@@ -36,17 +36,17 @@ export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) 
   for (const plan of selected) {
     const current = byId.get(plan?.id);
     const before = expected.get(plan?.id);
-    if (!validId(plan?.id) || !validId(plan?.definitionId) || plan.pile !== 'club'
+    if (!validId(plan?.id) || !validId(plan?.definitionId) || !['club', 'storage'].includes(plan.pile)
         || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId)
         || !current || !before || current.id !== plan.id || current.definitionId !== plan.definitionId
         || fields.some(key => !Object.hasOwn(current, key) || !Object.hasOwn(before, key)
           || JSON.stringify(current[key]) !== JSON.stringify(before[key]))
-        || current.type !== 'player' || current.pile !== 'club'
+        || current.type !== 'player' || current.pile !== plan.pile
         || current.rating !== plan.rating || current.special !== false
         || current.evolution !== false || current.cosmetic !== false
         || current.concept !== false || current.academyEnrolled !== false
         || current.activeTrade !== false || current.limitedUse !== false
-        || current.loans !== -1 || current.tradeable !== false) {
+        || current.loans !== -1 || typeof current.tradeable !== 'boolean') {
       return failed('identity');
     }
     seenIds.add(plan.id); seenDefinitions.add(plan.definitionId);
@@ -192,9 +192,17 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
     const excludedItems = new Set(excludedItemIds);
     const excludedDefinitions = new Set(excludedDefinitionIds);
     const cached = readFc27CachedClub(root);
-    const inventory = { schema: 1, context, kind: 'normalized-inventory', status: 'provisional', scope: 'club-only', complete: false,
-      items: cached.items.filter(item => !excludedItems.has(item.id) && !excludedDefinitions.has(item.definitionId))
-        .map(item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false })) };
+    // SBC Storage is a separate EA pile and is not included in the Club
+    // repository.  Merge its already hydrated cache for planning; this is a
+    // read-only local operation.  If Storage is unavailable we retain the Club
+    // snapshot and expose that fact in diagnostics instead of inventing cards.
+    const storage = readFc27CachedPile(root, 'storage');
+    const merged = [...cached.items, ...storage.items]
+      .filter(item => !excludedItems.has(item.id) && !excludedDefinitions.has(item.definitionId));
+    if (new Set(merged.map(item => item.id)).size !== merged.length) return blocked('FC27_INVENTORY_IDENTITY_CONFLICT');
+    const inventory = { schema: 1, context, kind: 'normalized-inventory', status: 'provisional',
+      scope: storage.status === 'unavailable' ? 'club-only' : 'club-and-storage', complete: false,
+      items: merged.map(item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false })) };
     const challenge = { schema: 1, context, mechanism: 'traditional-puzzle', requirementsOperation: 'AND',
       completed: false, setId, id: challengeId, slotCount: layout.slotCount,
       formation: layout.formation,
@@ -219,7 +227,9 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
     if (!unchanged()) return blocked('FC27_RUNNER_INPUTS_CHANGED');
     return { status: plan.status, reason: plan.reason, liveExecutionEnabled: false, setId, challengeId,
       layout, rules: parsed.rules, unsupported: parsed.unsupported, inventory: { cachedPlayers: cached.items.length,
-        status: 'provisional', complete: false, scope: 'club-only' }, policy: { maxRating: policy.maxRating,
+        cachedStoragePlayers: storage.items.length, status: 'provisional', complete: false,
+        scope: inventory.scope, storageStatus: storage.status }, policy: { maxRating: policy.maxRating,
+        onlyUntradeable: policy.onlyUntradeable, excludedLeagueIds: [...policy.excludedLeagueIds],
         materialComposition: puzzleMaterialRules(parsed.rules, layout.requiredPlayerCount).map(rule => ({ quality: rule.qualities[0], count: rule.count })) },
       linkedClubCount: clubLinks?.links.length ?? null,
       configuration: chemistry ? { profilesEnabled: chemistry.profilesEnabled,
@@ -227,6 +237,9 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
         superChemRarityCount: chemistry.superChemRarityIds.length } : null,
       plan: { required: layout.requiredPlayerCount, safeCandidates: plan.safeCandidates ?? null,
         excluded: plan.excluded ?? null, excludedByReason: plan.excludedByReason ?? null,
+        qualityCounts: plan.qualityCounts ?? null,
+        qualityDefinitionCounts: plan.qualityDefinitionCounts ?? null,
+        selectedQualityCounts: plan.selectedQualityCounts ?? null,
         selectedCount: plan.selected?.length ?? 0, deficits: plan.deficits ?? [], nodes: plan.nodes ?? 0,
         strategyAttempts: plan.strategyAttempts ?? null,
         search: plan.search ?? null, teamFacts: plan.teamFacts ?? null, evaluatorReason: plan.evaluatorReason ?? null,

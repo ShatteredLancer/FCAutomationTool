@@ -80,6 +80,29 @@ it('keeps a feasible low-quality composition ahead of higher-quality alternative
   expect(result.selected.every(ref => ref.rating < 65)).toBe(true);
 });
 
+it('skips inventory-impossible all-silver vectors and starts from one available silver plus golds', () => {
+  const { input, owned } = minimumQualityFixture(2);
+  input.inventory.items = owned().map(item => ({ ...item, rating: 80 }));
+  input.inventory.items.push({ ...input.inventory.items[2], id: 99, definitionId: 9999, rating: 74 });
+  const result = previewFc27PuzzleSquad(input);
+  expect(result, JSON.stringify(result)).toMatchObject({ status: 'preview' });
+  expect(result.selected.filter(item => item.rating >= 65 && item.rating < 75)).toHaveLength(1);
+  expect(result.selected.filter(item => item.rating >= 75)).toHaveLength(10);
+  expect(result.nodes).toBeLessThan(5000);
+  expect(result.teamFacts.chemistry).toBeGreaterThanOrEqual(22);
+});
+
+it('drops an unavailable low-quality preference instead of blocking a native-valid all-gold squad', () => {
+  const { input, owned } = minimumQualityFixture(2);
+  input.inventory.items = owned().map(item => ({ ...item, rating: 80 }));
+  const result = previewFc27PuzzleSquad(input);
+  expect(result, JSON.stringify(result)).toMatchObject({
+    status: 'preview',
+    materialPreference: 'native-quality-fallback',
+    selectedQualityCounts: { bronze: 0, silver: 0, gold: 11 },
+  });
+});
+
 it.each([150, 500, 600])('compares full squad cost across native-valid quality vectors, preferring the low tier only on a tie (%i)', price => {
   const { input, entries } = minimumQualityFixture(1);
   input.challenge.rawRequirements = [marketRow(3, 1)]; entries[0].rating = 60;
@@ -93,6 +116,18 @@ it.each([150, 500, 600])('compares full squad cost across native-valid quality v
   expect(result.nodes).toBeLessThanOrEqual(50000);
   expect(prepareFc27PuzzleConceptDraft(input, { ...result.plans[0], purchases: chosen.map(card => ({
     ...card, estimatedUnitPrice: prices.get(card.definitionId) })) }).status).toBe('prepared');
+});
+
+it('uses low-priced silver concepts for every slot the native minimum-quality rules allow', () => {
+  const { input, entries } = minimumQualityFixture(2);
+  const prices = new Map(entries.map(card => [card.definitionId, card.rating < 75 ? 250 : 1800]));
+  const result = suggestFc27PuzzleJointPurchases(input, entries, { prices });
+  expect(result, JSON.stringify(result)).toMatchObject({ status: 'suggested' });
+  const purchases = result.plans[0].purchases;
+  expect(purchases.filter(card => card.rating < 75)).toHaveLength(9);
+  expect(purchases.filter(card => card.rating >= 75)).toHaveLength(2);
+  expect(result.estimatedCost).toBe(9 * 250 + 2 * 1800);
+  expect(result.nodes).toBeLessThanOrEqual(50000);
 });
 
 it('retains explicit native quality ceilings, FSU gold range, locks/main squad and personal caps', () => {

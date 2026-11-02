@@ -17,7 +17,7 @@ import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streaml
 import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
 import { assertStreamlinedRecoveryIsolation, isStreamlinedStockPlan, streamlinedPurchaseContributionPlan } from '../../streamlined/recovery-isolation.js';
 import { projectStreamlinedPurchaseHandoff } from '../../streamlined/purchase-handoff.js';
-import { isUnsentStreamlinedJournal } from '../../streamlined/journal.js';
+import { isUnsentStreamlinedJournal, canRetireStreamlinedContribution, streamlinedContributionRecovery } from '../../streamlined/journal.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
   const scope = traditionalJournalScope(context), raw = await get(scope, null);
@@ -68,6 +68,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
   let marketPurchase = null;
   let activeProcurement = null;
   let historyToArchive = null;
+  let contributionToArchive = null;
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
     materializationStorage,
     onDiagnostic: row => contributionDiagnostic(row),
@@ -80,7 +81,9 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       mismatch: row.mismatch, cycleCountBefore: row.cycleCountBefore, cycleCountAfter: row.cycleCountAfter,
       responseCount: row.responseCount, foreignCount: row.foreignCount, wrongPileCount: row.wrongPileCount,
       identityMismatchCount: row.identityMismatchCount, factoryMismatchCount: row.factoryMismatchCount,
-      httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore })).catch(() => {}); }
+      httpStatus: row.httpStatus, count: row.count, currentScore: row.currentScore, targetScore: row.targetScore,
+      setId: row.setId, challengeId: row.challengeId, confirmedBatches: row.confirmedBatches,
+      waitingBatches: row.waitingBatches, pendingWriteCount: row.pendingWriteCount })).catch(() => {}); }
     catch { /* Diagnostic only. */ }
   };
   const transaction = createStreamlinedTransaction({ adapter, ...persistence, now, onDiagnostic: contributionDiagnostic });
@@ -113,6 +116,31 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
+    async inspectContributionHistory(challenge) {
+      contributionToArchive = null;
+      const record = await persistence.journal.read(context);
+      if (!record || record.plan.challenge.id === challenge.id && record.plan.challenge.setId === challenge.setId
+          && record.plan.challenge.targetScore === challenge.targetScore || !canRetireStreamlinedContribution(record)) return null;
+      // Pending moves/purchases must be handled by their existing recovery path.
+      await materializationJournal.assertSettled();
+      const purchase = await marketJournal.read(context);
+      if (purchase && !await marketJournal.isRetired(purchase) && streamlinedPurchaseNeedsRecovery(purchase)) return null;
+      contributionToArchive = record;
+      return { recovery: streamlinedContributionRecovery(record), historyAction: { canArchive: true, kind: 'contribution' } };
+    },
+    async archiveContributionHistory(challenge) {
+      if (!contributionToArchive) fail('RECOVERY_REQUIRED');
+      const expected = contributionToArchive;
+      const release = await persistence.lock.acquire(context);
+      if (typeof release !== 'function') fail('BUSY');
+      try {
+        await assertStreamlinedOtherTransactions(get, context);
+        const candidate = await this.inspectContributionHistory(challenge);
+        if (!candidate || !same(contributionToArchive, expected)) fail('JOURNAL_CHANGED');
+        await persistence.journal.retire(expected); contributionToArchive = null;
+        return { status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' };
+      } finally { await release(); }
+    },
     async inspectInventoryRecovery(record) {
       const release = await persistence.lock.acquire(context);
       if (typeof release !== 'function') fail('BUSY');

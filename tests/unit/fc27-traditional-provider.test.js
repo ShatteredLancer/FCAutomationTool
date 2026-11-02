@@ -5,6 +5,7 @@ import { createFc27TransactionTransport } from '../../src/adapters/ea/fc27-trans
 import { createTraditionalTransaction } from '../../src/fc27/traditional-transaction.js';
 import { createFc27TransactionPersistence } from '../../src/adapters/browser/fc27-transaction-persistence.js';
 import { FC27_CLUB_READ_METHODS } from '../../src/adapters/ea/fc27-club-read.js';
+import { addStorageRuntime } from '../helpers/fc27-storage-runtime.js';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1000000); });
 afterEach(() => vi.useRealTimers());
@@ -41,6 +42,42 @@ async function fixture() {
   const approval = () => engine.approve(plan, { approved: true, count: 1, setId: 4, challengeId: 16, maxRating: 74, maxPlayers: 11 });
   return { ...x, provider, input, plan, engine, approval, values };
 }
+
+it('fresh-reads mixed Puzzle piles, preserves selected order and keeps the ordinary Runner Club-only', async () => {
+  const x = executionRuntime();
+  addStorageRuntime(x, { payload: [{ id: 1, resourceId: 101, pile: 8 }, { id: 99, resourceId: 199, pile: 8 }] });
+  x.state.players = x.state.players.slice(1); x.state.filterClubQueries = true;
+  const provider = await createFc27TraditionalProvider(x.root);
+  const selected = [{ id: 1, definitionId: 101, pile: 'storage' }, { id: 2, definitionId: 102, pile: 'club' }];
+  await expect(settle(provider.validateItems({ selected }))).rejects.toThrow('FC27_EXACT_ITEMS_CHANGED');
+  expect(x.calls).toHaveLength(0);
+  const result = await settle(provider.validateItems({ kind: 'puzzle-fill', selected }));
+  expect(result.items.map(({ id, pile }) => ({ id, pile }))).toEqual([{ id: 1, pile: 'storage' }, { id: 2, pile: 'club' }]);
+  expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+  expect(x.calls.some(call => call.method === 'PUT')).toBe(false);
+});
+
+it('includes cached Storage only for explicit Puzzle preparation and keeps it provisional', async () => {
+  const x = executionRuntime(); addStorageRuntime(x);
+  x.root.repositories.Item.storage._collection[91] = x.root.factories.Item.createItem({ id: 91, resourceId: 191, pile: 8 });
+  const provider = await createFc27TraditionalProvider(x.root);
+  const runner = await settle(provider.prepareInputs({ setId: 4, maxRating: 74 }));
+  expect(runner.inventory.items.every(item => item.pile === 'club')).toBe(true);
+  const puzzle = await settle(provider.prepareInputs({ kind: 'puzzle-fill', setId: 4, maxRating: 74 }));
+  expect(puzzle.inventory).toMatchObject({ status: 'provisional' });
+  expect(puzzle.inventory.items).toContainEqual(expect.objectContaining({ id: 91, definitionId: 191, pile: 'storage' }));
+  expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(0);
+});
+
+it.each(['missing', 'version', 'pile', 'http'])('blocks fresh Storage %s without writing', async kind => {
+  const x = executionRuntime();
+  const payload = kind === 'missing' ? [] : [{ id: 1, resourceId: kind === 'version' ? 999 : 101, pile: kind === 'pile' ? 7 : 8 }];
+  addStorageRuntime(x, { payload, status: kind === 'http' ? 401 : 200 });
+  const provider = await createFc27TraditionalProvider(x.root);
+  await expect(settle(provider.validateItems({ kind: 'puzzle-fill', selected: [{ id: 1, definitionId: 101, pile: 'storage' }] })))
+    .rejects.toThrow(/FC27_/);
+  expect(x.calls.some(call => call.method === 'PUT')).toBe(false);
+});
 
 it('executes the real provider contract end to end on an explicitly synthetic runtime', async () => {
   const x = await fixture();

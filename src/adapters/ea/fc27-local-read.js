@@ -12,7 +12,7 @@ const at = (value, keys) => keys.reduce((next, key) => ownData(next, key), value
 const itemData = (item, key) => {
   const direct = ownData(item, key);
   if (direct !== undefined) return direct;
-  for (const container of [ownData(item, '_data'), ownData(item, '_staticData')]) {
+  for (const container of [ownData(item, '_data'), ownData(item, 'data'), ownData(item, '_staticData')]) {
     const value = ownData(container, key);
     if (value !== undefined) return value;
   }
@@ -95,6 +95,36 @@ export function snapshotFc27ClubPlayer(item, root) {
   const auctionState = ownData(get('_auction'), '_tradeState');
   const inactive = at(root, ['AuctionTradeStateEnum', 'INACTIVE']);
   const active = at(root, ['AuctionTradeStateEnum', 'ACTIVE']);
+  // FC27 uses both spellings and, depending on which repository hydrated the
+  // entity, may put the value in the static DTO.  Read every explicit signal
+  // before applying the Only Untradeable fail-closed policy.  In particular,
+  // a live `untradeable: true` card must not become `unknown` merely because
+  // `tradable` is absent; that was the source of large Club candidate losses
+  // in Puzzle diagnostics.
+  const observedTradable = boolean(itemData(item, 'tradeable'))
+    ?? boolean(itemData(item, 'tradable'));
+  const observedUntradeable = boolean(itemData(item, 'untradeable'));
+  const observedUntradeableCount = integer(itemData(item, 'untradeableCount'), 0, 10000);
+  // EA keeps the ownership flag on the entity method in some repositories,
+  // while the DTO fields are omitted. Read that explicit method when present;
+  // when EA supplies only `untradeableCount`, follow FSU's zero/nonzero rule.
+  let methodTradeable = null;
+  try {
+    if (typeof item?.isTradeable === 'function') {
+      const value = item.isTradeable();
+      methodTradeable = typeof value === 'boolean' ? value : null;
+    } else if (typeof item?.isUntradeable === 'function') {
+      const value = item.isUntradeable();
+      methodTradeable = typeof value === 'boolean' ? !value : null;
+    }
+  } catch { methodTradeable = null; }
+  const tradeable = observedTradable !== null ? observedTradable
+    : observedUntradeable !== null ? !observedUntradeable
+      : methodTradeable !== null ? methodTradeable
+        // FSU's Only Untradeable filter treats a positive count as untradeable
+        // and a present zero count as tradeable. Keep absent counts unknown;
+        // do not turn missing EA metadata into an eligible material.
+        : observedUntradeableCount !== null ? observedUntradeableCount > 0 ? false : true : null;
   const snapshot = { id, definitionId, type: 'player',
     pile: clubPile !== undefined && pile === clubPile ? 'club' : null,
     rating: noUpgrades ? integer(get('_rating'), 1, 99) : null,
@@ -107,7 +137,7 @@ export function snapshotFc27ClubPlayer(item, root) {
     // In the live FC27 payload `tradable` is absent on the entity and is
     // exposed by its loaded static DTO. Preserve null when all observed data
     // layers omit it so Only Untradeable remains fail-closed.
-    tradeable: boolean(itemData(item, 'tradable')), loans: integer(get('loans'), -1, 10000),
+    tradeable, untradeableCount: observedUntradeableCount, loans: integer(get('loans'), -1, 10000),
     limitedUse: limitedType !== null && Number.isInteger(none) && startTime !== null && endTime !== null
       ? limitedType !== none || startTime !== -1 || endTime !== -1 : null,
     leagueId: integer(get('leagueId'), 1, 1e9),
@@ -136,4 +166,41 @@ export function readFc27CachedClub(root) {
   if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error('FC27_CONTEXT_CHANGED');
   return Object.freeze({ schema: 1, context, kind: 'cached-club-inspection', status: 'partial',
     complete: false, liveExecutionEnabled: false, cachedEntries: cached.length, items: Object.freeze(items) });
+}
+
+// Read a cached EA item pile without refreshing it.  Puzzle planning uses the
+// same Club cache plus the already hydrated SBC Storage cache; callers must
+// still revalidate exact identities before any write.  This helper intentionally
+// never invokes a request or repository mutation.
+export function readFc27CachedPile(root, pile = 'club') {
+  if (!['club', 'storage'].includes(pile)) throw new Error('FC27_CACHED_PILE_UNSUPPORTED');
+  const context = readFc27Context(root);
+  const repository = at(root, ['repositories', 'Item']);
+  let raw;
+  if (pile === 'club') raw = at(repository, ['club', 'items']);
+  else {
+    try {
+      const getter = ownData(repository, 'getStorageItems');
+      if (typeof getter === 'function') raw = getter.call(repository);
+    } catch { raw = undefined; }
+    raw ??= ownData(repository, 'storage');
+  }
+  const collection = raw?._collection ?? raw;
+  if (!collection || typeof collection !== 'object') {
+    return Object.freeze({ schema: 1, context, pile, status: 'unavailable', complete: false, items: Object.freeze([]) });
+  }
+  const keys = Array.isArray(collection) ? Array.from({ length: collection.length }, (_, i) => String(i))
+    : Object.getOwnPropertyNames(collection).filter(key => key !== 'length');
+  if (keys.length > 20000) throw new Error('FC27_CACHED_PILE_LIMIT');
+  const items = [];
+  for (const key of keys) {
+    const entity = ownData(collection, key);
+    if (!entity || !isFc27PlayerItem(entity)) continue;
+    const snapshot = snapshotFc27ClubPlayer(entity, root);
+    items.push(Object.freeze({ ...snapshot, pile }));
+  }
+  if (new Set(items.map(item => item.id)).size !== items.length) throw new Error('FC27_CACHED_ITEM_IDENTITY_CONFLICT');
+  if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error('FC27_CONTEXT_CHANGED');
+  return Object.freeze({ schema: 1, context, pile, status: 'partial', complete: false,
+    cachedEntries: keys.length, items: Object.freeze(items) });
 }

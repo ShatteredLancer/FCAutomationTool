@@ -223,6 +223,7 @@ export function observeRuntime(root = globalThis) {
     criteria: state(root, 'UTSearchCriteriaDTO'),
     methods: Object.fromEntries(['searchConceptItems', 'searchTransferMarket', 'requestMarketData']
       .map(key => [key, state(itemService, key)])) };
+  const allSetSnapshot = collection(data(repo, 'sets'), 100, sbcSet);
   return { schema: 1, evidence: 'passive-data-descriptors', liveExecutionEnabled: false,
     eligibilityKeyEnums: Object.fromEntries(keyNames.map(key => [key, number(data(eligibility, key))])),
     eligibilityQualityEnums: Object.fromEntries(['BRONZE', 'SILVER', 'GOLD']
@@ -273,8 +274,9 @@ export function observeRuntime(root = globalThis) {
       methods: Object.fromEntries(['requestSets', 'requestChallengesForSet', 'loadChallenge', 'loadChallengeData',
         'saveChallenge', 'submitChallenge'].map(key => [key, state(service, key)])),
       sets: collection(data(repo, 'sets'), 12, sbcSet),
-      catalogue: collection(data(repo, 'sets'), 100, value => ({ id: number(data(value, 'id')),
+    catalogue: collection(data(repo, 'sets'), 100, value => ({ id: number(data(value, 'id')),
         name: publicText(data(value, 'name')), timesCompleted: number(data(value, 'timesCompleted')) })),
+    allSetSnapshot,
       challenges: collection(data(repo, 'challenges'), 24, challenge) },
     fsu: { verified: false, info: state(root, 'info'),
       clubState: bool(at(info, ['base', 'state'])),

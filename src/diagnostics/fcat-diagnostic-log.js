@@ -11,26 +11,37 @@ const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', '
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 
-const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint']);
+const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'endpoint', 'incumbentRejectReason']);
 const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
   'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
   'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
-  'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
+  'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue', 'initialMaterialValue', 'coveragePages', 'hintNodes', 'hintPairs',
   'positionSkippedCount', 'seedMs', 'catalogMs', 'pricingMs', 'searchMs', 'hintMs',
+  'inventoryValue',
+  'planningDurationMs', 'ownedValueDurationMs', 'catalogReadDurationMs', 'quoteReadDurationMs',
+  'localSearchDurationMs', 'repairSeedDurationMs', 'localSearchNodes', 'ownedValueCandidateCount', 'ownedValueQuotedCount',
+  'ownedSilverValueQuotedCount', 'ownedGoldValueQuotedCount', 'ownedBronzeValueQuotedCount',
+  'unpricedOwnedCount',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
   'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',
   'reservationExcludedCount', 'reservationTargetCount', 'reservationReferenceCount',
   'routeInventoryCount', 'routeMarketCount', 'routeMaterialValue', 'rating', 'unitScore', 'minBatches', 'repeatPurchaseCount',
   'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount', 'excludedGoldRangeCount', 'fsuGoldMax', 'fsuGoldMin', 'inventoryMaxRating',
   'requestedCount', 'responseCount', 'acceptedCount', 'rejectedCount', 'skippedCount', 'unknownCount', 'retainedCount', 'expandedCount', 'foreignCount', 'offset', 'evaluations',
+  'bronzeCandidates', 'silverCandidates', 'goldCandidates', 'unknownQualityCandidates',
+  'bronzeDefinitions', 'silverDefinitions', 'goldDefinitions',
+  'selectedBronzeCount', 'selectedSilverCount', 'selectedGoldCount', 'selectedUnknownQualityCount',
+  'marketBronzeCandidates', 'marketSilverCandidates', 'marketGoldCandidates',
+  'purchasedBronzeCount', 'purchasedSilverCount', 'purchasedGoldCount',
   'combinationNodes', 'placementNodes', 'evaluationNodes', 'boundNodes', 'strategyAttempts',
+  'incumbentCandidateCount', 'incumbentSelectedCount',
   'targetScore', 'currentScore', 'cycleCountBefore', 'cycleCountAfter', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'wrongPileCount', 'identityMismatchCount', 'factoryMismatchCount',
   'cheapestPrice', 'cheapestScore', 'bestPrice', 'bestScore', 'searchDepth', 'candidateLimit', 'beamWidth', 'maxEvaluations']);
-const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled', 'forecastSnapshot', 'forecastExpired','comparisonPending']);
+const BOOLEAN_FIELDS = Object.freeze(['cached', 'stale', 'recheck', 'searchComplete', 'optimalWithinPool', 'optimizationBudgetExhausted', 'scopeTruncated', 'beamTruncated', 'budgetExhausted', 'timeExhausted', 'onlyUntradeable', 'exactVersion', 'purchasesSettled', 'forecastSnapshot', 'forecastExpired','comparisonPending', 'incumbentProvided', 'incumbentVerified']);
 
 const boundedString = (value, max = MAX_STRING_LENGTH) => {
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,159}$/.test(value)) return null;

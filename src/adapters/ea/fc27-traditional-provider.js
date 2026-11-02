@@ -1,8 +1,9 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
-import { readFc27Context, readFc27CachedClub, snapshotFc27ClubPlayer } from './fc27-local-read.js';
+import { readFc27Context, readFc27CachedClub, readFc27CachedPile, snapshotFc27ClubPlayer } from './fc27-local-read.js';
 import { readFc27RunnerPolicy, readFc27PuzzlePolicy } from './fc27-fsu-read.js';
 import { readFc27SbcContract } from './fc27-sbc-contract.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
+import { createFc27StreamlinedStorageReader } from './fc27-streamlined-storage-read.js';
 import { createFc27TransactionTransport, verifyFc27Methods } from './fc27-transaction-transport.js';
 import { projectFc27PuzzleLayout, projectFc27PuzzleSquadBaseline, assertFc27PuzzleLayout } from './fc27-puzzle-layout.js';
 import { synchronizeFc27PuzzleSquad, synchronizeFc27PuzzleConceptSquad, synchronizeFc27PurchasedPuzzleSquad } from './fc27-puzzle-page.js';
@@ -154,11 +155,34 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       } catch { finish(new Error('FC27_PROVIDER_READ_UNCONFIRMED')); }
     });
   };
-  const freshRefs = async refs => {
+  const snapshotOwned = (item, kind) => {
+    const snapshot = snapshotFc27ClubPlayer(item, root);
+    // Read the actual saved entity pile, never the expected plan pile. Keep
+    // the shared Club projection and ordinary Runner semantics unchanged.
+    const storage = at(root, 'ItemPile.STORAGE');
+    return ['puzzle-fill', 'puzzle-fill-recovery', 'puzzle-concept-draft'].includes(kind)
+      && identity(storage) && ownData(item, 'utasPile') === storage
+      ? { ...snapshot, pile: 'storage' } : snapshot;
+  };
+  const freshRefs = async (refs, allowStorage = false) => {
     assert();
     if (!Array.isArray(refs) || refs.length < 1 || refs.length > 11 || refs.some(ref => !identity(ref.id)
-        || !identity(ref.definitionId) || ref.pile !== 'club') || new Set(refs.map(ref => ref.id)).size !== refs.length
+        || !identity(ref.definitionId) || !(allowStorage ? ['club', 'storage'] : ['club']).includes(ref.pile))
+        || new Set(refs.map(ref => ref.id)).size !== refs.length
         || new Set(refs.map(ref => ref.definitionId)).size !== refs.length) return fail('FC27_EXACT_ITEMS_CHANGED');
+    if (allowStorage && refs.some(ref => ref.pile === 'storage')) {
+      const clubRefs = refs.filter(ref => ref.pile === 'club');
+      const items = clubRefs.length ? await freshRefs(clubRefs) : [];
+      assert();
+      const storage = await createFc27StreamlinedStorageReader(root);
+      assert();
+      const stored = await storage.read();
+      assert();
+      const matched = refs.map(ref => (ref.pile === 'club' ? items : stored).find(item =>
+        item.id === ref.id && item.definitionId === ref.definitionId && item.pile === ref.pile));
+      if (matched.some(item => !item)) return fail('FC27_EXACT_ITEMS_CHANGED');
+      return matched.map(protectedItem);
+    }
     const read = definitionIds => club.readPage({ start: 0, count: 250, definitionIds });
     const exact = (items, requested, { allowUnrequested = false } = {}) => {
       if (!Array.isArray(items)) return { mismatch: 'club-response-shape' };
@@ -262,7 +286,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       if (refs.length !== layout.requiredPlayerCount || new Set(refs.map(ref => ref.definitionId)).size !== refs.length
           || refs.some(ref => !identity(ref.definitionId) || !['owned', 'concept'].includes(ref.kind)
             || plan.slots[ref.slot] !== ref || plan.challenge.brickIndices.includes(ref.slot)
-            || ref.kind === 'owned' && (!identity(ref.id) || ref.pile !== 'club')
+            || ref.kind === 'owned' && (!identity(ref.id) || !['club', 'storage'].includes(ref.pile))
             || ref.kind === 'concept' && (ref.id !== undefined || ref.catalogRef !== `fc27:${ref.definitionId}`))) return fail('FC27_SAVE_INPUT_UNVERIFIED');
       const players = ownData(loaded, '_players').map((slot, index) => {
         const ref = plan.slots[index];
@@ -302,7 +326,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       if (!identityMatches) return fail('FC27_CONCEPT_SQUAD_MANUAL_EDITED');
       for (const ref of plan.slots.filter(Boolean)) {
         const item = ownData(slots[ref.slot], '_item');
-        if (ref.kind === 'owned') owned.push({ ...protectedItem(snapshotFc27ClubPlayer(item, root)), slot: ref.slot });
+        if (ref.kind === 'owned') owned.push({ ...protectedItem(snapshotOwned(item, plan.kind)), slot: ref.slot });
         else {
           // EA's saved concept entity must reproduce the catalog facts used by
           // the solver, including alternative positions and eligibility groups.
@@ -329,8 +353,11 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       const input = await readInputs(options);
       if (!input.unassignedClear) return fail('FC27_UNASSIGNED_NOT_CLEAR');
       const cached = readFc27CachedClub(root);
+      const items = ['puzzle-fill', 'puzzle-concept-draft'].includes(options.kind)
+        ? [...cached.items, ...readFc27CachedPile(root, 'storage').items] : cached.items;
+      if (new Set(items.map(item => item.id)).size !== items.length) return fail('FC27_INVENTORY_IDENTITY_CONFLICT');
       return { ...input, inventory: { schema: 1, context, kind: 'normalized-inventory', status: 'provisional',
-        items: cached.items.map(protectedItem) } };
+        items: items.map(protectedItem) } };
     },
     readInputs,
     async readPuzzleBaseline(plan) {
@@ -345,7 +372,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       return baseline;
     },
     async validateItems(plan) {
-      const items = await freshRefs(plan.selected);
+      const items = await freshRefs(plan.selected, ['puzzle-fill', 'puzzle-fill-recovery', 'puzzle-concept-draft'].includes(plan.kind));
       return { context, fresh: true, observedAt: Date.now(), items };
     },
     assertCurrent() { assert(); return true; },
@@ -418,7 +445,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
         const item = ownData(slots[index], '_item');
         if (index < 11 && !plan.challenge.brickIndices.includes(index)) {
           if (plan.kind !== 'puzzle-fill-recovery' || ![0, -1].includes(ownData(item, 'id'))) {
-            items.push({ ...protectedItem(snapshotFc27ClubPlayer(item, root)), slot: index });
+            items.push({ ...protectedItem(snapshotOwned(item, plan.kind)), slot: index });
           }
         }
         else if (![0, -1].includes(ownData(item, 'id'))) return fail('FC27_SAVED_SQUAD_UNVERIFIED');

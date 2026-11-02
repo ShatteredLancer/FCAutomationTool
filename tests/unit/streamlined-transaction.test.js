@@ -344,7 +344,8 @@ it.each(['pending', 'unknown', 'partial'])('keeps %s history bound to its own ta
   f.adapter.reconcile.mockClear(); f.adapter.contribute.mockClear();
   expect(await f.tx.recover(f.plan.context, { setId: 200, challengeId: 300 })).toEqual({
     status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED',
-    recovery: { setId: 31, challengeId: 61 } });
+    recovery: { setId: 31, challengeId: 61, targetScore: 40, currentScore: kind === 'partial' ? 20 : 0,
+      confirmedBatches: kind === 'partial' ? 1 : 0, waitingBatches: 1, pendingWriteCount: kind === 'partial' ? 0 : 1 } });
   expect(await f.journal.read(f.plan.context)).toEqual(before);
   expect(f.adapter.reconcile).not.toHaveBeenCalled();
   expect((await f.tx.recover(f.plan.context)).status).toBe(kind === 'partial' ? 'observed' : 'recovered');

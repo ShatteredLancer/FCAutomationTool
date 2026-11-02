@@ -504,7 +504,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             // proof may isolate stock-only work; it never settles the foreign
             // purchase or approves its buys/moves/contributions.
             contribution = await activeExecution.transaction.recover(origin.context,
-              { setId: origin.challenge.setId, challengeId: origin.challenge.id });
+              { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
             const current = capture(), record = contribution.record;
             if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
                 || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
@@ -542,7 +542,16 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           }
         }
         contribution ??= await activeExecution.transaction.recover(origin.context,
-          { setId: origin.challenge.setId, challengeId: origin.challenge.id });
+          { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
+        if (!history && contribution.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED'
+            && typeof activeExecution.inspectContributionHistory === 'function') {
+          const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
+          unchanged(origin);
+          if (candidate?.historyAction?.canArchive) {
+            contribution = { ...contribution, ...candidate };
+            history = { origin, execution: activeExecution, kind: 'contribution' };
+          }
+        }
         let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
           ? contribution : { ...purchase, contributionRecovery: contribution };
         if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery,
@@ -563,7 +572,11 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         log({ event: 'recovery', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
           targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
-          setId: origin.challenge.setId, challengeId: origin.challenge.id });
+          setId: origin.challenge.setId, challengeId: origin.challenge.id,
+          ...(result.recovery ? { setId: result.recovery.setId, challengeId: result.recovery.challengeId,
+            currentScore: result.recovery.currentScore, targetScore: result.recovery.targetScore,
+            confirmedBatches: result.recovery.confirmedBatches, waitingBatches: result.recovery.waitingBatches,
+            pendingWriteCount: result.recovery.pendingWriteCount } : {}) });
         const record = result.record;
         if (record && !['recovery-required', 'replan-required', 'blocked'].includes(result.status)) {
           if (!same(current.context, record.context) || current.challenge.id !== record.plan.challenge.id
@@ -597,7 +610,9 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       busy = true;
       try {
         const saved = history; unchanged(saved.origin);
-        const result = await saved.execution.archivePurchaseHistory(saved.origin.challenge);
+        const result = saved.kind === 'contribution'
+          ? await saved.execution.archiveContributionHistory(saved.origin.challenge)
+          : await saved.execution.archivePurchaseHistory(saved.origin.challenge);
         unchanged(saved.origin); preview = null; routePreview = null; history = null;
         log({ event: 'purchase-recovery-state', phase: 'history-archived', status: result.status, reason: result.reason });
         return result;

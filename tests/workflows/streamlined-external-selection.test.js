@@ -9,6 +9,9 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { createStreamlinedTransaction } from '../../src/streamlined/transaction.js';
 import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
+import { safeItem } from '../helpers/streamlined.js';
+import { streamlinedProgress } from '../../src/streamlined/contract.js';
+import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 
 // Real selection -> splitter -> transaction -> provider -> materializer -> fresh
 // validator/reconciler. Only native network responses and the shared lock are synthetic.
@@ -85,6 +88,30 @@ it.each([false, true])('independently confirms Club before each external duplica
     'move:902', 'contribute:902', 'confirmed:2']);
   await tx.execute(f.plan, f.approval);
   expect(f.move).toHaveBeenCalledTimes(2); expect(f.request).toHaveBeenCalledTimes(3);
+});
+
+it('after explicit old-stock retirement still confirms Club before Transfer and Unassigned, without replaying old work', async () => {
+  const f = fixture({ expired: true });
+  const challenge = { ...f.plan.challenge, id: 62, setId: 32, targetScore: 5500, remainingScore: 5500 };
+  const items = [safeItem({ id: 501, definitionId: 600, points: 3860 }), safeItem({ id: 502, definitionId: 601, points: 1640 })];
+  const plan = createStreamlinedPlan({ context: f.plan.context, challenge, policy: f.plan.policy,
+    result: { status: 'ready', items, batches: items.map(item => [item]), score: 5500,
+      progress: streamlinedProgress(challenge, 5500), purchaseCost: 0, materialValue: 400, searchComplete: true } });
+  const record = await f.journal.begin(plan);
+  Object.assign(record.batches[0], { state: 'confirmed', startingScore: 0,
+    receipt: normalizeStreamlinedContributionReply({ success: true, status: 200, response: {
+      challengeId: 62, setId: 32, submittedScore: 3860,
+    } }, { challengeId: 62, setId: 32, previousScore: 0, itemIds: [501] }) });
+  record.submittedScore = 3860;
+  const saved = await f.journal.write(plan.context, record, record.revision);
+  const tx = f.createTransaction();
+  expect(await tx.execute(f.plan, f.approval)).toMatchObject({ status: 'blocked',
+    reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery: { currentScore: 3860, targetScore: 5500 } });
+  expect(f.events).toEqual([]);
+  await f.journal.retire(saved);
+  expect((await tx.execute(f.plan, f.approval, { onProgress: f.onProgress })).status).toBe('partial');
+  expect(f.events).toEqual(['contribute:1', 'confirmed:0', 'move:901', 'contribute:901', 'confirmed:1',
+    'move:902', 'contribute:902', 'confirmed:2']);
 });
 
 it('stops after the confirmed prerequisite and resumes without replaying it or moving ahead of readback', async () => {

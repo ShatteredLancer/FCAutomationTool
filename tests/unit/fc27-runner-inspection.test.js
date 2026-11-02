@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import vm from 'node:vm';
-import { inspectFc27RunnerInputs, readFc27RunnerPanel } from '../../src/adapters/ea/fc27-fsu-read.js';
+import { inspectFc27RunnerInputs, readFc27RunnerPanel, readFc27PuzzlePolicy } from '../../src/adapters/ea/fc27-fsu-read.js';
 import { buildRunnerInspection, inspectRunnerInputs, inspectRunnerContract } from '../../scripts/browser-inspection/runner-inspection.mjs';
 
 function fixture() {
@@ -87,6 +87,15 @@ it('preserves false settings and rejects unknown league/range shapes instead of 
   expect(inspectFc27RunnerInputs(root).fsu.policy).toMatchObject({ excludeEvolution: false, excludedLeagueCount: 0 });
   root.info.set.goldenrange = null;
   expect(inspectFc27RunnerInputs(root).reason).toBe('FC27_FSU_POLICY_UNVERIFIED');
+});
+
+it.each([true, false])('Puzzle policy follows the live FSU Only untradeable switch (%s)', onlyUntradeable => {
+  const { root } = fixture();
+  root.info.build.untradeable = onlyUntradeable;
+  expect(readFc27PuzzlePolicy(root, 82, { protectRoster: false })).toMatchObject({
+    onlyUntradeable,
+    maxRating: 82,
+  });
 });
 
 it('builds a bounded standalone probe and refuses non-EA targets', async () => {

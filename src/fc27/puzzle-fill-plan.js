@@ -17,7 +17,7 @@ const scopeOf = input => ({ context: input.context, challenge: input.challenge, 
 const project = item => Object.fromEntries(itemFields.map(key => [key, item?.[key]]));
 
 // No solver call: re-check this exact arrangement, never find a replacement.
-// Ordinary Club players in the exact non-brick slots, under the explicit policy.
+// Ordinary Club/Storage players in exact non-brick slots, under the explicit policy.
 // Custom bricks, managers and market placeholders are not material entities.
 function assess(scope, selected, items) {
   const { context, challenge, policy, clubLinks, chemistry } = scope;
@@ -30,14 +30,19 @@ function assess(scope, selected, items) {
     return fail('FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED');
   }
   const required = 11 - challenge.brickIndices.length;
-  if (!policy || policy.onlyUntradeable !== true || !positive(policy.maxRating) || policy.maxRating > 99) {
+  // `onlyUntradeable` is a live FSU preference.  Both values are valid:
+  // when true the shared candidate collector excludes tradeable items; when
+  // false it deliberately admits them.  Requiring `true` here made the
+  // reader appear to honour the switch while the fill transaction still
+  // rejected every plan after the switch was turned off.
+  if (!policy || typeof policy.onlyUntradeable !== 'boolean' || !positive(policy.maxRating) || policy.maxRating > 99) {
     return fail('FC27_PUZZLE_FILL_POLICY_UNVERIFIED');
   }
   if (!Array.isArray(selected) || selected.length !== required || !Array.isArray(items) || items.length !== required
       || new Set(selected.map(ref => ref?.slot)).size !== required
       || selected.some(ref => !ref || !Number.isInteger(ref.slot) || ref.slot < 0 || ref.slot > 10
         || challenge.brickIndices.includes(ref.slot)
-        || !positive(ref.id) || !positive(ref.definitionId) || ref.pile !== 'club' || ref.catalogRef !== undefined)
+        || !positive(ref.id) || !positive(ref.definitionId) || !['club', 'storage'].includes(ref.pile) || ref.catalogRef !== undefined)
       || new Set(selected.map(ref => ref.id)).size !== required
       || new Set(selected.map(ref => ref.definitionId)).size !== required
       || new Set(items.map(item => item?.id)).size !== required) return fail('FC27_PUZZLE_FILL_SELECTION_CHANGED');

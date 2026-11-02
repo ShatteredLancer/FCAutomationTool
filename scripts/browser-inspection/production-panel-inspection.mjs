@@ -47,8 +47,14 @@ export async function clickPanelControl(context, page, selector, timeoutMs = 500
 }
 
 export async function openProductionPanel(context, page) {
-  const entry = page.locator('.ut-tab-bar .fcat-navigation-entry');
-  if (await entry.count() === 1) await entry.click({ timeout: 5000 });
+  const current = await panelCall(context, page, function () {
+    return this.host?.isConnected && this.host.style.display === 'block';
+  });
+  if (!current) {
+    const entry = page.locator('.ut-tab-bar .fcat-navigation-entry');
+    if (await entry.count() !== 1) throw new Error('FC27_PANEL_NAVIGATION_UNAVAILABLE');
+    await entry.click({ timeout: 5000 });
+  }
   await waitForPanel(context, page, function () {
     // Navigation pages can be inside an absolutely positioned scroll host;
     // Chromium's checkVisibility() may remain false while the host is already

@@ -2,6 +2,13 @@ import { createSeasonContext } from './prelaunch-contract.js';
 
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const identity = value => integer(value, 1, Number.MAX_SAFE_INTEGER);
+const qualityOf = rating => rating < 65 ? 'bronze' : rating < 75 ? 'silver' : 'gold';
+const qualityCounts = items => items.reduce((counts, item) => {
+  const quality = Number.isSafeInteger(item?.rating) && item.rating >= 1 && item.rating <= 99
+    ? qualityOf(item.rating) : 'unknown';
+  counts[quality] = (counts[quality] ?? 0) + 1;
+  return counts;
+}, { bronze: 0, silver: 0, gold: 0, unknown: 0 });
 const stop = reason => ({ status: 'blocked', reason, liveExecutionEnabled: false, selected: [] });
 
 // Accept normalized, complete facts only. Passive samples and screenshot facts
@@ -73,9 +80,14 @@ export function collectSafeTraditionalCandidates({ context, challenge, inventory
   const candidates = [];
   let excluded = 0;
   const excludedByReason = {};
+  const inventoryQualityCounts = { bronze: 0, silver: 0, gold: 0, unknown: 0 };
+  const excludedQualityByReason = {};
   for (const item of inventory.items) {
     if (!item || !identity(item.id) || !identity(item.definitionId) || seen.has(item.id)) return stop('INVENTORY_IDENTITY_CONFLICT');
     seen.add(item.id);
+    const itemQuality = Number.isSafeInteger(item.rating) && item.rating >= 1 && item.rating <= 99
+      ? qualityOf(item.rating) : 'unknown';
+    inventoryQualityCounts[itemQuality]++;
     const checks = [
       ['type-or-pile-unverified', item.type === 'player' && ['club', 'storage'].includes(item.pile)],
       ['rating-outside-range', integer(item.rating, minRating, Math.min(maxRating, policy.maxRating))],
@@ -101,11 +113,17 @@ export function collectSafeTraditionalCandidates({ context, challenge, inventory
     else {
       excluded++;
       excludedByReason[rejection] = (excludedByReason[rejection] ?? 0) + 1;
+      excludedQualityByReason[rejection] ??= { bronze: 0, silver: 0, gold: 0, unknown: 0 };
+      excludedQualityByReason[rejection][itemQuality]++;
     }
   }
   candidates.sort((a, b) => (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
     || a.rating - b.rating || a.id - b.id);
-  return { status: 'candidates', candidates, required, minRating, maxRating, excluded, excludedByReason };
+  return { status: 'candidates', candidates, required, minRating, maxRating, excluded, excludedByReason,
+    inventoryQualityCounts, excludedQualityByReason,
+    qualityCounts: qualityCounts(candidates),
+    qualityDefinitionCounts: Object.fromEntries(['bronze', 'silver', 'gold'].map(level => [level,
+      new Set(candidates.filter(item => qualityOf(item.rating) === level).map(item => item.definitionId)).size])) };
 }
 
 export function previewTraditionalSquad(input = {}) {
@@ -123,11 +141,14 @@ export function previewTraditionalSquad(input = {}) {
     if (selected.length === required) break;
   }
   if (selected.length !== required) return { ...stop('SAFE_MATERIAL_SHORTAGE'), required,
-    safeCandidates: candidates.length, uniqueDefinitions: definitions.size, excluded, excludedByReason };
+    safeCandidates: candidates.length, uniqueDefinitions: definitions.size, excluded, excludedByReason,
+    qualityCounts: pool.qualityCounts, qualityDefinitionCounts: pool.qualityDefinitionCounts };
   const slots = Array.from({ length: slotCount }, (_, index) => index).filter(index => !brickIndices.includes(index));
   return { status: 'preview', reason: 'READ_ONLY_PLAN', liveExecutionEnabled: false,
     setId: challenge.setId, challengeId: challenge.id, required, minRating, maxRating,
     selected: selected.map((item, index) => ({ ...item, slot: slots[index] })),
     safeCandidates: candidates.length, excluded, excludedByReason, inventoryStatus: inventory.status,
+    qualityCounts: pool.qualityCounts, qualityDefinitionCounts: pool.qualityDefinitionCounts,
+    selectedQualityCounts: qualityCounts(selected.map(item => inventory.items.find(candidate => candidate.id === item.id) ?? item)),
     pending: ['FC27_RUNTIME_CONTRACT', 'EXACT_ITEM_REVALIDATION', 'REWARD_IDENTITY', 'EXPLICIT_TRANSACTION_APPROVAL'] };
 }

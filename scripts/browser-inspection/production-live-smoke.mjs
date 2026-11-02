@@ -113,6 +113,13 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.equal(await host.getAttribute('data-active-tab'), 'sbc');
     assert.equal(await host.getByRole('tab').count(), 9);
     const beforeTabs = await page.evaluate(() => ({ ...globalThis.livePanelSmoke, mount: null, panel: null }));
+    // Puzzle procurement controls live under Settings so the SBC workspace
+    // stays compact. Activate that tab before exercising the visible input.
+    await button('tab-settings').click();
+    assert.equal(await host.getAttribute('data-active-tab'), 'settings');
+    assert.equal(await button('puzzle-objective').inputValue(), 'additional-coins');
+    assert.deepEqual(await button('puzzle-objective').locator('option').evaluateAll(nodes => nodes.map(node => node.value)),
+      ['additional-coins', 'material-value']);
     await button('puzzle-rating').fill('81');
     for (const id of ['gallery', 'market', 'trading', 'inventory', 'routine', 'rolling', 'activity', 'settings', 'sbc']) {
       await button(`tab-${id}`).click();
@@ -171,7 +178,7 @@ export async function exerciseProductionLivePanel(context, directory) {
       await page.screenshot({ path: path.join(directory, `diagnostic-settings-${width}.png`) });
     }
     await page.setViewportSize({ width: 1280, height: 800 });
-    await button('tab-sbc').click();
+    await button('tab-settings').click();
     await button('puzzle-rating').fill('83');
     await button('puzzle-quote-ceiling').fill('950');
     await host.getByRole('button', { name: '补卡单卡报价上限 增加', exact: true }).click();
@@ -199,6 +206,7 @@ export async function exerciseProductionLivePanel(context, directory) {
     await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.quoteCeiling), null);
     assert.match(await button('status').innerText(), /不限/);
+    await button('tab-sbc').click();
     await host.locator('[data-sbc-advanced] > summary').click();
     await button('catalog').click();
     await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');

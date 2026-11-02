@@ -14,7 +14,7 @@ import { readFc27PuzzlePolicy } from '../ea/fc27-fsu-read.js';
 import { createFc27PuzzleFillPersistence } from '../../fc27/puzzle-fill-journal.js';
 import { createFc27PuzzleFillTransaction } from '../../fc27/puzzle-fill-transaction.js';
 import { createFc27PuzzleProcurementSession } from '../../fc27/puzzle-procurement-session.js';
-import { DEFAULT_PUZZLE_QUOTE_CEILING, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
+import { DEFAULT_PUZZLE_QUOTE_CEILING, isPuzzleQuoteCeiling, DEFAULT_PUZZLE_OBJECTIVE, isPuzzleObjective } from '../../fc27/puzzle-procurement-policy.js';
 import { createFc27MarketReadTransport, readFc27MarketPlayerName } from '../ea/fc27-market-read.js';
 import { createFc27PuzzleConceptSession, readFc27ConceptPending, readFc27ConceptReservation } from '../../fc27/puzzle-concept-session.js';
 import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
@@ -30,6 +30,7 @@ import { assertNoGalleryListingPending } from '../../gallery/bulk-list-session.j
 import { purchaseAttemptResults, purchaseRetryContext, validatePurchaseAttempts } from '../../fc27/purchase-attempts.js';
 import { validatePurchasePriceApproval } from '../../fc27/purchase-price-approval.js';
 import { transactionMethodEvidence } from '../../fc27/transaction-method-evidence.js';
+import { comparePuzzlePlans } from '../../fc27/puzzle-plan-ranking.js';
 
 const blocked = reason => ({ status: 'blocked', reason });
 const safeReason = error => /^FC27_[A-Z0-9_]{1,100}$/.test(error?.message) ? error.message : 'FC27_ACCEPTANCE_UNCONFIRMED';
@@ -124,7 +125,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
     list: gmListValues, get: gmGetValue, set: gmSetValue });
   const readPuzzleSettings = async () => {
     const value = await gmGetValue(puzzlePolicyKey, null);
-    if (value === null) return { maxRating: DEFAULT_PUZZLE_MAX_RATING, quoteCeiling: DEFAULT_PUZZLE_QUOTE_CEILING, queriesNumber: 5 };
+    if (value === null) return { maxRating: DEFAULT_PUZZLE_MAX_RATING, quoteCeiling: DEFAULT_PUZZLE_QUOTE_CEILING, queriesNumber: 5, objective: DEFAULT_PUZZLE_OBJECTIVE };
     if (value?.schema !== 1 || !Number.isSafeInteger(value.maxRating) || value.maxRating < 1 || value.maxRating > 99) {
       throw new Error('FC27_PUZZLE_POLICY_INVALID');
     }
@@ -132,7 +133,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
     if (!isPuzzleQuoteCeiling(quoteCeiling)) throw new Error('FC27_PUZZLE_POLICY_INVALID');
     const queriesNumber = value.queriesNumber ?? 5;
     if (!Number.isSafeInteger(queriesNumber) || queriesNumber < 1) throw new Error('FC27_PUZZLE_POLICY_INVALID');
-    return { maxRating: value.maxRating, quoteCeiling, queriesNumber };
+    const objective = value.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+    if (!isPuzzleObjective(objective)) throw new Error('FC27_PUZZLE_POLICY_INVALID');
+    return { maxRating: value.maxRating, quoteCeiling, queriesNumber, objective };
   };
   const readPuzzleMaxRating = async () => (await readPuzzleSettings()).maxRating;
   const reservationSnapshot = async () => {
@@ -334,7 +337,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
     try {
       const saved = await adapter.readSavedSquad(plan);
       if (saved.squadEmpty === true) {
-        const current = await adapter.validateItems({ selected: record.itemRefs });
+        const current = await adapter.validateItems(plan);
         return current.items.length === record.itemRefs.length && record.itemRefs.every(ref => current.items.some(item =>
           item.id === ref.id && item.definitionId === ref.definitionId && item.pile === ref.pile)) ? 'empty' : null;
       }
@@ -407,18 +410,16 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
       const report = nativeOnly ? await inspectFc27PuzzlePlan(root, puzzleOptions, async inputs => {
         let preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
           onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
-        if (preview.status === 'preview' && inputs.squadEmpty === true) {
-          preview = await procurement.optimizeOwned(inputs, preview, { assertCurrent: () => { assertTarget(); unchanged(); },
-            onProgress: value => progress({ ...value, stage: 'procurement' }) });
-        }
         privateData = { inputs, preview };
-        const compareOwnedCost = preview.status === 'preview' && Number.isSafeInteger(preview.materialValue);
+        const compareOwnedCost = purchaseSettings.objective === 'material-value'
+          && preview.status === 'preview';
         if (inputs.squadEmpty === true && (compareOwnedCost || ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(preview.reason))) {
           progress('procurement');
           const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling,
-            optimizeMaterialValue: true,
-            materialCeiling: compareOwnedCost ? preview.materialValue : null,
+            optimizeMaterialValue: purchaseSettings.objective === 'material-value',
+            materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
+            ownedIncumbent: compareOwnedCost ? preview : null,
             onProgress: value => progress({ ...value, stage: 'procurement' }), assertCurrent: () => {
             assertTarget(); unchanged();
             const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
@@ -427,6 +428,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
               throw new Error('FC27_PUZZLE_FILL_INPUTS_CHANGED');
             }
           } })) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
+          // Keep market-search evidence even when the owned baseline wins.
+          // Previously this early return hid all catalog queries and failures.
+          privateData.procurementSummary = { status: purchaseSuggestion.status, reason: purchaseSuggestion.reason,
+            requests: purchaseSuggestion.requests, cacheHits: purchaseSuggestion.cacheHits,
+            diagnostics: { ...purchaseSuggestion.diagnostics } };
           if (compareOwnedCost) {
             const best = purchaseSuggestion.plans?.[0];
             // A retained owned baseline still needs the comparison outcome.
@@ -440,18 +446,59 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
                   estimatedCost: best.estimatedCost, materialValue: best.materialValue ?? null,
                   inventoryValue: best.inventoryValue ?? null, valueReason: best.valueReason } : {}) };
             } catch { /* Optional diagnostics cannot change the selected squad. */ }
-            const improves = purchaseSuggestion.status === 'suggested' && Number.isSafeInteger(best?.materialValue)
-              && best.materialValue < preview.materialValue && purchaseSuggestion.diagnostics?.priceSource === preview.priceSource
-              && preview.valueExpiresAt > Date.now();
+            const valueScope = {
+              valueCoverageComplete: purchaseSuggestion.diagnostics?.scopeTruncated !== true,
+              ...(purchaseSuggestion.diagnostics?.scopeTruncated === true
+                ? { unpricedOwnedCount: purchaseSuggestion.diagnostics?.unknownCount ?? null,
+                  valueReason: 'FC27_PUZZLE_VALUE_SCOPE_TRUNCATED' } : {}),
+            };
+            const baseline = purchaseSuggestion.ownedBaseline ?? {
+              materialValue: preview.materialValue, priceSource: preview.priceSource, valueExpiresAt: preview.valueExpiresAt,
+            };
+            const baselineCurrent = Number.isSafeInteger(baseline.materialValue)
+              && baseline.valueExpiresAt > Date.now();
+            const baselineValue = baselineCurrent ? baseline.materialValue : null;
+            // A material-value plan can be equal in total value while still
+            // being the required lower-quality composition (for example a
+            // silver card replacing a gold card at the same reference value).
+            // Strictly requiring `best.materialValue < baselineValue` threw
+            // that plan away and restored the all-gold preview, making the
+            // two Settings objectives appear identical. Compare the complete
+            // plan so the material objective's quality tie-break is honored.
+            const baselinePlan = Number.isSafeInteger(baselineValue) ? {
+              selectedOwned: preview.selected,
+              purchases: [], purchaseCount: 0, estimatedCost: 0,
+              materialValue: baselineValue, inventoryValue: baselineValue,
+            } : null;
+            const improves = purchaseSuggestion.status === 'suggested' && baselinePlan
+              && Number.isSafeInteger(best?.materialValue)
+              && purchaseSuggestion.diagnostics?.priceSource === baseline.priceSource
+              && purchaseSuggestion.valueExpiresAt > Date.now()
+              && comparePuzzlePlans(best, baselinePlan, 'material-value') < 0;
             if (!improves) {
-              preview = preview.valueExpiresAt > Date.now() ? { ...preview, valueReason: 'FC27_PUZZLE_VALUE_BASELINE_RETAINED' }
-                : { ...preview, materialValue: null, inventoryValue: null, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' };
+              // The native preview has already passed the exact EA read/verify
+              // path. A bounded market refinement may be blocked because its
+              // detached incumbent cannot be rehydrated (for example a
+              // missing team evaluator); keep that safe baseline visible while
+              // preserving the procurement diagnostic instead of clearing it.
+              const retained = ['suggested', 'blocked'].includes(purchaseSuggestion.status)
+                && Number.isSafeInteger(baselineValue);
+              preview = retained ? { ...preview, materialValue: baselineValue, inventoryValue: baselineValue,
+                ...valueScope,
+                valueReason: valueScope.valueReason ?? 'FC27_PUZZLE_VALUE_BASELINE_RETAINED',
+                priceSource: baseline.priceSource, valueExpiresAt: baseline.valueExpiresAt }
+                : { ...preview, materialValue: null, inventoryValue: null,
+                  ...valueScope,
+                  valueReason: baseline.valueExpiresAt <= Date.now() ? 'FC27_BUY_REFERENCE_PRICE_EXPIRED'
+                    : purchaseSuggestion.plans?.[0]?.valueReason ?? purchaseSuggestion.reason ?? 'FC27_PUZZLE_VALUE_INCOMPLETE' };
               privateData.preview = preview;
               return preview;
             }
             if (best.purchaseCount === 0) {
               preview = { ...preview, selected: best.selectedOwned, teamFacts: best.teamFacts,
-                materialValue: best.materialValue, inventoryValue: best.inventoryValue };
+                materialValue: best.materialValue, inventoryValue: best.inventoryValue,
+                ...valueScope, priceSource: baseline.priceSource,
+                valueExpiresAt: best.valueExpiresAt ?? purchaseSuggestion.valueExpiresAt ?? null };
               privateData.preview = preview;
               return preview;
             }
@@ -507,6 +554,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         };
       }
       if (privateData?.conceptResult) return { ...privateData.conceptResult,
+        objective: privateData.procurementSummary?.diagnostics?.objective ?? purchaseSettings.objective,
         materialValue: privateData.procurementSummary?.materialValue, inventoryValue: privateData.procurementSummary?.inventoryValue,
         valueReason: privateData.procurementSummary?.valueReason,
         ...(privateData.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {}),
@@ -588,7 +636,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
               input: currentInput(snapshot.challenge, snapshot.layout) };
           },
           async validateItems(plan) {
-            const result = await native.validateItems({ selected: plan.selected });
+            const result = await native.validateItems(plan);
             return { ...result, setId: plan.challenge.setId, challengeId: plan.challenge.id };
           },
           assertCurrent: assertPuzzleCurrent,
@@ -613,10 +661,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         if (plan.status === 'prepared') preparedPuzzle = { engine, plan, adapter };
         else native.cancel();
       }
-      return { ...report, catalogSource: catalogRead.source,
-        ...(privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {}),
+      return { ...report, catalogSource: catalogRead.source, objective: purchaseSettings.objective,
         materialValue: privateData?.preview?.materialValue, inventoryValue: privateData?.preview?.inventoryValue,
         initialMaterialValue: privateData?.preview?.initialMaterialValue,
+        ...(privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {}),
         valueReason: privateData?.preview?.valueReason,
         valueExpiresAt: privateData?.preview?.valueExpiresAt,
         policy: { ...report.policy, maxRating: privateData?.inputs?.policy?.maxRating ?? report.policy?.maxRating },
@@ -643,12 +691,12 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
   };
   const setPuzzlePolicy = changes => run(async () => {
       if (!changes || typeof changes !== 'object' || Array.isArray(changes)
-          || Object.keys(changes).some(key => !['maxRating', 'quoteCeiling', 'queriesNumber'].includes(key))) return blocked('FC27_PUZZLE_POLICY_INVALID');
+          || Object.keys(changes).some(key => !['maxRating', 'quoteCeiling', 'queriesNumber', 'objective'].includes(key))) return blocked('FC27_PUZZLE_POLICY_INVALID');
       return persistence.exclusive(scope, async () => {
         const settings = { ...await readPuzzleSettings(), ...changes };
         if (!Number.isSafeInteger(settings.maxRating) || settings.maxRating < 1 || settings.maxRating > 99
             || !isPuzzleQuoteCeiling(settings.quoteCeiling) || !Number.isSafeInteger(settings.queriesNumber)
-            || settings.queriesNumber < 1) return blocked('FC27_PUZZLE_POLICY_INVALID');
+            || settings.queriesNumber < 1 || !isPuzzleObjective(settings.objective)) return blocked('FC27_PUZZLE_POLICY_INVALID');
         invalidate();
         await gmSetValue(puzzlePolicyKey, { schema: 1, ...settings });
         if (JSON.stringify(await readPuzzleSettings()) !== JSON.stringify(settings)) return blocked('FC27_PUZZLE_POLICY_UNCONFIRMED');
@@ -873,9 +921,14 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
               setId: target.setId, challengeId: target.challengeId, maxPlayers: preparedPuzzle.plan.selected.length,
               maxRating: preparedPuzzle.plan.policy.maxRating });
             if (preview.procurementSummary) result = { ...result, procurementSummary: preview.procurementSummary };
-            if (result.status === 'filled') result = preview.valueExpiresAt > Date.now()
-              ? { ...result, materialValue: preview.materialValue, inventoryValue: preview.inventoryValue, valueReason: preview.valueReason }
-              : { ...result, ...(preview.valueReason ? { valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' } : {}) };
+            if (result.status === 'filled') result = Number.isSafeInteger(preview.valueExpiresAt) && preview.valueExpiresAt > Date.now()
+              ? { ...result, objective: preview.objective, materialValue: preview.materialValue, inventoryValue: preview.inventoryValue,
+                valueReason: preview.valueReason, valueCoverageComplete: preview.valueCoverageComplete,
+                unpricedOwnedCount: preview.unpricedOwnedCount }
+              : { ...result, objective: preview.objective,
+                valueCoverageComplete: preview.valueCoverageComplete, unpricedOwnedCount: preview.unpricedOwnedCount,
+                ...(preview.valueReason ? { valueReason: preview.valueReason } : preview.objective === 'material-value'
+                  ? { valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' } : {}) };
           }
         }
       } catch (error) {
@@ -892,6 +945,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         // The EA inspection report nests the detached solver result under
         // `plan`; reading the outer report dropped every search-phase count.
         const search = searchEvidence.plan?.search ?? searchEvidence.search ?? {};
+        const qualityCounts = searchEvidence.plan?.qualityCounts ?? searchEvidence.qualityCounts ?? {};
+        const qualityDefinitionCounts = searchEvidence.plan?.qualityDefinitionCounts ?? searchEvidence.qualityDefinitionCounts ?? {};
+        const selectedQualityCounts = searchEvidence.plan?.selectedQualityCounts ?? searchEvidence.selectedQualityCounts ?? {};
         await diagnosticLog?.record?.({ area: 'puzzle', event: 'solve-result', setId: target.setId, challengeId: target.challengeId,
           status: result?.status, reason: result?.reason, source: log.catalogSource,
           methodPath: result?.methodPath ?? log.methodPath,
@@ -901,7 +957,19 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           safeCandidates: result?.plan?.safeCandidates ?? result?.safeCandidates ?? searchEvidence.safeCandidates,
           inventoryCount: searchEvidence.inventory?.cachedPlayers,
           filteredInventoryCount: searchEvidence.plan?.excluded ?? searchEvidence.excluded,
+          squadEmpty: searchEvidence.layout?.squadEmpty,
+          bronzeCandidates: qualityCounts.bronze, silverCandidates: qualityCounts.silver,
+          goldCandidates: qualityCounts.gold, unknownQualityCandidates: qualityCounts.unknown,
+          bronzeDefinitions: qualityDefinitionCounts.bronze, silverDefinitions: qualityDefinitionCounts.silver,
+          goldDefinitions: qualityDefinitionCounts.gold,
+          selectedBronzeCount: selectedQualityCounts.bronze, selectedSilverCount: selectedQualityCounts.silver,
+          selectedGoldCount: selectedQualityCounts.gold, selectedUnknownQualityCount: selectedQualityCounts.unknown,
+          materialPreference: searchEvidence.plan?.materialPreference ?? searchEvidence.materialPreference,
+          valueCandidateCount: searchEvidence.valueCandidateCount,
+          valueQuotedCount: searchEvidence.valueQuotedCount,
           materialValue: result?.materialValue ?? searchEvidence.materialValue,
+          unpricedOwnedCount: result?.unpricedOwnedCount ?? searchEvidence.unpricedOwnedCount,
+          valueCoverageComplete: result?.valueCoverageComplete ?? searchEvidence.valueCoverageComplete,
           localReason: searchEvidence.valueReason,
           initialEstimatedCost: searchEvidence.initialMaterialValue,
           evaluations: result?.plan?.nodes ?? result?.nodes ?? searchEvidence.nodes,
@@ -924,10 +992,23 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
               setId: target.setId, challengeId: target.challengeId, source: reason, count });
           }
         }
+        // Keep the quality split for excluded material too.  This is the
+        // evidence needed to distinguish “no silver exists in the safe pool”
+        // from “silver exists but was rejected by a protection gate”; it is
+        // aggregate only and never exports card identities.
+        const excludedQuality = searchEvidence.plan?.excludedQualityByReason ?? searchEvidence.excludedQualityByReason ?? {};
+        for (const [reason, counts] of Object.entries(excludedQuality)) {
+          for (const [quality, count] of Object.entries(counts ?? {})) {
+            if (!Number.isSafeInteger(count) || count <= 0) continue;
+            const tier = quality === 'bronze' ? 'bronze' : quality === 'silver' ? 'silver' : quality === 'gold' ? 'gold' : 'unknown';
+            await diagnosticLog?.record?.({ area: 'puzzle', event: 'inventory-filter', phase: 'inventory',
+              setId: target.setId, challengeId: target.challengeId, source: `${tier}-${reason}`, count });
+          }
+        }
         for (const deficit of (searchEvidence.deficits ?? []).slice(0, 11)) await diagnosticLog?.record?.({
           area: 'puzzle', event: 'constraint-deficit', phase: 'inventory', setId: target.setId, challengeId: target.challengeId,
           source: deficit.kind, count: deficit.minimumMissing });
-        const purchase = result?.procurementSummary ?? result?.purchaseSuggestion, d = purchase?.diagnostics;
+        const purchase = result?.procurementSummary ?? result?.purchaseSuggestion ?? log.preview?.procurementSummary, d = purchase?.diagnostics;
         if (purchase) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-result',
           setId: target.setId, challengeId: target.challengeId, status: purchase.status, reason: purchase.reason,
           source: d?.failureSource, phase: d?.stage, transportPhase: d?.failurePhase, route: d?.route, httpStatus: d?.httpStatus,
@@ -944,7 +1025,18 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           initialMaterialValue: d?.initialMaterialValue, coveragePages: d?.coveragePages, hintNodes: d?.hintNodes, hintPairs: d?.hintPairs,
           positionSkippedCount: d?.positionSkippedCount, seedMs: d?.seedMs, catalogMs: d?.catalogMs,
           pricingMs: d?.pricingMs, searchMs: d?.searchMs, hintMs: d?.hintMs,
+          localSearchNodes: d?.localSearchNodes,
           optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
+          planningDurationMs: d?.planningDurationMs, ownedValueDurationMs: d?.ownedValueDurationMs,
+          catalogReadDurationMs: d?.catalogReadDurationMs, quoteReadDurationMs: d?.quoteReadDurationMs,
+          localSearchDurationMs: d?.localSearchDurationMs, repairSeedDurationMs: d?.repairSeedDurationMs,
+          ownedValueCandidateCount: d?.ownedValueCandidateCount, ownedValueQuotedCount: d?.ownedValueQuotedCount,
+          ownedSilverValueQuotedCount: d?.ownedSilverValueQuotedCount,
+          ownedGoldValueQuotedCount: d?.ownedGoldValueQuotedCount, ownedBronzeValueQuotedCount: d?.ownedBronzeValueQuotedCount,
+          incumbentProvided: d?.incumbentProvided, incumbentVerified: d?.incumbentVerified,
+          incumbentRejectReason: d?.incumbentRejectReason,
+          incumbentCandidateCount: d?.incumbentCandidateCount,
+          incumbentSelectedCount: d?.incumbentSelectedCount,
           searchComplete: d?.searchComplete, optimalWithinPool: d?.optimalWithinPool,
           cached: purchase.cacheHits > 0 });
         for (const [index, query] of (d?.catalogQueries ?? []).slice(0, 5).entries()) await diagnosticLog?.record?.({

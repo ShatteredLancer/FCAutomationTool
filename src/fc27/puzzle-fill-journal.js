@@ -22,7 +22,7 @@ function normalize(scope, input) {
       || input.submitted !== false || !Array.isArray(input.itemRefs)
       || input.itemRefs.length !== required
       || input.itemRefs.some(ref => !ref || !positive(ref.id) || !positive(ref.definitionId)
-        || ref.pile !== 'club' || !Number.isInteger(ref.slot) || ref.slot < 0 || ref.slot > 10 || bricks.includes(ref.slot))
+        || !['club', 'storage'].includes(ref.pile) || !Number.isInteger(ref.slot) || ref.slot < 0 || ref.slot > 10 || bricks.includes(ref.slot))
       || new Set(input.itemRefs.map(ref => ref.id)).size !== required
       || new Set(input.itemRefs.map(ref => ref.definitionId)).size !== required
       || new Set(input.itemRefs.map(ref => ref.slot)).size !== required) {

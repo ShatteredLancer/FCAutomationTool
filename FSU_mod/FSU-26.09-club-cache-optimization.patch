@@ -1,5 +1,5 @@
 diff --git a/FSU.user.js b/FSU.user.js
-index dd554ab..1ceacc9 100644
+index dd554ab..06b124c 100644
 --- a/FSU.user.js
 +++ b/FSU.user.js
 @@ -3,5 +3,8 @@
@@ -222,40 +222,110 @@ index dd554ab..1ceacc9 100644
 -                    url: `https://www.fut.gg/api/fut/player-prices/26/?ids=${_.random(20000, 39999)}`,
 +                    url: `https://www.fut.gg/api/fut/player-prices/${season}/?ids=${_.random(20000, 39999)}`,
                      anonymous: false, // 关键：利用当前页面的已存 Cookie
-@@ -4070,2 +4232,5 @@
+@@ -3906,2 +4068,3 @@
+             let mp = new EADialogViewController({
++                continueOption: { labelEnum: enums.UIDialogOptions.OK },
+                 dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
+@@ -3985,11 +4148,12 @@
+         events.ignorePlayerPopup = (ignoreTextElment) => {
+-            let mp = new EADialogViewController({
+-                dialogOptions: [{ labelEnum: 44404 },{ labelEnum: 44407 },{ labelEnum: 44405 },{ labelEnum: 44403 }],
+-                message: fy(`playerignore.popupm`),
+-                title: fy(`playerignore.popupt`),
+-                type: EADialogView.Type.MESSAGE
+-            });
+-            mp.init();
+-            mp.onExit.observe(mp,(e, z) => {
+-                e.unobserve(mp);
++            const options = [
++                { labelEnum: 44404, label: fy("popupButtonsText.44404") },
++                { labelEnum: 44407, label: fy("popupButtonsText.44407") },
++                { labelEnum: 44405, label: fy("popupButtonsText.44405") },
++                { labelEnum: 44403, label: fy("popupButtonsText.44403"), close: true },
++            ];
++            const mp = events.popup(
++                fy(`playerignore.popupt`),
++                fy(`playerignore.popupm`),
++                z => {
+                 if(z == 44404){
+@@ -4024,9 +4188,5 @@
+                 ignoreTextElment.textContent = events.getIgnoreText();
+-            });
+-            gPopupClickShield.setActivePopup(mp);
+-            _.flatMap(mp.getView().dialogOptions,(v,i) => {
+-                if(v.__text.innerHTML == "*"){
+-                    v.setText(fy(`popupButtonsText.${mp.options[i].labelEnum}`))
+-                }
+-            })
++                },
++                options
++            );
+             mp.getView().__msg.style.padding = "1rem";
+@@ -4056,2 +4216,3 @@
+             })
++            return mp;
+         }
+@@ -4070,2 +4231,7 @@
              let mp = new EADialogViewController({
 +                // FC27 uses named options; FC26 still reads dialogOptions.
 +                continueOption: o[0],
-+                cancelOption: o[1],
++                // Fallback to the explicit close action when FC27 exposes only
++                // its two named controls and cannot render the extra FSU actions.
++                cancelOption: o.find(option => option?.close === true) || o[1],
                  dialogOptions: o,
-@@ -4086,2 +4251,26 @@
+@@ -4086,2 +4252,47 @@
              gPopupClickShield.setActivePopup(mp);
 +            // Preserve FSU's custom labels and third action on the FC27 view.
 +            const modernDialogView = mp.getView();
-+            if (modernDialogView?.dialogOptionEnums instanceof Map && typeof modernDialogView.createOption == "function") {
++            if (modernDialogView) {
 +                const popupLabel = (option) => {
++                    if (typeof option?.label === "string" && option.label) return option.label;
 +                    const key = `popupButtonsText.${option.labelEnum}`;
 +                    const label = fy(key);
 +                    return label === key ? null : label;
 +                };
-+                for (const [button, labelEnum] of modernDialogView.dialogOptionEnums.entries()) {
-+                    const label = popupLabel({ labelEnum });
-+                    if (label) button.setText(label);
++                if (modernDialogView.dialogOptionEnums instanceof Map) {
++                    for (const [button, labelEnum] of modernDialogView.dialogOptionEnums.entries()) {
++                        const label = popupLabel(o.find(option => option?.labelEnum === labelEnum) || { labelEnum });
++                        if (label) button.setText(label);
++                    }
 +                }
-+                for (const option of o.slice(2)) {
-+                    modernDialogView.createOption(
-+                        popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum),
-+                        "cancel",
-+                        option.labelEnum,
-+                        option.mini
-+                    );
++                if (modernDialogView.dialogOptionEnums instanceof Map && typeof modernDialogView.createOption == "function") {
++                    for (const option of o.slice(2)) {
++                        modernDialogView.createOption(
++                            popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum),
++                            option.close ? "cancel" : "continue",
++                            option.labelEnum,
++                            option.mini
++                        );
++                    }
++                    if (o.length > 2 && !o.some(option => option?.close === true)) {
++                        mp.cancelOption = o[o.length - 1];
++                    }
++                } else {
++                    // Some FC27 dialog views render only continue/cancel.
++                    // Keep the extra FSU actions visible inside the message and
++                    // reserve the native cancel control for the explicit Close.
++                    const closeOption = o.find(option => option?.close === true);
++                    const body = modernDialogView.__msg;
++                    if (body && typeof events.createButton === "function" && typeof UTStandardButtonControl === "function") {
++                        for (const option of o.slice(1).filter(entry => entry !== closeOption)) {
++                            const label = popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum);
++                            const control = events.createButton(new UTStandardButtonControl(), label,
++                                () => c.call(mp, option.labelEnum), "call-to-action");
++                            body.appendChild(control.getRootElement());
++                        }
++                    }
 +                }
-+                if (o.length > 2) {
-+                    mp.cancelOption = o[o.length - 1];
-+                }
++                const closeOption = o.find(option => option?.close === true);
++                if (closeOption) mp.cancelOption = closeOption;
 +            }
              _.flatMap(mp.getView().dialogOptions,(v,i) => {
-@@ -6786,2 +6975,67 @@
+@@ -4116,2 +4327,3 @@
+             }
++            return mp;
+         }
+@@ -6786,2 +6998,67 @@
          }
 +        // Home can finish rendering before its Controller is attached to the navigation stack.
 +        events.scheduleHomeInitialization = (view) => {
@@ -323,7 +393,7 @@ index dd554ab..1ceacc9 100644
 +            }, 100);
 +        };
          UTHomeHubView.prototype._generate = function (...args) {
-@@ -6815,14 +7069,6 @@
+@@ -6815,14 +7092,6 @@
                      (e) => {
 -                        services.Club.clubDao.clubRepo.items.reset();
                          events.waitForClickShieldToHide(() => {
@@ -341,7 +411,7 @@ index dd554ab..1ceacc9 100644
 +                                console.error("[FSU club load] manual reload failed", error);
 +                            });
                          });
-@@ -6833,89 +7079,2328 @@
+@@ -6833,89 +7102,2328 @@
  
 -                events.waitForClickShieldToHide(() => {
 -                    try {
@@ -391,9 +461,7 @@ index dd554ab..1ceacc9 100644
 +                        }else{
 +                            const status = result?.status ?? result?.response?.status ?? "unknown";
 +                            finish(reject, new Error(`${label} failed: ${status}`));
-                         }
--                    } catch (e) {
--                        console.warn("cntlr.current() 结构未就绪，跳过 events.init()");
++                        }
 +                    });
 +                }catch(error){
 +                    finish(reject, error);
@@ -655,8 +723,8 @@ index dd554ab..1ceacc9 100644
 +                        if(Array.isArray(value) ? value.includes(item.databaseId) : item.databaseId === value) reasons.push(`excluded databaseId:${item.databaseId}`);
 +                    }else if(key === "removeSquad"){
 +                        if(value && info.squad.includes(item.id)) reasons.push("already in current squad");
-                     }
-                 });
++                    }
++                });
 +                return { eligible:reasons.length === 0, reasons };
 +            };
 +            const collectOneFillDiagnostic = (criteria, candidates, selected, unassigned) => {
@@ -763,7 +831,9 @@ index dd554ab..1ceacc9 100644
 +                                    length:Number.isFinite(length) ? length : undefined
 +                                };
 +                            }
-+                        }
+                         }
+-                    } catch (e) {
+-                        console.warn("cntlr.current() 结构未就绪，跳过 events.init()");
 +                    });
 +                    levels.push({
 +                        depth,
@@ -969,7 +1039,7 @@ index dd554ab..1ceacc9 100644
 +                            });
 +                        };
 +                        restore.push(() => { window.fetch = originalFetch; });
-+                    }
+                     }
 +                }catch(error){
 +                    errors.push(`fetch trace: ${error.message}`);
 +                }
@@ -1228,7 +1298,7 @@ index dd554ab..1ceacc9 100644
 +                GM_registerMenuCommand("Disable deep FSU Club diagnostics for next reload", () => {
 +                    GM_setValue(CLUB_DEEP_DIAGNOSTICS_KEY, false);
 +                    console.log("[FSU club diagnostic] deep request tracing disabled for the next page reload");
-+                });
+                 });
              }
 -        };
 -        events.reloadPlayers = async(e) =>{
@@ -2739,7 +2809,7 @@ index dd554ab..1ceacc9 100644
              });
 +            return info.base.reloadPlayersPromise;
          }
-@@ -8254,2 +10739,11 @@
+@@ -8254,2 +10762,11 @@
          events.playerListFillSquad = (challenge,list,type) => {
 +            if(!events.requireClubReady("squad fill")) return false;
 +            events.emitClubDiagnostic?.("log", "squad-fill-input", `squad fill received ${list?.length || 0} player(s)`, {
@@ -2751,7 +2821,7 @@ index dd554ab..1ceacc9 100644
 +                input:Array.from(list || []).map(item => events.summarizeFillDiagnosticItem?.(item))
 +            });
              events.showLoader();
-@@ -8285,4 +10779,13 @@
+@@ -8285,4 +10802,13 @@
              })
 +            events.emitClubDiagnostic?.("log", "squad-fill-mapped", `squad fill mapped ${playerlist.filter(Boolean).length} player(s)`, {
 +                challenge:{ id:challenge?.id, setId:challenge?.setId, name:challenge?.name },
@@ -2765,19 +2835,24 @@ index dd554ab..1ceacc9 100644
 +                squad:Array.from(challenge?.squad?.getPlayers?.() || []).map(slot => events.summarizeFillDiagnosticItem?.(slot?.item || slot))
 +            });
              //events.hideLoader();
-@@ -8293,2 +10796,3 @@
+@@ -8293,2 +10819,3 @@
          events.getTemplate = async function(e,type,sId){
 +            if(!events.requireClubReady("SBC template fill")) return false;
              e.setInteractionState(0);
-@@ -8851,2 +11355,3 @@
+@@ -8851,2 +11378,3 @@
          events.getRatingPlayers = (squad,ratings) => {
 +            if(!events.requireClubReady("rating squad fill")) return [];
              const assignPlayer = (playerlist, shortlist, Exclusionlist, index, pos) => {
-@@ -10012,2 +12517,3 @@
+@@ -9542,2 +12070,4 @@
+             let mp = new EADialogViewController({
++                continueOption: { labelEnum: 44410 },
++                cancelOption: { labelEnum: enums.UIDialogOptions.OK },
+                 dialogOptions: [{ labelEnum: 44410 },{ labelEnum: enums.UIDialogOptions.OK }],
+@@ -10012,2 +12542,3 @@
          events.fastSBC = async (id,cId) => {
 +            if(!events.requireClubReady("Fast SBC")) return false;
              let controller = events.getCurrent(),
-@@ -10230,5 +12736,32 @@
+@@ -10230,5 +12761,32 @@
              function valuablePlayerTips(left,controller,e) {
 -                
 -                const preciousCount = left.getView().slotViews.slice(0, 11).reduce((acc, view) => {
@@ -2813,11 +2888,24 @@ index dd554ab..1ceacc9 100644
 +
 +                    return acc + (priceItem.classList.contains("precious") ? 1 : 0);
                  }, 0);
-@@ -11813,2 +14346,3 @@
+@@ -11813,2 +14371,3 @@
          UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
 +            events.markClubCacheDirty("SBC submission started");
              let r = originalSubmitChallenge.apply(this, arguments);
-@@ -14402,2 +16936,34 @@
+@@ -11845,2 +14404,3 @@
+                 let mp = new EADialogViewController({
++                    continueOption: { labelEnum: enums.UIDialogOptions.OK },
+                     dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
+@@ -13076,2 +15636,4 @@
+             let popupController = new EADialogViewController({
++                continueOption: { labelEnum: enums.UIDialogOptions.OK },
++                cancelOption: { labelEnum: enums.UIDialogOptions.CANCEL },
+                 dialogOptions: [
+@@ -13139,2 +15701,3 @@
+             let popupController = new EADialogViewController({
++                continueOption: { labelEnum: enums.UIDialogOptions.OK },
+                 dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
+@@ -14402,2 +16965,34 @@
                              (e) => {
 +                                const unassigned = Array.from(repositories.Item.getUnassignedItems() || []);
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-start", `one-click fill started with ${unassigned.length} Unassigned item(s)`, {
@@ -2852,14 +2940,14 @@ index dd554ab..1ceacc9 100644
 +                                    return false;
 +                                }
                                  let playerList = [], removeIds = [];
-@@ -14408,3 +16974,5 @@
+@@ -14408,3 +17003,5 @@
                                      getCriteria = events.ignorePlayerToCriteria(getCriteria);
 -                                    playerList = events.getItemBy(2,getCriteria,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
 +                                    const candidates = events.getItemBy(2,getCriteria,unassigned);
 +                                    playerList = candidates.slice(0,criteriaNumber);
 +                                    events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill broad criteria selected ${playerList.length}/${criteriaNumber}`, events.collectOneFillDiagnostic?.(getCriteria, candidates, playerList, unassigned));
                                  }else{
-@@ -14417,6 +16985,6 @@
+@@ -14417,6 +17014,6 @@
                                          getCriteria["lock"] = false;
 -                                        let result = events.getItemBy(2, getCriteria, repositories.Item.getUnassignedItems());
 -
@@ -2868,18 +2956,22 @@ index dd554ab..1ceacc9 100644
                                          console.log(cropping,_.map(cropping,"rating"))
 +                                        events.emitClubDiagnostic?.("log", "one-click-fill-criteria", `one-click fill criterion selected ${cropping.length}/${i.c}`, events.collectOneFillDiagnostic?.(getCriteria, result, cropping, unassigned));
                                          removeIds = removeIds.concat(cropping.map( i => {return i.databaseId}))
-@@ -14425,2 +16993,6 @@
+@@ -14425,2 +17022,6 @@
                                  }
 +                                events.emitClubDiagnostic?.("log", "one-click-fill-selected", `one-click fill selected ${playerList.length} player(s)`, {
 +                                    challenge:{ id:thisController?._challenge?.id, setId:thisController?._challenge?.setId, name:thisController?._challenge?.name },
 +                                    selected:playerList.map(item => events.summarizeFillDiagnosticItem?.(item))
 +                                });
                                  if(playerList.length){
-@@ -14451,2 +17023,3 @@
+@@ -14451,2 +17052,3 @@
                          (e) => {
 +                            if(!events.requireClubReady("duplicate squad fill")) return false;
                              const dupIds = _.map(
-@@ -15733,2 +18306,2 @@
+@@ -15354,2 +17956,3 @@
+                 let mp = new EADialogViewController({
++                    continueOption: { labelEnum: enums.UIDialogOptions.OK },
+                     dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
+@@ -15733,2 +18336,2 @@
      main()
 -})();
 \ No newline at end of file

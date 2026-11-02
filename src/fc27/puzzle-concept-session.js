@@ -131,7 +131,7 @@ export function createFc27PuzzleConceptSession({ scope, context, get, set, exclu
           const replaceBaseline = typeof provider.readPuzzleBaseline === 'function'
             ? await provider.readPuzzleBaseline(plan) : null;
           const selected = plan.slots.filter(ref => ref?.kind === 'owned');
-          const fresh = selected.length ? await provider.validateItems({ selected })
+          const fresh = selected.length ? await provider.validateItems({ kind: plan.kind, selected })
             : { context: plan.context, fresh: true, observedAt: now(), items: [] };
           evidence(fresh, plan);
           validate(plan, await readCurrent(plan), fresh.items);

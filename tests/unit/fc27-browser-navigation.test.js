@@ -7,8 +7,39 @@ function pageFixture(visible = ['.ut-home-hub-view', '.ut-tab-bar-item.icon-sbc'
   return { click, waitForFunction: vi.fn(async () => {}), url: () => WEB_APP_URL, locator: selector => ({
     count: async () => visible.includes(selector) ? 1 : 0,
     isVisible: async () => true, evaluateAll: async () => [], click,
+    filter: () => ({ count: async () => 0 }),
   }) };
 }
+it('bounds native challenge and modal diagnostics without reading the account header', async () => {
+  const page = pageFixture(), original = page.locator;
+  const validClasses = Array.from({ length: 10 }, (_, i) => `native-${i}`);
+  const action = { textContent: `   Go   ${'x'.repeat(200)} `, disabled: true,
+    classList: ['invalid value', 'x'.repeat(62), ...validClasses],
+    parentElement: { classList: ['private value', ...validClasses] }, getClientRects: () => [{}] };
+  const modal = { textContent: 'x'.repeat(900),
+    querySelector: () => ({ textContent: 't'.repeat(200) }),
+    querySelectorAll: () => Array.from({ length: 10 }, () => ({ textContent: 'b'.repeat(200), disabled: false })) };
+  const selectors = [];
+  page.locator = selector => {
+    selectors.push(selector);
+    const locator = original(selector);
+    if (selector === '.ut-sbc-challenges-view button') locator.evaluateAll = async fn => fn(Array(30).fill(action));
+    if (selector === '.view-modal-container') locator.evaluateAll = async fn => fn(Array(3).fill(modal));
+    return locator;
+  };
+  vi.stubGlobal('getComputedStyle', () => ({ visibility: 'hidden' }));
+  try {
+    const ui = await observePageUi(page);
+    expect(ui.challengeActions).toHaveLength(24);
+    expect(ui.challengeActions[0]).toEqual({ text: `Go ${'x'.repeat(97)}`, disabled: true, visible: false,
+      classes: validClasses.slice(0, 8), parentClasses: validClasses.slice(0, 8) });
+    expect(ui.modalText).toHaveLength(2);
+    expect(ui.modalText[0]).toEqual({ title: 't'.repeat(160), text: 'x'.repeat(600),
+      buttons: Array.from({ length: 8 }, () => ({ text: 'b'.repeat(100), disabled: false })) });
+    expect(selectors).not.toContain('body');
+    expect(page.click).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});
 it('opens only the unique requested native title, never a plugin action', async () => {
   const page = pageFixture(['.ut-sbc-hub-view']);
   const original = page.locator, headerClick = vi.fn();
@@ -30,6 +61,27 @@ it('opens only the unique requested native title, never a plugin action', async 
   expect(await enterNativeSbcReadOnly(page, options)).toBe('SET_SCAN_LIMIT');
   expect(headerClick).toHaveBeenCalledOnce();
 });
+it('opens only the unique visible unselected All category when the requested set is hidden', async () => {
+  const page = pageFixture(['.ut-sbc-hub-view']);
+  const original = page.locator;
+  const allClick = vi.fn();
+  let count = 1, visible = true, classes = 'ea-filter-bar-item-view';
+  const filter = vi.fn(() => ({ count: async () => count, isVisible: async () => visible,
+    getAttribute: async () => classes, click: allClick }));
+  page.locator = selector => selector === '.ut-sbc-hub-view button.ea-filter-bar-item-view'
+    ? { filter } : original(selector);
+  expect(await enterNativeSbcReadOnly(page, { title: 'Sample' })).toBe('ALL_SETS_FILTER_OPENED');
+  expect(filter).toHaveBeenCalledWith({ hasText: /^All$/ });
+  expect(allClick).toHaveBeenCalledOnce();
+  classes += ' selected';
+  expect(await enterNativeSbcReadOnly(page, { title: 'Sample' })).toBe('SET_TILE_AMBIGUOUS_OR_MISSING');
+  classes = ''; visible = false;
+  expect(await enterNativeSbcReadOnly(page, { title: 'Sample' })).toBe('SET_TILE_AMBIGUOUS_OR_MISSING');
+  visible = true; count = 2;
+  expect(await enterNativeSbcReadOnly(page, { title: 'Sample' })).toBe('SET_TILE_AMBIGUOUS_OR_MISSING');
+  expect(allClick).toHaveBeenCalledOnce();
+  expect(page.click).not.toHaveBeenCalled();
+});
 it('keeps read-only navigation out of loading pages and dialogs', async () => {
   for (const extra of ['.view-modal-container', '.ut-loading-view']) {
     const page = pageFixture(['.ut-sbc-hub-view', extra]);
@@ -37,6 +89,49 @@ it('keeps read-only navigation out of loading pages and dialogs', async () => {
     expect(page.click).not.toHaveBeenCalled();
   }
   expect(await enterNativeSbcReadOnly(pageFixture())).toBe('SBC_HUB_OPENED');
+});
+it('returns from a native challenge list only when its entry button proves no editor is open', async () => {
+  const page = pageFixture(['.ut-sbc-challenges-view', '.ut-tab-bar-item.icon-sbc']);
+  const original = page.locator;
+  let count = 1, visible = true;
+  page.locator = selector => selector === '.ut-sbc-challenges-view button.btn-standard.primary'
+    ? { filter: () => ({ count: async () => count, isVisible: async () => visible }) }
+    : original(selector);
+  expect(await enterNativeSbcReadOnly(page)).toBe('SBC_HUB_OPENED');
+  expect(page.click).toHaveBeenCalledOnce();
+  count = 0;
+  expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  count = 2;
+  expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  count = 1; visible = false;
+  expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  expect(page.click).toHaveBeenCalledOnce();
+});
+it('recognizes the public native challenge-list structure without an entry button', async () => {
+  const visible = ['.ut-sbc-challenges-view', '.ut-tab-bar-item.icon-sbc'];
+  const page = pageFixture(visible), original = page.locator;
+  let listCount = 1, rowCount = 4, rowVisible = true;
+  page.locator = selector => selector === '.ut-sbc-challenges-view--challenges'
+    ? { count: async () => listCount, isVisible: async () => true }
+    : selector === '.ut-sbc-challenges-view--challenges .ut-sbc-challenge-table-row-view'
+      ? { count: async () => rowCount, first: () => ({ isVisible: async () => rowVisible }) }
+      : original(selector);
+  expect(await enterNativeSbcReadOnly(page)).toBe('SBC_HUB_OPENED');
+  for (const count of [0, 51]) {
+    rowCount = count;
+    expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  }
+  rowCount = 4; rowVisible = false;
+  expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  rowVisible = true; listCount = 2;
+  expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+  listCount = 1;
+  for (const blocker of ['.view-modal-container', '.ut-login-content', '.ut-loading-view', '.ut-sbc-set-view', '.ut-one-click-sbc-work-area-view']) {
+    visible.push(blocker);
+    expect(await enterNativeSbcReadOnly(page)).toBe('NATIVE_HOME_NOT_CONFIRMED');
+    visible.pop();
+  }
+  expect(page.click).toHaveBeenCalledOnce();
 });
 it('does not click completed or disabled sets, and never reports an unconfirmed click as entry', async () => {
   const page = pageFixture(['.ut-sbc-hub-view']);

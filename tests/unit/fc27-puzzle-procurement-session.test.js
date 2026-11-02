@@ -7,6 +7,52 @@ import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc2
 import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 import { marketRow } from '../helpers/fc27-market-fixture.js';
+import { minimumQualityFixture } from '../helpers/fc27-puzzle-minimum-quality-fixture.js';
+import * as search from '../../src/fc27/puzzle-preview.js';
+
+it('keeps the owned baseline through catalog discovery, prices a silver substitute, and retains it on cached repeat', async () => {
+  const x = fixture(), f = minimumQualityFixture(2);
+  x.input = f.input; x.now = f.input.now;
+  x.input.inventory.items = f.owned().map(item => ({ ...item, rating: 80 }));
+  const baseline = previewFc27PuzzleSquad(x.input);
+  const card = { ...f.entries[2], definitionId: 9001, rating: 73 };
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', source: 'ea-defid', season: '27',
+    observedAt: x.now, query, entries: query.level === 'silver' ? [card] : [] }));
+  const route = vi.spyOn(search, 'iterateFc27PuzzleCandidateRoutes').mockImplementation(function* () {
+    yield; return { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', nodes: 1, searchComplete: false };
+  });
+  try {
+    const session = createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices: publicPrices(x, id => id === 9001 ? 200 : 1000) });
+    const options = { optimizeMaterialValue: true, materialCeiling: 11000, ownedIncumbent: baseline };
+    const first = await session.plan(x.input, options), second = await session.plan(x.input, options);
+    for (const result of [first, second]) {
+      expect(result.status, JSON.stringify(result)).toBe('suggested');
+      expect(result.plans[0]).toMatchObject({ materialValue: 10200, estimatedCost: 200, purchaseCount: 1 });
+      expect(result.ownedBaseline).toEqual({ materialValue: 11000, priceSource: 'futgg', valueExpiresAt: x.now + 300000 });
+      expect(result.plans[0].selectedOwned).toHaveLength(10);
+      expect(result.diagnostics.nodes).toBeLessThanOrEqual(20000);
+      expect(result.queries.length).toBeLessThanOrEqual(3);
+    }
+    expect(second.requests).toBe(0);
+    expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  } finally { route.mockRestore(); }
+});
+
+it.each(['FC27_MARKET_HTTP_401', 'FC27_MARKET_HTTP_403', 'FC27_MARKET_HTTP_429', 'FC27_PUZZLE_FILL_TARGET_CHANGED'])(
+  'does not turn a priced owned baseline into a successful market result after %s', async reason => {
+    const x = fixture(), f = minimumQualityFixture(2);
+    x.input = f.input; x.now = f.input.now;
+    x.input.inventory.items = f.owned().map(item => ({ ...item, rating: 80 }));
+    const baseline = previewFc27PuzzleSquad(x.input);
+    x.transport.readCatalogPage.mockRejectedValue(Error(reason));
+    const result = await createFc27PuzzleProcurementSession({ ...x.options,
+      loadPublicPrices: publicPrices(x, () => 1000) }).plan(x.input,
+      { optimizeMaterialValue: true, ownedIncumbent: baseline });
+    expect(result).toMatchObject({ status: 'blocked', reason, plans: [],
+      ownedBaseline: { materialValue: 11000, priceSource: 'futgg', valueExpiresAt: x.now + 300000 } });
+    expect(x.transport.readCatalogPage).toHaveBeenCalledOnce();
+    expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  });
 
 function fixture() {
   const input = puzzleFillFixture(); input.challenge.rawRequirements[1].pairs[0].values = [33];
@@ -34,13 +80,14 @@ function publicPrices(x, priceOf) {
       }])) }])) }));
 }
 
-it.each(['mixed', 'native-gold-quality', 'native-exact-gold-count'])('compares a cheap lower-tier league route without bypassing %s', async mode => {
+it.each(['mixed', 'no-rating', 'native-gold-quality', 'native-exact-gold-count'])('compares a cheap lower-tier league route without bypassing %s', async mode => {
   // Live FUTNEXT Set78/121 illustrates 5 capped gold + 6 bronze at rating75/
   // chem26. IDs, positions, clubs and prices here are synthetic, not its squad.
   const x = fixture(); x.input.inventory.items = []; x.input.policy.maxRating = 82;
   const club = marketRow(12, 9, 2); club.pairs[0].values = [9, 1];
   x.input.challenge.setId = 78; x.input.challenge.id = 121;
   x.input.challenge.rawRequirements = [club, marketRow(11, 13, 2), marketRow(5, 4), marketRow(6, 3), marketRow(19, 75), marketRow(35, 26)];
+  if (mode === 'no-rating') x.input.challenge.rawRequirements = x.input.challenge.rawRequirements.filter(rule => rule.pairs[0].key !== 19);
   if (mode === 'native-gold-quality') x.input.challenge.rawRequirements.push(marketRow(3, 3, -1, 2));
   if (mode === 'native-exact-gold-count') x.input.challenge.rawRequirements.push(marketRow(17, 3, 11, 2));
   const entries = Array.from({ length: 17 }, (_, i) => ({ definitionId: 9000 + i, rating: i < 11 ? 80 : 64,
@@ -54,11 +101,11 @@ it.each(['mixed', 'native-gold-quality', 'native-exact-gold-count'])('compares a
   const result = await session.plan(x.input, { optimizeMaterialValue: true });
   expect(result.status, JSON.stringify(result)).toBe('suggested');
   expect(result.diagnostics.initialEstimatedCost).toBe(8800);
-  expect(result.plans[0].estimatedCost).toBe(mode === 'mixed' ? 5200 : 8800);
-  expect(result.plans[0].purchases.filter(card => card.rating < 65)).toHaveLength(mode === 'mixed' ? 6 : 0);
+  expect(result.plans[0].estimatedCost).toBe(['mixed', 'no-rating'].includes(mode) ? 5200 : 8800);
+  expect(result.plans[0].purchases.filter(card => card.rating < 65)).toHaveLength(['mixed', 'no-rating'].includes(mode) ? 6 : 0);
   expect(result.plans[0].teamFacts.teamRating).toBeGreaterThanOrEqual(75);
   expect(result.plans[0].teamFacts.chemistry).toBeGreaterThanOrEqual(26);
-  expect(x.transport.readCatalogPage.mock.calls.some(([query]) => query.level === 'bronze' && query.league === 13)).toBe(mode === 'mixed');
+  expect(x.transport.readCatalogPage.mock.calls.some(([query]) => query.level === 'bronze' && query.league === 13)).toBe(['mixed', 'no-rating'].includes(mode));
   expect(x.transport.readCatalogPage.mock.calls.length).toBeLessThanOrEqual(3);
   expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
 });
@@ -75,8 +122,50 @@ it.each([250, 251, 256, 257])('bounds %i owned definitions to the real 250-ID pu
   expect(result).toMatchObject({ materialValue: 2200 });
   expect(result.valueQuotedCount).toBe(250);
   expect(result.valueCoverageComplete).toBe(count === 250);
-  expect(loadPublicPrices.mock.calls[0][0]).toHaveLength(250);
+  expect(loadPublicPrices.mock.calls[0][0].slice(0, preview.selected.length))
+    .toEqual(preview.selected.map(item => item.definitionId));
+  expect(loadPublicPrices.mock.calls.flatMap(([ids]) => ids)).toHaveLength(250);
+  expect(new Set(loadPublicPrices.mock.calls.flatMap(([ids]) => ids)).size).toBe(250);
   expect(x.transport.readCatalogPage).not.toHaveBeenCalled();
+});
+
+it('keeps material-value planning on a fully priced incumbent and searches the quoted low-tier subset when coverage is partial', async () => {
+  const f = minimumQualityFixture(2);
+  f.input.inventory.items = f.owned().map(item => ({ ...item, rating: 80 }));
+  const incumbent = previewFc27PuzzleSquad(f.input);
+  expect(incumbent.status).toBe('preview');
+  const anchor = f.input.inventory.items[0];
+  const silver = { ...anchor, id: 9001, definitionId: 9001, rating: 74 };
+  f.input.inventory.items.push(silver, ...Array.from({ length: 249 }, (_, index) => ({
+    ...anchor, id: 10000 + index, definitionId: 10000 + index, rating: 80,
+  })));
+  const x = fixture(); x.input = f.input; x.now = f.input.now;
+  const loadPublicPrices = publicPrices(x, id => id === silver.definitionId ? 200 : 1000);
+  const session = createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices });
+  const result = await session.plan(f.input, { optimizeMaterialValue: true, ownedIncumbent: incumbent });
+  expect(result.status, JSON.stringify(result)).toBe('suggested');
+  expect(result.diagnostics).toMatchObject({ objective: 'material-value', scopeTruncated: true,
+    unknownCount: 11, ownedValueCandidateCount: 261, ownedValueQuotedCount: 250,
+    searchComplete: false, optimalWithinPool: false });
+  expect(result.plans[0]).toMatchObject({ valueCoverageComplete: false, unpricedOwnedCount: 11,
+    valueReason: 'FC27_PUZZLE_VALUE_SCOPE_TRUNCATED' });
+  expect(result.plans[0].materialValue).toBeLessThan(incumbent.selected.length * 1000);
+  expect(result.plans[0].selectedOwned.some(item => item.definitionId === silver.definitionId)).toBe(true);
+  const quoted = new Set(loadPublicPrices.mock.calls.flatMap(([ids]) => ids));
+  expect(result.plans[0].selectedOwned.every(item => quoted.has(item.definitionId))).toBe(true);
+});
+
+it('prices the incumbent and optional owned candidates in one bounded call while retaining its baseline on partial quotes', async () => {
+  const x = fixture(); x.input.inventory.items[10].positions = [5];
+  const preview = previewFc27PuzzleSquad(x.input);
+  x.input.inventory.items.push({ ...x.input.inventory.items[0], id: 1001, definitionId: 9001 });
+  const ordinary = publicPrices(x, id => id === 9001 ? null : 200);
+  const loadPublicPrices = vi.fn((ids, options) => ordinary(ids, options));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).optimizeOwned(x.input, preview);
+  expect(result).toMatchObject({ materialValue: 2200, valueQuotedCount: 11, valueCoverageComplete: false });
+  expect(loadPublicPrices).toHaveBeenCalledTimes(1);
+  expect(loadPublicPrices.mock.calls[0][0]).toContain(9001);
+  expect(loadPublicPrices.mock.calls[0][1].deadlineAt).toBe(x.now + 90000);
 });
 
 it.each(['missing', 'failed', 'expired'])('preserves a cash-feasible plan when owned values are %s', async mode => {
@@ -136,6 +225,73 @@ it('optimizes total material value while preserving the separately priced cash p
   expect(x.transport.readQuotePage).not.toHaveBeenCalled();
 });
 
+it('prices every owned card in a feasible repair incumbent under the total-value objective', async () => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const owned = x.input.inventory.items;
+  const template = { ...(await x.transport.readCatalogPage({})).entries[0], rating: 70 };
+  x.transport.readCatalogPage.mockClear();
+  const pageOne = Array.from({ length: 20 }, (_, index) => ({ ...template, definitionId: 2001 + index }));
+  const query = { start: 0, count: 20, level: 'silver' };
+  x.transport.readCatalogPage.mockImplementation(async requested => ({ status: 'observed', season: '27', source: 'ea-defid',
+    query: requested, observedAt: x.now, entries: pageOne }));
+  const repairSeed = vi.spyOn(procurement, 'findFc27PuzzleRepairSeedCooperatively').mockResolvedValue({
+    status: 'ready', squad: [], teamFacts: { chemistry: 20, teamRating: 80 }, requiredChemistry: 22,
+  });
+  const route = vi.spyOn(procurement, 'planFc27PuzzleRepairQueries').mockReturnValue({ status: 'ready', queries: [query] });
+  const repair = vi.spyOn(procurement, 'suggestFc27PuzzlePurchasesCooperatively').mockResolvedValue({
+    status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', marketCandidates: 20, checks: 10,
+    plans: [{ purchaseCount: 1, purchases: [{ ...pageOne[0], catalogRef: `fc27:${pageOne[0].definitionId}`, quantity: 1, slot: 10 }],
+      selectedOwned: owned.map((item, slot) => ({ id: item.id, definitionId: item.definitionId, pile: item.pile, rating: item.rating, slot })),
+      teamFacts: { chemistry: 22, teamRating: 80 } }],
+  });
+  const joint = vi.spyOn(procurement, 'suggestFc27PuzzleJointPurchasesCooperatively');
+  try {
+    const result = await createFc27PuzzleProcurementSession({ ...x.options,
+      loadPublicPrices: publicPrices(x, () => 300) }).plan(x.input, { optimizeMaterialValue: true });
+    expect(repairSeed).toHaveBeenCalledOnce(); expect(repair).toHaveBeenCalledOnce();
+    expect(joint).not.toHaveBeenCalled();
+    expect(result, JSON.stringify(result)).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1, estimatedCost: 300,
+      inventoryValue: 3000, materialValue: 3300 }], diagnostics: { objective: 'material-value' } });
+  } finally {
+    repairSeed.mockRestore(); route.mockRestore(); repair.mockRestore(); joint.mockRestore();
+  }
+});
+
+it('joint-searches the first priced repair page against unused safe Club cards before returning a concept plan', async () => {
+  const x = fixture();
+  x.input.policy.maxRating = 99; x.input.policy.goldRange = [75, 99];
+  x.input.challenge.rawRequirements = [marketRow(35, 14)];
+  x.input.inventory.items.forEach(item => { item.rating = 80; });
+  x.input.inventory.items.at(-1).positions = [5];
+  x.input.evaluateSquad = () => ({ status: 'observed', chemistry: 22, teamRating: 80 });
+  const owned = x.input.inventory.items;
+  const template = (await x.transport.readCatalogPage({})).entries[0];
+  const market = { ...template, definitionId: 9901, rating: x.input.policy.goldRange[0] };
+  const query = { start: 0, count: 20, level: 'gold' };
+  x.transport.readCatalogPage.mockImplementation(async requested => ({ status: 'observed', season: '27', source: 'ea-defid',
+    query: requested, observedAt: x.now, entries: [market] }));
+  const repairSeed = vi.spyOn(procurement, 'findFc27PuzzleRepairSeedCooperatively').mockResolvedValue({
+    status: 'ready', squad: [], teamFacts: { chemistry: 22, teamRating: 80 }, requiredChemistry: 22,
+  });
+  const route = vi.spyOn(procurement, 'planFc27PuzzleRepairQueries').mockReturnValue({ status: 'ready', queries: [query] });
+  const repair = vi.spyOn(procurement, 'suggestFc27PuzzlePurchasesCooperatively').mockResolvedValue({
+    status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', marketCandidates: 1, checks: 10,
+    plans: [{ purchaseCount: 1, purchases: [{ ...market, slot: 10, quantity: 1 }],
+      selectedOwned: owned.slice(0, 10).map((item, slot) => ({ id: item.id, definitionId: item.definitionId,
+        pile: item.pile, rating: item.rating, slot })), teamFacts: { chemistry: 22, teamRating: 80 } }],
+  });
+  try {
+    const result = await createFc27PuzzleProcurementSession({ ...x.options,
+      loadPublicPrices: publicPrices(x, () => 300) }).plan(x.input);
+    expect(repairSeed).toHaveBeenCalledOnce(); expect(repair).toHaveBeenCalledOnce();
+    expect(result.status, JSON.stringify(result)).toBe('suggested');
+    expect(result.plans[0], JSON.stringify(result)).toMatchObject({ purchaseCount: 0, estimatedCost: 0, selectedOwned: expect.any(Array) });
+    expect(result.plans[0].selectedOwned).toHaveLength(11);
+    expect(result.diagnostics.route).toBe('joint');
+    expect(result.diagnostics.nodes).toBeLessThanOrEqual(20000);
+  } finally { repairSeed.mockRestore(); route.mockRestore(); repair.mockRestore(); }
+});
+
 it('uses the third linked quality page for an explicit exact-gold count with no owned candidates', async () => {
   const x = fixture(); x.input.inventory.items = []; x.input.policy.maxRating = 82;
   x.input.challenge.rawRequirements = [
@@ -183,6 +339,9 @@ it('replays the linked-club 10-bronze/1-silver shortage through public pricing a
   const session = createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices });
   const result = await session.plan(x.input);
   expect(result).toMatchObject({ status: 'suggested', requests: 1, diagnostics: { route: 'joint' } });
+  // The safe owned silver already meets the OR-club obligation through EA's
+  // club link. Reserve explicit identity lanes only for genuine shortages;
+  // here the useful first page is bronze chemistry support for that silver.
   expect(x.transport.readCatalogPage.mock.calls[0][0]).toEqual({ start: 0, count: 20, level: 'bronze', nation: 34 });
   const plan = result.plans[0];
   expect(plan.estimatedCost).toBeLessThanOrEqual(1000);
@@ -534,9 +693,10 @@ it.each([false, true])('refines a high-cost plan with a cheaper next page (joint
   });
   const loadPublicPrices = publicPrices(x, definitionId => definitionId === 921 ? 200 : 10000);
   const result = await createFc27PuzzleProcurementSession({ ...x.options, loadPublicPrices }).plan(x.input);
-  expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 200 }], diagnostics: {
+  expect(result).toMatchObject({ status: 'suggested', diagnostics: {
     catalogAttempts: 2, catalogCandidates: 21, estimatedCost: 200,
   } });
+  expect(result.plans[0].estimatedCost).toBe(200);
   expect(result.plans[0].purchases[0]).toMatchObject({ definitionId: 921, estimatedUnitPrice: 200 });
   expect(x.transport.readCatalogPage).toHaveBeenCalledTimes(2);
 });
@@ -621,9 +781,10 @@ it('retains the improved total cost when a third lane produces no cheaper result
   });
   const result = await createFc27PuzzleProcurementSession({ ...x.options,
     loadPublicPrices: publicPrices(x, id => id === 921 ? 800 : 10000) }).plan(x.input);
-  expect(result).toMatchObject({ status: 'suggested', plans: [{ estimatedCost: 800 }], diagnostics: {
+  expect(result).toMatchObject({ status: 'suggested', diagnostics: {
     initialEstimatedCost: 10000, estimatedCost: 800, refinementPasses: 2,
   } });
+  expect(result.plans[0].estimatedCost).toBe(800);
 });
 
 it.each([false, true])('shares all three search slices and retains the incumbent at exhaustion (joint=%s)', async joint => {

@@ -1,8 +1,9 @@
 import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks, readFc27PuzzleChemistry,
   validateFc27PuzzleSelection } from './fc27-puzzle-read.js';
-import { readFc27Context, readFc27CachedClub } from './fc27-local-read.js';
+import { readFc27Context, readFc27CachedClub, readFc27CachedPile } from './fc27-local-read.js';
 import { readFc27PuzzlePolicy } from './fc27-fsu-read.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
+import { createFc27StreamlinedStorageReader } from './fc27-streamlined-storage-read.js';
 import { previewFc27PuzzleSquad } from '../../fc27/puzzle-preview.js';
 import { prepareFc27PuzzleFillPlan, validateFc27PuzzleFillPlan } from '../../fc27/puzzle-fill-plan.js';
 
@@ -18,7 +19,7 @@ export async function inspectFc27VerifiedPuzzlePlan(root, options = {}, onVerifi
       const selected = plan.selected;
       const plannedItems = structuredClone(selected.map(ref => inputs.inventory.items.find(item =>
         item.id === ref.id && item.definitionId === ref.definitionId)));
-      if (selected.some(item => item.pile !== 'club') || plannedItems.some(item => !item)) {
+      if (selected.some(item => !['club', 'storage'].includes(item.pile)) || plannedItems.some(item => !item)) {
         return stop('FC27_EXACT_ITEMS_CHANGED');
       }
       const inputScope = JSON.stringify({ context: inputs.context, policy: inputs.policy });
@@ -26,16 +27,32 @@ export async function inspectFc27VerifiedPuzzlePlan(root, options = {}, onVerifi
         const context = readFc27Context(root);
         const policy = readFc27PuzzlePolicy(root, options.maxRating ?? 74);
         if (inputScope !== JSON.stringify({ context, policy })) throw new Error('FC27_RUNNER_INPUTS_CHANGED');
-        const cached = readFc27CachedClub(root);
+        const cachedClub = readFc27CachedClub(root);
+        const cachedStorage = readFc27CachedPile(root, 'storage');
+        const cached = { items: [...cachedClub.items, ...cachedStorage.items] };
         const links = readFc27PuzzleClubLinks(root);
         return JSON.stringify({ context, policy, links, chemistry: readFc27PuzzleChemistry(root, links),
           selected: selected.map(ref => cached.items.find(item => item.id === ref.id && item.definitionId === ref.definitionId)) });
       };
       const before = signature();
-      const transport = await createFc27ClubReadTransport(root);
-      if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
-      const fresh = await transport.readPage({ start: 0, count: 250,
-        definitionIds: selected.map(item => item.definitionId) });
+      const clubSelected = selected.filter(item => item.pile === 'club');
+      const storageSelected = selected.filter(item => item.pile === 'storage');
+      const fresh = [];
+      if (clubSelected.length) {
+        const transport = await createFc27ClubReadTransport(root);
+        if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
+        fresh.push(...await transport.readPage({ start: 0, count: 250,
+          definitionIds: clubSelected.map(item => item.definitionId) }));
+        if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
+      }
+      if (storageSelected.length) {
+        const storage = await createFc27StreamlinedStorageReader(root);
+        if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
+        const rows = await storage.read();
+        // Storage is a full-pile GET; only the frozen selected identities enter
+        // the bounded Puzzle verifier. The reader validates every returned row.
+        fresh.push(...rows.filter(item => storageSelected.some(ref => ref.id === item.id)));
+      }
       if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
       const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems);
       if (exactValidation.status !== 'verified') return stop(exactValidation.reason);
@@ -62,7 +79,8 @@ export async function inspectFc27VerifiedPuzzlePlan(root, options = {}, onVerifi
         if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
       }
       return { ...plan, fillPreflight, exactValidation: { ...exactValidation, observedAt: Date.now(),
-        scope: 'selected-club-items-only', reusableForExecution: false } };
+        scope: selected.some(item => item.pile === 'storage')
+          ? 'selected-club-and-storage-items-only' : 'selected-club-items-only', reusableForExecution: false } };
     } catch (error) {
       return stop(/^FC27_[A-Z0-9_]+$/.test(error?.message ?? '')
         ? error.message : 'FC27_PUZZLE_EXACT_CHECK_UNAVAILABLE');

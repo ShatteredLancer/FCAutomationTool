@@ -4,6 +4,15 @@ import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarket
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
   streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 
+it('explains the foreign contribution separately from current Transfer materials', () => {
+  const text = streamlinedExecutionMessage('FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', {
+    setId: 31, challengeId: 61, currentScore: 3860, targetScore: 5500,
+    confirmedBatches: 2, waitingBatches: 3, pendingWriteCount: 1,
+  });
+  expect(text).toContain('3,860 / 5,500'); expect(text).toContain('未发送 3 批');
+  expect(text).toContain('结果未知 1 批'); expect(text).toContain('尚未移动或贡献');
+});
+
 it('explains FSU readiness before solving without claiming a 5x80+ recipe failure', () => {
   const message = streamlinedExecutionMessage('FC27_STREAMLINED_FSU_NOT_READY');
   expect(message).toContain('已暂停后续操作'); expect(message).toContain('FSU 增强脚本');

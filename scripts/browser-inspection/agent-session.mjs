@@ -248,7 +248,14 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-      if (!/^(inspect|install-current|tabs|home|price-check(?: [^\s]{1,80})?|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
+    if (!/^(inspect|install-current|tabs|home|ensure-web|price-check(?: [^\s]{1,80})?|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|panel-open|panel-state|panel-set-objective (?:additional-coins|material-value)|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
+      if (command === 'ensure-web') {
+        let page = context.pages()[0];
+        if (!page) page = await context.newPage();
+        try { await page.goto(WEB_APP_URL, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch {}
+        console.log(JSON.stringify({ action: 'DEDICATED_WEB_APP_OPENED', tabs: context.pages().length }));
+        continue;
+      }
       if (command === 'install-current') {
         if (!withExtensions) { console.log('Installation requires --with-extensions.'); continue; }
         try {
@@ -358,6 +365,53 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
           const requested = command.split(' ')[1];
           observation.panel = await readProductionPanel(context, target, requested ? Number(requested) : null);
           observation.action = observation.panel.status === 'observed' ? 'PRODUCTION_PANEL_CATALOG_READ' : observation.panel.reason;
+        }
+        if (command === 'panel-open') {
+          const before = await panelCall(context, target, function () { return this.host?.style?.display ?? null; });
+          await openProductionPanel(context, target);
+          observation.panelOpen = await panelCall(context, target, function () {
+            return { display: this.host?.style?.display ?? null, connected: !!this.host?.isConnected,
+              activeTab: this.host?.dataset?.activeTab ?? null };
+          });
+          observation.action = before === 'block' && observation.panelOpen?.display === 'block'
+            ? 'PRODUCTION_PANEL_OPENED' : 'PRODUCTION_PANEL_OPEN_STATE_UNCONFIRMED';
+        }
+        if (command === 'panel-state') {
+          observation.panelState = await panelCall(context, target, function () {
+            const select = this.getElementById('puzzle-objective');
+            const host = this.host;
+            return { hostConnected: !!host?.isConnected, hostDisplay: host?.style?.display ?? null,
+              hostNavigation: host?.dataset?.navigationPage ?? null, activeTab: host?.dataset?.activeTab ?? null,
+              selected: select?.value ?? null, detailsOpen: this.querySelector('details')?.open ?? null };
+          });
+          observation.action = observation.panelState ? 'PRODUCTION_PANEL_STATE_READ' : 'FC27_PANEL_STATE_UNAVAILABLE';
+        }
+        if (command.startsWith('panel-set-objective ')) {
+          const objective = command.split(' ')[1];
+          await openProductionPanel(context, target);
+          const activeTab = await panelCall(context, target, function () { return this.host?.dataset?.activeTab ?? null; });
+          if (activeTab !== 'settings') await selectPanelTab(context, target, 'settings');
+          await target.waitForFunction(id => globalThis.document.getElementById(id)?.dataset.busy !== 'true', PRODUCTION_PANEL_ID, { timeout: 10000 });
+          observation.panelObjective = await panelCall(context, target, function (value) {
+            const select = this.getElementById('puzzle-objective');
+            const save = this.getElementById('puzzle-policy-save');
+            if (!select || !save) return { status: 'blocked', reason: 'FC27_PANEL_OBJECTIVE_UNAVAILABLE' };
+            this.querySelector('details')?.setAttribute('open', '');
+            select.value = value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            return { status: 'ready', value: select.value };
+          }, [objective]);
+          if (observation.panelObjective?.status === 'ready') {
+            await clickPanelControl(context, target, '#puzzle-policy-save', 10000);
+            try { await target.waitForFunction(id => globalThis.document.getElementById(id)?.dataset.busy === 'false', PRODUCTION_PANEL_ID, { timeout: 20000 }); } catch {}
+            observation.panelObjective.result = await panelCall(context, target, function () {
+              const select = this.getElementById('puzzle-objective');
+              const status = this.host?.dataset?.result;
+              let parsed = null; try { parsed = status ? JSON.parse(status) : null; } catch {}
+              return { selected: select?.value ?? null, result: parsed };
+            });
+            observation.action = 'PRODUCTION_PANEL_OBJECTIVE_SAVED';
+          } else observation.action = observation.panelObjective?.reason ?? 'FC27_PANEL_OBJECTIVE_UNAVAILABLE';
         }
         if (command.startsWith('gallery-read')) {
           const requested = command.split(' ').slice(1).join(' ') || 'Arsenal';

@@ -14,12 +14,31 @@ function fixture() {
   return { input, suggestion };
 }
 
+it('retains exact Storage ownership in mixed drafts and rejects a moved entity', () => {
+  const { input, suggestion } = fixture();
+  input.inventory.items[0].pile = suggestion.selectedOwned[0].pile = 'storage';
+  const plan = prepareFc27PuzzleConceptDraft(input, suggestion);
+  expect(plan.status).toBe('prepared');
+  expect(validateFc27PuzzleConceptDraft(plan, input, input.inventory.items).status).toBe('verified');
+  const fresh = structuredClone(input.inventory.items); fresh[0].pile = 'club';
+  expect(validateFc27PuzzleConceptDraft(plan, input, fresh).reason).toBe('FC27_CONCEPT_ITEMS_CHANGED');
+});
+
 it('validates a mixed draft without fabricating owned identities or weakening Only Untradeable', () => {
   const { input, suggestion } = fixture();
   const plan = prepareFc27PuzzleConceptDraft(input, suggestion);
   expect(plan).toMatchObject({ status: 'prepared', kind: 'puzzle-concept-draft', validation: { status: 'verified' } });
   expect(plan.slots[10]).not.toHaveProperty('id');
   expect(input.policy.onlyUntradeable).toBe(true);
+  expect(validateFc27PuzzleConceptDraft(plan, input, input.inventory.items).status).toBe('verified');
+});
+
+it('honours FSU Only Untradeable=false for an explicitly tradeable owned card', () => {
+  const { input, suggestion } = fixture();
+  input.policy.onlyUntradeable = false;
+  input.inventory.items[0].tradeable = true;
+  const plan = prepareFc27PuzzleConceptDraft(input, suggestion);
+  expect(plan.status).toBe('prepared');
   expect(validateFc27PuzzleConceptDraft(plan, input, input.inventory.items).status).toBe('verified');
 });
 

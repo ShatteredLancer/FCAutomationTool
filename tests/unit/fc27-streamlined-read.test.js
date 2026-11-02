@@ -294,6 +294,50 @@ it('reads tradeability from the loaded static DTO when the entity omits it', () 
   expect(input.inventoryStats.tradeability.untradeable).toBe(11);
 });
 
+it('reads FC27 untradeableCount when the entity and static DTO omit tradable', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first._staticData = { untradeableCount: 1 };
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(snapshotFc27ClubPlayer(first, f.root)).toMatchObject({ tradeable: false, untradeableCount: 1 });
+  expect(input.inventory.find(item => item.id === 1)?.tradeable).toBe(false);
+});
+
+it('matches FSU: an explicit zero untradeableCount is tradeable', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first._staticData = { untradeableCount: 0 };
+  const input = readFc27StreamlinedInputs(f.root);
+  expect(snapshotFc27ClubPlayer(first, f.root)).toMatchObject({ tradeable: true, untradeableCount: 0 });
+  expect(input.inventory.find(item => item.id === 1)?.tradeable).toBe(true);
+});
+
+it('reads untradeableCount from the observed EA data payload', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first.data = { untradeableCount: 1 };
+  expect(snapshotFc27ClubPlayer(first, f.root)).toMatchObject({ tradeable: false, untradeableCount: 1 });
+});
+
+it('uses the explicit EA tradeability method when DTO flags are omitted', () => {
+  const f = runtime();
+  f.root.info.build.untradeable = true;
+  const first = f.root.repositories.Item.club.items._collection[1];
+  delete first.tradable;
+  first._staticData = {};
+  first.isUntradeable = () => true;
+  expect(snapshotFc27ClubPlayer(first, f.root)).toMatchObject({ tradeable: false });
+  delete first.isUntradeable;
+  first.isTradeable = () => true;
+  expect(snapshotFc27ClubPlayer(first, f.root)).toMatchObject({ tradeable: true });
+});
+
 it('does not infer tradeability when all observed data layers omit it', () => {
   const f = runtime();
   f.root.info.build.untradeable = true;

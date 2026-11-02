@@ -11,7 +11,14 @@ function popupSection() {
   return source.slice(start, end);
 }
 
-function harness(legacy = false) {
+function ignorePlayerPopupSection() {
+  const start = source.indexOf('        events.ignorePlayerPopup = ');
+  const end = source.indexOf('        events.popup = ', start);
+  if (start < 0 || end < 0) throw new Error('FSU player-ignore popup was not found');
+  return source.slice(start, end);
+}
+
+function harness(legacy = false, customOptions = true) {
   let popup;
   function button(label) {
     return { __text: { innerHTML: label }, setText(text) { this.__text.innerHTML = text; },
@@ -33,9 +40,9 @@ function harness(legacy = false) {
       if (legacy) this.view.dialogOptions = options.dialogOptions.map(() => button('*'));
       else {
         this.view.dialogOptionEnums = new Map();
-        this.view.createOption = (label, role, value) => this.view.dialogOptionEnums.set(button(label), value);
+        if (customOptions) this.view.createOption = (label, role, value) => this.view.dialogOptionEnums.set(button(label), value);
         for (const [role, option] of [['continue', options.continueOption], ['cancel', options.cancelOption]]) {
-          if (option) this.view.createOption('localized', role, option.labelEnum);
+          if (option) this.view.dialogOptionEnums.set(button('localized'), option.labelEnum);
         }
       }
     }
@@ -51,10 +58,21 @@ function harness(legacy = false) {
     getValue() { return this.value; }
     setInteractionState() {}
   }
+  class StandardButton {
+    init() {}
+    addTarget(_owner, callback) { this.callback = callback; }
+    setText(label) { this.label = label; }
+    getRootElement() { return { label: this.label, callback: this.callback }; }
+  }
   const events = {};
+  events.createButton = (control, label, callback) => {
+    control.init(); control.setText(label); control.callback = callback;
+    const root = control.getRootElement(); root.label = label; root.callback = callback; return { getRootElement: () => root };
+  };
   const context = vm.createContext({ events, info: { isEnhancer: false },
     enums: { UIDialogOptions: { OK: 2, CANCEL: 1, NO: 8 } },
     EADialogViewController: Dialog, EADialogView: { Type: { MESSAGE: 'message' } }, UTTextInputControl: TextInput,
+    UTStandardButtonControl: StandardButton,
     gPopupClickShield: { setActivePopup: value => { popup = value; } },
     _: { flatMap: (values, fn) => (values || []).flatMap(fn) },
     fy: key => /\.444\d+$/.test(key) ? `translated:${key}` : key,
@@ -109,4 +127,50 @@ it('keeps legacy FC26 three-button construction and styling unchanged', () => {
   expect(p.view.dialogOptions).toHaveLength(3);
   expect(p.view.dialogOptions[1].__text.innerHTML).toBe('translated:popupButtonsText.44401');
   expect(callback).not.toHaveBeenCalled();
+});
+
+it('offers a working Close action in the FC27 player-ignore configuration dialog', () => {
+  const captured = {};
+  const events = { createToggle: () => ({ toggle() {}, __root: { style: {} } }),
+    getIgnoreText: () => 'unchanged', popup: vi.fn((title, message, callback, options) => {
+      Object.assign(captured, { title, message, callback, options });
+      return { getView: () => ({ __msg: { style: {}, appendChild: vi.fn() } }) };
+    }) };
+  const context = vm.createContext({ events, info: { set: { shield_league: [], shield_flag: [], goldenrange: 83 }, build: {} },
+    build: { set: vi.fn() }, set: { save: vi.fn() }, fy: key => key,
+    _: { forEach: (values, fn) => values.forEach(fn), isNaN: Number.isNaN }, Array, String });
+  vm.runInContext(ignorePlayerPopupSection(), context);
+  const label = { textContent: '' };
+  events.ignorePlayerPopup(label);
+  expect(captured.options.map(option => option.labelEnum)).toEqual([44404, 44407, 44405, 44403]);
+  captured.callback(44403);
+  expect(label.textContent).toBe('unchanged');
+});
+
+it('keeps extra ignore actions visible and reserves a native cancel button for Close when FC27 exposes only two controls', () => {
+  const h = harness(false, false); const callback = vi.fn();
+  h.events.popup('Ignore players', 'Description', callback, [
+    { labelEnum: 44404, label: 'League exclusions' },
+    { labelEnum: 44407, label: 'Rarity exclusions' },
+    { labelEnum: 44405, label: 'Gold range' },
+    { labelEnum: 44403, label: 'Close', close: true },
+  ]);
+  const p = h.popup();
+  expect(p.cancelOption).toMatchObject({ labelEnum: 44403, close: true });
+  expect([...p.view.dialogOptionEnums.values()]).toEqual([44404, 44403]);
+  const fallback = p.view.__msg.appendChild.mock.calls.map(([root]) => root);
+  expect(fallback.map(button => button.label)).toEqual(['Rarity exclusions', 'Gold range']);
+  fallback[1].callback();
+  expect(callback).toHaveBeenCalledExactlyOnceWith(44405);
+  p.escape();
+  expect(callback).toHaveBeenNthCalledWith(2, 44403);
+});
+
+it('supplies named FC27 options to every direct FSU dialog so one-button dialogs remain dismissible', () => {
+  const dialogs = [...source.matchAll(/new EADialogViewController\(\{([\s\S]*?)\n\s*\}\);/g)]
+    .map(match => match[1]);
+  expect(dialogs).toHaveLength(7);
+  expect(dialogs.every(body => /continueOption\s*:/.test(body))).toBe(true);
+  expect(dialogs.filter(body => /UIDialogOptions\.CANCEL/.test(body))
+    .every(body => /cancelOption\s*:/.test(body))).toBe(true);
 });

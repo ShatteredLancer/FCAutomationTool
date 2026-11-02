@@ -169,7 +169,8 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_RECOVERY_REQUIRED: '已有待恢复的贡献记录。请点击“核对并恢复”查看已确认进度和剩余批次；不会重复投入已确认的卡。',
     FC27_STREAMLINED_CONTEXT_CHANGED: '账号、SBC 或积分状态已变化，请重新打开当前 SBC 并生成方案。',
     FC27_STREAMLINED_JOURNAL_ARCHIVE_FAILED: '旧方案记录尚未成功归档，本次未发出贡献请求。已确认积分保留，请稍后重试；不会丢弃旧记录或重复投入。',
-    FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `另一个 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）仍有未结清的贡献记录，未在当前 SBC 恢复或重复投入。`,
+    FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `旧 SBC（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}，${number(recovery?.currentScore)} / ${number(recovery?.targetScore)} 分）阻断本次贡献：已确认 ${number(recovery?.confirmedBatches)} 批、未发送 ${number(recovery?.waitingBatches)} 批、结果未知 ${number(recovery?.pendingWriteCount)} 批。请点击“核对并恢复”检查旧记录；本次尚未移动或贡献卡片。`,
+    FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED: '旧贡献回执已完整归档，未发送余批已结束。请刷新列表并重新选择当前卡片；不会重新贡献旧卡。',
     FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `本地历史 SBC${typeof recovery?.name === 'string' ? `「${recovery.name.slice(0, 160)}」` : ''}（Set ${recovery?.setId ?? '?'} / Challenge ${recovery?.challengeId ?? '?'}）记录中还有 ${recovery?.pendingWriteCount ?? '?'} 笔待核对请求、${recovery?.unconsumedPurchaseCount ?? '?'} 张采购材料待处理。该记录不代表任务仍在运行；当前已确认积分保留，不会重复买入或投入。`,
     FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED: '已恢复当前 SBC 的剩余库存批次。历史待核对记录已隔离保留；本次只用不重叠的 Club/SBC 仓库卡，不买卡、不重跑旧任务。点击“贡献所选批次”继续。',
     FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED: '当前剩余批次包含旧任务待核对的同一张卡，暂不投入。已确认积分和旧记录均保留；不会重复买卡或消耗这张卡。',
@@ -630,7 +631,11 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     if (canArchive) {
       const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
       const name = typeof old?.name === 'string' ? `「${old.name.slice(0, 160)}」` : '';
-      node('history-note').textContent = `确认不再执行历史任务${name}（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）时，可退出活动队列。完整记录仍保留，不会把未知请求算作成功；其材料继续隔离。此操作不买卡、不移动、不贡献。`;
+      const contribution = result.historyAction.kind === 'contribution';
+      node('archive-history').textContent = contribution ? '结束旧贡献余批并归档' : '退出并归档旧任务';
+      node('history-note').textContent = contribution
+        ? `旧 SBC（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）已确认 ${number(old?.confirmedBatches)} 批、未发送 ${number(old?.waitingBatches)} 批，没有未知请求。确认不再继续旧任务时，可结束余批；完整回执保留，不移动或消耗任何卡。`
+        : `确认不再执行历史任务${name}（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）时，可退出活动队列。完整记录仍保留，不会把未知请求算作成功；其材料继续隔离。此操作不买卡、不移动、不贡献。`;
     }
     const confirmed = streamlinedConfirmedContribution(result);
     const previousCycle = result.reason === 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED';

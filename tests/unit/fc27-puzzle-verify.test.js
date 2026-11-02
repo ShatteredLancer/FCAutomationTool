@@ -2,14 +2,16 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { inspectFc27VerifiedPuzzlePlan } from '../../src/adapters/ea/fc27-puzzle-verify.js';
 import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks, readFc27PuzzleChemistry } from '../../src/adapters/ea/fc27-puzzle-read.js';
 import { createFc27ClubReadTransport } from '../../src/adapters/ea/fc27-club-read.js';
-import { readFc27Context, readFc27CachedClub } from '../../src/adapters/ea/fc27-local-read.js';
+import { readFc27Context, readFc27CachedClub, readFc27CachedPile } from '../../src/adapters/ea/fc27-local-read.js';
+import { createFc27StreamlinedStorageReader } from '../../src/adapters/ea/fc27-streamlined-storage-read.js';
 import { readFc27PuzzlePolicy } from '../../src/adapters/ea/fc27-fsu-read.js';
 import { marketFixture } from '../helpers/fc27-market-fixture.js';
 
 vi.mock('../../src/adapters/ea/fc27-puzzle-read.js', async importOriginal => ({ ...await importOriginal(),
   inspectFc27PuzzlePlan: vi.fn(), readFc27PuzzleClubLinks: vi.fn(), readFc27PuzzleChemistry: vi.fn() }));
 vi.mock('../../src/adapters/ea/fc27-club-read.js', () => ({ createFc27ClubReadTransport: vi.fn() }));
-vi.mock('../../src/adapters/ea/fc27-local-read.js', () => ({ readFc27Context: vi.fn(), readFc27CachedClub: vi.fn() }));
+vi.mock('../../src/adapters/ea/fc27-local-read.js', () => ({ readFc27Context: vi.fn(), readFc27CachedClub: vi.fn(), readFc27CachedPile: vi.fn() }));
+vi.mock('../../src/adapters/ea/fc27-streamlined-storage-read.js', () => ({ createFc27StreamlinedStorageReader: vi.fn() }));
 vi.mock('../../src/adapters/ea/fc27-fsu-read.js', () => ({ readFc27PuzzlePolicy: vi.fn() }));
 
 let input; let readPage;
@@ -20,6 +22,7 @@ beforeEach(() => {
   readFc27Context.mockImplementation(() => input.context);
   readFc27PuzzlePolicy.mockImplementation(() => input.policy);
   readFc27CachedClub.mockImplementation(() => ({ items: input.inventory.items }));
+  readFc27CachedPile.mockImplementation((_root, pile) => ({ items: input.inventory.items.filter(item => item.pile === pile) }));
   readFc27PuzzleClubLinks.mockImplementation(() => input.clubLinks);
   readFc27PuzzleChemistry.mockReturnValue(null);
   readPage = vi.fn(async () => structuredClone(input.inventory.items));
@@ -30,6 +33,43 @@ beforeEach(() => {
       liveExecutionEnabled: false, plan: { selectedCount: plan.selected.length, exactValidation: plan.exactValidation },
       pending: ['EA_TEAM_FACTS_DIFFERENTIAL', 'EXACT_ITEM_VALIDATION', 'PUZZLE_FILL_TRANSACTION'] };
   });
+});
+
+it('checks Club and Storage via their fresh transports and retains Storage in the fill preflight', async () => {
+  input.inventory.items[0].pile = 'storage';
+  readPage.mockImplementation(async () => structuredClone(input.inventory.items.filter(item => item.pile === 'club')));
+  const read = vi.fn(async () => structuredClone(input.inventory.items.filter(item => item.pile === 'storage')));
+  createFc27StreamlinedStorageReader.mockResolvedValue({ read });
+  const report = await inspectFc27VerifiedPuzzlePlan({}, { setId: 19, challengeId: 43 });
+  expect(report).toMatchObject({ status: 'preview', plan: { selectedCount: 3,
+    exactValidation: { status: 'verified', scope: 'selected-club-and-storage-items-only' } } });
+  expect(readPage).toHaveBeenCalledExactlyOnceWith({ start: 0, count: 250, definitionIds: [102, 103] });
+  expect(read).toHaveBeenCalledOnce();
+});
+
+it('accepts unchanged tradeable facts only when the live material policy allows them', async () => {
+  input.policy.onlyUntradeable = false;
+  input.inventory.items[0].tradeable = true;
+  expect(await inspectFc27VerifiedPuzzlePlan({}, { setId: 19, challengeId: 43 }))
+    .toMatchObject({ status: 'preview', plan: { exactValidation: { status: 'verified' } } });
+});
+
+it.each(['missing', 'version', 'pile', 'cache-drift', 'http'])('blocks Storage %s without cache fallback', async kind => {
+  input.inventory.items[0].pile = 'storage';
+  readPage.mockImplementation(async () => structuredClone(input.inventory.items.filter(item => item.pile === 'club')));
+  const read = vi.fn(async () => {
+    const rows = structuredClone(input.inventory.items.filter(item => item.pile === 'storage'));
+    if (kind === 'missing') rows.pop();
+    if (kind === 'version') rows[0].definitionId++;
+    if (kind === 'pile') rows[0].pile = 'club';
+    if (kind === 'cache-drift') input.inventory.items[0].pile = 'club';
+    if (kind === 'http') throw Error('FC27_STREAMLINED_STORAGE_HTTP_401');
+    return rows;
+  });
+  createFc27StreamlinedStorageReader.mockResolvedValue({ read });
+  expect(await inspectFc27VerifiedPuzzlePlan({}, { setId: 19, challengeId: 43 }))
+    .toMatchObject({ status: 'blocked', plan: { selectedCount: 0 } });
+  expect(read).toHaveBeenCalledOnce();
 });
 
 it('checks the precise selected refs once and leaves EA comparison and writes pending', async () => {

@@ -36,8 +36,24 @@ it('rejects a market plan that silently omits a non-brick slot', () => {
   } }).reason).toBe('FC27_PUZZLE_CONCEPT_PLAN_INVALID');
 });
 
+it('preserves a Storage owned ref alongside Club and concept cards', () => {
+  const result = prepareFc27PuzzleConceptPlan({ challenge, plan: {
+    status: 'preview', setId: 19, challengeId: 44, purchaseCount: 1,
+    selectedOwned: [{ id: 11, definitionId: 101, pile: 'storage', rating: 62, slot: 0 },
+      { id: 12, definitionId: 102, pile: 'club', rating: 63, slot: 2 }],
+    purchases: [{ catalogRef: 'fc27:103', definitionId: 103, rating: 64, slot: 3,
+      quantity: 1, estimatedUnitPrice: 500 }],
+  } });
+  expect(result).toMatchObject({ status: 'prepared', purchaseCount: 1, estimatedCost: 500 });
+  expect(result.slots[0]).toEqual({ slot: 0, kind: 'owned', id: 11, definitionId: 101,
+    pile: 'storage', rating: 62 });
+  expect(result.slots[2]).toMatchObject({ kind: 'owned', pile: 'club' });
+  expect(result.slots[3]).toMatchObject({ kind: 'concept' });
+});
+
 it.each([
-  { id: 0 }, { id: undefined }, { pile: 'storage' }, { catalogRef: 'fc27:101' },
+  { id: 0 }, { id: undefined }, { pile: 'transfer' }, { pile: 'unassigned' },
+  { pile: undefined }, { catalogRef: 'fc27:101' },
 ])('rejects an invalid owned ref %j instead of treating it as a concept', patch => {
   const result = prepareFc27PuzzleConceptPlan({ challenge: { ...challenge, slotCount: 1, brickIndices: [] },
     plan: { status: 'preview', setId: 19, challengeId: 44, selectedOwned: [

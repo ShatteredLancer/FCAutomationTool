@@ -7,6 +7,23 @@ import { inspectEaChemistryDifferential } from './ea-chemistry-differential.mjs'
 import { inspectEaRequirementDifferential } from './ea-requirement-differential.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// Per-command evidence remains useful after the session-wide collector reaches
+// its cap. Never retain response bodies, headers, URLs or account identifiers.
+export async function observePuzzleCatalogTraffic(page, read) {
+  const statuses = [];
+  const listener = response => {
+    try {
+      const url = new URL(response.url());
+      if (url.protocol !== 'https:' || !/(^|\.)ea\.com$/.test(url.hostname)
+          || !/^\/ut\/game\/[a-z0-9_-]+\/sbs\/setId\/\d+\/challenges$/.test(url.pathname)) return;
+      const status = response.status();
+      if (statuses.length < 8 && Number.isInteger(status) && status >= 100 && status <= 599) statuses.push(status);
+    } catch { /* Invalid traffic is not diagnostic evidence. */ }
+  };
+  page.on('response', listener);
+  try { return { value: await read(), catalogTraffic: { observedResponses: statuses.length, statuses } }; }
+  finally { page.off('response', listener); }
+}
 export async function inspectPuzzlePlan(page, setId, challengeId) {
   if (pageKind(page.url()) !== 'web-app') return { status: 'blocked', reason: 'WEB_APP_REQUIRED', liveExecutionEnabled: false };
   if (![setId, challengeId].every(id => Number.isSafeInteger(id) && id > 0 && id < 1e9)) throw new Error('FC27_PUZZLE_ID_INVALID');
@@ -20,14 +37,16 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
     'src/adapters/ea/fc27-fsu-read.js', 'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',
     'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-challenge-catalog.js', 'src/adapters/ea/fc27-sbc-read.js', 'src/domain/player-rarity.js',
-    'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-preview.js', 'src/fc27/sbc-requirements.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-evaluator.js',
+    'src/fc27/prelaunch-contract.js', 'src/fc27/traditional-preview.js', 'src/fc27/sbc-requirements.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-plan-ranking.js', 'src/fc27/puzzle-evaluator.js',
     'src/adapters/ea/fc27-club-read.js', 'src/adapters/ea/fc27-puzzle-verify.js', 'src/fc27/puzzle-fill-plan.js',
+    'src/adapters/ea/fc27-streamlined-storage-read.js', 'src/adapters/ea/fc27-transaction-transport.js',
+    'src/streamlined/contract.js',
     'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-team-facts-probe.js', 'src/fc27/puzzle-material-policy.js',
     'src/fc27/puzzle-price-starts.js',
     'src/adapters/browser/fc27-puzzle-result-panel.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) throw new Error('Unreviewed Puzzle inspection dependency');
-  const payload = await page.evaluate(`(async () => { ${result.outputFiles[0].text}
+  const { value: payload, catalogTraffic } = await observePuzzleCatalogTraffic(page, () => page.evaluate(`(async () => { ${result.outputFiles[0].text}
     globalThis.document.getElementById('fcat-puzzle-readonly')?.remove();
     let transient = null;
     const report = await FC27PuzzleRead.inspectFc27VerifiedPuzzlePlan(globalThis, { setId: ${setId}, challengeId: ${challengeId} }, value => {
@@ -37,7 +56,7 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
     report.eaTeamFactsProbe = await FC27PuzzleRead.probeFc27TeamFactsRuntime(globalThis);
     try { FC27PuzzleRead.mountFc27PuzzleResultPanel({ document: globalThis.document, report }); }
     catch { /* Display failure cannot change the verification result. */ }
-    return { report, transient }; })()`);
+    return { report, transient }; })()`));
   const report = payload && Object.hasOwn(payload, 'report') ? payload.report : payload;
   if (!report || typeof report !== 'object' || Array.isArray(report)
       || Object.hasOwn(report, 'transient')) {
@@ -65,5 +84,5 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
       FC27PuzzleRead.mountFc27PuzzleResultPanel({ document: globalThis.document,
         report: ${JSON.stringify(aggregated).replaceAll('<', '\\u003c')} }); })()`);
   } catch { /* Display failure does not change verification evidence. */ }
-  return aggregated;
+  return { ...aggregated, catalogTraffic };
 }

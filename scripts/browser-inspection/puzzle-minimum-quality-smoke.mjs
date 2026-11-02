@@ -14,6 +14,8 @@ export async function exercisePuzzleMinimumQuality(context) {
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
       export { prepareFc27PuzzleConceptDraft, validateFc27PuzzleConceptDraft } from './src/fc27/puzzle-concept-draft.js';
       export { suggestFc27PuzzleJointPurchases } from './src/fc27/puzzle-procurement.js';
+      export { refineFc27PuzzleOwnedValue } from './src/fc27/puzzle-procurement.js';
+      export { previewFc27PuzzleSquad } from './src/fc27/puzzle-preview.js';
     ` }, bundle: true, write: false, format: 'iife', globalName: 'MinimumQualitySmoke', target: 'chrome120' });
     await page.setContent('<!doctype html><title>Puzzle minimum-quality offline regression</title>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
@@ -123,6 +125,75 @@ export async function exercisePuzzleMinimumQuality(context) {
       assert.equal(row.draft,'prepared'); assert.equal(row.verified,'verified'); assert.equal(row.writes,0);
     }
     console.log(`Puzzle bounded valuation Chrome passed: 250/251 safe versions, known-price subset, costs ${partialValues.map(row=>row.cost).join('/')}, <=250 per quote, native concept revalidation, no EA writes; synthetic only.`);
+    const replacement = await page.evaluate(async () => {
+      const api = globalThis.MinimumQualitySmoke, { input, owned } = api.minimumQualityFixture(2);
+      input.inventory.items = owned().map(item => ({ ...item, rating: 80 }));
+      const preview = api.previewFc27PuzzleSquad(input);
+      input.inventory.items.push({ ...input.inventory.items[2], id: 1001, definitionId: 9001, rating: 73 });
+      const prices = new Map(input.inventory.items.map(item => [item.definitionId, item.id === 1001 ? 200 : 1000]));
+      const result = await api.refineFc27PuzzleOwnedValue(input, preview, prices);
+      return { status: result.status, value: result.materialValue, initial: result.initialMaterialValue,
+        silver: result.selected.some(item => item.id === 1001), facts: result.teamFacts, nodes: result.nodes };
+    });
+    assert.equal(replacement.status, 'preview'); assert.equal(replacement.initial, 11000);
+    assert.equal(replacement.value, 10200); assert.equal(replacement.silver, true);
+    assert.ok(replacement.facts.chemistry >= 22 && replacement.nodes <= 20000);
+    console.log('Puzzle owned-value replacement Chrome passed: native minimum-silver/chemistry/identity constraints, 11000 to 10200 synthetic material value, shared 20k bound; no EA writes.');
+    const marketReplacement = await page.evaluate(() => {
+      const api = globalThis.MinimumQualitySmoke, { input, owned, entries } = api.minimumQualityFixture(2);
+      input.inventory.items = owned().map(item => ({ ...item, rating: 80 }));
+      const incumbent = api.previewFc27PuzzleSquad(input);
+      const card = { ...entries[2], definitionId: 9001, rating: 73 };
+      const result = api.suggestFc27PuzzleJointPurchases(input, [card], { incumbent, maxNodes: 32, costCeiling: 11000,
+        materialPrices: new Map(input.inventory.items.map(item => [item.definitionId, 1000])), prices: new Map([[9001, 200]]) });
+      const plan = result.plans?.[0];
+      const draft = plan && api.prepareFc27PuzzleConceptDraft(input, { ...plan,
+        purchases: plan.purchases.map(item => ({ ...item, estimatedUnitPrice: 200 })) });
+      const freshOwned = plan?.selectedOwned.map(ref => input.inventory.items.find(item => item.id === ref.id)) ?? [];
+      const verified = draft?.status === 'prepared' ? api.validateFc27PuzzleConceptDraft(draft, input, freshOwned) : null;
+      return { status: result.status, nodes: result.nodes, value: plan?.materialValue, cash: plan?.estimatedCost,
+        owned: plan?.selectedOwned.length, purchases: plan?.purchaseCount, facts: plan?.teamFacts,
+        draft: draft?.status, verified: verified?.status, optimal: result.optimalWithinPool };
+    });
+    assert.equal(marketReplacement.status, 'suggested'); assert.equal(marketReplacement.value, 10200);
+    assert.equal(marketReplacement.cash, 200); assert.equal(marketReplacement.owned, 10); assert.equal(marketReplacement.purchases, 1);
+    assert.ok(marketReplacement.nodes <= 32 && marketReplacement.facts.chemistry >= 22);
+    assert.equal(marketReplacement.draft, 'prepared'); assert.equal(marketReplacement.verified, 'verified');
+    assert.equal(marketReplacement.optimal, false);
+    console.log('Puzzle seeded market replacement Chrome passed: native-verified 10 owned + 1 silver concept, 10200 total / 200 added, same 32-node bound, concept revalidation; synthetic, no EA writes.');
+    const pairedReplacement = await page.evaluate(() => {
+      const api = globalThis.MinimumQualitySmoke, { input, owned } = api.minimumQualityFixture(2);
+      input.inventory.items = owned();
+      const baseline = api.previewFc27PuzzleSquad(input);
+      input.challenge.rawRequirements = input.challenge.rawRequirements.filter(rule => rule.pairs[0].key === 35);
+      const firstOwned = { ...input.inventory.items[0], id: 7001, definitionId: 9701 };
+      const secondOwned = { ...input.inventory.items[1], id: 7002, definitionId: 9702 };
+      input.inventory.items.push(firstOwned, secondOwned);
+      input.evaluateSquad = squad => {
+        const keys = new Set(squad.filter(Boolean).map(item => item.catalogRef ?? item.id));
+        const market = keys.has('fc27:9801') && keys.has('fc27:9802');
+        const ownedPair = keys.has(7001) && keys.has(7002);
+        return { status: 'observed', chemistry: market || ownedPair ? 22 : 0, teamRating: 80 };
+      };
+      const slots = baseline.selected.slice(0, 2).map(ref => ref.slot);
+      const incumbent = { status: 'preview', selected: [
+        ...baseline.selected.filter(ref => !slots.includes(ref.slot)),
+        { catalogRef: 'fc27:9801', definitionId: 9801, rating: 80, slot: slots[0] },
+        { catalogRef: 'fc27:9802', definitionId: 9802, rating: 80, slot: slots[1] },
+      ] };
+      const catalog = [9701, 9702].map((definitionId, index) => ({ definitionId: 9801 + index,
+        rating: 80, rarity: 0, nationId: 27, leagueId: 1, teamId: 1001, positions: [5], groups: [],
+        special: false, evolution: false, cosmetic: false }));
+      const result = api.suggestFc27PuzzleJointPurchases(input, catalog, { incumbent, maxNodes: 500,
+        prices: new Map([[9801, 500], [9802, 500]]), costCeiling: 1000 });
+      return { status: result.status, nodes: result.nodes, cash: result.plans?.[0]?.estimatedCost,
+        reason: result.reason, purchases: result.plans?.[0]?.purchaseCount,
+        ownedIds: result.plans?.[0]?.selectedOwned.map(ref => ref.id) };
+    });
+    assert.equal(pairedReplacement.status, 'suggested', JSON.stringify(pairedReplacement)); assert.equal(pairedReplacement.cash, 0);
+    assert.equal(pairedReplacement.purchases, 0); assert.ok(pairedReplacement.ownedIds.includes(7001));
+    assert.ok(pairedReplacement.ownedIds.includes(7002)); assert.ok(pairedReplacement.nodes <= 500);
+    console.log('Puzzle paired-combination Chrome passed: two individually invalid owned swaps replace two concepts together, zero cash, <=500 nodes; synthetic, no EA writes.');
     const cost = await page.evaluate(() => {
       const api = globalThis.MinimumQualitySmoke, { input, entries } = api.minimumQualityFixture(1);
       input.challenge.rawRequirements = input.challenge.rawRequirements.filter(rule => rule.pairs[0].key === 3);

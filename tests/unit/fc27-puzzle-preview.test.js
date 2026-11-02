@@ -98,6 +98,18 @@ it('uses exactly two capped gold cards and silver fillers for minimum silver plu
   expect(previewFc27PuzzleSquad(input)).toMatchObject({ status: 'blocked', selected: [] });
 });
 
+it('uses the available silver card for a minimum-silver SBC without a separate quality-count rule', () => {
+  const input = fixture(); input.challenge.slotCount = 3; input.policy.maxRating = 82;
+  input.challenge.rawRequirements = [row(26, 65, 3)];
+  input.inventory.items = input.inventory.items.map((item, index) => ({ ...item,
+    rating: index === 0 ? 74 : 80 }));
+  input.evaluateSquad = () => ({ status: 'observed', chemistry: 22, teamRating: 80 });
+  const result = previewFc27PuzzleSquad(input);
+  expect(result.status).toBe('preview');
+  expect(result.selected.map(item => item.rating).sort((a, b) => a - b)).toEqual([74, 80, 80]);
+  expect(result.validation.satisfied).toBe(true);
+});
+
 it.each([1, 2])('allows a protected-policy-compliant upgrade above minimum quality %i when chemistry needs it', quality => {
   const input = fixture(); input.policy.maxRating = 82;
   input.challenge.rawRequirements = [row(3, quality), row(35, 14)];
@@ -431,6 +443,6 @@ it('keeps the Puzzle core free from runtime adapters, legacy workflows and trans
   const result = await build({ entryPoints: ['src/fc27/puzzle-preview.js'], bundle: true, write: false, metafile: true });
   expect(Object.keys(result.metafile.inputs).map(name => name.replaceAll('\\', '/')).sort()).toEqual([
     'src/fc27/prelaunch-contract.js', 'src/fc27/puzzle-evaluator.js', 'src/fc27/puzzle-material-policy.js',
-    'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-price-starts.js', 'src/fc27/sbc-requirements.js', 'src/fc27/traditional-preview.js',
+    'src/fc27/puzzle-plan-ranking.js', 'src/fc27/puzzle-preview.js', 'src/fc27/puzzle-price-starts.js', 'src/fc27/sbc-requirements.js', 'src/fc27/traditional-preview.js',
   ]);
 });

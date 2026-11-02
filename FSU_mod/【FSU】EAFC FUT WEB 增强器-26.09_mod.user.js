@@ -4066,6 +4066,7 @@
             // 输出结果
             console.log(config);
             let mp = new EADialogViewController({
+                continueOption: { labelEnum: enums.UIDialogOptions.OK },
                 dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
                 message: fy(config.msg),
                 title: fy(config.title),
@@ -4145,15 +4146,16 @@
         }
         //24.16 排除球员配置按钮：弹窗事件
         events.ignorePlayerPopup = (ignoreTextElment) => {
-            let mp = new EADialogViewController({
-                dialogOptions: [{ labelEnum: 44404 },{ labelEnum: 44407 },{ labelEnum: 44405 },{ labelEnum: 44403 }],
-                message: fy(`playerignore.popupm`),
-                title: fy(`playerignore.popupt`),
-                type: EADialogView.Type.MESSAGE
-            });
-            mp.init();
-            mp.onExit.observe(mp,(e, z) => {
-                e.unobserve(mp);
+            const options = [
+                { labelEnum: 44404, label: fy("popupButtonsText.44404") },
+                { labelEnum: 44407, label: fy("popupButtonsText.44407") },
+                { labelEnum: 44405, label: fy("popupButtonsText.44405") },
+                { labelEnum: 44403, label: fy("popupButtonsText.44403"), close: true },
+            ];
+            const mp = events.popup(
+                fy(`playerignore.popupt`),
+                fy(`playerignore.popupm`),
+                z => {
                 if(z == 44404){
                     events.ignorePlayerTypePopup(1)
                 }else if(z == 44407){
@@ -4184,13 +4186,9 @@
                     )
                 }
                 ignoreTextElment.textContent = events.getIgnoreText();
-            });
-            gPopupClickShield.setActivePopup(mp);
-            _.flatMap(mp.getView().dialogOptions,(v,i) => {
-                if(v.__text.innerHTML == "*"){
-                    v.setText(fy(`popupButtonsText.${mp.options[i].labelEnum}`))
-                }
-            })
+                },
+                options
+            );
             mp.getView().__msg.style.padding = "1rem";
             mp.getView().__msg.style.fontSize = "100%";
             let buildArray = ["ignorepos","untradeable","league","flag","academy","strictlypcik","comprange","comprare","firststorage","sbfirstcommon"];
@@ -4216,6 +4214,7 @@
                 bToggle.__root.style.paddingRight = "0";
                 mp.getView().__msg.appendChild(bToggle.__root);
             })
+            return mp;
         }
         events.popup = (t,m,c,o,i,n,s) => {
             if(!o){
@@ -4232,7 +4231,9 @@
             let mp = new EADialogViewController({
                 // FC27 uses named options; FC26 still reads dialogOptions.
                 continueOption: o[0],
-                cancelOption: o[1],
+                // Fallback to the explicit close action when FC27 exposes only
+                // its two named controls and cannot render the extra FSU actions.
+                cancelOption: o.find(option => option?.close === true) || o[1],
                 dialogOptions: o,
                 message: message,
                 title: t,
@@ -4251,27 +4252,48 @@
             gPopupClickShield.setActivePopup(mp);
             // Preserve FSU's custom labels and third action on the FC27 view.
             const modernDialogView = mp.getView();
-            if (modernDialogView?.dialogOptionEnums instanceof Map && typeof modernDialogView.createOption == "function") {
+            if (modernDialogView) {
                 const popupLabel = (option) => {
+                    if (typeof option?.label === "string" && option.label) return option.label;
                     const key = `popupButtonsText.${option.labelEnum}`;
                     const label = fy(key);
                     return label === key ? null : label;
                 };
-                for (const [button, labelEnum] of modernDialogView.dialogOptionEnums.entries()) {
-                    const label = popupLabel({ labelEnum });
-                    if (label) button.setText(label);
+                if (modernDialogView.dialogOptionEnums instanceof Map) {
+                    for (const [button, labelEnum] of modernDialogView.dialogOptionEnums.entries()) {
+                        const label = popupLabel(o.find(option => option?.labelEnum === labelEnum) || { labelEnum });
+                        if (label) button.setText(label);
+                    }
                 }
-                for (const option of o.slice(2)) {
-                    modernDialogView.createOption(
-                        popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum),
-                        "cancel",
-                        option.labelEnum,
-                        option.mini
-                    );
+                if (modernDialogView.dialogOptionEnums instanceof Map && typeof modernDialogView.createOption == "function") {
+                    for (const option of o.slice(2)) {
+                        modernDialogView.createOption(
+                            popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum),
+                            option.close ? "cancel" : "continue",
+                            option.labelEnum,
+                            option.mini
+                        );
+                    }
+                    if (o.length > 2 && !o.some(option => option?.close === true)) {
+                        mp.cancelOption = o[o.length - 1];
+                    }
+                } else {
+                    // Some FC27 dialog views render only continue/cancel.
+                    // Keep the extra FSU actions visible inside the message and
+                    // reserve the native cancel control for the explicit Close.
+                    const closeOption = o.find(option => option?.close === true);
+                    const body = modernDialogView.__msg;
+                    if (body && typeof events.createButton === "function" && typeof UTStandardButtonControl === "function") {
+                        for (const option of o.slice(1).filter(entry => entry !== closeOption)) {
+                            const label = popupLabel(option) || utils.PopupManager.getLocalizedDialogOption(option.labelEnum);
+                            const control = events.createButton(new UTStandardButtonControl(), label,
+                                () => c.call(mp, option.labelEnum), "call-to-action");
+                            body.appendChild(control.getRootElement());
+                        }
+                    }
                 }
-                if (o.length > 2) {
-                    mp.cancelOption = o[o.length - 1];
-                }
+                const closeOption = o.find(option => option?.close === true);
+                if (closeOption) mp.cancelOption = closeOption;
             }
             _.flatMap(mp.getView().dialogOptions,(v,i) => {
                 if(v.__text.innerHTML == "*"){
@@ -4303,6 +4325,7 @@
                     mp.getView().__msg.appendChild(events.createDF(s));
                 }
             }
+            return mp;
         }
         events.wait = (min,max) => {
             let delay = Math.floor(Math.random() * (max * 1000 - min * 1000 + 1)) + min * 1000;
@@ -12045,6 +12068,8 @@
 
             /** 开始绘制弹窗 */
             let mp = new EADialogViewController({
+                continueOption: { labelEnum: 44410 },
+                cancelOption: { labelEnum: enums.UIDialogOptions.OK },
                 dialogOptions: [{ labelEnum: 44410 },{ labelEnum: enums.UIDialogOptions.OK }],
                 message: fy(`sbcneedslist.popupm`),
                 title: fy(`sbcneedslist.popupt`),
@@ -14377,6 +14402,7 @@
             if(prod.rarity.length){
                 events.hideLoader();
                 let mp = new EADialogViewController({
+                    continueOption: { labelEnum: enums.UIDialogOptions.OK },
                     dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
                     message: fy(`realprob.popupm`),
                     title: fy(["realprob.popupt",services.Localization.localize(pack.packName)]),
@@ -15608,6 +15634,8 @@
         //** 25.21 批量开包：开包确认弹窗 */
         events.openPacksConfirmPopup = (packId, packName, packCount) => {
             let popupController = new EADialogViewController({
+                continueOption: { labelEnum: enums.UIDialogOptions.OK },
+                cancelOption: { labelEnum: enums.UIDialogOptions.CANCEL },
                 dialogOptions: [
                     { labelEnum: enums.UIDialogOptions.OK },
                     { labelEnum: enums.UIDialogOptions.CANCEL }
@@ -15671,6 +15699,7 @@
         //26.02 调整样式错乱问题
         events.openPacksResultPopup = (title, text, players, desc) => {
             let popupController = new EADialogViewController({
+                continueOption: { labelEnum: enums.UIDialogOptions.OK },
                 dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
                 message: "",
                 title: title,
@@ -17925,6 +17954,7 @@
             const showPopup = (playerFG) => {
                 events.hideLoader();
                 let mp = new EADialogViewController({
+                    continueOption: { labelEnum: enums.UIDialogOptions.OK },
                     dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
                     message: fy(`fgrating.popupm1`),
                     title: fy("fgrating.popupt"),
