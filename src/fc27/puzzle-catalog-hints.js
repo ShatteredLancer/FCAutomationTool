@@ -2,6 +2,7 @@ import { traditionalJournalScope } from './traditional-journal.js';
 import { marketCandidates, puzzleOwnedValueCandidates, suggestFc27PuzzleJointPurchasesCooperatively } from './puzzle-procurement.js';
 import { allowedFc27MarketTiers } from './market-query-route.js';
 import { parseFc27SbcRequirements } from './sbc-requirements.js';
+import { createFc27PuzzleCostBound } from './puzzle-preview.js';
 import { yieldStreamlinedTask } from '../streamlined/scheduling.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -16,7 +17,7 @@ const queryValid = query => query && ['bronze', 'silver', 'gold'].includes(query
 // Same-account native history is a map of places to look, not current facts.
 // Return at most two query shapes, NEVER cards, quotes, plans or approvals.
 export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices, prices, materialPrices,
-  usedQueries, costCeiling, now, assertCurrent = () => {} }) {
+  usedQueries, costCeiling, now, assertCurrent = () => {}, scaffold = [], incumbent = null }) {
   const none = { queries: [], nodes: 0, pairs: 0 };
   const required = input.challenge.slotCount - input.challenge.brickIndices.length;
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required);
@@ -48,6 +49,10 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
     return Number.isSafeInteger(price) && price >= 150 && price <= 15000000;
   };
   const owned = puzzleOwnedValueCandidates(input).filter(card => !materialMode || valued(card));
+  // Keep current purchases purchase-only, with the same normalization as
+  // historical rows. A promising lane may replace just one or two cards;
+  // it need not supply an unrelated complete squad by itself.
+  const currentScaffold = marketCandidates(input, scaffold);
   // Zero means no additional purchase, NOT a zero inventory market value.
   // Exact candidate identities keep owned/market copies of one version apart.
   const ownedCards = new Set(owned);
@@ -59,7 +64,7 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
     const queries = a === b ? [rows[a].query] : [rows[a].query, rows[b].query];
     if (queries.every(query => usedQueries.some(used => same(used, query)))) continue;
     const unique = new Map(); let changed = false;
-    for (const card of [...rows[a].entries, ...rows[b].entries].filter(valued)) {
+    for (const card of [...currentScaffold, ...rows[a].entries, ...rows[b].entries].filter(valued)) {
       const old = unique.get(card.definitionId);
       if (old && !same(old, card)) { changed = true; break; }
       unique.set(card.definitionId, card);
@@ -68,8 +73,14 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
     const entries = [...unique.values()], pool = [...owned, ...entries];
     if (pool.length < required || parsed.rules.some(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
       && pool.filter(card => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3)).length < rule.count)) continue;
-    const floor = slots.reduce((sum, position) => sum + Math.min(Infinity,
+    const positionFloor = slots.reduce((sum, position) => sum + Math.min(Infinity,
       ...pool.filter(card => card.positions.includes(position)).map(costOf)), 0);
+    // A cheap bronze in every position is not a meaningful floor for a
+    // six/eight-gold challenge. Reuse the unique-version quality cost bound.
+    const counted = parsed.rules.filter(rule => rule.kind === 'quality-count').map(rule => ({ rule, used: 0,
+      matches: pool.map(card => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3)) }));
+    const compositionFloor = createFc27PuzzleCostBound(pool.map(costOf), counted, required, pool.map(card => card.definitionId))(0, required);
+    const floor = Math.max(positionFloor, compositionFloor);
     if (floor < costCeiling) pairs.push({ queries, entries, floor });
   }
   let nodes = 0, best = null;
@@ -77,6 +88,7 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
     assertCurrent();
     const result = await suggestFc27PuzzleJointPurchasesCooperatively(input, pair.entries, {
       prices: estimates, materialPrices: materialMode ? estimates : null, costCeiling: best?.cost ?? costCeiling,
+      incumbent, localSearchBudget: 512,
       maxNodes: 2000, assertCurrent, yieldControl: yieldPuzzleHintTask,
     });
     nodes += result.nodes ?? 0;

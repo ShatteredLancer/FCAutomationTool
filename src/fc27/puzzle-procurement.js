@@ -904,7 +904,8 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   const useLocal = localPlan && localValue < (costCeiling ?? Infinity)
     && (!resultPlan || comparePuzzlePlans(localPlan, resultPlan, objective) <= 0);
   if (result.status !== 'preview' && !useLocal) return { ...stop(result.reason), marketCandidates: market.length,
-    nodes: localNodes + (result.nodes ?? 0), truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT',
+    nodes: localNodes + (result.nodes ?? 0), localSearchNodes: local?.nodes ?? 0,
+    truncated: result.reason === 'FC27_PUZZLE_SEARCH_LIMIT',
     localReason: result.reason, searchComplete: false, optimalWithinPool: false,
     safeCandidates: result.safeCandidates ?? null, search: result.search ?? null,
     priceSource };
@@ -918,6 +919,7 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
     .reduce((sum, item) => sum + (materialPrices.get(item.definitionId) ?? 0), 0) : null;
   const values = materialPrices ? { materialValue: addedCost + inventoryValue, inventoryValue } : {};
   return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false,
+    localSearchNodes: local?.nodes ?? 0,
     plans: [{ ...projectSuggestion(squad, winner.teamFacts, parsed.rules.length),
       estimatedCost: addedCost, ...values }], marketCandidates: market.length, nodes: localNodes + (result.nodes ?? 0),
     truncated: useLocal || result.searchComplete === false, searchComplete: !useLocal && result.searchComplete === true,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.88
+// @version      27.0.89
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.88", at: Date.now(), status: 'started',
+    state = { version: "27.0.89", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7196,6 +7196,7 @@
       ...stop4(result.reason),
       marketCandidates: market.length,
       nodes: localNodes + (result.nodes ?? 0),
+      localSearchNodes: local?.nodes ?? 0,
       truncated: result.reason === "FC27_PUZZLE_SEARCH_LIMIT",
       localReason: result.reason,
       searchComplete: false,
@@ -7214,6 +7215,7 @@
       status: "suggested",
       reason: "FC27_PURCHASE_SUGGESTIONS_READY",
       executable: false,
+      localSearchNodes: local?.nodes ?? 0,
       plans: [{
         ...projectSuggestion(squad, winner.teamFacts, parsed.rules.length),
         estimatedCost: addedCost,
@@ -7559,7 +7561,9 @@
     costCeiling,
     now,
     assertCurrent = () => {
-    }
+    },
+    scaffold = [],
+    incumbent = null
   }) {
     const none = { queries: [], nodes: 0, pairs: 0 };
     const required2 = input.challenge.slotCount - input.challenge.brickIndices.length;
@@ -7591,6 +7595,7 @@
       return Number.isSafeInteger(price2) && price2 >= 150 && price2 <= 15e6;
     };
     const owned2 = puzzleOwnedValueCandidates(input).filter((card) => !materialMode || valued(card));
+    const currentScaffold = marketCandidates(input, scaffold);
     const ownedCards = new Set(owned2);
     const costOf2 = (card) => !materialMode && ownedCards.has(card) ? 0 : estimates.get(card.definitionId);
     const slots = input.challenge.formation.positions.filter((_position, slot) => !input.challenge.brickIndices.includes(slot));
@@ -7606,7 +7611,7 @@
       if (queries.every((query) => usedQueries.some((used) => same10(used, query)))) continue;
       const unique2 = /* @__PURE__ */ new Map();
       let changed = false;
-      for (const card of [...rows[a].entries, ...rows[b].entries].filter(valued)) {
+      for (const card of [...currentScaffold, ...rows[a].entries, ...rows[b].entries].filter(valued)) {
         const old = unique2.get(card.definitionId);
         if (old && !same10(old, card)) {
           changed = true;
@@ -7617,10 +7622,17 @@
       if (changed) continue;
       const entries2 = [...unique2.values()], pool = [...owned2, ...entries2];
       if (pool.length < required2 || parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && pool.filter((card) => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3)).length < rule.count)) continue;
-      const floor = slots.reduce((sum2, position) => sum2 + Math.min(
+      const positionFloor = slots.reduce((sum2, position) => sum2 + Math.min(
         Infinity,
         ...pool.filter((card) => card.positions.includes(position)).map(costOf2)
       ), 0);
+      const counted = parsed.rules.filter((rule) => rule.kind === "quality-count").map((rule) => ({
+        rule,
+        used: 0,
+        matches: pool.map((card) => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3))
+      }));
+      const compositionFloor = createFc27PuzzleCostBound(pool.map(costOf2), counted, required2, pool.map((card) => card.definitionId))(0, required2);
+      const floor = Math.max(positionFloor, compositionFloor);
       if (floor < costCeiling) pairs.push({ queries, entries: entries2, floor });
     }
     let nodes = 0, best = null;
@@ -7630,6 +7642,8 @@
         prices: estimates,
         materialPrices: materialMode ? estimates : null,
         costCeiling: best?.cost ?? costCeiling,
+        incumbent,
+        localSearchBudget: 512,
         maxNodes: 2e3,
         assertCurrent,
         yieldControl: yieldPuzzleHintTask
@@ -8137,6 +8151,8 @@
               materialPrices,
               costCeiling: planCost(incumbent[0]),
               assertCurrent,
+              scaffold: incumbent[0].purchases.map((card) => entries2.get(card.definitionId)).filter(Boolean),
+              incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
               readPrices: (ids2) => loadCachedPrices(ids2, {
                 policy: publicPolicy,
                 isCurrent: () => {
@@ -8187,6 +8203,7 @@
                 maxNodes: 2e4,
                 costCeiling: planCost(incumbent[0]),
                 priceSource: publicPolicy.source,
+                incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
                 assertCurrent,
                 yieldControl: yieldPuzzleHintTask,
                 onProgress: (value) => reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 2e4 })
@@ -8195,6 +8212,7 @@
             assertCurrent();
             searchSpent += result.nodes ?? 0;
             diagnostics.nodes = searchSpent;
+            diagnostics.localSearchNodes += result.localSearchNodes ?? 0;
             diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
             for (const key2 of Object.keys(diagnostics.search)) diagnostics.search[key2] += result.search?.[key2] ?? 0;
             if (result.status === "blocked" && ![
@@ -41162,7 +41180,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.88" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.89" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41504,8 +41522,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.88"}`,
-    version: "27.0.88",
+    title: `FC Automation Tool ${"27.0.89"}`,
+    version: "27.0.89",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

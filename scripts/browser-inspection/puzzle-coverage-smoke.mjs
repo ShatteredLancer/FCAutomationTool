@@ -68,9 +68,9 @@ export async function exercisePuzzleCoverage(context, optimizeMaterialValue = tr
     assert.equal(result.status, 'suggested', JSON.stringify(result));
     assert.equal(result.objective, optimizeMaterialValue ? 'material-value' : 'additional-coins');
     assert.ok(result.value <= 6000 && result.chemistry >= 20);
-    assert.equal(result.draft, 'prepared'); assert.equal(result.queries, 2);
+    assert.equal(result.draft, 'prepared'); assert.ok(result.queries >= 1 && result.queries <= 2);
     assert.ok(result.nodes <= 70000 && result.hintNodes <= 24000); assert.equal(result.globalMinimumProven, false);
     assert.equal(result.badQuotes, 0); assert.ok(result.skipped > 0);
-    console.log(`Puzzle catalogue coverage Chrome passed (${result.objective}): frozen public-fact subset -> ${result.value}, chemistry ${result.chemistry}, 2 fresh-shaped reads, native concept validation; not live prices or exact full account replay.`);
+    console.log(`Puzzle catalogue coverage Chrome passed (${result.objective}): frozen public-fact subset -> ${result.value}, chemistry ${result.chemistry}, ${result.queries} fresh-shaped reads, native concept validation; not live prices or exact full account replay.`);
   } finally { await page.close(); }
 }

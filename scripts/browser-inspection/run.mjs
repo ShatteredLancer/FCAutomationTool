@@ -98,8 +98,9 @@ if (help) {
       const { exercisePuzzleCoverage } = await import('./puzzle-coverage-smoke.mjs');
       await exercisePuzzleCoverage(context);
       await exercisePuzzleCoverage(context, false);
-      const { exercisePuzzleRatingFeasibility } = await import('./puzzle-rating-smoke.mjs');
+      const { exercisePuzzleRatingFeasibility, exercisePuzzleIncumbentCost } = await import('./puzzle-rating-smoke.mjs');
       await exercisePuzzleRatingFeasibility(context);
+      await exercisePuzzleIncumbentCost(context);
       const { exerciseStreamlined } = await import('./streamlined-smoke.mjs');
       await exerciseStreamlined(context);
       const { exerciseTraditionalPersistence } = await import('./traditional-persistence-smoke.mjs');

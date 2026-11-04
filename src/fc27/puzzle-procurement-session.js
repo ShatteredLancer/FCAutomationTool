@@ -418,6 +418,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         const hint = await measure('hintMs', () => readFc27PuzzleCatalogHints({ input, list, get, now, usedQueries,
           prices: new Map([...quotes].filter(([, quote]) => id(quote.price)).map(([id, quote]) => [id, quote.price])),
           materialPrices, costCeiling: planCost(incumbent[0]), assertCurrent,
+          scaffold: incumbent[0].purchases.map(card => entries.get(card.definitionId)).filter(Boolean),
+          incumbent: { status: 'preview', selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
           readPrices: ids => loadCachedPrices(ids, { policy: publicPolicy,
             isCurrent: () => { assertCurrent(); return true; } }) }));
         diagnostics.hintNodes = hint.nodes; diagnostics.hintPairs = hint.pairs;
@@ -461,10 +463,12 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           [...fresh.values()].filter(card => !unavailable.has(card.definitionId)), {
             prices: new Map([...quotes].map(([id, quote]) => [id, quote.price])), materialPrices,
             maxNodes: 20000, costCeiling: planCost(incumbent[0]), priceSource: publicPolicy.source,
+            incumbent: { status: 'preview', selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
             assertCurrent, yieldControl: yieldPuzzleHintTask,
             onProgress: value => reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 20000 }),
           }));
         assertCurrent(); searchSpent += result.nodes ?? 0; diagnostics.nodes = searchSpent;
+        diagnostics.localSearchNodes += result.localSearchNodes ?? 0;
         diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
         for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += result.search?.[key] ?? 0;
         if (result.status === 'blocked' && !['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',

@@ -2,7 +2,7 @@
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 main：**27.0.88**。Puzzle 对有评分门槛的解题，提前跳过原生评分已不足的完整组合，避免反复排列无效阵容；无合法方案时在原搜索额度内保留一个评分可行性起点，再按原成本目标比较。保留 .87 的补卡降本、ad 的库存/双目标逻辑及全部材料与交易保护。详见 [27.0.88 说明](docs/releases/27.0.88.md)。
+当前 main：**27.0.89**。Puzzle 降本保留已验证阵容作为起点，先比较单/双卡替换，再继续原有成本搜索；历史方向也按该阵容评估局部替换机会，并把金/银卡人数要求计入价格下界，避免只按便宜铜卡选错方向。保留 .88 可行性修复、原节点/页数及预算/保护。详见 [27.0.89 说明](docs/releases/27.0.89.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -34,7 +34,7 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-For current main, install [FCAutomationTool 27.0.88](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/main/FCAutomationTool.user.js?v=27.0.88). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
+For current main, install [FCAutomationTool 27.0.89](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/main/FCAutomationTool.user.js?v=27.0.89). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 
