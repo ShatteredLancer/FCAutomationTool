@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import path from 'node:path';
 
-export async function exercisePuzzleCoverage(context) {
+export async function exercisePuzzleCoverage(context, optimizeMaterialValue = true) {
   const page = await context.newPage();
   try {
     await page.route('**/*', route => route.abort());
@@ -18,7 +18,7 @@ export async function exercisePuzzleCoverage(context) {
     ` }, bundle: true, write: false, format: 'iife', globalName: 'PuzzleCoverageSmoke', target: 'chrome120' });
     await page.setContent('<!doctype html><title>Puzzle coverage offline regression</title>');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    const result = await page.evaluate(async () => {
+    const result = await page.evaluate(async optimizeMaterialValue => {
       const api = globalThis.PuzzleCoverageSmoke, data = api.observed, input = api.puzzleFillFixture(), now = input.now;
       input.challenge = { ...data.challenge, context: input.context };
       input.chemistry = structuredClone(data.chemistry); input.clubLinks = structuredClone(data.clubLinks);
@@ -54,21 +54,23 @@ export async function exercisePuzzleCoverage(context) {
           return { status: 'observed', source: 'ea-defid', season: '27', query, observedAt: now,
             entries: page.entries, pageEndObserved: page.pageEndObserved };
         } }),
-      }).plan(input, { optimizeMaterialValue: true });
+      }).plan(input, { optimizeMaterialValue });
       const plan = result.plans?.[0];
       const positions = input.challenge.formation.positions.filter((_position, slot) => !input.challenge.brickIndices.includes(slot));
       const unusable = new Set(data.pages.flatMap(page => page.entries).filter(card => !card.positions.some(position => positions.includes(position)))
         .map(card => card.definitionId));
-      return { status: result.status, reason: result.reason, value: plan?.materialValue, chemistry: plan?.teamFacts.chemistry,
+      return { status: result.status, reason: result.reason,
+        objective: result.diagnostics.objective, value: optimizeMaterialValue ? plan?.materialValue : plan?.estimatedCost, chemistry: plan?.teamFacts.chemistry,
         draft: plan ? api.prepareFc27PuzzleConceptDraft(input, plan).status : null, queries: queries.length,
         nodes: result.diagnostics.nodes, hintNodes: result.diagnostics.hintNodes, globalMinimumProven: result.globalMinimumProven,
         badQuotes: quoted.filter(id => unusable.has(id)).length, skipped: result.diagnostics.positionSkippedCount };
-    });
+    }, optimizeMaterialValue);
     assert.equal(result.status, 'suggested', JSON.stringify(result));
+    assert.equal(result.objective, optimizeMaterialValue ? 'material-value' : 'additional-coins');
     assert.ok(result.value <= 6000 && result.chemistry >= 20);
     assert.equal(result.draft, 'prepared'); assert.equal(result.queries, 2);
     assert.ok(result.nodes <= 70000 && result.hintNodes <= 24000); assert.equal(result.globalMinimumProven, false);
     assert.equal(result.badQuotes, 0); assert.ok(result.skipped > 0);
-    console.log(`Puzzle catalogue coverage Chrome passed: frozen public-fact subset -> ${result.value}, chemistry ${result.chemistry}, 2 fresh-shaped reads, native concept validation; not live prices or exact full account replay.`);
+    console.log(`Puzzle catalogue coverage Chrome passed (${result.objective}): frozen public-fact subset -> ${result.value}, chemistry ${result.chemistry}, 2 fresh-shaped reads, native concept validation; not live prices or exact full account replay.`);
   } finally { await page.close(); }
 }

@@ -41,12 +41,17 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
   if (!ids.length) return none;
   const cached = await readPrices(ids); assertCurrent();
   if (cached?.hintOnly !== true || !(cached.prices instanceof Map)) return none;
-  const estimates = new Map([...cached.prices, ...prices, ...materialPrices]);
+  const materialMode = materialPrices instanceof Map;
+  const estimates = new Map([...cached.prices, ...prices, ...(materialPrices ?? [])]);
   const valued = card => {
     const price = estimates.get(card.definitionId);
     return Number.isSafeInteger(price) && price >= 150 && price <= 15000000;
   };
-  const owned = puzzleOwnedValueCandidates(input).filter(valued);
+  const owned = puzzleOwnedValueCandidates(input).filter(card => !materialMode || valued(card));
+  // Zero means no additional purchase, NOT a zero inventory market value.
+  // Exact candidate identities keep owned/market copies of one version apart.
+  const ownedCards = new Set(owned);
+  const costOf = card => !materialMode && ownedCards.has(card) ? 0 : estimates.get(card.definitionId);
   const slots = input.challenge.formation.positions.filter((_position, slot) => !input.challenge.brickIndices.includes(slot));
   const pairs = []; let examined = 0;
   for (let a = 0; a < rows.length; a++) for (let b = a; b < rows.length; b++) {
@@ -64,20 +69,21 @@ export async function readFc27PuzzleCatalogHints({ input, list, get, readPrices,
     if (pool.length < required || parsed.rules.some(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
       && pool.filter(card => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3)).length < rule.count)) continue;
     const floor = slots.reduce((sum, position) => sum + Math.min(Infinity,
-      ...pool.filter(card => card.positions.includes(position)).map(card => estimates.get(card.definitionId))), 0);
+      ...pool.filter(card => card.positions.includes(position)).map(costOf)), 0);
     if (floor < costCeiling) pairs.push({ queries, entries, floor });
   }
   let nodes = 0, best = null;
   for (const pair of pairs.sort((a, b) => a.floor - b.floor || JSON.stringify(a.queries).localeCompare(JSON.stringify(b.queries))).slice(0, 12)) {
     assertCurrent();
     const result = await suggestFc27PuzzleJointPurchasesCooperatively(input, pair.entries, {
-      prices: estimates, materialPrices: estimates, costCeiling: best?.cost ?? costCeiling,
+      prices: estimates, materialPrices: materialMode ? estimates : null, costCeiling: best?.cost ?? costCeiling,
       maxNodes: 2000, assertCurrent, yieldControl: yieldPuzzleHintTask,
     });
     nodes += result.nodes ?? 0;
     const plan = result.plans?.[0];
-    if (result.status === 'suggested' && Number.isSafeInteger(plan?.materialValue)
-        && plan.materialValue < (best?.cost ?? costCeiling)) best = { queries: pair.queries, cost: plan.materialValue };
+    const cost = materialMode ? plan?.materialValue : plan?.estimatedCost;
+    if (result.status === 'suggested' && Number.isSafeInteger(cost)
+        && cost < (best?.cost ?? costCeiling)) best = { queries: pair.queries, cost };
   }
   assertCurrent();
   return { queries: best?.queries ?? [], nodes, pairs: Math.min(12, pairs.length) };

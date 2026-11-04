@@ -409,7 +409,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       };
       let coverageChecked = false;
       const refineCoverage = async () => {
-        if (coverageChecked || !totalValueMode || !loadCachedPrices || !list
+        // Costly cash-only plans need the same bounded discovery pass as
+        // material-value plans. A missing owned valuation is not evidence
+        // that the sampled market route is already cheap.
+        if (coverageChecked || !loadPublicPrices || !loadCachedPrices || !list
             || !refinementCards(refinementPlan(incumbent[0])).length) return;
         coverageChecked = true; diagnostics.stage = 'catalog-hints'; reportProgress();
         const hint = await measure('hintMs', () => readFc27PuzzleCatalogHints({ input, list, get, now, usedQueries,
@@ -423,7 +426,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             - ['team', 'nation', 'league'].filter(key => a[key]).length).slice(0, 2);
         if (!directions.length) return;
         catalogTotal = usedQueries.length + directions.filter(query => !usedQueries.some(used => same(used, query))).length;
-        diagnostics.initialMaterialValue = incumbent[0].materialValue;
+        if (totalValueMode) diagnostics.initialMaterialValue = incumbent[0].materialValue;
         diagnostics.coveragePages = 0;
         const fresh = new Map();
         for (const query of directions) {
@@ -467,7 +470,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         if (result.status === 'blocked' && !['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_NO_PLAN_FOUND', 'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PURCHASE_REPAIR_NO_PLAN'].includes(result.reason)) throw Error(result.reason);
         const better = result.plans?.[0];
-        if (result.status === 'suggested' && Number.isSafeInteger(better?.materialValue)
+        if (result.status === 'suggested' && better && Number.isSafeInteger(planCost(better))
             && planCost(better) < planCost(incumbent[0])) incumbent = [{ ...better,
           purchases: better.purchases.map(card => ({ ...card, estimatedUnitPrice: quotes.get(card.definitionId).price,
             priceReference: references.get(card.definitionId), priceSource: publicPolicy.source,

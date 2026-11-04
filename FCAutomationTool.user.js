@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.86
+// @version      27.0.87
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.86", at: Date.now(), status: 'started',
+    state = { version: "27.0.87", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7569,12 +7569,15 @@
     const cached = await readPrices(ids2);
     assertCurrent();
     if (cached?.hintOnly !== true || !(cached.prices instanceof Map)) return none;
-    const estimates = new Map([...cached.prices, ...prices, ...materialPrices]);
+    const materialMode = materialPrices instanceof Map;
+    const estimates = new Map([...cached.prices, ...prices, ...materialPrices ?? []]);
     const valued = (card) => {
       const price2 = estimates.get(card.definitionId);
       return Number.isSafeInteger(price2) && price2 >= 150 && price2 <= 15e6;
     };
-    const owned2 = puzzleOwnedValueCandidates(input).filter(valued);
+    const owned2 = puzzleOwnedValueCandidates(input).filter((card) => !materialMode || valued(card));
+    const ownedCards = new Set(owned2);
+    const costOf2 = (card) => !materialMode && ownedCards.has(card) ? 0 : estimates.get(card.definitionId);
     const slots = input.challenge.formation.positions.filter((_position, slot) => !input.challenge.brickIndices.includes(slot));
     const pairs = [];
     let examined = 0;
@@ -7601,7 +7604,7 @@
       if (pool.length < required2 || parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && pool.filter((card) => rule.qualities.includes(card.rating < 65 ? 1 : card.rating < 75 ? 2 : 3)).length < rule.count)) continue;
       const floor = slots.reduce((sum2, position) => sum2 + Math.min(
         Infinity,
-        ...pool.filter((card) => card.positions.includes(position)).map((card) => estimates.get(card.definitionId))
+        ...pool.filter((card) => card.positions.includes(position)).map(costOf2)
       ), 0);
       if (floor < costCeiling) pairs.push({ queries, entries: entries2, floor });
     }
@@ -7610,7 +7613,7 @@
       assertCurrent();
       const result = await suggestFc27PuzzleJointPurchasesCooperatively(input, pair.entries, {
         prices: estimates,
-        materialPrices: estimates,
+        materialPrices: materialMode ? estimates : null,
         costCeiling: best?.cost ?? costCeiling,
         maxNodes: 2e3,
         assertCurrent,
@@ -7618,7 +7621,8 @@
       });
       nodes += result.nodes ?? 0;
       const plan = result.plans?.[0];
-      if (result.status === "suggested" && Number.isSafeInteger(plan?.materialValue) && plan.materialValue < (best?.cost ?? costCeiling)) best = { queries: pair.queries, cost: plan.materialValue };
+      const cost = materialMode ? plan?.materialValue : plan?.estimatedCost;
+      if (result.status === "suggested" && Number.isSafeInteger(cost) && cost < (best?.cost ?? costCeiling)) best = { queries: pair.queries, cost };
     }
     assertCurrent();
     return { queries: best?.queries ?? [], nodes, pairs: Math.min(12, pairs.length) };
@@ -8104,7 +8108,7 @@
           };
           let coverageChecked = false;
           const refineCoverage = async () => {
-            if (coverageChecked || !totalValueMode || !loadCachedPrices || !list2 || !refinementCards(refinementPlan(incumbent[0])).length) return;
+            if (coverageChecked || !loadPublicPrices || !loadCachedPrices || !list2 || !refinementCards(refinementPlan(incumbent[0])).length) return;
             coverageChecked = true;
             diagnostics.stage = "catalog-hints";
             reportProgress();
@@ -8131,7 +8135,7 @@
             const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input).sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
             if (!directions.length) return;
             catalogTotal = usedQueries.length + directions.filter((query) => !usedQueries.some((used) => same11(used, query))).length;
-            diagnostics.initialMaterialValue = incumbent[0].materialValue;
+            if (totalValueMode) diagnostics.initialMaterialValue = incumbent[0].materialValue;
             diagnostics.coveragePages = 0;
             const fresh = /* @__PURE__ */ new Map();
             for (const query of directions) {
@@ -8186,7 +8190,7 @@
               "FC27_PURCHASE_REPAIR_NO_PLAN"
             ].includes(result.reason)) throw Error(result.reason);
             const better = result.plans?.[0];
-            if (result.status === "suggested" && Number.isSafeInteger(better?.materialValue) && planCost(better) < planCost(incumbent[0])) incumbent = [{
+            if (result.status === "suggested" && better && Number.isSafeInteger(planCost(better)) && planCost(better) < planCost(incumbent[0])) incumbent = [{
               ...better,
               purchases: better.purchases.map((card) => ({
                 ...card,
@@ -41143,7 +41147,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.86" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.87" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41485,8 +41489,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.86"}`,
-    version: "27.0.86",
+    title: `FC Automation Tool ${"27.0.87"}`,
+    version: "27.0.87",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -60,6 +60,18 @@ it('widens the real first-page 65/75 sample through fresh native reads before ac
   expect(result.globalMinimumProven).toBe(false);
 });
 
+it('also refines an expensive additional-coins route instead of skipping coverage without owned valuations', async () => {
+  const x = fixture();
+  const result = await createFc27PuzzleProcurementSession(x.options).plan(x.input);
+  expect(result.status).toBe('suggested');
+  expect(result.diagnostics.objective).toBe('additional-coins');
+  expect(result.plans[0].estimatedCost).toBeLessThanOrEqual(6000);
+  expect(result.plans[0].teamFacts.chemistry).toBeGreaterThanOrEqual(20);
+  expect(result.queries.length).toBeLessThanOrEqual(5);
+  expect(result.diagnostics.nodes).toBeLessThanOrEqual(70000);
+  expect(result.globalMinimumProven).toBe(false);
+});
+
 it('does not quote versions with no usable position when the native chemistry minimum requires all seven in position', async () => {
   const x = fixture();
   const slots = x.input.challenge.formation.positions.filter((_position, index) => !x.input.challenge.brickIndices.includes(index));
