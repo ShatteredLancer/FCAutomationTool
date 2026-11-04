@@ -53,6 +53,6 @@ export function* verifyGalleryReferenceSteps({ target, proposal, capital = null,
     }
     if (yield { phase: 'reference-validation', cards: items.length }) break;
   }
-  return { reached: true, score: summary.low.total, items, totalPrice: items.reduce((sum, row) => sum + row.price, 0),
+  return { reached: true, score: summary.low.total, scoringLineupIds:summary.lineup?.map(row=>row.eaId) ?? null, items, totalPrice: items.reduce((sum, row) => sum + row.price, 0),
     estimated: items.some(row => row.scoreSource !== 'ea'), referenceVerified: true };
 }

@@ -17,6 +17,18 @@ const project = plan => ({ status: plan.status, evaluations: plan.evaluations,
   ids: plan.plans[0]?.items.map(row => row.eaId), price: plan.plans[0]?.totalPrice,
   score: plan.plans[0]?.score ?? plan.plans[0]?.targets.map(target => target.score) });
 
+it('preserves confirmed-only score planning and held-but-unconfirmed evidence in sanitized replay', () => {
+  const target=input();target.targetGrade=500;target.confirmedCollectionOnly=true;
+  target.progress.rows[1].held=true;target.progress.rows[2].inClub=true;
+  const replay=createGalleryPlanReplay(target);
+  expect(replay.input.confirmedCollectionOnly).toBe(true);
+  expect(replay.input.progress.rows[1]).toMatchObject({collected:false,held:true});
+  expect(replay.input.progress.rows[2]).toMatchObject({collected:false,inClub:true});
+  expect(project(planGalleryGrade(replay.input))).toEqual(project(planGalleryGrade(target)));
+  expect(planGalleryGrade(replay.input).pendingCollectionCount).toBe(2);
+  expect(JSON.stringify(replay)).not.toContain('private');
+});
+
 it('replays single and shared targets with the same cost, versions, score and evaluation count', () => {
   const target = input(), joint = { targets: [target, { ...structuredClone(target),
     set: { ...target.set, id: 'futgg:42' } }], budget: 1000 };

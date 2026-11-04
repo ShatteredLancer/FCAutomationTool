@@ -7,7 +7,7 @@ import { isGalleryOwned } from './planner.js';
 export function galleryRoadmapMaterialKey(progress){
   const fields=['eaId','playerEaId','gradingScore','galleryScore','firstOwned','holographic','overall','nationEaId','clubEaId','leagueEaId','rarityEaId','positions','weakFoot','skillMoves'];
   return JSON.stringify([progress?.season,progress?.setId,progress?.complete,progress?.candidateOnly,progress?.poolComplete,
-    (progress?.rows ?? []).map(row=>[isGalleryOwned(row)?'owned':row.collected===false?'missing':'unknown',...fields.map(key=>row[key] ?? null)]).sort((a,b)=>a[1]-b[1])]);
+    (progress?.rows ?? []).map(row=>[isGalleryOwned(row)?'owned':row.collected===false?'missing':'unknown',...fields.map(key=>row[key] ?? null),row.collected ?? null]).sort((a,b)=>a[1]-b[1])]);
 }
 export function galleryRoadmapTargetKey(target) {
   return JSON.stringify([target.set,target.catalog?.revision,target.catalog?.tags,target.catalog?.engine,
@@ -19,18 +19,23 @@ export function galleryRoadmapTargetKey(target) {
 // changed semantics (including shared ever-owned versions), never all work.
 export function createGalleryRoadmapSession() {
   let entries=[],cursor=0,optionsKey=null,version=0,cached=null,comparisonTiming={};
-  const knownOwned=new Set();
+  const knownOwned=new Set(),confirmedOwned=new Set();
   const portfolioWork=createGalleryPortfolioWork();
-  const clear=()=>{for(const entry of entries)entry.work.clear();entries=[];cursor=0;optionsKey=null;version++;cached=null;comparisonTiming={};portfolioWork.clear();knownOwned.clear();};
+  const clear=()=>{for(const entry of entries)entry.work.clear();entries=[];cursor=0;optionsKey=null;version++;cached=null;comparisonTiming={};portfolioWork.clear();knownOwned.clear();confirmedOwned.clear();};
   const bind=(targets,options)=>{
     const key=JSON.stringify({...options,deep:undefined});if(optionsKey!==null && optionsKey!==key)clear();optionsKey=key;
     const previous=new Map(entries.map(entry=>[entry.target.set.id,entry]));
-    for(const target of targets)for(const row of target.progress?.rows ?? [])if(isGalleryOwned(row))knownOwned.add(row.eaId);
+    const scoreMode=options.objective==='score';
+    for(const target of targets)for(const row of target.progress?.rows ?? []){
+      if(isGalleryOwned(row))knownOwned.add(row.eaId);
+      if(row.collected===true)confirmedOwned.add(row.eaId);
+    }
     const owned=knownOwned;
     const changed=[];
     entries=targets.map(original=>{
       const target=!original.progress?.rows ? original : { ...original,progress:{...original.progress,
-        rows:original.progress.rows.map(row=>owned.has(row.eaId) && !isGalleryOwned(row) ? {...row,held:true} : row)} };
+        rows:original.progress.rows.map(row=>scoreMode && confirmedOwned.has(row.eaId) && row.collected!==true ? {...row,collected:true}
+          :owned.has(row.eaId) && !isGalleryOwned(row)?{...row,held:true}:row)} };
       const fingerprint=galleryRoadmapTargetKey(target),before=previous.get(target.set.id);previous.delete(target.set.id);
       if(before?.key===fingerprint)return before;
       before?.work.clear();changed.push(target.set.id);

@@ -24,6 +24,7 @@ import { DEFAULT_GALLERY_PLANNING_TIMEOUT_MS } from '../../gallery/planning-sett
 import { mountGalleryRoadmap } from './fc27-gallery-roadmap.js';
 import { mountGalleryLevel } from './fc27-gallery-level.js';
 import { galleryRoadmapMaterialKey } from '../../gallery/roadmap-session.js';
+import { galleryPlanSlots } from '../../gallery/plan-slots.js';
 
 // Enhancer exe/gPt chooses one image for a set; YPt/mPt is the separate
 // multi-image category presentation. The caller retains the selected image.
@@ -424,6 +425,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         blocked('FC27_GALLERY_PURCHASE_PLAN_STALE', '数据或报价已更新，请重新生成方案后再购买');
         return;
       }
+      const numericTarget=typeof targetGrade==='number' && replanContext?.mode==='single'?replanContext.targets?.[0]:null;
+      if(numericTarget && galleryPlanSlots({set:numericTarget.set,progress:details.get(numericTarget.set.id)?.progress ?? numericTarget.progress,
+        items,confirmedOnly:true}).status!=='complete'){
+        blocked('FC27_GALLERY_SCORING_SLOTS_INCOMPLETE','冲分目标尚未凑齐已确认可计分人数；仅持有未确认收藏的卡不算已填槽，请同步收藏后重算。');return;
+      }
       parent.querySelector('.gallery-purchase-error')?.remove();
       void diag({ event: 'purchase-click', phase: 'preflight', status: 'accepted', count: items.length });
       const pricedItems = items.map(item => {
@@ -709,6 +715,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   const renderPlan = (target, value, set, summary) => {
     if (typeof gradePlanner !== 'function' || !value?.progress || !result?.catalog) return;
     const surfaceKey = materialBinding(value, set);
+    const liveProgress=()=>details.get(set.id)?.progress;
     const running = runningPlanSurfaces.get(set.id);
     if (running?.key === surfaceKey) { target.append(running.section); return; }
     if (running) {
@@ -800,8 +807,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       output.replaceChildren();
       if (!plan || plan.status === 'unavailable') { add(output, 'small', `暂不可规划：${plan?.reason ?? '输入不完整'}`, 'gallery-unknown'); return; }
       if (plan.collectionUnknownCount) add(output, 'small', `${plan.collectionUnknownCount} 张卡收集状态待核实，已排除其计分和采购；按其余已确认卡规划。`, 'gallery-unknown');
+      if(plan.pendingCollectionCount)add(output,'small',`${plan.pendingCollectionCount} 张持有卡尚未确认画廊收藏，未计入已填槽，也不会重复采购；请同步收藏状态后重算。`,'gallery-unknown');
       if (plan.status === 'achieved') {
-        add(output, 'small', `当前已达到 ${plan.targetGrade} 档，无需补卡 · 0 金币。`);
+        const slots=galleryPlanSlots({set,progress:value.progress,scoringLineupIds:plan.scoringLineupIds ?? null,confirmedOnly:typeof plan.targetGrade==='number'});
+        if(slots.status!=='complete'){add(output,'small','当前可计分人数不足或尚未核验，旧的已达标结果不再适用，请重新生成。','gallery-unknown');return;}
+        add(output,'small',`已有可计分 ${slots.scoringCount}/${slots.required} 人；${typeof plan.targetGrade==='number'?`已达到目标 ${count(plan.targetGrade)} 分`:`当前已达到 ${plan.targetGrade} 档`}，无需补卡 · 0 金币。`);
         showRewardChange(output, plan.currentRewards, plan.currentRewards);
         add(output, 'small', '目录奖励预估 · 领取状态未知。', 'gallery-unknown');
         return;
@@ -839,16 +849,35 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           : `${count(candidate.score)} 分`;
         const heading = add(details, 'summary', `方案 ${index + 1} · ${candidate.items.length} 张 · ${candidate.totalPrice == null ? '报价未知' : `${count(candidate.totalPrice)} 🪙`} · ${scoreNote}`);
         showRewardChange(heading, plan.currentRewards, candidate.rewards);
+        const slots=galleryPlanSlots({set,progress:value.progress,items:candidate.items,scoringLineupIds:candidate.scoringLineupIds ?? null,
+          confirmedOnly:typeof candidate.targetGrade==='number'});
+        const slotNote=slots.status==='complete'
+          ? slots.witnessed && slots.purchaseCount===slots.purchaseRows
+            ? `已有可计分 ${slots.ownedCount} 人＋本方案采购 ${slots.purchaseCount} 人＝最终计分 ${slots.scoringCount}/${slots.required} 人`
+            : `已有可计分 ${slots.ownedCount} 人＋拟购可计分 ${slots.purchaseCount} 人；可凑齐 ${slots.scoringCount}/${slots.required} 人（采购清单 ${slots.purchaseRows} 张）`
+          : `本方案计分人数未核验完整：${slots.scoringCount}/${slots.required} 人；请重新生成，暂不购买。`;
+        add(details,'p',slotNote,'gallery-plan-completeness');
+        if(slots.ownedIds.length){
+          const byId=new Map(value.progress.rows.map(row=>[row.eaId,row]));
+          const confirmed=slots.ownedIds.every(id=>byId.get(id)?.collected===true);
+          const reused=add(details,'details');add(reused,'summary',`${slots.witnessed?confirmed?'本方案复用的已收集卡':'本方案复用的已收集或持有卡':'已有可计分候选'}（${slots.ownedIds.length} 人）`);
+          const ownList=add(reused,'ul');
+          for(const id of slots.ownedIds){const card=byId.get(id);add(ownList,'li',`${card?.name ?? id} · ${card?.version ?? '版本未知'} · ${card?.collected===true?'已收集':'已持有，收藏确认待同步'}，无需重买`);}
+        }
         const list = add(details, 'ul');
         for (const item of candidate.items) add(list, 'li', `${item.name ?? item.eaId} · ${item.version ?? '版本未知'} · ${purchasePriceText(item)}${item.scoreSource === 'catalog' ? ' · 公开估分' : ''}`);
         if (candidate.missingPriceIds.length) add(details, 'small', `${candidate.missingPriceIds.length} 张卡缺少报价，执行前必须重新查价。`, 'gallery-unknown');
         if (candidate.unknownFields?.length) add(details, 'small', '部分计分属性未知，方案按已知贡献计算。', 'gallery-unknown');
+        if(slots.status!=='complete')continue;
         purchaseButton(details, candidate.items, `set:${set.id}:${value.pool?.revision}:${candidate.items.map(item => item.eaId).join(',')}`,
           { progress: value.progress, targetGrade: candidate.targetGrade,
             replanContext: { targets: [{ set, catalog: result.catalog, progress: value.progress,
-              prices: planningPrices(value), priceSnapshot: value.priceSnapshot, targetGrade: candidate.targetGrade, scope: currentScope }],
+              prices: planningPrices(value), priceSnapshot: value.priceSnapshot, targetGrade: candidate.targetGrade,
+              ...(typeof candidate.targetGrade==='number'?{confirmedCollectionOnly:true}:{}),scope: currentScope }],
               mode: 'single', ledger: { receipts: [], excludedIds: [], quotes: {} }, budget: null },
-            valid: () => currentDetailMatches(set.id, expectedPlanBinding) });
+            valid: () => currentDetailMatches(set.id, expectedPlanBinding)
+              && galleryPlanSlots({set,progress:liveProgress(),items:candidate.items,
+                scoringLineupIds:candidate.scoringLineupIds ?? null,confirmedOnly:typeof candidate.targetGrade==='number'}).status==='complete' });
       }
     };
     const saved = planCache.get(set.id);
@@ -881,6 +910,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       if (maxMs == null || !run.capturePrices()) return;
       const binding = run.binding();
       const input = { set, catalog: result.catalog, progress: value.progress, prices: planningPrices(value), targetGrade: chosenGrade,
+        ...(typeof chosenGrade==='number'?{confirmedCollectionOnly:true}:{}),
         ...(gradePlanner === planGalleryGrade ? { lineupSearch: true } : {}) };
       const started = performance.now();
       run.captureReplay(input);
@@ -891,6 +921,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
               : value.scoringWork ? `正在计分复核… ${count(value.scoringWork)} 个内部步骤`
               : `正在计算… ${count(value.evaluations)} 个${value.completeLineups ? '完整组合' : '候选'} · ${Math.floor((performance.now() - started) / 1000)} 秒${value.bestPrice != null ? ` · 当前候选最低 ${count(value.bestPrice)} 金币（待最终复核）` : ''}`; } })
           : await gradePlanner(input);
+        const plannedSlots=plan && ['ready','achieved'].includes(plan.status)?galleryPlanSlots({set,progress:value.progress,
+          items:plan.plans?.[0]?.items ?? [],scoringLineupIds:plan.plans?.[0]?.scoringLineupIds ?? plan.scoringLineupIds ?? null,confirmedOnly:typeof plan.targetGrade==='number'}):null;
         if (plan) void diag({ event: 'grade-plan', phase: 'planner',
           replayInput: input,
           ...run.metrics,
@@ -901,6 +933,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
           quotedCount: plan.quotedCandidateCount, unknownCount: plan.collectionUnknownCount, eaScoreCount: plan.scoreSourceCounts?.ea,
           catalogScoreCount: plan.scoreSourceCounts?.catalog, targetScore: plan.threshold,
           currentScore: plan.currentScore, evaluations: plan.evaluations,
+          requiredSlots:set.requiredCards,
+          ...(plannedSlots?{acceptedCount:plannedSlots.scoringCount,ownedCount:plannedSlots.ownedCount,purchaseCount:plannedSlots.purchaseCount}:{}),
           searchComplete: plan.searchComplete === true, scopeTruncated: plan.scopeTruncated === true,
           beamTruncated: plan.beamTruncated === true, budgetExhausted: plan.budgetExhausted === true,
           timeExhausted: plan.timeExhausted === true, expandedCount: plan.omittedCandidates,

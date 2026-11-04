@@ -53,8 +53,11 @@ export async function exerciseGalleryCostReplay(context, directory) {
     assert.equal(event.status, 'success');
     assert.ok(event.bestPrice <= 13850, `single replay cost ${event.bestPrice}`);
     assert.ok(event.bestScore >= 7800);
-    const items = await host.locator('.gallery-plan-output details').first().locator('li').allTextContents();
+    const planNode=host.locator('.gallery-plan-output details').first();
+    const items = await planNode.locator(':scope > ul > li').allTextContents();
     assert.equal(items.length, 12);
+    assert.equal(await planNode.locator(':scope > details ul > li').count(),3,
+      'the three reused scoring versions are displayed separately from twelve purchases');
     assert.ok((await host.locator('.gallery-plan-output .gallery-reward-estimate').count()) >= 1,
       'single-set plan exposes the cumulative catalogue reward estimate');
     for (const id of [67297431, ...input.progress.rows.filter(row => row.collected).map(row => row.eaId)]) {

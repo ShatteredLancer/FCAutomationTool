@@ -28,6 +28,17 @@ it('exports historical collection separately from current holding and leaves cla
   expect(JSON.stringify(result)).not.toContain('DO_NOT_EXPORT');
 });
 
+it('exports full missing versions separately from unique financing cycles and predecessor dependencies',()=>{
+  const step={setId:set.id,cycles:[{eaId:13}],items:[{eaId:11},{eaId:12},{eaId:13}],reusedIds:[11,12],dependencySetIds:['futgg:1','futgg:2'],
+    scoringSlots:{status:'complete',required:5,scoringCount:5,ownedCount:2,purchaseCount:3,witnessed:true,ownedIds:['DO_NOT_EXPORT']}};
+  const result=buildGalleryAnalysisSnapshot({catalog,targets:[target()],plan:{route:[step],portfolios:[{route:[step]}]},now:5000});
+  for(const row of [result.roadmap.route[0],result.roadmap.portfolios[0].route[0]]){
+    expect(row).toMatchObject({purchaseVersionIds:[13],requiredPurchaseVersionIds:[11,12,13],sharedFromEarlierVersionIds:[11,12],
+      dependencySetIds:['futgg:1','futgg:2'],scoringSlots:{required:5,scoringCount:5,ownedCount:2,purchaseCount:3}});
+  }
+  expect(JSON.stringify(result)).not.toContain('DO_NOT_EXPORT');
+});
+
 it('deduplicates exact versions across sets, not base player identities, and flags contradictory evidence', () => {
   const other = { ...set, id: 'futgg:31' };
   const inputCatalog = { ...catalog, categories: [{ ...catalog.categories[0], sets: [set, other] }] };

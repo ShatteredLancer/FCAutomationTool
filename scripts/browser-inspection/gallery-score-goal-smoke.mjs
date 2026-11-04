@@ -13,7 +13,7 @@ export async function exerciseGalleryScoreGoal(context, directory) {
   const input=futggGallery(), base=input.data.categories[0].sets[0];
   base.requiredCards=1;
   base.grades.forEach((grade,index)=>{grade.threshold=(index+1)*10;});
-  input.data.categories=['Club','League','Nation'].map((name,index)=>({id:index+1,name,slug:name.toLowerCase(),
+  input.data.categories=['Club','League','Rarity'].map((name,index)=>({id:index+1,name,slug:name.toLowerCase(),
     sets:[{...structuredClone(base),id:30+index,categoryId:index+1,name:`${name} Alpha`,slug:`${name.toLowerCase()}-alpha`}]}));
   input.data.tags=[{id:1,name:'No-op bonus',bonusType:'ITEM_SCORE_PERCENTAGE',thresholdType:'ITEM_COUNT',
     rules:[{type:'COUNT',target:'ATTRIBUTE',attribute:'RARE',values:['999']}],tiers:[{minItems:1,bonus:1}]}];

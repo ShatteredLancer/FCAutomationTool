@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.89
+// @version      27.0.90
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.89", at: Date.now(), status: 'started',
+    state = { version: "27.0.90", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -16155,6 +16155,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       addedScore: Number.isFinite(scoreOf2(state)) ? scoreOf2(state) - currentScore : null,
       score: Number.isFinite(scoreOf2(state)) ? scoreOf2(state) : null,
       lineupComplete: state.summary?.full === true,
+      scoringLineupIds: state.summary?.lineup?.map((row) => row.eaId) ?? null,
       items: state.items.map((item2) => ({ ...item2 })),
       totalPrice: missingPriceIds.length ? null : state.price,
       missingPriceIds,
@@ -16176,7 +16177,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     maxEvaluations = 3e4,
     scoreSummarizer = null,
     lineupSearch = false,
-    scoreProbe = false
+    scoreProbe = false,
+    confirmedCollectionOnly = false
   } = {}) {
     if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every((value) => Number.isSafeInteger(value) && value > 0) || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 1e5) {
       return { status: "unavailable", reason: "search-options-invalid" };
@@ -16210,10 +16212,12 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
       return summaries.get(key2);
     };
-    const rows = progress.rows.filter((row) => validId5(row?.eaId));
+    let rows = progress.rows.filter((row) => validId5(row?.eaId));
     if (rows.length !== progress.rows.length) return { status: "unavailable", reason: "input-invalid" };
     if (rows.some((row) => row.collected != null && typeof row.collected !== "boolean")) return { status: "unavailable", reason: "input-invalid" };
     if (new Set(rows.map((row) => row.eaId)).size !== rows.length) return { status: "unavailable", reason: "duplicate-version" };
+    const pendingCollectionCount = confirmedCollectionOnly ? rows.filter((row) => isGalleryOwned(row) && row.collected !== true).length : 0;
+    if (confirmedCollectionOnly) rows = rows.filter((row) => !isGalleryOwned(row) || row.collected === true);
     const unknownRows = rows.filter((row) => row.collected == null && !isGalleryOwned(row));
     if (progress.complete === false) {
       return { status: "partial", reason: "collection-status-unknown", targetGrade, threshold, plans: [] };
@@ -16274,6 +16278,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         currentScore: scoreOf2(base),
         currentRewards,
         candidateCount: candidates.length,
+        ...confirmedCollectionOnly ? { pendingCollectionCount } : {},
+        scoringLineupIds: base.summary.lineup?.map((row) => row.eaId) ?? null,
         omittedCandidates,
         requestedCandidates,
         quotedCandidateCount,
@@ -16561,6 +16567,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       return {
         status: searchComplete ? "no-plan" : "partial",
         reason: scopeTruncated ? "candidate-search-truncated" : reason,
+        ...confirmedCollectionOnly ? { pendingCollectionCount } : {},
         targetGrade,
         threshold,
         currentScore: scoreOf2(base),
@@ -16610,6 +16617,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       currentScore: scoreOf2(base),
       currentRewards,
       candidateCount: candidates.length,
+      ...confirmedCollectionOnly ? { pendingCollectionCount } : {},
       omittedCandidates,
       requestedCandidates,
       quotedCandidateCount,
@@ -19708,7 +19716,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         portfolios: (plan.portfolios ?? []).slice(0, 3).map((value) => ({
           ...pick4(value, ["profile", "label", "status", "objective", "addedTokens", "claimState", "searchComplete", "comparisonPending", "planningObjective", "addedScore", "scoreBasis", "lossPer100k"]),
           funding: pick4(value.funding, ["requiredCapital", "totalPurchase", "expectedNetLoss", "feasible", "saleBasis"]),
-          route: value.route.map((row) => ({ ...pick4(row, ["setId", "targetGrade", "addedTokens", "scoreTarget", "addedScore"]), purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId) }))
+          route: value.route.map((row) => ({
+            ...pick4(row, ["setId", "targetGrade", "addedTokens", "scoreTarget", "addedScore"]),
+            purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId),
+            requiredPurchaseVersionIds: (row.items ?? []).map((item2) => item2.eaId),
+            sharedFromEarlierVersionIds: row.reusedIds ?? [],
+            dependencySetIds: row.dependencySetIds ?? [],
+            scoringSlots: row.scoringSlots ? pick4(row.scoringSlots, ["status", "required", "scoringCount", "ownedCount", "purchaseCount", "witnessed"]) : null
+          }))
         })),
         executionSteps: (plan.executionSteps ?? []).map((value) => pick4(value, ["setId", "targetGrade", "state", "scoreTarget"])),
         deepCoverage: plan.deepCoverage ? pick4(plan.deepCoverage, ["eligible", "completed", "quoted", "candidateLimit", "pending", "referencePending"]) : null,
@@ -19740,6 +19755,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             "scoreUncertain"
           ]),
           purchaseVersionIds: row.cycles.map((cycle) => cycle.eaId),
+          requiredPurchaseVersionIds: (row.items ?? []).map((item2) => item2.eaId),
+          sharedFromEarlierVersionIds: row.reusedIds ?? [],
+          dependencySetIds: row.dependencySetIds ?? [],
+          scoringSlots: row.scoringSlots ? pick4(row.scoringSlots, ["status", "required", "scoringCount", "ownedCount", "purchaseCount", "purchaseRows", "missingCount", "witnessed"]) : null,
           ...plan.demandDriven ? { quotedItems: row.items.map((item2) => ({
             eaId: item2.eaId,
             price: item2.price,
@@ -20100,6 +20119,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/roadmap-selection.js
+  var completeSlots = (option) => {
+    const slots = option.scoringSlots;
+    return slots?.status === "complete" && Number.isSafeInteger(slots.required) && slots.required > 0 && slots.scoringCount === slots.required && [slots.ownedCount, slots.purchaseCount].every((value) => Number.isSafeInteger(value) && value >= 0) && slots.purchaseCount <= (option.items?.length ?? 0) && (slots.witnessed ? slots.ownedCount + slots.purchaseCount === slots.required : slots.ownedCount + slots.purchaseCount >= slots.required);
+  };
   function* selectGalleryRoadmapSteps({
     rows = [],
     capital = null,
@@ -20156,7 +20179,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         option.referenceVerified,
         option.searchComplete
       ]), option])).values()] : row.options ?? [];
-      return options.filter((option) => !scoreMode || Number.isSafeInteger(option.score) && option.score > baseline(row)).map((option) => ({ row, option }));
+      return options.filter((option) => !scoreMode || completeSlots(option) && Number.isSafeInteger(option.score) && option.score > baseline(row)).map((option) => ({ row, option }));
     });
     const paired = [], seenPairs = /* @__PURE__ */ new Set(), memberships = /* @__PURE__ */ new Map();
     if (profile) for (const entry of singles) for (const item2 of entry.option.items ?? []) {
@@ -20184,7 +20207,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (const saved of previousSelection) {
       const row = rows.find((row2) => row2.setId === saved.setId);
       const option = row?.options.find((option2) => JSON.stringify(option2) === JSON.stringify(saved.option));
-      if (option && (!scoreMode || knownBaseline(row)) && quantity(option) > baseline(row)) selected.set(row.setId, { row, option });
+      if (option && (!scoreMode || knownBaseline(row) && completeSlots(option)) && quantity(option) > baseline(row)) selected.set(row.setId, { row, option });
     }
     if (selected.size) {
       funding = forecast(selected);
@@ -20268,13 +20291,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return snapshot();
   }
   function selectionSnapshot({ rows, selected, funding, gain, profile, scoreMode, selectionStopped, comparisons, skipped }) {
+    const plannedEarlier = /* @__PURE__ */ new Map();
     const route = funding.steps.map((step, index) => {
       const { row, option } = selected.get(step.setId);
+      const dependencySetIds = [...new Set(step.reusedIds.map((id12) => plannedEarlier.get(id12)).filter(Boolean))];
+      for (const cycle of step.cycles) plannedEarlier.set(cycle.eaId, step.setId);
       return {
         ...step,
         order: index + 1,
         name: row.name,
         categoryId: row.categoryId,
+        dependencySetIds,
         currentGrade: row.currentGrade,
         targetGrade: option.grade,
         currentScore: scoreMode ? row.scoreBaseline ?? row.currentScore : row.currentScore,
@@ -20283,6 +20310,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         projectedTokens: option.projectedTokens,
         addedTokens: option.projectedTokens - row.baselineTokens,
         items: option.items,
+        ...option.scoringSlots ? { scoringSlots: option.scoringSlots } : {},
         ...scoreMode ? { scoreTarget: option.score, addedScore: option.score - (row.scoreBaseline ?? row.currentScore), scoreUncertain: row.scoreUncertain === true } : {},
         claimState: "unknown",
         estimated: option.estimated !== false,
@@ -20290,7 +20318,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         referenceVerified: option.referenceVerified === true
       };
     });
-    const unavailable = rows.filter((row) => scoreMode && row.collectionUnknown || !(row.options?.length > 0) && row.reason).map((row) => ({ setId: row.setId, name: row.name, reason: scoreMode && row.collectionUnknown ? "collection-status-unknown" : row.reason }));
+    const incomplete = (row) => scoreMode && row.options?.length > 0 && !row.options.some(completeSlots);
+    const unavailable = rows.filter((row) => scoreMode && row.collectionUnknown || incomplete(row) || !(row.options?.length > 0) && row.reason).map((row) => ({ setId: row.setId, name: row.name, reason: scoreMode && row.collectionUnknown ? "collection-status-unknown" : incomplete(row) ? "scoring-slots-incomplete" : row.reason }));
     return {
       status: route.length ? "ready" : "no-route",
       objective: scoreMode ? `score-estimate-${profile ?? "efficiency"}` : profile ? `grade-first-${profile}` : "low-forecast-loss-per-added-token",
@@ -20377,6 +20406,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return {
       reached: true,
       score: summary3.low.total,
+      scoringLineupIds: summary3.lineup?.map((row) => row.eaId) ?? null,
       items,
       totalPrice: items.reduce((sum2, row) => sum2 + row.price, 0),
       estimated: items.some((row) => row.scoreSource !== "ea"),
@@ -20447,6 +20477,54 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/gallery/plan-slots.js
+  var positive10 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 1e8;
+  var versionId = (value) => Number.isSafeInteger(value) && value > 0 && value <= 1e9;
+  function galleryPlanSlots({ set, progress, items = [], scoringLineupIds = null, confirmedOnly = false } = {}) {
+    const required2 = set?.requiredCards;
+    const unavailable = {
+      status: "unverified",
+      required: required2 ?? null,
+      scoringCount: 0,
+      ownedCount: 0,
+      purchaseCount: 0,
+      purchaseRows: items?.length ?? 0,
+      missingCount: required2 ?? null,
+      ownedIds: [],
+      witnessed: false
+    };
+    if (!Number.isSafeInteger(required2) || required2 < 1 || !Array.isArray(progress?.rows) || progress.complete === false || !Array.isArray(items) || progress.rows.some((row) => !versionId(row?.eaId)) || items.some((row) => !versionId(row?.eaId))) return unavailable;
+    const rows = new Map(progress.rows.map((row) => [row.eaId, row]));
+    if (rows.size !== progress.rows.length || new Set(items.map((row) => row.eaId)).size !== items.length) return unavailable;
+    const owned2 = new Set(progress.rows.filter((row) => (confirmedOnly ? row.collected === true : isGalleryOwned(row)) && positive10(row.gradingScore)).map((row) => row.eaId));
+    const purchased = /* @__PURE__ */ new Set();
+    for (const item2 of items) {
+      const row = rows.get(item2.eaId);
+      if (!row) return unavailable;
+      if (isGalleryOwned(row)) continue;
+      if (row.collected !== false) return unavailable;
+      const score2 = row.gradingScore ?? row.galleryScore ?? item2.score;
+      if (positive10(score2)) purchased.add(row.eaId);
+    }
+    const available = /* @__PURE__ */ new Set([...owned2, ...purchased]), witnessed = Array.isArray(scoringLineupIds);
+    if (scoringLineupIds !== null && !witnessed) return unavailable;
+    if (witnessed && new Set(scoringLineupIds).size !== scoringLineupIds.length) return unavailable;
+    const ids2 = witnessed ? scoringLineupIds : [...available];
+    if (witnessed && ids2.some((id12) => !available.has(id12))) return unavailable;
+    const scoringCount = Math.min(required2, ids2.length), ownedIds = ids2.filter((id12) => owned2.has(id12));
+    return {
+      status: ids2.length >= required2 && (!witnessed || ids2.length === required2) ? "complete" : "incomplete",
+      required: required2,
+      scoringCount,
+      ownedCount: ownedIds.length,
+      purchaseCount: ids2.filter((id12) => purchased.has(id12)).length,
+      purchaseRows: items.length,
+      missingCount: Math.max(0, required2 - ids2.length),
+      ownedIds,
+      witnessed
+    };
+  }
+
   // src/gallery/roadmap.js
   function* planGalleryRoadmapSteps({
     targets = [],
@@ -20496,7 +20574,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const scorer = work.memo(target, "scorer", () => createGalleryScoreSummarizer(catalog, { summaryCacheSize: 64, fastTotals: true }));
       const baseline = yield* work.run(target, "baseline", () => scorer.steps({ set, progress: {
         ...progress,
-        rows: progress.rows.map((card) => isGalleryOwned(card) ? { ...card, collected: true } : card)
+        rows: progress.rows.map((card) => !scoreMode && isGalleryOwned(card) ? { ...card, collected: true } : card)
       } }));
       if (!baseline.complete) {
         row.reason = "search-time-exhausted";
@@ -20519,6 +20597,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (scoreMode) {
         row.scoreBaseline = base.collectionUnknown ? null : base.full ? base.high?.total ?? base.low.total : 0;
         row.scoreUncertain = base.low.total !== base.high?.total;
+        row.pendingCollectionCount = progress.rows.filter((card) => isGalleryOwned(card) && card.collected !== true).length;
       }
       row.candidateOnly = progress.candidateOnly === true || progress.poolComplete === false;
       const grades3 = set.grades.filter((grade) => scoreMode ? grade.threshold > (row.scoreBaseline ?? Infinity) : galleryCumulativeRewardQuantity(set, grade.threshold, key2) > row.baselineTokens);
@@ -20527,7 +20606,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (threshold <= 1e8) grades3.push({ name: `points:${threshold}`, threshold, numeric: true });
       }
       if (rowsOnly) grades3.sort((a, b) => ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[b.name] ?? 0) - ({ S: 5, A: 4, B: 3, C: 2, D: 1 }[a.name] ?? 0));
-      const planningProgress = capital === null ? progress : { ...progress, rows: progress.rows.filter((card) => isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital)) };
+      const planningProgress = { ...progress, rows: progress.rows.filter((card) => (!scoreMode || !isGalleryOwned(card) || card.collected === true) && (capital === null || isGalleryOwned(card) || !(Number.isSafeInteger(target.prices?.[card.eaId]) && target.prices[card.eaId] > capital))) };
       for (const grade of grades3) {
         if (row.checkedGrades.includes(grade.name)) continue;
         const proposal = target.publicReference?.grades.find((row2) => row2.grade === grade.name && row2.cost != null);
@@ -20570,21 +20649,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         gradesChecked++;
         const candidate = result.plans?.[0] ?? (scoreMode ? result.bestScoringCandidate : null);
-        if ((result.status === "ready" && candidate?.reached || scoreMode && candidate?.lineupComplete && candidate.score > row.scoreBaseline) && candidate.totalPrice !== null && (!scoreMode || row.scoreBaseline !== null && candidate.score > row.scoreBaseline)) {
+        const slots = candidate ? galleryPlanSlots({
+          set,
+          progress: planningProgress,
+          items: candidate.items,
+          scoringLineupIds: candidate.scoringLineupIds ?? null,
+          confirmedOnly: scoreMode
+        }) : null;
+        if ((result.status === "ready" && candidate?.reached || scoreMode && candidate?.lineupComplete && candidate.score > row.scoreBaseline) && candidate.totalPrice !== null && (!scoreMode || slots?.status === "complete" && row.scoreBaseline !== null && candidate.score > row.scoreBaseline)) {
           const reached = galleryCatalogGrade(set, { full: true, low: { total: candidate.score } });
           const requested = grade.numeric ? grade.threshold : grade.name;
+          const { ownedIds, ...scoringSlots } = slots;
+          void ownedIds;
           row.options = row.options.filter((option) => option.requestedGrade !== requested);
           row.options.push({
             grade: reached?.name ?? (grade.numeric ? "\u8BA1\u5206" : grade.name),
             requestedGrade: requested,
             score: candidate.score,
             items: candidate.items,
+            scoringSlots,
             projectedTokens: galleryCumulativeRewardQuantity(set, candidate.score, key2),
             estimated: candidate.estimated,
             referenceVerified: candidate.referenceVerified === true,
             searchComplete: result.searchComplete === true
           });
-        } else row.reason = result.reason ?? "grade-proposal-unavailable";
+        } else row.reason = scoreMode && candidate && slots?.status !== "complete" ? "scoring-slots-incomplete" : result.reason ?? "grade-proposal-unavailable";
         if (!result.timeExhausted) row.checkedGrades.push(grade.name);
         row.analysisComplete = grades3.every((grade2) => row.checkedGrades.includes(grade2.name));
         if (result.timeExhausted || (yield {
@@ -20601,6 +20690,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       row.analysisComplete = grades3.every((grade) => row.checkedGrades.includes(grade.name));
+      if (scoreMode && row.pendingCollectionCount && !row.options.length) row.reason = "collection-confirmation-required";
       if (row.analysisComplete && !retainWork) work.release(target);
       if (stopped) break;
       if (yield {
@@ -20729,7 +20819,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress?.complete,
       progress?.candidateOnly,
       progress?.poolComplete,
-      (progress?.rows ?? []).map((row) => [isGalleryOwned(row) ? "owned" : row.collected === false ? "missing" : "unknown", ...fields4.map((key2) => row[key2] ?? null)]).sort((a, b) => a[1] - b[1])
+      (progress?.rows ?? []).map((row) => [isGalleryOwned(row) ? "owned" : row.collected === false ? "missing" : "unknown", ...fields4.map((key2) => row[key2] ?? null), row.collected ?? null]).sort((a, b) => a[1] - b[1])
     ]);
   }
   function galleryRoadmapTargetKey(target) {
@@ -20749,7 +20839,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function createGalleryRoadmapSession() {
     let entries2 = [], cursor = 0, optionsKey = null, version = 0, cached = null, comparisonTiming = {};
-    const knownOwned = /* @__PURE__ */ new Set();
+    const knownOwned = /* @__PURE__ */ new Set(), confirmedOwned = /* @__PURE__ */ new Set();
     const portfolioWork = createGalleryPortfolioWork();
     const clear = () => {
       for (const entry of entries2) entry.work.clear();
@@ -20761,19 +20851,24 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       comparisonTiming = {};
       portfolioWork.clear();
       knownOwned.clear();
+      confirmedOwned.clear();
     };
     const bind = (targets, options) => {
       const key2 = JSON.stringify({ ...options, deep: void 0 });
       if (optionsKey !== null && optionsKey !== key2) clear();
       optionsKey = key2;
       const previous = new Map(entries2.map((entry) => [entry.target.set.id, entry]));
-      for (const target of targets) for (const row of target.progress?.rows ?? []) if (isGalleryOwned(row)) knownOwned.add(row.eaId);
+      const scoreMode = options.objective === "score";
+      for (const target of targets) for (const row of target.progress?.rows ?? []) {
+        if (isGalleryOwned(row)) knownOwned.add(row.eaId);
+        if (row.collected === true) confirmedOwned.add(row.eaId);
+      }
       const owned2 = knownOwned;
       const changed = [];
       entries2 = targets.map((original) => {
         const target = !original.progress?.rows ? original : { ...original, progress: {
           ...original.progress,
-          rows: original.progress.rows.map((row) => owned2.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row)
+          rows: original.progress.rows.map((row) => scoreMode && confirmedOwned.has(row.eaId) && row.collected !== true ? { ...row, collected: true } : owned2.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row)
         } };
         const fingerprint = galleryRoadmapTargetKey(target), before = previous.get(target.set.id);
         previous.delete(target.set.id);
@@ -20992,11 +21087,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       resaleDiscountBps: plan.funding.resaleDiscountBps,
       optimizeOrder: false
     });
+    const earlier = /* @__PURE__ */ new Map();
     return {
       ...plan,
       status: selected.length ? "ready" : "no-route",
       funding,
-      route: funding.steps.map((step, index) => ({ ...byId.get(step.setId), ...step, order: index + 1 })),
+      route: funding.steps.map((step, index) => {
+        const dependencySetIds = [...new Set(step.reusedIds.map((id12) => earlier.get(id12)).filter(Boolean))];
+        for (const cycle of step.cycles) earlier.set(cycle.eaId, step.setId);
+        return { ...byId.get(step.setId), ...step, dependencySetIds, order: index + 1 };
+      }),
       addedTokens: selected.reduce((n, row) => n + row.addedTokens, 0),
       ...plan.planningObjective === "score" ? {
         addedScore: selected.reduce((n, row) => n + row.addedScore, 0),
@@ -21697,13 +21797,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const tableWrap = add(document, output2, "div");
       tableWrap.className = "gallery-roadmap-table";
       const table = add(document, tableWrap, "table"), head = add(document, table, "tr");
-      for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", scoreMode ? "\u65B0\u589E\u8BA1\u7B97\u5206" : "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u590D\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
+      for (const text5 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", scoreMode ? "\u65B0\u589E\u8BA1\u7B97\u5206" : "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u8DE8\u5408\u96C6\u5171\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text5);
       for (const step of result.route) {
         const tr = add(document, table, "tr");
         add(document, tr, "th", `${step.order}. ${step.name}`);
         add(document, tr, "td", scoreMode ? `${step.scoreUncertain ? "\u2264 " : ""}${money(step.currentScore)} \u2192 ${money(step.projectedScore)} \u5206\uFF08${step.targetGrade}\uFF09` : `${step.currentGrade ?? "\u672A\u8FBE\u6863"} \u2192 ${step.targetGrade}`);
         add(document, tr, "td", `+${scoreMode ? money(step.addedScore) : step.addedTokens}`);
-        add(document, tr, "td", `${step.cycles.length} \u5F20 / ${step.reusedIds.length} \u5F20`);
+        const material = add(document, tr, "td", `${step.cycles.length} \u5F20 / ${step.reusedIds.length} \u5F20`), slots = step.scoringSlots;
+        if (slots?.status === "complete") add(document, material, "small", `\u8BA1\u5206\u4EBA\u6570\uFF1A\u5DF2\u6709 ${slots.ownedCount}\uFF0B\u9700\u8865 ${slots.purchaseCount} \u2192 ${slots.scoringCount}/${slots.required}${slots.witnessed ? "" : "\uFF08\u53EF\u9009\u4EBA\u6570\uFF09"}`);
+        if (step.reusedIds.length) add(document, material, "small", `\u5176\u4E2D ${step.reusedIds.length} \u5F20\u4F9D\u8D56\u524D\u5E8F\u8D2D\u5165\uFF0C\u5C1A\u672A\u786E\u8BA4\u6536\u85CF\uFF0C\u4E0D\u662F\u5F53\u524D\u5DF2\u6709\u5361\u3002`);
         const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
         open.type = "button";
         open.addEventListener("click", (event) => {
@@ -21718,6 +21820,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         const cards = add(document, output2, "details");
         add(document, cards, "summary", `${step.order}. ${step.name} \xB7 \u8865\u5361\u4E0E\u9010\u5361\u5468\u8F6C\u660E\u7EC6`);
+        add(document, cards, "p", `\u672C\u5408\u96C6\u5B8C\u6574\u8865\u5361\u6E05\u5355 ${step.items.length} \u5F20\uFF1B\u672C\u6B65\u9AA4\u9996\u6B21\u91C7\u8D2D ${step.cycles.length} \u5F20\uFF0C\u53E6\u6709 ${step.reusedIds.length} \u5F20\u4F9D\u8D56\u524D\u5E8F\u8DEF\u7EBF\u3002\u5171\u4EAB\u5361\u5728\u5B9E\u9645\u4E70\u5165\u5E76\u786E\u8BA4\u6536\u85CF\u524D\uFF0C\u4E0D\u7B97\u4F60\u5DF2\u6536\u96C6\u3002\u8FDB\u5165\u672C\u5408\u96C6\u540E\u4F1A\u6309\u5B9E\u9645\u6536\u96C6\u72B6\u6001\u91CD\u65B0\u751F\u6210\u5B8C\u6574\u8865\u5361\u65B9\u6848\u3002`);
+        if (step.dependencySetIds?.length) add(document, cards, "p", `\u524D\u5E8F\u4F9D\u8D56\uFF1A${step.dependencySetIds.map((id12) => result.route.find((row) => row.setId === id12)?.name ?? id12).join("\u3001")}\u3002\u672A\u5B8C\u6210\u524D\u5E8F\u65F6\uFF0C\u53EF\u76F4\u63A5\u8FDB\u5165\u672C\u5408\u96C6\u91CD\u65B0\u89C4\u5212\uFF0C\u4E0D\u53EA\u4E70\u672C\u6B65\u9AA4\u9996\u6B21\u91C7\u8D2D\u7684\u5361\u3002`);
+        for (const id12 of step.reusedIds) {
+          const item2 = step.items.find((row) => row.eaId === id12);
+          add(document, cards, "p", `${item2?.name ?? id12} \xB7 \u5171\u4EAB\u5F85\u91C7\u8D2D/\u5F85\u786E\u8BA4\u6536\u85CF \xB7 \u4F30\u4EF7 ${money(item2?.price)}`);
+        }
         for (const cycle of step.cycles) {
           const card = step.items.find((item2) => item2.eaId === cycle.eaId);
           add(document, cards, "p", `${card?.name ?? cycle.eaId} \xB7 ${card?.version ?? ""} \xB7 \u4E70\u5165 ${money(cycle.price)} \u2192 \u9884\u8BA1\u7A0E\u540E\u56DE\u6536 ${money(cycle.expectedSaleNet)}${cycle.expectedClosingBalance != null ? ` \u2192 \u9884\u8BA1\u4F59\u989D ${money(cycle.expectedClosingBalance)}` : ""}`);
@@ -21744,6 +21852,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           "candidate-search-truncated": "\u5019\u9009\u8303\u56F4\u6709\u9650\uFF0C\u5C1A\u672A\u786E\u8BA4\u65B9\u6848",
           "quote-expired": "\u6B64\u9879\u72EC\u7ACB\u62A5\u4EF7\u5DF2\u8FC7\u671F\uFF1B\u53C2\u8003\u5168\u8C8C\u4ECD\u4FDD\u7559\uFF0C\u53EF\u7EE7\u7EED\u91CD\u65B0\u6838\u4EF7",
           "collection-updated": "\u6536\u85CF\u6216\u5361\u6C60\u5DF2\u53D8\u5316\uFF0C\u6B63\u5728\u5C40\u90E8\u66F4\u65B0",
+          "scoring-slots-incomplete": "\u5206\u6570\u5019\u9009\u672A\u51D1\u9F50\u53EF\u8BA1\u5206\u4EBA\u6570\uFF0C\u672A\u7EB3\u5165\u53EF\u6267\u884C\u8DEF\u7EBF",
+          "collection-confirmation-required": "\u5B58\u5728\u4EC5\u6301\u6709\u4F46\u5C1A\u672A\u786E\u8BA4\u753B\u5ECA\u6536\u96C6\u7684\u5361\uFF0C\u4E0D\u5F53\u4F5C\u5DF2\u6EE1\u5458\uFF1B\u8BF7\u540C\u6B65\u6536\u85CF\u72B6\u6001\uFF0C\u4E0D\u8981\u91CD\u590D\u8D2D\u4E70\u8FD9\u4E9B\u5361",
           "deep-analysis-pending": "\u5FEB\u901F\u9996\u8F6E\u5C1A\u672A\u786E\u8BA4\uFF0C\u53EF\u52FE\u9009\u6DF1\u5EA6\u4F18\u5316\u7EE7\u7EED\u68C0\u67E5"
         };
         for (const item2 of pending2) add(document, details, "p", `${item2.name} \xB7 ${reasons2[item2.reason] ?? `\u5C1A\u672A\u786E\u8BA4\u65B9\u6848\uFF08${item2.reason}\uFF09`}${item2.capitalShortfall ? ` \xB7 \u9884\u8BA1\u8FD8\u5DEE ${money(item2.capitalShortfall)} \u91D1\u5E01\u672C\u91D1` : ""}`);
@@ -22976,6 +23086,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           blocked12("FC27_GALLERY_PURCHASE_PLAN_STALE", "\u6570\u636E\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u540E\u518D\u8D2D\u4E70");
           return;
         }
+        const numericTarget = typeof targetGrade === "number" && replanContext?.mode === "single" ? replanContext.targets?.[0] : null;
+        if (numericTarget && galleryPlanSlots({
+          set: numericTarget.set,
+          progress: details.get(numericTarget.set.id)?.progress ?? numericTarget.progress,
+          items,
+          confirmedOnly: true
+        }).status !== "complete") {
+          blocked12("FC27_GALLERY_SCORING_SLOTS_INCOMPLETE", "\u51B2\u5206\u76EE\u6807\u5C1A\u672A\u51D1\u9F50\u5DF2\u786E\u8BA4\u53EF\u8BA1\u5206\u4EBA\u6570\uFF1B\u4EC5\u6301\u6709\u672A\u786E\u8BA4\u6536\u85CF\u7684\u5361\u4E0D\u7B97\u5DF2\u586B\u69FD\uFF0C\u8BF7\u540C\u6B65\u6536\u85CF\u540E\u91CD\u7B97\u3002");
+          return;
+        }
         parent.querySelector(".gallery-purchase-error")?.remove();
         void diag({ event: "purchase-click", phase: "preflight", status: "accepted", count: items.length });
         const pricedItems = items.map((item2) => {
@@ -23343,6 +23463,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const renderPlan = (target, value, set, summary3) => {
       if (typeof gradePlanner !== "function" || !value?.progress || !result?.catalog) return;
       const surfaceKey = materialBinding(value, set);
+      const liveProgress = () => details.get(set.id)?.progress;
       const running = runningPlanSurfaces.get(set.id);
       if (running?.key === surfaceKey) {
         target.append(running.section);
@@ -23464,8 +23585,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return;
         }
         if (plan.collectionUnknownCount) add3(output, "small", `${plan.collectionUnknownCount} \u5F20\u5361\u6536\u96C6\u72B6\u6001\u5F85\u6838\u5B9E\uFF0C\u5DF2\u6392\u9664\u5176\u8BA1\u5206\u548C\u91C7\u8D2D\uFF1B\u6309\u5176\u4F59\u5DF2\u786E\u8BA4\u5361\u89C4\u5212\u3002`, "gallery-unknown");
+        if (plan.pendingCollectionCount) add3(output, "small", `${plan.pendingCollectionCount} \u5F20\u6301\u6709\u5361\u5C1A\u672A\u786E\u8BA4\u753B\u5ECA\u6536\u85CF\uFF0C\u672A\u8BA1\u5165\u5DF2\u586B\u69FD\uFF0C\u4E5F\u4E0D\u4F1A\u91CD\u590D\u91C7\u8D2D\uFF1B\u8BF7\u540C\u6B65\u6536\u85CF\u72B6\u6001\u540E\u91CD\u7B97\u3002`, "gallery-unknown");
         if (plan.status === "achieved") {
-          add3(output, "small", `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
+          const slots = galleryPlanSlots({ set, progress: value.progress, scoringLineupIds: plan.scoringLineupIds ?? null, confirmedOnly: typeof plan.targetGrade === "number" });
+          if (slots.status !== "complete") {
+            add3(output, "small", "\u5F53\u524D\u53EF\u8BA1\u5206\u4EBA\u6570\u4E0D\u8DB3\u6216\u5C1A\u672A\u6838\u9A8C\uFF0C\u65E7\u7684\u5DF2\u8FBE\u6807\u7ED3\u679C\u4E0D\u518D\u9002\u7528\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u3002", "gallery-unknown");
+            return;
+          }
+          add3(output, "small", `\u5DF2\u6709\u53EF\u8BA1\u5206 ${slots.scoringCount}/${slots.required} \u4EBA\uFF1B${typeof plan.targetGrade === "number" ? `\u5DF2\u8FBE\u5230\u76EE\u6807 ${count3(plan.targetGrade)} \u5206` : `\u5F53\u524D\u5DF2\u8FBE\u5230 ${plan.targetGrade} \u6863`}\uFF0C\u65E0\u9700\u8865\u5361 \xB7 0 \u91D1\u5E01\u3002`);
           showRewardChange(output, plan.currentRewards, plan.currentRewards);
           add3(output, "small", "\u76EE\u5F55\u5956\u52B1\u9884\u4F30 \xB7 \u9886\u53D6\u72B6\u6001\u672A\u77E5\u3002", "gallery-unknown");
           return;
@@ -23507,10 +23634,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const scoreNote = candidate.currentScore != null ? `\u5F53\u524D ${count3(candidate.currentScore)} + \u65B0\u589E ${count3(candidate.addedScore ?? 0)} = ${count3(candidate.score)} \u5206` : `${count3(candidate.score)} \u5206`;
           const heading = add3(details2, "summary", `\u65B9\u6848 ${index + 1} \xB7 ${candidate.items.length} \u5F20 \xB7 ${candidate.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count3(candidate.totalPrice)} \u{1FA99}`} \xB7 ${scoreNote}`);
           showRewardChange(heading, plan.currentRewards, candidate.rewards);
+          const slots = galleryPlanSlots({
+            set,
+            progress: value.progress,
+            items: candidate.items,
+            scoringLineupIds: candidate.scoringLineupIds ?? null,
+            confirmedOnly: typeof candidate.targetGrade === "number"
+          });
+          const slotNote = slots.status === "complete" ? slots.witnessed && slots.purchaseCount === slots.purchaseRows ? `\u5DF2\u6709\u53EF\u8BA1\u5206 ${slots.ownedCount} \u4EBA\uFF0B\u672C\u65B9\u6848\u91C7\u8D2D ${slots.purchaseCount} \u4EBA\uFF1D\u6700\u7EC8\u8BA1\u5206 ${slots.scoringCount}/${slots.required} \u4EBA` : `\u5DF2\u6709\u53EF\u8BA1\u5206 ${slots.ownedCount} \u4EBA\uFF0B\u62DF\u8D2D\u53EF\u8BA1\u5206 ${slots.purchaseCount} \u4EBA\uFF1B\u53EF\u51D1\u9F50 ${slots.scoringCount}/${slots.required} \u4EBA\uFF08\u91C7\u8D2D\u6E05\u5355 ${slots.purchaseRows} \u5F20\uFF09` : `\u672C\u65B9\u6848\u8BA1\u5206\u4EBA\u6570\u672A\u6838\u9A8C\u5B8C\u6574\uFF1A${slots.scoringCount}/${slots.required} \u4EBA\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\uFF0C\u6682\u4E0D\u8D2D\u4E70\u3002`;
+          add3(details2, "p", slotNote, "gallery-plan-completeness");
+          if (slots.ownedIds.length) {
+            const byId = new Map(value.progress.rows.map((row2) => [row2.eaId, row2]));
+            const confirmed = slots.ownedIds.every((id12) => byId.get(id12)?.collected === true);
+            const reused = add3(details2, "details");
+            add3(reused, "summary", `${slots.witnessed ? confirmed ? "\u672C\u65B9\u6848\u590D\u7528\u7684\u5DF2\u6536\u96C6\u5361" : "\u672C\u65B9\u6848\u590D\u7528\u7684\u5DF2\u6536\u96C6\u6216\u6301\u6709\u5361" : "\u5DF2\u6709\u53EF\u8BA1\u5206\u5019\u9009"}\uFF08${slots.ownedIds.length} \u4EBA\uFF09`);
+            const ownList = add3(reused, "ul");
+            for (const id12 of slots.ownedIds) {
+              const card = byId.get(id12);
+              add3(ownList, "li", `${card?.name ?? id12} \xB7 ${card?.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${card?.collected === true ? "\u5DF2\u6536\u96C6" : "\u5DF2\u6301\u6709\uFF0C\u6536\u85CF\u786E\u8BA4\u5F85\u540C\u6B65"}\uFF0C\u65E0\u9700\u91CD\u4E70`);
+            }
+          }
           const list2 = add3(details2, "ul");
           for (const item2 of candidate.items) add3(list2, "li", `${item2.name ?? item2.eaId} \xB7 ${item2.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${purchasePriceText(item2)}${item2.scoreSource === "catalog" ? " \xB7 \u516C\u5F00\u4F30\u5206" : ""}`);
           if (candidate.missingPriceIds.length) add3(details2, "small", `${candidate.missingPriceIds.length} \u5F20\u5361\u7F3A\u5C11\u62A5\u4EF7\uFF0C\u6267\u884C\u524D\u5FC5\u987B\u91CD\u65B0\u67E5\u4EF7\u3002`, "gallery-unknown");
           if (candidate.unknownFields?.length) add3(details2, "small", "\u90E8\u5206\u8BA1\u5206\u5C5E\u6027\u672A\u77E5\uFF0C\u65B9\u6848\u6309\u5DF2\u77E5\u8D21\u732E\u8BA1\u7B97\u3002", "gallery-unknown");
+          if (slots.status !== "complete") continue;
           purchaseButton(
             details2,
             candidate.items,
@@ -23526,13 +23674,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   prices: planningPrices(value),
                   priceSnapshot: value.priceSnapshot,
                   targetGrade: candidate.targetGrade,
+                  ...typeof candidate.targetGrade === "number" ? { confirmedCollectionOnly: true } : {},
                   scope: currentScope
                 }],
                 mode: "single",
                 ledger: { receipts: [], excludedIds: [], quotes: {} },
                 budget: null
               },
-              valid: () => currentDetailMatches(set.id, expectedPlanBinding)
+              valid: () => currentDetailMatches(set.id, expectedPlanBinding) && galleryPlanSlots({
+                set,
+                progress: liveProgress(),
+                items: candidate.items,
+                scoringLineupIds: candidate.scoringLineupIds ?? null,
+                confirmedOnly: typeof candidate.targetGrade === "number"
+              }).status === "complete"
             }
           );
         }
@@ -23580,6 +23735,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             progress: value.progress,
             prices: planningPrices(value),
             targetGrade: chosenGrade,
+            ...typeof chosenGrade === "number" ? { confirmedCollectionOnly: true } : {},
             ...gradePlanner === planGalleryGrade ? { lineupSearch: true } : {}
           };
           const started = performance.now();
@@ -23595,6 +23751,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               output.textContent = value2.seedWork ? `\u6B63\u5728\u5EFA\u7ACB\u5019\u9009\u7EC4\u5408\u2026 ${count3(value2.seedWork)} \u4E2A\u8BA1\u5206\u6B65\u9AA4` : value2.scoringWork ? `\u6B63\u5728\u8BA1\u5206\u590D\u6838\u2026 ${count3(value2.scoringWork)} \u4E2A\u5185\u90E8\u6B65\u9AA4` : `\u6B63\u5728\u8BA1\u7B97\u2026 ${count3(value2.evaluations)} \u4E2A${value2.completeLineups ? "\u5B8C\u6574\u7EC4\u5408" : "\u5019\u9009"} \xB7 ${Math.floor((performance.now() - started) / 1e3)} \u79D2${value2.bestPrice != null ? ` \xB7 \u5F53\u524D\u5019\u9009\u6700\u4F4E ${count3(value2.bestPrice)} \u91D1\u5E01\uFF08\u5F85\u6700\u7EC8\u590D\u6838\uFF09` : ""}`;
             }
           }) : await gradePlanner(input);
+          const plannedSlots = plan && ["ready", "achieved"].includes(plan.status) ? galleryPlanSlots({
+            set,
+            progress: value.progress,
+            items: plan.plans?.[0]?.items ?? [],
+            scoringLineupIds: plan.plans?.[0]?.scoringLineupIds ?? plan.scoringLineupIds ?? null,
+            confirmedOnly: typeof plan.targetGrade === "number"
+          }) : null;
           if (plan) void diag({
             event: "grade-plan",
             phase: "planner",
@@ -23613,6 +23776,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             targetScore: plan.threshold,
             currentScore: plan.currentScore,
             evaluations: plan.evaluations,
+            requiredSlots: set.requiredCards,
+            ...plannedSlots ? { acceptedCount: plannedSlots.scoringCount, ownedCount: plannedSlots.ownedCount, purchaseCount: plannedSlots.purchaseCount } : {},
             searchComplete: plan.searchComplete === true,
             scopeTruncated: plan.scopeTruncated === true,
             beamTruncated: plan.beamTruncated === true,
@@ -32190,7 +32355,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   };
   var galleryRelistKey = (scope2) => `fcat-fc27-gallery-auto-relist-v1:${scope2}`;
   var safe2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_RELIST_UNCONFIRMED";
-  var positive10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var positive11 = (value) => Number.isSafeInteger(value) && value > 0;
   function createFc27GalleryRelist({
     root,
     get,
@@ -32207,7 +32372,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const read = async (context, scope2) => {
       const raw = await get(galleryRelistKey(scope2), null);
       if (raw === null) return null;
-      if (raw.schema !== 1 || !same28(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive10(raw.nextAt) || !positive10(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive10(ref.id) || !positive10(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive10(row?.item?.id) || !positive10(row?.item?.definitionId) || !positive10(row.auction?.startingBid) || !positive10(row.auction?.buyNowPrice)))) fail29("FC27_GALLERY_RELIST_RECORD_INVALID");
+      if (raw.schema !== 1 || !same28(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive11(raw.nextAt) || !positive11(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive11(ref.id) || !positive11(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive11(row?.item?.id) || !positive11(row?.item?.definitionId) || !positive11(row.auction?.startingBid) || !positive11(row.auction?.buyNowPrice)))) fail29("FC27_GALLERY_RELIST_RECORD_INVALID");
       return copy(raw);
     };
     const write = async (scope2, value) => {
@@ -32288,7 +32453,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 expectedBinding: snapshot.binding
               });
               if (receipts.status !== "observed") fail29(receipts.reason);
-              items = receipts.entries.filter((row) => positive10(row.itemId) && positive10(row.definitionId)).map((row) => ({ id: row.itemId, definitionId: row.definitionId }));
+              items = receipts.entries.filter((row) => positive11(row.itemId) && positive11(row.definitionId)).map((row) => ({ id: row.itemId, definitionId: row.definitionId }));
               if (!items.length || new Set(items.map((row) => row.id)).size !== items.length) fail29("FC27_GALLERY_LISTING_NO_PURCHASE");
             }
             const value = {
@@ -32394,7 +32559,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if ((await env.adapter.refreshTransferItems()).status !== "completed") fail29("FC27_GALLERY_TRANSFER_UNCONFIRMED");
             env.assert();
             const before = normalizeBulkRelistSnapshot(env.adapter.inspectBulkRelistSnapshot());
-            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive10(row.item.id) || !positive10(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail29("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
+            if (before.status !== "loaded" || before.truncated || before.items.some((row) => !positive11(row.item.id) || !positive11(row.item.definitionId)) || new Set(before.items.map((row) => row.item.id)).size !== before.items.length) fail29("FC27_GALLERY_RELIST_SNAPSHOT_UNVERIFIED");
             const entries2 = value.range === "all" ? before.items : before.items.filter((row) => value.items.some((ref) => ref.id === row.item.id && ref.definitionId === row.item.definitionId));
             if (!entries2.length) {
               value.nextAt = now() + value.minutes * 6e4;
@@ -33074,7 +33239,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           },
           prices: quotes,
           targetGrade,
-          ...!joint && target.lineupSearch === true ? { lineupSearch: true } : {}
+          ...!joint && target.lineupSearch === true ? { lineupSearch: true } : {},
+          ...!joint && target.confirmedCollectionOnly === true ? { confirmedCollectionOnly: true } : {}
         };
       });
       if (joint && input.budget != null && !integer18(input.budget)) return null;
@@ -33445,7 +33611,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/reference-prices.js
-  var positive11 = (value) => Number.isSafeInteger(value) && value > 0;
+  var positive12 = (value) => Number.isSafeInteger(value) && value > 0;
   var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
   var reasonOf2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE";
   var platformSuffix = (source, options) => source === "futbin" && options.futbinPlatform ? `:${options.futbinPlatform}` : "";
@@ -33637,7 +33803,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       // approval-shaped references; expired prices must never authorize buys.
       async cachedEstimates(ids2, { season = "27", platform, policy = {}, isCurrent = () => true } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id12) => !positive11(id12))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id12) => !positive12(id12))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const options = { season, platform, ...policy.source === "futbin" && policy.futbinPlatform ? { futbinPlatform: policy.futbinPlatform } : {} }, prices = /* @__PURE__ */ new Map();
         for (const id12 of new Set(ids2)) {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
@@ -33671,7 +33837,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         deadlineAt = null
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id12) => !positive11(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id12) => !positive12(id12)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const current2 = () => {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         };
@@ -41180,7 +41346,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.89" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.90" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41522,8 +41688,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.89"}`,
-    version: "27.0.89",
+    title: `FC Automation Tool ${"27.0.90"}`,
+    version: "27.0.90",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

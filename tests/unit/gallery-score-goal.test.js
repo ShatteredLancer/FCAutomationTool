@@ -5,8 +5,9 @@ import { filterGalleryRoadmapRoutes } from '../../src/gallery/roadmap-retain.js'
 import { planGalleryGradeSteps } from '../../src/gallery/planner.js';
 import { createGalleryRoadmapSession } from '../../src/gallery/roadmap-session.js';
 const finish=steps=>{let next;do{next=steps.next();}while(!next.done);return next.value;};
-const row=(setId,score,price,extra={})=>({setId,name:setId,currentScore:0,scoreBaseline:0,currentGrade:null,
-  baselineTokens:0,options:[{grade:'C',requestedGrade:'C',score,projectedTokens:0,items:[{eaId:1,price}]}],...extra});
+const row=(setId,score,price,extra={})=>{const value={setId,name:setId,currentScore:0,scoreBaseline:0,currentGrade:null,
+  baselineTokens:0,options:[{grade:'C',requestedGrade:'C',score,projectedTokens:0,items:[{eaId:1,price}]}],...extra};
+  value.options=value.options.map(option=>({...option,scoringSlots:{status:'complete',required:1,scoringCount:1,ownedCount:0,purchaseCount:1}}));return value;};
 
 it('separates score efficiency from grade-first token routes',()=>{
   const rows=[row('club',10,10000,{options:[{grade:'S',score:10,projectedTokens:99,items:[{eaId:2,price:10000}]}]}),row('league',1000,1000)];

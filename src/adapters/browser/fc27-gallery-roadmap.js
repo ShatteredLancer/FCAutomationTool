@@ -191,13 +191,15 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       : '当前已分析范围未得到可确认的升级路线；不代表全画廊无方案。请看待核实项目，或继续分析剩余合集。');
     const tableWrap = add(document, output, 'div'); tableWrap.className = 'gallery-roadmap-table';
     const table = add(document, tableWrap, 'table'), head = add(document, table, 'tr');
-    for (const text of ['顺序 / 合集', '现状 → 目标', scoreMode?'新增计算分':'新增 token', '本批新买 / 复用', '执行入口']) add(document, head, 'th', text);
+    for (const text of ['顺序 / 合集', '现状 → 目标', scoreMode?'新增计算分':'新增 token', '本批新买 / 跨合集共用', '执行入口']) add(document, head, 'th', text);
     for (const step of result.route) {
       const tr = add(document, table, 'tr');
       add(document, tr, 'th', `${step.order}. ${step.name}`);
       add(document, tr, 'td', scoreMode?`${step.scoreUncertain?'≤ ':''}${money(step.currentScore)} → ${money(step.projectedScore)} 分（${step.targetGrade}）`:`${step.currentGrade ?? '未达档'} → ${step.targetGrade}`);
       add(document, tr, 'td', `+${scoreMode?money(step.addedScore):step.addedTokens}`);
-      add(document, tr, 'td', `${step.cycles.length} 张 / ${step.reusedIds.length} 张`);
+      const material=add(document, tr, 'td', `${step.cycles.length} 张 / ${step.reusedIds.length} 张`),slots=step.scoringSlots;
+      if(slots?.status==='complete')add(document,material,'small',`计分人数：已有 ${slots.ownedCount}＋需补 ${slots.purchaseCount} → ${slots.scoringCount}/${slots.required}${slots.witnessed?'':'（可选人数）'}`);
+      if(step.reusedIds.length)add(document,material,'small',`其中 ${step.reusedIds.length} 张依赖前序购入，尚未确认收藏，不是当前已有卡。`);
       const td = add(document, tr, 'td'), open = add(document, td, 'button', '进入俱乐部 / 合集'); open.type = 'button';
       open.addEventListener('click', event => {
         if (!event.isTrusted || !binding || !same(binding) || !pricesUsable(planInputs)
@@ -207,6 +209,9 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
       });
       const cards = add(document, output, 'details');
       add(document, cards, 'summary', `${step.order}. ${step.name} · 补卡与逐卡周转明细`);
+      add(document,cards,'p',`本合集完整补卡清单 ${step.items.length} 张；本步骤首次采购 ${step.cycles.length} 张，另有 ${step.reusedIds.length} 张依赖前序路线。共享卡在实际买入并确认收藏前，不算你已收集。进入本合集后会按实际收集状态重新生成完整补卡方案。`);
+      if(step.dependencySetIds?.length)add(document,cards,'p',`前序依赖：${step.dependencySetIds.map(id=>result.route.find(row=>row.setId===id)?.name ?? id).join('、')}。未完成前序时，可直接进入本合集重新规划，不只买本步骤首次采购的卡。`);
+      for(const id of step.reusedIds){const item=step.items.find(row=>row.eaId===id);add(document,cards,'p',`${item?.name ?? id} · 共享待采购/待确认收藏 · 估价 ${money(item?.price)}`);}
       for (const cycle of step.cycles) {
         const card = step.items.find(item => item.eaId === cycle.eaId);
         add(document, cards, 'p', `${card?.name ?? cycle.eaId} · ${card?.version ?? ''} · 买入 ${money(cycle.price)} → 预计税后回收 ${money(cycle.expectedSaleNet)}${cycle.expectedClosingBalance != null ? ` → 预计余额 ${money(cycle.expectedClosingBalance)}` : ''}`);
@@ -226,6 +231,8 @@ export function mountGalleryRoadmap({ document, parent, button, read, prepare, s
         'search-time-exhausted': '本轮分析时间已到，可继续', 'candidate-search-truncated': '候选范围有限，尚未确认方案',
         'quote-expired': '此项独立报价已过期；参考全貌仍保留，可继续重新核价',
         'collection-updated': '收藏或卡池已变化，正在局部更新',
+        'scoring-slots-incomplete': '分数候选未凑齐可计分人数，未纳入可执行路线',
+        'collection-confirmation-required': '存在仅持有但尚未确认画廊收集的卡，不当作已满员；请同步收藏状态，不要重复购买这些卡',
         'deep-analysis-pending': '快速首轮尚未确认，可勾选深度优化继续检查' };
       for (const item of pending) add(document, details, 'p', `${item.name} · ${reasons[item.reason] ?? `尚未确认方案（${item.reason}）`}${item.capitalShortfall ? ` · 预计还差 ${money(item.capitalShortfall)} 金币本金` : ''}`);
     }

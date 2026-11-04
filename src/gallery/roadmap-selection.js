@@ -1,5 +1,9 @@
 import { forecastGalleryTurnover } from './turnover-budget.js';
 import { createGalleryTurnoverEstimator } from './turnover-estimator.js';
+const completeSlots=option=>{const slots=option.scoringSlots;return slots?.status==='complete' && Number.isSafeInteger(slots.required)
+  && slots.required>0 && slots.scoringCount===slots.required && [slots.ownedCount,slots.purchaseCount].every(value=>Number.isSafeInteger(value)&&value>=0)
+  && slots.purchaseCount<=(option.items?.length ?? 0)
+  && (slots.witnessed?slots.ownedCount+slots.purchaseCount===slots.required:slots.ownedCount+slots.purchaseCount>=slots.required);};
 
 // Select a read-only route from verified grade proposals, not raw web posts.
 // The loss-per-added-token heuristic is bounded; no global optimum is claimed.
@@ -46,7 +50,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
     if (scoreMode && !knownBaseline(row)) return [];
     const options=profile ? [...new Map((row.options ?? []).map(option=>[JSON.stringify([option.grade,option.projectedTokens,option.score,
       option.items?.map(item=>[item.eaId,item.price]).sort((a,b)=>a[0]-b[0]),option.estimated,option.referenceVerified,option.searchComplete]),option])).values()] : row.options ?? [];
-    return options.filter(option=>!scoreMode || Number.isSafeInteger(option.score) && option.score>baseline(row)).map(option=>({row,option}));
+    return options.filter(option=>!scoreMode || completeSlots(option) && Number.isSafeInteger(option.score) && option.score>baseline(row)).map(option=>({row,option}));
   });
   const paired = [], seenPairs = new Set(), memberships = new Map();
   if (profile) for (const entry of singles) for (const item of entry.option.items ?? []) {
@@ -71,7 +75,7 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
   for (const saved of previousSelection) {
     const row = rows.find(row => row.setId === saved.setId);
     const option = row?.options.find(option => JSON.stringify(option) === JSON.stringify(saved.option));
-    if (option && (!scoreMode || knownBaseline(row)) && quantity(option) > baseline(row)) selected.set(row.setId, { row, option });
+    if (option && (!scoreMode || knownBaseline(row) && completeSlots(option)) && quantity(option) > baseline(row)) selected.set(row.setId, { row, option });
   }
   if (selected.size) {
     funding = forecast(selected);
@@ -135,18 +139,25 @@ export function* selectGalleryRoadmapSteps({ rows = [], capital = null, lossLimi
 }
 
 function selectionSnapshot({rows,selected,funding,gain,profile,scoreMode,selectionStopped,comparisons,skipped}) {
+  const plannedEarlier=new Map();
   const route = funding.steps.map((step, index) => {
     const { row, option } = selected.get(step.setId);
+    const dependencySetIds=[...new Set(step.reusedIds.map(id=>plannedEarlier.get(id)).filter(Boolean))];
+    for(const cycle of step.cycles)plannedEarlier.set(cycle.eaId,step.setId);
     return { ...step, order: index + 1, name: row.name, categoryId: row.categoryId,
+      dependencySetIds,
       currentGrade: row.currentGrade, targetGrade: option.grade, currentScore: scoreMode ? row.scoreBaseline ?? row.currentScore : row.currentScore,
       projectedScore: option.score, baselineTokens: row.baselineTokens, projectedTokens: option.projectedTokens,
       addedTokens: option.projectedTokens - row.baselineTokens, items: option.items,
+      ...(option.scoringSlots?{scoringSlots:option.scoringSlots}:{}),
       ...(scoreMode ? {scoreTarget:option.score,addedScore:option.score-(row.scoreBaseline ?? row.currentScore),scoreUncertain:row.scoreUncertain===true} : {}),
       claimState: 'unknown', estimated: option.estimated !== false, searchComplete: option.searchComplete === true,
       referenceVerified: option.referenceVerified === true };
   });
-  const unavailable = rows.filter(row => scoreMode && row.collectionUnknown || !(row.options?.length > 0) && row.reason)
-    .map(row => ({ setId: row.setId, name: row.name, reason: scoreMode && row.collectionUnknown ? 'collection-status-unknown' : row.reason }));
+  const incomplete=row=>scoreMode && row.options?.length>0 && !row.options.some(completeSlots);
+  const unavailable = rows.filter(row => scoreMode && row.collectionUnknown || incomplete(row) || !(row.options?.length > 0) && row.reason)
+    .map(row => ({ setId: row.setId, name: row.name, reason: scoreMode && row.collectionUnknown ? 'collection-status-unknown'
+      :incomplete(row)?'scoring-slots-incomplete':row.reason }));
   return { status: route.length ? 'ready' : 'no-route', objective: scoreMode ? `score-estimate-${profile ?? 'efficiency'}`
     : profile ? `grade-first-${profile}` : 'low-forecast-loss-per-added-token',
     claimState: 'unknown', tokenBasis: 'catalog-increase-not-unclaimed-balance',

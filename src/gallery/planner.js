@@ -78,6 +78,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
     targetGrade, threshold, reached, currentScore, addedScore: Number.isFinite(scoreOf(state)) ? scoreOf(state) - currentScore : null,
     score: Number.isFinite(scoreOf(state)) ? scoreOf(state) : null,
     lineupComplete: state.summary?.full === true,
+    scoringLineupIds: state.summary?.lineup?.map(row=>row.eaId) ?? null,
     items: state.items.map(item => ({ ...item })),
     totalPrice: missingPriceIds.length ? null : state.price,
     missingPriceIds, estimated,
@@ -88,7 +89,7 @@ function materialize(state, targetGrade, threshold, currentScore = 0) {
 }
 
 export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, targetGrade,
-  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null, lineupSearch = false, scoreProbe = false } = {}) {
+  maxPlans = 3, beamWidth = 96, maxCandidates = 250, maxEvaluations = 30000, scoreSummarizer = null, lineupSearch = false, scoreProbe = false, confirmedCollectionOnly = false } = {}) {
   if (![maxPlans, beamWidth, maxCandidates, maxEvaluations].every(value => Number.isSafeInteger(value) && value > 0)
       || maxPlans > 10 || beamWidth > 512 || maxCandidates > 250 || maxEvaluations > 100000) {
     return { status: 'unavailable', reason: 'search-options-invalid' };
@@ -123,10 +124,12 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
     }
     return summaries.get(key);
   };
-  const rows = progress.rows.filter(row => validId(row?.eaId));
+  let rows = progress.rows.filter(row => validId(row?.eaId));
   if (rows.length !== progress.rows.length) return { status: 'unavailable', reason: 'input-invalid' };
   if (rows.some(row => row.collected != null && typeof row.collected !== 'boolean')) return { status: 'unavailable', reason: 'input-invalid' };
   if (new Set(rows.map(row => row.eaId)).size !== rows.length) return { status: 'unavailable', reason: 'duplicate-version' };
+  const pendingCollectionCount=confirmedCollectionOnly?rows.filter(row=>isGalleryOwned(row) && row.collected!==true).length:0;
+  if(confirmedCollectionOnly)rows=rows.filter(row=>!isGalleryOwned(row) || row.collected===true);
   // A native snapshot can be usable while one or more exact versions have no
   // collection answer. Unknown is not ownership and must never become a
   // purchase candidate, but it should not block a conservative plan built
@@ -162,6 +165,8 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
   const currentRewards = gallerySetRewardSummary(set, base.summary);
   if (base.summary.full === true && scoreOf(base) >= threshold) {
     return { status: 'achieved', targetGrade, threshold, currentScore: scoreOf(base), currentRewards, candidateCount: candidates.length,
+      ...(confirmedCollectionOnly?{pendingCollectionCount}:{}),
+      scoringLineupIds:base.summary.lineup?.map(row=>row.eaId) ?? null,
       omittedCandidates, requestedCandidates, quotedCandidateCount, scoreSourceCounts,
       collectionUnknownCount: unknownRows.length, collectionUnknownIds: unknownRows.map(row => row.eaId),
       searchComplete: unknownRows.length === 0, plans: [] };
@@ -383,6 +388,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
       : beamTruncated ? 'beam-search-truncated' : scoreUncertain ? 'score-conditions-unknown'
         : scoringBounded ? 'score-selection-bounded' : unknownRows.length ? 'collection-status-unknown' : 'target-unreachable';
     return { status: searchComplete ? 'no-plan' : 'partial', reason: scopeTruncated ? 'candidate-search-truncated' : reason,
+      ...(confirmedCollectionOnly?{pendingCollectionCount}:{}),
       targetGrade, threshold, currentScore: scoreOf(base), bestScore: best ? scoreOf(best) : null,
       distanceToTarget: best ? Math.max(0, threshold - scoreOf(best)) : null,
       bestCandidate: best ? { ids: [...best.ids], score: scoreOf(best),
@@ -401,6 +407,7 @@ export function* planGalleryGradeSteps({ set, catalog, progress, prices = {}, ta
     ? { totalPrice: cheapestSeed.price, score: scoreOf(cheapestSeed), missingCards: cheapestSeed.items.length,
       target: threshold, reached: false } : null;
   return { status: 'ready', targetGrade, threshold, currentScore: scoreOf(base), currentRewards, candidateCount: candidates.length,
+    ...(confirmedCollectionOnly?{pendingCollectionCount}:{}),
     omittedCandidates, requestedCandidates, quotedCandidateCount, scoreSourceCounts,
     evaluations, searchComplete: searchComplete && unknownRows.length === 0, scopeTruncated, timeExhausted, costAudit, removedPurchases,
     collectionUnknownCount: unknownRows.length, collectionUnknownIds: unknownRows.map(row => row.eaId),

@@ -11,7 +11,11 @@ const filterRoute=(plan,keep)=>{
   });
   const funding=forecastGalleryTurnover({steps,
     capital:plan.funding.capital,resaleDiscountBps:plan.funding.resaleDiscountBps,optimizeOrder:false});
-  return {...plan,status:selected.length?'ready':'no-route',funding,route:funding.steps.map((step,index)=>({...byId.get(step.setId),...step,order:index+1})),
+  const earlier=new Map();
+  return {...plan,status:selected.length?'ready':'no-route',funding,route:funding.steps.map((step,index)=>{
+    const dependencySetIds=[...new Set(step.reusedIds.map(id=>earlier.get(id)).filter(Boolean))];
+    for(const cycle of step.cycles)earlier.set(cycle.eaId,step.setId);
+    return {...byId.get(step.setId),...step,dependencySetIds,order:index+1};}),
     addedTokens:selected.reduce((n,row)=>n+row.addedTokens,0),
     ...(plan.planningObjective==='score'?{addedScore:selected.reduce((n,row)=>n+row.addedScore,0),
       lossPer100k:selected.some(row=>row.addedScore>0)?funding.expectedNetLoss*100000/selected.reduce((n,row)=>n+row.addedScore,0):null}:{}),

@@ -134,10 +134,10 @@ export async function exerciseGalleryReplan(context, directory) {
         await host.locator('[data-set-id="futgg:30"]').getByRole('button', { name: '查看卡片', exact: true }).click();
         output = host.locator('#gallery-set-detail .gallery-plan-output');
         await output.locator('details').first().waitFor();
-        assert.match(await output.locator('details').first().locator('summary').innerText(), /方案 1/);
+        assert.match(await output.locator('details').first().locator(':scope > summary').innerText(), /方案 1/);
       }
       const reopened = output.locator('details').first();
-      if ((await reopened.getAttribute('open')) === null) await reopened.locator('summary').click();
+      if ((await reopened.getAttribute('open')) === null) await reopened.locator(':scope > summary').click();
       if (mode === 'untrusted') {
         await reopened.getByRole('button', { name: '批量购买', exact: true }).evaluate(button => button.click());
         assert.match(await reopened.locator('.gallery-purchase-error').textContent(), /请直接点击/);
@@ -176,15 +176,15 @@ export async function exerciseGalleryReplan(context, directory) {
         await host.getByRole('button', { name: '返回集合', exact: true }).click();
         await host.locator('[data-set-id="futgg:30"]').getByRole('button', { name: '查看卡片', exact: true }).click();
         const restored = output.locator('details').first(); await restored.waitFor();
-        if ((await restored.getAttribute('open')) === null) await restored.locator('summary').click();
+        if ((await restored.getAttribute('open')) === null) await restored.locator(':scope > summary').click();
         await restored.getByRole('button', { name: '批量购买', exact: true }).click();
       }
       for (const id of [4, 5]) {
         await host.getByRole('button', { name: '重新规划剩余目标', exact: true }).click();
         const replacement = output.locator('details').first();
         await replacement.waitFor();
-        assert.match(await replacement.locator('summary').innerText(), /1 张/);
-        if ((await replacement.getAttribute('open')) === null) await replacement.locator('summary').click();
+        assert.match(await replacement.locator(':scope > summary').innerText(), /1 张/);
+        if ((await replacement.getAttribute('open')) === null) await replacement.locator(':scope > summary').click();
         assert.match(await replacement.innerText(), new RegExp(`Player ${id}`));
         await replacement.getByRole('button', { name: '购买替代方案', exact: true }).click();
       }
