@@ -126,6 +126,21 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
   };
   return Object.freeze({
     scope: () => capture().scope,
+    context: () => {const value=capture();return {scope:value.scope,season:value.context.season,platform:value.platform};},
+    knownPlayers: () => [...rows.values()].map(row=>({...row})).slice(0,1000),
+    async resolveTradingPlayer(input){
+      let url;try{url=new URL(input);}catch{throw Error('DESK_PLAYER_LINK_INVALID');}
+      const match=/^\/27\/player\/([1-9]\d{0,8})(?:\/([^/]*))?\/?$/.exec(url.pathname);
+      if(url.protocol!=='https:'||!['www.futbin.com','futbin.com'].includes(url.hostname)||url.username||url.password||!match)throw Error('DESK_PLAYER_LINK_INVALID');
+      const captured=capture(),policy=await policyStore.read(captured.scope);captured.assert();
+      if(!publicPriceSourceEnabled(policy,'futbin'))throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+      const payload=JSON.parse(await request(`https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=${match[1]}&platform=${captured.platform==='pc'?'PC':'PS'}`));captured.assert();
+      const values=Object.values(payload?.data??{});if(values.length!==1||Number(values[0].ID)!==Number(match[1])||!Number.isSafeInteger(Number(values[0].Player_Resource))||Number(values[0].Player_Resource)<1)throw Error('DESK_PLAYER_LINK_INVALID');
+      const definitionId=Number(values[0].Player_Resource);parsePublicFutbinPrice(payload,definitionId,captured.platform,true);
+      if(!publicPriceSourceEnabled(await policyStore.read(captured.scope),'futbin'))throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');captured.assert();
+      await updateIds(`fcat-futbin-ids:27`,{[definitionId]:Number(match[1])});captured.assert();
+      return {definitionId,name:decodeURIComponent(match[2]??'').replaceAll('-',' ').slice(0,100)||`EA ${definitionId}`};
+    },
     readSettings,
     async saveSettings(value) {
       const captured = capture();
@@ -135,6 +150,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       for (const row of items ?? []) {
         const definitionId = row.eaId ?? row.definitionId;
         rows.set(definitionId, { definitionId, rating: row.rating ?? row.overall ?? row._rating,
+          name:String(row.name??row.cardName??row.definitionId??row.eaId??'').slice(0,100),version:String(row.version??row.rarityName??'').slice(0,60),
           nationId: row.nationId ?? row.nationEaId, leagueId: row.leagueId ?? row.leagueEaId,
           teamId: row.teamId ?? row.clubEaId, preferredPosition: row.preferredPosition ?? row.positions?.[0] });
       }

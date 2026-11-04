@@ -3,7 +3,7 @@ import { purchaseDialogMarkup, purchaseDialogStyles } from './fc27-purchase-dial
 // FCAT module layout. Gallery loads its public catalogue lazily when selected.
 export const FC27_WORKBENCH_TABS = Object.freeze([
   ['sbc', 'SBC 解题'], ['gallery', 'Gallery'], ['market', '市场'],
-  ['trading', '自动交易'], ['inventory', '库存'], ['routine', 'Routine'],
+  ['trading', '交易观察'], ['inventory', '库存'], ['routine', 'Routine'],
   ['rolling', '滚卡'], ['activity', '活动记录'], ['settings', '设置'],
 ]);
 

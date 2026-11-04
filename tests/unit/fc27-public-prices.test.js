@@ -33,6 +33,27 @@ it('exposes expired cached hints through the account price policy without reques
   expect(f.gm).toHaveBeenCalledTimes(requests);
 });
 
+it('resolves a current-season FUTBIN link to its exact EA version without conflating site IDs',async()=>{
+  const f=fixture();const player=await f.service.resolveTradingPlayer('https://www.futbin.com/27/player/994/example-player');
+  expect(player).toEqual({definitionId:71494,name:'example player'});
+  expect(f.data.get('fcat-futbin-ids:27')).toMatchObject({71494:994});
+  expect(f.gm.mock.calls[0][0].url).toContain('fetchPlayerInformationMinimal?ID=994&platform=PC');
+  expect(f.service.context()).toMatchObject({season:'27',platform:'pc'});
+  f.service.remember([{...f.player,name:'Name',version:'Gold'}]);expect(f.service.knownPlayers()[0]).toMatchObject({definitionId:71494,name:'Name',version:'Gold'});
+});
+it('rejects off-site/old-season links and disabled FUTBIN before issuing a lookup',async()=>{
+  const f=fixture();for(const link of ['https://example.com/27/player/994','https://www.futbin.com/26/player/994'])
+    await expect(f.service.resolveTradingPlayer(link)).rejects.toThrow('LINK_INVALID');
+  await f.service.saveSettings({readSources:'futgg',source:'futgg',listingSource:'futgg'});
+  await expect(f.service.resolveTradingPlayer('https://www.futbin.com/27/player/994')).rejects.toThrow('FUTBIN_DISABLED');
+  expect(f.gm).not.toHaveBeenCalled();
+});
+it('does not cache a FUTBIN link mapping when the reply identifies a different site card',async()=>{
+  const f=fixture();f.gm.mockImplementation(options=>options.onload({status:200,responseText:JSON.stringify({data:[{ID:999,Player_Resource:71494,LCPrice:700}]})}));
+  await expect(f.service.resolveTradingPlayer('https://www.futbin.com/27/player/994')).rejects.toThrow('LINK_INVALID');
+  expect(f.data.get('fcat-futbin-ids:27')).toBeUndefined();
+});
+
 it.each(['gallery', 'puzzle', 'purchase', 'listing', 'streamlined', 'roadmap'])('uses default FUTBIN batches for %s and shares page hits with other purposes', async purpose => {
   const f = fixture({ legacy: false });
   const rows = Array.from({ length: 14 }, (_, i) => ({ ...f.player, definitionId: i + 1000, rating: 84 }));

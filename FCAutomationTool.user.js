@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.90
+// @version      27.0.91
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.90", at: Date.now(), status: 'started',
+    state = { version: "27.0.91", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -13717,7 +13717,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     ["sbc", "SBC \u89E3\u9898"],
     ["gallery", "Gallery"],
     ["market", "\u5E02\u573A"],
-    ["trading", "\u81EA\u52A8\u4EA4\u6613"],
+    ["trading", "\u4EA4\u6613\u89C2\u5BDF"],
     ["inventory", "\u5E93\u5B58"],
     ["routine", "Routine"],
     ["rolling", "\u6EDA\u5361"],
@@ -25873,6 +25873,422 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { refresh };
   }
 
+  // src/trading/desk-model.js
+  var DESK_LIMITS = Object.freeze({ watch: 20, points: 120, records: 100, events: 30, alerts: 40, bytes: 75e4 });
+  var DESK_DEFAULTS = Object.freeze({ startingCoins: 4e4, capitalLimit: 1e4, reserveCoins: 3e4, unitLimit: 2e3, minProfit: 150, buffer: 100 });
+  var deskSources = ["futbin", "futgg"];
+  var int = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
+  var deskId = (v) => int(v, 1, 1e9);
+  var deskText = (v, max = 100) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
+  function deskSettings(value = {}) {
+    const settings = Object.fromEntries(Object.keys(DESK_DEFAULTS).map((key2) => [key2, value[key2] ?? DESK_DEFAULTS[key2]]));
+    if (Object.values(settings).some((v) => !int(v, 0, 1e8)) || settings.capitalLimit < 150 || settings.unitLimit < 150 || settings.reserveCoins > settings.startingCoins) throw Error("DESK_SETTINGS_INVALID");
+    return settings;
+  }
+  var deskNet = (sale) => Math.floor(sale * 95 / 100);
+  function deskFunding(state) {
+    let cash = state.settings.startingCoins, occupied = 0, realized = 0;
+    for (const row of state.records) {
+      cash -= row.buy;
+      if (row.sell === null) occupied += row.buy;
+      else {
+        cash += deskNet(row.sell);
+        realized += deskNet(row.sell) - row.buy;
+      }
+    }
+    return { cash, occupied, realized, available: Math.max(0, Math.min(state.settings.capitalLimit - occupied, cash - state.settings.reserveCoins)) };
+  }
+  function emptyDesk() {
+    return { schema: 1, configured: false, settings: { ...DESK_DEFAULTS }, watch: [], records: [], events: [], alerts: [] };
+  }
+  function readDesk(value) {
+    if (value == null) return emptyDesk();
+    if (JSON.stringify(value).length > DESK_LIMITS.bytes) throw Error("DESK_STORAGE_LIMIT");
+    if (value.schema !== 1 || typeof value.configured !== "boolean" || !Array.isArray(value.watch) || value.watch.length > DESK_LIMITS.watch || !Array.isArray(value.records) || value.records.length > DESK_LIMITS.records || !Array.isArray(value.events) || value.events.length > DESK_LIMITS.events || !Array.isArray(value.alerts) || value.alerts.length > DESK_LIMITS.alerts) throw Error("DESK_STORAGE_INVALID");
+    const state = structuredClone(value);
+    state.settings = deskSettings(state.settings);
+    const validPoint = (p) => int(p?.at) && int(p?.price, 150, 15e6) && int(p?.fetchedAt) && p.at <= p.fetchedAt && int(p?.expiresAt) && p.expiresAt > p.fetchedAt && p.expiresAt - p.fetchedAt <= 18e5;
+    if (new Set(state.watch.map((r) => r.definitionId)).size !== state.watch.length) throw Error("DESK_STORAGE_INVALID");
+    for (const row of state.watch) {
+      if (!deskId(row.definitionId) || typeof row.name !== "string" || row.name.length > 100 || !row.series || !row.latest) throw Error("DESK_STORAGE_INVALID");
+      for (const source of deskSources) if (!Array.isArray(row.series[source]) || row.series[source].length > DESK_LIMITS.points || row.series[source].some((p) => !validPoint(p))) throw Error("DESK_STORAGE_INVALID");
+      for (const source of deskSources) if (row.latest[source] && row.latest[source].error !== "unavailable" && !validPoint(row.latest[source])) throw Error("DESK_STORAGE_INVALID");
+      if (!int(row.ask) || !int(row.sell) || !int(row.checkedAt)) throw Error("DESK_STORAGE_INVALID");
+    }
+    if (new Set(state.records.map((r) => r.id)).size !== state.records.length || state.records.some((r) => typeof r.id !== "string" || r.id.length > 100 || !deskId(r.definitionId) || !int(r.buy, 150, 15e6) || r.sell !== null && !int(r.sell, 150, 15e6) || !int(r.at) || typeof r.name !== "string" || r.name.length > 100)) throw Error("DESK_STORAGE_INVALID");
+    for (const event of state.events) if (!validDeskEvent(event)) throw Error("DESK_STORAGE_INVALID");
+    if (state.alerts.some((a) => typeof a.key !== "string" || a.key.length > 150 || !deskId(a.definitionId) || !int(a.at) || typeof a.read !== "boolean")) throw Error("DESK_STORAGE_INVALID");
+    return state;
+  }
+  function validDeskEvent(row) {
+    try {
+      const url = new URL(row.url);
+      return ["https:"].includes(url.protocol) && ["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(url.hostname) && /^\/[A-Za-z0-9_]{1,30}\/status\/\d+$/.test(url.pathname) && !url.username && !url.password && !url.search && !url.hash && ["leak", "confirmed", "live", "failed"].includes(row.status) && typeof row.note === "string" && row.note.length <= 300 && int(row.at);
+    } catch {
+      return false;
+    }
+  }
+  function observeDeskQuote(card, source, quote2, platform, now) {
+    if (!deskSources.includes(source)) throw Error("DESK_SOURCE_INVALID");
+    const market = source === "futbin" ? quote2?.futbinPlatform === "pc" ? "pc" : quote2?.futbinPlatform === "ps" ? "console" : quote2?.platform : quote2?.platform;
+    if (quote2?.definitionId !== card.definitionId || quote2?.season !== "27" || quote2?.platform !== platform || market !== platform || quote2.error || !int(quote2.price, 150, 15e6) || !int(quote2.fetchedAt) || quote2.fetchedAt > now || !int(quote2.expiresAt) || quote2.expiresAt <= now || quote2.sourceUpdatedAt != null && (!int(quote2.sourceUpdatedAt) || quote2.sourceUpdatedAt > now)) {
+      card.latest[source] = { error: "unavailable", at: now };
+      return;
+    }
+    const point = { at: quote2.sourceUpdatedAt ?? quote2.fetchedAt, price: quote2.price, fetchedAt: quote2.fetchedAt, expiresAt: quote2.expiresAt, sourceTimed: quote2.sourceUpdatedAt != null };
+    card.latest[source] = point;
+    if (card.series[source].some((p) => p.at === point.at && p.price === point.price) || point.at < now - 7 * 864e5) return;
+    const buckets = /* @__PURE__ */ new Map();
+    for (const p of [...card.series[source], point].filter((p2) => p2.at >= now - 7 * 864e5).sort((a, b) => a.at - b.at)) {
+      const interval = now - p.at <= 864e5 ? 9e5 : 216e5;
+      buckets.set(`${interval}:${Math.floor(p.at / interval)}`, p);
+    }
+    card.series[source] = [...buckets.values()].sort((a, b) => a.at - b.at).slice(-DESK_LIMITS.points);
+  }
+  function deskTrend(points, now, windowMs) {
+    const rows = points.filter((p) => p.at <= now && p.at >= now - windowMs).sort((a, b) => a.at - b.at);
+    if (rows.length < 2 || rows.at(-1).at - rows[0].at < windowMs * 0.8) return null;
+    return (rows.at(-1).price / rows[0].price - 1) * 100;
+  }
+  var floorPrice = (value) => {
+    const step = value < 1e3 ? 50 : value < 1e4 ? 100 : value < 5e4 ? 250 : value < 1e5 ? 500 : value < 1e6 ? 1e3 : 1e4;
+    return Math.floor(value / step) * step;
+  };
+  function deskOpportunity(state, card, now) {
+    const quotes = deskSources.map((source) => card.latest[source]).filter((q) => q && !q.error && q.fetchedAt <= now && q.at <= now && q.expiresAt > now && now - q.at <= 18e5);
+    const available = deskFunding(state).available;
+    const report = { status: "watch", reason: "\u7B49\u5F85\u53CC\u6E90\u6709\u6548\u62A5\u4EF7", cap: null, profit: null, sale: null, available };
+    if (!state.configured) return { ...report, reason: "\u8BF7\u5148\u6838\u5BF9\u5E76\u4FDD\u5B58\u8D44\u91D1\u8BBE\u7F6E\uFF0C\u9ED8\u8BA4\u4F59\u989D\u4E0D\u662F EA \u5B9E\u65F6\u4F59\u989D" };
+    if (quotes.length !== 2) return report;
+    const low = Math.min(...quotes.map((q) => q.price)), high = Math.max(...quotes.map((q) => q.price));
+    if (high / low > 1.15) return { ...report, reason: "\u53CC\u6E90\u4EF7\u5DEE\u8F83\u5927\uFF0C\u5F85\u6838\u5B9E" };
+    if (deskSources.some((source) => (deskTrend(card.series[source], now, 36e5) ?? 0) < -8)) return { ...report, reason: "\u8FD1\u671F\u8DCC\u5E45\u8F83\u5927\uFF0C\u7EE7\u7EED\u89C2\u5BDF" };
+    if (!card.ask || !card.sell || now - card.checkedAt > 3e5) return { ...report, reason: "\u8BF7\u5F55\u5165\u5F53\u524D\u539F\u751F\u5E02\u573A\u4E70\u4EF7\u4E0E\u4FDD\u5B88\u5356\u4EF7" };
+    const sale = Math.min(card.sell, low), cap = floorPrice(Math.min(deskNet(sale) - state.settings.minProfit - state.settings.buffer, state.settings.unitLimit, available));
+    const profit = deskNet(sale) - card.ask;
+    if (cap < 150 || card.ask > cap) return { ...report, cap: Math.max(0, cap), profit, sale, reason: available < card.ask ? "\u8BD5\u4ED3\u989D\u5EA6\u6216\u4FDD\u7559\u91D1\u5E01\u4E0D\u8DB3" : "\u4EF7\u5DEE\u672A\u8986\u76D6\u76EE\u6807\u5229\u6DA6\u4E0E\u7F13\u51B2" };
+    return { ...report, status: "opportunity", reason: "\u503C\u5F97\u5230\u539F\u751F\u5E02\u573A\u518D\u6B21\u6838\u4EF7\uFF1B\u5E76\u975E\u5DF2\u6210\u4EA4", cap, profit, sale };
+  }
+  function deskAlerts(state, now) {
+    const fresh = [];
+    for (const card of state.watch) {
+      const value = deskOpportunity(state, card, now);
+      if (value.status !== "opportunity") continue;
+      const key2 = [card.definitionId, card.ask, value.sale, value.cap].join(":");
+      if (state.alerts.some((a) => a.key === key2 && now - a.at < 18e5)) continue;
+      const alert = { key: key2, definitionId: card.definitionId, at: now, read: false };
+      state.alerts.push(alert);
+      fresh.push(alert);
+    }
+    state.alerts = state.alerts.slice(-DESK_LIMITS.alerts);
+    return fresh;
+  }
+
+  // src/adapters/browser/fc27-trading-view.js
+  function mountFc27TradingView({ document, parent, tab, service, timers = globalThis, now = () => Date.now() }) {
+    if (!parent) return { setActive() {
+    } };
+    const add3 = (p, tag, text5 = "", cls = "") => {
+      const node = document.createElement(tag);
+      node.textContent = text5;
+      if (cls) node.className = cls;
+      p.append(node);
+      return node;
+    };
+    parent.replaceChildren();
+    const style = add3(parent, "style");
+    style.textContent = ".trading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.trading-card{margin:12px 0;padding:14px;border:1px solid #526671;border-radius:7px;background:#22323d}.trading-card small{display:block;color:#bdcbd3}.trading-card input,.trading-card select{max-width:100%}.trading-chart{width:100%;height:100px;background:#17212c}.trading-warning{color:#ffdb8c}.trading-opportunity{border-color:#9df3d5}.trading-funding{font-size:16px}.trading-ledger{overflow-wrap:anywhere}.trading-card label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}.trading-card input[type=checkbox]{width:auto}.trading-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trading-row>*{flex:1;min-width:100px}";
+    style.textContent += "#page-trading{min-width:0;overflow-wrap:anywhere}.trading-grid>*{min-width:0}.trading-row>*{min-width:0;flex-basis:180px}.trading-card label{min-width:0;max-width:100%}.trading-card input,.trading-card select{min-width:0;width:100%}.trading-card input[type=checkbox]{width:18px;flex:0 0 18px}";
+    add3(parent, "h2", "\u4EA4\u6613\u89C2\u5BDF \xB7 \u624B\u52A8\u6267\u884C");
+    add3(parent, "p", "\u53EA\u8BFB\u516C\u5171\u53C2\u8003\u4EF7\u3001\u673A\u4F1A\u63D0\u9192\u548C\u624B\u586B\u8BB0\u5F55\uFF1B\u4E0D\u641C\u7D22 EA \u6302\u5355\uFF0C\u4E0D\u81EA\u52A8\u4E70\u5165\u3001\u79FB\u52A8\u3001\u6302\u724C\u6216\u91CD\u6302\u3002\u6CA1\u6709\u9632\u5C01\u627F\u8BFA\u3002", "module-note");
+    const status = add3(parent, "output");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    const funding = add3(parent, "p", "", "trading-funding");
+    const controls = add3(parent, "div", "", "row");
+    let active = false, busy = false, epoch2 = 0, timer = null, context = null, state = null, attempted = 0;
+    const current2 = (token) => active && parent.isConnected && token === epoch2 && JSON.stringify(context) === JSON.stringify(service.context());
+    const button = (p, label, task) => {
+      const node = add3(p, "button", label);
+      node.type = "button";
+      node.addEventListener("click", (event) => {
+        if (!event.isTrusted || busy || !active || !node.isConnected) return;
+        void run(task);
+      });
+      return node;
+    };
+    const input = (p, label, value = "", type = "number") => {
+      const field = add3(add3(p, "label", label), "input");
+      field.type = type;
+      field.value = String(value);
+      field.setAttribute("aria-label", label);
+      if (type === "number") {
+        field.min = "0";
+        field.step = "1";
+      }
+      return field;
+    };
+    const errorText = (error2) => ({
+      DESK_WATCH_LIMIT: "\u89C2\u5BDF\u540D\u5355\u6700\u591A 20 \u5F20\uFF0C\u8BF7\u5148\u79FB\u9664\u4E0D\u9700\u8981\u7684\u6807\u7684\u3002",
+      DESK_CONTEXT_CHANGED: "\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u5DF2\u505C\u6B62\uFF1B\u91CD\u65B0\u6253\u5F00\u4EA4\u6613\u89C2\u5BDF\u3002",
+      DESK_SETTINGS_INVALID: "\u8BF7\u68C0\u67E5\u8D44\u91D1\u8BBE\u7F6E\uFF1B\u4FDD\u7559\u91D1\u5E01\u5E94\u4E0D\u9AD8\u4E8E\u8D77\u59CB\u4F59\u989D\uFF0C\u4E0A\u9650\u4E3A\u6574\u6570\u3002",
+      DESK_PLAYER_LINK_INVALID: "\u8BF7\u8F93\u5165 FC27 FUTBIN \u7403\u5458\u9875\u94FE\u63A5\u6216\u7CBE\u786E EA \u7248\u672C ID\uFF08\u4E0D\u662F FUTBIN ID\uFF09\u3002",
+      DESK_RECORD_LIMIT: "\u624B\u586B\u8BB0\u5F55\u5DF2\u8FBE 100 \u6761\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u5220\u9664\uFF0C\u5148\u5BFC\u51FA\u8BB0\u5F55\u3002",
+      DESK_EVENT_INVALID: "\u8BF7\u8F93\u5165\u5B8C\u6574 X \u539F\u5E16\u94FE\u63A5\uFF08/\u8D26\u53F7/status/\u6570\u5B57\uFF09\uFF0C\u5E76\u9009\u62E9\u72B6\u6001\u3002",
+      DESK_MANUAL_CONFIRM_REQUIRED: "\u5148\u52FE\u9009\u5DF2\u5728\u5B98\u65B9\u5E94\u7528\u5B8C\u6210\u4E70\u5165/\u5356\u51FA\uFF1B\u8FD9\u91CC\u53EA\u8BB0\u8D26\uFF0C\u4E0D\u6267\u884C\u4EA4\u6613\u3002",
+      DESK_SAVE_UNVERIFIED: "\u672C\u5730\u4FDD\u5B58\u672A\u786E\u8BA4\uFF0C\u5148\u4E0D\u8981\u91CD\u590D\u6DFB\u52A0\u8BB0\u5F55\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u6838\u5BF9\u3002"
+    })[error2?.message] ?? `\u64CD\u4F5C\u672A\u5B8C\u6210\uFF08${/^([A-Z0-9_]+)$/.test(error2?.message ?? "") ? error2.message : "\u8BFB\u53D6\u6216\u4FDD\u5B58\u5931\u8D25"}\uFF09\uFF1B\u672A\u6267\u884C\u4EA4\u6613\u3002`;
+    const run = async (task) => {
+      const token = epoch2;
+      try {
+        if (!current2(token)) throw Error("DESK_CONTEXT_CHANGED");
+      } catch {
+        pause();
+        state = null;
+        watch.replaceChildren();
+        ledger.replaceChildren();
+        alerts.replaceChildren();
+        newsList.replaceChildren();
+        funding.textContent = "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u4EA4\u6613\u89C2\u5BDF\u3002";
+        tab.textContent = "\u4EA4\u6613\u89C2\u5BDF";
+        return;
+      }
+      busy = true;
+      try {
+        const result = await task();
+        if (!current2(token)) return;
+        if (result?.state) {
+          state = result.state;
+          context = result.context;
+          render();
+        }
+      } catch (error2) {
+        if (active && token === epoch2) status.textContent = errorText(error2);
+      } finally {
+        if (token === epoch2) busy = false;
+      }
+    };
+    const pause = () => {
+      if (timer !== null) timers.clearInterval(timer);
+      timer = null;
+      monitor.textContent = "\u5F00\u59CB\u89C2\u5BDF\uFF08\u6BCF 5 \u5206\u949F\uFF09";
+    };
+    const refresh = async () => {
+      attempted = now();
+      status.textContent = "\u6B63\u5728\u8BFB\u53D6\u516C\u5171\u62A5\u4EF7\u2026";
+      const token = epoch2;
+      const result = await service.refresh({ isCurrent: () => current2(token), onProgress: (value) => {
+        if (current2(token)) status.textContent = `\u8BFB\u53D6 ${value.source} ${value.index}/${value.total}`;
+      } });
+      if (current2(token)) status.textContent = "\u516C\u5171\u62A5\u4EF7\u5DF2\u6838\u5BF9\uFF1B\u7F13\u5B58\u4E0D\u662F\u65B0\u6837\u672C\uFF0C\u7B2C\u4E09\u65B9\u53C2\u8003\u4EF7\u4E0D\u4EE3\u8868\u53EF\u6210\u4EA4\u4EF7\u3002";
+      return result;
+    };
+    button(controls, "\u5237\u65B0\u62A5\u4EF7", refresh);
+    const monitor = button(controls, "\u5F00\u59CB\u89C2\u5BDF\uFF08\u6BCF 5 \u5206\u949F\uFF09", async () => {
+      if (timer !== null) {
+        pause();
+        status.textContent = "\u5DF2\u505C\u6B62\u5B9A\u65F6\u89C2\u5BDF\u3002";
+        return;
+      }
+      if (!state?.watch.length) throw Error("DESK_WATCH_EMPTY");
+      monitor.textContent = "\u505C\u6B62\u89C2\u5BDF";
+      timer = timers.setInterval(() => {
+        if (active && !busy && now() - attempted >= 3e5) void run(refresh);
+      }, 6e4);
+      return refresh();
+    });
+    button(controls, "\u673A\u4F1A\u6807\u4E3A\u5DF2\u8BFB", () => service.acknowledge());
+    button(controls, "\u5BFC\u51FA\u672C\u5730\u8BB0\u5F55", async () => {
+      const value = await service.read();
+      const blob = new globalThis.Blob([JSON.stringify({ schema: 1, exportedAt: now(), platform: value.context.platform, manualRecords: true, state: value.state }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob), link = add3(parent, "a");
+      link.href = url;
+      link.download = "FCAT-trading-notebook.json";
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+    const settings = add3(parent, "details", "", "trading-card");
+    add3(settings, "summary", "\u8D44\u91D1\u4E0E\u5229\u6DA6\u8BBE\u7F6E\uFF08\u53EF\u624B\u52A8\u8C03\u6574\uFF09");
+    const fields4 = add3(settings, "div", "", "trading-grid"), names = { startingCoins: "\u8D77\u59CB\u91D1\u5E01\uFF08\u624B\u586B\uFF09", capitalLimit: "\u8BD5\u4ED3\u603B\u4E0A\u9650", reserveCoins: "\u6700\u4F4E\u4FDD\u7559\u91D1\u5E01", unitLimit: "\u5355\u5361\u4E70\u5165\u4E0A\u9650", minProfit: "\u5355\u5361\u76EE\u6807\u51C0\u5229\u6DA6", buffer: "\u6BCF\u5361\u8DCC\u4EF7\u7F13\u51B2" };
+    const inputs = Object.fromEntries(Object.entries(names).map(([key2, label]) => [key2, input(fields4, label, DESK_DEFAULTS[key2])]));
+    add3(settings, "small", "\u8D77\u59CB\u91D1\u5E01\uFF0B\u624B\u586B\u4E70\u5356\u63A8\u7B97\u8D26\u9762\u4F59\u989D\uFF0C\u4E0D\u662F EA \u5B9E\u65F6\u4F59\u989D\uFF1B\u6539\u4E0A\u9650\u4E0D\u6539\u5386\u53F2\u3001\u4E0D\u6388\u6743\u4EA4\u6613\u3002\u5B9E\u9645\u4E70\u5356\u524D\u6838\u5BF9\u5B98\u65B9\u4F59\u989D\u3002");
+    button(settings, "\u4FDD\u5B58\u8D44\u91D1\u8BBE\u7F6E", async () => {
+      const result = await service.settings(Object.fromEntries(Object.keys(names).map((key2) => [key2, Number(inputs[key2].value)])));
+      status.textContent = "\u8D44\u91D1\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002";
+      return result;
+    });
+    const picker = add3(parent, "details", "", "trading-card");
+    add3(picker, "summary", "\u6DFB\u52A0\u89C2\u5BDF\u7403\u5458");
+    const pickRows = add3(picker, "div", "", "trading-row");
+    const linkInput = input(pickRows, "FUTBIN FC27 \u94FE\u63A5 / EA\u7248\u672CID", "", "text"), nameInput = input(pickRows, "\u7403\u5458\u540D\u79F0\uFF08\u53EF\u9009\uFF09", "", "text");
+    button(picker, "\u52A0\u5165\u89C2\u5BDF", () => service.add({ input: linkInput.value, name: nameInput.value }));
+    add3(picker, "small", "\u652F\u6301\u7C98\u8D34 FUTBIN FC27 \u7403\u5458\u9875\u94FE\u63A5\uFF1BEA \u7248\u672C ID \u4E0E FUTBIN ID \u4E0D\u540C\u3002\u6216\u4ECE\u672C\u9875\u5DF2\u52A0\u8F7D\u7684\u5361\u7247\u4E8B\u5B9E\u4E2D\u9009\u62E9\uFF0C\u4E0D\u4EE3\u8868\u5B8C\u6574\u5E93\u5B58/\u5E02\u573A\u3002");
+    const candidateOutput = add3(picker, "div");
+    button(picker, "\u8BFB\u53D6\u5DF2\u52A0\u8F7D\u5361\u7247", async () => {
+      candidateOutput.replaceChildren();
+      const candidates = service.candidates();
+      if (!candidates.length) {
+        add3(candidateOutput, "p", "\u5C1A\u65E0\u5DF2\u52A0\u8F7D\u5361\u7247\uFF1B\u53EF\u7C98\u8D34 FUTBIN \u7403\u5458\u94FE\u63A5\uFF0C\u6216\u5148\u5728 Club/Gallery/SBC \u52A0\u8F7D\u5361\u7247\u3002");
+        return;
+      }
+      const search = input(candidateOutput, "\u641C\u7D22\u5DF2\u52A0\u8F7D\u7403\u5458", "", "search"), select = add3(candidateOutput, "select");
+      select.setAttribute("aria-label", "\u9009\u62E9\u5DF2\u52A0\u8F7D\u7403\u5458");
+      const list2 = () => {
+        select.replaceChildren();
+        for (const card of candidates.filter((card2) => `${card2.name} ${card2.definitionId} ${card2.rating ?? ""}`.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())).slice(0, 100)) {
+          const opt = add3(select, "option", `${card.name} \xB7 ${card.rating ?? "?"} \xB7 ${card.version ?? ""} \xB7 EA ${card.definitionId}`);
+          opt.value = String(card.definitionId);
+        }
+      };
+      list2();
+      search.addEventListener("input", list2);
+      button(candidateOutput, "\u52A0\u5165\u6240\u9009\u7403\u5458", () => {
+        const player = candidates.find((row) => row.definitionId === Number(select.value));
+        if (!player) throw Error("DESK_PLAYER_INVALID");
+        return service.add({ player });
+      });
+    });
+    const alerts = add3(parent, "section", "", "trading-card");
+    alerts.setAttribute("aria-label", "\u673A\u4F1A\u63D0\u9192");
+    const watch = add3(parent, "section");
+    watch.setAttribute("aria-label", "\u7403\u5458\u89C2\u5BDF\u540D\u5355");
+    const ledger = add3(parent, "section", "", "trading-card trading-ledger");
+    ledger.setAttribute("aria-label", "\u624B\u586B\u4EA4\u6613\u8BB0\u5F55");
+    const news = add3(parent, "details", "", "trading-card");
+    add3(news, "summary", "X \u6D88\u606F\u7EBF\u7D22\uFF08\u624B\u52A8\u5F55\u5165\uFF0C\u591A\u6765\u6E90\uFF09");
+    add3(news, "small", "\u53EF\u89C2\u5BDF Fut Sheriff\u3001FUT Police Leaks\u3001Fut Scoreboard\u3001AsyFutTrader \u7B49\uFF1B\u4E0D\u662F\u53EF\u4FE1\u5EA6\u6392\u540D\u3002\u672A\u63A5\u901A\u81EA\u52A8 X \u6293\u53D6\uFF0C\u540C\u6E90\u642C\u8FD0\u4E0D\u7B97\u72EC\u7ACB\u8BC1\u636E\uFF0C\u6D88\u606F\u4E0D\u89E6\u53D1\u4E70\u5356\u3002");
+    const newsFields = add3(news, "div", "", "trading-grid"), post = input(newsFields, "X \u539F\u5E16\u94FE\u63A5", "", "url"), note = input(newsFields, "\u6D88\u606F\u5907\u6CE8", "", "text"), newsState = add3(add3(newsFields, "label", "\u6D88\u606F\u72B6\u6001"), "select");
+    newsState.setAttribute("aria-label", "\u6D88\u606F\u72B6\u6001");
+    for (const [value, label] of [["leak", "\u7206\u6599"], ["confirmed", "\u5DF2\u786E\u8BA4"], ["live", "\u5DF2\u4E0A\u7EBF"], ["failed", "\u843D\u7A7A"]]) {
+      const opt = add3(newsState, "option", label);
+      opt.value = value;
+    }
+    button(news, "\u4FDD\u5B58\u6D88\u606F\u7EBF\u7D22", () => service.event({ url: post.value, note: note.value, status: newsState.value }));
+    const newsList = add3(news, "div");
+    function chart(target, card) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("trading-chart");
+      svg.setAttribute("viewBox", "0 0 600 100");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${card.name} \u53CC\u6E90\u91C7\u6837\u8D8B\u52BF`);
+      target.append(svg);
+      const points = Object.values(card.series).flat();
+      if (!Object.values(card.series).some((rows) => rows.length >= 2)) {
+        const text5 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text5.setAttribute("x", "15");
+        text5.setAttribute("y", "55");
+        text5.setAttribute("fill", "#bdcbd3");
+        text5.textContent = "\u91C7\u6837\u4E2D\uFF1B\u81F3\u5C11\u4E24\u6B21\u5206\u6876\u89C2\u5BDF\u540E\u7ED8\u56FE";
+        svg.append(text5);
+        return;
+      }
+      const start = Math.min(...points.map((p) => p.at)), end = Math.max(start + 1, ...points.map((p) => p.at)), low = Math.min(...points.map((p) => p.price)), high = Math.max(low + 1, ...points.map((p) => p.price));
+      for (const [source, color] of [["futbin", "#9df3d5"], ["futgg", "#e9c26b"]]) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        line.setAttribute("fill", "none");
+        line.setAttribute("stroke", color);
+        line.setAttribute("stroke-width", "2");
+        line.setAttribute("points", card.series[source].map((p) => `${10 + (p.at - start) / (end - start) * 580},${90 - (p.price - low) / (high - low) * 80}`).join(" "));
+        svg.append(line);
+      }
+    }
+    function render() {
+      const budget = deskFunding(state);
+      funding.textContent = `\u8D26\u9762\u4F59\u989D ${budget.cash.toLocaleString()} \xB7 \u8BD5\u4ED3\u5360\u7528 ${budget.occupied.toLocaleString()}/${state.settings.capitalLimit.toLocaleString()} \xB7 \u53EF\u7528\u8BD5\u4ED3 ${budget.available.toLocaleString()} \xB7 \u624B\u586B\u5DF2\u5B9E\u73B0\u51C0\u5229 ${budget.realized.toLocaleString()}`;
+      for (const key2 of Object.keys(names)) inputs[key2].value = String(state.settings[key2]);
+      const unread = state.alerts.filter((row) => !row.read).length;
+      tab.textContent = `\u4EA4\u6613\u89C2\u5BDF${unread ? ` (${unread})` : ""}`;
+      alerts.replaceChildren();
+      add3(alerts, "h3", `\u673A\u4F1A\u63D0\u9192 \xB7 ${unread} \u6761\u672A\u8BFB`);
+      add3(alerts, "p", "\u63D0\u9192\u4EC5\u5728\u4F60\u586B\u5199\u5F53\u524D\u539F\u751F\u4E70\u4EF7/\u4FDD\u5B88\u5356\u4EF7\u540E\u8BC4\u4F30\uFF1B\u53C2\u8003\u4EF7\u5DEE\u4E0D\u662F\u53EF\u6210\u4EA4\u5957\u5229\u3002\u9996\u6B21\u91C7\u6837\u6CA1\u6709\u5386\u53F2\uFF0C\u77ED/\u65E5/\u5468\u8D8B\u52BF\u6837\u672C\u4E0D\u8DB3\u65F6\u660E\u786E\u7559\u7A7A\u3002");
+      for (const row of state.alerts.slice(-5).reverse()) {
+        const card = state.watch.find((card2) => card2.definitionId === row.definitionId), live = card && deskOpportunity(state, card, now()).status === "opportunity";
+        add3(alerts, "p", `${card?.name ?? row.definitionId} \xB7 ${live ? "\u503C\u5F97\u5230\u539F\u751F\u5E02\u573A\u518D\u6B21\u6838\u4EF7" : "\u5386\u53F2\u673A\u4F1A\uFF0C\u5F53\u524D\u9700\u91CD\u65B0\u6838\u4EF7"} \xB7 ${new Date(row.at).toLocaleString()}${row.read ? " \xB7 \u5DF2\u8BFB" : ""}`);
+      }
+      watch.replaceChildren();
+      if (!state.watch.length) add3(watch, "p", "\u89C2\u5BDF\u540D\u5355\u4E3A\u7A7A\u3002\u5148\u6DFB\u52A0\u5C11\u91CF\u613F\u610F\u624B\u52A8\u4EA4\u6613\u7684\u7403\u5458\uFF1B\u4E0D\u626B\u63CF\u5168\u5E02\u573A\u3002");
+      for (const card of state.watch) {
+        const value = deskOpportunity(state, card, now()), box = add3(watch, "article", "", `trading-card ${value.status === "opportunity" ? "trading-opportunity" : ""}`);
+        add3(box, "h3", `${card.name} \xB7 EA ${card.definitionId}`);
+        add3(box, "strong", value.reason);
+        add3(box, "p", `\u5EFA\u8BAE\u4E70\u5165\u4E0A\u9650 ${value.cap ?? "\u2014"} \xB7 \u4FDD\u5B88\u5356\u4EF7 ${value.sale ?? "\u2014"} \xB7 \u9884\u8BA1\u6263\u7A0E\u5229\u6DA6 ${value.profit ?? "\u2014"}\uFF08\u672A\u6210\u4EA4\uFF09`);
+        for (const source of ["futbin", "futgg"]) {
+          const q = card.latest[source];
+          add3(box, "small", `${source === "futbin" ? "FUTBIN\uFF08\u7EFF\uFF09" : "FUT.GG\uFF08\u91D1\uFF09"}\uFF1A${q && !q.error ? `${q.price} \xB7 ${q.sourceTimed ? "\u6E90\u62A5\u4EF7" : "\u91C7\u6837\u89C2\u5BDF"}\u65F6\u95F4 ${new Date(q.at).toLocaleString()} \xB7 \u8BFB\u53D6 ${new Date(q.fetchedAt).toLocaleTimeString()}${q.sourceTimed ? "" : "\uFF08\u6E90\u62A5\u4EF7\u65F6\u95F4\u672A\u77E5\uFF09"} \xB7 ${q.expiresAt > now() ? "\u7F13\u5B58\u6709\u6548" : "\u5DF2\u8FC7\u671F"}` : "\u6682\u65E0\u6709\u6548\u62A5\u4EF7"} \xB7 \u6837\u672C ${card.series[source].length}`);
+          add3(box, "small", ["1h", "24h", "7d"].map((label, i) => {
+            const n = deskTrend(card.series[source], now(), [36e5, 864e5, 6048e5][i]);
+            return `${label} ${n === null ? "\u6837\u672C\u4E0D\u8DB3" : `${n.toFixed(1)}%`}`;
+          }).join(" / "));
+        }
+        chart(box, card);
+        const prices = add3(box, "div", "", "trading-grid"), ask = input(prices, "\u5F53\u524D\u539F\u751F\u4E70\u4EF7", card.ask || ""), sell = input(prices, "\u4FDD\u5B88\u53EF\u5356\u4EF7", card.sell || "");
+        button(box, "\u6838\u4EF7\u5E76\u8BC4\u4F30", () => service.evaluate({ definitionId: card.definitionId, ask: Number(ask.value), sell: Number(sell.value) }));
+        const check = input(box, "\u6211\u5DF2\u5728\u5B98\u65B9\u5E94\u7528\u5B9E\u9645\u4E70\u5165\u4E00\u5F20", false, "checkbox");
+        check.checked = false;
+        button(box, "\u8BB0\u5F55\u5DF2\u4E70\u5165\uFF08\u53EA\u8BB0\u8D26\uFF09", () => {
+          if (!check.checked) throw Error("DESK_MANUAL_CONFIRM_REQUIRED");
+          return service.recordBuy({ definitionId: card.definitionId, name: card.name, buy: Number(ask.value) });
+        });
+        button(box, "\u79FB\u51FA\u89C2\u5BDF\u540D\u5355", () => service.remove(card.definitionId));
+      }
+      ledger.replaceChildren();
+      add3(ledger, "h3", `\u624B\u586B\u4EA4\u6613\u8BB0\u5F55 ${state.records.length}/${DESK_LIMITS.records}`);
+      add3(ledger, "small", "\u4E0D\u662F EA \u6210\u4EA4\u56DE\u6267\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u552E\u51FA\u6216\u6E05\u7406\u3002\u6309 5% \u7A0E\u4FDD\u5B88\u53D6\u6574\uFF0C\u5B9E\u9645\u5230\u8D26\u4EE5\u5B98\u65B9\u8BB0\u5F55\u4E3A\u51C6\uFF1B\u8D26\u5916\u4EA4\u6613\u8BF7\u81EA\u884C\u6838\u5BF9\u3002");
+      for (const row of state.records.slice().reverse()) {
+        const item2 = add3(ledger, "article", "", "trading-card");
+        add3(item2, "p", `${row.name} \xB7 \u4E70\u5165 ${row.buy} \xB7 ${row.sell === null ? "\u6301\u4ED3" : `\u5356\u51FA ${row.sell} \xB7 \u7A0E\u540E\u51C0\u5229 ${deskNet(row.sell) - row.buy}`}`);
+        if (row.sell === null) {
+          const field = input(item2, "\u5B9E\u9645\u5356\u51FA\u4EF7", ""), confirmed = input(item2, "\u6211\u5DF2\u5728\u5B98\u65B9\u5E94\u7528\u5B9E\u9645\u5356\u51FA", false, "checkbox");
+          confirmed.checked = false;
+          button(item2, "\u8BB0\u5F55\u5DF2\u5356\u51FA\uFF08\u53EA\u8BB0\u8D26\uFF09", () => {
+            if (!confirmed.checked) throw Error("DESK_MANUAL_CONFIRM_REQUIRED");
+            return service.recordSale({ recordId: row.id, sell: Number(field.value) });
+          });
+        }
+      }
+      newsList.replaceChildren();
+      for (const row of state.events.slice().reverse()) {
+        const p = add3(newsList, "p");
+        const a = add3(p, "a", `${new URL(row.url).pathname.split("/")[1]} \xB7 ${row.status}`);
+        a.href = row.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        add3(p, "span", ` \xB7 ${row.note}`);
+      }
+    }
+    if (!service) {
+      status.textContent = "\u4EA4\u6613\u89C2\u5BDF\u670D\u52A1\u672A\u63A5\u5165\u3002";
+      for (const node of parent.querySelectorAll("button,input,select")) node.disabled = true;
+    }
+    return { setActive(value) {
+      active = value;
+      epoch2++;
+      busy = false;
+      pause();
+      if (!value) return;
+      if (!service) return;
+      state = null;
+      watch.replaceChildren();
+      ledger.replaceChildren();
+      alerts.replaceChildren();
+      newsList.replaceChildren();
+      for (const key2 of Object.keys(names)) inputs[key2].value = String(DESK_DEFAULTS[key2]);
+      funding.textContent = "\u8BFB\u53D6\u672C\u5730\u4EA4\u6613\u89C2\u5BDF\u8BB0\u5F55\u2026";
+      try {
+        context = service.context();
+      } catch {
+        funding.textContent = "\u4EA4\u6613\u8D26\u53F7\u4E0A\u4E0B\u6587\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u767B\u5F55\u540E\u91CD\u65B0\u6253\u5F00\u3002";
+        return;
+      }
+      void run(async () => {
+        const result = await service.read();
+        status.textContent = "\u4EC5\u52A0\u8F7D\u672C\u5730\u8BB0\u5F55\uFF1B\u62A5\u4EF7\u9700\u70B9\u51FB\u5237\u65B0\uFF0C\u5B9A\u65F6\u89C2\u5BDF\u9700\u624B\u52A8\u542F\u52A8\u3002";
+        return result;
+      });
+    } };
+  }
+
   // src/adapters/browser/fc27-acceptance-panel.js
   function mountFc27AcceptancePanel({
     document,
@@ -25911,6 +26327,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     galleryTradePreferences: galleryTradePreferences2 = null,
     galleryPlanningSettings: galleryPlanningSettings2 = null,
     publicPrices: publicPrices2 = null,
+    tradingDesk: tradingDesk2 = null,
     galleryPlanningPrices = null,
     exportDiagnostics = null,
     hostId = "fcat-fc27-acceptance",
@@ -25928,8 +26345,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#settings-bottom"), service: publicPrices2 });
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
     const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
+    const trading = mountFc27TradingView({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), service: tradingDesk2 });
     const selectTab = bindFc27WorkbenchTabs(shadow, host, (id12) => {
       gallery.setActive(id12 === "gallery");
+      trading.setActive(id12 === "trading");
       if (id12 === "settings") {
         void priceSettings.refresh();
         void tradeSettings.refresh();
@@ -25973,7 +26392,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const update = () => {
       for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-        if (!button.closest("#page-gallery") && !button.closest("#public-price-settings") && !button.closest("#gallery-trade-settings") && !button.closest("#gallery-planning-settings")) button.disabled = busy;
+        if (!button.closest("#page-gallery") && !button.closest("#page-trading") && !button.closest("#public-price-settings") && !button.closest("#gallery-trade-settings") && !button.closest("#gallery-planning-settings")) button.disabled = busy;
       }
       node("execute").disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
       node("fill").disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== "function";
@@ -26244,6 +26663,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       host.style.display = "block";
       shadow.querySelector("details").open = true;
       gallery.setActive(host.dataset.activeTab === "gallery");
+      trading.setActive(host.dataset.activeTab === "trading");
       renderTargets();
       update();
       if (!busy && liveEnabled === true && typeof inspectPuzzlePolicy === "function") {
@@ -26262,6 +26682,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const close = () => {
       if (!busy) {
         gallery.setActive(false);
+        trading.setActive(false);
         host.style.display = "none";
         shadow.querySelector("details").open = false;
       }
@@ -32715,6 +33136,179 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } });
   }
 
+  // src/adapters/browser/fc27-trading-desk.js
+  var tradingDeskKey = (scope2) => `fcat-fc27-trading-desk-v1:${scope2}`;
+  function createFc27TradingDesk({ prices, get, set, locks, readCandidates = () => [], now = () => Date.now(), id: id12 = () => globalThis.crypto.randomUUID() }) {
+    const rememberComplete = (rows) => prices.remember(rows.filter((row) => Number.isSafeInteger(row.rating) && row.rating >= 1 && row.rating <= 99 && [row.nationId, row.leagueId, row.teamId].every((v) => Number.isSafeInteger(v) && v > 0) && row.preferredPosition != null));
+    const capture = () => {
+      const context = prices.context();
+      if (!context.scope || !["pc", "console"].includes(context.platform)) throw Error("DESK_CONTEXT_INVALID");
+      return context;
+    };
+    const current2 = (context) => JSON.stringify(context) === JSON.stringify(capture());
+    const read = async () => {
+      const context = capture(), state = readDesk(await get(tradingDeskKey(context.scope), null));
+      if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+      return { context, state };
+    };
+    const update = async (context, mutate) => {
+      if (!locks?.request) throw Error("DESK_STORAGE_LOCK_UNAVAILABLE");
+      return locks.request(tradingDeskKey(context.scope), { mode: "exclusive" }, async () => {
+        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        const key2 = tradingDeskKey(context.scope), state = readDesk(await get(key2, null));
+        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        mutate(state);
+        readDesk(state);
+        const serialized = JSON.stringify(state);
+        if (new globalThis.TextEncoder().encode(serialized).length > DESK_LIMITS.bytes) throw Error("DESK_STORAGE_LIMIT");
+        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        await set(key2, state);
+        if (JSON.stringify(await get(key2, null)) !== serialized) throw Error("DESK_SAVE_UNVERIFIED");
+        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        return { context, state };
+      });
+    };
+    const act = async (mutate) => {
+      const context = capture();
+      return update(context, mutate);
+    };
+    return Object.freeze({
+      read,
+      context: capture,
+      candidates() {
+        const context = capture();
+        const rows = [...prices.knownPlayers(), ...readCandidates()];
+        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        const safe3 = [...new Map(rows.filter((row) => deskId(row.definitionId)).map((row) => [row.definitionId, {
+          definitionId: row.definitionId,
+          name: deskText(row.name || row.definitionId),
+          rating: row.rating ?? null,
+          version: deskText(row.version ?? "", 60),
+          nationId: row.nationId,
+          leagueId: row.leagueId,
+          teamId: row.teamId,
+          preferredPosition: row.preferredPosition
+        }])).values()].slice(0, 1e3);
+        rememberComplete(safe3);
+        return safe3;
+      },
+      settings: (value) => act((state) => {
+        state.settings = deskSettings(value);
+        state.configured = true;
+        deskAlerts(state, now());
+      }),
+      async add({ input, name = "", player = null }) {
+        const context = capture();
+        let resolved = player;
+        if (!resolved) resolved = /^[1-9]\d{0,8}$/.test(String(input).trim()) ? { definitionId: Number(input) } : await prices.resolveTradingPlayer(input);
+        if (!current2(context) || !deskId(resolved?.definitionId)) throw Error("DESK_PLAYER_INVALID");
+        rememberComplete([resolved]);
+        return update(context, (state) => {
+          if (state.watch.some((row) => row.definitionId === resolved.definitionId)) return;
+          if (state.watch.length >= DESK_LIMITS.watch) throw Error("DESK_WATCH_LIMIT");
+          state.watch.push({
+            definitionId: resolved.definitionId,
+            name: deskText(name || resolved.name || `EA ${resolved.definitionId}`),
+            ask: 0,
+            sell: 0,
+            checkedAt: 0,
+            series: { futbin: [], futgg: [] },
+            latest: {}
+          });
+        });
+      },
+      remove: (definitionId) => act((state) => {
+        state.watch = state.watch.filter((row) => row.definitionId !== definitionId);
+      }),
+      evaluate: ({ definitionId, ask, sell }) => act((state) => {
+        if (![ask, sell].every((v) => Number.isSafeInteger(v) && v >= 150 && v <= 15e6)) throw Error("DESK_PRICE_INVALID");
+        const card = state.watch.find((row) => row.definitionId === definitionId);
+        if (!card) throw Error("DESK_PLAYER_INVALID");
+        Object.assign(card, { ask, sell, checkedAt: now() });
+        deskAlerts(state, now());
+      }),
+      async refresh({ isCurrent = () => true, onProgress = () => {
+      } } = {}) {
+        const { context, state } = await read();
+        if (!state.watch.length) return { context, state };
+        const policy = await prices.readSettings();
+        if (!current2(context) || !isCurrent()) throw Error("DESK_CONTEXT_CHANGED");
+        const snapshot = await prices.load(state.watch.map((row) => row.definitionId), {
+          purpose: "trading",
+          futbinBatch: false,
+          policy: { ...policy, futbinPlatform: context.platform === "pc" ? "pc" : "ps" },
+          deadlineAt: now() + 3e4,
+          isCurrent: () => current2(context) && isCurrent(),
+          onProgress
+        });
+        if (!current2(context) || !isCurrent()) throw Error("DESK_CONTEXT_CHANGED");
+        return update(context, (next) => {
+          for (const card of next.watch) for (const source of ["futbin", "futgg"])
+            observeDeskQuote(card, source, snapshot.references?.[card.definitionId]?.quotes?.[source], context.platform, now());
+          deskAlerts(next, now());
+        });
+      },
+      recordBuy: ({ definitionId, name, buy }) => act((state) => {
+        if (!deskId(definitionId) || !Number.isSafeInteger(buy) || buy < 150 || buy > 15e6) throw Error("DESK_RECORD_INVALID");
+        if (state.records.length >= DESK_LIMITS.records) throw Error("DESK_RECORD_LIMIT");
+        state.records.push({ id: id12(), definitionId, name: deskText(name || definitionId), buy, sell: null, at: now() });
+      }),
+      recordSale: ({ recordId, sell }) => act((state) => {
+        if (!Number.isSafeInteger(sell) || sell < 150 || sell > 15e6) throw Error("DESK_PRICE_INVALID");
+        const row = state.records.find((row2) => row2.id === recordId);
+        if (!row || row.sell !== null) throw Error("DESK_RECORD_ALREADY_CLOSED");
+        row.sell = sell;
+        row.soldAt = now();
+      }),
+      acknowledge: () => act((state) => {
+        for (const alert of state.alerts) alert.read = true;
+      }),
+      event: (row) => act((state) => {
+        let link;
+        try {
+          link = new URL(deskText(row.url, 2e3));
+          link.search = "";
+          link.hash = "";
+        } catch {
+          throw Error("DESK_EVENT_INVALID");
+        }
+        const value = { url: link.href, note: deskText(row.note, 300), status: row.status, at: now() };
+        if (!validDeskEvent(value)) throw Error("DESK_EVENT_INVALID");
+        const old = state.events.findIndex((event) => event.url === value.url);
+        if (old < 0 && state.events.length >= DESK_LIMITS.events) throw Error("DESK_EVENT_LIMIT");
+        if (old >= 0) state.events[old] = value;
+        else state.events.push(value);
+      }),
+      defaults: () => emptyDesk()
+    });
+  }
+
+  // src/adapters/ea/fc27-trading-candidates.js
+  function readFc27TradingCandidates(root) {
+    try {
+      const adapter = createEaInventoryAdapter(root), seen = /* @__PURE__ */ new Map();
+      const names = new Map(Object.values(adapter.snapshot().piles).flat().map((row) => [row.id, row.name]));
+      for (const pile of ["club", "transfer", "unassigned"]) for (const item2 of adapter.readPile(pile)) {
+        if (!Number.isSafeInteger(Number(item2.definitionId)) || Number(item2.definitionId) < 1 || Number(item2.rating) < 1) continue;
+        const definitionId = Number(item2.definitionId);
+        if (seen.has(definitionId)) continue;
+        seen.set(definitionId, {
+          definitionId,
+          name: String(names.get(Number(item2.id)) ?? item2.name ?? definitionId).slice(0, 100),
+          rating: Number(item2.rating),
+          nationId: Number(item2.nationId),
+          leagueId: Number(item2.leagueId),
+          teamId: Number(item2.teamId),
+          preferredPosition: item2.preferredPosition
+        });
+        if (seen.size >= 1e3) return [...seen.values()];
+      }
+      return [...seen.values()];
+    } catch {
+      return [];
+    }
+  }
+
   // src/adapters/ea/fc27-gallery-card.js
   var at8 = (root, path) => path.split(".").reduce((value, key2) => value?.[key2], root);
   var own = (value, key2) => value != null && Object.prototype.hasOwnProperty.call(value, key2) ? value[key2] : void 0;
@@ -34204,6 +34798,35 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     return Object.freeze({
       scope: () => capture().scope,
+      context: () => {
+        const value = capture();
+        return { scope: value.scope, season: value.context.season, platform: value.platform };
+      },
+      knownPlayers: () => [...rows.values()].map((row) => ({ ...row })).slice(0, 1e3),
+      async resolveTradingPlayer(input) {
+        let url;
+        try {
+          url = new URL(input);
+        } catch {
+          throw Error("DESK_PLAYER_LINK_INVALID");
+        }
+        const match = /^\/27\/player\/([1-9]\d{0,8})(?:\/([^/]*))?\/?$/.exec(url.pathname);
+        if (url.protocol !== "https:" || !["www.futbin.com", "futbin.com"].includes(url.hostname) || url.username || url.password || !match) throw Error("DESK_PLAYER_LINK_INVALID");
+        const captured = capture(), policy = await policyStore.read(captured.scope);
+        captured.assert();
+        if (!publicPriceSourceEnabled(policy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+        const payload = JSON.parse(await request(`https://www.futbin.org/futbin/api/27/fetchPlayerInformationMinimal?ID=${match[1]}&platform=${captured.platform === "pc" ? "PC" : "PS"}`));
+        captured.assert();
+        const values8 = Object.values(payload?.data ?? {});
+        if (values8.length !== 1 || Number(values8[0].ID) !== Number(match[1]) || !Number.isSafeInteger(Number(values8[0].Player_Resource)) || Number(values8[0].Player_Resource) < 1) throw Error("DESK_PLAYER_LINK_INVALID");
+        const definitionId = Number(values8[0].Player_Resource);
+        parsePublicFutbinPrice(payload, definitionId, captured.platform, true);
+        if (!publicPriceSourceEnabled(await policyStore.read(captured.scope), "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+        captured.assert();
+        await updateIds(`fcat-futbin-ids:27`, { [definitionId]: Number(match[1]) });
+        captured.assert();
+        return { definitionId, name: decodeURIComponent(match[2] ?? "").replaceAll("-", " ").slice(0, 100) || `EA ${definitionId}` };
+      },
       readSettings,
       async saveSettings(value) {
         const captured = capture();
@@ -34217,6 +34840,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           rows.set(definitionId, {
             definitionId,
             rating: row.rating ?? row.overall ?? row._rating,
+            name: String(row.name ?? row.cardName ?? row.definitionId ?? row.eaId ?? "").slice(0, 100),
+            version: String(row.version ?? row.rarityName ?? "").slice(0, 60),
             nationId: row.nationId ?? row.nationEaId,
             leagueId: row.leagueId ?? row.leagueEaId,
             teamId: row.teamId ?? row.clubEaId,
@@ -41346,7 +41971,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.90" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.91" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41497,6 +42122,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     gmRequest: GM_xmlhttpRequest,
     transport: galleryTransport,
     diagnosticLog
+  });
+  var tradingDesk = createFc27TradingDesk({
+    prices: publicPrices,
+    get: GM_getValue,
+    set: GM_setValue,
+    locks: unsafeWindow.navigator.locks,
+    readCandidates: () => readFc27TradingCandidates(unsafeWindow)
   });
   var storageMaintenancePending = true;
   void compactFc27Storage({
@@ -41688,8 +42320,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.90"}`,
-    version: "27.0.90",
+    title: `FC Automation Tool ${"27.0.91"}`,
+    version: "27.0.91",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
@@ -41706,6 +42338,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     galleryMarketCompare: galleryComparison.compare,
     galleryPriceLoader: (ids2) => publicPrices.load(ids2, { purpose: "display" }),
     publicPrices,
+    tradingDesk,
     galleryPlanningPrices: (ids2, options = {}) => publicPrices.load(ids2, options),
     galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
     galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),

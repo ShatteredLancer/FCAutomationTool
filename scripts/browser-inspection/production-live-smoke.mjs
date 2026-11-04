@@ -126,8 +126,13 @@ export async function exerciseProductionLivePanel(context, directory) {
       assert.equal(await host.getAttribute('data-active-tab'), id);
       assert.equal(await host.locator('[role=tabpanel]:visible').count(), 1);
       assert.equal(await button(`page-${id}`).isVisible(), true);
-      if (['market', 'trading', 'inventory', 'routine', 'rolling'].includes(id)) {
+      if (['market', 'inventory', 'routine', 'rolling'].includes(id)) {
         assert.equal(await button(`page-${id}`).locator('button,input,select').count(), 0);
+      }
+      if(id==='trading'){
+        assert.equal(await button('page-trading').locator(':is(button,input,select):enabled').count(),0,
+          'no trading service was supplied: observation controls stay disabled');
+        assert.match(await button('page-trading').innerText(),/交易观察服务未接入/);
       }
       if (id === 'gallery') {
         assert.equal(await button('gallery-refresh').isDisabled(), true);

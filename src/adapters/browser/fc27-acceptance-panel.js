@@ -5,12 +5,13 @@ import { mountFc27PriceSettings } from './fc27-price-settings.js';
 import { mountGalleryTradeSettings } from './fc27-gallery-trade-settings.js';
 import { mountGalleryPlanningSettings } from './fc27-gallery-planning-settings.js';
 import { bindCurrencyArrows } from './fc27-listing-currency.js';
+import { mountFc27TradingView } from './fc27-trading-view.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
   galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryRelist = null, galleryFirstOwnerHistory = null,
   galleryScoreCache = null, galleryLevel = null, galleryReference = null, galleryAccounting = null, galleryTradePreferences = null, galleryPlanningSettings = null,
-  publicPrices = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
+  publicPrices = null, tradingDesk = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
@@ -20,7 +21,8 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#settings-bottom'), service: publicPrices });
   const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryTradePreferences });
   const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryPlanningSettings });
-  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
+  const trading=mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
+  const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery');trading.setActive(id==='trading'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
   const node = id => shadow.getElementById(id);
   node('workbench-version').textContent = version ?? title;
   node('workbench-mode').textContent = liveEnabled === true ? '已开放现有单次操作；提交需单独确认。' : '当前为只读模式。';
@@ -45,7 +47,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   };
   const update = () => {
     for (const button of shadow.querySelectorAll('button:not([role="tab"]),select,input')) {
-      if (!button.closest('#page-gallery') && !button.closest('#public-price-settings') && !button.closest('#gallery-trade-settings') && !button.closest('#gallery-planning-settings')) button.disabled = busy;
+      if (!button.closest('#page-gallery') && !button.closest('#page-trading') && !button.closest('#public-price-settings') && !button.closest('#gallery-trade-settings') && !button.closest('#gallery-planning-settings')) button.disabled = busy;
     }
     node('execute').disabled = busy || liveEnabled !== true || plan?.liveEnabled !== true;
     node('fill').disabled = busy || liveEnabled !== true || puzzlePlan?.fillReady !== true || typeof fillPuzzle !== 'function';
@@ -235,6 +237,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
     }
     host.style.display = 'block'; shadow.querySelector('details').open = true;
     gallery.setActive(host.dataset.activeTab === 'gallery');
+    trading.setActive(host.dataset.activeTab === 'trading');
     renderTargets(); update();
     if (!busy && liveEnabled === true && typeof inspectPuzzlePolicy === 'function') {
       void run(async () => {
@@ -249,7 +252,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
       });
     }
   };
-  const close = () => { if (!busy) { gallery.setActive(false); host.style.display = 'none'; shadow.querySelector('details').open = false; } };
+  const close = () => { if (!busy) { gallery.setActive(false);trading.setActive(false); host.style.display = 'none'; shadow.querySelector('details').open = false; } };
   shadow.querySelector('summary').addEventListener('click', event => {
     if (host.dataset.navigationPage) { event.preventDefault(); return; }
     if (event.isTrusted && !busy) { event.preventDefault(); close(); }
