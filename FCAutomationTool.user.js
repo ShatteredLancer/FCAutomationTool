@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.87
+// @version      27.0.88
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.87", at: Date.now(), status: 'started',
+    state = { version: "27.0.88", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -4598,6 +4598,7 @@
       maxNodes: remaining,
       materialRules: [],
       nativeQualityFallback: true,
+      ratingFirstStart: !hasIncumbent,
       ...hasIncumbent ? { procurement: {
         ...input.procurement,
         budget: Math.min(input.procurement.budget, Math.max(0, objectiveValue(incumbent)))
@@ -4659,7 +4660,9 @@
       costOf: options.procurement.costOf,
       resolveClub: createFc27ClubResolver(clubLinks)
     }) : [];
+    const ratingStart = options.ratingFirstStart && options.procurement?.priceAware && rules.rules.some((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind) && rule.value > 0);
     const routes = [
+      ...ratingStart ? [{ hint: null, costFirst: false, ratingFirst: true }] : [],
       ...options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : [],
       ...pricedGroups,
       ...hints.map((hint) => ({ hint, costFirst: false }))
@@ -4685,13 +4688,14 @@
       } catch {
       }
     };
-    for (const [index, { hint, costFirst }] of routes.entries()) {
+    for (const [index, { hint, costFirst, ratingFirst = false }] of routes.entries()) {
       const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
       result = yield* iterateFc27PuzzleCandidates({
         ...options,
         maxNodes: budget,
         searchHint: hint,
         costFirst,
+        ratingFirst,
         ...bestResult && objectiveValueOf(bestResult, options.procurement?.objective) > 0 ? { procurement: {
           ...options.procurement,
           budget: Math.min(options.procurement.budget, objectiveValueOf(bestResult, options.procurement?.objective) - 1)
@@ -4770,7 +4774,8 @@
     onProgress = null,
     materialRules = [],
     nativeQualityFallback = false,
-    costFirst = false
+    costFirst = false,
+    ratingFirst = false
   } = {}) {
     if (!integer8(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
@@ -4869,7 +4874,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (costFirst ? quoted.get(a) - quoted.get(b) : 0) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (ratingFirst ? b.rating - a.rating : 0) || (costFirst ? quoted.get(a) - quoted.get(b) : 0) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -4969,6 +4974,7 @@
       return true;
     };
     const needsFacts = ruleNeedsTeamFacts(parsed.rules);
+    const ratingRules = parsed.rules.filter((rule) => ["min-team-rating", "max-team-rating", "exact-team-rating"].includes(rule.kind));
     const searchPositions = parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"));
     const minimumChemistry = Math.max(0, ...parsed.rules.filter((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind)).map((rule) => rule.value));
     const partialChemistry = minimumChemistry > 0 ? createFc27PuzzlePartialChemistryBound({
@@ -5020,6 +5026,15 @@
           clubLinks
         });
         if (needsFacts) {
+          if (partialChemistry && ratingRules.length) {
+            if (!takeNode("bounds")) return;
+            const rating = evaluateFc27PuzzleRating({ squad: chosen, rating: chemistry?.rating });
+            if (rating.status === "observed" && matchFc27SbcRequirements({
+              requirements: ratingRules,
+              squad: chosen,
+              teamRating: rating.teamRating
+            }).status === "unsatisfied") return;
+          }
           if (typeof boundSquad === "function" && minimumChemistry > 0) {
             if (!takeNode("bounds")) return;
             let bound;
@@ -41147,7 +41162,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.87" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.88" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41489,8 +41504,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.87"}`,
-    version: "27.0.87",
+    title: `FC Automation Tool ${"27.0.88"}`,
+    version: "27.0.88",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

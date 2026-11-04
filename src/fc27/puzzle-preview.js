@@ -1,7 +1,7 @@
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { puzzleMaterialRules, puzzleMaterialRuleVectors, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
-import { createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
+import { createFc27PuzzlePartialChemistryBound, evaluateFc27PuzzleRating } from './puzzle-evaluator.js';
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
@@ -379,6 +379,7 @@ export function* iterateFc27PuzzleCandidateRoutes(input) {
   const sum = search => Object.fromEntries(['combinationNodes','placementNodes','evaluations','bounds']
     .map(key => [key, (preferenceSearch[key] ?? 0) + (search?.[key] ?? 0)]));
   const result = yield* iteratePuzzleRoutes({ ...input, maxNodes: remaining, materialRules: [], nativeQualityFallback: true,
+    ratingFirstStart: !hasIncumbent,
     ...(hasIncumbent ? { procurement: { ...input.procurement,
       budget: Math.min(input.procurement.budget, Math.max(0, objectiveValue(incumbent))) } } : {}),
     onProgress: value => input.onProgress?.({ ...value, nodes: spent + value.nodes, maxNodes, search: sum(value.search) }) });
@@ -433,7 +434,13 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
   const pricedGroups = options.procurement?.priceAware ? pricedPuzzleGroupStarts({ candidates: hintCandidates,
     rules: rules.rules, formation: challenge.formation, brickIndices: challenge.brickIndices,
     costOf: options.procurement.costOf, resolveClub: createFc27ClubResolver(clubLinks) }) : [];
-  const routes = [...(options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : []),
+  // Without a feasible incumbent, cheap low-rated fillers can dominate every
+  // price-led start. Reserve one original-budget slice for rating feasibility;
+  // it is still fully validated and all results use the same monetary goal.
+  const ratingStart = options.ratingFirstStart && options.procurement?.priceAware
+    && rules.rules.some(rule => ['min-team-rating', 'exact-team-rating'].includes(rule.kind) && rule.value > 0);
+  const routes = [...(ratingStart ? [{ hint: null, costFirst: false, ratingFirst: true }] : []),
+    ...(options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : []),
     ...pricedGroups,
     ...hints.map(hint => ({ hint, costFirst: false }))];
   let nodes = 0; let result; let bestResult = null; let hadTruncatedRoute = false;
@@ -445,9 +452,9 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
       maxNodes, safeCandidates: pool.candidates.length, required, attempt: progress.attempt,
       attempts: routes.length }); } catch { /* Progress presentation cannot affect the search. */ }
   };
-  for (const [index, { hint, costFirst }] of routes.entries()) {
+  for (const [index, { hint, costFirst, ratingFirst = false }] of routes.entries()) {
     const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
-    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst,
+    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst, ratingFirst,
       ...(bestResult && objectiveValueOf(bestResult, options.procurement?.objective) > 0 ? { procurement: { ...options.procurement,
         budget: Math.min(options.procurement.budget, objectiveValueOf(bestResult, options.procurement?.objective) - 1) } } : {}),
       onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
@@ -498,7 +505,7 @@ export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc2
 
 export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null,
-  materialRules = [], nativeQualityFallback = false, costFirst = false } = {}) {
+  materialRules = [], nativeQualityFallback = false, costFirst = false, ratingFirst = false } = {}) {
   if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   // Planning amounts use the same public-price domain as procurement: at
@@ -658,6 +665,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
       || Number(positionFit(b)) - Number(positionFit(a))
+      || (ratingFirst ? b.rating - a.rating : 0)
       || (costFirst ? quoted.get(a) - quoted.get(b) : 0)
       || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0)
       || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0)
@@ -745,6 +753,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     reportProgress(); return true;
   };
   const needsFacts = ruleNeedsTeamFacts(parsed.rules);
+  const ratingRules = parsed.rules.filter(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating'].includes(rule.kind));
   const searchPositions = parsed.rules.some(rule => rule.kind.endsWith('-chemistry'));
   const minimumChemistry = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind))
     .map(rule => rule.value));
@@ -787,6 +796,16 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       const validate = facts => matchFc27SbcRequirements({ requirements: parsed.rules, squad: chosen,
         chemistry: facts?.chemistry, teamRating: facts?.teamRating, groupMatcher, clubLinks });
       if (needsFacts) {
+        // The ordinary-native proof gate already used by chemistry pruning
+        // also permits the canonical rating calculation. Rating never changes
+        // with position: reject it before expensive bounds/permutations.
+        // Unknown profiles/configuration retain the original evaluator path.
+        if (partialChemistry && ratingRules.length) {
+          if (!takeNode('bounds')) return;
+          const rating = evaluateFc27PuzzleRating({ squad: chosen, rating: chemistry?.rating });
+          if (rating.status === 'observed' && matchFc27SbcRequirements({ requirements: ratingRules,
+            squad: chosen, teamRating: rating.teamRating }).status === 'unsatisfied') return;
+        }
         if (typeof boundSquad === 'function' && minimumChemistry > 0) {
           if (!takeNode('bounds')) return;
           let bound;
