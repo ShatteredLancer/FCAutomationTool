@@ -1,6 +1,6 @@
 import {expect,it,vi} from 'vitest';
 import {EventEmitter} from 'node:events';
-import {normalizeTradingIntel,intelPostUrl,intelEvents} from '../../src/trading/intel.js';
+import {normalizeTradingIntel,intelPostUrl,intelEvents,INTEL_HANDLES} from '../../src/trading/intel.js';
 import {collectTradingIntel,intelPrompt,readGrokIntelEvidence} from '../../scripts/trading-intel/collector.mjs';
 import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -15,6 +15,14 @@ const payload=(posts=[post()])=>({schema:1,posts});
 it('validates original allowed-account status links and does not follow arbitrary news URLs',()=>{
   expect(intelPostUrl(post().url+'?s=20').url).toBe(post().url);
   for(const url of ['https://example.com/FutSheriff/status/123','http://x.com/FutSheriff/status/123','https://x.com/Other/status/1234567890123456789'])expect(intelPostUrl(url)).toBeNull();
+});
+it('includes DetectiveFUT in native searches and verifies its own author-reply evidence without assigning a rating',()=>{
+  const root=id(now-30000),reply=post({url:`https://x.com/DetectiveFUT/status/${id(now-10000)}`,parentUrl:`https://x.com/DetectiveFUT/status/${root}`});
+  expect(INTEL_HANDLES).toContain('DetectiveFUT');expect(intelPrompt(now)).toContain('DetectiveFUT');
+  const value=normalizeTradingIntel(payload([reply]),now,{calls:[{name:'x_thread_fetch',input:{post_id:root}},
+    {name:'x_keyword_search',input:{query:`conversation_id:${root} from:DetectiveFUT`}}]});
+  expect(value.posts[0]).toMatchObject({author:'DetectiveFUT',evidence:'native-thread-author-reply',threadChecked:true});
+  expect(value.posts[0]).not.toHaveProperty('accuracy');expect(intelPostUrl(reply.url.replace('DetectiveFUT','DetectiveFUT1'))).toBeNull();
 });
 it('keeps reported author replies and named players when EVO conditions remain unknown',()=>{
   const value=normalizeTradingIntel(payload([post({text:'Example player fits.',parentUrl:`https://x.com/FutSheriff/status/${id(now-30000)}`,

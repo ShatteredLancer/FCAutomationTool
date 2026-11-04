@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.92
+// @version      27.0.93
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.92", at: Date.now(), status: 'started',
+    state = { version: "27.0.93", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26246,7 +26246,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     const intelligence = add3(parent, "section", "", "trading-card");
     add3(intelligence, "h3", "X \u81EA\u52A8\u91C7\u96C6 \xB7 \u6309\u9700\u5237\u65B0\uFF0C\u4E0D\u5F00\u5B9A\u65F6");
-    add3(intelligence, "small", "\u4ECE FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader \u539F\u751F X \u641C\u7D22\u539F\u5E16\uFF0C\u6838\u5BF9\u6700\u591A\u4E24\u6761 EVO \u7EBF\u7A0B\u53CA\u4F5C\u8005\u540E\u7EED\u56DE\u590D\uFF0C\u5305\u542B\u70B9\u540D\u7403\u5458\u3002\u590D\u7528\u672C\u673A Grok\uFF0C\u53EF\u80FD\u4EA7\u751F\u6A21\u578B\u8D39\u7528\uFF1B\u4E0D\u4FDD\u8BC1\u5B9E\u65F6\u3001\u5B8C\u6574\u7EBF\u7A0B\u6216\u7206\u6599\u51C6\u786E\u300215 \u5206\u949F\u5185\u91CD\u590D\u5237\u65B0\u7528\u7F13\u5B58\u3002");
+    add3(intelligence, "small", "\u4ECE FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT \u539F\u751F X \u641C\u7D22\u539F\u5E16\uFF0C\u6838\u5BF9\u6700\u591A\u4E24\u6761 EVO \u7EBF\u7A0B\u53CA\u4F5C\u8005\u540E\u7EED\u56DE\u590D\uFF0C\u5305\u542B\u70B9\u540D\u7403\u5458\u3002\u590D\u7528\u672C\u673A Grok\uFF0C\u53EF\u80FD\u4EA7\u751F\u6A21\u578B\u8D39\u7528\uFF1B\u4E0D\u4FDD\u8BC1\u5B9E\u65F6\u3001\u5B8C\u6574\u7EBF\u7A0B\u6216\u7206\u6599\u51C6\u786E\u300215 \u5206\u949F\u5185\u91CD\u590D\u5237\u65B0\u7528\u7F13\u5B58\u3002");
     const pairing = add3(intelligence, "details");
     add3(pairing, "summary", "\u8FDE\u63A5\u672C\u673A\u91C7\u96C6\u5668\uFF08\u9996\u6B21\u8BBE\u7F6E\uFF09");
     add3(pairing, "small", "\u5728\u672C\u9879\u76EE\u7535\u8111\u8FD0\u884C npm run trading:intel\uFF0C\u4FDD\u6301\u91C7\u96C6\u5668\u5F00\u542F\uFF1B\u5C06\u5176\u663E\u793A\u7684\u672C\u673A\u914D\u5BF9\u7801\u586B\u5728\u4E0B\u9762\u3002\u914D\u5BF9\u7801\u53EA\u4FDD\u5B58\u5728\u672C\u673A\uFF0C\u4E0D\u5BFC\u51FA\u3001\u4E0D\u53D1\u5230 X\u3002");
@@ -26328,7 +26328,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     ledger.setAttribute("aria-label", "\u624B\u586B\u4EA4\u6613\u8BB0\u5F55");
     const news = add3(parent, "details", "", "trading-card");
     add3(news, "summary", "X \u6D88\u606F\u7EBF\u7D22\uFF08\u624B\u52A8\u5F55\u5165\uFF0C\u591A\u6765\u6E90\uFF09");
-    add3(news, "small", "\u53EF\u89C2\u5BDF Fut Sheriff\u3001FUT Police Leaks\u3001Fut Scoreboard\u3001AsyFutTrader \u7B49\uFF1B\u4E0D\u662F\u53EF\u4FE1\u5EA6\u6392\u540D\u3002\u672A\u63A5\u901A\u81EA\u52A8 X \u6293\u53D6\uFF0C\u540C\u6E90\u642C\u8FD0\u4E0D\u7B97\u72EC\u7ACB\u8BC1\u636E\uFF0C\u6D88\u606F\u4E0D\u89E6\u53D1\u4E70\u5356\u3002");
+    add3(news, "small", "\u53EF\u89C2\u5BDF Fut Sheriff\u3001FUT Police Leaks\u3001Fut Scoreboard\u3001AsyFutTrader\u3001DetectiveFUT \u7B49\uFF1B\u4E0D\u662F\u53EF\u4FE1\u5EA6\u6392\u540D\u3002\u6B64\u5904\u4FDD\u7559\u624B\u52A8\u7EBF\u7D22\u8865\u5F55\uFF1B\u81EA\u52A8\u91C7\u96C6\u89C1\u4E0A\u65B9\uFF0C\u540C\u6E90\u642C\u8FD0\u4E0D\u7B97\u72EC\u7ACB\u8BC1\u636E\uFF0C\u6D88\u606F\u4E0D\u89E6\u53D1\u4E70\u5356\u3002");
     const newsFields = add3(news, "div", "", "trading-grid"), post = input(newsFields, "X \u539F\u5E16\u94FE\u63A5", "", "url"), note = input(newsFields, "\u6D88\u606F\u5907\u6CE8", "", "text"), newsState = add3(add3(newsFields, "label", "\u6D88\u606F\u72B6\u6001"), "select");
     newsState.setAttribute("aria-label", "\u6D88\u606F\u72B6\u6001");
     for (const [value, label] of [["leak", "\u7206\u6599"], ["confirmed", "\u5DF2\u786E\u8BA4"], ["live", "\u5DF2\u4E0A\u7EBF"], ["failed", "\u843D\u7A7A"]]) {
@@ -33556,7 +33556,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/trading/intel.js
-  var INTEL_HANDLES = Object.freeze(["FutSheriff", "FutPoliceLeaks", "Fut_scoreboard", "AsyFutTrader"]);
+  var INTEL_HANDLES = Object.freeze(["FutSheriff", "FutPoliceLeaks", "Fut_scoreboard", "AsyFutTrader", "DetectiveFUT"]);
   var name = (s) => String(s ?? "").trim().slice(0, 100);
   function intelPostUrl(input) {
     try {
@@ -42611,7 +42611,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.92" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.93" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -42961,8 +42961,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.92"}`,
-    version: "27.0.92",
+    title: `FC Automation Tool ${"27.0.93"}`,
+    version: "27.0.93",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

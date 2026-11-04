@@ -1,5 +1,5 @@
 // Public search evidence only. Never an eligibility proof or an order permit.
-export const INTEL_HANDLES=Object.freeze(['FutSheriff','FutPoliceLeaks','Fut_scoreboard','AsyFutTrader']);
+export const INTEL_HANDLES=Object.freeze(['FutSheriff','FutPoliceLeaks','Fut_scoreboard','AsyFutTrader','DetectiveFUT']);
 const name=s=>String(s??'').trim().slice(0,100);
 export function intelPostUrl(input){
   try{const u=new URL(input),m=/^\/([A-Za-z0-9_]{1,30})\/status\/(\d{15,22})\/?$/.exec(u.pathname);

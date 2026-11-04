@@ -90,7 +90,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     for(const name of advice.unresolvedNames??[])add(adviceList,'small',`点名 ${name}：名字未唯一匹配，未生成版本/买价建议。`);
   }
   const intelligence=add(parent,'section','','trading-card');add(intelligence,'h3','X 自动采集 · 按需刷新，不开定时');
-  add(intelligence,'small','从 FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader 原生 X 搜索原帖，核对最多两条 EVO 线程及作者后续回复，包含点名球员。复用本机 Grok，可能产生模型费用；不保证实时、完整线程或爆料准确。15 分钟内重复刷新用缓存。');
+  add(intelligence,'small','从 FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT 原生 X 搜索原帖，核对最多两条 EVO 线程及作者后续回复，包含点名球员。复用本机 Grok，可能产生模型费用；不保证实时、完整线程或爆料准确。15 分钟内重复刷新用缓存。');
   const pairing=add(intelligence,'details');add(pairing,'summary','连接本机采集器（首次设置）');
   add(pairing,'small','在本项目电脑运行 npm run trading:intel，保持采集器开启；将其显示的本机配对码填在下面。配对码只保存在本机，不导出、不发到 X。');
   const pairKey=input(pairing,'本机采集器配对码','','password');pairKey.autocomplete='off';
@@ -128,7 +128,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   const watch=add(parent,'section');watch.setAttribute('aria-label','球员观察名单');
   const ledger=add(parent,'section','','trading-card trading-ledger');ledger.setAttribute('aria-label','手填交易记录');
   const news=add(parent,'details','','trading-card');add(news,'summary','X 消息线索（手动录入，多来源）');
-  add(news,'small','可观察 Fut Sheriff、FUT Police Leaks、Fut Scoreboard、AsyFutTrader 等；不是可信度排名。未接通自动 X 抓取，同源搬运不算独立证据，消息不触发买卖。');
+  add(news,'small','可观察 Fut Sheriff、FUT Police Leaks、Fut Scoreboard、AsyFutTrader、DetectiveFUT 等；不是可信度排名。此处保留手动线索补录；自动采集见上方，同源搬运不算独立证据，消息不触发买卖。');
   const newsFields=add(news,'div','','trading-grid'),post=input(newsFields,'X 原帖链接','','url'),note=input(newsFields,'消息备注','','text'),newsState=add(add(newsFields,'label','消息状态'),'select');
   newsState.setAttribute('aria-label','消息状态');for(const [value,label]of [['leak','爆料'],['confirmed','已确认'],['live','已上线'],['failed','落空']]){const opt=add(newsState,'option',label);opt.value=value;}
   button(news,'保存消息线索',()=>service.event({url:post.value,note:note.value,status:newsState.value}));const newsList=add(news,'div');
