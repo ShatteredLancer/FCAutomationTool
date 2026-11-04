@@ -6,7 +6,7 @@ import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from '
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
-import { planPuzzleNationalityAffinity } from './puzzle-query-affinity.js';
+import { planPuzzleNationalityAffinity,planPuzzleLeagueMinimumAffinity } from './puzzle-query-affinity.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const seeds = new WeakMap();
@@ -742,6 +742,16 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
     }
     lanes.forEach((lane, index) => add(lane[0] ?? { start: 0, count: 20, level: tiers[index] }));
     for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add(lane[index]);
+  }
+  if(!cappedClubs && chemistryNeeded && !parsed.rules.some(rule=>['from-clubs','from-leagues','from-nations'].includes(rule.kind))){
+    const lane=planPuzzleLeagueMinimumAffinity({candidates:[...pool.candidates,...marketCandidates(input,entries)],material,rules:parsed.rules,
+      formation:input.challenge.formation,brickIndices:input.challenge.brickIndices,usedQueries,excludedLeagueIds:input.policy.excludedLeagueIds,
+      resolveClub:createFc27ClubResolver(input.clubLinks)});
+    if(lane){
+      add({start:0,count:20,level:lane.level});add(lane);
+      for(const level of tiers)if(level!==lane.level)add({start:0,count:20,level});
+      return {status:'ready',executable:false,queries,complete:false};
+    }
   }
   if (!missing.length) {
     for (const query of generic.queries) if (tiers.includes(query.level)) add(query);

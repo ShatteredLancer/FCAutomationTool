@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-04 Puzzle 27.0.86：基于ad 8548fae(.85)；Gallery未发布WIP独立stash保留，不混本次，恢复时应重新整合/另升版本。Set77/117截图9人/同league>=4/同club<=3/nation<=4/Gold>=6/70分/24chem；日志77库存仅2安全，75按保护排除，60目录58可用、21160组合/0阵位/0完整评估，缺完整逐卡/阵型，非现场精确重放。合成Session原铜/金宽页+金国籍页失败，已知原生合法6金3铜9人完整验证。仅普通无命名身份且无distinct-club cap分支，在多数品质完成宽页后按开放阵位支持＋原same-club容量/关联归并提示一个同league最低人数相关品质页；仍3x20/原50k，无强制league选材，重复/排除/无支持原回退。5新测试含Session/no writes/原完整评分chem/上限、位置/关联容量/原生min与首次宽页/排除/无解析回退；455文件5529通过39旧skip，全离线Chrome和root/dist/FSU发布资产检查通过；ad库存双目标/Streamlined恢复、FSU/锁卡/主阵容/预算cap/TTL/交易Journal不变。见docs/releases/27.0.86.md。
+
 2026-11-02 Streamlined（27.0.85 本地未发布）：外部选卡现场当前目标6750，贡献preflight却被旧目标5500/已贡献3860阻断；旧日志无逐批状态，不认定所有历史已结清或Transfer本身不可用。跨目标/门槛恢复显示旧目标及confirmed/waiting/unknown计数；已确认纯Club/Storage＋从未发送余批可在用户显式点击后归档，原完整记录写既有history并复读，active保留validated retired与递增revision。未决买/移/贡献、无可靠回执、旧外部卡流程均不退役，不把未知改成功；正常新计划及Club前置→外部移入→贡献顺序不变。同ID不同门槛不恢复旧方案。详见docs/FC27_STREAMLINED_STALE_CONTRIBUTION_ZH.md，真实旧记录状态及新构建验收仍待用户核对。
 
 2026-11-02 Gallery 27.0.85：用户确认独立冲级规划并发布。默认token/S→A→B不变；score目标按完整合集本地分增量比较性价比/多增分/少本金，非EA全局XP/精确等级，不预测Lv10。当前目录club/league/nation共享版本只采购/计税一次，已收集卖出/SBC仍已有；未知收集不计增分，不完整基线0，首任不确定以旧上界比新下界。仅新目标两个数字探测/各6000评估/48beam，完整有价best-effort按实际score，不伪造reached；原普通档位计划不变。数字目标带入原单合集生成，不混D–S联合存储；返回按实际数值而非已经S判断完成。两目标各一份内存状态，账号/目录失效清双份，实际报价原TTL，参考只估算，局部更新保留无关合集；无新GM/网络源/依赖/买卖权限。新增匿名JSON字段和离线Chrome数值移交/切换保留/快速深度/390px；450文件5408通过39旧skip，完整verify等价检查/全离线Chrome通过，桌面/窄屏/数值移交视觉检查，无真实EA写入。真实账号计分/性能/等级待升级验收；见docs/releases/27.0.85.md。

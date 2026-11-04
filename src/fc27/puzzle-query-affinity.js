@@ -1,6 +1,35 @@
 const quality = rating => rating < 65 ? 1 : rating < 75 ? 2 : 3;
 const level = tier => ({ 1: 'bronze', 2: 'silver', 3: 'gold' })[tier];
 
+// A positive same-league minimum needs coherent supply, not just one broad
+// page of each tier. After the dominant tier's broad read, grow a league with
+// in-position support before unrelated filler pages exhaust the read budget.
+// This is discovery only: no identity is required in the resulting squad.
+export function planPuzzleLeagueMinimumAffinity({candidates=[],material=[],rules=[],formation,brickIndices,usedQueries=[],excludedLeagueIds=[],resolveClub}={}){
+  if(!Array.isArray(formation?.positions) || !Array.isArray(brickIndices) || typeof resolveClub!=='function'
+      || !rules.some(rule=>rule.kind==='same-league' && rule.mode==='min' && rule.value>1))return null;
+  const slots=formation.positions.filter((_position,index)=>!brickIndices.includes(index));
+  const dominant=material.filter(rule=>rule.count>slots.length/2).sort((a,b)=>b.count-a.count)[0];
+  if(!dominant)return null;
+  const tier=dominant.qualities[0],laneLevel=level(tier);
+  if(!usedQueries.some(query=>query.level===laneLevel && !query.team && !query.nation && !query.league))return null;
+  const clubCap=Math.min(slots.length,...rules.filter(rule=>rule.kind==='same-club' && rule.mode!=='min').map(rule=>rule.value));
+  const groups=new Map();
+  for(const item of candidates){
+    if(quality(item.rating)!==tier || !Number.isSafeInteger(item.leagueId) || item.leagueId<=0 || excludedLeagueIds.includes(item.leagueId)
+        || !item.positions?.some(position=>slots.includes(position)))continue;
+    const club=resolveClub(item.teamId);if(!Number.isSafeInteger(club) || club<=0)continue;
+    if(!groups.has(item.leagueId))groups.set(item.leagueId,new Map());
+    const clubs=groups.get(item.leagueId);if(!clubs.has(club))clubs.set(club,new Set());
+    clubs.get(club).add(item.definitionId);
+  }
+  const ranked=[...groups].map(([league,clubs])=>({league,support:[...clubs.values()].reduce((n,ids)=>n+Math.min(clubCap,ids.size),0),clubs:clubs.size}))
+    .sort((a,b)=>b.support-a.support || b.clubs-a.clubs || a.league-b.league);
+  if(!ranked.length)return null;
+  const query={start:0,count:20,level:laneLevel,league:ranked[0].league};
+  return usedQueries.some(used=>JSON.stringify(used)===JSON.stringify(query))?null:query;
+}
+
 // Rank only a read-only catalog lane, never require these cards in the squad.
 // Chemistry comes from in-position players: a populous nation of midfielders
 // is a weak anchor when those formation slots are bricks. Maximum matching

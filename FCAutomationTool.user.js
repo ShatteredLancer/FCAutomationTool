@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.85
+// @version      27.0.86
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -29,7 +29,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.85", at: Date.now(), status: 'started',
+    state = { version: "27.0.86", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6153,6 +6153,29 @@
   // src/fc27/puzzle-query-affinity.js
   var quality = (rating) => rating < 65 ? 1 : rating < 75 ? 2 : 3;
   var level = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
+  function planPuzzleLeagueMinimumAffinity({ candidates = [], material = [], rules = [], formation, brickIndices, usedQueries = [], excludedLeagueIds = [], resolveClub } = {}) {
+    if (!Array.isArray(formation?.positions) || !Array.isArray(brickIndices) || typeof resolveClub !== "function" || !rules.some((rule) => rule.kind === "same-league" && rule.mode === "min" && rule.value > 1)) return null;
+    const slots = formation.positions.filter((_position, index) => !brickIndices.includes(index));
+    const dominant = material.filter((rule) => rule.count > slots.length / 2).sort((a, b) => b.count - a.count)[0];
+    if (!dominant) return null;
+    const tier = dominant.qualities[0], laneLevel = level(tier);
+    if (!usedQueries.some((query2) => query2.level === laneLevel && !query2.team && !query2.nation && !query2.league)) return null;
+    const clubCap = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "same-club" && rule.mode !== "min").map((rule) => rule.value));
+    const groups = /* @__PURE__ */ new Map();
+    for (const item2 of candidates) {
+      if (quality(item2.rating) !== tier || !Number.isSafeInteger(item2.leagueId) || item2.leagueId <= 0 || excludedLeagueIds.includes(item2.leagueId) || !item2.positions?.some((position) => slots.includes(position))) continue;
+      const club = resolveClub(item2.teamId);
+      if (!Number.isSafeInteger(club) || club <= 0) continue;
+      if (!groups.has(item2.leagueId)) groups.set(item2.leagueId, /* @__PURE__ */ new Map());
+      const clubs = groups.get(item2.leagueId);
+      if (!clubs.has(club)) clubs.set(club, /* @__PURE__ */ new Set());
+      clubs.get(club).add(item2.definitionId);
+    }
+    const ranked = [...groups].map(([league, clubs]) => ({ league, support: [...clubs.values()].reduce((n, ids2) => n + Math.min(clubCap, ids2.size), 0), clubs: clubs.size })).sort((a, b) => b.support - a.support || b.clubs - a.clubs || a.league - b.league);
+    if (!ranked.length) return null;
+    const query = { start: 0, count: 20, level: laneLevel, league: ranked[0].league };
+    return usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query)) ? null : query;
+  }
   function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
     if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || !Array.isArray(brickIndices)) return null;
     const required2 = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
@@ -6939,6 +6962,24 @@
       }
       lanes.forEach((lane, index) => add3(lane[0] ?? { start: 0, count: 20, level: tiers2[index] }));
       for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add3(lane[index]);
+    }
+    if (!cappedClubs && chemistryNeeded && !parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind))) {
+      const lane = planPuzzleLeagueMinimumAffinity({
+        candidates: [...pool.candidates, ...marketCandidates(input, entries2)],
+        material,
+        rules: parsed.rules,
+        formation: input.challenge.formation,
+        brickIndices: input.challenge.brickIndices,
+        usedQueries,
+        excludedLeagueIds: input.policy.excludedLeagueIds,
+        resolveClub: createFc27ClubResolver(input.clubLinks)
+      });
+      if (lane) {
+        add3({ start: 0, count: 20, level: lane.level });
+        add3(lane);
+        for (const level2 of tiers2) if (level2 !== lane.level) add3({ start: 0, count: 20, level: level2 });
+        return { status: "ready", executable: false, queries, complete: false };
+      }
     }
     if (!missing.length) {
       for (const query of generic.queries) if (tiers2.includes(query.level)) add3(query);
@@ -41102,7 +41143,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.85" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.86" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -41444,8 +41485,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.85"}`,
-    version: "27.0.85",
+    title: `FC Automation Tool ${"27.0.86"}`,
+    version: "27.0.86",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
