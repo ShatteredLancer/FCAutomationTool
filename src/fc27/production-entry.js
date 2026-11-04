@@ -18,6 +18,7 @@
 // @connect      www.futbin.org
 // @connect      www.fut.gg
 // @connect      fodder.gg
+// @connect      127.0.0.1
 // @run-at       document-end
 // ==/UserScript==
 
@@ -45,6 +46,7 @@ import { withFodderGalleryPools } from '../adapters/browser/fc27-fodder-gallery.
 import { createFc27GalleryRelist } from '../adapters/browser/fc27-gallery-relist.js';
 import { startGalleryTradingPoll } from '../adapters/browser/fc27-gallery-trading-poll.js';
 import { createFc27TradingDesk } from '../adapters/browser/fc27-trading-desk.js';
+import { createFc27TradingIntel } from '../adapters/browser/fc27-trading-intel.js';
 import { readFc27TradingCandidates } from '../adapters/ea/fc27-trading-candidates.js';
 import { createFc27GalleryNativeRenderer } from '../adapters/ea/fc27-gallery-card.js';
 import { readFc27Context } from '../adapters/ea/fc27-local-read.js';
@@ -197,6 +199,7 @@ const galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnos
 const publicPrices = createFc27PublicPrices({ root: unsafeWindow, get: GM_getValue, set: GM_setValue, gmRequest: GM_xmlhttpRequest,
   transport: galleryTransport, diagnosticLog });
 const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
+  intel:createFc27TradingIntel({gmRequest:GM_xmlhttpRequest,get:GM_getValue,set:GM_setValue}),
   readCandidates:()=>readFc27TradingCandidates(unsafeWindow)});
 let storageMaintenancePending = true;
 void compactFc27Storage({ list: typeof GM_listValues === 'function' ? GM_listValues : null,

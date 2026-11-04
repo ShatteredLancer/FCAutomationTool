@@ -1,9 +1,14 @@
-import {DESK_LIMITS,deskId,deskText,deskSettings,emptyDesk,readDesk,observeDeskQuote,deskAlerts,validDeskEvent} from '../../trading/desk-model.js';
+import {DESK_LIMITS,deskId,deskText,deskSettings,emptyDesk,readDesk,observeDeskQuote,deskAlerts,validDeskEvent,deskPlan,deskFunding} from '../../trading/desk-model.js';
+import {tradingPreselection,rankTradingSuggestions} from '../../trading/shortlist.js';
+import {publicPriceSourceEnabled} from '../../gallery/public-price-policy.js';
+import {intelEvents} from '../../trading/intel.js';
 
 export const tradingDeskKey=scope=>`fcat-fc27-trading-desk-v1:${scope}`;
 // A separate local notebook. No Gallery ownership, transaction journal or EA
 // write service is available to this module. All prices are reference data.
-export function createFc27TradingDesk({prices,get,set,locks,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
+export function createFc27TradingDesk({prices,get,set,locks,intel=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
+  let lastDiscovery=null,discoveryId=0,lastIntel=null;
+  const discoveryBasis=state=>JSON.stringify([state.settings,state.configured,state.events,deskFunding(state)]);
   const rememberComplete=rows=>prices.remember(rows.filter(row=>Number.isSafeInteger(row.rating)&&row.rating>=1&&row.rating<=99
     &&[row.nationId,row.leagueId,row.teamId].every(v=>Number.isSafeInteger(v)&&v>0)&&row.preferredPosition!=null));
   const capture=()=>{const context=prices.context();if(!context.scope||!['pc','console'].includes(context.platform))throw Error('DESK_CONTEXT_INVALID');return context;};
@@ -27,6 +32,50 @@ export function createFc27TradingDesk({prices,get,set,locks,readCandidates=()=>[
   };
   const act=async mutate=>{const context=capture();return update(context,mutate);};
   return Object.freeze({read,context:capture,
+    pairIntel:async key=>{if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');await intel.pair(key);},
+    async refreshIntel(){const context=capture();if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');
+      const feed=await intel.refresh();if(!current(context))throw Error('DESK_CONTEXT_CHANGED');lastIntel=feed;lastDiscovery=null;return feed;},
+    async discover({isCurrent=()=>true,onProgress=()=>{}}={}){
+      const serial=++discoveryId;lastDiscovery=null;
+      const {context,state}=await read();
+      const check=()=>{if(!current(context)||!isCurrent()||serial!==discoveryId)throw Error('DESK_CONTEXT_CHANGED');};
+      check();if(typeof prices.tradingCandidates!=='function')throw Error('DESK_DISCOVERY_UNAVAILABLE');
+      const newsEvents=intelEvents(lastIntel),effective={...state,events:[...state.events,...newsEvents]};
+      const names=newsEvents.filter(e=>e.at<=now()&&now()-e.at<=86400000).flatMap(e=>e.players.map(p=>p.name));
+      const pool=deskFunding(state).available<150?{rows:[],scanned:0,ratings:[80,82,84],at:now(),platform:context.platform}
+        :await prices.tradingCandidates({isCurrent:()=>current(context)&&isCurrent()&&serial===discoveryId,onProgress,names});
+      check();if(pool.platform!==context.platform)throw Error('DESK_CONTEXT_CHANGED');
+      const policy=await prices.readSettings();check();const pre=tradingPreselection(pool,effective,now());let references={},crossChecked=0;
+      if(pre.rows.length&&publicPriceSourceEnabled(policy,'futgg')){
+        onProgress({phase:'cross-check',index:0,total:pre.rows.length});
+        try{const snapshot=await prices.load(pre.rows.map(row=>row.definitionId),{purpose:'trading',sources:['futgg'],futbinBatch:false,
+          policy:{...policy,futbinPlatform:context.platform==='pc'?'pc':'ps'},deadlineAt:now()+30000,
+          isCurrent:()=>current(context)&&isCurrent()&&serial===discoveryId,onProgress});
+          references=snapshot.references??{};crossChecked=pre.rows.length;
+        }catch{check();/* A missing secondary source is explicit, not a fabricated quote. */}
+      }
+      check();const latest=await read();check();
+      if(discoveryBasis(latest.state)!==discoveryBasis(state))throw Error('DESK_DISCOVERY_CHANGED');
+      const result={...rankTradingSuggestions(pool,effective,references,now()),crossChecked,validUntil:pool.at+300000};
+      check();lastDiscovery={context,result:structuredClone(result),basis:discoveryBasis(state)};return result;
+    },
+    async followSuggestions({definitionId=null}={}){
+      const saved=lastDiscovery,context=capture();
+      if(!saved||JSON.stringify(saved.context)!==JSON.stringify(context)||saved.result.validUntil<=now())throw Error('DESK_DISCOVERY_EXPIRED');
+      const rows=saved.result.suggestions.filter(row=>definitionId===null||row.definitionId===definitionId);
+      if(!rows.length)throw Error('DESK_PLAYER_INVALID');
+      return update(context,state=>{
+        if(discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_CHANGED');
+        if(state.watch.length+rows.filter(row=>!state.watch.some(card=>card.definitionId===row.definitionId)).length>DESK_LIMITS.watch)throw Error('DESK_WATCH_LIMIT');
+        for(const row of rows){let card=state.watch.find(card=>card.definitionId===row.definitionId);
+          if(!card){card={definitionId:row.definitionId,name:deskText(row.name),ask:0,sell:0,checkedAt:0,series:{futbin:[],futgg:[]},latest:{}};state.watch.push(card);}
+          card.plan=deskPlan(row,state,now());
+          observeDeskQuote(card,'futbin',{source:'futbin',definitionId:row.definitionId,season:'27',platform:context.platform,price:row.price,
+            fetchedAt:row.fetchedAt,expiresAt:saved.result.validUntil,sourceUpdatedAt:null},context.platform,now());
+          if(row.ggQuote)observeDeskQuote(card,'futgg',row.ggQuote,context.platform,now());
+        }
+      });
+    },
     candidates(){const context=capture();const rows=[...prices.knownPlayers(),...readCandidates()];
       if(!current(context))throw Error('DESK_CONTEXT_CHANGED');
       const safe=[...new Map(rows.filter(row=>deskId(row.definitionId)).map(row=>[row.definitionId,{definitionId:row.definitionId,
@@ -66,7 +115,8 @@ export function createFc27TradingDesk({prices,get,set,locks,readCandidates=()=>[
     recordBuy:({definitionId,name,buy})=>act(state=>{
       if(!deskId(definitionId)||!Number.isSafeInteger(buy)||buy<150||buy>15000000)throw Error('DESK_RECORD_INVALID');
       if(state.records.length>=DESK_LIMITS.records)throw Error('DESK_RECORD_LIMIT');
-      state.records.push({id:id(),definitionId,name:deskText(name||definitionId),buy,sell:null,at:now()});
+      const plan=state.watch.find(card=>card.definitionId===definitionId)?.plan;
+      state.records.push({id:id(),definitionId,name:deskText(name||definitionId),buy,sell:null,at:now(),...(plan?{plan:structuredClone(plan)}:{})});
     }),
     recordSale:({recordId,sell})=>act(state=>{
       if(!Number.isSafeInteger(sell)||sell<150||sell>15000000)throw Error('DESK_PRICE_INVALID');
@@ -74,7 +124,7 @@ export function createFc27TradingDesk({prices,get,set,locks,readCandidates=()=>[
     }),
     acknowledge:()=>act(state=>{for(const alert of state.alerts)alert.read=true;}),
     event:row=>act(state=>{let link;try{link=new URL(deskText(row.url,2000));link.search='';link.hash='';}catch{throw Error('DESK_EVENT_INVALID');}
-      const value={url:link.href,note:deskText(row.note,300),status:row.status,at:now()};
+      const value={url:link.href,note:deskText(row.note,300),status:row.status,at:now(),...(row.evo?{evo:structuredClone(row.evo)}:{})};
       if(!validDeskEvent(value))throw Error('DESK_EVENT_INVALID');
       const old=state.events.findIndex(event=>event.url===value.url);
       if(old<0&&state.events.length>=DESK_LIMITS.events)throw Error('DESK_EVENT_LIMIT');

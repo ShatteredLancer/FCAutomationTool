@@ -7,6 +7,7 @@ import { readFutbinBatchPrices } from '../../fc27/futbin-batch-prices.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { traditionalJournalScope } from '../../fc27/traditional-journal.js';
 import { createPurchasePriceApproval } from '../../fc27/purchase-price-approval.js';
+import {readTradingCandidatePool,tradingMentionNames} from '../../trading/shortlist.js';
 
 const positions = ['GK','SW','RWB','RB','RCB','CB','LCB','LB','LWB','RDM','CDM','LDM','RM','RCM','CM','LCM','LM','RAM','CAM','LAM','RF','CF','LF','RW','RS','ST','LS','LW'];
 export function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog = null, now = () => Date.now() }) {
@@ -17,6 +18,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     catch { /* Optional diagnostics must not occupy quote workers. */ }
   };
   let mappingQueue = Promise.resolve();
+  const tradingPools=new Map(),tradingReads=new Map(),tradingCooldowns=new Map();
   const updateIds = (key, learned, removed = {}) => {
     // Fresh per-version readers can finish together. Merge only their delta,
     // and remove a stale ID only if it has not already been replaced.
@@ -128,6 +130,24 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     scope: () => capture().scope,
     context: () => {const value=capture();return {scope:value.scope,season:value.context.season,platform:value.platform};},
     knownPlayers: () => [...rows.values()].map(row=>({...row})).slice(0,1000),
+    async tradingCandidates({isCurrent=()=>true,onProgress=()=>{},names=[]}={}){
+      const captured=capture(),market=captured.platform,queries=tradingMentionNames(names),key=JSON.stringify([market,queries]);
+      const check=async()=>{captured.assert();if(!isCurrent())throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+        if(!publicPriceSourceEnabled(await policyStore.read(captured.scope),'futbin'))throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');captured.assert();};
+      await check();const cached=tradingPools.get(key);
+      if(cached?.expiresAt>now()){if(cached.error)throw Error(cached.error);return structuredClone(cached.value);}
+      const cooldown=tradingCooldowns.get(market);if(cooldown?.expiresAt>now())throw Error(cooldown.error);
+      if(!tradingReads.has(key)){
+        const task=(async()=>{try{const value=await readTradingCandidatePool({request,platform:market,names:queries,now,check,onProgress});await check();
+          await updateIds('fcat-futbin-ids:27',Object.fromEntries(value.rows.map(row=>[row.definitionId,row.futbinId])));await check();
+          tradingPools.set(key,{value,expiresAt:now()+300000});while(tradingPools.size>8)tradingPools.delete(tradingPools.keys().next().value);return value;
+        }catch(error){const reason=/^[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_DISCOVERY_UNAVAILABLE';
+          if(!/CONTEXT_CHANGED|DISABLED/.test(reason)){const blocked={error:reason,expiresAt:now()+(reason.endsWith('_429')?300000:30000)};
+            tradingPools.set(key,blocked);tradingCooldowns.set(market,blocked);while(tradingPools.size>8)tradingPools.delete(tradingPools.keys().next().value);}throw error;
+        }finally{tradingReads.delete(key);}})();tradingReads.set(key,task);
+      }
+      const value=await tradingReads.get(key);await check();return structuredClone(value);
+    },
     async resolveTradingPlayer(input){
       let url;try{url=new URL(input);}catch{throw Error('DESK_PLAYER_LINK_INVALID');}
       const match=/^\/27\/player\/([1-9]\d{0,8})(?:\/([^/]*))?\/?$/.exec(url.pathname);

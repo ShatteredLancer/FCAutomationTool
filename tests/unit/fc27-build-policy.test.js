@@ -16,7 +16,10 @@ it('permits explicit production network features without a blanket @connect ban'
   expect(() => assertFc27ProductionMetadata('// @grant GM_xmlhttpRequest\n// @connect api.example.com\n')).not.toThrow();
 });
 
-it.each(['*', '*.example.com', 'localhost', '127.0.0.1', 'https://example.com', 'private.local'])
+it('permits only the exact paired-intel loopback exception, not arbitrary local hosts',()=>{
+  expect(()=>assertFc27ProductionMetadata('// @grant GM_xmlhttpRequest\n// @connect 127.0.0.1\n')).not.toThrow();
+});
+it.each(['*', '*.example.com', 'localhost', '127.0.0.2', '0.0.0.0', '192.168.1.1', '::1', 'https://example.com', 'private.local'])
 ('rejects broad or local production network permissions: %s', host => {
   expect(() => assertFc27ProductionMetadata(`// @grant GM_xmlhttpRequest\n// @connect ${host}\n`))
     .toThrow('FC27_NETWORK_PERMISSION_INVALID');

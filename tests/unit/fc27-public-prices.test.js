@@ -18,6 +18,30 @@ function fixture({ legacy = true } = {}) {
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
 
+it('discovers a bounded public pool with one shared in-memory read, preserves mapping deltas and does not request EA',async()=>{
+  const f=fixture();f.data.set('fcat-futbin-ids:27',{999:888});
+  f.gm.mockImplementation(options=>{const rating=Number(new URL(options.url).searchParams.get('rating').split('-')[0]);
+    options.onload({status:200,responseText:JSON.stringify({data:[{ID:rating,resource_id:rating+1000,rating,raretype:0,pc_LCPrice:1000}]})});});
+  const [first,second]=await Promise.all([f.service.tradingCandidates(),f.service.tradingCandidates()]);
+  expect(first.rows).toHaveLength(3);expect(second).toEqual(first);expect(f.gm).toHaveBeenCalledTimes(3);
+  await f.service.tradingCandidates();expect(f.gm).toHaveBeenCalledTimes(3);expect(f.transport.getPrices).not.toHaveBeenCalled();
+  expect(f.data.get('fcat-futbin-ids:27')).toMatchObject({999:888,1080:80});
+  expect([...f.data.keys()].some(key=>key.includes('trading-pool'))).toBe(false);
+});
+it('stops discovery when FUTBIN is disabled or the caller cancels, without creating player mappings',async()=>{
+  const f=fixture();await f.service.saveSettings({readSources:'futgg',source:'futgg'});
+  await expect(f.service.tradingCandidates()).rejects.toThrow('DISABLED');expect(f.gm).not.toHaveBeenCalled();
+  await f.service.saveSettings({readSources:'both',source:'futbin'});
+  await expect(f.service.tradingCandidates({isCurrent:()=>false})).rejects.toThrow('CONTEXT_CHANGED');expect(f.gm).not.toHaveBeenCalled();
+  expect(f.data.get('fcat-futbin-ids:27')).toBeUndefined();
+});
+it('backs off failed discovery instead of repeatedly scanning after HTTP 429',async()=>{
+  const f=fixture();f.gm.mockImplementation(options=>options.onload({status:429,responseText:'rate limited'}));
+  await expect(f.service.tradingCandidates()).rejects.toThrow('429');await expect(f.service.tradingCandidates()).rejects.toThrow('429');
+  await expect(f.service.tradingCandidates({names:['New player']})).rejects.toThrow('429');
+  expect(f.gm).toHaveBeenCalledTimes(1);f.advance();await expect(f.service.tradingCandidates()).rejects.toThrow('429');expect(f.gm).toHaveBeenCalledTimes(2);
+});
+
 it('exposes expired cached hints through the account price policy without requests or storage changes', async () => {
   const f = fixture({ legacy: false });
   await f.service.load([f.player.definitionId], { purpose: 'puzzle', rows: [f.player] });

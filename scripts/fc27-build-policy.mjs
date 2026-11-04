@@ -11,8 +11,10 @@ export function assertFc27BrowserInputs(inputs) {
 // defeating a blanket ban on @connect. Broad or insecure permissions still fail.
 export function assertFc27ProductionMetadata(metadata) {
   const connects = [...metadata.matchAll(/^\/\/ @connect\s+(.+)$/gm)].map(match => match[1].trim());
-  if (connects.some(host => !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(host)
-      || /(^|\.)(localhost|local|invalid)$/i.test(host)) || new Set(connects).size !== connects.length) {
+  // Exact loopback exception for the paired, fixed-route read-only X collector.
+  // Its adapter accepts no caller URL, command, EA context or account payload.
+  if (connects.some(host => host !== '127.0.0.1' && (!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i.test(host)
+      || /(^|\.)(localhost|local|invalid)$/i.test(host))) || new Set(connects).size !== connects.length) {
     throw new Error('FC27_NETWORK_PERMISSION_INVALID');
   }
   const grants = [...metadata.matchAll(/^\/\/ @grant\s+(.+)$/gm)].map(match => match[1].trim());

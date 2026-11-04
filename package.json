@@ -1,6 +1,6 @@
 {
   "name": "fc-automation-tool",
-  "version": "27.0.91",
+  "version": "27.0.92",
   "description": "Tampermonkey automation for configurable EA FC Web App SBC, pack and Player Pick workflows.",
   "private": true,
   "license": "MIT",
@@ -29,7 +29,8 @@
     "test:watch": "vitest",
     "test:contracts": "vitest run tests/contracts",
     "test:architecture": "vitest run tests/architecture",
-    "verify": "npm run lint:syntax && npm run lint:undef && npm run check:config && npm run check:profiles && npm run check:architecture && npm run check:fsu-patch && npm test && npm run build && npm run check:dist && npm run check:fsu-release"
+    "verify": "npm run lint:syntax && npm run lint:undef && npm run check:config && npm run check:profiles && npm run check:architecture && npm run check:fsu-patch && npm test && npm run build && npm run check:dist && npm run check:fsu-release",
+    "trading:intel": "node scripts/trading-intel/server.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",

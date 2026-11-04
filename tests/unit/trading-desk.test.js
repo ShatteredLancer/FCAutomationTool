@@ -36,6 +36,11 @@ it('does not manufacture samples from cache hits, repeated source timestamps or 
   expect(row.series.futgg).toHaveLength(1);
   observeDeskQuote(row,'futgg',quote('futgg',{sourceUpdatedAt:time+10000}),'console',time);expect(row.series.futgg).toHaveLength(1);
 });
+it('never replaces a newer valid observation with an older shortlist/cache snapshot',()=>{
+  const row=card();observeDeskQuote(row,'futgg',quote('futgg',{price:1100,fetchedAt:time+1000,sourceUpdatedAt:time+1000,expiresAt:time+301000}),'console',time+1000);
+  observeDeskQuote(row,'futgg',quote('futgg',{price:1000}),'console',time+2000);
+  expect(row.latest.futgg.price).toBe(1100);expect(row.latest.futgg.at).toBe(time+1000);
+});
 it('bounds observations to a rolling week with separate short/older buckets',()=>{
   const row=card();for(let i=0;i<2500;i++){const now=time+i*300000;observeDeskQuote(row,'futbin',quote('futbin',{fetchedAt:now,expiresAt:now+300000,sourceUpdatedAt:null,price:1000+i}),'console',now);}
   expect(row.series.futbin.length).toBeLessThanOrEqual(DESK_LIMITS.points);expect(row.series.futbin[0].at).toBeGreaterThanOrEqual(time+2499*300000-7*86400000);
