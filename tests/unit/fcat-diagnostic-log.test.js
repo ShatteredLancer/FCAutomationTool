@@ -3,6 +3,16 @@ import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-l
 import roadmapIncident from '../fixtures/gallery-roadmap-empty-export-2026-10-27.json' with {type:'json'};
 import planRefreshIncident from '../fixtures/gallery-plan-refresh-2026-10-28.json' with { type: 'json' };
 
+it('retains bounded automatic-trading failures and DESK codes after noisy Gallery refreshes without private execution identities',async()=>{
+  const store=new Map(),log=createFcatDiagnosticLog({gmGetValue:async(k,f)=>store.get(k)??f,gmSetValue:async(k,v)=>store.set(k,v),version:'27.0.96'});
+  await log.record({area:'trading',event:'execution-result',phase:'buy-readback',status:'recovery-required',reason:'DESK_EXECUTION_RECEIPT_UNCONFIRMED',
+    count:1,approvedBudget:20000,pendingWriteCount:1,itemId:123,tradeId:'secret-trade',scope:'secret-account',key:'secret-key',payload:{secret:true}});
+  for(let i=0;i<310;i++)await log.record({area:'gallery',event:'pool-request',status:'success'});
+  const out=await log.exportPayload();expect(out.transactionResults.at(-1)).toMatchObject({area:'trading',event:'execution-result',phase:'buy-readback',reason:'DESK_EXECUTION_RECEIPT_UNCONFIRMED'});
+  expect(out.criticalEntries.at(-1)).toMatchObject({area:'trading',reason:'DESK_EXECUTION_RECEIPT_UNCONFIRMED'});
+  expect(out.entries).toHaveLength(300);expect(JSON.stringify(out)).not.toMatch(/secret-|itemId|tradeId|payload/);
+});
+
 function harness(options = {}) {
   const store = new Map();
   const get = vi.fn(async key => store.get(key));

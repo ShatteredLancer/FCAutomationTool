@@ -66,7 +66,8 @@ function sanitizeEntry(input, now) {
   if (typeof input.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
   for (const key of STRING_FIELDS) {
     const value = key === 'reason' || key === 'localReason'
-      ? typeof input[key] === 'string' && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key]) ? input[key] : null
+      ? typeof input[key] === 'string' && (/^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key])
+        ||input.area==='trading'&&/^DESK_[A-Z0-9_]{1,140}$/.test(input[key])) ? input[key] : null
       : boundedString(input[key]);
     if (value !== null) entry[key] = value;
   }
@@ -161,13 +162,15 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       // useful listing/market failure from the export. Keep a separate small
       // bounded stream for trade and purchase lifecycle events. It carries the
       // same allowlisted, redacted fields and never affects business control.
-      if (entry.area === 'pricing' || entry.area === 'puzzle' || entry.area === 'streamlined' || entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
+      if (entry.area === 'pricing' || entry.area === 'puzzle' || entry.area === 'streamlined' || entry.area === 'trading' || entry.area === 'gallery' && (/listing|purchase|market|bulk-list/.test(entry.event) ||
           ['prepare', 'execute', 'mutation', 'readback'].includes(entry.phase))) {
         criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
       }
       if (entry.area === 'gallery' && ['purchase-result', 'listing-result'].includes(entry.event)
           || entry.area === 'puzzle' && entry.event === 'solve-result'
-          || entry.area === 'streamlined' && entry.event === 'contribution-transaction' && entry.reason) {
+          || entry.area === 'streamlined' && entry.event === 'contribution-transaction' && entry.reason
+          || entry.area === 'trading' && (['execution-result','plan-result'].includes(entry.event)
+            ||entry.event==='execution-state'&&['paused','recovery-required'].includes(entry.status))) {
         transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
       }
       if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);

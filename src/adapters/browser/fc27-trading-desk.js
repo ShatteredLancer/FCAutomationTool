@@ -8,8 +8,9 @@ export const tradingDeskKey=scope=>`fcat-fc27-trading-desk-v1:${scope}`;
 // The notebook stays separate from Gallery ownership and receipts. Optional
 // real execution has its own approval and durable journal, never a notebook
 // flag or a public reference quote masquerading as an EA transaction receipt.
-export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
+export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution=null,diagnosticLog=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
   let lastDiscovery=null,discoveryId=0,lastIntel=null;
+  const diagnostic=fields=>{try{Promise.resolve(diagnosticLog?.record?.({area:'trading',...fields})).catch(()=>{});}catch{/* Diagnostics only. */}};
   const discoveryBasis=state=>JSON.stringify([state.settings,state.configured,state.events,deskFunding(state)]);
   const rememberComplete=rows=>prices.remember(rows.filter(row=>Number.isSafeInteger(row.rating)&&row.rating>=1&&row.rating<=99
     &&[row.nationId,row.leagueId,row.teamId].every(v=>Number.isSafeInteger(v)&&v>0)&&row.preferredPosition!=null));
@@ -35,13 +36,16 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
   const act=async mutate=>{const context=capture();return update(context,mutate);};
   return Object.freeze({read,context:capture,
     async prepareInvestment({capitalLimit=20000,reserveCoins=0,definitionIds=null}={}){
+      try{
       if(!execution)throw Error('DESK_EXECUTION_DISABLED');const {context,state}=await read(),saved=lastDiscovery;
       if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_EXPIRED');
       if(definitionIds!==null&&(!Array.isArray(definitionIds)||definitionIds.length>6||new Set(definitionIds).size!==definitionIds.length
         ||definitionIds.some(id=>!saved.result.suggestions.some(row=>row.definitionId===id))))throw Error('DESK_PLAN_INVALID');
       const advice=definitionIds===null?saved.result:{...saved.result,suggestions:saved.result.suggestions.filter(row=>definitionIds.includes(row.definitionId))};
-      return execution.prepare(createInvestmentPlan({advice,context,capitalLimit,reserveCoins,existingCapital:deskFunding(state).occupied,unitLimit:state.settings.unitLimit,
+      const result=await execution.prepare(createInvestmentPlan({advice,context,capitalLimit,reserveCoins,existingCapital:deskFunding(state).occupied,unitLimit:state.settings.unitLimit,
         minProfit:state.settings.minProfit,buffer:state.settings.buffer,now:now(),id:id()}));
+      diagnostic({event:'plan-result',phase:'prepare',status:'ready',approvedBudget:capitalLimit,requestedCount:result.plan?.rows?.length??0});return result;
+      }catch(error){diagnostic({event:'plan-result',phase:'prepare',status:'blocked',reason:/^(DESK|FC27)_[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_PLAN_UNCONFIRMED'});throw error;}
     },
     executionAvailable:()=>execution!==null,
     inspectInvestment:()=>execution?.inspect()??Promise.resolve({record:null,running:false}),
@@ -76,7 +80,8 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
       check();const latest=await read();check();
       if(discoveryBasis(latest.state)!==discoveryBasis(state))throw Error('DESK_DISCOVERY_CHANGED');
       const result={...rankTradingSuggestions(pool,effective,references,now()),crossChecked,validUntil:pool.at+300000};
-      check();lastDiscovery={context,result:structuredClone(result),basis:discoveryBasis(state)};return result;
+      check();lastDiscovery={context,result:structuredClone(result),basis:discoveryBasis(state)};
+      diagnostic({event:'candidate-result',phase:'screening',status:'success',count:result.suggestions.length,requestedCount:result.scanned,quotedCount:result.crossChecked});return result;
     },
     async followSuggestions({definitionId=null}={}){
       const saved=lastDiscovery,context=capture();

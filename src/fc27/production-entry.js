@@ -199,8 +199,8 @@ const galleryPrices = id => readCachedGalleryPrice(unsafeWindow, id);
 const galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
 const publicPrices = createFc27PublicPrices({ root: unsafeWindow, get: GM_getValue, set: GM_setValue, gmRequest: GM_xmlhttpRequest,
   transport: galleryTransport, diagnosticLog });
-const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
-  execution:createFc27TradingExecution({root:unsafeWindow,prices:publicPrices,get:GM_getValue,set:GM_setValue,liveEnabled:dependencies.liveEnabled}),
+const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,diagnosticLog,
+  execution:createFc27TradingExecution({root:unsafeWindow,prices:publicPrices,get:GM_getValue,set:GM_setValue,liveEnabled:dependencies.liveEnabled,diagnosticLog}),
   intel:createFc27TradingIntel({gmRequest:GM_xmlhttpRequest,get:GM_getValue,set:GM_setValue}),
   readCandidates:()=>readFc27TradingCandidates(unsafeWindow)});
 let storageMaintenancePending = true;

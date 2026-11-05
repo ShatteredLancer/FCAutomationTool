@@ -14,7 +14,7 @@ import {createFc27GallerySaleReader} from '../ea/fc27-gallery-sales.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=reason=>{throw Error(reason);};
-export async function createNativeTradingExecutionAdapter({root,plan,prices,canWrite,assertCurrent,readOnly=false,needsPurchases=true,
+export async function createNativeTradingExecutionAdapter({root,plan,prices,canWrite,assertCurrent,readOnly=false,needsPurchases=true,onStage=()=>{},
   now=()=>Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms)),buyFactory=createFc27PuzzleBuyAdapter,tradeFactory=createEaTradeAdapter}){
   const context=readFc27Context(root),service=root.services?.Item;
   const functions=Object.fromEntries(['bid','move','list','searchTransferMarket','requestTransferItems','requestUnassignedItems'].map(k=>[k,service?.[k]]));
@@ -32,6 +32,7 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
   const seen=e=>trade.inspectPurchase({id:e.offer.itemId,definitionId:e.definitionId,pile:'unassigned'});
   let buyer=null;
   if(!readOnly&&needsPurchases){
+    onStage('reference-prices');
     const policy=await prices.readSettings();assert();
     const snapshot=await prices.load(plan.rows.map(r=>r.definitionId),{purpose:'trading',sources:['futbin','futgg'],futbinBatch:false,
       policy:{...policy,futbinPlatform:plan.context.platform==='pc'?'pc':'ps'},deadlineAt:now()+30000,isCurrent:()=>{assert();return true;}});assert();
@@ -46,7 +47,7 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
         ||Math.max(q.futbin.price,q.futgg.price)/Math.min(q.futbin.price,q.futgg.price)>1.15)fail('DESK_EXECUTION_REFERENCE_CHANGED');
       reference.set(row.definitionId,Math.min(q.futbin.price,q.futgg.price));
     }
-    buyer=await buyFactory(root,{canWrite:()=>{assert();return canWrite();},assertTarget:assert,verifyCurrent:assert,
+    onStage('runtime-check');buyer=await buyFactory(root,{canWrite:()=>{assert();return canWrite();},assertTarget:assert,verifyCurrent:assert,
       verifySquad:assert,referencePrice:async row=>reference.get(row.definitionId),playerDetails:new Map(plan.rows.map(row=>[row.definitionId,{...row,_rating:row.rating}])),
       attempts:1,skipRejectedListings:true,wait:async()=>{await pace();}});
     await buyer.verifySquad({scope:traditionalJournalScope(context),entries:plan.rows.map(row=>({definitionId:row.definitionId}))});
@@ -100,15 +101,19 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
   };
 }
 
-export function createFc27TradingExecution({root,prices,get,set,liveEnabled,onProgress=()=>{},adapterFactory=createNativeTradingExecutionAdapter}){
+export function createFc27TradingExecution({root,prices,get,set,liveEnabled,onProgress=()=>{},adapterFactory=createNativeTradingExecutionAdapter,diagnosticLog=null}){
   let session=null,bound=null,prepared=null,progress=null;
+  const diagnostic=event=>{try{Promise.resolve(diagnosticLog?.record?.(event)).catch(()=>{});}catch{/* Diagnostics only. */}};
+  const failure=(event,phase,error)=>diagnostic({area:'trading',event,phase,status:'blocked',
+    reason:/^(DESK|FC27)_[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_EXECUTION_UNCONFIRMED',
+    methodPath:error?.methodPath,observedHash:error?.observedHash,expectedHash:error?.expectedHash});
   const create=()=>{
     const context=readFc27Context(root),deskContext=prices.context(),scope=traditionalJournalScope(context);
     const binding=JSON.stringify([context,deskContext]);if(bound===binding)return session;
     session?.stop();bound=binding;prepared=null;
     const assertCurrent=()=>{if(!same(context,readFc27Context(root))||!same(deskContext,prices.context()))fail('DESK_CONTEXT_CHANGED');};
     const persistence=createFc27TransactionPersistence({context,gmGetValue:get,gmSetValue:set,lockManager:root.navigator?.locks});
-    session=createTradingExecutionSession({context:deskContext,scope,get,set,exclusive:persistence.exclusive,assertCurrent,onProgress:value=>{onProgress(value);progress?.(value);},
+    session=createTradingExecutionSession({context:deskContext,scope,get,set,exclusive:persistence.exclusive,assertCurrent,onDiagnostic:diagnostic,onProgress:value=>{onProgress(value);progress?.(value);},
       checkOtherTransactions:async()=>{const record=await persistence.journal.read(scope);if(record&&!isTerminalTraditionalJournal(record))fail('FC27_RECOVERY_REQUIRED');
         await assertGalleryRelistSettled(get,scope);await assertNoGalleryListingPending(get,scope);
         if(await get(galleryPurchasePendingKey(scope),null)!==null)fail('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');},
@@ -122,10 +127,12 @@ export function createFc27TradingExecution({root,prices,get,set,liveEnabled,onPr
     prepare(plan){create();validateInvestmentPlan(plan,prices.context());prepared=structuredClone(plan);
       const balance=root.services?.User?.getUser?.()?.getCurrency?.(root.GameCurrency?.COINS)?.amount;
       return {plan:structuredClone(plan),balance:Number.isSafeInteger(balance)&&balance>=0?balance:null};},
-    inspect:()=>create().inspect(),recover:()=>create().recover(),
-    async start({plan=null,resume=false,approved=false,onProgress:callback=null}={}){const current=create();if(liveEnabled!==true)fail('DESK_EXECUTION_DISABLED');
+    async inspect(){try{return await create().inspect();}catch(error){failure('execution-state','inspect',error);throw error;}},
+    async recover(){try{return await create().recover();}catch(error){failure('execution-result','readonly-recovery',error);throw error;}},
+    async start({plan=null,resume=false,approved=false,onProgress:callback=null}={}){let handedOff=false;try{const current=create();if(liveEnabled!==true)fail('DESK_EXECUTION_DISABLED');
       if(!resume&&(!prepared||!same(prepared,plan)))fail('DESK_EXECUTION_APPROVAL_REQUIRED');progress=callback;
-      try{return await current.execute({plan,resume,approved});}finally{progress=null;}},
+      try{handedOff=true;return await current.execute({plan,resume,approved});}finally{progress=null;}
+      }catch(error){if(!handedOff)failure('execution-result','approval',error);throw error;}},
     stop(){session?.stop();},
   });
 }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.95
+// @version      27.0.96
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.95", at: Date.now(), status: 'started',
+    state = { version: "27.0.96", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -34022,8 +34022,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/adapters/browser/fc27-trading-desk.js
   var tradingDeskKey = (scope2) => `fcat-fc27-trading-desk-v1:${scope2}`;
-  function createFc27TradingDesk({ prices, get, set, locks, intel = null, execution = null, readCandidates = () => [], now = () => Date.now(), id: id13 = () => globalThis.crypto.randomUUID() }) {
+  function createFc27TradingDesk({ prices, get, set, locks, intel = null, execution = null, diagnosticLog: diagnosticLog2 = null, readCandidates = () => [], now = () => Date.now(), id: id13 = () => globalThis.crypto.randomUUID() }) {
     let lastDiscovery = null, discoveryId = 0, lastIntel = null;
+    const diagnostic = (fields4) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.({ area: "trading", ...fields4 })).catch(() => {
+        });
+      } catch {
+      }
+    };
     const discoveryBasis = (state) => JSON.stringify([state.settings, state.configured, state.events, deskFunding(state)]);
     const rememberComplete = (rows) => prices.remember(rows.filter((row) => Number.isSafeInteger(row.rating) && row.rating >= 1 && row.rating <= 99 && [row.nationId, row.leagueId, row.teamId].every((v) => Number.isSafeInteger(v) && v > 0) && row.preferredPosition != null));
     const capture = () => {
@@ -34062,23 +34069,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       read,
       context: capture,
       async prepareInvestment({ capitalLimit = 2e4, reserveCoins = 0, definitionIds = null } = {}) {
-        if (!execution) throw Error("DESK_EXECUTION_DISABLED");
-        const { context, state } = await read(), saved = lastDiscovery;
-        if (!saved || !current2(saved.context) || saved.result.validUntil <= now() || discoveryBasis(state) !== saved.basis) throw Error("DESK_DISCOVERY_EXPIRED");
-        if (definitionIds !== null && (!Array.isArray(definitionIds) || definitionIds.length > 6 || new Set(definitionIds).size !== definitionIds.length || definitionIds.some((id14) => !saved.result.suggestions.some((row) => row.definitionId === id14)))) throw Error("DESK_PLAN_INVALID");
-        const advice = definitionIds === null ? saved.result : { ...saved.result, suggestions: saved.result.suggestions.filter((row) => definitionIds.includes(row.definitionId)) };
-        return execution.prepare(createInvestmentPlan({
-          advice,
-          context,
-          capitalLimit,
-          reserveCoins,
-          existingCapital: deskFunding(state).occupied,
-          unitLimit: state.settings.unitLimit,
-          minProfit: state.settings.minProfit,
-          buffer: state.settings.buffer,
-          now: now(),
-          id: id13()
-        }));
+        try {
+          if (!execution) throw Error("DESK_EXECUTION_DISABLED");
+          const { context, state } = await read(), saved = lastDiscovery;
+          if (!saved || !current2(saved.context) || saved.result.validUntil <= now() || discoveryBasis(state) !== saved.basis) throw Error("DESK_DISCOVERY_EXPIRED");
+          if (definitionIds !== null && (!Array.isArray(definitionIds) || definitionIds.length > 6 || new Set(definitionIds).size !== definitionIds.length || definitionIds.some((id14) => !saved.result.suggestions.some((row) => row.definitionId === id14)))) throw Error("DESK_PLAN_INVALID");
+          const advice = definitionIds === null ? saved.result : { ...saved.result, suggestions: saved.result.suggestions.filter((row) => definitionIds.includes(row.definitionId)) };
+          const result = await execution.prepare(createInvestmentPlan({
+            advice,
+            context,
+            capitalLimit,
+            reserveCoins,
+            existingCapital: deskFunding(state).occupied,
+            unitLimit: state.settings.unitLimit,
+            minProfit: state.settings.minProfit,
+            buffer: state.settings.buffer,
+            now: now(),
+            id: id13()
+          }));
+          diagnostic({ event: "plan-result", phase: "prepare", status: "ready", approvedBudget: capitalLimit, requestedCount: result.plan?.rows?.length ?? 0 });
+          return result;
+        } catch (error2) {
+          diagnostic({ event: "plan-result", phase: "prepare", status: "blocked", reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "DESK_PLAN_UNCONFIRMED" });
+          throw error2;
+        }
       },
       executionAvailable: () => execution !== null,
       inspectInvestment: () => execution?.inspect() ?? Promise.resolve({ record: null, running: false }),
@@ -34157,6 +34171,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const result = { ...rankTradingSuggestions(pool, effective, references, now()), crossChecked, validUntil: pool.at + 3e5 };
         check();
         lastDiscovery = { context, result: structuredClone(result), basis: discoveryBasis(state) };
+        diagnostic({ event: "candidate-result", phase: "screening", status: "success", count: result.suggestions.length, requestedCount: result.scanned, quotedCount: result.crossChecked });
         return result;
       },
       async followSuggestions({ definitionId = null } = {}) {
@@ -34324,9 +34339,50 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function createTradingExecutionSession({ context, scope: scope2, get, set, exclusive, createAdapter, assertCurrent = () => {
   }, checkOtherTransactions = async () => {
   }, now = () => Date.now(), onProgress = () => {
+  }, onDiagnostic = () => {
   } }) {
-    let stopped = true, busy = false;
+    let stopped = true, busy = false, currentPhase = "idle";
     const key2 = tradingExecutionKey(scope2);
+    const report = (event, phase, status, record = null, error2 = null) => {
+      try {
+        const entries2 = record?.entries ?? [], confirmed = entries2.filter((e) => ["bought", "move-pending", "transfer", "list-pending", "listed", "sold"].includes(e.phase));
+        const summary3 = {
+          area: "trading",
+          event,
+          phase,
+          status,
+          source: phase === "inspect" ? "stored-journal" : "automatic-trading",
+          requestedCount: record?.plan?.rows?.length ?? 0,
+          count: confirmed.length,
+          pendingWriteCount: entries2.filter((e) => pending2.has(e.phase)).length,
+          approvedBudget: record?.plan?.capitalLimit,
+          spent: confirmed.reduce((sum2, e) => sum2 + (e.offer?.price ?? 0), 0),
+          ownedCount: confirmed.filter((e) => e.phase !== "sold").length,
+          acceptedCount: entries2.filter((e) => e.phase === "listed").length,
+          skippedCount: entries2.filter((e) => e.phase === "skipped").length,
+          reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : event === "execution-stage" ? null : record?.reason ?? (error2?.message ? "DESK_EXECUTION_UNCONFIRMED" : null),
+          httpStatus: error2?.httpStatus,
+          errorCode: error2?.errorCode,
+          methodPath: error2?.methodPath,
+          observedHash: error2?.observedHash,
+          expectedHash: error2?.expectedHash
+        };
+        Promise.resolve(onDiagnostic(summary3)).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const stage = (phase, record = null) => {
+      currentPhase = phase;
+      report("execution-stage", phase, "started", record);
+    };
+    const response = (value, record) => report(
+      "execution-response",
+      currentPhase,
+      value?.status ?? "unknown",
+      record,
+      { httpStatus: value?.httpStatus ?? value?.response?.status, errorCode: value?.errorCode ?? value?.response?.code }
+    );
     const read = async () => {
       assertCurrent();
       const result = readTradingExecution(await get(key2, null), context);
@@ -34339,18 +34395,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       await set(key2, record);
       if (!same29(record, await get(key2, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
       assertCurrent();
+      report("execution-checkpoint", currentPhase, record.status, record);
       try {
         onProgress(structuredClone(record));
       } catch {
       }
     };
-    const inspect = async () => ({ record: await read(), running: busy });
+    const inspect = async () => {
+      const record = await read();
+      report("execution-state", "inspect", record?.status ?? "absent", record);
+      return { record, running: busy };
+    };
     async function execute({ plan = null, approved = false, resume = false } = {}) {
-      if (approved !== true) throw Error("DESK_EXECUTION_APPROVAL_REQUIRED");
-      if (busy) throw Error("DESK_EXECUTION_BUSY");
+      if (approved !== true) {
+        const error2 = Error("DESK_EXECUTION_APPROVAL_REQUIRED");
+        report("execution-result", "approval", "blocked", null, error2);
+        throw error2;
+      }
+      if (busy) {
+        const error2 = Error("DESK_EXECUTION_BUSY");
+        report("execution-result", "approval", "blocked", null, error2);
+        throw error2;
+      }
       busy = true;
       stopped = false;
       let record = null, adapter = null, begun = false;
+      stage("preflight");
       try {
         const result = await exclusive(scope2, async () => {
           try {
@@ -34376,7 +34446,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               begun = true;
               await write(record);
             }
-            adapter = await createAdapter(record.plan, { canWrite: () => !stopped, assertCurrent, needsPurchases: record.plan.expiresAt > now() && record.entries.some((e) => e.phase === "waiting") });
+            stage("adapter-create", record);
+            adapter = await createAdapter(record.plan, { canWrite: () => !stopped, assertCurrent, onStage: (phase) => stage(phase, record), needsPurchases: record.plan.expiresAt > now() && record.entries.some((e) => e.phase === "waiting") });
             record.status = "active";
             record.reason = null;
             for (let i = 0; i < record.entries.length; i++) {
@@ -34388,6 +34459,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               }
               if (terminal.has(e.phase)) continue;
               if (pending2.has(e.phase) || e.phase === "listed") {
+                stage("receipt-recovery", record);
                 const recovered2 = await adapter.reconcile(e, row);
                 applyReconciliation(e, recovered2);
                 await write(record);
@@ -34405,10 +34477,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   await write(record);
                   continue;
                 }
+                stage("funds-capacity", record);
                 const caps = await adapter.capabilities();
                 assertCurrent();
                 const spent = record.entries.reduce((n, v) => n + (v.offer && !["skipped", "rejected"].includes(v.phase) ? v.offer.price : 0), 0);
                 if (caps.canTrade !== true || !Number.isSafeInteger(caps.balance) || caps.balance - row.buyCap < record.plan.reserveCoins || spent + row.buyCap + (caps.occupied ?? record.plan.existingCapital) > record.plan.capitalLimit || !Number.isSafeInteger(caps.freeSlots) || caps.freeSlots < 1) throw Error("DESK_EXECUTION_FUNDS_OR_CAPACITY");
+                stage("market-search", record);
                 const offer = await adapter.find(row);
                 assertCurrent();
                 if (stopped) {
@@ -34422,6 +34496,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   continue;
                 }
                 if (!validOffer(offer, row)) throw Error("DESK_EXECUTION_OFFER_INVALID");
+                stage("funds-recheck", record);
                 const fresh = await adapter.capabilities();
                 if (fresh.canTrade !== true || !Number.isSafeInteger(fresh.balance) || fresh.balance - offer.price < record.plan.reserveCoins || !Number.isSafeInteger(fresh.freeSlots) || fresh.freeSlots < 1 || spent + offer.price + (fresh.occupied ?? record.plan.existingCapital) > record.plan.capitalLimit) throw Error("DESK_EXECUTION_FUNDS_OR_CAPACITY");
                 if (record.plan.expiresAt <= now()) throw Error("DESK_DISCOVERY_EXPIRED");
@@ -34436,7 +34511,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   record.status = "paused";
                   break;
                 }
+                stage("buy", record);
                 const bought = await adapter.buy(offer);
+                response(bought, record);
                 const localRejection = ["FC27_BUY_LISTING_CHANGED", "FC27_BUY_INSUFFICIENT_COINS", "FC27_BUY_PRICE_APPROVAL_REQUIRED", "FC27_BUY_PRICE_CAP_EXCEEDED"].includes(bought?.reason);
                 const rejectedTransport = Number.isSafeInteger(bought?.httpStatus) && (bought.httpStatus >= 200 && bought.httpStatus < 300 || [401, 403, 427, 429].includes(bought.httpStatus));
                 if (bought?.status === "rejected" && (localRejection || rejectedTransport)) {
@@ -34447,6 +34524,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   continue;
                 }
                 if (bought?.status === "bought" && validOffer(bought, row) && same29(offer, { definitionId: bought.definitionId, itemId: bought.itemId, tradeId: bought.tradeId, price: bought.price })) e.buyAcknowledged = true;
+                stage("buy-readback", record);
                 const recovered2 = await adapter.reconcile(e, row);
                 applyReconciliation(e, recovered2);
                 await write(record);
@@ -34466,7 +34544,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   record.status = "paused";
                   break;
                 }
-                await adapter.move(e);
+                stage("move", record);
+                const moved = await adapter.move(e);
+                response(moved, record);
+                stage("move-readback", record);
                 const recovered2 = await adapter.reconcile(e, row);
                 applyReconciliation(e, recovered2);
                 await write(record);
@@ -34477,6 +34558,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 break;
               }
               if (e.phase === "transfer") {
+                stage("listing-limits", record);
                 await adapter.checkListing(e, row);
                 e.phase = "list-pending";
                 await write(record);
@@ -34487,8 +34569,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   record.status = "paused";
                   break;
                 }
+                stage("list", record);
                 const result2 = await adapter.list(e, row);
+                response(result2, record);
                 e.listAcknowledged = result2?.status === "accepted" && result2.response?.success === true && Number.isSafeInteger(result2.response.status) && result2.response.status >= 200 && result2.response.status < 300;
+                stage("listing-readback", record);
                 const recovered2 = await adapter.reconcile(e, row);
                 applyReconciliation(e, recovered2);
                 await write(record);
@@ -34497,6 +34582,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
             if (record.status === "active") record.status = record.entries.every((e) => terminal.has(e.phase)) ? "completed" : "waiting-sales";
             await write(record);
+            report("execution-result", currentPhase, record.status, record);
             return { record: structuredClone(record), running: false };
           } catch (error2) {
             if (record && begun) {
@@ -34511,6 +34597,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               record.status = record.entries.some((e) => pending2.has(e.phase)) ? "recovery-required" : "paused";
               record.reason = /^(DESK|FC27)_[A-Z_]+$/.test(error2.message) ? error2.message : "DESK_EXECUTION_UNCONFIRMED";
               await write(record);
+              report("execution-result", currentPhase, record.status, record, error2);
               return { record, running: false };
             }
             throw error2;
@@ -34518,6 +34605,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         });
         if (result === null) throw Error("DESK_EXECUTION_BUSY");
         return result;
+      } catch (error2) {
+        report("execution-result", currentPhase, "blocked", record, error2);
+        throw error2;
       } finally {
         adapter?.cancel?.();
         busy = false;
@@ -34528,6 +34618,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (busy) throw Error("DESK_EXECUTION_BUSY");
       busy = true;
       let adapter;
+      stage("readonly-recovery");
       try {
         return await exclusive(scope2, async () => {
           const record = await read();
@@ -34542,8 +34633,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           record.status = record.entries.some((e) => pending2.has(e.phase)) ? "recovery-required" : record.entries.every((e) => terminal.has(e.phase)) ? "completed" : record.entries.some((e) => ["bought", "transfer", "waiting"].includes(e.phase)) ? "paused" : "waiting-sales";
           if (!record.entries.some((e) => pending2.has(e.phase))) record.reason = null;
           await write(record);
+          report("execution-result", "readonly-recovery", record.status, record);
           return { record, running: false };
         });
+      } catch (error2) {
+        report("execution-result", "readonly-recovery", "blocked", null, error2);
+        throw error2;
       } finally {
         adapter?.cancel?.();
         busy = false;
@@ -34567,6 +34662,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     assertCurrent,
     readOnly = false,
     needsPurchases = true,
+    onStage = () => {
+    },
     now = () => Date.now(),
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     buyFactory = createFc27PuzzleBuyAdapter,
@@ -34616,6 +34713,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const seen = (e) => trade.inspectPurchase({ id: e.offer.itemId, definitionId: e.definitionId, pile: "unassigned" });
     let buyer = null;
     if (!readOnly && needsPurchases) {
+      onStage("reference-prices");
       const policy = await prices.readSettings();
       assert();
       const snapshot = await prices.load(plan.rows.map((r) => r.definitionId), {
@@ -34637,6 +34735,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!valid3("futbin") || !valid3("futgg") || Math.min(q.futbin.price, q.futgg.price) < row.sellPrice || Math.max(q.futbin.price, q.futgg.price) / Math.min(q.futbin.price, q.futgg.price) > 1.15) fail30("DESK_EXECUTION_REFERENCE_CHANGED");
         reference.set(row.definitionId, Math.min(q.futbin.price, q.futgg.price));
       }
+      onStage("runtime-check");
       buyer = await buyFactory(root, {
         canWrite: () => {
           assert();
@@ -34769,8 +34868,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
   function createFc27TradingExecution({ root, prices, get, set, liveEnabled, onProgress = () => {
-  }, adapterFactory = createNativeTradingExecutionAdapter }) {
+  }, adapterFactory = createNativeTradingExecutionAdapter, diagnosticLog: diagnosticLog2 = null }) {
     let session2 = null, bound = null, prepared = null, progress = null;
+    const diagnostic = (event) => {
+      try {
+        Promise.resolve(diagnosticLog2?.record?.(event)).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const failure = (event, phase, error2) => diagnostic({
+      area: "trading",
+      event,
+      phase,
+      status: "blocked",
+      reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "DESK_EXECUTION_UNCONFIRMED",
+      methodPath: error2?.methodPath,
+      observedHash: error2?.observedHash,
+      expectedHash: error2?.expectedHash
+    });
     const create = () => {
       const context = readFc27Context(root), deskContext = prices.context(), scope2 = traditionalJournalScope(context);
       const binding = JSON.stringify([context, deskContext]);
@@ -34789,6 +34905,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         set,
         exclusive: persistence.exclusive,
         assertCurrent,
+        onDiagnostic: diagnostic,
         onProgress: (value) => {
           onProgress(value);
           progress?.(value);
@@ -34820,17 +34937,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const balance = root.services?.User?.getUser?.()?.getCurrency?.(root.GameCurrency?.COINS)?.amount;
         return { plan: structuredClone(plan), balance: Number.isSafeInteger(balance) && balance >= 0 ? balance : null };
       },
-      inspect: () => create().inspect(),
-      recover: () => create().recover(),
-      async start({ plan = null, resume = false, approved = false, onProgress: callback = null } = {}) {
-        const current2 = create();
-        if (liveEnabled !== true) fail30("DESK_EXECUTION_DISABLED");
-        if (!resume && (!prepared || !same30(prepared, plan))) fail30("DESK_EXECUTION_APPROVAL_REQUIRED");
-        progress = callback;
+      async inspect() {
         try {
-          return await current2.execute({ plan, resume, approved });
-        } finally {
-          progress = null;
+          return await create().inspect();
+        } catch (error2) {
+          failure("execution-state", "inspect", error2);
+          throw error2;
+        }
+      },
+      async recover() {
+        try {
+          return await create().recover();
+        } catch (error2) {
+          failure("execution-result", "readonly-recovery", error2);
+          throw error2;
+        }
+      },
+      async start({ plan = null, resume = false, approved = false, onProgress: callback = null } = {}) {
+        let handedOff = false;
+        try {
+          const current2 = create();
+          if (liveEnabled !== true) fail30("DESK_EXECUTION_DISABLED");
+          if (!resume && (!prepared || !same30(prepared, plan))) fail30("DESK_EXECUTION_APPROVAL_REQUIRED");
+          progress = callback;
+          try {
+            handedOff = true;
+            return await current2.execute({ plan, resume, approved });
+          } finally {
+            progress = null;
+          }
+        } catch (error2) {
+          if (!handedOff) failure("execution-result", "approval", error2);
+          throw error2;
         }
       },
       stop() {
@@ -35718,7 +35856,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (typeof input.observedHash === "string" && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === "oversized")) entry.observedHash = input.observedHash;
     if (typeof input.expectedHash === "string" && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
     for (const key2 of STRING_FIELDS) {
-      const value = key2 === "reason" || key2 === "localReason" ? typeof input[key2] === "string" && /^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key2]) ? input[key2] : null : boundedString(input[key2]);
+      const value = key2 === "reason" || key2 === "localReason" ? typeof input[key2] === "string" && (/^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key2]) || input.area === "trading" && /^DESK_[A-Z0-9_]{1,140}$/.test(input[key2])) ? input[key2] : null : boundedString(input[key2]);
       if (value !== null) entry[key2] = value;
     }
     for (const key2 of NUMBER_FIELDS) {
@@ -35816,10 +35954,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       writing = writing.then(async () => {
         await load();
         entries2 = [...entries2, entry].slice(-maxEntries);
-        if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "streamlined" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
+        if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "streamlined" || entry.area === "trading" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
         }
-        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result" || entry.area === "streamlined" && entry.event === "contribution-transaction" && entry.reason) {
+        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result" || entry.area === "streamlined" && entry.event === "contribution-transaction" && entry.reason || entry.area === "trading" && (["execution-result", "plan-result"].includes(entry.event) || entry.event === "execution-state" && ["paused", "recovery-required"].includes(entry.status))) {
           transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
         if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
@@ -43631,7 +43769,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.95" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.96" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -43788,7 +43926,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     get: GM_getValue,
     set: GM_setValue,
     locks: unsafeWindow.navigator.locks,
-    execution: createFc27TradingExecution({ root: unsafeWindow, prices: publicPrices, get: GM_getValue, set: GM_setValue, liveEnabled: dependencies.liveEnabled }),
+    diagnosticLog,
+    execution: createFc27TradingExecution({ root: unsafeWindow, prices: publicPrices, get: GM_getValue, set: GM_setValue, liveEnabled: dependencies.liveEnabled, diagnosticLog }),
     intel: createFc27TradingIntel({ gmRequest: GM_xmlhttpRequest, get: GM_getValue, set: GM_setValue }),
     readCandidates: () => readFc27TradingCandidates(unsafeWindow)
   });
@@ -43982,8 +44121,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.95"}`,
-    version: "27.0.95",
+    title: `FC Automation Tool ${"27.0.96"}`,
+    version: "27.0.96",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -5,8 +5,9 @@ import {createNativeTradingExecutionAdapter,createFc27TradingExecution} from '..
 import {createInvestmentPlan} from '../../src/trading/investment-plan.js';
 import {readFc27Context} from '../../src/adapters/ea/fc27-local-read.js';
 import {traditionalJournalScope} from '../../src/fc27/traditional-journal.js';
+import {createFcatDiagnosticLog} from '../../src/diagnostics/fcat-diagnostic-log.js';
 
-function fixture(){
+function fixture({diagnosticLog=null}={}){
   const {root}=executionRuntime(),data=new Map(),calls=[],unassigned=[],transfer=[];let time=Date.now(),coins=40000,auction={tradeId:'9901',tradeState:'active',buyNowPrice:600,canBuy:()=>true,getSecondsRemaining:()=>60};
   const context={scope:'native-test',season:'27',platform:'console'},observable=reply=>({observe(_o,cb){cb(this,reply);},unobserve(){}});
   Object.assign(root.ItemPile,{PURCHASED:6,CLUB:7,TRANSFER:5});root.MAX_NEW_ITEMS=100;root.GameCurrency={COINS:'COINS'};root.TradeAccessLevel={ALLOWED:1};
@@ -40,8 +41,8 @@ function fixture(){
   const plan=createInvestmentPlan({context,id:'native-plan',now:time,advice:{platform:'console',validUntil:time+300000,suggestions:[{definitionId:901,name:'New purchase only',rating:80,
     nationId:1,leagueId:2,teamId:3,preferredPosition:'CM',sourceCount:2,ggQuote:quote('futgg'),resaleEstimate:1000,buyCeiling:650,reason:'price spread'}]}});
   const adapterFactory=options=>createNativeTradingExecutionAdapter({...options,now:()=>time,sleep:async ms=>{time+=ms;}});
-  const service=createFc27TradingExecution({root,prices,get:async(k,f)=>structuredClone(data.get(k)??f),set:async(k,v)=>data.set(k,structuredClone(v)),liveEnabled:true,adapterFactory});
-  return {root,prices,plan,service,data,calls,transfer,context,sell:()=>{auction={...auction,tradeState:'closed',currentBid:1000,isSold:()=>true};},scope:traditionalJournalScope(readFc27Context(root))};
+  const service=createFc27TradingExecution({root,prices,get:async(k,f)=>structuredClone(data.get(k)??f),set:async(k,v)=>data.set(k,structuredClone(v)),liveEnabled:true,adapterFactory,diagnosticLog});
+  return {root,prices,plan,service,data,calls,transfer,context,adapterFactory,sell:()=>{auction={...auction,tradeState:'closed',currentBid:1000,isSold:()=>true};},scope:traditionalJournalScope(readFc27Context(root))};
 }
 it('runs the real desk session through the original EA buyer/mover/lister and independent readback',async()=>{
   const f=fixture();const prepared=f.service.prepare(f.plan);expect(prepared.balance).toBe(40000);expect(f.calls).toEqual([]);
@@ -55,6 +56,28 @@ it('cannot execute a changed or unprepared plan, and does not trade just because
   const f=fixture();await f.service.inspect();await f.service.recover();expect(f.calls).toEqual([]);
   await expect(f.service.start({plan:f.plan,approved:true})).rejects.toThrow('APPROVAL_REQUIRED');f.service.prepare(f.plan);
   await expect(f.service.start({plan:{...f.plan,capitalLimit:30000},approved:true})).rejects.toThrow('APPROVAL_REQUIRED');expect(f.calls).toEqual([]);
+});
+it('exports the precise failed automatic-trading stage and reviewed-method evidence without a payment or private identities',async()=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.96'}),f=fixture({diagnosticLog:log});
+  Object.getPrototypeOf(f.root.services.Item).bid=vi.fn();f.service.prepare(f.plan);await f.service.start({plan:f.plan,approved:true});
+  const out=await log.exportPayload();expect(out.transactionResults.at(-1)).toMatchObject({area:'trading',event:'execution-result',phase:'runtime-check',status:'paused',
+    reason:'FC27_TRANSACTION_METHOD_UNREVIEWED',methodPath:'service.bid',requestedCount:1});
+  expect(out.transactionResults.at(-1).observedHash).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.stringify(out)).not.toMatch(/native-test|itemId|tradeId|accountScope/);expect(f.root.services.Item.bid).not.toHaveBeenCalled();
+});
+it('exports a restored old paused journal without repeating the trade or rereading the market',async()=>{
+  const f=fixture(),load=f.prices.load.getMockImplementation();f.prices.load.mockImplementation(async()=>{const r=await load();r.references[901].quotes.futbin.price=500;return r;});
+  f.service.prepare(f.plan);await f.service.start({plan:f.plan,approved:true});const before=structuredClone([...f.data]),reads=f.prices.load.mock.calls.length;
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.96'});
+  const upgraded=createFc27TradingExecution({root:f.root,prices:f.prices,get:async(k,fallback)=>structuredClone(f.data.get(k)??fallback),
+    set:async(k,v)=>f.data.set(k,structuredClone(v)),liveEnabled:true,diagnosticLog:log,adapterFactory:f.adapterFactory});
+  await upgraded.inspect();expect((await log.exportPayload()).transactionResults.at(-1)).toMatchObject({area:'trading',event:'execution-state',phase:'inspect',source:'stored-journal',status:'paused',reason:'DESK_EXECUTION_REFERENCE_CHANGED'});
+  expect(f.calls).toEqual([]);expect(f.prices.load).toHaveBeenCalledTimes(reads);expect([...f.data]).toEqual(before);
+});
+it.each(['throw','reject'])('keeps exact native buy/move/list behavior when the optional diagnostic sink fails (%s)',async mode=>{
+  const log={record:()=>{if(mode==='throw')throw Error('private diagnostic failure');return Promise.reject(Error('private diagnostic failure'));}},f=fixture({diagnosticLog:log});
+  f.service.prepare(f.plan);const result=await f.service.start({plan:f.plan,approved:true});expect(result.record.status).toBe('waiting-sales');
+  expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([['bid',801,600],['move',801,5],['list',801,1000,1000,3600]]);
 });
 it('preserves ad main unknown journals and refuses simultaneous unsettled Gallery work',async()=>{
   const f=fixture(),key=`fcat-fc27-gallery-purchase-pending:${f.scope}`,value={unknown:true};f.data.set(key,value);f.service.prepare(f.plan);
