@@ -5,6 +5,10 @@ const phases=new Set(['waiting','buy-pending','bought','move-pending','transfer'
 const pending=new Set(['buy-pending','move-pending','list-pending']);
 const terminal=new Set(['sold','skipped','rejected']);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+// Fail closed on any extra entry evidence, including unknown future fields.
+// Zero aggregate counts alone say nothing about whether an intent was sent.
+const pristine=record=>record.entries.every(e=>e.phase==='waiting'&&e.offer===null
+  &&Object.keys(e).every(key=>['definitionId','phase','offer'].includes(key)));
 const validOffer=(offer,row)=>offer&&offer.definitionId===row.definitionId&&Number.isSafeInteger(offer.itemId)&&offer.itemId>0
   &&typeof offer.tradeId==='string'&&/^[1-9]\d{0,19}$/.test(offer.tradeId)&&Number.isSafeInteger(offer.price)&&offer.price>=150&&offer.price<=row.buyCap;
 const applyReconciliation=(entry,result)=>{
@@ -39,7 +43,7 @@ export function createTradingExecutionSession({context,scope,get,set,exclusive,c
       acceptedCount:entries.filter(e=>e.phase==='listed').length,skippedCount:entries.filter(e=>e.phase==='skipped').length,
       reason:/^(DESK|FC27)_[A-Z0-9_]+$/.test(error?.message??'')?error.message
         :event==='execution-stage'?null:record?.reason??(error?.message?'DESK_EXECUTION_UNCONFIRMED':null),
-      httpStatus:error?.httpStatus,errorCode:error?.errorCode,
+      httpStatus:error?.httpStatus,errorCode:error?.errorCode,mismatch:error?.mismatch,transportPhase:error?.nativeReadStatus,
       methodPath:error?.methodPath,observedHash:error?.observedHash,expectedHash:error?.expectedHash};
     Promise.resolve(onDiagnostic(summary)).catch(()=>{});
     }catch{/* Optional diagnostics never control execution. */}
@@ -62,14 +66,14 @@ export function createTradingExecutionSession({context,scope,get,set,exclusive,c
       if(resume){if(!record)throw Error('DESK_EXECUTION_MISSING');begun=true;}
       else{validateInvestmentPlan(plan,context);if(plan.expiresAt<=now())throw Error('DESK_DISCOVERY_EXPIRED');
         if(record?.plan.id===plan.id)throw Error('DESK_EXECUTION_ALREADY_STARTED');
-        if(record&&!record.entries.every(e=>terminal.has(e.phase)))throw Error('DESK_EXECUTION_RECOVERY_REQUIRED');
+        if(record&&!record.entries.every(e=>terminal.has(e.phase))&&!pristine(record))throw Error('DESK_EXECUTION_RECOVERY_REQUIRED');
         if(record){const historyKey=key+':history',history=await get(historyKey,[]);
           if(!Array.isArray(history)||history.length>=20)throw Error('DESK_EXECUTION_HISTORY_FULL');
-          const archived=[...history,record];await set(historyKey,archived);if(!same(archived,await get(historyKey,null)))throw Error('DESK_EXECUTION_SAVE_UNVERIFIED');}
+          const archived=[...history,record];assertCurrent();await set(historyKey,archived);if(!same(archived,await get(historyKey,null)))throw Error('DESK_EXECUTION_SAVE_UNVERIFIED');assertCurrent();}
         record={schema:1,status:'active',plan:structuredClone(plan),entries:plan.rows.map(row=>({definitionId:row.definitionId,phase:'waiting',offer:null})),reason:null};begun=true;await write(record);
       }
       stage('adapter-create',record);
-      adapter=await createAdapter(record.plan,{canWrite:()=>!stopped,assertCurrent,onStage:phase=>stage(phase,record),needsPurchases:record.plan.expiresAt>now()&&record.entries.some(e=>e.phase==='waiting')});record.status='active';record.reason=null;
+      adapter=await createAdapter(record.plan,{canWrite:()=>!stopped,assertCurrent,onStage:phase=>stage(phase,record),onDiagnostic,needsPurchases:record.plan.expiresAt>now()&&record.entries.some(e=>e.phase==='waiting')});record.status='active';record.reason=null;
       for(let i=0;i<record.entries.length;i++){
         const e=record.entries[i],row=record.plan.rows[i];assertCurrent();
         if(stopped){record.status='paused';break;}if(terminal.has(e.phase))continue;
@@ -130,16 +134,19 @@ export function createTradingExecutionSession({context,scope,get,set,exclusive,c
     catch(error){report('execution-result',currentPhase,'blocked',record,error);throw error;}
     finally{adapter?.cancel?.();busy=false;stopped=true;}
   }
-  async function recover(){if(busy)throw Error('DESK_EXECUTION_BUSY');busy=true;let adapter;stage('readonly-recovery');
-    try{return await exclusive(scope,async()=>{const record=await read();if(!record)return {record:null,running:false};
-      adapter=await createAdapter(record.plan,{canWrite:()=>false,assertCurrent,readOnly:true});
+  async function recover(){if(busy)throw Error('DESK_EXECUTION_BUSY');busy=true;let adapter,record=null;stage('readonly-recovery');
+    try{return await exclusive(scope,async()=>{record=await read();if(!record)return {record:null,running:false};let readConfirmed=false;
+      adapter=await createAdapter(record.plan,{canWrite:()=>false,assertCurrent,readOnly:true,onStage:phase=>stage(phase,record),onDiagnostic});
+      if(pristine(record)&&record.reason==='DESK_EXECUTION_READ_UNCONFIRMED'){
+        stage('funds-capacity',record);await adapter.capabilities();assertCurrent();readConfirmed=true;
+      }
       for(let i=0;i<record.entries.length;i++){const e=record.entries[i];if(!pending.has(e.phase)&&e.phase!=='listed')continue;
-        const result=await adapter.reconcile(e,record.plan.rows[i]);applyReconciliation(e,result);}
+        const result=await adapter.reconcile(e,record.plan.rows[i]);assertCurrent();readConfirmed=true;applyReconciliation(e,result);}
       record.status=record.entries.some(e=>pending.has(e.phase))?'recovery-required'
         :record.entries.every(e=>terminal.has(e.phase))?'completed':record.entries.some(e=>['bought','transfer','waiting'].includes(e.phase))?'paused':'waiting-sales';
-      if(!record.entries.some(e=>pending.has(e.phase)))record.reason=null;
+      if(readConfirmed&&!record.entries.some(e=>pending.has(e.phase)))record.reason=null;
       await write(record);report('execution-result','readonly-recovery',record.status,record);return {record,running:false};});
-    }catch(error){report('execution-result','readonly-recovery','blocked',null,error);throw error;}
+    }catch(error){report('execution-result',currentPhase,'blocked',record,error);throw error;}
     finally{adapter?.cancel?.();busy=false;}
   }
   return Object.freeze({inspect,execute,recover,stop(){stopped=true;}});

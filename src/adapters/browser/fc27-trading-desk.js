@@ -9,7 +9,7 @@ export const tradingDeskKey=scope=>`fcat-fc27-trading-desk-v1:${scope}`;
 // real execution has its own approval and durable journal, never a notebook
 // flag or a public reference quote masquerading as an EA transaction receipt.
 export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution=null,diagnosticLog=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
-  let lastDiscovery=null,discoveryId=0,lastIntel=null;
+  let lastDiscovery=null,discoveryId=0,lastIntel=null,intelId=0;
   const diagnostic=fields=>{try{Promise.resolve(diagnosticLog?.record?.({area:'trading',...fields})).catch(()=>{});}catch{/* Diagnostics only. */}};
   const discoveryBasis=state=>JSON.stringify([state.settings,state.configured,state.events,deskFunding(state)]);
   const rememberComplete=rows=>prices.remember(rows.filter(row=>Number.isSafeInteger(row.rating)&&row.rating>=1&&row.rating<=99
@@ -34,17 +34,30 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
     });
   };
   const act=async mutate=>{const context=capture();return update(context,mutate);};
-  return Object.freeze({read,context:capture,
-    async prepareInvestment({capitalLimit=20000,reserveCoins=0,definitionIds=null}={}){
+  const desk=Object.freeze({read,context:capture,
+    async prepareInvestment({capitalLimit=20000,reserveCoins=0,definitionIds=null,isCurrent=()=>true,onProgress=()=>{}}={}){
       try{
-      if(!execution)throw Error('DESK_EXECUTION_DISABLED');const {context,state}=await read(),saved=lastDiscovery;
-      if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_EXPIRED');
+      if(!execution)throw Error('DESK_EXECUTION_DISABLED');let saved=lastDiscovery,serial=discoveryId,refreshedDiscovery=null;
+      const {context,state:initialState}=await read();let state=initialState;
+      const check=()=>{if(!current(context)||!isCurrent()||serial!==discoveryId)throw Error('DESK_CONTEXT_CHANGED');};
+      check();if(!saved||!current(saved.context))throw Error('DESK_DISCOVERY_EXPIRED');
+      if(saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis){
+        // Only an explicit full prepare may discover again. A subset remains
+        // bound to the displayed selection; old quotes/approvals are immutable.
+        if(definitionIds!==null)throw Error('DESK_DISCOVERY_EXPIRED');
+        serial++;refreshedDiscovery=await desk.discover({isCurrent:()=>current(context)&&isCurrent(),onProgress});check();
+        const latest=await read();check();
+        if(discoveryBasis(latest.state)!==discoveryBasis(state))throw Error('DESK_DISCOVERY_CHANGED');
+        state=latest.state;saved=lastDiscovery;
+      }
+      check();if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_EXPIRED');
       if(definitionIds!==null&&(!Array.isArray(definitionIds)||definitionIds.length>6||new Set(definitionIds).size!==definitionIds.length
         ||definitionIds.some(id=>!saved.result.suggestions.some(row=>row.definitionId===id))))throw Error('DESK_PLAN_INVALID');
       const advice=definitionIds===null?saved.result:{...saved.result,suggestions:saved.result.suggestions.filter(row=>definitionIds.includes(row.definitionId))};
       const result=await execution.prepare(createInvestmentPlan({advice,context,capitalLimit,reserveCoins,existingCapital:deskFunding(state).occupied,unitLimit:state.settings.unitLimit,
         minProfit:state.settings.minProfit,buffer:state.settings.buffer,now:now(),id:id()}));
-      diagnostic({event:'plan-result',phase:'prepare',status:'ready',approvedBudget:capitalLimit,requestedCount:result.plan?.rows?.length??0});return result;
+      check();diagnostic({event:'plan-result',phase:'prepare',status:'ready',approvedBudget:capitalLimit,requestedCount:result.plan?.rows?.length??0});
+      return {...result,...(refreshedDiscovery?{refreshedDiscovery}: {})};
       }catch(error){diagnostic({event:'plan-result',phase:'prepare',status:'blocked',reason:/^(DESK|FC27)_[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_PLAN_UNCONFIRMED'});throw error;}
     },
     executionAvailable:()=>execution!==null,
@@ -56,8 +69,9 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
     intelConfig:async()=>typeof intel?.config==='function'?intel.config():{configured:false},
     checkIntel:async()=>{if(typeof intel?.check!=='function')throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');return intel.check();},
     stopIntel:async()=>{if(typeof intel?.stop!=='function')throw Error('DESK_INTEL_STATUS_UNSUPPORTED');return intel.stop();},
-    async refreshIntel(){const context=capture();if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');
-      const feed=await intel.refresh();if(!current(context))throw Error('DESK_CONTEXT_CHANGED');lastIntel=feed;lastDiscovery=null;return feed;},
+    async refreshIntel(){const context=capture(),serial=++intelId;if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');
+      const feed=await intel.refresh();if(!current(context)||serial!==intelId)throw Error('DESK_CONTEXT_CHANGED');
+      lastIntel=feed;discoveryId++;lastDiscovery=null;return feed;},
     async discover({isCurrent=()=>true,onProgress=()=>{}}={}){
       const serial=++discoveryId;lastDiscovery=null;
       const {context,state}=await read();
@@ -156,4 +170,5 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
     }),
     defaults:()=>emptyDesk(),
   });
+  return desk;
 }

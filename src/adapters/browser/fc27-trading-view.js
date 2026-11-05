@@ -1,18 +1,30 @@
 import {DESK_DEFAULTS,DESK_LIMITS,deskFunding,deskOpportunity,deskTrend,deskNet,deskPriceSignal,deskExit} from '../../trading/desk-model.js';
 import {mountTradingPlanView} from './fc27-trading-plan-view.js';
+import {tradingStyle} from './fc27-trading-style.js';
 
 export function mountFc27TradingView({document,parent,tab,service,timers=globalThis,now=()=>Date.now()}){
   if(!parent)return {setActive(){}};
   const add=(p,tag,text='',cls='')=>{const node=document.createElement(tag);node.textContent=text;if(cls)node.className=cls;p.append(node);return node;};
   parent.replaceChildren();
-  const style=add(parent,'style');style.textContent='.trading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.trading-card{margin:12px 0;padding:14px;border:1px solid #526671;border-radius:7px;background:#22323d}.trading-card small{display:block;color:#bdcbd3}.trading-card input,.trading-card select{max-width:100%}.trading-chart{width:100%;height:100px;background:#17212c}.trading-warning{color:#ffdb8c}.trading-opportunity{border-color:#9df3d5}.trading-funding{font-size:16px}.trading-ledger{overflow-wrap:anywhere}.trading-card label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}.trading-card input[type=checkbox]{width:auto}.trading-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trading-row>*{flex:1;min-width:100px}';
-  style.textContent+='#page-trading{min-width:0;overflow-wrap:anywhere}.trading-grid>*{min-width:0}.trading-row>*{min-width:0;flex-basis:180px}.trading-card label{min-width:0;max-width:100%}.trading-card input,.trading-card select{min-width:0;width:100%}.trading-card input[type=checkbox]{width:18px;flex:0 0 18px}.trading-card a{color:#9df3d5;text-decoration:underline}';
-  add(parent,'h2','交易观察与自动交易');
-  add(parent,'p','行情分析不会启动交易。先生成整批方案，审核并确认后才按方案搜索、买入、移到转会列表及上架；不自动降价或重挂。没有防封承诺。','module-note');
-  const status=add(parent,'output');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
-  const funding=add(parent,'p','','trading-funding');
-  const investmentHost=add(parent,'section','','trading-card');investmentHost.setAttribute('aria-label','投资方案与执行');
-  const controls=add(parent,'div','','row');
+  const style=add(parent,'style');style.textContent=tradingStyle;
+  add(parent,'h2','交易台');
+  add(parent,'p','先看清单，再确认交易。只操作本轮新购卡，不出售原有 Club 卡。','module-note');
+  const nav=add(parent,'div','','trading-nav');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','交易台工作区');
+  const sections=[['execute','投资与执行'],['research','候选与线索'],['notebook','观察笔记'],['config','设置']].map(([id,label],index)=>{
+    const button=add(nav,'button',label),panel=add(parent,'div');button.type='button';button.id=`trading-section-${id}`;panel.id=`trading-panel-${id}`;
+    button.setAttribute('role','tab');button.setAttribute('aria-controls',panel.id);panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',button.id);
+    button.addEventListener('click',()=>selectSection(index));return {button,panel};
+  });
+  function selectSection(index){for(let i=0;i<sections.length;i++){const {button,panel}=sections[i];panel.hidden=i!==index;button.tabIndex=i===index?0:-1;button.setAttribute('aria-selected',String(i===index));}}
+  nav.addEventListener('keydown',event=>{const index=sections.findIndex(row=>row.button===event.target);if(index<0)return;
+    const next=event.key==='ArrowRight'?(index+1)%sections.length:event.key==='ArrowLeft'?(index+sections.length-1)%sections.length:event.key==='Home'?0:event.key==='End'?sections.length-1:null;
+    if(next!==null){event.preventDefault();selectSection(next);sections[next].button.focus();}});selectSection(0);
+  const [executePanel,researchPanel,notebookPanel,configPanel]=sections.map(row=>row.panel);
+  const status=add(parent,'output','','trading-status');status.setAttribute('role','status');status.setAttribute('aria-label','交易台状态');status.setAttribute('aria-live','polite');nav.after(status);
+  add(notebookPanel,'p','以下为独立观察与手工记账，不是自动交易的成交或持仓回执。','module-note');
+  const funding=add(notebookPanel,'p','','trading-funding');
+  const investmentHost=add(executePanel,'section','','trading-card');investmentHost.setAttribute('aria-label','投资方案与执行');
+  const controls=add(notebookPanel,'div','','trading-row');
   let active=false,busy=false,epoch=0,timer=null,context=null,state=null,attempted=0,advice=null,pairingRevision=0,pairBusy=false,pairConfigured=false,intelFailed=false;
   const current=token=>active&&parent.isConnected&&token===epoch&&JSON.stringify(context)===JSON.stringify(service.context());
   const button=(p,label,task)=>{const node=add(p,'button',label);node.type='button';node.addEventListener('click',event=>{
@@ -60,25 +72,26 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     const value=await service.read();const blob=new globalThis.Blob([JSON.stringify({schema:1,exportedAt:now(),platform:value.context.platform,manualRecords:true,state:value.state},null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),link=add(parent,'a');link.href=url;link.download='FCAT-trading-notebook.json';link.click();link.remove();URL.revokeObjectURL(url);
   });
-  const settings=add(parent,'details','','trading-card');add(settings,'summary','资金与利润设置（可手动调整）');
+  add(configPanel,'p','这里调整观察筛选条件和手工账面估算；本轮真实交易预算在“投资与执行”中单独审核。','module-note');
+  const settings=add(configPanel,'details','','trading-card');add(settings,'summary','资金与利润设置（可手动调整）');
   const fields=add(settings,'div','','trading-grid'),names={startingCoins:'起始金币（手填）',capitalLimit:'试仓总上限',reserveCoins:'最低保留金币',unitLimit:'单卡买入上限',minProfit:'单卡目标净利润',buffer:'每卡跌价缓冲'};
   const inputs=Object.fromEntries(Object.entries(names).map(([key,label])=>[key,input(fields,label,DESK_DEFAULTS[key])]));
   add(settings,'small','起始金币＋手填买卖推算账面余额，不是 EA 实时余额；改上限不改历史、不授权交易。实际买卖前核对官方余额。');
   button(settings,'保存资金设置',async()=>{const result=await service.settings(Object.fromEntries(Object.keys(names).map(key=>[key,Number(inputs[key].value)])));advice=null;renderAdvice();status.textContent='资金设置已保存；重新分析会按新额度筛选。';return result;});
-  const discovery=add(parent,'section','','trading-card');discovery.setAttribute('aria-label','自动候选建议');
+  const discovery=add(researchPanel,'section','','trading-card');discovery.setAttribute('aria-label','自动候选建议');
   add(discovery,'h3','本轮候选 · 不用先填球员');
-  add(discovery,'small','低价短线初筛：80/82/84 普通金卡各一页；X 作者明确点名后额外定向读最多 3 个名字。最多 12 张交叉核价、6 张建议，不扫 EA 市场。非 META 排名或成交保证，拥挤度未知。');
+  add(add(discovery,'details'),'summary','筛选范围与数据说明').parentElement.append(document.createTextNode('80/82/84 普通金卡各一页，作者点名最多 3 个名字；最多 12 张交叉核价、6 张建议。不扫 EA 市场，不是 META 排名或成交保证。'));
   const adviceControls=add(discovery,'div','','row'),adviceList=add(discovery,'div');
-  const discover=async()=>{const token=epoch;advice=null;adviceList.textContent='正在筛选预算内候选…';
+  const discover=async()=>{const token=epoch;advice=null;investmentView.setAdvice(null);adviceList.textContent='正在筛选预算内候选…';
     try{const value=await service.discover({isCurrent:()=>current(token),onProgress:v=>{if(current(token))adviceList.textContent=v.phase==='candidate-pool'
       ?`读取 ${v.rating} 评分公共候选（${v.index+1}/${v.total} 页）…`:v.phase==='named-candidate'?`定向读取作者点名：${v.name}…`:`交叉核对候选报价（最多 ${v.total??12} 张）…`;}});
-      if(current(token)){advice=value;renderAdvice();status.textContent='候选已生成；买价是等待低价的上限，不是让你按现价买。';}
-    }catch(error){if(current(token)){adviceList.textContent=errorText(error);throw error;}}
+      if(current(token)){advice=value;renderAdvice();status.textContent='候选已更新；尚未启动交易。';}
+    }catch(error){if(current(token)){adviceList.textContent=errorText(error);investmentView.setAnalysisStatus(errorText(error));throw error;}}
   };
   button(adviceControls,'重新分析候选',discover);
   button(adviceControls,'跟踪本轮候选',()=>service.followSuggestions());
   const cancel=add(adviceControls,'button','取消候选分析');cancel.type='button';cancel.addEventListener('click',event=>{
-    if(!event.isTrusted||!active||!busy)return;epoch++;busy=false;pause();advice=null;adviceList.textContent='分析已取消；不会产生交易。';});
+    if(!event.isTrusted||!active||!busy)return;epoch++;busy=false;pause();advice=null;investmentView.setAdvice(null);investmentView.setAnalysisStatus('候选分析已取消，请在“候选与线索”重新分析。');adviceList.textContent='分析已取消；不会产生交易。';});
   function renderAdvice(){investmentView.setAdvice(advice);adviceList.replaceChildren();if(!advice){add(adviceList,'p','点击重新分析，按资金设置自动找候选。');return;}
     add(adviceList,'p',`样本 ${advice.scanned} 张 · 预算内 ${advice.affordable} 张 · 交叉核价 ${advice.crossChecked} 张 · 本批各一张最多占用 ${advice.allocated} / 可用 ${advice.available}`);
     add(adviceList,'small',`${advice.defaultBudget?'当前按预填 1 万试仓估算；请保存真实资金设置后再开启提醒。 ':''}读取 ${new Date(advice.at).toLocaleString()}；买价参考 5 分钟有效，进入原生市场前重新核价。`);
@@ -88,17 +101,17 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
       add(box,'p',`当前参考 FUTBIN ${row.price} / FUT.GG ${row.ggPrice??'待核价'} · ${row.sourceCount===2?'双源观察':'单源暂定观察'}`);
       add(box,'strong',`等到 ≤ ${row.buyCeiling} 再核价；卖出参考 ${row.resaleEstimate}`);
       add(box,'p',`仅在该买价与卖价均成交时，模型税后差额 ${row.netAtCeiling}；买入需比当前参考低 ${row.requiredDiscount.toFixed(1)}%。`);
-      add(box,'small',`关注理由：${row.reason}`);
-      add(box,'small',`退出计划：成交后到卖出参考可核价卖出；税后浮亏达到 ${state.settings.buffer} 金币或买入满 6 小时则复核退出；消息落空/替代卡上线提前复核。均不自动执行。`);
+      const detail=add(box,'details');add(detail,'summary','关注理由与退出条件');add(detail,'small',`关注理由：${row.reason}`);
+      add(detail,'small',`退出计划：成交后到卖出参考可核价卖出；税后浮亏达到 ${state.settings.buffer} 金币或买入满 6 小时则复核退出；消息落空/替代卡上线提前复核。均不自动执行。`);
       for(const clue of row.evo??[]){const a=add(box,'a',`EVO ${clue.status==='leak'?'爆料':'线索'} · 仅条件初筛`);a.href=clue.url;a.target='_blank';a.rel='noopener noreferrer';add(box,'small',clue.reason);}
       button(box,'跟踪这张候选',()=>service.followSuggestions({definitionId:row.definitionId}));
     }
     for(const row of advice.avoid)add(adviceList,'small',`暂缓 ${row.name}：${row.reason}`);
     for(const name of advice.unresolvedNames??[])add(adviceList,'small',`点名 ${name}：名字未唯一匹配，未生成版本/买价建议。`);
   }
-  const intelligence=add(parent,'section','','trading-card');add(intelligence,'h3','X 自动采集 · 按需刷新，不开定时');
+  const intelligence=add(researchPanel,'section','','trading-card');add(intelligence,'h3','X 自动采集 · 按需刷新，不开定时');
   add(intelligence,'small','从 FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT 原生 X 搜索原帖，核对最多两条 EVO 线程及作者后续回复，包含点名球员。复用本机 Grok，可能产生模型费用；不保证实时、完整线程或爆料准确。15 分钟内重复刷新用缓存。');
-  const pairing=add(intelligence,'details');add(pairing,'summary','连接本机采集器（首次设置）');
+  const pairing=add(configPanel,'details','','trading-card');add(pairing,'summary','连接本机采集器（首次设置）');
   add(pairing,'small','双击桌面“FCAT X Collector → Start Collector”后台运行；提示窗口可关闭。也可运行 npm.cmd run trading:intel:start。停止用 Stop Collector 或下方按钮；不设开机自启、不自动采集。已有配对无需重填；首次配对码保存在本机用户目录 .fcat-trading-intel/pairing-key，也可用原前台命令 trading:intel 查看，切勿分享。');
   const pairKey=input(pairing,'本机采集器配对码','','password');pairKey.autocomplete='off';pairKey.placeholder='48 位十六进制配对码';
   const pairStatus=add(pairing,'output','未配置配对码。');pairStatus.setAttribute('role','status');pairStatus.setAttribute('aria-label','采集器连接状态');pairStatus.setAttribute('aria-live','polite');pairStatus.style.display='block';
@@ -145,9 +158,9 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
       await discover();
     }catch(error){if(current(token)){intelFailed=true;intelList.textContent=errorText(error);}throw error;}
   });
-  const investmentView=mountTradingPlanView({document,parent:investmentHost,service,now,timers,isCurrent:()=>{
+  const investmentView=mountTradingPlanView({document,parent:investmentHost,service,now,timers,onDiscovery:value=>{advice=value;renderAdvice();},isCurrent:()=>{
     try{return active&&parent.isConnected&&JSON.stringify(context)===JSON.stringify(service.context());}catch{return false;}}});
-  const picker=add(parent,'details','','trading-card');add(picker,'summary','添加观察球员');
+  const picker=add(notebookPanel,'details','','trading-card');add(picker,'summary','添加观察球员');
   const pickRows=add(picker,'div','','trading-row');const linkInput=input(pickRows,'FUTBIN FC27 链接 / EA版本ID','','text'),nameInput=input(pickRows,'球员名称（可选）','','text');
   button(picker,'加入观察',()=>service.add({input:linkInput.value,name:nameInput.value}));
   add(picker,'small','支持粘贴 FUTBIN FC27 球员页链接；EA 版本 ID 与 FUTBIN ID 不同。或从本页已加载的卡片事实中选择，不代表完整库存/市场。');
@@ -159,10 +172,10 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
       const opt=add(select,'option',`${card.name} · ${card.rating??'?'} · ${card.version??''} · EA ${card.definitionId}`);opt.value=String(card.definitionId);}};list();search.addEventListener('input',list);
     button(candidateOutput,'加入所选球员',()=>{const player=candidates.find(row=>row.definitionId===Number(select.value));if(!player)throw Error('DESK_PLAYER_INVALID');return service.add({player});});
   });
-  const alerts=add(parent,'section','','trading-card');alerts.setAttribute('aria-label','机会提醒');
-  const watch=add(parent,'section');watch.setAttribute('aria-label','球员观察名单');
-  const ledger=add(parent,'section','','trading-card trading-ledger');ledger.setAttribute('aria-label','手填交易记录');
-  const news=add(parent,'details','','trading-card');add(news,'summary','X 消息线索（手动录入，多来源）');
+  const alerts=add(notebookPanel,'section','','trading-card');alerts.setAttribute('aria-label','机会提醒');
+  const watch=add(notebookPanel,'section');watch.setAttribute('aria-label','球员观察名单');
+  const ledger=add(notebookPanel,'section','','trading-card trading-ledger');ledger.setAttribute('aria-label','手填交易记录');
+  const news=add(notebookPanel,'details','','trading-card');add(news,'summary','X 消息线索（手动录入，多来源）');
   add(news,'small','可观察 Fut Sheriff、FUT Police Leaks、Fut Scoreboard、AsyFutTrader、DetectiveFUT 等；不是可信度排名。此处保留手动线索补录；自动采集见上方，同源搬运不算独立证据，消息不触发买卖。');
   const newsFields=add(news,'div','','trading-grid'),post=input(newsFields,'X 原帖链接','','url'),note=input(newsFields,'消息备注','','text'),newsState=add(add(newsFields,'label','消息状态'),'select');
   newsState.setAttribute('aria-label','消息状态');for(const [value,label]of [['leak','爆料'],['confirmed','已确认'],['live','已上线'],['failed','落空']]){const opt=add(newsState,'option',label);opt.value=value;}

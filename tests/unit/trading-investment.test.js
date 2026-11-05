@@ -21,7 +21,7 @@ it('does not turn single-source, expired, duplicate, unprofitable or over-budget
   expect(()=>validateInvestmentPlan(plan(),{...context,scope:'other'})).toThrow('INVALID');
 });
 
-function fixture({buyUnknown=false,listUnknown=false,dropWrite=false,coins=40000,occupied=0}={}){
+function fixture({buyUnknown=false,listUnknown=false,dropWrite=false,coins=40000,occupied=0,archiveFailure=null}={}){
   const data=new Map(),calls=[],owned=new Map();let time=now,current=true,inLock=false,session,serial=0;
   const adapter={capabilities:vi.fn(async()=>({canTrade:true,balance:coins,freeSlots:50,occupied})),
     find:vi.fn(async row=>({definitionId:row.definitionId,itemId:10000+row.definitionId,tradeId:String(90000+row.definitionId),price:600})),
@@ -32,13 +32,53 @@ function fixture({buyUnknown=false,listUnknown=false,dropWrite=false,coins=40000
       if(!listUnknown)owned.set(e.offer.itemId,'listed');return {status:'accepted'};}),
     reconcile:vi.fn(async e=>{const phase=owned.get(e.offer.itemId);return phase?{phase,...(['listed','sold'].includes(phase)?{listingTradeId:String(80000+e.definitionId)}:{}),
       ...(phase==='sold'?{salePrice:1000}:{} )}:null;}),cancel:vi.fn()};
-  const options={context,scope:'scope',get:async(k,f)=>structuredClone(data.get(k)??f),set:async(k,v)=>{expect(inLock).toBe(true);if(!dropWrite)data.set(k,structuredClone(v));},
+  const options={context,scope:'scope',get:async(k,f)=>structuredClone(archiveFailure==='readback'&&k.endsWith(':history')&&data.has(k)?[]:data.get(k)??f),set:async(k,v)=>{expect(inLock).toBe(true);
+      if(k.endsWith(':history')&&archiveFailure==='throw')throw Error('archive failed');if(!dropWrite&&!(k.endsWith(':history')&&archiveFailure==='drop'))data.set(k,structuredClone(v));},
     exclusive:async(_scope,fn)=>{expect(inLock).toBe(false);inLock=true;try{return await fn();}finally{inLock=false;}},
     createAdapter:vi.fn(async()=>adapter),assertCurrent:()=>{if(!current)throw Error('DESK_CONTEXT_CHANGED');},now:()=>time};
   session=createTradingExecutionSession(options);
-  return {data,adapter,calls,owned,session,reload:()=>session=createTradingExecutionSession(options),advance:ms=>time+=ms,changeAccount:()=>current=false,
+  return {data,adapter,calls,owned,session,createAdapter:options.createAdapter,reload:()=>session=createTradingExecutionSession(options),advance:ms=>time+=ms,changeAccount:()=>current=false,
     makePlan:()=>plan({id:`plan-${++serial}`})};
 }
+const pristineRecord=()=>{const p=plan();return {schema:1,status:'paused',reason:'DESK_EXECUTION_READ_UNCONFIRMED',plan:p,
+  entries:p.rows.map(row=>({definitionId:row.definitionId,phase:'waiting',offer:null}))};};
+it('archives a strictly pristine paused batch with readback before replacing it with a separately approved fresh plan',async()=>{
+  const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');f.data.set(key,old);f.adapter.find.mockResolvedValue(null);
+  await expect(f.session.execute({plan:f.makePlan()})).rejects.toThrow('APPROVAL_REQUIRED');expect(f.data.get(key)).toEqual(old);
+  const result=await f.session.execute({plan:f.makePlan(),approved:true});expect(result.record.plan.id).not.toBe(old.plan.id);
+  expect(f.data.get(key+':history')).toEqual([old]);expect(result.record.status).toBe('completed');expect(f.calls).toEqual([]);
+});
+it.each(['throw','drop','readback'])('does not replace a pristine batch or dispatch when its archive fails (%s)',async archiveFailure=>{
+  const f=fixture({archiveFailure}),old=pristineRecord(),key=tradingExecutionKey('scope');f.data.set(key,old);
+  await expect(f.session.execute({plan:f.makePlan(),approved:true})).rejects.toThrow(archiveFailure==='throw'?'archive failed':'SAVE_UNVERIFIED');
+  expect(f.data.get(key)).toEqual(old);expect(f.createAdapter).not.toHaveBeenCalled();expect(f.adapter.find).not.toHaveBeenCalled();expect(f.calls).toEqual([]);
+});
+it.each([
+  {offer:{definitionId:100,itemId:10100,tradeId:'90100',price:600}},
+  {buyAcknowledged:true},{buyAcknowledged:false},{listAcknowledged:false},{listingTradeId:'80000'},
+  {salePrice:1000},{soldAt:now},{pending:false},{unrecognizedEvidence:null},
+  {phase:'buy-pending',offer:{definitionId:100,itemId:10100,tradeId:'90100',price:600}},
+  {phase:'move-pending',offer:{definitionId:100,itemId:10100,tradeId:'90100',price:600}},
+  {phase:'list-pending',offer:{definitionId:100,itemId:10100,tradeId:'90100',price:600}},
+])('preserves nonpristine waiting or pending evidence instead of relying on zero confirmed/pending aggregates (%j)',async evidence=>{
+  const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');Object.assign(old.entries[0],evidence);f.data.set(key,structuredClone(old));
+  await expect(f.session.execute({plan:f.makePlan(),approved:true})).rejects.toThrow('RECOVERY_REQUIRED');
+  expect(f.data.get(key)).toEqual(old);expect(f.data.has(key+':history')).toBe(false);expect(f.calls).toEqual([]);
+});
+it('actually performs a readonly preflight before clearing a pristine READ_UNCONFIRMED reason',async()=>{
+  const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');f.data.set(key,old);
+  const result=await f.session.recover();expect(f.adapter.capabilities).toHaveBeenCalledOnce();expect(result.record.reason).toBeNull();
+  const options=f.createAdapter.mock.calls[0][1];expect(options.readOnly).toBe(true);expect(options.canWrite()).toBe(false);
+  expect(result.record.entries).toEqual(old.entries);expect(f.calls).toEqual([]);expect(f.adapter.find).not.toHaveBeenCalled();
+});
+it('keeps the real preflight failure on pristine recovery and never dispatches',async()=>{
+  const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');f.data.set(key,old);f.adapter.capabilities.mockRejectedValue(Error('DESK_EXECUTION_READ_UNCONFIRMED'));
+  await expect(f.session.recover()).rejects.toThrow('DESK_EXECUTION_READ_UNCONFIRMED');expect(f.data.get(key)).toEqual(old);expect(f.calls).toEqual([]);
+});
+it.each([{buyAcknowledged:false},null])('does not erase unrelated/nonpristine waiting reasons without a native read (%j)',async evidence=>{
+  const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');if(evidence)Object.assign(old.entries[0],evidence);else old.reason='DESK_EXECUTION_REFERENCE_CHANGED';f.data.set(key,old);
+  const result=await f.session.recover();expect(result.record.reason).toBe(old.reason);expect(f.adapter.capabilities).not.toHaveBeenCalled();expect(f.adapter.reconcile).not.toHaveBeenCalled();expect(f.calls).toEqual([]);
+});
 it('requires a separate approval; preview/read/stop do not buy or list',async()=>{
   const f=fixture();expect(await f.session.inspect()).toEqual({record:null,running:false});f.session.stop();
   await expect(f.session.execute({plan:plan()})).rejects.toThrow('APPROVAL_REQUIRED');expect(f.calls).toEqual([]);expect(f.data.size).toBe(0);

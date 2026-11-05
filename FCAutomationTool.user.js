@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.96
+// @version      27.0.97
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.96", at: Date.now(), status: 'started',
+    state = { version: "27.0.97", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26024,19 +26024,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-trading-plan-view.js
-  function mountTradingPlanView({ document, parent, service, isCurrent, now = () => Date.now(), timers = globalThis }) {
-    const add3 = (p, tag, text5 = "") => {
+  function mountTradingPlanView({ document, parent, service, isCurrent, onDiscovery = () => {
+  }, now = () => Date.now(), timers = globalThis }) {
+    const add3 = (p, tag, text5 = "", cls = "") => {
       const n = document.createElement(tag);
       n.textContent = text5;
+      if (cls) n.className = cls;
       p.append(n);
       return n;
     };
-    add3(parent, "h3", "\u672C\u8F6E\u6295\u8D44\u7ED3\u8BBA\u4E0E\u81EA\u52A8\u4EA4\u6613\u65B9\u6848");
-    add3(parent, "small", "\u5148\u5BA1\u6838\u6574\u6279\u6E05\u5355\uFF0C\u518D\u786E\u8BA4\u542F\u52A8\u3002\u4E70\u5165\u4EF7\u4E3A\u786C\u4E0A\u9650\uFF0C\u4E0D\u662F\u5F53\u524D\u5E02\u573A\u4E0A\u4E00\u5B9A\u6709\u5356\u5355\u3002\u53EA\u64CD\u4F5C\u672C\u65B9\u6848\u65B0\u4E70\u5165\u7684\u5361\uFF0C\u4E0D\u51FA\u552E\u73B0\u6709 Club \u5361\uFF1B\u81EA\u52A8\u5316\u5B58\u5728\u8D26\u53F7\u98CE\u9669\uFF0C\u65E0\u9632\u5C01\u6216\u76C8\u5229\u627F\u8BFA\u3002");
+    const money2 = (n) => Number(n).toLocaleString();
+    add3(parent, "h3", "\u672C\u8F6E\u6295\u8D44\u65B9\u6848");
+    add3(parent, "p", "1 \u8BBE\u7F6E\u9884\u7B97 \u2192 2 \u5BA1\u6838\u6E05\u5355 \u2192 3 \u786E\u8BA4\u6267\u884C", "trading-step");
     const conclusion = add3(parent, "p", "\u6B63\u5728\u7B49\u5F85\u5019\u9009\u5206\u6790\uFF1B\u5C1A\u672A\u542F\u52A8\u4EA4\u6613\u3002");
     conclusion.setAttribute("role", "status");
-    const fields4 = add3(parent, "div");
-    fields4.className = "trading-grid";
+    const fields4 = add3(parent, "div", "", "trading-grid");
     const field = (label, value) => {
       const l = add3(fields4, "label", label), input = add3(l, "input");
       input.type = "number";
@@ -26048,69 +26050,128 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const budget = field("\u672C\u8F6E\u8D44\u91D1\u4E0A\u9650\uFF08\u53EF\u8C03\u6574\uFF09", 2e4), reserve = field("\u672C\u8F6E\u6700\u4F4E\u7559\u5B58\u91D1\u5E01", 0);
     budget.min = "150";
-    add3(parent, "small", "\u6B64\u5904\u662F\u672C\u8F6E\u771F\u5B9E\u6267\u884C\u7684\u72EC\u7ACB\u5BA1\u6279\u4E0A\u9650\uFF1B\u5DF2\u6709\u624B\u586B\u672A\u552E\u6301\u4ED3\u4E5F\u5360\u7528\u8BE5\u989D\u5EA6\u3002\u4E0B\u65B9\u89C2\u5BDF\u7B14\u8BB0\u4E2D\u7684\u4F30\u7B97\u4F59\u989D\u4E0D\u66FF\u4EE3\u6267\u884C\u524D\u7684 EA \u4F59\u989D\u6838\u9A8C\u3002");
-    const actions = add3(parent, "div");
-    actions.className = "trading-row";
-    const prepare2 = add3(actions, "button", "\u751F\u6210\u53EF\u5BA1\u6838\u4EA4\u6613\u65B9\u6848");
+    const actions = add3(fields4, "div", "", "trading-row trading-generate"), prepare2 = add3(actions, "button", "\u751F\u6210\u53EF\u5BA1\u6838\u4EA4\u6613\u65B9\u6848", "trading-primary");
     prepare2.type = "button";
-    const table = add3(parent, "div");
-    table.style.overflowX = "auto";
-    const approvalLabel = add3(parent, "label"), approval = add3(approvalLabel, "input");
+    add3(parent, "small", "\u989D\u5EA6\u662F\u4E0A\u9650\uFF0C\u4E0D\u5FC5\u82B1\u6EE1\uFF1B\u5DF2\u6709\u624B\u586B\u672A\u552E\u6301\u4ED3\u4E5F\u5360\u7528\u989D\u5EA6\u3002\u5019\u9009\u8FC7\u671F\u65F6\u91CD\u65B0\u6838\u4EF7\uFF0C\u4E0D\u6CBF\u7528\u65E7\u4EF7\u3002");
+    const planArea = add3(parent, "section");
+    planArea.setAttribute("aria-label", "\u5F85\u5BA1\u6838\u6E05\u5355");
+    planArea.hidden = true;
+    const metrics = add3(planArea, "div", "", "trading-metrics"), table = add3(planArea, "div", "", "trading-table-wrap");
+    const approvalLabel = add3(parent, "label", "", "trading-approval"), approval = add3(approvalLabel, "input");
     approval.type = "checkbox";
     approval.setAttribute("aria-label", "\u6211\u5DF2\u5BA1\u6838\u65B9\u6848\u5E76\u540C\u610F\u771F\u5B9E\u4E70\u5165\u548C\u4E0A\u67B6");
-    add3(approvalLabel, "span", "\u6211\u5DF2\u5BA1\u6838\u6E05\u5355\u3001\u4E0A\u9650\u548C\u98CE\u9669\uFF0C\u540C\u610F\u6309\u672C\u65B9\u6848\u771F\u5B9E\u4E70\u5165\u5E76\u4E0A\u67B6");
-    const buttons = add3(parent, "div");
-    buttons.className = "trading-row";
-    const start = add3(buttons, "button", "\u786E\u8BA4\u5E76\u5F00\u59CB\u81EA\u52A8\u4EA4\u6613"), resume = add3(buttons, "button", "\u786E\u8BA4\u5E76\u7EE7\u7EED\u672A\u5B8C\u6210\u64CD\u4F5C"), stop6 = add3(buttons, "button", "\u505C\u6B62\u81EA\u52A8\u4EA4\u6613"), recover = add3(buttons, "button", "\u6838\u5BF9\u6210\u4EA4\u4E0E\u6301\u4ED3\uFF08\u53EA\u8BFB\uFF09");
+    const approvalText = add3(approvalLabel, "span", "\u6211\u5DF2\u5BA1\u6838\u6E05\u5355\u3001\u4E0A\u9650\u548C\u98CE\u9669\uFF0C\u540C\u610F\u6309\u672C\u65B9\u6848\u771F\u5B9E\u4E70\u5165\u5E76\u4E0A\u67B6");
+    approvalText.id = "trading-approval-terms";
+    approval.setAttribute("aria-describedby", approvalText.id);
+    const buttons = add3(parent, "div", "", "trading-row");
+    const start = add3(buttons, "button", "\u786E\u8BA4\u5E76\u5F00\u59CB\u81EA\u52A8\u4EA4\u6613", "trading-primary"), resume = add3(buttons, "button", "\u786E\u8BA4\u5E76\u7EE7\u7EED\u672A\u5B8C\u6210\u64CD\u4F5C", "trading-primary");
+    const stop6 = add3(buttons, "button", "\u505C\u6B62\u81EA\u52A8\u4EA4\u6613", "trading-stop"), recover = add3(buttons, "button", "\u6838\u5BF9\u6210\u4EA4\u4E0E\u6301\u4ED3\uFF08\u53EA\u8BFB\uFF09");
     for (const b of [start, resume, stop6, recover]) b.type = "button";
-    add3(parent, "small", "\u9996\u7248\u6BCF\u4E2A\u7248\u672C\u4E00\u5F20\u3001\u6700\u591A\u516D\u5F20\uFF0C\u4E00\u8F6E\u6709\u9650\u6267\u884C\uFF0C\u4E0D\u8981\u6C42\u82B1\u6EE1\u4E0A\u9650\u3002\u4E70\u4E0D\u5230\u5C31\u8DF3\u8FC7\uFF1B\u8D2D\u5F97\u540E\u81EA\u52A8\u6309\u56FA\u5B9A\u76EE\u6807\u4EF7\u4E0A\u67B6\u4E00\u5C0F\u65F6\uFF0C\u7B49\u5F85\u5E02\u573A\u6210\u4EA4\u3002\u4E0D\u4F1A\u81EA\u52A8\u964D\u4EF7\u3001\u91CD\u6302\u6216\u8FFD\u6DA8\u3002\u505C\u6B62\u4E0D\u64A4\u56DE EA \u4E0A\u5DF2\u6709\u7684\u6302\u5355\uFF1B\u79BB\u5F00\u4EA4\u6613\u9875\u4F1A\u505C\u6B62\u65B0\u64CD\u4F5C\u3002");
-    const progress = add3(parent, "output");
+    const progress = add3(parent, "output", "", "trading-status");
     progress.setAttribute("role", "status");
     progress.setAttribute("aria-label", "\u81EA\u52A8\u4EA4\u6613\u8FDB\u5EA6");
     progress.setAttribute("aria-live", "polite");
-    const positions3 = add3(parent, "div");
-    let active = false, busy = false, plan = null, record = null, timer = null, revision = 0, advice = null;
+    const positions3 = add3(parent, "section");
+    positions3.setAttribute("aria-label", "\u81EA\u52A8\u4EA4\u6613\u6301\u4ED3");
+    positions3.hidden = true;
+    const rules = add3(parent, "details");
+    add3(rules, "summary", "\u4EA4\u6613\u89C4\u5219\u4E0E\u98CE\u9669");
+    add3(rules, "small", "\u6BCF\u7248\u672C\u4E00\u5F20\u3001\u6700\u591A\u516D\u5F20\uFF0C\u4E00\u8F6E\u6709\u9650\u6267\u884C\uFF1B\u4E70\u4E0D\u5230\u8DF3\u8FC7\u3002\u65B0\u8D2D\u5361\u6309\u56FA\u5B9A\u76EE\u6807\u4EF7\u4E0A\u67B6\u4E00\u5C0F\u65F6\uFF0C\u4E0D\u81EA\u52A8\u964D\u4EF7\u3001\u91CD\u6302\u6216\u8FFD\u6DA8\u3002\u53EA\u6709\u786E\u8BA4\u5356\u51FA\u624D\u8BA1\u6536\u76CA\u3002");
+    add3(rules, "small", "\u53EA\u64CD\u4F5C\u672C\u8F6E\u65B0\u4E70\u7684\u5361\uFF0C\u4E0D\u51FA\u552E\u539F\u6709 Club \u5361\u3002\u79BB\u5F00\u4EA4\u6613\u9875\u6216\u5173\u95ED\u9875\u9762\u4F1A\u505C\u6B62\u65B0\u64CD\u4F5C\uFF0C\u505C\u6B62\u4E0D\u64A4\u56DE\u5DF2\u4E0A\u67B6\u6302\u5355\u3002\u81EA\u52A8\u5316\u5B58\u5728\u8D26\u53F7\u98CE\u9669\uFF0C\u65E0\u9632\u5C01\u6216\u76C8\u5229\u627F\u8BFA\u3002");
+    add3(rules, "small", "\u89C2\u5BDF\u7B14\u8BB0\u7684\u624B\u586B\u4F59\u989D\u4E0D\u66FF\u4EE3 EA \u5B9E\u65F6\u4F59\u989D\uFF1B\u4E70\u5165\u524D\u4ECD\u6838\u4F59\u989D\u3001\u5BB9\u91CF\u3001\u603B\u9884\u7B97\u548C\u5355\u5361\u9650\u4EF7\u3002");
+    let active = false, busy = false, launching = false, plan = null, record = null, timer = null, revision = 0, advice = null;
     const valid3 = (t) => active && t === revision && isCurrent();
     const haltTimer = () => {
       if (timer !== null) timers.clearInterval(timer);
       timer = null;
     };
+    const pending3 = () => record?.entries.some((e) => ["buy-pending", "move-pending", "list-pending"].includes(e.phase));
+    const resumable = () => record && record.status !== "completed" && !pending3() && record.entries.some((e) => ["waiting", "bought", "transfer"].includes(e.phase));
     const sync = () => {
-      const available = service?.executionAvailable?.() === true;
+      const available = service?.executionAvailable?.() === true, canResume = Boolean(resumable()) && !plan;
       prepare2.disabled = busy || !available || !advice;
-      start.disabled = busy || !plan || !approval.checked;
-      resume.disabled = busy || !record || record.status === "completed" || !approval.checked;
+      start.hidden = !plan;
+      resume.hidden = !canResume;
+      approvalText.textContent = canResume ? `\u6211\u5DF2\u5BA1\u6838\u539F\u65B9\u6848\uFF0C\u540C\u610F\u6309\u539F\u4E0A\u9650 ${money2(record.plan.capitalLimit)}\u3001\u7559\u5B58 ${money2(record.plan.reserveCoins)} \u7EE7\u7EED\uFF1B\u4E0A\u65B9\u8F93\u5165\u4EC5\u7528\u4E8E\u65B0\u65B9\u6848\u3002` : "\u6211\u5DF2\u5BA1\u6838\u6E05\u5355\u3001\u4E0A\u9650\u548C\u98CE\u9669\uFF0C\u540C\u610F\u6309\u672C\u65B9\u6848\u771F\u5B9E\u4E70\u5165\u5E76\u4E0A\u67B6";
+      approvalLabel.hidden = !plan && !canResume;
+      start.disabled = busy || !available || !plan || !approval.checked;
+      resume.disabled = busy || !available || !approval.checked;
+      recover.hidden = !record;
       recover.disabled = busy || !available;
+      stop6.hidden = (!record || record.status === "completed") && !launching;
+      stop6.disabled = !available;
       budget.disabled = reserve.disabled = busy || !available;
       approval.disabled = busy || !available;
-      stop6.disabled = !available;
+      planArea.hidden = !plan;
+      buttons.hidden = !plan && !record && !launching;
     };
     const statusNames = { waiting: "\u5C1A\u672A\u8D2D\u4E70", "buy-pending": "\u4E70\u5165\u5F85\u6838\u5BF9", bought: "\u5DF2\u4E70\u5165", "move-pending": "\u79FB\u5165\u5F85\u6838\u5BF9", transfer: "\u5F85\u4E0A\u67B6", "list-pending": "\u4E0A\u67B6\u5F85\u6838\u5BF9", listed: "\u5DF2\u4E0A\u67B6\uFF0C\u672A\u786E\u8BA4\u5356\u51FA", sold: "\u5DF2\u786E\u8BA4\u5356\u51FA", skipped: "\u672C\u8F6E\u8DF3\u8FC7", rejected: "\u4E70\u5165\u88AB\u62D2\u7EDD" };
+    const reasons2 = {
+      DESK_PLAN_NO_CANDIDATES: "\u672C\u8F6E\u6682\u4E0D\u4E70\uFF1A\u6CA1\u6709\u540C\u65F6\u6EE1\u8DB3\u53CC\u6E90\u6838\u4EF7\u3001\u5229\u6DA6\u548C\u8D44\u91D1\u6761\u4EF6\u7684\u5019\u9009\u3002",
+      DESK_DISCOVERY_EXPIRED: "\u5019\u9009\u62A5\u4EF7\u4ECD\u5DF2\u8FC7\u671F\u3002\u8BF7\u5728\u201C\u5019\u9009\u4E0E\u7EBF\u7D22\u201D\u91CD\u65B0\u5206\u6790\uFF0C\u518D\u751F\u6210\u6E05\u5355\u3002",
+      DESK_PLAN_EXPIRED: "\u5BA1\u6838\u4EF7\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u6E05\u5355\uFF1B\u5DF2\u6709\u6301\u4ED3\u4ECD\u4FDD\u7559\u3002",
+      DESK_EXECUTION_READ_UNCONFIRMED: "\u6210\u4EA4\u6216\u6301\u4ED3\u8BFB\u53D6\u5C1A\u672A\u786E\u8BA4\u3002\u8BF7\u70B9\u201C\u6838\u5BF9\u6210\u4EA4\u4E0E\u6301\u4ED3\u201D\u91CD\u65B0\u8BFB\u53D6\uFF0C\u4E0D\u4F1A\u518D\u6B21\u4E0B\u5355\u3002",
+      DESK_EXECUTION_RECOVERY_REQUIRED: "\u4E0A\u8F6E\u4ECD\u6709\u6301\u4ED3\u6216\u5F85\u6838\u5BF9\u7ED3\u679C\u3002\u8BF7\u5148\u53EA\u8BFB\u6838\u5BF9\uFF0C\u518D\u7EE7\u7EED\u539F\u65B9\u6848\u3002",
+      DESK_EXECUTION_APPROVAL_REQUIRED: "\u65B9\u6848\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\u540E\u786E\u8BA4\u3002",
+      DESK_EXECUTION_DISABLED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u771F\u5B9E\u4EA4\u6613\u3002",
+      DESK_EXECUTION_INSUFFICIENT_FUNDS: "\u4F59\u989D\u6216\u53EF\u7528\u9884\u7B97\u4E0D\u8DB3\u3002\u8BF7\u6838\u5BF9\u989D\u5EA6\u548C\u5DF2\u6709\u6301\u4ED3\uFF0C\u4E0D\u4F1A\u63D0\u9AD8\u9650\u4EF7\u3002",
+      DESK_EXECUTION_CONTEXT_CHANGED: "\u8D26\u53F7\u6216\u9875\u9762\u5DF2\u53D8\u5316\uFF0C\u5DF2\u505C\u6B62\u65B0\u64CD\u4F5C\u3002\u8BF7\u91CD\u65B0\u6253\u5F00\u4EA4\u6613\u53F0\u3002"
+    };
+    const errorDetails = add3(parent, "details");
+    add3(errorDetails, "summary", "\u8BCA\u65AD\u4EE3\u7801");
+    const errorCode2 = add3(errorDetails, "code");
+    errorDetails.hidden = true;
+    const explain = (reason) => reasons2[reason] ?? "\u672C\u8F6E\u64CD\u4F5C\u5DF2\u6682\u505C\u3002\u5DF2\u6709\u6210\u4EA4\u548C\u5F85\u6838\u5BF9\u8BB0\u5F55\u4FDD\u7559\uFF1B\u8BF7\u5148\u53EA\u8BFB\u6838\u5BF9\uFF0C\u4E0D\u8981\u91CD\u590D\u4E0B\u5355\u3002";
+    const diagnostic = (reason) => {
+      errorDetails.hidden = !reason;
+      errorCode2.textContent = /^(DESK|FC27)_[A-Z0-9_]+$/.test(reason ?? "") ? reason : "";
+    };
+    const metric = (host, label, value) => {
+      const box = add3(host, "div", "", "trading-metric");
+      add3(box, "small", label);
+      add3(box, "strong", value);
+    };
     const renderRecord = (value) => {
       record = value;
       positions3.replaceChildren();
+      positions3.hidden = !record;
       if (!record) {
         sync();
         return;
       }
       const spent = record.entries.reduce((n, e) => n + (e.offer && !["waiting", "skipped", "rejected"].includes(e.phase) ? e.offer.price : 0), 0);
+      const bought = record.entries.filter((e) => ["bought", "move-pending", "transfer", "list-pending", "listed", "sold"].includes(e.phase)).length;
       const sold = record.entries.filter((e) => e.phase === "sold"), profit = sold.reduce((n, e) => n + deskNet(e.salePrice) - e.offer.price, 0);
-      progress.textContent = `${record.status === "completed" ? "\u672C\u8F6E\u5DF2\u7ED3\u675F" : record.status === "waiting-sales" ? "\u4E70\u5165/\u4E0A\u67B6\u5904\u7406\u5DF2\u7ED3\u675F\uFF0C\u7B49\u5F85\u6210\u4EA4" : record.status === "recovery-required" ? "\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u5DF2\u6682\u505C" : record.status === "paused" ? "\u5DF2\u6682\u505C" : "\u6B63\u5728\u6267\u884C"} \xB7 \u5DF2\u786E\u8BA4\u4E70\u5165 ${record.entries.filter((e) => ["bought", "move-pending", "transfer", "list-pending", "listed", "sold"].includes(e.phase)).length} / ${record.entries.length} \xB7 \u5DF2\u7528/\u5F85\u6838\u5BF9 ${spent} / \u4E0A\u9650 ${record.plan.capitalLimit} \xB7 \u5DF2\u786E\u8BA4\u5356\u51FA ${sold.length} \xB7 \u5DF2\u5B9E\u73B0\u7A0E\u540E\u76C8\u4E8F ${profit}${record.reason ? ` \xB7 ${record.reason}` : ""}`;
+      progress.dataset.state = record.reason || pending3() ? "error" : "ready";
+      progress.textContent = `${record.status === "completed" ? "\u672C\u8F6E\u5DF2\u7ED3\u675F" : record.status === "waiting-sales" ? "\u4E70\u5165/\u4E0A\u67B6\u5904\u7406\u5DF2\u7ED3\u675F\uFF0C\u7B49\u5F85\u6210\u4EA4" : record.status === "recovery-required" ? "\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u5DF2\u6682\u505C" : record.status === "paused" ? "\u5DF2\u6682\u505C" : "\u6B63\u5728\u6267\u884C"} \xB7 \u5DF2\u786E\u8BA4\u4E70\u5165 ${bought} / ${record.entries.length} \xB7 \u5DF2\u7528/\u5F85\u6838\u5BF9 ${spent} / \u4E0A\u9650 ${record.plan.capitalLimit} \xB7 \u5DF2\u786E\u8BA4\u5356\u51FA ${sold.length} \xB7 \u5DF2\u5B9E\u73B0\u7A0E\u540E\u76C8\u4E8F ${profit}${record.reason ? `\u3002${explain(record.reason)}` : ""}`;
+      diagnostic(record.reason);
+      add3(positions3, "h3", "\u6267\u884C\u4E0E\u6301\u4ED3");
+      const wrap = add3(positions3, "div", "", "trading-table-wrap"), t = add3(wrap, "table", "", "trading-table");
+      const head = add3(add3(t, "thead"), "tr");
+      for (const label of ["\u7403\u5458", "\u5F53\u524D\u72B6\u6001", "\u4E70\u4EF7 / \u4E0A\u9650", "\u6302\u724C\u76EE\u6807", "\u786E\u8BA4\u5356\u4EF7"]) add3(head, "th", label).scope = "col";
+      const body = add3(t, "tbody");
       for (let i = 0; i < record.entries.length; i++) {
-        const e = record.entries[i];
-        add3(positions3, "p", `${record.plan.rows[i].name}\uFF1A${statusNames[e.phase]}${e.offer ? ` \xB7 \u4E70\u4EF7 ${e.offer.price}` : ""}${e.phase === "sold" ? ` \xB7 \u5B9E\u9645\u5356\u4EF7 ${e.salePrice}` : ""}${e.reason ? ` \xB7 ${e.reason}` : ""}`);
+        const e = record.entries[i], row = record.plan.rows[i], tr = add3(body, "tr");
+        add3(tr, "td", row.name);
+        const cell = add3(tr, "td", statusNames[e.phase]);
+        cell.dataset.label = "\u5F53\u524D\u72B6\u6001";
+        if (e.reason) add3(cell, "small", explain(e.reason));
+        add3(tr, "td", `${e.offer ? money2(e.offer.price) : "\u2014"} / ${money2(row.buyCap)}`).dataset.label = "\u4E70\u4EF7 / \u4E0A\u9650";
+        add3(tr, "td", money2(row.sellPrice)).dataset.label = "\u6302\u724C\u76EE\u6807";
+        add3(tr, "td", e.phase === "sold" ? money2(e.salePrice) : "\u2014").dataset.label = "\u786E\u8BA4\u5356\u4EF7";
       }
       sync();
     };
     const showError = (e) => {
-      const text5 = {
-        DESK_PLAN_NO_CANDIDATES: "\u672C\u8F6E\u6682\u4E0D\u4E70\uFF1A\u7F3A\u5C11\u6EE1\u8DB3\u53CC\u6E90\u6838\u4EF7\u3001\u5229\u6DA6\u548C\u8D44\u91D1\u6761\u4EF6\u7684\u5019\u9009",
-        DESK_DISCOVERY_EXPIRED: "\u672C\u8F6E\u53C2\u8003\u4EF7\u5DF2\u8FC7\u671F\u6216\u8D44\u91D1\u6761\u4EF6\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u5206\u6790\u5019\u9009",
-        DESK_EXECUTION_RECOVERY_REQUIRED: "\u4E0A\u8F6E\u4ECD\u6709\u6301\u4ED3\u6216\u5F85\u6838\u5BF9\u7ED3\u679C\uFF0C\u8BF7\u5148\u6838\u5BF9\u5E76\u7EE7\u7EED\u539F\u65B9\u6848",
-        DESK_EXECUTION_APPROVAL_REQUIRED: "\u65B9\u6848\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\u540E\u786E\u8BA4",
-        DESK_EXECUTION_DISABLED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u771F\u5B9E\u4EA4\u6613"
-      }[e?.message] ?? (/^(DESK|FC27)_[A-Z0-9_]+$/.test(e?.message ?? "") ? e.message : "\u8BFB\u53D6\u6216\u6267\u884C\u5931\u8D25");
-      progress.textContent = `\u64CD\u4F5C\u672A\u5B8C\u6210\uFF1A${text5}\u3002\u5DF2\u6709\u6210\u4EA4/\u5F85\u6838\u5BF9\u8BB0\u5F55\u4FDD\u7559\uFF1B\u4E0D\u8981\u53E6\u5F00\u4EFB\u52A1\u91CD\u590D\u4E0B\u5355\u3002`;
+      if (e?.message === "DESK_EXECUTION_RECOVERY_REQUIRED") {
+        plan = null;
+        approval.checked = false;
+        table.replaceChildren();
+        metrics.replaceChildren();
+      }
+      diagnostic(e?.message);
+      progress.dataset.state = "error";
+      progress.textContent = explain(e?.message);
     };
     const task = async (fn) => {
       if (busy || !active || !isCurrent()) return;
@@ -26140,14 +26201,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       plan = result.plan;
       approval.checked = false;
       table.replaceChildren();
-      const t = add3(table, "table");
-      t.style.width = "100%";
-      const header = add3(t, "tr");
-      for (const text5 of ["\u7403\u5458/\u7248\u672C", "\u6570\u91CF", "\u4E70\u5165\u4E0A\u9650", "\u76EE\u6807\u5356\u4EF7", "\u60C5\u666F\u7A0E\u540E\u51C0\u5229", "\u64CD\u4F5C"]) add3(header, "th", text5);
+      metrics.replaceChildren();
+      metric(metrics, "\u672C\u6279\u6700\u591A\u5360\u7528", money2(plan.allocated));
+      metric(metrics, "\u7A0E\u540E\u60C5\u666F\u51C0\u5229", money2(plan.expectedNet));
+      metric(metrics, "\u6279\u51C6\u4E0A\u9650", money2(plan.capitalLimit));
+      const t = add3(table, "table", "", "trading-table"), header = add3(add3(t, "thead"), "tr");
+      for (const text5 of ["\u7403\u5458 \xB7 \u5404\u4E00\u5F20", "\u4E70\u5165\u4E0A\u9650", "\u76EE\u6807\u5356\u4EF7", "\u7A0E\u540E\u60C5\u666F\u51C0\u5229", "\u64CD\u4F5C"]) add3(header, "th", text5).scope = "col";
+      const body = add3(t, "tbody");
       for (const row of plan.rows) {
-        const tr = add3(t, "tr");
-        for (const text5 of [`${row.name} \xB7 EA ${row.definitionId}`, row.quantity, row.buyCap, row.sellPrice, row.expectedNet]) add3(tr, "td", String(text5));
-        const remove = add3(add3(tr, "td"), "button", "\u79FB\u9664\u6B64\u5361");
+        const tr = add3(body, "tr"), name2 = add3(tr, "td");
+        add3(name2, "strong", row.name);
+        const why = add3(name2, "details");
+        add3(why, "summary", "\u7248\u672C\u4E0E\u7406\u7531");
+        add3(why, "small", `EA ${row.definitionId} \xB7 ${row.reason}`);
+        for (const [label, value] of [["\u4E70\u5165\u4E0A\u9650", row.buyCap], ["\u76EE\u6807\u5356\u4EF7", row.sellPrice], ["\u7A0E\u540E\u60C5\u666F\u51C0\u5229", row.expectedNet]]) add3(tr, "td", money2(value)).dataset.label = label;
+        const remove = add3(add3(tr, "td"), "button", "\u79FB\u9664");
         remove.type = "button";
         remove.setAttribute("aria-label", `\u79FB\u9664\u65B9\u6848\u7403\u5458 ${row.name}`);
         remove.addEventListener("click", (e) => {
@@ -26156,14 +26224,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const ids2 = plan.rows.filter((r) => r.definitionId !== row.definitionId).map((r) => r.definitionId);
             plan = null;
             approval.checked = false;
-            const result2 = await service.prepareInvestment({ capitalLimit: Number(budget.value), reserveCoins: Number(reserve.value), definitionIds: ids2 });
+            const result2 = await service.prepareInvestment({ capitalLimit: Number(budget.value), reserveCoins: Number(reserve.value), definitionIds: ids2, isCurrent: () => valid3(ticket) });
             if (valid3(ticket)) drawPlan(result2);
           });
         });
       }
-      add3(table, "p", `\u672C\u6279\u6700\u591A\u5360\u7528 ${plan.allocated} / \u6279\u51C6\u4E0A\u9650 ${plan.capitalLimit}\uFF1B\u82E5\u5168\u90E8\u6309\u4E0A\u9650\u4E70\u5165\u3001\u76EE\u6807\u4EF7\u552E\u51FA\uFF0C\u60C5\u666F\u7A0E\u540E\u51C0\u5229 ${plan.expectedNet}\u3002\u4E0D\u662F\u6536\u76CA\u4FDD\u8BC1\u3002EA \u4F59\u989D\u7F13\u5B58\uFF1A${result.balance ?? "\u672A\u77E5\uFF0C\u6267\u884C\u524D\u6838\u9A8C"}\u3002`);
-      for (const row of plan.rows) add3(table, "small", `${row.name}\uFF1A${row.reason}`);
+      add3(table, "small", `\u672C\u6279\u6700\u591A\u5360\u7528 ${plan.allocated} / \u6279\u51C6\u4E0A\u9650 ${plan.capitalLimit}\uFF1B\u4EC5\u5168\u90E8\u6309\u4E0A\u9650\u4E70\u5165\u3001\u76EE\u6807\u4EF7\u5356\u51FA\u65F6\uFF0C\u60C5\u666F\u7A0E\u540E\u51C0\u5229 ${plan.expectedNet}\u3002\u4E0D\u662F\u6536\u76CA\u4FDD\u8BC1\u3002`);
+      add3(table, "small", `EA \u4F59\u989D\u7F13\u5B58 ${result.balance == null ? "\u672A\u77E5" : money2(result.balance)}\uFF0C\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u3002`);
+      progress.dataset.state = "ready";
+      diagnostic(null);
       progress.textContent = `\u6E05\u5355\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u4EA4\u6613\u3002\u62A5\u4EF7\u6709\u6548\u81F3 ${new Date(plan.expiresAt).toLocaleTimeString()}\uFF1B\u8BF7\u5BA1\u6838\u540E\u52FE\u9009\u5E76\u786E\u8BA4\u3002`;
+      sync();
     };
     prepare2.addEventListener("click", (event) => {
       if (!event.isTrusted) return;
@@ -26171,22 +26242,43 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         plan = null;
         approval.checked = false;
         table.replaceChildren();
-        progress.textContent = "\u6B63\u5728\u6309\u672C\u8F6E\u4E0A\u9650\u751F\u6210\u6E05\u5355\uFF08\u4E0D\u4E70\u5165\uFF09\u2026";
-        const result = await service.prepareInvestment({ capitalLimit: Number(budget.value), reserveCoins: Number(reserve.value) });
+        sync();
+        progress.dataset.state = "";
+        progress.textContent = "\u6B63\u5728\u751F\u6210\u6E05\u5355\uFF0C\u4E0D\u4E70\u5165\uFF1B\u5019\u9009\u8FC7\u671F\u65F6\u4F1A\u5148\u91CD\u65B0\u6838\u4EF7\u2026";
+        const result = await service.prepareInvestment({
+          capitalLimit: Number(budget.value),
+          reserveCoins: Number(reserve.value),
+          isCurrent: () => valid3(ticket),
+          onProgress: () => {
+            if (valid3(ticket)) progress.textContent = "\u5019\u9009\u5DF2\u8FC7\u671F\uFF0C\u6B63\u5728\u91CD\u65B0\u6838\u5BF9\u516C\u5171\u62A5\u4EF7\uFF1B\u5C1A\u672A\u4EA4\u6613\u2026";
+          }
+        });
         if (!valid3(ticket)) return;
+        if (result.refreshedDiscovery) onDiscovery(result.refreshedDiscovery);
         drawPlan(result);
       });
     });
     const launch = async (resumeMode) => {
       if (!approval.checked) return;
       await task(async (ticket) => {
+        launching = true;
         approval.checked = false;
+        progress.dataset.state = "";
+        sync();
         progress.textContent = "\u6B63\u5728\u6838\u4EF7\u53CA\u6838\u5BF9\u4F59\u989D/\u5BB9\u91CF\uFF0C\u968F\u540E\u6309\u5DF2\u6279\u51C6\u65B9\u6848\u6267\u884C\u2026";
-        const result = await service.startInvestment({ plan: resumeMode ? null : plan, resume: resumeMode, approved: true, onProgress: (value) => {
-          if (valid3(ticket)) renderRecord(value);
-        } });
-        if (valid3(ticket) && result?.record?.status === "waiting-sales") autoRead();
-        return result;
+        try {
+          const result = await service.startInvestment({ plan: resumeMode ? null : plan, resume: resumeMode, approved: true, onProgress: (value) => {
+            if (valid3(ticket)) renderRecord(value);
+          } });
+          if (valid3(ticket)) {
+            plan = null;
+            approval.checked = false;
+            if (result?.record?.status === "waiting-sales") autoRead();
+          }
+          return result;
+        } finally {
+          if (ticket === revision) launching = false;
+        }
       });
     };
     start.addEventListener("click", (e) => {
@@ -26200,7 +26292,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       service.stopInvestment();
       haltTimer();
       approval.checked = false;
-      progress.textContent = "\u5DF2\u8BF7\u6C42\u505C\u6B62\u65B0\u64CD\u4F5C\uFF1B\u6B63\u5728\u53D1\u9001\u7684\u8BF7\u6C42\u4F1A\u5148\u4FDD\u7559\u56DE\u6267\u3002\u5DF2\u4E0A\u67B6\u6302\u5355\u4E0D\u4F1A\u64A4\u56DE\uFF0C\u7A0D\u540E\u53EF\u53EA\u8BFB\u6838\u5BF9\u3002";
+      progress.textContent = "\u5DF2\u8BF7\u6C42\u505C\u6B62\u65B0\u64CD\u4F5C\uFF1B\u5728\u9014\u8BF7\u6C42\u4FDD\u7559\u56DE\u6267\uFF0C\u5DF2\u4E0A\u67B6\u6302\u5355\u4E0D\u64A4\u56DE\u3002\u7A0D\u540E\u53EF\u53EA\u8BFB\u6838\u5BF9\u3002";
       sync();
     });
     recover.addEventListener("click", (e) => {
@@ -26211,28 +26303,42 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       plan = null;
       approval.checked = false;
       table.replaceChildren();
+      metrics.replaceChildren();
+      progress.dataset.state = "";
+      progress.textContent = "\u9884\u7B97\u5DF2\u8C03\u6574\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\u6E05\u5355\u3002";
       sync();
     });
     sync();
     return {
+      setAnalysisStatus(text5) {
+        conclusion.textContent = text5;
+      },
       setAdvice(value) {
         advice = value;
         plan = null;
         approval.checked = false;
         table.replaceChildren();
-        conclusion.textContent = !value ? "\u5C1A\u65E0\u672C\u8F6E\u7ED3\u8BBA\uFF0C\u8BF7\u5148\u5206\u6790\u5019\u9009\u3002" : value.suggestions?.length ? `\u672C\u8F6E\u7ED3\u8BBA\uFF1A${value.suggestions.length} \u5F20\u7B49\u5F85\u4F4E\u4EF7\u7684\u89C2\u5BDF\u5019\u9009\uFF1B\u5C1A\u672A\u6838\u5B9E EA \u6302\u5355\uFF0C\u5148\u4E0D\u6309\u5F53\u524D\u53C2\u8003\u4EF7\u4E70\u5165\u3002\u70B9\u51FB\u751F\u6210\u6574\u6279\u65B9\u6848\uFF0C\u5BA1\u6838\u540E\u624D\u6267\u884C\u3002` : "\u672C\u8F6E\u7ED3\u8BBA\uFF1A\u6682\u4E0D\u4E70\u3002\u6CA1\u6709\u6EE1\u8DB3\u73B0\u6709\u5229\u6DA6\u3001\u9884\u7B97\u548C\u6570\u636E\u6761\u4EF6\u7684\u5019\u9009\uFF0C\u4E0D\u51D1\u6570\u63A8\u8350\u3002";
+        metrics.replaceChildren();
+        conclusion.textContent = !value ? "\u5C1A\u65E0\u672C\u8F6E\u7ED3\u8BBA\uFF0C\u6B63\u5728\u7B49\u5019\u5019\u9009\u5206\u6790\u3002" : value.suggestions?.length ? `\u672C\u8F6E\u7ED3\u8BBA\uFF1A${value.suggestions.length} \u5F20\u7B49\u5F85\u4F4E\u4EF7\u7684\u89C2\u5BDF\u5019\u9009\u3002\u751F\u6210\u6E05\u5355\u540E\u518D\u5BA1\u6838\uFF0C\u4E0D\u6309\u5F53\u524D\u53C2\u8003\u4EF7\u76F4\u63A5\u4E70\u5165\u3002` : "\u672C\u8F6E\u7ED3\u8BBA\uFF1A\u6682\u4E0D\u4E70\u3002\u6CA1\u6709\u6EE1\u8DB3\u5229\u6DA6\u3001\u9884\u7B97\u548C\u6570\u636E\u6761\u4EF6\u7684\u5019\u9009\uFF1B\u8BE6\u7EC6\u539F\u56E0\u89C1\u201C\u5019\u9009\u4E0E\u7EBF\u7D22\u201D\u3002";
         sync();
       },
       setActive(value) {
         active = value;
         revision++;
         busy = false;
+        launching = false;
         haltTimer();
+        advice = null;
         plan = null;
         record = null;
         approval.checked = false;
         table.replaceChildren();
+        metrics.replaceChildren();
         positions3.replaceChildren();
+        positions3.hidden = true;
+        progress.textContent = "";
+        conclusion.textContent = "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u8D26\u53F7\u5019\u9009\uFF1B\u5C1A\u672A\u542F\u52A8\u4EA4\u6613\u3002";
+        diagnostic(null);
         service?.stopInvestment?.();
         if (value && service) {
           const ticket = revision;
@@ -26249,6 +26355,59 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
   }
 
+  // src/adapters/browser/fc27-trading-style.js
+  var tradingStyle = `
+#page-trading{min-width:0;overflow-wrap:anywhere}
+#page-trading [hidden]{display:none!important}
+.trading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.trading-grid>*{min-width:0}
+.trading-card{margin:14px 0;padding:18px;border:1px solid #435862;border-radius:7px;background:#22323d}
+.trading-card h3{margin:0 0 12px}.trading-card h4{margin:0 0 8px}
+.trading-card small{display:block;color:#bdcbd3;line-height:1.6}
+.trading-card p{line-height:1.65}
+.trading-card label{min-width:0;max-width:100%}
+.trading-card input,.trading-card select{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+.trading-card input[type=checkbox]{width:18px;flex:0 0 18px}
+.trading-card label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px}
+.trading-card a{color:#9df3d5;text-decoration:underline}
+.trading-card summary{cursor:pointer;line-height:1.6;padding:4px 0}
+.trading-card details{margin:12px 0;color:#bdcbd3}
+.trading-card article.trading-card{background:#1c2b35;border-color:#3a505c;margin:10px 0}
+.trading-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.trading-row>*{min-width:0;flex:0 1 auto}
+.trading-row button{min-height:42px}
+.trading-generate{align-self:end;margin:0 0 8px}.trading-generate>button{width:100%}
+.trading-nav{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #435862;padding:0 0 12px;margin:16px 0}
+.trading-nav button{background:transparent;border-color:transparent;color:#bdcbd3;min-height:42px;padding:8px 14px}
+.trading-nav button[aria-selected=true]{color:#9df3d5;background:#22323d;border-color:#9df3d5}
+#page-trading button:focus-visible,#page-trading summary:focus-visible{outline:2px solid #9df3d5;outline-offset:3px}
+#page-trading button.trading-primary{color:#14232b;background:#9df3d5;border-color:#9df3d5;font-weight:700}
+#page-trading button.trading-primary:disabled{background:#35494f;border-color:#435862;color:#9eacb4}
+#page-trading button.trading-stop{border-color:#da9b76;color:#ffdbb5}
+.trading-step{color:#bdcbd3;font-size:13px;margin:0 0 16px}
+.trading-status{display:block;margin:12px 0;line-height:1.65;color:#cbd9e0}
+.trading-status:empty{display:none}
+.trading-status[data-state=error]{border-left:3px solid #e9ba75;background:#332f26;padding:12px;color:#ffdbb5}
+.trading-status[data-state=ready]{border-left:3px solid #9df3d5;padding:8px 12px;background:#1c3433}
+.trading-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.trading-metric{padding:12px;background:#182831;border-radius:5px}
+.trading-metric strong{display:block;font-size:22px;margin-top:5px;font-variant-numeric:tabular-nums}
+.trading-table-wrap{overflow-x:auto;margin:12px 0}
+.trading-table{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}
+.trading-table th{font-size:12px;font-weight:400;color:#bdcbd3;padding:10px 8px;border-bottom:1px solid #526671;white-space:nowrap}
+.trading-table td{padding:12px 8px;border-bottom:1px solid #3a505c;vertical-align:top}
+.trading-table td:first-child{min-width:130px}
+.trading-table td details{margin:4px 0 0}
+.trading-table td:not(:first-child){white-space:nowrap}
+.trading-table td button{padding:6px 10px;min-height:34px}
+.trading-approval{padding:14px 0;border-top:1px solid #435862;line-height:1.6}
+.trading-funding{font-size:14px;color:#bdcbd3}.trading-ledger{overflow-wrap:anywhere}
+.trading-chart{width:100%;height:100px;background:#17212c}
+.trading-warning{color:#ffdb8c}.trading-opportunity{border-color:#9df3d5}
+@media(max-width:600px){.trading-card{padding:12px}.trading-nav{gap:2px}.trading-nav button{padding:8px;font-size:12px}.trading-metrics{gap:6px}.trading-metric{padding:8px}.trading-metric strong{font-size:18px}.trading-grid{grid-template-columns:minmax(0,1fr)}.trading-row>*{flex:1 1 140px}
+.trading-table thead{display:none}.trading-table,.trading-table tbody{display:block}.trading-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 0;border-bottom:1px solid #435862}.trading-table td{display:block;border:0;padding:0;min-width:0!important;white-space:normal!important}.trading-table td:first-child{grid-column:1/-1}.trading-table td[data-label]:before{content:attr(data-label);display:block;font-size:12px;color:#bdcbd3;margin-bottom:4px}}
+`;
+
   // src/adapters/browser/fc27-trading-view.js
   function mountFc27TradingView({ document, parent, tab, service, timers = globalThis, now = () => Date.now() }) {
     if (!parent) return { setActive() {
@@ -26262,17 +26421,54 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     parent.replaceChildren();
     const style = add3(parent, "style");
-    style.textContent = ".trading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.trading-card{margin:12px 0;padding:14px;border:1px solid #526671;border-radius:7px;background:#22323d}.trading-card small{display:block;color:#bdcbd3}.trading-card input,.trading-card select{max-width:100%}.trading-chart{width:100%;height:100px;background:#17212c}.trading-warning{color:#ffdb8c}.trading-opportunity{border-color:#9df3d5}.trading-funding{font-size:16px}.trading-ledger{overflow-wrap:anywhere}.trading-card label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}.trading-card input[type=checkbox]{width:auto}.trading-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trading-row>*{flex:1;min-width:100px}";
-    style.textContent += "#page-trading{min-width:0;overflow-wrap:anywhere}.trading-grid>*{min-width:0}.trading-row>*{min-width:0;flex-basis:180px}.trading-card label{min-width:0;max-width:100%}.trading-card input,.trading-card select{min-width:0;width:100%}.trading-card input[type=checkbox]{width:18px;flex:0 0 18px}.trading-card a{color:#9df3d5;text-decoration:underline}";
-    add3(parent, "h2", "\u4EA4\u6613\u89C2\u5BDF\u4E0E\u81EA\u52A8\u4EA4\u6613");
-    add3(parent, "p", "\u884C\u60C5\u5206\u6790\u4E0D\u4F1A\u542F\u52A8\u4EA4\u6613\u3002\u5148\u751F\u6210\u6574\u6279\u65B9\u6848\uFF0C\u5BA1\u6838\u5E76\u786E\u8BA4\u540E\u624D\u6309\u65B9\u6848\u641C\u7D22\u3001\u4E70\u5165\u3001\u79FB\u5230\u8F6C\u4F1A\u5217\u8868\u53CA\u4E0A\u67B6\uFF1B\u4E0D\u81EA\u52A8\u964D\u4EF7\u6216\u91CD\u6302\u3002\u6CA1\u6709\u9632\u5C01\u627F\u8BFA\u3002", "module-note");
-    const status = add3(parent, "output");
+    style.textContent = tradingStyle;
+    add3(parent, "h2", "\u4EA4\u6613\u53F0");
+    add3(parent, "p", "\u5148\u770B\u6E05\u5355\uFF0C\u518D\u786E\u8BA4\u4EA4\u6613\u3002\u53EA\u64CD\u4F5C\u672C\u8F6E\u65B0\u8D2D\u5361\uFF0C\u4E0D\u51FA\u552E\u539F\u6709 Club \u5361\u3002", "module-note");
+    const nav = add3(parent, "div", "", "trading-nav");
+    nav.setAttribute("role", "tablist");
+    nav.setAttribute("aria-label", "\u4EA4\u6613\u53F0\u5DE5\u4F5C\u533A");
+    const sections = [["execute", "\u6295\u8D44\u4E0E\u6267\u884C"], ["research", "\u5019\u9009\u4E0E\u7EBF\u7D22"], ["notebook", "\u89C2\u5BDF\u7B14\u8BB0"], ["config", "\u8BBE\u7F6E"]].map(([id13, label], index) => {
+      const button2 = add3(nav, "button", label), panel = add3(parent, "div");
+      button2.type = "button";
+      button2.id = `trading-section-${id13}`;
+      panel.id = `trading-panel-${id13}`;
+      button2.setAttribute("role", "tab");
+      button2.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", button2.id);
+      button2.addEventListener("click", () => selectSection(index));
+      return { button: button2, panel };
+    });
+    function selectSection(index) {
+      for (let i = 0; i < sections.length; i++) {
+        const { button: button2, panel } = sections[i];
+        panel.hidden = i !== index;
+        button2.tabIndex = i === index ? 0 : -1;
+        button2.setAttribute("aria-selected", String(i === index));
+      }
+    }
+    nav.addEventListener("keydown", (event) => {
+      const index = sections.findIndex((row) => row.button === event.target);
+      if (index < 0) return;
+      const next = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
+      if (next !== null) {
+        event.preventDefault();
+        selectSection(next);
+        sections[next].button.focus();
+      }
+    });
+    selectSection(0);
+    const [executePanel, researchPanel, notebookPanel, configPanel] = sections.map((row) => row.panel);
+    const status = add3(parent, "output", "", "trading-status");
     status.setAttribute("role", "status");
+    status.setAttribute("aria-label", "\u4EA4\u6613\u53F0\u72B6\u6001");
     status.setAttribute("aria-live", "polite");
-    const funding = add3(parent, "p", "", "trading-funding");
-    const investmentHost = add3(parent, "section", "", "trading-card");
+    nav.after(status);
+    add3(notebookPanel, "p", "\u4EE5\u4E0B\u4E3A\u72EC\u7ACB\u89C2\u5BDF\u4E0E\u624B\u5DE5\u8BB0\u8D26\uFF0C\u4E0D\u662F\u81EA\u52A8\u4EA4\u6613\u7684\u6210\u4EA4\u6216\u6301\u4ED3\u56DE\u6267\u3002", "module-note");
+    const funding = add3(notebookPanel, "p", "", "trading-funding");
+    const investmentHost = add3(executePanel, "section", "", "trading-card");
     investmentHost.setAttribute("aria-label", "\u6295\u8D44\u65B9\u6848\u4E0E\u6267\u884C");
-    const controls = add3(parent, "div", "", "row");
+    const controls = add3(notebookPanel, "div", "", "trading-row");
     let active = false, busy = false, epoch2 = 0, timer = null, context = null, state = null, attempted = 0, advice = null, pairingRevision = 0, pairBusy = false, pairConfigured = false, intelFailed = false;
     const current2 = (token) => active && parent.isConnected && token === epoch2 && JSON.stringify(context) === JSON.stringify(service.context());
     const button = (p, label, task) => {
@@ -26397,7 +26593,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       link.remove();
       URL.revokeObjectURL(url);
     });
-    const settings = add3(parent, "details", "", "trading-card");
+    add3(configPanel, "p", "\u8FD9\u91CC\u8C03\u6574\u89C2\u5BDF\u7B5B\u9009\u6761\u4EF6\u548C\u624B\u5DE5\u8D26\u9762\u4F30\u7B97\uFF1B\u672C\u8F6E\u771F\u5B9E\u4EA4\u6613\u9884\u7B97\u5728\u201C\u6295\u8D44\u4E0E\u6267\u884C\u201D\u4E2D\u5355\u72EC\u5BA1\u6838\u3002", "module-note");
+    const settings = add3(configPanel, "details", "", "trading-card");
     add3(settings, "summary", "\u8D44\u91D1\u4E0E\u5229\u6DA6\u8BBE\u7F6E\uFF08\u53EF\u624B\u52A8\u8C03\u6574\uFF09");
     const fields4 = add3(settings, "div", "", "trading-grid"), names = { startingCoins: "\u8D77\u59CB\u91D1\u5E01\uFF08\u624B\u586B\uFF09", capitalLimit: "\u8BD5\u4ED3\u603B\u4E0A\u9650", reserveCoins: "\u6700\u4F4E\u4FDD\u7559\u91D1\u5E01", unitLimit: "\u5355\u5361\u4E70\u5165\u4E0A\u9650", minProfit: "\u5355\u5361\u76EE\u6807\u51C0\u5229\u6DA6", buffer: "\u6BCF\u5361\u8DCC\u4EF7\u7F13\u51B2" };
     const inputs = Object.fromEntries(Object.entries(names).map(([key2, label]) => [key2, input(fields4, label, DESK_DEFAULTS[key2])]));
@@ -26409,14 +26606,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       status.textContent = "\u8D44\u91D1\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1B\u91CD\u65B0\u5206\u6790\u4F1A\u6309\u65B0\u989D\u5EA6\u7B5B\u9009\u3002";
       return result;
     });
-    const discovery = add3(parent, "section", "", "trading-card");
+    const discovery = add3(researchPanel, "section", "", "trading-card");
     discovery.setAttribute("aria-label", "\u81EA\u52A8\u5019\u9009\u5EFA\u8BAE");
     add3(discovery, "h3", "\u672C\u8F6E\u5019\u9009 \xB7 \u4E0D\u7528\u5148\u586B\u7403\u5458");
-    add3(discovery, "small", "\u4F4E\u4EF7\u77ED\u7EBF\u521D\u7B5B\uFF1A80/82/84 \u666E\u901A\u91D1\u5361\u5404\u4E00\u9875\uFF1BX \u4F5C\u8005\u660E\u786E\u70B9\u540D\u540E\u989D\u5916\u5B9A\u5411\u8BFB\u6700\u591A 3 \u4E2A\u540D\u5B57\u3002\u6700\u591A 12 \u5F20\u4EA4\u53C9\u6838\u4EF7\u30016 \u5F20\u5EFA\u8BAE\uFF0C\u4E0D\u626B EA \u5E02\u573A\u3002\u975E META \u6392\u540D\u6216\u6210\u4EA4\u4FDD\u8BC1\uFF0C\u62E5\u6324\u5EA6\u672A\u77E5\u3002");
+    add3(add3(discovery, "details"), "summary", "\u7B5B\u9009\u8303\u56F4\u4E0E\u6570\u636E\u8BF4\u660E").parentElement.append(document.createTextNode("80/82/84 \u666E\u901A\u91D1\u5361\u5404\u4E00\u9875\uFF0C\u4F5C\u8005\u70B9\u540D\u6700\u591A 3 \u4E2A\u540D\u5B57\uFF1B\u6700\u591A 12 \u5F20\u4EA4\u53C9\u6838\u4EF7\u30016 \u5F20\u5EFA\u8BAE\u3002\u4E0D\u626B EA \u5E02\u573A\uFF0C\u4E0D\u662F META \u6392\u540D\u6216\u6210\u4EA4\u4FDD\u8BC1\u3002"));
     const adviceControls = add3(discovery, "div", "", "row"), adviceList = add3(discovery, "div");
     const discover = async () => {
       const token = epoch2;
       advice = null;
+      investmentView.setAdvice(null);
       adviceList.textContent = "\u6B63\u5728\u7B5B\u9009\u9884\u7B97\u5185\u5019\u9009\u2026";
       try {
         const value = await service.discover({ isCurrent: () => current2(token), onProgress: (v) => {
@@ -26425,11 +26623,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (current2(token)) {
           advice = value;
           renderAdvice();
-          status.textContent = "\u5019\u9009\u5DF2\u751F\u6210\uFF1B\u4E70\u4EF7\u662F\u7B49\u5F85\u4F4E\u4EF7\u7684\u4E0A\u9650\uFF0C\u4E0D\u662F\u8BA9\u4F60\u6309\u73B0\u4EF7\u4E70\u3002";
+          status.textContent = "\u5019\u9009\u5DF2\u66F4\u65B0\uFF1B\u5C1A\u672A\u542F\u52A8\u4EA4\u6613\u3002";
         }
       } catch (error2) {
         if (current2(token)) {
           adviceList.textContent = errorText(error2);
+          investmentView.setAnalysisStatus(errorText(error2));
           throw error2;
         }
       }
@@ -26444,6 +26643,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       busy = false;
       pause();
       advice = null;
+      investmentView.setAdvice(null);
+      investmentView.setAnalysisStatus("\u5019\u9009\u5206\u6790\u5DF2\u53D6\u6D88\uFF0C\u8BF7\u5728\u201C\u5019\u9009\u4E0E\u7EBF\u7D22\u201D\u91CD\u65B0\u5206\u6790\u3002");
       adviceList.textContent = "\u5206\u6790\u5DF2\u53D6\u6D88\uFF1B\u4E0D\u4F1A\u4EA7\u751F\u4EA4\u6613\u3002";
     });
     function renderAdvice() {
@@ -26466,8 +26667,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         add3(box, "p", `\u5F53\u524D\u53C2\u8003 FUTBIN ${row.price} / FUT.GG ${row.ggPrice ?? "\u5F85\u6838\u4EF7"} \xB7 ${row.sourceCount === 2 ? "\u53CC\u6E90\u89C2\u5BDF" : "\u5355\u6E90\u6682\u5B9A\u89C2\u5BDF"}`);
         add3(box, "strong", `\u7B49\u5230 \u2264 ${row.buyCeiling} \u518D\u6838\u4EF7\uFF1B\u5356\u51FA\u53C2\u8003 ${row.resaleEstimate}`);
         add3(box, "p", `\u4EC5\u5728\u8BE5\u4E70\u4EF7\u4E0E\u5356\u4EF7\u5747\u6210\u4EA4\u65F6\uFF0C\u6A21\u578B\u7A0E\u540E\u5DEE\u989D ${row.netAtCeiling}\uFF1B\u4E70\u5165\u9700\u6BD4\u5F53\u524D\u53C2\u8003\u4F4E ${row.requiredDiscount.toFixed(1)}%\u3002`);
-        add3(box, "small", `\u5173\u6CE8\u7406\u7531\uFF1A${row.reason}`);
-        add3(box, "small", `\u9000\u51FA\u8BA1\u5212\uFF1A\u6210\u4EA4\u540E\u5230\u5356\u51FA\u53C2\u8003\u53EF\u6838\u4EF7\u5356\u51FA\uFF1B\u7A0E\u540E\u6D6E\u4E8F\u8FBE\u5230 ${state.settings.buffer} \u91D1\u5E01\u6216\u4E70\u5165\u6EE1 6 \u5C0F\u65F6\u5219\u590D\u6838\u9000\u51FA\uFF1B\u6D88\u606F\u843D\u7A7A/\u66FF\u4EE3\u5361\u4E0A\u7EBF\u63D0\u524D\u590D\u6838\u3002\u5747\u4E0D\u81EA\u52A8\u6267\u884C\u3002`);
+        const detail = add3(box, "details");
+        add3(detail, "summary", "\u5173\u6CE8\u7406\u7531\u4E0E\u9000\u51FA\u6761\u4EF6");
+        add3(detail, "small", `\u5173\u6CE8\u7406\u7531\uFF1A${row.reason}`);
+        add3(detail, "small", `\u9000\u51FA\u8BA1\u5212\uFF1A\u6210\u4EA4\u540E\u5230\u5356\u51FA\u53C2\u8003\u53EF\u6838\u4EF7\u5356\u51FA\uFF1B\u7A0E\u540E\u6D6E\u4E8F\u8FBE\u5230 ${state.settings.buffer} \u91D1\u5E01\u6216\u4E70\u5165\u6EE1 6 \u5C0F\u65F6\u5219\u590D\u6838\u9000\u51FA\uFF1B\u6D88\u606F\u843D\u7A7A/\u66FF\u4EE3\u5361\u4E0A\u7EBF\u63D0\u524D\u590D\u6838\u3002\u5747\u4E0D\u81EA\u52A8\u6267\u884C\u3002`);
         for (const clue of row.evo ?? []) {
           const a = add3(box, "a", `EVO ${clue.status === "leak" ? "\u7206\u6599" : "\u7EBF\u7D22"} \xB7 \u4EC5\u6761\u4EF6\u521D\u7B5B`);
           a.href = clue.url;
@@ -26480,10 +26683,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const row of advice.avoid) add3(adviceList, "small", `\u6682\u7F13 ${row.name}\uFF1A${row.reason}`);
       for (const name2 of advice.unresolvedNames ?? []) add3(adviceList, "small", `\u70B9\u540D ${name2}\uFF1A\u540D\u5B57\u672A\u552F\u4E00\u5339\u914D\uFF0C\u672A\u751F\u6210\u7248\u672C/\u4E70\u4EF7\u5EFA\u8BAE\u3002`);
     }
-    const intelligence = add3(parent, "section", "", "trading-card");
+    const intelligence = add3(researchPanel, "section", "", "trading-card");
     add3(intelligence, "h3", "X \u81EA\u52A8\u91C7\u96C6 \xB7 \u6309\u9700\u5237\u65B0\uFF0C\u4E0D\u5F00\u5B9A\u65F6");
     add3(intelligence, "small", "\u4ECE FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT \u539F\u751F X \u641C\u7D22\u539F\u5E16\uFF0C\u6838\u5BF9\u6700\u591A\u4E24\u6761 EVO \u7EBF\u7A0B\u53CA\u4F5C\u8005\u540E\u7EED\u56DE\u590D\uFF0C\u5305\u542B\u70B9\u540D\u7403\u5458\u3002\u590D\u7528\u672C\u673A Grok\uFF0C\u53EF\u80FD\u4EA7\u751F\u6A21\u578B\u8D39\u7528\uFF1B\u4E0D\u4FDD\u8BC1\u5B9E\u65F6\u3001\u5B8C\u6574\u7EBF\u7A0B\u6216\u7206\u6599\u51C6\u786E\u300215 \u5206\u949F\u5185\u91CD\u590D\u5237\u65B0\u7528\u7F13\u5B58\u3002");
-    const pairing = add3(intelligence, "details");
+    const pairing = add3(configPanel, "details", "", "trading-card");
     add3(pairing, "summary", "\u8FDE\u63A5\u672C\u673A\u91C7\u96C6\u5668\uFF08\u9996\u6B21\u8BBE\u7F6E\uFF09");
     add3(pairing, "small", "\u53CC\u51FB\u684C\u9762\u201CFCAT X Collector \u2192 Start Collector\u201D\u540E\u53F0\u8FD0\u884C\uFF1B\u63D0\u793A\u7A97\u53E3\u53EF\u5173\u95ED\u3002\u4E5F\u53EF\u8FD0\u884C npm.cmd run trading:intel:start\u3002\u505C\u6B62\u7528 Stop Collector \u6216\u4E0B\u65B9\u6309\u94AE\uFF1B\u4E0D\u8BBE\u5F00\u673A\u81EA\u542F\u3001\u4E0D\u81EA\u52A8\u91C7\u96C6\u3002\u5DF2\u6709\u914D\u5BF9\u65E0\u9700\u91CD\u586B\uFF1B\u9996\u6B21\u914D\u5BF9\u7801\u4FDD\u5B58\u5728\u672C\u673A\u7528\u6237\u76EE\u5F55 .fcat-trading-intel/pairing-key\uFF0C\u4E5F\u53EF\u7528\u539F\u524D\u53F0\u547D\u4EE4 trading:intel \u67E5\u770B\uFF0C\u5207\u52FF\u5206\u4EAB\u3002");
     const pairKey = input(pairing, "\u672C\u673A\u91C7\u96C6\u5668\u914D\u5BF9\u7801", "", "password");
@@ -26590,14 +26793,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         throw error2;
       }
     });
-    const investmentView = mountTradingPlanView({ document, parent: investmentHost, service, now, timers, isCurrent: () => {
+    const investmentView = mountTradingPlanView({ document, parent: investmentHost, service, now, timers, onDiscovery: (value) => {
+      advice = value;
+      renderAdvice();
+    }, isCurrent: () => {
       try {
         return active && parent.isConnected && JSON.stringify(context) === JSON.stringify(service.context());
       } catch {
         return false;
       }
     } });
-    const picker = add3(parent, "details", "", "trading-card");
+    const picker = add3(notebookPanel, "details", "", "trading-card");
     add3(picker, "summary", "\u6DFB\u52A0\u89C2\u5BDF\u7403\u5458");
     const pickRows = add3(picker, "div", "", "trading-row");
     const linkInput = input(pickRows, "FUTBIN FC27 \u94FE\u63A5 / EA\u7248\u672CID", "", "text"), nameInput = input(pickRows, "\u7403\u5458\u540D\u79F0\uFF08\u53EF\u9009\uFF09", "", "text");
@@ -26628,13 +26834,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return service.add({ player });
       });
     });
-    const alerts = add3(parent, "section", "", "trading-card");
+    const alerts = add3(notebookPanel, "section", "", "trading-card");
     alerts.setAttribute("aria-label", "\u673A\u4F1A\u63D0\u9192");
-    const watch = add3(parent, "section");
+    const watch = add3(notebookPanel, "section");
     watch.setAttribute("aria-label", "\u7403\u5458\u89C2\u5BDF\u540D\u5355");
-    const ledger = add3(parent, "section", "", "trading-card trading-ledger");
+    const ledger = add3(notebookPanel, "section", "", "trading-card trading-ledger");
     ledger.setAttribute("aria-label", "\u624B\u586B\u4EA4\u6613\u8BB0\u5F55");
-    const news = add3(parent, "details", "", "trading-card");
+    const news = add3(notebookPanel, "details", "", "trading-card");
     add3(news, "summary", "X \u6D88\u606F\u7EBF\u7D22\uFF08\u624B\u52A8\u5F55\u5165\uFF0C\u591A\u6765\u6E90\uFF09");
     add3(news, "small", "\u53EF\u89C2\u5BDF Fut Sheriff\u3001FUT Police Leaks\u3001Fut Scoreboard\u3001AsyFutTrader\u3001DetectiveFUT \u7B49\uFF1B\u4E0D\u662F\u53EF\u4FE1\u5EA6\u6392\u540D\u3002\u6B64\u5904\u4FDD\u7559\u624B\u52A8\u7EBF\u7D22\u8865\u5F55\uFF1B\u81EA\u52A8\u91C7\u96C6\u89C1\u4E0A\u65B9\uFF0C\u540C\u6E90\u642C\u8FD0\u4E0D\u7B97\u72EC\u7ACB\u8BC1\u636E\uFF0C\u6D88\u606F\u4E0D\u89E6\u53D1\u4E70\u5356\u3002");
     const newsFields = add3(news, "div", "", "trading-grid"), post = input(newsFields, "X \u539F\u5E16\u94FE\u63A5", "", "url"), note = input(newsFields, "\u6D88\u606F\u5907\u6CE8", "", "text"), newsState = add3(add3(newsFields, "label", "\u6D88\u606F\u72B6\u6001"), "select");
@@ -34023,7 +34229,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-trading-desk.js
   var tradingDeskKey = (scope2) => `fcat-fc27-trading-desk-v1:${scope2}`;
   function createFc27TradingDesk({ prices, get, set, locks, intel = null, execution = null, diagnosticLog: diagnosticLog2 = null, readCandidates = () => [], now = () => Date.now(), id: id13 = () => globalThis.crypto.randomUUID() }) {
-    let lastDiscovery = null, discoveryId = 0, lastIntel = null;
+    let lastDiscovery = null, discoveryId = 0, lastIntel = null, intelId = 0;
     const diagnostic = (fields4) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "trading", ...fields4 })).catch(() => {
@@ -34065,13 +34271,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const context = capture();
       return update(context, mutate);
     };
-    return Object.freeze({
+    const desk = Object.freeze({
       read,
       context: capture,
-      async prepareInvestment({ capitalLimit = 2e4, reserveCoins = 0, definitionIds = null } = {}) {
+      async prepareInvestment({ capitalLimit = 2e4, reserveCoins = 0, definitionIds = null, isCurrent = () => true, onProgress = () => {
+      } } = {}) {
         try {
           if (!execution) throw Error("DESK_EXECUTION_DISABLED");
-          const { context, state } = await read(), saved = lastDiscovery;
+          let saved = lastDiscovery, serial = discoveryId, refreshedDiscovery = null;
+          const { context, state: initialState } = await read();
+          let state = initialState;
+          const check = () => {
+            if (!current2(context) || !isCurrent() || serial !== discoveryId) throw Error("DESK_CONTEXT_CHANGED");
+          };
+          check();
+          if (!saved || !current2(saved.context)) throw Error("DESK_DISCOVERY_EXPIRED");
+          if (saved.result.validUntil <= now() || discoveryBasis(state) !== saved.basis) {
+            if (definitionIds !== null) throw Error("DESK_DISCOVERY_EXPIRED");
+            serial++;
+            refreshedDiscovery = await desk.discover({ isCurrent: () => current2(context) && isCurrent(), onProgress });
+            check();
+            const latest = await read();
+            check();
+            if (discoveryBasis(latest.state) !== discoveryBasis(state)) throw Error("DESK_DISCOVERY_CHANGED");
+            state = latest.state;
+            saved = lastDiscovery;
+          }
+          check();
           if (!saved || !current2(saved.context) || saved.result.validUntil <= now() || discoveryBasis(state) !== saved.basis) throw Error("DESK_DISCOVERY_EXPIRED");
           if (definitionIds !== null && (!Array.isArray(definitionIds) || definitionIds.length > 6 || new Set(definitionIds).size !== definitionIds.length || definitionIds.some((id14) => !saved.result.suggestions.some((row) => row.definitionId === id14)))) throw Error("DESK_PLAN_INVALID");
           const advice = definitionIds === null ? saved.result : { ...saved.result, suggestions: saved.result.suggestions.filter((row) => definitionIds.includes(row.definitionId)) };
@@ -34087,8 +34313,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             now: now(),
             id: id13()
           }));
+          check();
           diagnostic({ event: "plan-result", phase: "prepare", status: "ready", approvedBudget: capitalLimit, requestedCount: result.plan?.rows?.length ?? 0 });
-          return result;
+          return { ...result, ...refreshedDiscovery ? { refreshedDiscovery } : {} };
         } catch (error2) {
           diagnostic({ event: "plan-result", phase: "prepare", status: "blocked", reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "DESK_PLAN_UNCONFIRMED" });
           throw error2;
@@ -34119,11 +34346,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return intel.stop();
       },
       async refreshIntel() {
-        const context = capture();
+        const context = capture(), serial = ++intelId;
         if (!intel) throw Error("DESK_INTEL_COLLECTOR_UNAVAILABLE");
         const feed = await intel.refresh();
-        if (!current2(context)) throw Error("DESK_CONTEXT_CHANGED");
+        if (!current2(context) || serial !== intelId) throw Error("DESK_CONTEXT_CHANGED");
         lastIntel = feed;
+        discoveryId++;
         lastDiscovery = null;
         return feed;
       },
@@ -34310,6 +34538,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }),
       defaults: () => emptyDesk()
     });
+    return desk;
   }
 
   // src/trading/execution-session.js
@@ -34318,6 +34547,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var pending2 = /* @__PURE__ */ new Set(["buy-pending", "move-pending", "list-pending"]);
   var terminal = /* @__PURE__ */ new Set(["sold", "skipped", "rejected"]);
   var same29 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var pristine = (record) => record.entries.every((e) => e.phase === "waiting" && e.offer === null && Object.keys(e).every((key2) => ["definitionId", "phase", "offer"].includes(key2)));
   var validOffer = (offer, row) => offer && offer.definitionId === row.definitionId && Number.isSafeInteger(offer.itemId) && offer.itemId > 0 && typeof offer.tradeId === "string" && /^[1-9]\d{0,19}$/.test(offer.tradeId) && Number.isSafeInteger(offer.price) && offer.price >= 150 && offer.price <= row.buyCap;
   var applyReconciliation = (entry, result) => {
     const allowed = { "buy-pending": ["bought"], "move-pending": ["transfer"], "list-pending": ["listed", "sold"], listed: ["sold"] };
@@ -34363,6 +34593,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : event === "execution-stage" ? null : record?.reason ?? (error2?.message ? "DESK_EXECUTION_UNCONFIRMED" : null),
           httpStatus: error2?.httpStatus,
           errorCode: error2?.errorCode,
+          mismatch: error2?.mismatch,
+          transportPhase: error2?.nativeReadStatus,
           methodPath: error2?.methodPath,
           observedHash: error2?.observedHash,
           expectedHash: error2?.expectedHash
@@ -34434,20 +34666,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               validateInvestmentPlan(plan, context);
               if (plan.expiresAt <= now()) throw Error("DESK_DISCOVERY_EXPIRED");
               if (record?.plan.id === plan.id) throw Error("DESK_EXECUTION_ALREADY_STARTED");
-              if (record && !record.entries.every((e) => terminal.has(e.phase))) throw Error("DESK_EXECUTION_RECOVERY_REQUIRED");
+              if (record && !record.entries.every((e) => terminal.has(e.phase)) && !pristine(record)) throw Error("DESK_EXECUTION_RECOVERY_REQUIRED");
               if (record) {
                 const historyKey = key2 + ":history", history = await get(historyKey, []);
                 if (!Array.isArray(history) || history.length >= 20) throw Error("DESK_EXECUTION_HISTORY_FULL");
                 const archived = [...history, record];
+                assertCurrent();
                 await set(historyKey, archived);
                 if (!same29(archived, await get(historyKey, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
+                assertCurrent();
               }
               record = { schema: 1, status: "active", plan: structuredClone(plan), entries: plan.rows.map((row) => ({ definitionId: row.definitionId, phase: "waiting", offer: null })), reason: null };
               begun = true;
               await write(record);
             }
             stage("adapter-create", record);
-            adapter = await createAdapter(record.plan, { canWrite: () => !stopped, assertCurrent, onStage: (phase) => stage(phase, record), needsPurchases: record.plan.expiresAt > now() && record.entries.some((e) => e.phase === "waiting") });
+            adapter = await createAdapter(record.plan, { canWrite: () => !stopped, assertCurrent, onStage: (phase) => stage(phase, record), onDiagnostic, needsPurchases: record.plan.expiresAt > now() && record.entries.some((e) => e.phase === "waiting") });
             record.status = "active";
             record.reason = null;
             for (let i = 0; i < record.entries.length; i++) {
@@ -34617,27 +34851,36 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     async function recover() {
       if (busy) throw Error("DESK_EXECUTION_BUSY");
       busy = true;
-      let adapter;
+      let adapter, record = null;
       stage("readonly-recovery");
       try {
         return await exclusive(scope2, async () => {
-          const record = await read();
+          record = await read();
           if (!record) return { record: null, running: false };
-          adapter = await createAdapter(record.plan, { canWrite: () => false, assertCurrent, readOnly: true });
+          let readConfirmed = false;
+          adapter = await createAdapter(record.plan, { canWrite: () => false, assertCurrent, readOnly: true, onStage: (phase) => stage(phase, record), onDiagnostic });
+          if (pristine(record) && record.reason === "DESK_EXECUTION_READ_UNCONFIRMED") {
+            stage("funds-capacity", record);
+            await adapter.capabilities();
+            assertCurrent();
+            readConfirmed = true;
+          }
           for (let i = 0; i < record.entries.length; i++) {
             const e = record.entries[i];
             if (!pending2.has(e.phase) && e.phase !== "listed") continue;
             const result = await adapter.reconcile(e, record.plan.rows[i]);
+            assertCurrent();
+            readConfirmed = true;
             applyReconciliation(e, result);
           }
           record.status = record.entries.some((e) => pending2.has(e.phase)) ? "recovery-required" : record.entries.every((e) => terminal.has(e.phase)) ? "completed" : record.entries.some((e) => ["bought", "transfer", "waiting"].includes(e.phase)) ? "paused" : "waiting-sales";
-          if (!record.entries.some((e) => pending2.has(e.phase))) record.reason = null;
+          if (readConfirmed && !record.entries.some((e) => pending2.has(e.phase))) record.reason = null;
           await write(record);
           report("execution-result", "readonly-recovery", record.status, record);
           return { record, running: false };
         });
       } catch (error2) {
-        report("execution-result", "readonly-recovery", "blocked", null, error2);
+        report("execution-result", currentPhase, "blocked", record, error2);
         throw error2;
       } finally {
         adapter?.cancel?.();
@@ -34663,6 +34906,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     readOnly = false,
     needsPurchases = true,
     onStage = () => {
+    },
+    onDiagnostic = () => {
     },
     now = () => Date.now(),
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -34695,18 +34940,45 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       lastRequest = now();
     };
     const trade = tradeFactory(root), saleReader = createFc27GallerySaleReader(root);
-    const verify = async (result) => {
-      assert();
-      if (!["completed", "accepted"].includes(result?.status) || result?.response?.success !== true || !Number.isSafeInteger(result.response.status) || result.response.status < 200 || result.response.status >= 300) fail30("DESK_EXECUTION_READ_UNCONFIRMED");
+    const readStatuses = /* @__PURE__ */ new Set(["completed", "accepted", "rejected", "blocked", "unsupported", "error", "ambiguous", "observed", "not-requested"]);
+    const readMetadata = (result) => ({
+      httpStatus: Number.isSafeInteger(result?.response?.status) && result.response.status >= 100 && result.response.status <= 599 ? result.response.status : void 0,
+      errorCode: [result?.response?.code, result?.error?.code, result?.errorCode].find((code2) => Number.isSafeInteger(code2) && code2 >= 0)
+    });
+    const readDiagnostic = (phase, status, mismatch2, metadata) => {
+      try {
+        Promise.resolve(onDiagnostic({ area: "trading", event: "execution-response", phase, status, mismatch: mismatch2, ...metadata })).catch(() => {
+        });
+      } catch {
+      }
+    };
+    const nativeRead = async (phase, task, { statusKey = "status", accepted = ["completed", "accepted"], receipt = true } = {}) => {
+      onStage(phase);
+      let result;
+      try {
+        result = await bounded2(task);
+        assert();
+      } catch (error2) {
+        const metadata2 = readMetadata({ response: { status: error2?.httpStatus }, errorCode: error2?.errorCode });
+        readDiagnostic(phase, "error", "read-exception", metadata2);
+        throw Object.assign(
+          error2 instanceof Error ? error2 : Error("DESK_EXECUTION_RESPONSE_UNCONFIRMED"),
+          { nativeReadPhase: phase, nativeReadStatus: "error", mismatch: "read-exception", ...metadata2 }
+        );
+      }
+      const status = readStatuses.has(result?.[statusKey]) ? result[statusKey] : "unknown", metadata = readMetadata(result);
+      const mismatch2 = !accepted.includes(result?.[statusKey]) ? receipt ? "read-status-unconfirmed" : "sale-status-unconfirmed" : receipt && result?.response?.success !== true ? "read-success-unconfirmed" : receipt && !Number.isSafeInteger(result.response.status) ? result.response.status == null ? "read-http-missing" : "read-http-invalid" : receipt && (result.response.status < 200 || result.response.status >= 300) ? "read-http-rejected" : null;
+      readDiagnostic(phase, status, mismatch2, metadata);
+      if (mismatch2) throw Object.assign(Error("DESK_EXECUTION_READ_UNCONFIRMED"), { nativeReadPhase: phase, nativeReadStatus: status, mismatch: mismatch2, ...metadata });
       return result;
     };
     const read = async (force = false) => {
       assert();
       if (!force && now() - lastReadAt <= 1e3) return;
       await pace();
-      await verify(await bounded2(() => trade.refreshPurchaseState()));
+      await nativeRead("purchase-state-read", () => trade.refreshPurchaseState());
       await pace();
-      await verify(await bounded2(() => trade.refreshTransferItems()));
+      await nativeRead("transfer-items-read", () => trade.refreshTransferItems());
       assert();
       lastReadAt = now();
     };
@@ -34817,10 +35089,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const item2 = seen(e)?.candidate;
         if (item2?.item?.pile !== "transfer" || item2.tradeable !== true || !["none", "inactive"].includes(item2.auction?.state)) fail30("DESK_EXECUTION_RECEIPT_UNCONFIRMED");
         await pace();
-        const limits = await bounded2(() => trade.inspectPriceLimits(item2.item, { refresh: true }));
-        assert();
-        const limit = limits.after;
-        if (limits.refreshStatus !== "completed" || limits.response?.success !== true || !Number.isSafeInteger(limits.response.status) || limits.response.status < 200 || limits.response.status >= 300) fail30("DESK_EXECUTION_READ_UNCONFIRMED");
+        const limits = await nativeRead("price-limits-read", () => trade.inspectPriceLimits(item2.item, { refresh: true }), { statusKey: "refreshStatus", accepted: ["completed"] }), limit = limits.after;
         if (!limit?.hasPriceLimits || !Number.isSafeInteger(limit.minimum) || !Number.isSafeInteger(limit.maximum) || row.sellPrice < limit.minimum || row.sellPrice > limit.maximum) fail30("DESK_EXECUTION_LISTING_LIMIT");
       },
       async list(e, row) {
@@ -34851,9 +35120,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           if (e.phase === "listed") {
             await pace();
-            const sales = await bounded2(() => saleReader.refreshGallerySaleReceipts());
-            assert();
-            if (sales.status !== "observed") fail30("DESK_EXECUTION_READ_UNCONFIRMED");
+            const sales = await nativeRead("sale-receipts-read", () => saleReader.refreshGallerySaleReceipts(), { accepted: ["observed"], receipt: false });
             const receipt = sales.receipts.find((r) => r.itemId === e.offer.itemId && r.definitionId === e.definitionId && r.listingTradeId === e.listingTradeId);
             if (receipt?.sold === true && Number.isSafeInteger(receipt.soldPrice) && receipt.soldPrice >= row.sellPrice) return { phase: "sold", salePrice: receipt.soldPrice, soldAt: now() };
             return null;
@@ -34880,9 +35147,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const failure = (event, phase, error2) => diagnostic({
       area: "trading",
       event,
-      phase,
+      phase: error2?.nativeReadPhase ?? phase,
       status: "blocked",
       reason: /^(DESK|FC27)_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "DESK_EXECUTION_UNCONFIRMED",
+      httpStatus: error2?.httpStatus,
+      errorCode: error2?.errorCode,
+      mismatch: error2?.mismatch,
+      transportPhase: error2?.nativeReadStatus,
       methodPath: error2?.methodPath,
       observedHash: error2?.observedHash,
       expectedHash: error2?.expectedHash
@@ -43769,7 +44040,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.96" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.97" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -44121,8 +44392,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.96"}`,
-    version: "27.0.96",
+    title: `FC Automation Tool ${"27.0.97"}`,
+    version: "27.0.97",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

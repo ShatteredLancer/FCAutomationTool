@@ -6,6 +6,7 @@ import {createInvestmentPlan} from '../../src/trading/investment-plan.js';
 import {readFc27Context} from '../../src/adapters/ea/fc27-local-read.js';
 import {traditionalJournalScope} from '../../src/fc27/traditional-journal.js';
 import {createFcatDiagnosticLog} from '../../src/diagnostics/fcat-diagnostic-log.js';
+import {tradingExecutionKey} from '../../src/trading/execution-session.js';
 
 function fixture({diagnosticLog=null}={}){
   const {root}=executionRuntime(),data=new Map(),calls=[],unassigned=[],transfer=[];let time=Date.now(),coins=40000,auction={tradeId:'9901',tradeState:'active',buyNowPrice:600,canBuy:()=>true,getSecondsRemaining:()=>60};
@@ -100,4 +101,40 @@ it.each([401,403,429,503])('does not list on a failed price-limit refresh even w
   const f=fixture();f.root.services.Item.requestMarketData=()=>({observe(_o,cb){cb(this,{success:false,status});},unobserve(){}});
   f.service.prepare(f.plan);const r=await f.service.start({plan:f.plan,approved:true});expect(r.record.status).toBe('paused');
   expect(r.record.entries[0].phase).toBe('transfer');expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(0);expect(f.calls.filter(c=>c[0]==='bid')).toHaveLength(1);
+});
+it.each([
+  ['requestUnassignedItems','purchase-state-read',{success:false,status:503,error:{code:461,message:'PRIVATE_NATIVE_MESSAGE'}},'read-status-unconfirmed'],
+  ['requestTransferItems','transfer-items-read',{success:true},'read-http-missing'],
+  ['requestTransferItems','transfer-items-read',{success:true,status:503,code:461},'read-http-rejected'],
+  ['requestMarketData','price-limits-read',{success:false,status:429,error:{code:461}},'read-status-unconfirmed'],
+])('exports the exact failed native read and fixed mismatch/HTTP metadata (%s)',async(method,phase,reply,mismatch)=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.96'}),f=fixture({diagnosticLog:log});
+  f.root.services.Item[method]=()=>({observe(_o,cb){cb(this,reply);},unobserve(){}});f.service.prepare(f.plan);
+  const result=await f.service.start({plan:f.plan,approved:true}),out=await log.exportPayload();
+  expect(result.record.reason).toBe('DESK_EXECUTION_READ_UNCONFIRMED');
+  const read=out.criticalEntries.find(entry=>entry.event==='execution-response'&&entry.phase===phase&&entry.mismatch===mismatch);
+  expect(read).toBeDefined();expect(out.transactionResults.at(-1)).toMatchObject({phase,reason:'DESK_EXECUTION_READ_UNCONFIRMED',mismatch});
+  if(reply.status!==undefined)expect(read.httpStatus).toBe(reply.status);else expect(read).not.toHaveProperty('httpStatus');
+  if(reply.error?.code||reply.code)expect(read.errorCode).toBe(461);
+  expect(JSON.stringify(out)).not.toMatch(/PRIVATE_NATIVE_MESSAGE|native-test|itemId|tradeId|accountScope/);
+  expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(0);
+  if(method!=='requestMarketData')expect(f.calls).toEqual([]);
+});
+it('locates a failed sale-receipt read without re-listing or discarding the last confirmed listing',async()=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.96'}),f=fixture({diagnosticLog:log});
+  f.service.prepare(f.plan);await f.service.start({plan:f.plan,approved:true});
+  const before=structuredClone(f.data.get(tradingExecutionKey(f.scope)));
+  f.root.services.Item.refreshAuctions=()=>({observe(_o,cb){cb(this,{success:false,status:503});},unobserve(){}});
+  await expect(f.service.recover()).rejects.toThrow('DESK_EXECUTION_READ_UNCONFIRMED');
+  const out=await log.exportPayload();expect(out.transactionResults.at(-1)).toMatchObject({phase:'sale-receipts-read',mismatch:'sale-status-unconfirmed'});
+  expect(f.data.get(tradingExecutionKey(f.scope))).toEqual(before);expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(1);
+});
+it('rechecks old pristine READ_UNCONFIRMED through real native reads, preserving failure and using no quotes or mutations',async()=>{
+  const f=fixture(),key=tradingExecutionKey(f.scope),old={schema:1,status:'paused',reason:'DESK_EXECUTION_READ_UNCONFIRMED',plan:f.plan,
+    entries:f.plan.rows.map(row=>({definitionId:row.definitionId,phase:'waiting',offer:null}))};f.data.set(key,old);
+  let success=false;const purchase=vi.fn(()=>({observe(_o,cb){cb(this,{success,status:success?200:503});},unobserve(){}}));
+  f.root.services.Item.requestUnassignedItems=purchase;
+  await expect(f.service.recover()).rejects.toThrow('DESK_EXECUTION_READ_UNCONFIRMED');expect(f.data.get(key)).toEqual(old);
+  success=true;const result=await f.service.recover();expect(result.record.reason).toBeNull();expect(result.record.entries).toEqual(old.entries);
+  expect(purchase).toHaveBeenCalledTimes(2);expect(f.prices.load).not.toHaveBeenCalled();expect(f.calls).toEqual([]);
 });

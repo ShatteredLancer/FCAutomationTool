@@ -14,7 +14,7 @@ import {createFc27GallerySaleReader} from '../ea/fc27-gallery-sales.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=reason=>{throw Error(reason);};
-export async function createNativeTradingExecutionAdapter({root,plan,prices,canWrite,assertCurrent,readOnly=false,needsPurchases=true,onStage=()=>{},
+export async function createNativeTradingExecutionAdapter({root,plan,prices,canWrite,assertCurrent,readOnly=false,needsPurchases=true,onStage=()=>{},onDiagnostic=()=>{},
   now=()=>Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms)),buyFactory=createFc27PuzzleBuyAdapter,tradeFactory=createEaTradeAdapter}){
   const context=readFc27Context(root),service=root.services?.Item;
   const functions=Object.fromEntries(['bid','move','list','searchTransferMarket','requestTransferItems','requestUnassignedItems'].map(k=>[k,service?.[k]]));
@@ -25,10 +25,36 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
     Promise.resolve().then(task).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});});
   const pace=async()=>{assert();const left=3000-(now()-lastRequest);if(left>0)await sleep(left);assert();lastRequest=now();};
   const trade=tradeFactory(root),saleReader=createFc27GallerySaleReader(root);
-  const verify=async result=>{assert();if(!['completed','accepted'].includes(result?.status)||result?.response?.success!==true
-    ||!Number.isSafeInteger(result.response.status)||result.response.status<200||result.response.status>=300)fail('DESK_EXECUTION_READ_UNCONFIRMED');return result;};
+  const readStatuses=new Set(['completed','accepted','rejected','blocked','unsupported','error','ambiguous','observed','not-requested']);
+  const readMetadata=result=>({
+    httpStatus:Number.isSafeInteger(result?.response?.status)&&result.response.status>=100&&result.response.status<=599?result.response.status:undefined,
+    errorCode:[result?.response?.code,result?.error?.code,result?.errorCode].find(code=>Number.isSafeInteger(code)&&code>=0),
+  });
+  const readDiagnostic=(phase,status,mismatch,metadata)=>{
+    try{Promise.resolve(onDiagnostic({area:'trading',event:'execution-response',phase,status,mismatch,...metadata})).catch(()=>{});}catch{/* Diagnostics only. */}
+  };
+  // Keep the existing strict contracts. Export only fixed stages/statuses and
+  // numeric metadata, never native messages, raw responses or item identities.
+  const nativeRead=async(phase,task,{statusKey='status',accepted=['completed','accepted'],receipt=true}={})=>{
+    onStage(phase);let result;
+    try{result=await bounded(task);assert();}catch(error){
+      const metadata=readMetadata({response:{status:error?.httpStatus},errorCode:error?.errorCode});
+      readDiagnostic(phase,'error','read-exception',metadata);
+      throw Object.assign(error instanceof Error?error:Error('DESK_EXECUTION_RESPONSE_UNCONFIRMED'),
+        {nativeReadPhase:phase,nativeReadStatus:'error',mismatch:'read-exception',...metadata});
+    }
+    const status=readStatuses.has(result?.[statusKey])?result[statusKey]:'unknown',metadata=readMetadata(result);
+    const mismatch=!accepted.includes(result?.[statusKey])?(receipt?'read-status-unconfirmed':'sale-status-unconfirmed')
+      :receipt&&result?.response?.success!==true?'read-success-unconfirmed'
+      :receipt&&!Number.isSafeInteger(result.response.status)?(result.response.status==null?'read-http-missing':'read-http-invalid')
+      :receipt&&(result.response.status<200||result.response.status>=300)?'read-http-rejected':null;
+    readDiagnostic(phase,status,mismatch,metadata);
+    if(mismatch)throw Object.assign(Error('DESK_EXECUTION_READ_UNCONFIRMED'),{nativeReadPhase:phase,nativeReadStatus:status,mismatch,...metadata});
+    return result;
+  };
   const read=async(force=false)=>{assert();if(!force&&now()-lastReadAt<=1000)return;
-    await pace();await verify(await bounded(()=>trade.refreshPurchaseState()));await pace();await verify(await bounded(()=>trade.refreshTransferItems()));assert();lastReadAt=now();};
+    await pace();await nativeRead('purchase-state-read',()=>trade.refreshPurchaseState());
+    await pace();await nativeRead('transfer-items-read',()=>trade.refreshTransferItems());assert();lastReadAt=now();};
   const seen=e=>trade.inspectPurchase({id:e.offer.itemId,definitionId:e.definitionId,pile:'unassigned'});
   let buyer=null;
   if(!readOnly&&needsPurchases){
@@ -69,8 +95,7 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
       const result=await bounded(()=>{writable();return trade.routePurchasedItem(item,'transfer',p);});assert();return result;},
     async checkListing(e,row){await read();const item=seen(e)?.candidate;
       if(item?.item?.pile!=='transfer'||item.tradeable!==true||!['none','inactive'].includes(item.auction?.state))fail('DESK_EXECUTION_RECEIPT_UNCONFIRMED');
-      await pace();const limits=await bounded(()=>trade.inspectPriceLimits(item.item,{refresh:true}));assert();const limit=limits.after;
-      if(limits.refreshStatus!=='completed'||limits.response?.success!==true||!Number.isSafeInteger(limits.response.status)||limits.response.status<200||limits.response.status>=300)fail('DESK_EXECUTION_READ_UNCONFIRMED');
+      await pace();const limits=await nativeRead('price-limits-read',()=>trade.inspectPriceLimits(item.item,{refresh:true}),{statusKey:'refreshStatus',accepted:['completed']}),limit=limits.after;
       if(!limit?.hasPriceLimits||!Number.isSafeInteger(limit.minimum)||!Number.isSafeInteger(limit.maximum)||row.sellPrice<limit.minimum||row.sellPrice>limit.maximum)fail('DESK_EXECUTION_LISTING_LIMIT');
     },
     async list(e,row){const ref={id:e.offer.itemId,definitionId:e.definitionId,pile:'transfer'};
@@ -90,7 +115,7 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
           if(proof.matched)return {phase:'listed',listingTradeId:proof.listingTradeId};
         }
         if(e.phase==='listed'){
-          await pace();const sales=await bounded(()=>saleReader.refreshGallerySaleReceipts());assert();if(sales.status!=='observed')fail('DESK_EXECUTION_READ_UNCONFIRMED');
+          await pace();const sales=await nativeRead('sale-receipts-read',()=>saleReader.refreshGallerySaleReceipts(),{accepted:['observed'],receipt:false});
           const receipt=sales.receipts.find(r=>r.itemId===e.offer.itemId&&r.definitionId===e.definitionId&&r.listingTradeId===e.listingTradeId);
           if(receipt?.sold===true&&Number.isSafeInteger(receipt.soldPrice)&&receipt.soldPrice>=row.sellPrice)return {phase:'sold',salePrice:receipt.soldPrice,soldAt:now()};
           return null;
@@ -104,8 +129,9 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
 export function createFc27TradingExecution({root,prices,get,set,liveEnabled,onProgress=()=>{},adapterFactory=createNativeTradingExecutionAdapter,diagnosticLog=null}){
   let session=null,bound=null,prepared=null,progress=null;
   const diagnostic=event=>{try{Promise.resolve(diagnosticLog?.record?.(event)).catch(()=>{});}catch{/* Diagnostics only. */}};
-  const failure=(event,phase,error)=>diagnostic({area:'trading',event,phase,status:'blocked',
+  const failure=(event,phase,error)=>diagnostic({area:'trading',event,phase:error?.nativeReadPhase??phase,status:'blocked',
     reason:/^(DESK|FC27)_[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_EXECUTION_UNCONFIRMED',
+    httpStatus:error?.httpStatus,errorCode:error?.errorCode,mismatch:error?.mismatch,transportPhase:error?.nativeReadStatus,
     methodPath:error?.methodPath,observedHash:error?.observedHash,expectedHash:error?.expectedHash});
   const create=()=>{
     const context=readFc27Context(root),deskContext=prices.context(),scope=traditionalJournalScope(context);

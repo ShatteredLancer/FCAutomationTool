@@ -6,17 +6,103 @@ import {emptyDesk,deskAlerts,deskExit} from '../../src/trading/desk-model.js';
 const now=1793772000000;
 const rows=Array.from({length:9},(_,i)=>({definitionId:100+i,futbinId:200+i,name:`Public ${i}`,rating:[80,82,84][i%3],
   price:900+i*100,closingPrice:900+i*100,referenceScore:300+i*40,fetchedAt:now,season:'27',platform:'console'}));
-function fixture(intel=null){
+function fixture(intel=null,execution=null){
   const data=new Map();let account='A',time=now;
   const prices={context:()=>({scope:account,season:'27',platform:'console'}),remember:vi.fn(),knownPlayers:()=>[],
     readSettings:vi.fn(async()=>({readSources:'both',source:'futbin'})),
     tradingCandidates:vi.fn(async()=>({rows,at:now,platform:'console',ratings:[80,82,84],requests:3})),
     load:vi.fn(async ids=>({references:Object.fromEntries(ids.map(id=>[id,{quotes:{futgg:{source:'futgg',season:'27',platform:'console',definitionId:id,
       price:rows.find(row=>row.definitionId===id).price,sourceUpdatedAt:now,fetchedAt:now,expiresAt:now+300000,error:null}}}]))}))};
-  const service=createFc27TradingDesk({prices,intel,get:async(k,f)=>structuredClone(data.get(k)??f),set:async(k,v)=>data.set(k,structuredClone(v)),
+  const get=vi.fn(async(k,f)=>structuredClone(data.get(k)??f));
+  const service=createFc27TradingDesk({prices,intel,execution,get,set:async(k,v)=>data.set(k,structuredClone(v)),
     locks:{request:async(_key,_options,task)=>task()},now:()=>time});
-  return {prices,service,data,advance:ms=>{time+=ms;},changeAccount:()=>{account='B';}};
+  return {prices,service,data,get,time:()=>time,advance:ms=>{time+=ms;},changeAccount:()=>{account='B';}};
 }
+
+function investmentFixture(){
+  const execution={prepare:vi.fn(plan=>({plan,balance:40000})),start:vi.fn()},intel={refresh:vi.fn()},f=fixture(intel,execution);
+  const fresh=()=>{
+    f.prices.tradingCandidates.mockImplementation(async options=>{options.onProgress({phase:'candidate-pool'});
+      return {rows:rows.map(row=>({...row,fetchedAt:f.time()})),at:f.time(),platform:'console'};});
+    f.prices.load.mockImplementation(async ids=>({references:Object.fromEntries(ids.map(id=>[id,{quotes:{futgg:{source:'futgg',season:'27',platform:'console',definitionId:id,
+      price:rows.find(row=>row.definitionId===id).price,sourceUpdatedAt:f.time(),fetchedAt:f.time(),expiresAt:f.time()+240000}}}]))}));
+  };
+  return {...f,execution,intel,fresh};
+}
+it('refreshes expired same-account discovery once for a full prepare, returning new evidence without extending old quotes or trading',async()=>{
+  const f=investmentFixture(),old=await f.service.discover(),before=structuredClone(old),onProgress=vi.fn();f.advance(300001);f.fresh();
+  const result=await f.service.prepareInvestment({capitalLimit:5000,reserveCoins:30000,isCurrent:()=>true,onProgress});
+  expect(f.prices.tradingCandidates).toHaveBeenCalledTimes(2);expect(f.prices.load).toHaveBeenCalledTimes(2);
+  expect(result.refreshedDiscovery.at).toBe(f.time());expect(result.plan).toMatchObject({createdAt:f.time(),expiresAt:f.time()+240000,capitalLimit:5000,reserveCoins:30000,unitLimit:2000});
+  expect(result.plan.rows.every(row=>row.buyCap<=before.suggestions.find(oldRow=>oldRow.definitionId===row.definitionId).buyCeiling)).toBe(true);
+  expect(onProgress).toHaveBeenCalled();expect(f.execution.prepare).toHaveBeenCalledOnce();expect(f.execution.start).not.toHaveBeenCalled();expect(f.intel.refresh).not.toHaveBeenCalled();expect(f.data.size).toBe(0);expect(old).toEqual(before);
+});
+it('rejects still-stale provider evidence after just one refresh rather than retrying or restamping it',async()=>{
+  const f=investmentFixture();await f.service.discover();f.advance(300001);
+  await expect(f.service.prepareInvestment()).rejects.toThrow('DESK_DISCOVERY_EXPIRED');
+  expect(f.prices.tradingCandidates).toHaveBeenCalledTimes(2);expect(f.execution.prepare).not.toHaveBeenCalled();expect(f.execution.start).not.toHaveBeenCalled();
+});
+it('does not silently refresh an expired subset selection or a discovery from another account',async()=>{
+  const f=investmentFixture();await f.service.discover();f.advance(300001);f.fresh();
+  await expect(f.service.prepareInvestment({definitionIds:[100]})).rejects.toThrow('DESK_DISCOVERY_EXPIRED');expect(f.prices.tradingCandidates).toHaveBeenCalledOnce();
+  f.changeAccount();await expect(f.service.prepareInvestment()).rejects.toThrow('DESK_DISCOVERY_EXPIRED');expect(f.prices.tradingCandidates).toHaveBeenCalledOnce();
+});
+it('full explicit reanalysis uses the current settings/funding basis once while subsets keep their original basis',async()=>{
+  const f=investmentFixture();await f.service.discover();await f.service.settings({unitLimit:1200});await f.service.recordBuy({definitionId:999,buy:600});f.fresh();
+  await expect(f.service.prepareInvestment({definitionIds:[108]})).rejects.toThrow('DESK_DISCOVERY_EXPIRED');expect(f.prices.tradingCandidates).toHaveBeenCalledOnce();
+  const result=await f.service.prepareInvestment({capitalLimit:5000});expect(f.prices.tradingCandidates).toHaveBeenCalledTimes(2);
+  expect(result.plan.unitLimit).toBe(1200);expect(result.plan.existingCapital).toBe(600);
+  expect(result.plan.rows.every(row=>row.buyCap<=1200)).toBe(true);expect(result.refreshedDiscovery.limit).toBe(1200);
+  expect(f.intel.refresh).not.toHaveBeenCalled();expect(f.execution.start).not.toHaveBeenCalled();
+});
+it('does not absorb settings/funding changes during a full reanalysis into the new plan',async()=>{
+  const f=investmentFixture();await f.service.discover();f.advance(300001);f.fresh();const load=f.prices.load.getMockImplementation();
+  f.prices.load.mockImplementation(async ids=>{await f.service.settings({unitLimit:800});return load(ids);});
+  await expect(f.service.prepareInvestment()).rejects.toThrow('DESK_DISCOVERY_CHANGED');expect(f.execution.prepare).not.toHaveBeenCalled();
+  expect(f.prices.tradingCandidates).toHaveBeenCalledTimes(2);expect(f.execution.start).not.toHaveBeenCalled();
+});
+it('invalidates an in-flight discovery when a newer explicit intel refresh completes',async()=>{
+  const f=investmentFixture();f.intel.refresh.mockResolvedValue({posts:[]});let resolve;
+  f.prices.tradingCandidates.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+  const discovery=f.service.discover(),outcome=discovery.then(value=>({value}),error=>({error}));
+  for(let i=0;i<100&&!resolve;i++)await Promise.resolve();expect(resolve).toBeTypeOf('function');
+  await f.service.refreshIntel();resolve({rows,at:now,platform:'console'});
+  expect((await outcome).error?.message).toBe('DESK_CONTEXT_CHANGED');expect(f.execution.prepare).not.toHaveBeenCalled();expect(f.prices.load).not.toHaveBeenCalled();
+});
+it('invalidates a pending prepare when a newer intel refresh clears its captured discovery',async()=>{
+  const f=investmentFixture();await f.service.discover();f.intel.refresh.mockResolvedValue({posts:[]});let resolve;
+  f.execution.prepare.mockImplementationOnce(plan=>new Promise(r=>{resolve=()=>r({plan});}));
+  const preparing=f.service.prepareInvestment(),outcome=preparing.then(value=>({value}),error=>({error}));
+  for(let i=0;i<100&&!resolve;i++)await Promise.resolve();expect(resolve).toBeTypeOf('function');
+  await f.service.refreshIntel();resolve();expect((await outcome).error?.message).toBe('DESK_CONTEXT_CHANGED');expect(f.execution.start).not.toHaveBeenCalled();
+});
+it.each([null,[108]])('binds prepare to discovery serial before the first asynchronous storage read (%j)',async definitionIds=>{
+  const f=investmentFixture();await f.service.discover();let resolve;f.get.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+  const preparing=f.service.prepareInvestment({definitionIds}),outcome=preparing.then(value=>({value}),error=>({error}));
+  expect(resolve).toBeTypeOf('function');await f.service.discover();resolve(null);
+  expect((await outcome).error?.message).toBe('DESK_CONTEXT_CHANGED');expect(f.execution.prepare).not.toHaveBeenCalled();
+});
+it('does not let an older concurrent explicit intel refresh replace the newer feed',async()=>{
+  const f=investmentFixture();let resolve;f.intel.refresh.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+  f.intel.refresh.mockResolvedValueOnce({posts:[]});const older=f.service.refreshIntel(),outcome=older.then(value=>({value}),error=>({error}));
+  await f.service.refreshIntel();resolve({posts:[]});expect((await outcome).error?.message).toBe('DESK_CONTEXT_CHANGED');
+  expect(f.execution.start).not.toHaveBeenCalled();
+});
+it.each(['account','cancel','superseded'])('abandons refreshed preparation when the current context changes (%s)',async kind=>{
+  const f=investmentFixture();await f.service.discover();f.advance(300001);f.fresh();let resolve,current=true;
+  const fresh=f.prices.tradingCandidates.getMockImplementation();f.prices.tradingCandidates.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+  const preparing=f.service.prepareInvestment({isCurrent:()=>current});const outcome=preparing.then(value=>({value}),error=>({error}));
+  for(let i=0;i<100&&!resolve;i++)await Promise.resolve();expect(resolve).toBeTypeOf('function');
+  if(kind==='account')f.changeAccount();if(kind==='cancel')current=false;
+  if(kind==='superseded')await f.service.discover();
+  resolve(await fresh({onProgress:()=>{}}));expect((await outcome).error?.message).toBe('DESK_CONTEXT_CHANGED');
+  expect(f.execution.prepare).not.toHaveBeenCalled();expect(f.execution.start).not.toHaveBeenCalled();expect(f.data.size).toBe(0);
+});
+it('checks prepare cancellation even while discovery is fresh, without provider calls or paid/EA actions',async()=>{
+  const f=investmentFixture();await f.service.discover();
+  await expect(f.service.prepareInvestment({isCurrent:()=>false})).rejects.toThrow('DESK_CONTEXT_CHANGED');
+  expect(f.prices.tradingCandidates).toHaveBeenCalledOnce();expect(f.execution.prepare).not.toHaveBeenCalled();expect(f.execution.start).not.toHaveBeenCalled();
+});
 it('offers a bounded starter shortlist and concrete buy ceilings without user-supplied player IDs',async()=>{
   const f=fixture();const result=await f.service.discover();
   expect(result.suggestions.length).toBeGreaterThan(0);expect(result.suggestions.length).toBeLessThanOrEqual(6);

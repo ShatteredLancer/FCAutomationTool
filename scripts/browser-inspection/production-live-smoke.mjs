@@ -124,7 +124,8 @@ export async function exerciseProductionLivePanel(context, directory) {
     for (const id of ['gallery', 'market', 'trading', 'inventory', 'routine', 'rolling', 'activity', 'settings', 'sbc']) {
       await button(`tab-${id}`).click();
       assert.equal(await host.getAttribute('data-active-tab'), id);
-      assert.equal(await host.locator('[role=tabpanel]:visible').count(), 1);
+      assert.equal(await host.locator('[id^=page-][role=tabpanel]:visible').count(), 1,'one top-level workspace remains visible');
+      if(id==='trading')assert.equal(await button('page-trading').locator('[role=tabpanel]:visible').count(),1,'one nested trading workspace remains visible');
       assert.equal(await button(`page-${id}`).isVisible(), true);
       if (['market', 'inventory', 'routine', 'rolling'].includes(id)) {
         assert.equal(await button(`page-${id}`).locator('button,input,select').count(), 0);
