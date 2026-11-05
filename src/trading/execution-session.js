@@ -1,4 +1,5 @@
 import {validateInvestmentPlan} from './investment-plan.js';
+import {noOfferRecheck} from './recheck-policy.js';
 
 export const tradingExecutionKey=scope=>`fcat-fc27-trading-execution-v1:${scope}`;
 const phases=new Set(['waiting','buy-pending','bought','move-pending','transfer','holding','list-pending','listed','sold','skipped','rejected']);
@@ -63,13 +64,15 @@ export function createTradingExecutionSession({context,scope,get,set,exclusive,c
     report('execution-checkpoint',currentPhase,record.status,record);
     try{onProgress(structuredClone(record));}catch{/* Display failure never changes receipts. */}};
   const inspect=async()=>{const record=await read();report('execution-state','inspect',record?.status??'absent',record);return {record,running:busy};};
-  async function execute({plan=null,approved=false,resume=false,eventExitsOnly=false,expectedPlanId=null}={}){
+  async function execute({plan=null,approved=false,resume=false,eventExitsOnly=false,retryNoOffer=false,expectedPlanId=null}={}){
     if(approved!==true){const error=Error('DESK_EXECUTION_APPROVAL_REQUIRED');report('execution-result','approval','blocked',null,error);throw error;}
     eventExitsOnly=eventExitsOnly===true;
+    retryNoOffer=retryNoOffer===true;
+    if(retryNoOffer&&(resume!==true||eventExitsOnly))throw Error('DESK_RECHECK_STOPPED');
     if(eventExitsOnly&&resume!==true)throw Error('DESK_EVENT_RESUME_REQUIRED');
     const validPlanId=typeof expectedPlanId==='string'&&expectedPlanId.length>0&&expectedPlanId.length<=100
       &&expectedPlanId.trim()===expectedPlanId&&!/[\u0000-\u001f]/.test(expectedPlanId);
-    if((eventExitsOnly||expectedPlanId!==null)&&!validPlanId)throw Error('DESK_EXECUTION_PLAN_ID_REQUIRED');
+    if((eventExitsOnly||retryNoOffer||expectedPlanId!==null)&&!validPlanId)throw Error('DESK_EXECUTION_PLAN_ID_REQUIRED');
     if(busy){const error=Error('DESK_EXECUTION_BUSY');report('execution-result','approval','blocked',null,error);throw error;}
     busy=true;stopped=false;let record=null,adapter=null,begun=false,intent=null;stage('preflight');
     try{const result=await exclusive(scope,async()=>{try{
@@ -77,7 +80,12 @@ export function createTradingExecutionSession({context,scope,get,set,exclusive,c
       // Bind the approval to the journal actually read under this exclusive
       // lock. A different tab's plan must not be paused, overwritten or run.
       if(expectedPlanId!==null&&(resume?record?.plan.id:plan?.id)!==expectedPlanId)throw Error('DESK_EXECUTION_PLAN_MISMATCH');
-      if(resume){if(!record)throw Error('DESK_EXECUTION_MISSING');begun=true;}
+      if(resume){if(!record)throw Error('DESK_EXECUTION_MISSING');
+        // A delayed pass reactivates only exact, evidenced no-offer skips.
+        // Validate under the plan lock before modifying any durable record.
+        if(retryNoOffer){const check=noOfferRecheck(record,now());if(check.reason)throw Error(check.reason);
+          for(const e of record.entries)if(check.rows.includes(e.definitionId)){e.phase='waiting';delete e.reason;}}
+        begun=true;}
       else{validateInvestmentPlan(plan,context);if(plan.expiresAt<=now())throw Error('DESK_DISCOVERY_EXPIRED');
         if(record?.plan.id===plan.id)throw Error('DESK_EXECUTION_ALREADY_STARTED');
         if(record&&!record.entries.every(e=>terminal.has(e.phase))&&!pristine(record))throw Error('DESK_EXECUTION_RECOVERY_REQUIRED');

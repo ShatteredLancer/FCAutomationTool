@@ -169,7 +169,7 @@ export function createFcatDiagnosticLog({ gmGetValue, gmSetValue, key = 'fcat-fc
       if (entry.area === 'gallery' && ['purchase-result', 'listing-result'].includes(entry.event)
           || entry.area === 'puzzle' && entry.event === 'solve-result'
           || entry.area === 'streamlined' && entry.event === 'contribution-transaction' && entry.reason
-          || entry.area === 'trading' && (['execution-result','plan-result'].includes(entry.event)
+          || entry.area === 'trading' && (['execution-result','execution-offer','plan-result'].includes(entry.event)
             ||entry.event==='execution-state'&&['paused','recovery-required'].includes(entry.status))) {
         transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
       }

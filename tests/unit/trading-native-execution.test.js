@@ -8,7 +8,7 @@ import {traditionalJournalScope} from '../../src/fc27/traditional-journal.js';
 import {createFcatDiagnosticLog} from '../../src/diagnostics/fcat-diagnostic-log.js';
 import {tradingExecutionKey} from '../../src/trading/execution-session.js';
 
-function fixture({diagnosticLog=null}={}){
+function fixture({diagnosticLog=null,searchReply=null}={}){
   const {root}=executionRuntime(),data=new Map(),calls=[],unassigned=[],transfer=[];let time=Date.now(),coins=40000,auction={tradeId:'9901',tradeState:'active',buyNowPrice:600,canBuy:()=>true,getSecondsRemaining:()=>60};
   const context={scope:'native-test',season:'27',platform:'console'},observable=reply=>({observe(_o,cb){cb(this,reply);},unobserve(){}});
   Object.assign(root.ItemPile,{PURCHASED:6,CLUB:7,TRANSFER:5});root.MAX_NEW_ITEMS=100;root.GameCurrency={COINS:'COINS'};root.TradeAccessLevel={ALLOWED:1};
@@ -25,7 +25,7 @@ function fixture({diagnosticLog=null}={}){
       return observable({success:true,status:200,data:{itemIds:[card.id]}});}
     move(card,pile){calls.push(['move',card.id,pile]);card.pile=pile;unassigned.splice(0);transfer.push(card);return observable({success:true,status:200,data:{itemIds:[card.id]}});}
     list(card,startPrice,buyNow,duration){calls.push(['list',card.id,startPrice,buyNow,duration]);auction={tradeId:9902,tradeState:'active',startingBid:startPrice,buyNowPrice:buyNow,currentBid:0};return observable({success:true,status:200});}
-    searchTransferMarket(criteria){calls.push(['search',criteria.maxBuy]);return observable({success:true,status:200,data:{items:criteria.maxBuy>=600?[item]:[]}});}
+    searchTransferMarket(criteria){calls.push(['search',criteria.maxBuy]);return observable(searchReply?searchReply(criteria,item):{success:true,status:200,data:{items:criteria.maxBuy>=600?[item]:[]}});}
     clearTransferMarketCache(){}
     requestUnassignedItems(){return observable({success:true,status:200,response:{items:unassigned}});}
     requestTransferItems(){return observable({success:true,status:200});}
@@ -43,7 +43,7 @@ function fixture({diagnosticLog=null}={}){
     nationId:1,leagueId:2,teamId:3,preferredPosition:'CM',sourceCount:2,ggQuote:quote('futgg'),resaleEstimate:1000,buyCeiling:650,reason:'price spread'}]}});
   const adapterFactory=options=>createNativeTradingExecutionAdapter({...options,now:()=>time,sleep:async ms=>{time+=ms;}});
   const service=createFc27TradingExecution({root,prices,get:async(k,f)=>structuredClone(data.get(k)??f),set:async(k,v)=>data.set(k,structuredClone(v)),liveEnabled:true,adapterFactory,diagnosticLog});
-  return {root,prices,plan,service,data,calls,transfer,context,adapterFactory,sell:()=>{auction={...auction,tradeState:'closed',currentBid:1000,isSold:()=>true};},scope:traditionalJournalScope(readFc27Context(root))};
+  return {root,prices,plan,service,data,calls,transfer,context,adapterFactory,advance:ms=>time+=ms,sell:()=>{auction={...auction,tradeState:'closed',currentBid:1000,isSold:()=>true};},scope:traditionalJournalScope(readFc27Context(root))};
 }
 it('runs the real desk session through the original EA buyer/mover/lister and independent readback',async()=>{
   const f=fixture();const prepared=f.service.prepare(f.plan);expect(prepared.balance).toBe(40000);expect(f.calls).toEqual([]);
@@ -52,6 +52,57 @@ it('runs the real desk session through the original EA buyer/mover/lister and in
   expect(f.calls.filter(c=>c[0]==='list')).toEqual([['list',801,1000,1000,3600]]);expect(f.transfer).toHaveLength(1);
   f.sell();expect((await f.service.recover()).record.entries[0]).toMatchObject({phase:'sold',salePrice:1000,listingTradeId:'9902'});
   expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toHaveLength(3);
+});
+it.each(['empty','above-cap','valid'])('distinguishes native search results at the unchanged reviewed cap (%s)',async mode=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.99'});
+  const f=fixture({diagnosticLog:log,searchReply:(_criteria,item)=>({success:true,status:200,data:{items:mode==='empty'?[]:mode==='above-cap'
+    ?[{...item,getAuctionData:()=>({...item.getAuctionData(),buyNowPrice:700})}]:[item]},privateToken:'PRIVATE_SEARCH_TOKEN'})});
+  f.service.prepare(f.plan);const result=await f.service.start({plan:f.plan,approved:true}),out=await log.exportPayload();
+  expect(f.calls.filter(c=>c[0]==='search')).toEqual([['search',650]]);
+  expect(out.criticalEntries).toContainEqual(expect.objectContaining({area:'trading',event:'execution-search',phase:'search',definitionId:901,
+    maxBuy:650,referencePrice:1000,searchCeiling:650,attempt:1,attemptLimit:1,httpStatus:200,count:mode==='empty'?0:1}));
+  expect(out.transactionResults).toContainEqual(expect.objectContaining({area:'trading',event:'execution-offer',definitionId:901,maxBuy:650,
+    status:mode==='valid'?'accepted':'skipped',acceptedCount:mode==='valid'?1:0,responseCount:mode==='empty'?0:1,
+    ...(mode==='valid'?{actualPrice:600}:{reason:'DESK_EXECUTION_NO_OFFER'})}));
+  expect(JSON.stringify(out)).not.toMatch(/PRIVATE_SEARCH_TOKEN|native-test|itemId|tradeId|accountScope/);
+  if(mode==='valid'){expect(result.record.status).toBe('waiting-sales');expect(f.calls.filter(c=>c[0]==='bid')).toEqual([['bid',801,600]]);}
+  else{expect(result.record.status).toBe('completed');expect(result.record.entries[0]).toMatchObject({phase:'skipped',reason:'DESK_EXECUTION_NO_OFFER',offer:null});
+    expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([]);
+    const reads=f.calls.length;await f.service.recover();expect(f.calls).toHaveLength(reads);}
+});
+it.each([401,429,503])('exports native search failures without misreporting no offer or retrying (%i)',async status=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.99'});
+  const f=fixture({diagnosticLog:log,searchReply:()=>({success:false,status,error:{code:461},data:{items:[]}})});
+  f.service.prepare(f.plan);const result=await f.service.start({plan:f.plan,approved:true}),out=await log.exportPayload();
+  expect(result.record.reason).toBe('DESK_EXECUTION_SEARCH_UNCONFIRMED');expect(result.record.entries[0].phase).toBe('waiting');
+  expect(f.calls).toEqual([['search',650]]);
+  expect(out.criticalEntries).toContainEqual(expect.objectContaining({event:'execution-search',phase:'search',httpStatus:status,errorCode:461}));
+  expect(out.transactionResults).toContainEqual(expect.objectContaining({event:'execution-offer',status:'blocked',reason:'DESK_EXECUTION_SEARCH_UNCONFIRMED',httpStatus:status}));
+  expect(out.transactionResults.some(e=>e.reason==='DESK_EXECUTION_NO_OFFER')).toBe(false);
+});
+it('logs the exact public references that revoke a plan without buying or increasing a cap',async()=>{
+  const log=createFcatDiagnosticLog({gmGetValue:async()=>null,gmSetValue:async()=>{},version:'27.0.99'}),f=fixture({diagnosticLog:log});
+  const load=f.prices.load.getMockImplementation();f.prices.load.mockImplementation(async()=>{const r=await load();r.references[901].quotes.futbin.price=950;return r;});
+  f.service.prepare(f.plan);expect((await f.service.start({plan:f.plan,approved:true})).record.reason).toBe('DESK_EXECUTION_REFERENCE_CHANGED');
+  expect((await log.exportPayload()).criticalEntries).toContainEqual(expect.objectContaining({event:'execution-reference',definitionId:901,
+    phase:'reference-prices',status:'blocked',futbinPrice:950,futggPrice:1000,referencePrice:950,maxBuy:650,reason:'DESK_EXECUTION_REFERENCE_CHANGED'}));
+  expect(f.calls).toEqual([]);
+});
+it('forwards delayed recheck to the native buyer at the same cap and buys only once',async()=>{
+  let available=false;const f=fixture({searchReply:(_c,item)=>({success:true,status:200,data:{items:available?[item]:[]}})});
+  f.service.prepare(f.plan);expect((await f.service.start({plan:f.plan,approved:true})).record.entries[0].phase).toBe('skipped');
+  available=true;const result=await f.service.start({resume:true,retryNoOffer:true,expectedPlanId:f.plan.id,approved:true});
+  expect(result.record.plan).toEqual(f.plan);expect(result.record.status).toBe('waiting-sales');
+  expect(f.calls.filter(c=>c[0]==='search')).toEqual([['search',650],['search',650]]);
+  expect(f.calls.filter(c=>c[0]==='bid')).toEqual([['bid',801,600]]);
+  await expect(f.service.start({resume:true,retryNoOffer:true,expectedPlanId:f.plan.id,approved:true})).rejects.toThrow('DESK_RECHECK_NO_CANDIDATES');
+  expect(f.calls.filter(c=>c[0]==='bid')).toHaveLength(1);
+});
+it('rechecks the original expiry after durable intent/pacing and before native payment',async()=>{
+  const f=fixture();f.service.prepare(f.plan);let expired=false;
+  const result=await f.service.start({plan:f.plan,approved:true,onProgress:record=>{if(!expired&&record.entries.some(e=>e.phase==='buy-pending')){expired=true;f.advance(300001);}}});
+  expect(result.record.reason).toBe('DESK_PLAN_EXPIRED');expect(result.record.entries[0]).toMatchObject({phase:'waiting',offer:null});
+  expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([]);
 });
 it('cannot execute a changed or unprepared plan, and does not trade just because X or a page opens',async()=>{
   const f=fixture();await f.service.inspect();await f.service.recover();expect(f.calls).toEqual([]);

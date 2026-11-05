@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.98
+// @version      27.0.99
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.98", at: Date.now(), status: 'started',
+    state = { version: "27.0.99", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26023,6 +26023,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return fresh;
   }
 
+  // src/trading/recheck-policy.js
+  var emptyKeys = /* @__PURE__ */ new Set(["definitionId", "phase", "offer", "reason"]);
+  var settledKeys = /* @__PURE__ */ new Set([...emptyKeys, "buyAcknowledged", "listAcknowledged", "listingTradeId", "salePrice", "soldAt"]);
+  function noOfferRecheck(record, now) {
+    if (!record || record.plan.expiresAt <= now) return { reason: "DESK_PLAN_EXPIRED", rows: [] };
+    if (record.reason || !["completed", "waiting-sales", "waiting-events"].includes(record.status) || record.entries.some((e) => e.phase === "skipped" ? e.offer !== null || !["DESK_EXECUTION_NO_OFFER", "DESK_DISCOVERY_EXPIRED"].includes(e.reason) || Object.keys(e).some((k) => !emptyKeys.has(k)) : !["listed", "sold", "holding", "rejected"].includes(e.phase) || Object.keys(e).some((k) => !settledKeys.has(k)))) return { reason: "DESK_RECHECK_STOPPED", rows: [] };
+    const rows = record.entries.filter((e) => e.phase === "skipped" && e.reason === "DESK_EXECUTION_NO_OFFER").map((e) => e.definitionId);
+    return { reason: rows.length ? null : "DESK_RECHECK_NO_CANDIDATES", rows };
+  }
+
   // src/adapters/browser/fc27-trading-plan-view.js
   function mountTradingPlanView({ document, parent, service, isCurrent, onDiscovery = () => {
   }, now = () => Date.now(), timers = globalThis }) {
@@ -26076,30 +26086,32 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     positions3.hidden = true;
     const rules = add3(parent, "details");
     add3(rules, "summary", "\u4EA4\u6613\u89C4\u5219\u4E0E\u98CE\u9669");
-    add3(rules, "small", "\u6BCF\u7248\u672C\u4E00\u5F20\u3001\u6700\u591A\u516D\u5F20\uFF0C\u4E00\u8F6E\u6709\u9650\u6267\u884C\uFF1B\u4E70\u4E0D\u5230\u8DF3\u8FC7\u3002\u65B0\u8D2D\u5361\u6309\u56FA\u5B9A\u76EE\u6807\u4EF7\u4E0A\u67B6\u4E00\u5C0F\u65F6\uFF0C\u4E0D\u81EA\u52A8\u964D\u4EF7\u3001\u91CD\u6302\u6216\u8FFD\u6DA8\u3002\u53EA\u6709\u786E\u8BA4\u5356\u51FA\u624D\u8BA1\u6536\u76CA\u3002");
+    add3(rules, "small", "\u6BCF\u7248\u672C\u4E00\u5F20\u3001\u6700\u591A\u516D\u5F20\uFF1B\u672A\u4E70\u5230\u7684\u539F\u6E05\u5355\u6BCF 60 \u79D2\u91CD\u67E5\uFF0C\u81F3\u539F\u62A5\u4EF7\u5230\u671F\uFF0C\u4E0D\u81EA\u52A8\u7EED\u671F\u3002\u65B0\u8D2D\u5361\u6309\u56FA\u5B9A\u76EE\u6807\u4EF7\u4E0A\u67B6\u4E00\u5C0F\u65F6\uFF0C\u4E0D\u81EA\u52A8\u964D\u4EF7\u3001\u91CD\u6302\u6216\u8FFD\u6DA8\u3002\u53EA\u6709\u786E\u8BA4\u5356\u51FA\u624D\u8BA1\u6536\u76CA\u3002");
     add3(rules, "small", "\u53EA\u64CD\u4F5C\u672C\u8F6E\u65B0\u4E70\u7684\u5361\uFF0C\u4E0D\u51FA\u552E\u539F\u6709 Club \u5361\u3002\u79BB\u5F00\u4EA4\u6613\u9875\u6216\u5173\u95ED\u9875\u9762\u4F1A\u505C\u6B62\u65B0\u64CD\u4F5C\uFF0C\u505C\u6B62\u4E0D\u64A4\u56DE\u5DF2\u4E0A\u67B6\u6302\u5355\u3002\u81EA\u52A8\u5316\u5B58\u5728\u8D26\u53F7\u98CE\u9669\uFF0C\u65E0\u9632\u5C01\u6216\u76C8\u5229\u627F\u8BFA\u3002");
     add3(rules, "small", "\u89C2\u5BDF\u7B14\u8BB0\u7684\u624B\u586B\u4F59\u989D\u4E0D\u66FF\u4EE3 EA \u5B9E\u65F6\u4F59\u989D\uFF1B\u4E70\u5165\u524D\u4ECD\u6838\u4F59\u989D\u3001\u5BB9\u91CF\u3001\u603B\u9884\u7B97\u548C\u5355\u5361\u9650\u4EF7\u3002");
-    let active = false, busy = false, launching = false, plan = null, record = null, timer = null, revision = 0, advice = null, eventArmed = null, grantRevision = 0;
+    let active = false, busy = false, launching = false, plan = null, record = null, timer = null, revision = 0, advice = null, eventArmed = null, grantRevision = 0, buyArmed = null, nextBuyAt = 0, buyExpired = false;
     const valid3 = (t) => active && t === revision && isCurrent();
     const haltTimer = () => {
       if (timer !== null) timers.clearInterval(timer);
       timer = null;
     };
     const pending3 = () => record?.entries.some((e) => ["buy-pending", "move-pending", "list-pending"].includes(e.phase));
+    const receipts = () => record && !record.entries.every((e) => e.offer === null && (e.phase === "waiting" ? Object.keys(e).every((k) => ["definitionId", "phase", "offer"].includes(k)) : e.phase === "skipped" && ["DESK_EXECUTION_NO_OFFER", "DESK_DISCOVERY_EXPIRED"].includes(e.reason) && Object.keys(e).every((k) => ["definitionId", "phase", "offer", "reason"].includes(k))));
     const resumable = () => record && record.status !== "completed" && !pending3() && record.entries.some((e) => ["waiting", "bought", "transfer", "holding"].includes(e.phase));
     const sync = () => {
-      const available = service?.executionAvailable?.() === true, monitoring = record?.status === "waiting-events" && eventArmed === record?.plan.id, canResume = Boolean(resumable()) && !plan && !monitoring;
+      const available = service?.executionAvailable?.() === true, monitoring = buyArmed === record?.plan.id || record?.status === "waiting-events" && eventArmed === record?.plan.id, canResume = Boolean(resumable()) && !plan && !monitoring;
       prepare2.disabled = busy || !available || !advice;
       start.hidden = !plan;
       resume.hidden = !canResume;
       approvalText.textContent = canResume ? `\u6211\u5DF2\u5BA1\u6838\u539F\u65B9\u6848\uFF0C\u540C\u610F\u6309\u539F\u4E0A\u9650 ${money2(record.plan.capitalLimit)}\u3001\u7559\u5B58 ${money2(record.plan.reserveCoins)} \u7EE7\u7EED\uFF1B\u4E0A\u65B9\u8F93\u5165\u4EC5\u7528\u4E8E\u65B0\u65B9\u6848\u3002` : "\u6211\u5DF2\u5BA1\u6838\u6E05\u5355\u3001\u4E0A\u9650\u548C\u98CE\u9669\uFF0C\u540C\u610F\u6309\u672C\u65B9\u6848\u771F\u5B9E\u4E70\u5165\u5E76\u4E0A\u67B6";
+      approvalText.textContent += " \u539F\u6E05\u5355\u672A\u4E70\u5230\u7684\u5361\u6BCF 60 \u79D2\u81EA\u52A8\u91CD\u67E5\uFF0C\u81F3\u539F\u62A5\u4EF7\u5230\u671F\uFF1B\u4E0D\u63D0\u9AD8\u9650\u4EF7\u3001\u4E0D\u81EA\u52A8\u7EED\u671F\u3002";
       if ((plan ?? (canResume ? record?.plan : null))?.rows.some((r) => r.strategy === "evo-event")) approvalText.textContent += " \u6D88\u606F\u4ED3\u5148\u6301\u6709\uFF0C\u672C\u9875\u6301\u7EED\u6838\u4EF7\uFF0C\u8FBE\u5230\u5BA1\u6838\u76EE\u6807\u540E\u81EA\u52A8\u4E0A\u67B6\uFF1B6 \u5C0F\u65F6\u540E\u6682\u505C\u590D\u6838\uFF0C\u4E0D\u81EA\u52A8\u4E8F\u672C\u5356\u51FA\u3002";
       approvalLabel.hidden = !plan && !canResume;
       start.disabled = busy || !available || !plan || !approval.checked;
       resume.disabled = busy || !available || !approval.checked;
-      recover.hidden = !record;
+      recover.hidden = !record || !receipts() && record.reason !== "DESK_EXECUTION_READ_UNCONFIRMED";
       recover.disabled = busy || !available;
-      stop6.hidden = (!record || record.status === "completed") && !launching;
+      stop6.hidden = (!record || record.status === "completed") && !launching && !buyArmed;
       stop6.disabled = !available;
       budget.disabled = reserve.disabled = busy || !available;
       approval.disabled = busy || !available;
@@ -26117,6 +26129,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       DESK_EXECUTION_PLAN_MISMATCH: "\u6267\u884C\u8BB0\u5F55\u5DF2\u88AB\u53E6\u4E00\u7A97\u53E3\u66F4\u65B0\uFF0C\u65E7\u89E6\u4EF7\u6388\u6743\u5DF2\u53D6\u6D88\u3002\u8BF7\u53EA\u8BFB\u6838\u5BF9\u540E\u91CD\u65B0\u5BA1\u6838\u5F53\u524D\u65B9\u6848\u3002",
       DESK_EXECUTION_PLAN_ID_REQUIRED: "\u89E6\u4EF7\u6388\u6743\u7F3A\u5C11\u539F\u65B9\u6848\u6807\u8BC6\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u91CD\u65B0\u6253\u5F00\u5E76\u5BA1\u6838\u7EE7\u7EED\u3002",
       DESK_EXECUTION_READ_UNCONFIRMED: "\u6210\u4EA4\u6216\u6301\u4ED3\u8BFB\u53D6\u5C1A\u672A\u786E\u8BA4\u3002\u8BF7\u70B9\u201C\u6838\u5BF9\u6210\u4EA4\u4E0E\u6301\u4ED3\u201D\u91CD\u65B0\u8BFB\u53D6\uFF0C\u4E0D\u4F1A\u518D\u6B21\u4E0B\u5355\u3002",
+      DESK_EXECUTION_NO_OFFER: "\u672C\u6B21\u641C\u7D22\u672A\u627E\u5230\u9650\u4EF7\u5185\u5408\u683C\u6302\u5355\uFF0C\u672A\u4E0B\u5355\uFF1B\u4EC5\u8868\u793A\u672C\u6B21\u7ED3\u679C\uFF0C\u4E0D\u4EE3\u8868\u5168\u5E02\u573A\u65E0\u8D27\uFF0C\u4E0D\u81EA\u52A8\u8FFD\u4EF7\u3002",
+      DESK_EXECUTION_REFERENCE_CHANGED: "\u5F53\u524D\u53CC\u6E90\u53C2\u8003\u4EF7\u5DF2\u53D8\u5316\u6216\u6838\u4EF7\u6761\u4EF6\u4E0D\u518D\u6EE1\u8DB3\uFF0C\u5DF2\u6682\u505C\u65B0\u4E70\u5165\u3002\u672A\u4E70\u5165\u53EF\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\uFF1B\u5DF2\u6709\u6301\u4ED3\u8BF7\u5148\u5904\u7406\u539F\u65B9\u6848\u3002\u53EA\u8BFB\u6838\u5BF9\u4E0D\u4F1A\u5237\u65B0\u4E70\u5165\u6388\u6743\u3002",
+      DESK_EXECUTION_SEARCH_UNCONFIRMED: "\u5E02\u573A\u641C\u7D22\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u5DF2\u6682\u505C\u65B0\u4E0B\u5355\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF1B\u5DF2\u6709\u6210\u4EA4\u548C\u5F85\u6838\u5BF9\u8BB0\u5F55\u4FDD\u7559\u3002",
       DESK_EXECUTION_RECOVERY_REQUIRED: "\u4E0A\u8F6E\u4ECD\u6709\u6301\u4ED3\u6216\u5F85\u6838\u5BF9\u7ED3\u679C\u3002\u8BF7\u5148\u53EA\u8BFB\u6838\u5BF9\uFF0C\u518D\u7EE7\u7EED\u539F\u65B9\u6848\u3002",
       DESK_EXECUTION_APPROVAL_REQUIRED: "\u65B9\u6848\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\u540E\u786E\u8BA4\u3002",
       DESK_EXECUTION_DISABLED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u771F\u5B9E\u4EA4\u6613\u3002",
@@ -26148,8 +26163,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const spent = record.entries.reduce((n, e) => n + (e.offer && !["waiting", "skipped", "rejected"].includes(e.phase) ? e.offer.price : 0), 0);
       const bought = record.entries.filter((e) => ["bought", "move-pending", "transfer", "holding", "list-pending", "listed", "sold"].includes(e.phase)).length;
       const sold = record.entries.filter((e) => e.phase === "sold"), profit = sold.reduce((n, e) => n + deskNet(e.salePrice) - e.offer.price, 0);
+      const skipped = record.entries.filter((e) => e.phase === "skipped"), noOffer = skipped.filter((e) => e.reason === "DESK_EXECUTION_NO_OFFER").length;
+      const expired = skipped.filter((e) => e.reason === "DESK_DISCOVERY_EXPIRED").length;
+      const noPurchase = record.status === "completed" && !receipts();
+      const summary3 = noPurchase ? `\u672C\u8F6E\u672A\u4E70\u5165\uFF0C\u652F\u51FA 0\u3002${noOffer ? `${noOffer} \u5F20\u672C\u6B21\u641C\u7D22\u672A\u627E\u5230\u9650\u4EF7\u5185\u5408\u683C\u6302\u5355\uFF1B` : ""}${expired ? `${expired} \u5F20\u56E0\u62A5\u4EF7\u8FC7\u671F\u8DF3\u8FC7\uFF1B` : ""}${buyArmed === record.plan.id ? "\u6B63\u5728\u7B49\u5F85\u5EF6\u65F6\u91CD\u67E5\uFF0C\u4E0D\u81EA\u52A8\u63D0\u9AD8\u9650\u4EF7\u3002" : "\u7A0D\u540E\u53EF\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\uFF0C\u4E0D\u81EA\u52A8\u63D0\u9AD8\u9650\u4EF7\u3002"}` : record.status === "completed" ? "\u672C\u8F6E\u5DF2\u7ED3\u675F" : record.status === "waiting-events" ? `\u6D88\u606F\u4ED3\u6301\u6709\uFF0C${eventArmed ? "\u5DF2\u542F\u52A8\u672C\u9875\u89E6\u4EF7\u76D1\u6D4B" : "\u5C1A\u672A\u542F\u52A8\u89E6\u4EF7\u76D1\u6D4B\uFF0C\u9700\u5BA1\u6838\u7EE7\u7EED"}` : record.status === "waiting-sales" ? "\u4E70\u5165/\u4E0A\u67B6\u5904\u7406\u5DF2\u7ED3\u675F\uFF0C\u7B49\u5F85\u6210\u4EA4" : record.status === "recovery-required" ? "\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u5DF2\u6682\u505C" : record.status === "paused" ? "\u5DF2\u6682\u505C" : "\u6B63\u5728\u6267\u884C";
       progress.dataset.state = record.reason || pending3() ? "error" : "ready";
-      progress.textContent = `${record.status === "completed" ? "\u672C\u8F6E\u5DF2\u7ED3\u675F" : record.status === "waiting-events" ? `\u6D88\u606F\u4ED3\u6301\u6709\uFF0C${eventArmed ? "\u5DF2\u542F\u52A8\u672C\u9875\u89E6\u4EF7\u76D1\u6D4B" : "\u5C1A\u672A\u542F\u52A8\u89E6\u4EF7\u76D1\u6D4B\uFF0C\u9700\u5BA1\u6838\u7EE7\u7EED"}` : record.status === "waiting-sales" ? "\u4E70\u5165/\u4E0A\u67B6\u5904\u7406\u5DF2\u7ED3\u675F\uFF0C\u7B49\u5F85\u6210\u4EA4" : record.status === "recovery-required" ? "\u7ED3\u679C\u5F85\u6838\u5BF9\uFF0C\u5DF2\u6682\u505C" : record.status === "paused" ? "\u5DF2\u6682\u505C" : "\u6B63\u5728\u6267\u884C"} \xB7 \u5DF2\u786E\u8BA4\u4E70\u5165 ${bought} / ${record.entries.length} \xB7 \u5DF2\u7528/\u5F85\u6838\u5BF9 ${spent} / \u4E0A\u9650 ${record.plan.capitalLimit} \xB7 \u5DF2\u786E\u8BA4\u5356\u51FA ${sold.length} \xB7 \u5DF2\u5B9E\u73B0\u7A0E\u540E\u76C8\u4E8F ${profit}${record.reason ? `\u3002${explain(record.reason)}` : ""}`;
+      progress.textContent = `${summary3} \xB7 \u5DF2\u786E\u8BA4\u4E70\u5165 ${bought} / ${record.entries.length} \xB7 \u5DF2\u8DF3\u8FC7 ${skipped.length} \xB7 \u5DF2\u7528/\u5F85\u6838\u5BF9 ${spent} / \u4E0A\u9650 ${record.plan.capitalLimit} \xB7 \u5DF2\u786E\u8BA4\u5356\u51FA ${sold.length} \xB7 \u5DF2\u5B9E\u73B0\u7A0E\u540E\u76C8\u4E8F ${profit}${record.reason ? `\u3002${explain(record.reason)}` : ""}` + (buyArmed === record.plan.id ? ` \xB7 \u6BCF 60 \u79D2\u81EA\u52A8\u91CD\u67E5\u672A\u4E70\u5230\u7684\u5361\uFF0C\u4E0B\u6B21 ${new Date(nextBuyAt).toLocaleTimeString()}\uFF0C\u622A\u6B62 ${new Date(record.plan.expiresAt).toLocaleTimeString()}\u3002` : buyExpired ? " \xB7 \u81EA\u52A8\u91CD\u67E5\u5DF2\u5230\u671F\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\uFF0C\u539F\u9884\u7B97\u548C\u5355\u5361\u9650\u4EF7\u672A\u53D8\u3002" : "");
       diagnostic(record.reason);
       add3(positions3, "h3", "\u6267\u884C\u4E0E\u6301\u4ED3");
       const wrap = add3(positions3, "div", "", "trading-table-wrap"), t = add3(wrap, "table", "", "trading-table");
@@ -26205,10 +26224,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const stopMonitoring = () => {
       eventArmed = null;
+      buyArmed = null;
+      buyExpired = false;
       grantRevision++;
       haltTimer();
       service?.stopInvestment?.();
       sync();
+    };
+    const monitorResult = (result, id13, grant) => {
+      if (grant !== grantRevision || result?.record?.plan.id !== id13) return;
+      buyArmed = noOfferRecheck(result.record, now()).rows.length ? id13 : null;
+      nextBuyAt = now() + 6e4;
+      eventArmed = result.record.status === "waiting-events" ? id13 : null;
+      if (buyArmed || eventArmed || result.record.status === "waiting-sales") autoRead();
+      else haltTimer();
     };
     const autoRead = () => {
       haltTimer();
@@ -26220,7 +26249,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return;
         }
         if (busy) return;
-        if (record?.status === "waiting-events" && eventArmed === record.plan.id) void task(async (ticket) => {
+        if (buyArmed && buyArmed !== record?.plan.id) {
+          stopMonitoring();
+          return;
+        }
+        if (buyArmed && now() >= record.plan.expiresAt) {
+          buyArmed = null;
+          buyExpired = true;
+          renderRecord(record);
+          if (!eventArmed && record.status !== "waiting-sales") haltTimer();
+        }
+        if (buyArmed && now() >= nextBuyAt) void task(async (ticket) => {
+          const expectedPlanId = buyArmed, grant = grantRevision;
+          try {
+            const result = await service.startInvestment({ resume: true, approved: true, retryNoOffer: true, expectedPlanId, onProgress: (value) => {
+              if (valid3(ticket)) renderRecord(value);
+            } });
+            if (valid3(ticket)) monitorResult(result, expectedPlanId, grant);
+            return result;
+          } catch (error2) {
+            if (valid3(ticket)) stopMonitoring();
+            throw error2;
+          }
+        });
+        else if (record?.status === "waiting-events" && eventArmed === record.plan.id) void task(async (ticket) => {
           const expectedPlanId = eventArmed;
           try {
             const result = await service.startInvestment({ resume: true, approved: true, eventExitsOnly: true, expectedPlanId, onProgress: (value) => {
@@ -26276,6 +26328,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         remove.addEventListener("click", (e) => {
           if (!e.isTrusted) return;
           void task(async (ticket) => {
+            stopMonitoring();
             const ids2 = plan.rows.filter((r) => r.definitionId !== row.definitionId).map((r) => r.definitionId);
             plan = null;
             approval.checked = false;
@@ -26294,6 +26347,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     prepare2.addEventListener("click", (event) => {
       if (!event.isTrusted) return;
       void task(async (ticket) => {
+        stopMonitoring();
         plan = null;
         approval.checked = false;
         table.replaceChildren();
@@ -26319,6 +26373,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         launching = true;
         approval.checked = false;
         eventArmed = null;
+        buyArmed = null;
+        buyExpired = false;
         const grant = ++grantRevision, approvedPlan = resumeMode ? record?.plan : plan;
         progress.dataset.state = "";
         sync();
@@ -26330,10 +26386,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (valid3(ticket)) {
             plan = null;
             approval.checked = false;
-            if (result?.record?.status === "waiting-events" && grant === grantRevision && result.record.plan.id === approvedPlan?.id) {
-              eventArmed = approvedPlan.id;
-              autoRead();
-            } else if (result?.record?.status === "waiting-sales") autoRead();
+            monitorResult(result, approvedPlan?.id, grant);
           }
           return result;
         } finally {
@@ -26351,7 +26404,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!e.isTrusted || !active) return;
       stopMonitoring();
       approval.checked = false;
-      progress.textContent = "\u5DF2\u8BF7\u6C42\u505C\u6B62\u65B0\u64CD\u4F5C\uFF1B\u5728\u9014\u8BF7\u6C42\u4FDD\u7559\u56DE\u6267\uFF0C\u5DF2\u4E0A\u67B6\u6302\u5355\u4E0D\u64A4\u56DE\u3002\u7A0D\u540E\u53EF\u53EA\u8BFB\u6838\u5BF9\u3002";
+      progress.textContent = record && !receipts() ? "\u5DF2\u505C\u6B62\u81EA\u52A8\u91CD\u67E5\uFF0C\u5C1A\u672A\u4E70\u5165\uFF0C\u652F\u51FA 0\u3002\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\u540E\u53EF\u518D\u542F\u52A8\u3002" : "\u5DF2\u8BF7\u6C42\u505C\u6B62\u65B0\u64CD\u4F5C\uFF1B\u5728\u9014\u8BF7\u6C42\u4FDD\u7559\u56DE\u6267\uFF0C\u5DF2\u4E0A\u67B6\u6302\u5355\u4E0D\u64A4\u56DE\u3002\u7A0D\u540E\u53EF\u53EA\u8BFB\u6838\u5BF9\u3002";
       sync();
     });
     recover.addEventListener("click", (e) => {
@@ -26359,6 +26412,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     approval.addEventListener("change", sync);
     for (const input of [budget, reserve]) input.addEventListener("input", () => {
+      stopMonitoring();
       plan = null;
       approval.checked = false;
       table.replaceChildren();
@@ -26374,6 +26428,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         conclusion.textContent = text5;
       },
       setAdvice(value) {
+        stopMonitoring();
         advice = value;
         plan = null;
         approval.checked = false;
@@ -35125,16 +35180,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       report("execution-state", "inspect", record?.status ?? "absent", record);
       return { record, running: busy };
     };
-    async function execute({ plan = null, approved = false, resume = false, eventExitsOnly = false, expectedPlanId = null } = {}) {
+    async function execute({ plan = null, approved = false, resume = false, eventExitsOnly = false, retryNoOffer = false, expectedPlanId = null } = {}) {
       if (approved !== true) {
         const error2 = Error("DESK_EXECUTION_APPROVAL_REQUIRED");
         report("execution-result", "approval", "blocked", null, error2);
         throw error2;
       }
       eventExitsOnly = eventExitsOnly === true;
+      retryNoOffer = retryNoOffer === true;
+      if (retryNoOffer && (resume !== true || eventExitsOnly)) throw Error("DESK_RECHECK_STOPPED");
       if (eventExitsOnly && resume !== true) throw Error("DESK_EVENT_RESUME_REQUIRED");
       const validPlanId = typeof expectedPlanId === "string" && expectedPlanId.length > 0 && expectedPlanId.length <= 100 && expectedPlanId.trim() === expectedPlanId && !/[\u0000-\u001f]/.test(expectedPlanId);
-      if ((eventExitsOnly || expectedPlanId !== null) && !validPlanId) throw Error("DESK_EXECUTION_PLAN_ID_REQUIRED");
+      if ((eventExitsOnly || retryNoOffer || expectedPlanId !== null) && !validPlanId) throw Error("DESK_EXECUTION_PLAN_ID_REQUIRED");
       if (busy) {
         const error2 = Error("DESK_EXECUTION_BUSY");
         report("execution-result", "approval", "blocked", null, error2);
@@ -35153,6 +35210,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (expectedPlanId !== null && (resume ? record?.plan.id : plan?.id) !== expectedPlanId) throw Error("DESK_EXECUTION_PLAN_MISMATCH");
             if (resume) {
               if (!record) throw Error("DESK_EXECUTION_MISSING");
+              if (retryNoOffer) {
+                const check = noOfferRecheck(record, now());
+                if (check.reason) throw Error(check.reason);
+                for (const e of record.entries) if (check.rows.includes(e.definitionId)) {
+                  e.phase = "waiting";
+                  delete e.reason;
+                }
+              }
               begun = true;
             } else {
               validateInvestmentPlan(plan, context);
@@ -35505,12 +35570,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       httpStatus: Number.isSafeInteger(result?.response?.status) && result.response.status >= 100 && result.response.status <= 599 ? result.response.status : void 0,
       errorCode: [result?.response?.code, result?.error?.code, result?.errorCode].find((code2) => Number.isSafeInteger(code2) && code2 >= 0)
     });
-    const readDiagnostic = (phase, status, mismatch2, metadata) => {
+    const emitDiagnostic = (event) => {
       try {
-        Promise.resolve(onDiagnostic({ area: "trading", event: "execution-response", phase, status, mismatch: mismatch2, ...metadata })).catch(() => {
+        Promise.resolve(onDiagnostic({ area: "trading", ...event })).catch(() => {
         });
       } catch {
       }
+    };
+    const readDiagnostic = (phase, status, mismatch2, metadata) => {
+      emitDiagnostic({ event: "execution-response", phase, status, mismatch: mismatch2, ...metadata });
     };
     const cacheReady = (phase) => {
       const config = {
@@ -35612,13 +35680,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         throw error2;
       }
     };
-    let buyer = null;
+    let buyer = null, searchCount = 0;
     if (!readOnly && needsPurchases) {
       const snapshot = await loadQuotes(plan.rows);
       reference = /* @__PURE__ */ new Map();
       for (const row of plan.rows) {
         const q = snapshot.references?.[row.definitionId]?.quotes;
-        if (!buyReferenceValid(row, q)) fail30("DESK_EXECUTION_REFERENCE_CHANGED");
+        const valid3 = buyReferenceValid(row, q);
+        emitDiagnostic({
+          event: "execution-reference",
+          phase: "reference-prices",
+          status: valid3 ? "ready" : "blocked",
+          definitionId: row.definitionId,
+          futbinPrice: q?.futbin?.price,
+          futggPrice: q?.futgg?.price,
+          referencePrice: validQuotes(row, q) ? Math.min(q.futbin.price, q.futgg.price) : void 0,
+          maxBuy: row.buyCap,
+          reason: valid3 ? void 0 : "DESK_EXECUTION_REFERENCE_CHANGED"
+        });
+        if (!valid3) fail30("DESK_EXECUTION_REFERENCE_CHANGED");
         if (isEvent(row)) purchaseQuotes.set(row.definitionId, structuredClone(q));
         reference.set(row.definitionId, Math.min(q.futbin.price, q.futgg.price));
       }
@@ -35626,6 +35706,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       buyer = await buyFactory(root, {
         canWrite: () => {
           assert();
+          if (now() >= plan.expiresAt) throw Object.assign(Error("DESK_PLAN_EXPIRED"), { notSent: true });
           return canWrite();
         },
         assertTarget: assert,
@@ -35637,6 +35718,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         skipRejectedListings: true,
         wait: async () => {
           await pace();
+        },
+        onEvent: (event) => {
+          if (event?.stage !== "search") return;
+          searchCount = Number.isSafeInteger(event.count) && event.count >= 0 ? event.count : 0;
+          emitDiagnostic({
+            event: "execution-search",
+            phase: "search",
+            definitionId: event.definitionId,
+            maxBuy: event.maxBuy,
+            referencePrice: event.referencePrice,
+            searchCeiling: event.searchCeiling,
+            attempt: event.attempt,
+            attemptLimit: event.attemptLimit,
+            httpStatus: event.httpStatus,
+            errorCode: event.errorCode,
+            count: searchCount
+          });
         }
       });
       await buyer.verifySquad({ scope: traditionalJournalScope(context), entries: plan.rows.map((row) => ({ definitionId: row.definitionId })) });
@@ -35672,8 +35770,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       async find(row) {
         await pace();
         assert();
+        searchCount = 0;
         const offer = await buyer.find(row.definitionId, row.buyCap);
         assert();
+        emitDiagnostic({
+          event: "execution-offer",
+          phase: "market-search",
+          definitionId: row.definitionId,
+          maxBuy: row.buyCap,
+          referencePrice: reference.get(row.definitionId),
+          responseCount: searchCount,
+          acceptedCount: offer && !offer.unavailable ? 1 : 0,
+          actualPrice: offer?.price,
+          status: offer?.unavailable ? "blocked" : offer ? "accepted" : "skipped",
+          reason: offer?.unavailable ? "DESK_EXECUTION_SEARCH_UNCONFIRMED" : offer ? void 0 : "DESK_EXECUTION_NO_OFFER",
+          httpStatus: offer?.httpStatus,
+          errorCode: offer?.errorCode
+        });
         if (offer?.unavailable) fail30("DESK_EXECUTION_SEARCH_UNCONFIRMED");
         return offer;
       },
@@ -35921,7 +36034,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           throw error2;
         }
       },
-      async start({ plan = null, resume = false, approved = false, eventExitsOnly = false, expectedPlanId = null, onProgress: callback = null } = {}) {
+      async start({ plan = null, resume = false, approved = false, eventExitsOnly = false, retryNoOffer = false, expectedPlanId = null, onProgress: callback = null } = {}) {
         let handedOff = false;
         try {
           const current2 = create();
@@ -35930,7 +36043,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           progress = callback;
           try {
             handedOff = true;
-            return await current2.execute({ plan, resume, approved, expectedPlanId, ...eventExitsOnly === true ? { eventExitsOnly: true } : {} });
+            return await current2.execute({ plan, resume, approved, expectedPlanId, ...eventExitsOnly === true ? { eventExitsOnly: true } : {}, ...retryNoOffer === true ? { retryNoOffer: true } : {} });
           } finally {
             progress = null;
           }
@@ -37081,7 +37194,7 @@ ${version ?? ""}`;
         if (entry.area === "pricing" || entry.area === "puzzle" || entry.area === "streamlined" || entry.area === "trading" || entry.area === "gallery" && (/listing|purchase|market|bulk-list/.test(entry.event) || ["prepare", "execute", "mutation", "readback"].includes(entry.phase))) {
           criticalEntries = [...criticalEntries, entry].slice(-maxCriticalEntries);
         }
-        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result" || entry.area === "streamlined" && entry.event === "contribution-transaction" && entry.reason || entry.area === "trading" && (["execution-result", "plan-result"].includes(entry.event) || entry.event === "execution-state" && ["paused", "recovery-required"].includes(entry.status))) {
+        if (entry.area === "gallery" && ["purchase-result", "listing-result"].includes(entry.event) || entry.area === "puzzle" && entry.event === "solve-result" || entry.area === "streamlined" && entry.event === "contribution-transaction" && entry.reason || entry.area === "trading" && (["execution-result", "execution-offer", "plan-result"].includes(entry.event) || entry.event === "execution-state" && ["paused", "recovery-required"].includes(entry.status))) {
           transactionResults = [...transactionResults, entry].slice(-MAX_TRANSACTION_RESULTS);
         }
         if (performanceEntry(entry)) performanceEntries = [...performanceEntries, entry].slice(-MAX_PERFORMANCE_ENTRIES);
@@ -44893,7 +45006,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.98" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.99" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -45245,8 +45358,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.98"}`,
-    version: "27.0.98",
+    title: `FC Automation Tool ${"27.0.99"}`,
+    version: "27.0.99",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

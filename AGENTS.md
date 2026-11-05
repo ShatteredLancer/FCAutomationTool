@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-05 Trading 27.0.99：.98 新日志已过304且两轮各6张全跳过、0买入/支出/未决，另有独立REFERENCE_CHANGED；缺逐卡搜索数据，不宣称现场无货或引擎根因。仅交易wrapper接已有search回调，固定白名单输出参考价/原cap/HTTP/数量和逐卡结果，原300/120/40环不扩容；UI明确零采购与无货/过期，不误提示暂停/核对。严格无意图才隐藏恢复，额外未知证据仍保留；用户随后要求延时自动重查：原计划一次审核后本页每60秒，只重试严格无意图NO_OFFER项，锁内绑定原planID/截止；停止/离页/重载/账号/输入或新方案取消。状态机仅加显式retryNoOffer分支，原预算/单卡cap/固定目标/有效期及未知回执保护、共享EA买家和ad Gallery/Puzzle/Streamlined不改。先红绿原生合成及离线Chrome，详见docs/releases/27.0.99.md。
+
 2026-11-05 Trading 27.0.98：显式单条X导入与EVO消息仓，名单外作者不自动注册、不评级；原生root+最多3同作者回复、时间/引用/数值单位边界校验。单名普通版本唯一成功才核双源；按来源cap/现价低值/原单卡和总cap纳入整批，目标无来源时只作税后情景。审核后先持有，当前页目标触价才固定价挂1h，6h复核停；ID授权锁内绑定、停/离页/重载/检测账号变化取消，未决不重发、源码/版本/报价变化撤权但不挡只读已售回执。事件store独立6条60KB、跨标签revision防迟到复活；共享15min缓存/24次采集与退避，测试环境禁止默认真实Grok spawn。新.97日志确认preflight304被误拒；仅已初始化/完整/未过期/非dirty且数量实体一致的pile缓存接收业务成功304，后置回执标相应本地pile dirty独立2xx，不改原生方法指纹/price限制/成交真值。保留ad Gallery/Puzzle/Streamlined全部主逻辑；验证及边界见docs/releases/27.0.98.md。
 
 2026-11-05 Trading 27.0.97：.96诊断确认候选过期八次prepare拦截，旧READ_UNCONFIRMED仅stored-journal汇总，真实原生读根因未证。显式完整prepare最多重分析一次，返回新清单重新审批；子集仍绑定原选择，serial/context取消旧异步。只有严格waiting/offer:null且无额外证据的旧记录可新审批后完整归档+回读替换，未知/持仓不改；只读恢复实际读成功才清READ原因，原严格HTTP/回执不放宽，补固定阶段/mismatch数值日志。交易页分投资与执行/候选与线索/观察笔记/设置，初始无审批、挂牌无继续，错误人话+折叠码、旧审批原cap/reserve明示，窄屏卡片；显式X后有界重筛，不加模型或定时。保留ad Gallery/Puzzle/Streamlined主逻辑、预算cap、锁/主阵容及全部未知Journal；新旧浏览器/红绿控制及完整验证见docs/releases/27.0.97.md。

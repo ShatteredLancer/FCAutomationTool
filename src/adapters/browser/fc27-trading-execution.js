@@ -33,8 +33,9 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
     httpStatus:Number.isSafeInteger(result?.response?.status)&&result.response.status>=100&&result.response.status<=599?result.response.status:undefined,
     errorCode:[result?.response?.code,result?.error?.code,result?.errorCode].find(code=>Number.isSafeInteger(code)&&code>=0),
   });
+  const emitDiagnostic=event=>{try{Promise.resolve(onDiagnostic({area:'trading',...event})).catch(()=>{});}catch{/* Diagnostics only. */}};
   const readDiagnostic=(phase,status,mismatch,metadata)=>{
-    try{Promise.resolve(onDiagnostic({area:'trading',event:'execution-response',phase,status,mismatch,...metadata})).catch(()=>{});}catch{/* Diagnostics only. */}
+    emitDiagnostic({event:'execution-response',phase,status,mismatch,...metadata});
   };
   // Reviewed EA DAO getUnassignedPile/getTransferPile return success + 304
   // only for a clean repository. Domain getters return the pile's values();
@@ -117,20 +118,33 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
     if(!validQuotes(row,q)||Math.min(q.futbin.price,q.futgg.price)<row.sellPrice)throw Object.assign(Error('DESK_EVENT_TARGET_NOT_READY'),{notSent:true});
   };
   const sourceCheck=async(row,notSent=false)=>{try{await checkEventSources(row);assert();}catch(error){if(notSent)error.notSent=true;throw error;}};
-  let buyer=null;
+  let buyer=null,searchCount=0;
   if(!readOnly&&needsPurchases){
     const snapshot=await loadQuotes(plan.rows);
     reference=new Map();
     for(const row of plan.rows){const q=snapshot.references?.[row.definitionId]?.quotes;
       // Only event rows have scenario exits. The legacy minimum-reference >=
       // fixed sell price guard is deliberately unchanged for every spread row.
-      if(!buyReferenceValid(row,q))fail('DESK_EXECUTION_REFERENCE_CHANGED');
+      const valid=buyReferenceValid(row,q);
+      emitDiagnostic({event:'execution-reference',phase:'reference-prices',status:valid?'ready':'blocked',definitionId:row.definitionId,
+        futbinPrice:q?.futbin?.price,futggPrice:q?.futgg?.price,referencePrice:validQuotes(row,q)?Math.min(q.futbin.price,q.futgg.price):undefined,
+        maxBuy:row.buyCap,reason:valid?undefined:'DESK_EXECUTION_REFERENCE_CHANGED'});
+      if(!valid)fail('DESK_EXECUTION_REFERENCE_CHANGED');
       if(isEvent(row))purchaseQuotes.set(row.definitionId,structuredClone(q));
       reference.set(row.definitionId,Math.min(q.futbin.price,q.futgg.price));
     }
-    onStage('runtime-check');buyer=await buyFactory(root,{canWrite:()=>{assert();return canWrite();},assertTarget:assert,verifyCurrent:assert,
+    onStage('runtime-check');buyer=await buyFactory(root,{canWrite:()=>{assert();
+      if(now()>=plan.expiresAt)throw Object.assign(Error('DESK_PLAN_EXPIRED'),{notSent:true});return canWrite();},assertTarget:assert,verifyCurrent:assert,
       verifySquad:assert,referencePrice:async row=>reference.get(row.definitionId),playerDetails:new Map(plan.rows.map(row=>[row.definitionId,{...row,_rating:row.rating}])),
-      attempts:1,skipRejectedListings:true,wait:async()=>{await pace();}});
+      attempts:1,skipRejectedListings:true,wait:async()=>{await pace();},onEvent:event=>{
+        // The shared buyer also emits native write events. Forward only this
+        // fixed public search projection, never an arbitrary callback object.
+        if(event?.stage!=='search')return;
+        searchCount=Number.isSafeInteger(event.count)&&event.count>=0?event.count:0;
+        emitDiagnostic({event:'execution-search',phase:'search',definitionId:event.definitionId,maxBuy:event.maxBuy,
+          referencePrice:event.referencePrice,searchCeiling:event.searchCeiling,attempt:event.attempt,attemptLimit:event.attemptLimit,
+          httpStatus:event.httpStatus,errorCode:event.errorCode,count:searchCount});
+      }});
     await buyer.verifySquad({scope:traditionalJournalScope(context),entries:plan.rows.map(row=>({definitionId:row.definitionId}))});
   }
   const writable=row=>{assert();if(readOnly||cancelled||canWrite()!==true)fail('DESK_EXECUTION_NOT_SENT');if(row)eventWritable(row);};
@@ -143,7 +157,11 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
       const unassigned=root.repositories.Item.numItemsInCache(root.ItemPile.PURCHASED),unassignedMax=root.MAX_NEW_ITEMS;
       return {canTrade:cap.canTrade===true&&Number.isSafeInteger(unassigned)&&Number.isSafeInteger(unassignedMax)&&unassigned<unassignedMax,
         balance:cap.coins,freeSlots:Number.isSafeInteger(max)&&Number.isSafeInteger(used)?Math.max(0,max-used):0};},
-    async find(row){await pace();assert();const offer=await buyer.find(row.definitionId,row.buyCap);assert();
+    async find(row){await pace();assert();searchCount=0;const offer=await buyer.find(row.definitionId,row.buyCap);assert();
+      emitDiagnostic({event:'execution-offer',phase:'market-search',definitionId:row.definitionId,maxBuy:row.buyCap,referencePrice:reference.get(row.definitionId),
+        responseCount:searchCount,acceptedCount:offer&&!offer.unavailable?1:0,actualPrice:offer?.price,
+        status:offer?.unavailable?'blocked':offer?'accepted':'skipped',reason:offer?.unavailable?'DESK_EXECUTION_SEARCH_UNCONFIRMED':offer?undefined:'DESK_EXECUTION_NO_OFFER',
+        httpStatus:offer?.httpStatus,errorCode:offer?.errorCode});
       if(offer?.unavailable)fail('DESK_EXECUTION_SEARCH_UNCONFIRMED');return offer;},
     async buy(offer){await pace();const row=plan.rows.find(r=>r.definitionId===offer.definitionId);await sourceCheck(row,true);writable();
       if(isEvent(row)&&!buyReferenceValid(row,purchaseQuotes.get(row.definitionId)))throw Object.assign(Error('DESK_EXECUTION_REFERENCE_CHANGED'),{notSent:true});
@@ -246,9 +264,9 @@ export function createFc27TradingExecution({root,prices,get,set,liveEnabled,onPr
       return {plan:structuredClone(plan),balance:Number.isSafeInteger(balance)&&balance>=0?balance:null};},
     async inspect(){try{return await create().inspect();}catch(error){failure('execution-state','inspect',error);throw error;}},
     async recover(){try{return await create().recover();}catch(error){failure('execution-result','readonly-recovery',error);throw error;}},
-    async start({plan=null,resume=false,approved=false,eventExitsOnly=false,expectedPlanId=null,onProgress:callback=null}={}){let handedOff=false;try{const current=create();if(liveEnabled!==true)fail('DESK_EXECUTION_DISABLED');
+    async start({plan=null,resume=false,approved=false,eventExitsOnly=false,retryNoOffer=false,expectedPlanId=null,onProgress:callback=null}={}){let handedOff=false;try{const current=create();if(liveEnabled!==true)fail('DESK_EXECUTION_DISABLED');
       if(!resume&&(!prepared||!same(prepared,plan)))fail('DESK_EXECUTION_APPROVAL_REQUIRED');progress=callback;
-      try{handedOff=true;return await current.execute({plan,resume,approved,expectedPlanId,...(eventExitsOnly===true?{eventExitsOnly:true}:{})});}finally{progress=null;}
+      try{handedOff=true;return await current.execute({plan,resume,approved,expectedPlanId,...(eventExitsOnly===true?{eventExitsOnly:true}:{}),...(retryNoOffer===true?{retryNoOffer:true}:{})});}finally{progress=null;}
       }catch(error){if(!handedOff)failure('execution-result','approval',error);throw error;}},
     stop(){session?.stop();},
   });

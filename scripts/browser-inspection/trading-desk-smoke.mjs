@@ -3,10 +3,11 @@ import {build} from 'esbuild';
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {exerciseTradingEvents} from './trading-event-smoke.mjs';
+import {exerciseTradingNoOffer} from './trading-no-offer-smoke.mjs';
 
 export async function exerciseTradingDesk(context,directory){
   const bundle=await build({absWorkingDir:path.resolve(import.meta.dirname,'../..'),stdin:{contents:
-    "export {mountFc27AcceptancePanel} from './src/adapters/browser/fc27-acceptance-panel.js';export {createFc27TradingDesk} from './src/adapters/browser/fc27-trading-desk.js';export {createFc27TradingIntel} from './src/adapters/browser/fc27-trading-intel.js';export {createTradingExecutionSession} from './src/trading/execution-session.js';",resolveDir:path.resolve(import.meta.dirname,'../..')},
+    "export {mountFc27AcceptancePanel} from './src/adapters/browser/fc27-acceptance-panel.js';export {mountTradingPlanView} from './src/adapters/browser/fc27-trading-plan-view.js';export {createInvestmentPlan} from './src/trading/investment-plan.js';export {createFc27TradingDesk} from './src/adapters/browser/fc27-trading-desk.js';export {createFc27TradingIntel} from './src/adapters/browser/fc27-trading-intel.js';export {createTradingExecutionSession} from './src/trading/execution-session.js';",resolveDir:path.resolve(import.meta.dirname,'../..')},
     bundle:true,write:false,format:'iife',globalName:'TradingFixture',target:'chrome120'});
   const page=await context.newPage();page.setDefaultTimeout(10000);let requests=0;page.on('request',()=>{requests++;});
   try{
@@ -70,6 +71,7 @@ export async function exerciseTradingDesk(context,directory){
   await exerciseTradingPairing(context,directory,bundle.outputFiles[0].text);
   await exerciseTradingInvestment(context,directory,bundle.outputFiles[0].text);
   await exerciseTradingEvents(context,directory,bundle.outputFiles[0].text);
+  await exerciseTradingNoOffer(context,directory,bundle.outputFiles[0].text);
 }
 
 async function exerciseTradingInvestment(context,directory,bundle){

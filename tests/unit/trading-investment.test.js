@@ -42,6 +42,52 @@ function fixture({buyUnknown=false,listUnknown=false,dropWrite=false,coins=40000
 }
 const pristineRecord=()=>{const p=plan();return {schema:1,status:'paused',reason:'DESK_EXECUTION_READ_UNCONFIRMED',plan:p,
   entries:p.rows.map(row=>({definitionId:row.definitionId,phase:'waiting',offer:null}))};};
+it('rechecks only no-offer rows in the same approved plan, buying each version once without increasing limits',async()=>{
+  const f=fixture(),p=f.makePlan();f.adapter.find.mockResolvedValue(null);
+  const first=await f.session.execute({plan:p,approved:true});expect(first.record.entries.every(e=>e.phase==='skipped')).toBe(true);
+  const find=f.adapter.find.mock.calls.length;f.advance(60000);
+  f.adapter.find.mockImplementation(async row=>({definitionId:row.definitionId,itemId:10000+row.definitionId,tradeId:String(90000+row.definitionId),price:600}));
+  const result=await f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:p.id,approved:true});
+  expect(result.record.plan).toEqual(p);expect(result.record.status).toBe('waiting-sales');
+  expect(f.adapter.find.mock.calls.length-find).toBe(p.rows.length);expect(f.calls.filter(c=>c[0]==='buy')).toHaveLength(p.rows.length);
+  expect(f.data.has(tradingExecutionKey('scope')+':history')).toBe(false);
+  await expect(f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:p.id,approved:true})).rejects.toThrow('DESK_RECHECK_NO_CANDIDATES');
+  expect(f.calls.filter(c=>c[0]==='buy')).toHaveLength(p.rows.length);
+});
+it.each(['expired','wrong-plan','pending','unknown','paused'])('does not recheck an expired, replaced, pending, unknown or stopped record (%s)',async mode=>{
+  const f=fixture(),p=f.makePlan();f.adapter.find.mockResolvedValue(null);await f.session.execute({plan:p,approved:true});
+  const key=tradingExecutionKey('scope'),record=f.data.get(key);
+  if(mode==='expired')f.advance(300001);
+  if(mode==='pending'){const e=record.entries[0];e.phase='buy-pending';e.offer={definitionId:e.definitionId,itemId:10100,tradeId:'90100',price:600};record.status='recovery-required';}
+  if(mode==='unknown')record.entries[0].buyAcknowledged=false;
+  if(mode==='paused')record.status='paused';
+  const before=structuredClone(record),count=f.adapter.find.mock.calls.length;
+  await expect(f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:mode==='wrong-plan'?'other':p.id,approved:true})).rejects.toThrow(
+    mode==='expired'?'DESK_PLAN_EXPIRED':mode==='wrong-plan'?'DESK_EXECUTION_PLAN_MISMATCH':'DESK_RECHECK_STOPPED');
+  expect(f.data.get(key)).toEqual(before);expect(f.adapter.find).toHaveBeenCalledTimes(count);expect(f.calls).toEqual([]);
+});
+it('requires a bound original plan and explicit approval for a no-offer recheck',async()=>{
+  const f=fixture(),p=f.makePlan();f.adapter.find.mockResolvedValue(null);await f.session.execute({plan:p,approved:true});
+  await expect(f.session.execute({resume:true,retryNoOffer:true,approved:true})).rejects.toThrow('DESK_EXECUTION_PLAN_ID_REQUIRED');
+  await expect(f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:p.id})).rejects.toThrow('DESK_EXECUTION_APPROVAL_REQUIRED');
+  expect(f.calls).toEqual([]);
+});
+it('leaves previously purchased/listed versions untouched when retrying the remaining no-offer rows',async()=>{
+  const f=fixture(),p=f.makePlan(),offer=f.adapter.find.getMockImplementation();
+  f.adapter.find.mockImplementation(row=>row.definitionId===p.rows[0].definitionId?offer(row):null);
+  const first=await f.session.execute({plan:p,approved:true});expect(first.record.entries.map(e=>e.phase)).toEqual(['listed','skipped','skipped']);
+  f.advance(60000);f.adapter.find.mockImplementation(offer);
+  const result=await f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:p.id,approved:true});expect(result.record.entries.every(e=>e.phase==='listed')).toBe(true);
+  expect(f.adapter.find.mock.calls.filter(([r])=>r.definitionId===p.rows[0].definitionId)).toHaveLength(1);
+  expect(f.calls.filter(c=>c[0]==='buy')).toHaveLength(3);expect(new Set(f.calls.filter(c=>c[0]==='buy').map(c=>c[1])).size).toBe(3);
+});
+it('rechecks funds and capacity before delayed searches without changing the frozen plan',async()=>{
+  const f=fixture(),p=f.makePlan();f.adapter.find.mockResolvedValue(null);await f.session.execute({plan:p,approved:true});
+  const count=f.adapter.find.mock.calls.length;f.adapter.capabilities.mockResolvedValue({canTrade:true,balance:100,freeSlots:50});
+  const result=await f.session.execute({resume:true,retryNoOffer:true,expectedPlanId:p.id,approved:true});
+  expect(result.record.reason).toBe('DESK_EXECUTION_FUNDS_OR_CAPACITY');expect(result.record.plan).toEqual(p);
+  expect(f.adapter.find).toHaveBeenCalledTimes(count);expect(f.calls).toEqual([]);
+});
 it('archives a strictly pristine paused batch with readback before replacing it with a separately approved fresh plan',async()=>{
   const f=fixture(),old=pristineRecord(),key=tradingExecutionKey('scope');f.data.set(key,old);f.adapter.find.mockResolvedValue(null);
   await expect(f.session.execute({plan:f.makePlan()})).rejects.toThrow('APPROVAL_REQUIRED');expect(f.data.get(key)).toEqual(old);
