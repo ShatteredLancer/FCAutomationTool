@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.93
+// @version      27.0.94
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.93", at: Date.now(), status: 'started',
+    state = { version: "27.0.94", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -26045,7 +26045,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     status.setAttribute("aria-live", "polite");
     const funding = add3(parent, "p", "", "trading-funding");
     const controls = add3(parent, "div", "", "row");
-    let active = false, busy = false, epoch2 = 0, timer = null, context = null, state = null, attempted = 0, advice = null;
+    let active = false, busy = false, epoch2 = 0, timer = null, context = null, state = null, attempted = 0, advice = null, pairingRevision = 0, pairBusy = false, pairConfigured = false, intelFailed = false;
     const current2 = (token) => active && parent.isConnected && token === epoch2 && JSON.stringify(context) === JSON.stringify(service.context());
     const button = (p, label, task) => {
       const node = add3(p, "button", label);
@@ -26080,8 +26080,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       DESK_DISCOVERY_CHANGED: "\u8D44\u91D1\u6216\u7EBF\u7D22\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u5206\u6790\u5019\u9009\u3002",
       DESK_DISCOVERY_EXPIRED: "\u672C\u8F6E\u4E70\u4EF7\u53C2\u8003\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u5206\u6790\u5019\u9009\u3002",
       FC27_PUBLIC_PRICE_FUTBIN_DISABLED: "\u81EA\u52A8\u5019\u9009\u9700 FUTBIN \u516C\u5171\u5361\u6C60\uFF1B\u8BE5\u6765\u6E90\u5F53\u524D\u5DF2\u5173\u95ED\uFF0C\u8BF7\u5728\u62A5\u4EF7\u8BBE\u7F6E\u4E2D\u542F\u7528\u540E\u91CD\u8BD5\u3002",
-      DESK_INTEL_PAIRING_REQUIRED: "\u5148\u542F\u52A8\u672C\u673A\u91C7\u96C6\u5668\uFF0C\u586B\u5165\u5B83\u663E\u793A\u7684\u914D\u5BF9\u7801\uFF1B\u65E0\u9700\u586B\u5199\u7403\u5458\u3002",
+      DESK_INTEL_PAIRING_REQUIRED: "\u8BF7\u8F93\u5165\u63A7\u5236\u53F0\u663E\u793A\u7684 48 \u4F4D\u914D\u5BF9\u7801\uFF0C\u53EA\u590D\u5236\u5192\u53F7\u540E\u7684\u5B57\u7B26\uFF1B\u4E0D\u8981\u586B\u6574\u884C\u6807\u7B7E\u3002",
       DESK_INTEL_COLLECTOR_UNAVAILABLE: "\u672C\u673A X \u91C7\u96C6\u5668\u672A\u542F\u52A8\u6216\u8FDE\u63A5\u5931\u8D25\uFF1B\u4EF7\u683C\u5019\u9009\u4ECD\u53EF\u4F7F\u7528\u3002",
+      DESK_INTEL_PAIRING_REJECTED: "\u91C7\u96C6\u5668\u62D2\u7EDD\u8BE5\u914D\u5BF9\u7801\uFF1B\u8BF7\u6838\u5BF9\u5F53\u524D\u91C7\u96C6\u5668\u7A97\u53E3\u663E\u793A\u7684\u7801\u3002",
+      DESK_INTEL_SAVE_FAILED: "\u914D\u5BF9\u7801\u5199\u5165\u5931\u8D25\uFF0C\u672A\u786E\u8BA4\u4FDD\u5B58\uFF1B\u8BF7\u91CD\u8BD5\u3002",
+      DESK_INTEL_SAVE_UNVERIFIED: "\u914D\u5BF9\u7801\u56DE\u8BFB\u4E0D\u4E00\u81F4\uFF0C\u672A\u786E\u8BA4\u4FDD\u5B58\uFF1B\u8BF7\u91CD\u8BD5\u3002",
+      DESK_INTEL_STORAGE_READ_FAILED: "\u8BFB\u53D6\u672C\u673A\u914D\u5BF9\u914D\u7F6E\u5931\u8D25\uFF0C\u672A\u786E\u8BA4\u4FDD\u5B58\u3002",
+      DESK_INTEL_STATUS_TIMEOUT: "\u672C\u673A\u91C7\u96C6\u5668\u8FDE\u63A5\u68C0\u67E5\u8D85\u65F6\uFF1B\u672A\u8C03\u7528 Grok\u3002",
+      DESK_INTEL_STATUS_UNSUPPORTED: "\u91C7\u96C6\u5668\u7248\u672C\u8F83\u65E7\uFF0C\u8BF7\u5728\u66F4\u65B0\u540E\u7684\u9879\u76EE\u76EE\u5F55\u91CD\u542F\u91C7\u96C6\u5668\u3002",
       DESK_INTEL_TIMEOUT: "X \u641C\u7D22\u8D85\u65F6\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u4EA7\u751F\u8D39\u7528\uFF0C\u53EF\u7A0D\u540E\u624B\u52A8\u5237\u65B0\u3002",
       DESK_INTEL_RESPONSE_INVALID: "\u6CA1\u6709\u5F97\u5230\u53EF\u9A8C\u8BC1\u683C\u5F0F\u7684 X \u539F\u5E16\u6570\u636E\uFF1B\u4E0D\u751F\u6210\u7206\u6599\u5EFA\u8BAE\u3002",
       DESK_INTEL_COOLDOWN: "X \u91C7\u96C6\u6B63\u5728\u9000\u907F\uFF0C\u8BF7\u7A0D\u540E\u518D\u5237\u65B0\u3002",
@@ -26249,17 +26255,73 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     add3(intelligence, "small", "\u4ECE FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT \u539F\u751F X \u641C\u7D22\u539F\u5E16\uFF0C\u6838\u5BF9\u6700\u591A\u4E24\u6761 EVO \u7EBF\u7A0B\u53CA\u4F5C\u8005\u540E\u7EED\u56DE\u590D\uFF0C\u5305\u542B\u70B9\u540D\u7403\u5458\u3002\u590D\u7528\u672C\u673A Grok\uFF0C\u53EF\u80FD\u4EA7\u751F\u6A21\u578B\u8D39\u7528\uFF1B\u4E0D\u4FDD\u8BC1\u5B9E\u65F6\u3001\u5B8C\u6574\u7EBF\u7A0B\u6216\u7206\u6599\u51C6\u786E\u300215 \u5206\u949F\u5185\u91CD\u590D\u5237\u65B0\u7528\u7F13\u5B58\u3002");
     const pairing = add3(intelligence, "details");
     add3(pairing, "summary", "\u8FDE\u63A5\u672C\u673A\u91C7\u96C6\u5668\uFF08\u9996\u6B21\u8BBE\u7F6E\uFF09");
-    add3(pairing, "small", "\u5728\u672C\u9879\u76EE\u7535\u8111\u8FD0\u884C npm run trading:intel\uFF0C\u4FDD\u6301\u91C7\u96C6\u5668\u5F00\u542F\uFF1B\u5C06\u5176\u663E\u793A\u7684\u672C\u673A\u914D\u5BF9\u7801\u586B\u5728\u4E0B\u9762\u3002\u914D\u5BF9\u7801\u53EA\u4FDD\u5B58\u5728\u672C\u673A\uFF0C\u4E0D\u5BFC\u51FA\u3001\u4E0D\u53D1\u5230 X\u3002");
+    add3(pairing, "small", "\u5728\u672C\u9879\u76EE\u7535\u8111\u8FD0\u884C npm.cmd run trading:intel\uFF0C\u4FDD\u6301\u91C7\u96C6\u5668\u7A97\u53E3\u5F00\u542F\uFF1B\u53EA\u590D\u5236\u5192\u53F7\u540E\u7684 48 \u4F4D\u672C\u673A\u914D\u5BF9\u7801\u3002\u914D\u5BF9\u7801\u4FDD\u5B58\u5728\u672C\u673A\uFF0C\u4E0D\u5BFC\u51FA\u3001\u4E0D\u53D1\u5230 X\u3002\u4FDD\u5B58\u548C\u68C0\u67E5\u8FDE\u63A5\u5747\u4E0D\u8C03\u7528 Grok\u3002");
     const pairKey = input(pairing, "\u672C\u673A\u91C7\u96C6\u5668\u914D\u5BF9\u7801", "", "password");
     pairKey.autocomplete = "off";
-    button(pairing, "\u4FDD\u5B58\u91C7\u96C6\u5668\u8FDE\u63A5", async () => {
-      await service.pairIntel(pairKey.value);
-      pairKey.value = "";
-      status.textContent = "\u8FDE\u63A5\u914D\u7F6E\u5DF2\u4FDD\u5B58\uFF1B\u70B9\u51FB\u91C7\u96C6\u624D\u8C03\u7528 Grok\uFF0C\u4E0D\u5F00\u5B9A\u65F6\u3002";
+    pairKey.placeholder = "48 \u4F4D\u5341\u516D\u8FDB\u5236\u914D\u5BF9\u7801";
+    const pairStatus = add3(pairing, "output", "\u672A\u914D\u7F6E\u914D\u5BF9\u7801\u3002");
+    pairStatus.setAttribute("role", "status");
+    pairStatus.setAttribute("aria-label", "\u91C7\u96C6\u5668\u8FDE\u63A5\u72B6\u6001");
+    pairStatus.setAttribute("aria-live", "polite");
+    pairStatus.style.display = "block";
+    const pairButtons = add3(pairing, "div", "", "row"), pairSave = add3(pairButtons, "button", "\u4FDD\u5B58\u91C7\u96C6\u5668\u8FDE\u63A5"), pairCheck = add3(pairButtons, "button", "\u68C0\u67E5\u8FDE\u63A5\uFF08\u4E0D\u91C7\u96C6\uFF09");
+    pairSave.type = pairCheck.type = "button";
+    const pairingMessage = (value) => value.connected ? `\u914D\u5BF9\u7801\u5DF2\u4FDD\u5B58\uFF1B\u672C\u673A\u91C7\u96C6\u5668\u5DF2\u8FDE\u63A5${value.collecting ? "\uFF0C\u5F53\u524D\u6709\u91C7\u96C6\u8FDB\u884C\u4E2D" : ""}\u3002\u68C0\u67E5\u672A\u8C03\u7528 Grok\u3002` : value.connection === "legacy" ? "\u914D\u5BF9\u7801\u5DF2\u4FDD\u5B58\uFF1B\u91C7\u96C6\u5668\u7248\u672C\u8F83\u65E7\uFF0C\u4E0D\u652F\u6301\u8FDE\u63A5\u68C0\u67E5\uFF0C\u8BF7\u66F4\u65B0\u9879\u76EE\u540E\u91CD\u542F\u91C7\u96C6\u5668\u3002" : "\u914D\u5BF9\u7801\u5DF2\u4FDD\u5B58\uFF1B\u672C\u673A\u91C7\u96C6\u5668\u672A\u8FDE\u63A5\u3002\u8BF7\u8FD0\u884C npm.cmd run trading:intel \u5E76\u4FDD\u6301\u7A97\u53E3\u5F00\u542F\u3002";
+    const pairingAction = async (event, save) => {
+      if (!event.isTrusted || !active || !parent.isConnected || !service) return;
+      if (pairBusy) {
+        pairStatus.textContent = "\u6B63\u5728\u5904\u7406\u914D\u5BF9\u8FDE\u63A5\uFF0C\u8BF7\u7A0D\u5019\uFF1B\u672A\u91C7\u96C6 X\u3002";
+        return;
+      }
+      let captured;
+      try {
+        captured = JSON.stringify(service.context());
+        if (captured !== JSON.stringify(context)) throw Error("DESK_CONTEXT_CHANGED");
+      } catch (error2) {
+        pairStatus.textContent = errorText(error2);
+        return;
+      }
+      const ticket = ++pairingRevision, currentPair = () => {
+        try {
+          return active && parent.isConnected && ticket === pairingRevision && captured === JSON.stringify(service.context());
+        } catch {
+          return false;
+        }
+      };
+      pairBusy = true;
+      pairSave.disabled = pairCheck.disabled = true;
+      pairStatus.textContent = save ? "\u6B63\u5728\u4FDD\u5B58\u914D\u5BF9\u7801\u5E76\u68C0\u67E5\u8FDE\u63A5\u2026\uFF08\u4E0D\u91C7\u96C6 X\uFF09" : "\u6B63\u5728\u68C0\u67E5\u5DF2\u4FDD\u5B58\u8FDE\u63A5\u2026\uFF08\u4E0D\u91C7\u96C6 X\uFF09";
+      try {
+        const result = save ? await service.pairIntel(pairKey.value) : await service.checkIntel();
+        if (!currentPair()) return;
+        if (save && result?.saved !== true) throw Error("DESK_INTEL_SAVE_UNVERIFIED");
+        pairConfigured = true;
+        if (save) pairKey.value = "";
+        pairStatus.textContent = pairingMessage(result);
+        status.textContent = pairStatus.textContent;
+        if (intelFailed) {
+          intelList.replaceChildren();
+          intelFailed = false;
+        }
+      } catch (error2) {
+        if (currentPair()) pairStatus.textContent = save ? `\u4FDD\u5B58\u672A\u5B8C\u6210\uFF1A${errorText(error2)}` : `${pairConfigured ? "\u914D\u5BF9\u7801\u5DF2\u4FDD\u5B58\uFF1B" : ""}${errorText(error2)}`;
+      } finally {
+        if (ticket === pairingRevision) {
+          pairBusy = false;
+          pairSave.disabled = pairCheck.disabled = false;
+        }
+      }
+    };
+    pairSave.addEventListener("click", (event) => {
+      void pairingAction(event, true);
+    });
+    pairCheck.addEventListener("click", (event) => {
+      void pairingAction(event, false);
     });
     const intelList = add3(intelligence, "div");
     button(intelligence, "\u91C7\u96C6 X \u7EBF\u7D22\u5E76\u7B5B\u9009", async () => {
       const token = epoch2;
+      intelFailed = false;
       intelList.textContent = "\u6B63\u5728\u641C\u7D22\u539F\u5E16\u4E0E\u4F5C\u8005\u56DE\u590D\uFF1B\u901A\u5E38\u9700\u8981\u51E0\u5341\u79D2\uFF0C\u4E0D\u6267\u884C\u4EA4\u6613\u2026";
       try {
         const feed = await service.refreshIntel();
@@ -26285,7 +26347,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         await discover();
       } catch (error2) {
-        if (current2(token)) intelList.textContent = errorText(error2);
+        if (current2(token)) {
+          intelFailed = true;
+          intelList.textContent = errorText(error2);
+        }
         throw error2;
       }
     });
@@ -26443,14 +26508,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { setActive(value) {
       active = value;
       epoch2++;
+      pairingRevision++;
       busy = false;
+      pairBusy = false;
       pause();
       if (!value) return;
       if (!service) return;
       state = null;
       advice = null;
+      intelFailed = false;
       intelList.replaceChildren();
       pairKey.value = "";
+      pairConfigured = false;
+      pairSave.disabled = pairCheck.disabled = false;
+      pairStatus.textContent = "\u8BFB\u53D6\u672C\u673A\u914D\u5BF9\u4FDD\u5B58\u72B6\u6001\u2026";
       adviceList.replaceChildren();
       watch.replaceChildren();
       ledger.replaceChildren();
@@ -26464,6 +26535,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         funding.textContent = "\u4EA4\u6613\u8D26\u53F7\u4E0A\u4E0B\u6587\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u767B\u5F55\u540E\u91CD\u65B0\u6253\u5F00\u3002";
         return;
       }
+      const pairTicket = pairingRevision, pairContext = JSON.stringify(context);
+      void Promise.resolve(service.intelConfig?.() ?? { configured: false }).then((value2) => {
+        if (active && pairTicket === pairingRevision && pairContext === JSON.stringify(service.context())) {
+          pairConfigured = value2.configured === true;
+          pairStatus.textContent = pairConfigured ? "\u914D\u5BF9\u7801\u5DF2\u4FDD\u5B58\uFF08\u5DF2\u56DE\u8BFB\uFF09\uFF1B\u8FDE\u63A5\u5C1A\u672A\u68C0\u67E5\u3002\u53EF\u70B9\u4E0B\u65B9\u68C0\u67E5\uFF0C\u4E0D\u91C7\u96C6 X\u3002" : "\u672A\u914D\u7F6E\u914D\u5BF9\u7801\u3002";
+        }
+      }).catch((error2) => {
+        if (active && pairTicket === pairingRevision) pairStatus.textContent = errorText(error2);
+      });
       void run(async () => {
         const token = epoch2, result = await service.read();
         if (!current2(token)) return;
@@ -33679,7 +33759,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       context: capture,
       pairIntel: async (key2) => {
         if (!intel) throw Error("DESK_INTEL_COLLECTOR_UNAVAILABLE");
-        await intel.pair(key2);
+        return intel.pair(key2);
+      },
+      intelConfig: async () => typeof intel?.config === "function" ? intel.config() : { configured: false },
+      checkIntel: async () => {
+        if (typeof intel?.check !== "function") throw Error("DESK_INTEL_COLLECTOR_UNAVAILABLE");
+        return intel.check();
       },
       async refreshIntel() {
         const context = capture();
@@ -33875,40 +33960,90 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-trading-intel.js
+  var pairingKey = (value) => {
+    const key2 = String(value ?? "").trim().replace(/^["']([a-fA-F0-9]{48})["']$/, "$1").toLowerCase();
+    if (!/^[a-f0-9]{48}$/.test(key2)) throw Error("DESK_INTEL_PAIRING_REQUIRED");
+    return key2;
+  };
   function createFc27TradingIntel({ gmRequest, get, set, now = () => Date.now() }) {
     const keyName = "fcat-trading-intel-pairing-v1";
+    const readKey = async () => {
+      try {
+        return await get(keyName, "");
+      } catch {
+        throw Error("DESK_INTEL_STORAGE_READ_FAILED");
+      }
+    };
+    const request = (route, key2, timeout) => new Promise((resolve, reject) => {
+      const url = `http://127.0.0.1:17864/v1/${route}`;
+      try {
+        gmRequest({
+          method: "POST",
+          url,
+          timeout,
+          headers: { "X-FCAT-Intel-Key": key2, "Content-Type": "application/json" },
+          data: "{}",
+          onload: (response) => {
+            try {
+              if (response.finalUrl && response.finalUrl !== url) throw Error("DESK_INTEL_REDIRECT");
+              if (typeof response.responseText !== "string" || response.responseText.length > 1e5) throw Error("DESK_INTEL_RESPONSE_INVALID");
+              const value = JSON.parse(response.responseText);
+              if (response.status === 401) throw Error("DESK_INTEL_PAIRING_REJECTED");
+              if (response.status === 404 && route === "status") throw Error("DESK_INTEL_STATUS_UNSUPPORTED");
+              if (response.status !== 200) throw Error(/^DESK_INTEL_[A-Z_]+$/.test(value?.error ?? "") ? value.error : "DESK_INTEL_UNAVAILABLE");
+              resolve(value);
+            } catch (error2) {
+              reject(error2.message?.startsWith("DESK_INTEL_") ? error2 : Error("DESK_INTEL_RESPONSE_INVALID"));
+            }
+          },
+          onerror: () => reject(Error("DESK_INTEL_COLLECTOR_UNAVAILABLE")),
+          ontimeout: () => reject(Error(route === "status" ? "DESK_INTEL_STATUS_TIMEOUT" : "DESK_INTEL_TIMEOUT"))
+        });
+      } catch {
+        reject(Error("DESK_INTEL_COLLECTOR_UNAVAILABLE"));
+      }
+    });
+    const checkKey = async (key2) => {
+      const value = await request("status", key2, 4e3);
+      if (value?.schema !== 1 || value.service !== "fcat-trading-intel" || value.status !== "ready" || typeof value.collecting !== "boolean") throw Error("DESK_INTEL_RESPONSE_INVALID");
+      return { configured: true, connected: true, connection: "connected", collecting: value.collecting };
+    };
     return Object.freeze({
+      async config() {
+        let configured = false;
+        try {
+          pairingKey(await readKey());
+          configured = true;
+        } catch (error2) {
+          if (error2.message === "DESK_INTEL_STORAGE_READ_FAILED") throw error2;
+        }
+        return { configured };
+      },
+      async check() {
+        return checkKey(pairingKey(await readKey()));
+      },
       async pair(value) {
-        if (!/^[a-f0-9]{48}$/.test(String(value).trim())) throw Error("DESK_INTEL_PAIRING_REQUIRED");
-        await set(keyName, String(value).trim());
+        const key2 = pairingKey(value);
+        let connection;
+        try {
+          connection = await checkKey(key2);
+        } catch (error2) {
+          if (!["DESK_INTEL_COLLECTOR_UNAVAILABLE", "DESK_INTEL_STATUS_TIMEOUT", "DESK_INTEL_STATUS_UNSUPPORTED"].includes(error2.message)) throw error2;
+          connection = { connected: false, connection: error2.message === "DESK_INTEL_STATUS_UNSUPPORTED" ? "legacy" : "unreachable" };
+        }
+        try {
+          await set(keyName, key2);
+        } catch {
+          throw Error("DESK_INTEL_SAVE_FAILED");
+        }
+        if (await readKey() !== key2) throw Error("DESK_INTEL_SAVE_UNVERIFIED");
+        return { configured: true, saved: true, ...connection };
       },
       async refresh() {
-        const key2 = await get(keyName, "");
-        if (!/^[a-f0-9]{48}$/.test(key2)) throw Error("DESK_INTEL_PAIRING_REQUIRED");
-        return new Promise((resolve, reject) => {
-          const url = "http://127.0.0.1:17864/v1/refresh";
-          gmRequest({
-            method: "POST",
-            url,
-            timeout: 185e3,
-            headers: { "X-FCAT-Intel-Key": key2, "Content-Type": "application/json" },
-            data: "{}",
-            onload: (response) => {
-              try {
-                if (response.finalUrl && response.finalUrl !== url) throw Error("DESK_INTEL_REDIRECT");
-                const value = JSON.parse(response.responseText);
-                if (response.status !== 200) throw Error(value.error ?? "DESK_INTEL_UNAVAILABLE");
-                if (value.schema !== 1 || !Array.isArray(value.posts) || value.posts.length > 30 || JSON.stringify(value).length > 1e5 || !Number.isSafeInteger(value.fetchedAt) || value.fetchedAt > now() || now() - value.fetchedAt > 864e5) throw Error("DESK_INTEL_RESPONSE_INVALID");
-                const safe3 = normalizeTradingIntel({ schema: 1, posts: value.posts.map((p) => ({ ...p, publishedAt: new Date(p.at).toISOString(), conditions: p.evo })) }, now(), value.nativeEvidence ?? null);
-                resolve({ ...safe3, fetchedAt: value.fetchedAt, cached: value.cached === true, costUsd: Number.isFinite(value.costUsd) && value.costUsd >= 0 ? value.costUsd : null });
-              } catch (error2) {
-                reject(error2);
-              }
-            },
-            onerror: () => reject(Error("DESK_INTEL_COLLECTOR_UNAVAILABLE")),
-            ontimeout: () => reject(Error("DESK_INTEL_TIMEOUT"))
-          });
-        });
+        const value = await request("refresh", pairingKey(await readKey()), 185e3);
+        if (value.schema !== 1 || !Array.isArray(value.posts) || value.posts.length > 30 || !Number.isSafeInteger(value.fetchedAt) || value.fetchedAt > now() || now() - value.fetchedAt > 864e5) throw Error("DESK_INTEL_RESPONSE_INVALID");
+        const safe3 = normalizeTradingIntel({ schema: 1, posts: value.posts.map((p) => ({ ...p, publishedAt: new Date(p.at).toISOString(), conditions: p.evo })) }, now(), value.nativeEvidence ?? null);
+        return { ...safe3, fetchedAt: value.fetchedAt, cached: value.cached === true, costUsd: Number.isFinite(value.costUsd) && value.costUsd >= 0 ? value.costUsd : null };
       }
     });
   }
@@ -42611,7 +42746,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.93" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.94" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -42961,8 +43096,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.93"}`,
-    version: "27.0.93",
+    title: `FC Automation Tool ${"27.0.94"}`,
+    version: "27.0.94",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

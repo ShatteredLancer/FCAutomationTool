@@ -32,7 +32,9 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,readCandi
   };
   const act=async mutate=>{const context=capture();return update(context,mutate);};
   return Object.freeze({read,context:capture,
-    pairIntel:async key=>{if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');await intel.pair(key);},
+    pairIntel:async key=>{if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');return intel.pair(key);},
+    intelConfig:async()=>typeof intel?.config==='function'?intel.config():{configured:false},
+    checkIntel:async()=>{if(typeof intel?.check!=='function')throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');return intel.check();},
     async refreshIntel(){const context=capture();if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');
       const feed=await intel.refresh();if(!current(context))throw Error('DESK_CONTEXT_CHANGED');lastIntel=feed;lastDiscovery=null;return feed;},
     async discover({isCurrent=()=>true,onProgress=()=>{}}={}){

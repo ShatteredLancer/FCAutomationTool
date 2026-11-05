@@ -25,10 +25,11 @@ export function createTradingIntelServer({key,collect,now=()=>Date.now(),maxRuns
   return http.createServer(async(req,res)=>{
     const reply=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
     // Loopback only, no wildcard CORS, redirects, caller queries or commands.
-    if(!/^127\.0\.0\.1:\d+$/.test(req.headers.host??'')||req.method!=='POST'||req.url!=='/v1/refresh')return reply(404,{error:'DESK_INTEL_ROUTE_INVALID'});
+    if(!/^127\.0\.0\.1:\d+$/.test(req.headers.host??'')||req.method!=='POST'||!['/v1/refresh','/v1/status'].includes(req.url))return reply(404,{error:'DESK_INTEL_ROUTE_INVALID'});
     const supplied=req.headers['x-fcat-intel-key'];
     if(typeof supplied!=='string'||Buffer.byteLength(supplied)!==Buffer.byteLength(key)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(key)))return reply(401,{error:'DESK_INTEL_PAIRING_REQUIRED'});
     req.resume();
+    if(req.url==='/v1/status')return reply(200,{schema:1,service:'fcat-trading-intel',status:'ready',collecting:pending!==null});
     if(cache&&now()-cache.fetchedAt<900000)return reply(200,{...cache,cached:true});
     if(now()<retryAt)return reply(429,{error:'DESK_INTEL_COOLDOWN',retryAt});
     const today=new Date(now()).toISOString().slice(0,10);if(day!==today){day=today;runs=0;}

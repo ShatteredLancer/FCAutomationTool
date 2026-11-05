@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 
 export async function exerciseTradingDesk(context,directory){
   const bundle=await build({absWorkingDir:path.resolve(import.meta.dirname,'../..'),stdin:{contents:
-    "export {mountFc27AcceptancePanel} from './src/adapters/browser/fc27-acceptance-panel.js';export {createFc27TradingDesk} from './src/adapters/browser/fc27-trading-desk.js';",resolveDir:path.resolve(import.meta.dirname,'../..')},
+    "export {mountFc27AcceptancePanel} from './src/adapters/browser/fc27-acceptance-panel.js';export {createFc27TradingDesk} from './src/adapters/browser/fc27-trading-desk.js';export {createFc27TradingIntel} from './src/adapters/browser/fc27-trading-intel.js';",resolveDir:path.resolve(import.meta.dirname,'../..')},
     bundle:true,write:false,format:'iife',globalName:'TradingFixture',target:'chrome120'});
   const page=await context.newPage();page.setDefaultTimeout(10000);let requests=0;page.on('request',()=>{requests++;});
   try{
@@ -66,6 +66,45 @@ export async function exerciseTradingDesk(context,directory){
   }catch(error){console.log(await page.locator('#desk-test #page-trading').evaluate(node=>({width:node.clientWidth,scroll:node.scrollWidth,overflow:[...node.querySelectorAll('*')].filter(x=>x.getBoundingClientRect().right>node.getBoundingClientRect().right+1).map(x=>({tag:x.tagName,text:x.textContent.slice(0,70),width:x.getBoundingClientRect().width})).slice(0,8)})));throw error;}
   finally{await page.close();}
   await exerciseTradingDiscovery(context,directory,bundle.outputFiles[0].text);
+  await exerciseTradingPairing(context,directory,bundle.outputFiles[0].text);
+}
+
+async function exerciseTradingPairing(context,directory,bundle){
+  const page=await context.newPage();page.setDefaultTimeout(2500);let requests=0;page.on('request',()=>requests++);
+  try{await page.setViewportSize({width:1400,height:1000});await page.setContent('<!doctype html><title>Pairing feedback — offline</title>');await page.addScriptTag({content:bundle});
+    await page.evaluate(()=>{
+      const attach=globalThis.Element.prototype.attachShadow;globalThis.Element.prototype.attachShadow=function(o){return attach.call(this,{...o,mode:'open'});};
+      globalThis.pairData=new Map();globalThis.pairCalls=[];globalThis.pairOffline=true;globalThis.pairReject=false;
+      const get=async(k,f)=>structuredClone(globalThis.pairData.get(k)??f),set=async(k,v)=>globalThis.pairData.set(k,structuredClone(v));
+      const intel=globalThis.TradingFixture.createFc27TradingIntel({get,set,gmRequest:o=>{globalThis.pairCalls.push(new URL(o.url).pathname);
+        if(new URL(o.url).pathname==='/v1/refresh')throw Error('paid collection must never run on save/check');
+        if(globalThis.pairOffline)o.onerror();else if(globalThis.pairReject)o.onload({status:401,responseText:'{"error":"DESK_INTEL_PAIRING_REQUIRED"}'});
+        else o.onload({status:200,responseText:JSON.stringify({schema:1,service:'fcat-trading-intel',status:'ready',collecting:false})});}});
+      const prices={context:()=>({scope:'pair-account',season:'27',platform:'console'}),knownPlayers:()=>[],remember(){},readSettings:async()=>({source:'futbin',readSources:'futbin'}),
+        tradingCandidates:async()=>{await new Promise(r=>{globalThis.pairRelease=r;});return {rows:[],scanned:0,platform:'console',at:Date.now()};}};
+      const service=globalThis.TradingFixture.createFc27TradingDesk({prices,intel,get,set,locks:{request:async(_k,_o,task)=>task()}});
+      globalThis.pairPanel=globalThis.TradingFixture.mountFc27AcceptancePanel({document:globalThis.document,hostId:'pair-test',targets:()=>[],tradingDesk:service});globalThis.pairPanel.open();
+    });
+    const host=page.locator('#pair-test'),desk=host.locator('#page-trading');await host.locator('#tab-trading').click();await page.waitForFunction(()=>Boolean(globalThis.pairRelease));
+    await desk.getByText('连接本机采集器（首次设置）',{exact:true}).click();await desk.getByLabel('本机采集器配对码',{exact:true}).fill('a'.repeat(48));
+    await desk.getByRole('button',{name:'保存采集器连接',exact:true}).click();
+    await desk.getByRole('status',{name:'采集器连接状态',exact:true}).getByText(/配对码已保存.*未连接/).waitFor();
+    assert.equal(await page.evaluate(()=>globalThis.pairData.get('fcat-trading-intel-pairing-v1')==='a'.repeat(48)),true,'save is not silently ignored during candidate discovery');
+    assert.equal(await desk.getByLabel('本机采集器配对码',{exact:true}).inputValue(),'');
+    await page.evaluate(()=>{globalThis.pairOffline=false;});await desk.getByRole('button',{name:'检查连接（不采集）',exact:true}).click();
+    await desk.getByRole('status',{name:'采集器连接状态',exact:true}).getByText(/配对码已保存.*已连接/).waitFor();
+    assert.equal(await page.evaluate(()=>globalThis.pairCalls.includes('/v1/refresh')),false);assert.equal(requests,0);
+    await desk.getByRole('status',{name:'采集器连接状态',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(directory,'trading-pairing-desktop.png')});
+    await page.setViewportSize({width:390,height:900});await desk.getByRole('status',{name:'采集器连接状态',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(directory,'trading-pairing-mobile.png')});
+    assert.equal(await desk.evaluate(n=>n.scrollWidth<=n.clientWidth+1),true);
+    await page.evaluate(()=>{globalThis.pairRelease();});await desk.getByText(/样本 0 张/).waitFor();
+    await host.locator('#tab-sbc').click();await host.locator('#tab-trading').click();
+    await desk.getByRole('status',{name:'采集器连接状态',exact:true}).getByText(/配对码已保存（已回读）/).waitFor();
+    await page.evaluate(()=>{globalThis.pairReject=true;});await desk.getByLabel('本机采集器配对码',{exact:true}).fill('b'.repeat(48));await desk.getByRole('button',{name:'保存采集器连接',exact:true}).click();
+    await desk.getByRole('status',{name:'采集器连接状态',exact:true}).getByText(/保存未完成.*拒绝该配对码/).waitFor();
+    assert.equal(await page.evaluate(()=>globalThis.pairData.get('fcat-trading-intel-pairing-v1')==='a'.repeat(48)),true);await page.evaluate(()=>{globalThis.pairRelease();});
+    console.log('Trading pairing Chrome passed: save during discovery, visible persisted/offline/connected feedback, reopen readback, rejected replacement preserved, private masked key, free status check, no paid collection or HTTP.');
+  }finally{await page.close();}
 }
 
 async function exerciseTradingDiscovery(context,directory,bundle){

@@ -112,9 +112,43 @@ it('deduplicates simultaneous refreshes and fails into cooldown, not an automati
   await withServer({key,collect:fail,now:()=>now},async url=>{expect((await request(url)).status).toBe(503);expect((await request(url)).status).toBe(429);expect(fail).toHaveBeenCalledTimes(1);});
 });
 it('pairs privately and sends no account, inventory, trade ledger or arbitrary query to the collector',async()=>{
-  const data=new Map(),gm=vi.fn(options=>options.onload({status:200,responseText:JSON.stringify(normalizeTradingIntel(payload(),now))}));
+  const data=new Map(),gm=vi.fn(options=>options.onload({status:200,responseText:JSON.stringify(options.url.endsWith('/status')
+    ?{schema:1,service:'fcat-trading-intel',status:'ready',collecting:false}:normalizeTradingIntel(payload(),now))}));
   const service=createFc27TradingIntel({gmRequest:gm,get:async k=>data.get(k),set:async(k,v)=>data.set(k,v),now:()=>now});
   await expect(service.refresh()).rejects.toThrow('PAIRING');await service.pair(key);expect((await service.refresh()).posts).toHaveLength(1);
-  expect(gm.mock.calls[0][0]).toMatchObject({url:'http://127.0.0.1:17864/v1/refresh',method:'POST',data:'{}'});
+  expect(gm.mock.calls[0][0]).toMatchObject({url:'http://127.0.0.1:17864/v1/status',method:'POST',data:'{}'});
+  expect(gm.mock.calls[1][0]).toMatchObject({url:'http://127.0.0.1:17864/v1/refresh',method:'POST',data:'{}'});
   expect(gm.mock.calls[0][0].headers['X-FCAT-Intel-Key']).toBe(key);expect([...data.keys()]).toEqual(['fcat-trading-intel-pairing-v1']);
+});
+it('does not report a saved pairing when storage silently discards the write',async()=>{
+  const service=createFc27TradingIntel({gmRequest:vi.fn(options=>options.onerror()),get:async()=>'',set:async()=>{},now:()=>now});
+  await expect(service.pair(key)).rejects.toThrow('DESK_INTEL_SAVE_UNVERIFIED');
+});
+it('persists while the collector is offline, reports saved versus connected, and rereads without a network request',async()=>{
+  const data=new Map(),gm=vi.fn(o=>o.onerror()),service=createFc27TradingIntel({gmRequest:gm,get:async(k,f)=>data.get(k)??f,set:async(k,v)=>data.set(k,v)});
+  expect(await service.config()).toEqual({configured:false});expect(gm).not.toHaveBeenCalled();
+  expect(await service.pair(` '${key.toUpperCase()}' `)).toMatchObject({saved:true,configured:true,connected:false,connection:'unreachable'});
+  expect(await service.config()).toEqual({configured:true});expect(gm).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(await service.config())).not.toContain(key);expect(gm.mock.calls[0][0].url.endsWith('/status')).toBe(true);
+});
+it('preserves the existing pairing if a running collector rejects a proposed replacement',async()=>{
+  let value=key;const set=vi.fn(async(_k,v)=>{value=v;}),gm=vi.fn(o=>o.onload({status:401,responseText:'{"error":"DESK_INTEL_PAIRING_REQUIRED"}'}));
+  const service=createFc27TradingIntel({gmRequest:gm,get:async()=>value,set});
+  await expect(service.pair('b'.repeat(48))).rejects.toThrow('PAIRING_REJECTED');expect(value).toBe(key);expect(set).not.toHaveBeenCalled();
+});
+it('identifies an older collector without claiming its connection was verified, and handles storage failures explicitly',async()=>{
+  let value='';const gm=vi.fn(o=>o.onload({status:404,responseText:'{"error":"DESK_INTEL_ROUTE_INVALID"}'}));
+  const service=createFc27TradingIntel({gmRequest:gm,get:async()=>value,set:async(_k,v)=>{value=v;}});
+  expect(await service.pair(key)).toMatchObject({saved:true,connected:false,connection:'legacy'});
+  const failed=createFc27TradingIntel({gmRequest:vi.fn(o=>o.onerror()),get:async()=>'',set:async()=>{throw Error('storage');}});
+  await expect(failed.pair(key)).rejects.toThrow('SAVE_FAILED');
+});
+it('checks an authenticated collector without starting collection or consuming its daily allowance',async()=>{
+  const collect=vi.fn(async()=>{throw Error('must not collect');});
+  await withServer({key,collect,now:()=>now,maxRuns:0},async url=>{
+    const result=await fetch(url+'/v1/status',{method:'POST',headers:{'x-fcat-intel-key':key}});
+    expect(result.status).toBe(200);expect(await result.json()).toMatchObject({schema:1,service:'fcat-trading-intel',status:'ready',collecting:false});
+    expect((await request(url)).status).toBe(429);expect(collect).not.toHaveBeenCalled();
+    expect((await fetch(url+'/v1/status',{method:'POST'})).status).toBe(401);
+  });
 });
