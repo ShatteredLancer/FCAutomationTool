@@ -25,21 +25,24 @@ export function mountTradingPlanView({document,parent,service,isCurrent,onDiscov
   add(rules,'small','每版本一张、最多六张，一轮有限执行；买不到跳过。新购卡按固定目标价上架一小时，不自动降价、重挂或追涨。只有确认卖出才计收益。');
   add(rules,'small','只操作本轮新买的卡，不出售原有 Club 卡。离开交易页或关闭页面会停止新操作，停止不撤回已上架挂单。自动化存在账号风险，无防封或盈利承诺。');
   add(rules,'small','观察笔记的手填余额不替代 EA 实时余额；买入前仍核余额、容量、总预算和单卡限价。');
-  let active=false,busy=false,launching=false,plan=null,record=null,timer=null,revision=0,advice=null;
+  let active=false,busy=false,launching=false,plan=null,record=null,timer=null,revision=0,advice=null,eventArmed=null,grantRevision=0;
   const valid=t=>active&&t===revision&&isCurrent();
   const haltTimer=()=>{if(timer!==null)timers.clearInterval(timer);timer=null;};
   const pending=()=>record?.entries.some(e=>['buy-pending','move-pending','list-pending'].includes(e.phase));
-  const resumable=()=>record&&record.status!=='completed'&&!pending()&&record.entries.some(e=>['waiting','bought','transfer'].includes(e.phase));
-  const sync=()=>{const available=service?.executionAvailable?.()===true,canResume=Boolean(resumable())&&!plan;
+  const resumable=()=>record&&record.status!=='completed'&&!pending()&&record.entries.some(e=>['waiting','bought','transfer','holding'].includes(e.phase));
+  const sync=()=>{const available=service?.executionAvailable?.()===true,monitoring=record?.status==='waiting-events'&&eventArmed===record?.plan.id,canResume=Boolean(resumable())&&!plan&&!monitoring;
     prepare.disabled=busy||!available||!advice;start.hidden=!plan;resume.hidden=!canResume;
     approvalText.textContent=canResume?`我已审核原方案，同意按原上限 ${money(record.plan.capitalLimit)}、留存 ${money(record.plan.reserveCoins)} 继续；上方输入仅用于新方案。`:'我已审核清单、上限和风险，同意按本方案真实买入并上架';
+    if((plan??(canResume?record?.plan:null))?.rows.some(r=>r.strategy==='evo-event'))approvalText.textContent+=' 消息仓先持有，本页持续核价，达到审核目标后自动上架；6 小时后暂停复核，不自动亏本卖出。';
     approvalLabel.hidden=!plan&&!canResume;start.disabled=busy||!available||!plan||!approval.checked;resume.disabled=busy||!available||!approval.checked;
     recover.hidden=!record;recover.disabled=busy||!available;stop.hidden=(!record||record.status==='completed')&&!launching;stop.disabled=!available;
     budget.disabled=reserve.disabled=busy||!available;approval.disabled=busy||!available;planArea.hidden=!plan;buttons.hidden=!plan&&!record&&!launching;};
-  const statusNames={waiting:'尚未购买','buy-pending':'买入待核对',bought:'已买入','move-pending':'移入待核对',transfer:'待上架','list-pending':'上架待核对',listed:'已上架，未确认卖出',sold:'已确认卖出',skipped:'本轮跳过',rejected:'买入被拒绝'};
+  const statusNames={waiting:'尚未购买','buy-pending':'买入待核对',bought:'已买入','move-pending':'移入待核对',transfer:'待上架',holding:'消息仓持有，等待触价','list-pending':'上架待核对',listed:'已上架，未确认卖出',sold:'已确认卖出',skipped:'本轮跳过',rejected:'买入被拒绝'};
   const reasons={DESK_PLAN_NO_CANDIDATES:'本轮暂不买：没有同时满足双源核价、利润和资金条件的候选。',
     DESK_DISCOVERY_EXPIRED:'候选报价仍已过期。请在“候选与线索”重新分析，再生成清单。',
-    DESK_PLAN_EXPIRED:'审核价已过期，请重新生成清单；已有持仓仍保留。',
+    DESK_PLAN_EXPIRED:'审核价已过期，请重新生成清单；已有持仓仍保留。',DESK_EVENT_REVIEW_REQUIRED:'消息仓已到复核时间，暂停自动上架。持仓保留，请重新评估催化剂和目标，不自动止损。',
+    DESK_EVENT_SOURCE_REVOKED:'消息仓来源已失效或移除，自动操作已停止。持仓保留，不自动卖出。',DESK_EVENT_QUOTES_UNAVAILABLE:'消息仓报价暂未确认，暂停自动上架；请稍后只读核对。',
+    DESK_EXECUTION_PLAN_MISMATCH:'执行记录已被另一窗口更新，旧触价授权已取消。请只读核对后重新审核当前方案。',DESK_EXECUTION_PLAN_ID_REQUIRED:'触价授权缺少原方案标识，已停止；请重新打开并审核继续。',
     DESK_EXECUTION_READ_UNCONFIRMED:'成交或持仓读取尚未确认。请点“核对成交与持仓”重新读取，不会再次下单。',
     DESK_EXECUTION_RECOVERY_REQUIRED:'上轮仍有持仓或待核对结果。请先只读核对，再继续原方案。',
     DESK_EXECUTION_APPROVAL_REQUIRED:'方案已变化，请重新生成并审核后确认。',DESK_EXECUTION_DISABLED:'当前构建未启用真实交易。',
@@ -51,24 +54,31 @@ export function mountTradingPlanView({document,parent,service,isCurrent,onDiscov
   const metric=(host,label,value)=>{const box=add(host,'div','','trading-metric');add(box,'small',label);add(box,'strong',value);};
   const renderRecord=value=>{record=value;positions.replaceChildren();positions.hidden=!record;if(!record){sync();return;}
     const spent=record.entries.reduce((n,e)=>n+(e.offer&&!['waiting','skipped','rejected'].includes(e.phase)?e.offer.price:0),0);
-    const bought=record.entries.filter(e=>['bought','move-pending','transfer','list-pending','listed','sold'].includes(e.phase)).length;
+    const bought=record.entries.filter(e=>['bought','move-pending','transfer','holding','list-pending','listed','sold'].includes(e.phase)).length;
     const sold=record.entries.filter(e=>e.phase==='sold'),profit=sold.reduce((n,e)=>n+deskNet(e.salePrice)-e.offer.price,0);
     progress.dataset.state=record.reason||pending()?'error':'ready';
-    progress.textContent=`${record.status==='completed'?'本轮已结束':record.status==='waiting-sales'?'买入/上架处理已结束，等待成交':record.status==='recovery-required'?'结果待核对，已暂停':record.status==='paused'?'已暂停':'正在执行'} · 已确认买入 ${bought} / ${record.entries.length} · 已用/待核对 ${spent} / 上限 ${record.plan.capitalLimit} · 已确认卖出 ${sold.length} · 已实现税后盈亏 ${profit}${record.reason?`。${explain(record.reason)}`:''}`;
+    progress.textContent=`${record.status==='completed'?'本轮已结束':record.status==='waiting-events'?`消息仓持有，${eventArmed?'已启动本页触价监测':'尚未启动触价监测，需审核继续'}`:record.status==='waiting-sales'?'买入/上架处理已结束，等待成交':record.status==='recovery-required'?'结果待核对，已暂停':record.status==='paused'?'已暂停':'正在执行'} · 已确认买入 ${bought} / ${record.entries.length} · 已用/待核对 ${spent} / 上限 ${record.plan.capitalLimit} · 已确认卖出 ${sold.length} · 已实现税后盈亏 ${profit}${record.reason?`。${explain(record.reason)}`:''}`;
     diagnostic(record.reason);add(positions,'h3','执行与持仓');const wrap=add(positions,'div','','trading-table-wrap'),t=add(wrap,'table','','trading-table');
     const head=add(add(t,'thead'),'tr');for(const label of ['球员','当前状态','买价 / 上限','挂牌目标','确认卖价'])add(head,'th',label).scope='col';const body=add(t,'tbody');
     for(let i=0;i<record.entries.length;i++){const e=record.entries[i],row=record.plan.rows[i],tr=add(body,'tr');add(tr,'td',row.name);const cell=add(tr,'td',statusNames[e.phase]);
-      cell.dataset.label='当前状态';if(e.reason)add(cell,'small',explain(e.reason));add(tr,'td',`${e.offer?money(e.offer.price):'—'} / ${money(row.buyCap)}`).dataset.label='买价 / 上限';add(tr,'td',money(row.sellPrice)).dataset.label='挂牌目标';add(tr,'td',e.phase==='sold'?money(e.salePrice):'—').dataset.label='确认卖价';}sync();};
+      cell.dataset.label='当前状态';if(row.event)add(cell,'small',`复核时间 ${new Date(row.event.reviewAt).toLocaleString()}`);if(e.reason)add(cell,'small',explain(e.reason));add(tr,'td',`${e.offer?money(e.offer.price):'—'} / ${money(row.buyCap)}`).dataset.label='买价 / 上限';add(tr,'td',money(row.sellPrice)).dataset.label='挂牌目标';add(tr,'td',e.phase==='sold'?money(e.salePrice):'—').dataset.label='确认卖价';}sync();};
   const showError=e=>{if(e?.message==='DESK_EXECUTION_RECOVERY_REQUIRED'){plan=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();}
     diagnostic(e?.message);progress.dataset.state='error';progress.textContent=explain(e?.message);};
-  const task=async fn=>{if(busy||!active||!isCurrent())return;const ticket=revision;busy=true;sync();
+  const task=async fn=>{if(busy||!active)return;if(!isCurrent()){stopMonitoring();progress.textContent='账号已变化，触价监测已停止；返回后需重新审核继续。';return;}const ticket=revision;busy=true;sync();
     try{const result=await fn(ticket);if(valid(ticket)&&result?.record!==undefined)renderRecord(result.record);return result;}
     catch(e){if(valid(ticket))showError(e);}finally{if(ticket===revision){busy=false;sync();}}};
-  const autoRead=()=>{haltTimer();timer=timers.setInterval(()=>{if(active&&!busy&&record?.status==='waiting-sales'&&isCurrent())void task(()=>service.recoverInvestment());},60000);};
+  const stopMonitoring=()=>{eventArmed=null;grantRevision++;haltTimer();service?.stopInvestment?.();sync();};
+  const autoRead=()=>{haltTimer();timer=timers.setInterval(()=>{if(!active)return;if(!isCurrent()){stopMonitoring();progress.textContent='账号已变化，触价监测已停止；返回后需重新审核继续。';return;}if(busy)return;
+    if(record?.status==='waiting-events'&&eventArmed===record.plan.id)void task(async ticket=>{const expectedPlanId=eventArmed;try{const result=await service.startInvestment({resume:true,approved:true,eventExitsOnly:true,expectedPlanId,onProgress:value=>{if(valid(ticket))renderRecord(value);}});
+      if(valid(ticket)&&!['waiting-events','waiting-sales'].includes(result?.record?.status)){eventArmed=null;grantRevision++;haltTimer();}return result;
+      }catch(error){if(valid(ticket)){eventArmed=null;grantRevision++;haltTimer();}throw error;}});
+    else if(record?.status==='waiting-sales')void task(()=>service.recoverInvestment());
+  },60000);};
   const drawPlan=result=>{plan=result.plan;approval.checked=false;table.replaceChildren();metrics.replaceChildren();
     metric(metrics,'本批最多占用',money(plan.allocated));metric(metrics,'税后情景净利',money(plan.expectedNet));metric(metrics,'批准上限',money(plan.capitalLimit));
     const t=add(table,'table','','trading-table'),header=add(add(t,'thead'),'tr');for(const text of ['球员 · 各一张','买入上限','目标卖价','税后情景净利','操作'])add(header,'th',text).scope='col';const body=add(t,'tbody');
-    for(const row of plan.rows){const tr=add(body,'tr'),name=add(tr,'td');add(name,'strong',row.name);const why=add(name,'details');add(why,'summary','版本与理由');add(why,'small',`EA ${row.definitionId} · ${row.reason}`);
+    for(const row of plan.rows){const tr=add(body,'tr'),name=add(tr,'td');add(name,'strong',row.name);if(row.strategy==='evo-event')add(name,'small','EVO 消息仓 · 先持有再触价上架');const why=add(name,'details');add(why,'summary','版本与理由');add(why,'small',`EA ${row.definitionId} · ${row.reason}`);
+      if(row.event){const link=add(why,'a','来源原帖');link.href=row.event.sourceUrl;link.target='_blank';link.rel='noopener noreferrer';add(why,'small',`来源上限 ${row.event.strictBelow?'<':'≤'}${row.event.entryCeiling}；${row.event.targetBasis==='required-return'?'目标仅按利润缓冲测算，不是涨价预测':'来源目标，不是收益保证'}；${new Date(row.event.reviewAt).toLocaleString()} 复核。`);}
       for(const [label,value]of [['买入上限',row.buyCap],['目标卖价',row.sellPrice],['税后情景净利',row.expectedNet]])add(tr,'td',money(value)).dataset.label=label;const remove=add(add(tr,'td'),'button','移除');remove.type='button';remove.setAttribute('aria-label',`移除方案球员 ${row.name}`);
       remove.addEventListener('click',e=>{if(!e.isTrusted)return;void task(async ticket=>{const ids=plan.rows.filter(r=>r.definitionId!==row.definitionId).map(r=>r.definitionId);
         plan=null;approval.checked=false;const result=await service.prepareInvestment({capitalLimit:Number(budget.value),reserveCoins:Number(reserve.value),definitionIds:ids,isCurrent:()=>valid(ticket)});
@@ -82,23 +92,24 @@ export function mountTradingPlanView({document,parent,service,isCurrent,onDiscov
       onProgress:()=>{if(valid(ticket))progress.textContent='候选已过期，正在重新核对公共报价；尚未交易…';}});if(!valid(ticket))return;
     if(result.refreshedDiscovery)onDiscovery(result.refreshedDiscovery);drawPlan(result);
   });});
-  const launch=async resumeMode=>{if(!approval.checked)return;await task(async ticket=>{launching=true;approval.checked=false;progress.dataset.state='';sync();
+  const launch=async resumeMode=>{if(!approval.checked)return;await task(async ticket=>{launching=true;approval.checked=false;eventArmed=null;const grant=++grantRevision,approvedPlan=resumeMode?record?.plan:plan;progress.dataset.state='';sync();
     progress.textContent='正在核价及核对余额/容量，随后按已批准方案执行…';
-    try{const result=await service.startInvestment({plan:resumeMode?null:plan,resume:resumeMode,approved:true,onProgress:value=>{if(valid(ticket))renderRecord(value);}});
-      if(valid(ticket)){plan=null;approval.checked=false;if(result?.record?.status==='waiting-sales')autoRead();}return result;
+    try{const result=await service.startInvestment({plan:resumeMode?null:plan,resume:resumeMode,approved:true,...(resumeMode?{expectedPlanId:approvedPlan?.id}:{}),onProgress:value=>{if(valid(ticket))renderRecord(value);}});
+      if(valid(ticket)){plan=null;approval.checked=false;if(result?.record?.status==='waiting-events'&&grant===grantRevision&&result.record.plan.id===approvedPlan?.id){eventArmed=approvedPlan.id;autoRead();}
+        else if(result?.record?.status==='waiting-sales')autoRead();}return result;
     }finally{if(ticket===revision)launching=false;}
   });};
   start.addEventListener('click',e=>{if(e.isTrusted)void launch(false);});resume.addEventListener('click',e=>{if(e.isTrusted)void launch(true);});
-  stop.addEventListener('click',e=>{if(!e.isTrusted||!active)return;service.stopInvestment();haltTimer();approval.checked=false;
+  stop.addEventListener('click',e=>{if(!e.isTrusted||!active)return;stopMonitoring();approval.checked=false;
     progress.textContent='已请求停止新操作；在途请求保留回执，已上架挂单不撤回。稍后可只读核对。';sync();});
   recover.addEventListener('click',e=>{if(e.isTrusted)void task(()=>service.recoverInvestment());});approval.addEventListener('change',sync);
   for(const input of [budget,reserve])input.addEventListener('input',()=>{plan=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();progress.dataset.state='';
     progress.textContent='预算已调整，请重新生成并审核清单。';sync();});sync();
-  return {setAnalysisStatus(text){conclusion.textContent=text;},setAdvice(value){advice=value;plan=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();
+  return {stopMonitoring,setAnalysisStatus(text){conclusion.textContent=text;},setAdvice(value){advice=value;plan=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();
     conclusion.textContent=!value?'尚无本轮结论，正在等候候选分析。':value.suggestions?.length
-      ?`本轮结论：${value.suggestions.length} 张等待低价的观察候选。生成清单后再审核，不按当前参考价直接买入。`
+      ?`本轮结论：${value.suggestions.length} 张等待低价的观察候选${value.suggestions.some(r=>r.strategy==='evo-event')?'，其中包含 EVO 消息仓':''}。生成清单后再审核，不按当前参考价直接买入。`
       :'本轮结论：暂不买。没有满足利润、预算和数据条件的候选；详细原因见“候选与线索”。';sync();},
-    setActive(value){active=value;revision++;busy=false;launching=false;haltTimer();advice=null;plan=null;record=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();positions.replaceChildren();positions.hidden=true;progress.textContent='';conclusion.textContent='正在读取当前账号候选；尚未启动交易。';diagnostic(null);
+    setActive(value){active=value;revision++;busy=false;launching=false;stopMonitoring();advice=null;plan=null;record=null;approval.checked=false;table.replaceChildren();metrics.replaceChildren();positions.replaceChildren();positions.hidden=true;progress.textContent='';conclusion.textContent='正在读取当前账号候选；尚未启动交易。';diagnostic(null);
       service?.stopInvestment?.();if(value&&service){const ticket=revision;void task(()=>service.inspectInvestment()).then(result=>{
         if(valid(ticket)&&result?.record){budget.value=String(result.record.plan.capitalLimit);reserve.value=String(result.record.plan.reserveCoins);progress.textContent+=' · 已恢复记录，未自动继续交易。';}});}sync();},
   };

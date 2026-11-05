@@ -1,6 +1,7 @@
 import {DESK_DEFAULTS,DESK_LIMITS,deskFunding,deskOpportunity,deskTrend,deskNet,deskPriceSignal,deskExit} from '../../trading/desk-model.js';
 import {mountTradingPlanView} from './fc27-trading-plan-view.js';
 import {tradingStyle} from './fc27-trading-style.js';
+import {mountTradingEventView} from './fc27-trading-event-view.js';
 
 export function mountFc27TradingView({document,parent,tab,service,timers=globalThis,now=()=>Date.now()}){
   if(!parent)return {setActive(){}};
@@ -78,6 +79,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   const inputs=Object.fromEntries(Object.entries(names).map(([key,label])=>[key,input(fields,label,DESK_DEFAULTS[key])]));
   add(settings,'small','起始金币＋手填买卖推算账面余额，不是 EA 实时余额；改上限不改历史、不授权交易。实际买卖前核对官方余额。');
   button(settings,'保存资金设置',async()=>{const result=await service.settings(Object.fromEntries(Object.keys(names).map(key=>[key,Number(inputs[key].value)])));advice=null;renderAdvice();status.textContent='资金设置已保存；重新分析会按新额度筛选。';return result;});
+  const eventsHost=add(researchPanel,'div');
   const discovery=add(researchPanel,'section','','trading-card');discovery.setAttribute('aria-label','自动候选建议');
   add(discovery,'h3','本轮候选 · 不用先填球员');
   add(add(discovery,'details'),'summary','筛选范围与数据说明').parentElement.append(document.createTextNode('80/82/84 普通金卡各一页，作者点名最多 3 个名字；最多 12 张交叉核价、6 张建议。不扫 EA 市场，不是 META 排名或成交保证。'));
@@ -85,7 +87,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   const discover=async()=>{const token=epoch;advice=null;investmentView.setAdvice(null);adviceList.textContent='正在筛选预算内候选…';
     try{const value=await service.discover({isCurrent:()=>current(token),onProgress:v=>{if(current(token))adviceList.textContent=v.phase==='candidate-pool'
       ?`读取 ${v.rating} 评分公共候选（${v.index+1}/${v.total} 页）…`:v.phase==='named-candidate'?`定向读取作者点名：${v.name}…`:`交叉核对候选报价（最多 ${v.total??12} 张）…`;}});
-      if(current(token)){advice=value;renderAdvice();status.textContent='候选已更新；尚未启动交易。';}
+      if(current(token)){advice=value;renderAdvice();status.textContent='候选已更新；分析和生成清单本身不执行交易。';}
     }catch(error){if(current(token)){adviceList.textContent=errorText(error);investmentView.setAnalysisStatus(errorText(error));throw error;}}
   };
   button(adviceControls,'重新分析候选',discover);
@@ -96,7 +98,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     add(adviceList,'p',`样本 ${advice.scanned} 张 · 预算内 ${advice.affordable} 张 · 交叉核价 ${advice.crossChecked} 张 · 本批各一张最多占用 ${advice.allocated} / 可用 ${advice.available}`);
     add(adviceList,'small',`${advice.defaultBudget?'当前按预填 1 万试仓估算；请保存真实资金设置后再开启提醒。 ':''}读取 ${new Date(advice.at).toLocaleString()}；买价参考 5 分钟有效，进入原生市场前重新核价。`);
     if(!advice.suggestions.length)add(adviceList,'p',advice.available<150?'可用试仓不足：先核对资金设置或未售持仓。':'本轮没有满足利润/预算/数据条件的候选，不凑数推荐。');
-    for(const row of advice.suggestions){const box=add(adviceList,'article','','trading-card');add(box,'h4',`${row.name} · ${row.rating} 普通${row.rating>=75?'金':row.rating>=65?'银':'铜'}卡`);
+    for(const row of advice.suggestions){const box=add(adviceList,'article','','trading-card');add(box,'h4',`${row.name} · ${row.rating} 普通${row.rating>=75?'金':row.rating>=65?'银':'铜'}卡${row.strategy==='evo-event'?' · EVO 消息仓':''}`);
       const link=add(box,'a','查看 FUTBIN 精确版本');link.href=`https://www.futbin.com/27/player/${row.futbinId}`;link.target='_blank';link.rel='noopener noreferrer';
       add(box,'p',`当前参考 FUTBIN ${row.price} / FUT.GG ${row.ggPrice??'待核价'} · ${row.sourceCount===2?'双源观察':'单源暂定观察'}`);
       add(box,'strong',`等到 ≤ ${row.buyCeiling} 再核价；卖出参考 ${row.resaleEstimate}`);
@@ -107,6 +109,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
       button(box,'跟踪这张候选',()=>service.followSuggestions({definitionId:row.definitionId}));
     }
     for(const row of advice.avoid)add(adviceList,'small',`暂缓 ${row.name}：${row.reason}`);
+    for(const row of advice.eventIssues??[])add(adviceList,'small',`消息仓暂缓：${row.reason}`);
     for(const name of advice.unresolvedNames??[])add(adviceList,'small',`点名 ${name}：名字未唯一匹配，未生成版本/买价建议。`);
   }
   const intelligence=add(researchPanel,'section','','trading-card');add(intelligence,'h3','X 自动采集 · 按需刷新，不开定时');
@@ -160,6 +163,8 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   });
   const investmentView=mountTradingPlanView({document,parent:investmentHost,service,now,timers,onDiscovery:value=>{advice=value;renderAdvice();},isCurrent:()=>{
     try{return active&&parent.isConnected&&JSON.stringify(context)===JSON.stringify(service.context());}catch{return false;}}});
+  const eventView=mountTradingEventView({document,parent:eventsHost,service,isCurrent:()=>{try{return active&&parent.isConnected&&JSON.stringify(context)===JSON.stringify(service.context());}catch{return false;}},
+    onChange:async()=>{advice=null;investmentView.setAdvice(null);await discover();},onRevoke:()=>investmentView.stopMonitoring()});
   const picker=add(notebookPanel,'details','','trading-card');add(picker,'summary','添加观察球员');
   const pickRows=add(picker,'div','','trading-row');const linkInput=input(pickRows,'FUTBIN FC27 链接 / EA版本ID','','text'),nameInput=input(pickRows,'球员名称（可选）','','text');
   button(picker,'加入观察',()=>service.add({input:linkInput.value,name:nameInput.value}));
@@ -216,10 +221,10 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     newsList.replaceChildren();for(const row of state.events.slice().reverse()){const p=add(newsList,'p');const a=add(p,'a',`${new URL(row.url).pathname.split('/')[1]} · ${row.status}`);a.href=row.url;a.target='_blank';a.rel='noopener noreferrer';add(p,'span',` · ${row.note}`);}
   }
   if(!service){status.textContent='交易观察服务未接入。';for(const node of parent.querySelectorAll('button,input,select'))node.disabled=true;}
-  return {setActive(value){active=value;epoch++;pairingRevision++;busy=false;pairBusy=false;pause();investmentView.setActive(false);
+  return {setActive(value){active=value;epoch++;pairingRevision++;busy=false;pairBusy=false;pause();investmentView.setActive(false);eventView.setActive(false);
     if(!value)return;if(!service)return;
     state=null;advice=null;intelFailed=false;intelList.replaceChildren();pairKey.value='';pairConfigured=false;pairSave.disabled=pairCheck.disabled=pairStop.disabled=false;pairStatus.textContent='读取本机配对保存状态…';adviceList.replaceChildren();watch.replaceChildren();ledger.replaceChildren();alerts.replaceChildren();newsList.replaceChildren();for(const key of Object.keys(names))inputs[key].value=String(DESK_DEFAULTS[key]);funding.textContent='读取本地交易观察记录…';
-    try{context=service.context();}catch{funding.textContent='交易账号上下文尚未就绪，请登录后重新打开。';return;}investmentView.setActive(true);
+    try{context=service.context();}catch{funding.textContent='交易账号上下文尚未就绪，请登录后重新打开。';return;}investmentView.setActive(true);eventView.setActive(true);
     const pairTicket=pairingRevision,pairContext=JSON.stringify(context);
     void Promise.resolve(service.intelConfig?.()??{configured:false}).then(value=>{if(active&&pairTicket===pairingRevision&&pairContext===JSON.stringify(service.context())){
       pairConfigured=value.configured===true;pairStatus.textContent=pairConfigured?'配对码已保存（已回读）；连接尚未检查。可点下方检查，不采集 X。':'未配置配对码。';}})

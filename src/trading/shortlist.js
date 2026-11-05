@@ -18,10 +18,10 @@ function candidateFact(row,platform,now){
 
 // Three first pages, not a market census. Ordinary gold only; private/raw
 // provider responses, images, popularity and EA entities never leave this reader.
-export async function readTradingCandidatePool({request,platform,names=[],now=()=>Date.now(),check=async()=>{},onProgress=()=>{}}){
+export async function readTradingCandidatePool({request,platform,names=[],namesOnly=false,now=()=>Date.now(),check=async()=>{},onProgress=()=>{}}){
   if(!['pc','console'].includes(platform))throw Error('DESK_DISCOVERY_PLATFORM_INVALID');
   const rows=[],seen=new Set();let scanned=0,requests=0;
-  for(const rating of TRADING_DISCOVERY_RATINGS){
+  for(const rating of namesOnly?[]:TRADING_DISCOVERY_RATINGS){
     await check();onProgress({phase:'candidate-pool',rating,index:requests,total:3});
     const reply=await request(`https://www.futbin.org/futbin/api/27/getFilteredPlayers?platform=${platform==='pc'?'PC':'PS'}&rating=${rating}-${rating}&sort=rating&order=desc&page=1`);
     requests++;await check();let payload;try{payload=typeof reply==='string'?JSON.parse(reply):reply;}catch{throw Error('DESK_DISCOVERY_RESPONSE_INVALID');}
@@ -43,7 +43,9 @@ export async function readTradingCandidatePool({request,platform,names=[],now=()
     const exact=matches.filter(row=>canonical(row.playername??row.name??row.common_name)===canonical(name));
     const unique=exact.length?exact:matches;
     if(new Set(unique.map(row=>canonical(row.playername??row.name??row.common_name))).size!==1){unresolvedNames.push(name);continue;}
-    for(const row of unique){const fact=candidateFact(row,platform,now());if(fact&&!seen.has(fact.definitionId)){seen.add(fact.definitionId);rows.push({...fact,mentionQuery:name});}}
+    for(const row of unique){const fact=candidateFact(row,platform,now());if(!fact)continue;
+      if(!seen.has(fact.definitionId)){seen.add(fact.definitionId);rows.push({...fact,mentionQuery:name});}
+      else{const existing=rows.find(card=>card.definitionId===fact.definitionId);if(existing)existing.mentionQuery=name;}}
   }
   return {rows,scanned,requests,unresolvedNames,ratings:[...TRADING_DISCOVERY_RATINGS],at:now(),platform};
 }

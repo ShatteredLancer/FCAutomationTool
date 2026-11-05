@@ -130,15 +130,15 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     scope: () => capture().scope,
     context: () => {const value=capture();return {scope:value.scope,season:value.context.season,platform:value.platform};},
     knownPlayers: () => [...rows.values()].map(row=>({...row})).slice(0,1000),
-    async tradingCandidates({isCurrent=()=>true,onProgress=()=>{},names=[]}={}){
-      const captured=capture(),market=captured.platform,queries=tradingMentionNames(names),key=JSON.stringify([market,queries]);
+    async tradingCandidates({isCurrent=()=>true,onProgress=()=>{},names=[],namesOnly=false}={}){
+      const captured=capture(),market=captured.platform,queries=tradingMentionNames(names),key=JSON.stringify([market,queries,namesOnly===true]);
       const check=async()=>{captured.assert();if(!isCurrent())throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
         if(!publicPriceSourceEnabled(await policyStore.read(captured.scope),'futbin'))throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');captured.assert();};
       await check();const cached=tradingPools.get(key);
       if(cached?.expiresAt>now()){if(cached.error)throw Error(cached.error);return structuredClone(cached.value);}
       const cooldown=tradingCooldowns.get(market);if(cooldown?.expiresAt>now())throw Error(cooldown.error);
       if(!tradingReads.has(key)){
-        const task=(async()=>{try{const value=await readTradingCandidatePool({request,platform:market,names:queries,now,check,onProgress});await check();
+        const task=(async()=>{try{const value=await readTradingCandidatePool({request,platform:market,names:queries,namesOnly:namesOnly===true,now,check,onProgress});await check();
           await updateIds('fcat-futbin-ids:27',Object.fromEntries(value.rows.map(row=>[row.definitionId,row.futbinId])));await check();
           tradingPools.set(key,{value,expiresAt:now()+300000});while(tradingPools.size>8)tradingPools.delete(tradingPools.keys().next().value);return value;
         }catch(error){const reason=/^[A-Z0-9_]+$/.test(error?.message??'')?error.message:'DESK_DISCOVERY_UNAVAILABLE';

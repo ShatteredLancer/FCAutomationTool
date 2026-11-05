@@ -3,13 +3,14 @@ import {tradingPreselection,rankTradingSuggestions} from '../../trading/shortlis
 import {publicPriceSourceEnabled} from '../../gallery/public-price-policy.js';
 import {intelEvents} from '../../trading/intel.js';
 import {createInvestmentPlan} from '../../trading/investment-plan.js';
+import {eventStoreKey,readEventStore,eventCandidates,eventNames,eventMatches} from '../../trading/event-candidates.js';
 
 export const tradingDeskKey=scope=>`fcat-fc27-trading-desk-v1:${scope}`;
 // The notebook stays separate from Gallery ownership and receipts. Optional
 // real execution has its own approval and durable journal, never a notebook
 // flag or a public reference quote masquerading as an EA transaction receipt.
 export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution=null,diagnosticLog=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
-  let lastDiscovery=null,discoveryId=0,lastIntel=null,intelId=0;
+  let lastDiscovery=null,discoveryId=0,lastIntel=null,intelId=0,eventImportId=0;
   const diagnostic=fields=>{try{Promise.resolve(diagnosticLog?.record?.({area:'trading',...fields})).catch(()=>{});}catch{/* Diagnostics only. */}};
   const discoveryBasis=state=>JSON.stringify([state.settings,state.configured,state.events,deskFunding(state)]);
   const rememberComplete=rows=>prices.remember(rows.filter(row=>Number.isSafeInteger(row.rating)&&row.rating>=1&&row.rating<=99
@@ -34,14 +35,49 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
     });
   };
   const act=async mutate=>{const context=capture();return update(context,mutate);};
+  const readEvents=async(context=capture())=>{const value=readEventStore(await get(eventStoreKey(context.scope),null),context);if(!current(context))throw Error('DESK_CONTEXT_CHANGED');return value;};
+  const updateEvents=async(context,mutate,{isCurrent=()=>true,expectedRevision=null}={})=>{
+    if(!locks?.request)throw Error('DESK_STORAGE_LOCK_UNAVAILABLE');
+    const check=()=>{if(!current(context)||!isCurrent())throw Error('DESK_CONTEXT_CHANGED');};
+    return locks.request(eventStoreKey(context.scope),{mode:'exclusive'},async()=>{check();const store=await readEvents(context);check();if(expectedRevision!==null&&store.revision!==expectedRevision)throw Error('DESK_EVENT_SOURCE_CHANGED');
+      mutate(store);store.revision++;readEventStore(store,context);
+      const serialized=JSON.stringify(store);check();await set(eventStoreKey(context.scope),store);
+      if(JSON.stringify(await get(eventStoreKey(context.scope),null))!==serialized)throw Error('DESK_SAVE_UNVERIFIED');if(!current(context))throw Error('DESK_CONTEXT_CHANGED');
+      discoveryId++;lastDiscovery=null;return {context,store};});
+  };
   const desk=Object.freeze({read,context:capture,
+    async eventState(){const context=capture();return {context,store:await readEvents(context)};},
+    async importEvent({url,isCurrent=()=>true}={}){const context=capture(),serial=++eventImportId;if(!intel?.importPost)throw Error('DESK_INTEL_POST_UNSUPPORTED');
+      const before=await readEvents(context);if(!current(context)||!isCurrent()||serial!==eventImportId)throw Error('DESK_CONTEXT_CHANGED');
+      const feed=await intel.importPost({url});if(!current(context)||!isCurrent()||serial!==eventImportId)throw Error('DESK_CONTEXT_CHANGED');
+      const posts=feed.posts.filter(p=>p.topic==='evo'&&p.entry&&p.players?.some(v=>v.nominationQuote));
+      const post=posts[0]??feed.posts.find(p=>p.topic==='evo');if(!post)throw Error('DESK_EVENT_NO_EVO_SOURCE');
+      const result=await updateEvents(context,store=>{const old=store.rows.find(r=>r.url===post.url);
+        if(old){old.post=structuredClone(post);old.importedAt=now();}else{if(store.rows.length>=6)throw Error('DESK_EVENT_LIMIT');store.rows.push({url:post.url,post:structuredClone(post),status:'leak',included:false,exitMode:'target-hold',importedAt:now()});}},
+        {isCurrent:()=>isCurrent()&&serial===eventImportId,expectedRevision:before.revision});
+      return {...result,cached:feed.cached===true,costUsd:feed.costUsd??null};
+    },
+    async setEvent({url,included,status,remove=false}={}){const context=capture();eventImportId++;if(status==='failed'||remove)execution?.stop?.();
+      return updateEvents(context,store=>{const row=store.rows.find(r=>r.url===url);if(!row)throw Error('DESK_EVENT_NOT_FOUND');
+        if(remove){store.rows=store.rows.filter(r=>r!==row);return;}
+        if(included!==undefined){if(typeof included!=='boolean')throw Error('DESK_EVENT_INVALID');if(included&&store.rows.filter(r=>r.included&&r!==row).length>=3)throw Error('DESK_EVENT_SELECTED_LIMIT');row.included=included;}
+        if(status!==undefined){if(!['leak','live','failed'].includes(status))throw Error('DESK_EVENT_INVALID');row.status=status;if(status==='failed')row.included=false;}});
+    },
+    async analyzeEvents({isCurrent=()=>true,onProgress=()=>{}}={}){const {context,state}=await read(),store=await readEvents(context),basis=JSON.stringify(store);
+      const check=()=>{if(!current(context)||!isCurrent())throw Error('DESK_CONTEXT_CHANGED');};check();const names=eventNames(store);
+      if(!names.length)return {...eventCandidates(store,{platform:context.platform,at:now(),rows:[]},{},state.settings,now()),store};
+      const pool=await prices.tradingCandidates({names,namesOnly:true,isCurrent:()=>{check();return true;},onProgress});check();
+      const ids=[...new Set(pool.rows.filter(r=>names.some(name=>eventMatches(r,{name}))).map(r=>r.definitionId))].slice(0,12),policy=await prices.readSettings();check();let references={};
+      if(ids.length&&publicPriceSourceEnabled(policy,'futgg')){const snapshot=await prices.load(ids,{purpose:'trading',sources:['futgg'],futbinBatch:false,policy:{...policy,futbinPlatform:context.platform==='pc'?'pc':'ps'},deadlineAt:now()+30000,isCurrent:()=>{check();return true;},onProgress});references=snapshot.references??{};}check();
+      if(JSON.stringify(await readEvents(context))!==basis)throw Error('DESK_DISCOVERY_CHANGED');return {...eventCandidates(store,pool,references,state.settings,now()),store};
+    },
     async prepareInvestment({capitalLimit=20000,reserveCoins=0,definitionIds=null,isCurrent=()=>true,onProgress=()=>{}}={}){
       try{
       if(!execution)throw Error('DESK_EXECUTION_DISABLED');let saved=lastDiscovery,serial=discoveryId,refreshedDiscovery=null;
-      const {context,state:initialState}=await read();let state=initialState;
+      const {context,state:initialState}=await read();let state=initialState;const events=await readEvents(context);
       const check=()=>{if(!current(context)||!isCurrent()||serial!==discoveryId)throw Error('DESK_CONTEXT_CHANGED');};
       check();if(!saved||!current(saved.context))throw Error('DESK_DISCOVERY_EXPIRED');
-      if(saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis){
+      if(saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis||JSON.stringify(events)!==saved.eventBasis){
         // Only an explicit full prepare may discover again. A subset remains
         // bound to the displayed selection; old quotes/approvals are immutable.
         if(definitionIds!==null)throw Error('DESK_DISCOVERY_EXPIRED');
@@ -50,7 +86,7 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
         if(discoveryBasis(latest.state)!==discoveryBasis(state))throw Error('DESK_DISCOVERY_CHANGED');
         state=latest.state;saved=lastDiscovery;
       }
-      check();if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_EXPIRED');
+      check();if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis||JSON.stringify(await readEvents(context))!==saved.eventBasis)throw Error('DESK_DISCOVERY_EXPIRED');check();
       if(definitionIds!==null&&(!Array.isArray(definitionIds)||definitionIds.length>6||new Set(definitionIds).size!==definitionIds.length
         ||definitionIds.some(id=>!saved.result.suggestions.some(row=>row.definitionId===id))))throw Error('DESK_PLAN_INVALID');
       const advice=definitionIds===null?saved.result:{...saved.result,suggestions:saved.result.suggestions.filter(row=>definitionIds.includes(row.definitionId))};
@@ -74,15 +110,17 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
       lastIntel=feed;discoveryId++;lastDiscovery=null;return feed;},
     async discover({isCurrent=()=>true,onProgress=()=>{}}={}){
       const serial=++discoveryId;lastDiscovery=null;
-      const {context,state}=await read();
+      const {context,state}=await read(),events=await readEvents(context),selectedEvents={...events,rows:events.rows.filter(r=>r.included&&r.status!=='failed')};
       const check=()=>{if(!current(context)||!isCurrent()||serial!==discoveryId)throw Error('DESK_CONTEXT_CHANGED');};
       check();if(typeof prices.tradingCandidates!=='function')throw Error('DESK_DISCOVERY_UNAVAILABLE');
       const newsEvents=intelEvents(lastIntel),effective={...state,events:[...state.events,...newsEvents]};
-      const names=newsEvents.filter(e=>e.at<=now()&&now()-e.at<=86400000).flatMap(e=>e.players.map(p=>p.name));
+      const names=[...eventNames(selectedEvents),...newsEvents.filter(e=>e.at<=now()&&now()-e.at<=86400000).flatMap(e=>e.players.map(p=>p.name))].slice(0,3);
       const pool=deskFunding(state).available<150?{rows:[],scanned:0,ratings:[80,82,84],at:now(),platform:context.platform}
         :await prices.tradingCandidates({isCurrent:()=>current(context)&&isCurrent()&&serial===discoveryId,onProgress,names});
       check();if(pool.platform!==context.platform)throw Error('DESK_CONTEXT_CHANGED');
-      const policy=await prices.readSettings();check();const pre=tradingPreselection(pool,effective,now());let references={},crossChecked=0;
+      const policy=await prices.readSettings();check();const ordinary=tradingPreselection(pool,effective,now());
+      const eventCards=pool.rows.filter(r=>selectedEvents.rows.some(s=>s.post.players.some(p=>p.nominationQuote&&eventMatches(r,p)))).slice(0,3);
+      const pre={...ordinary,rows:[...eventCards,...ordinary.rows.filter(r=>!eventCards.some(e=>e.definitionId===r.definitionId))].slice(0,12)};let references={},crossChecked=0;
       if(pre.rows.length&&publicPriceSourceEnabled(policy,'futgg')){
         onProgress({phase:'cross-check',index:0,total:pre.rows.length});
         try{const snapshot=await prices.load(pre.rows.map(row=>row.definitionId),{purpose:'trading',sources:['futgg'],futbinBatch:false,
@@ -93,8 +131,11 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution
       }
       check();const latest=await read();check();
       if(discoveryBasis(latest.state)!==discoveryBasis(state))throw Error('DESK_DISCOVERY_CHANGED');
-      const result={...rankTradingSuggestions(pool,effective,references,now()),crossChecked,validUntil:pool.at+300000};
-      check();lastDiscovery={context,result:structuredClone(result),basis:discoveryBasis(state)};
+      if(JSON.stringify(await readEvents(context))!==JSON.stringify(events))throw Error('DESK_DISCOVERY_CHANGED');check();
+      const result={...rankTradingSuggestions(pool,effective,references,now()),crossChecked,validUntil:pool.at+300000},eventResult=eventCandidates(selectedEvents,pool,references,state.settings,now());
+      const mixed=[...eventResult.candidates,...result.suggestions.filter(r=>!eventCards.some(e=>e.definitionId===r.definitionId))];result.suggestions=[];result.allocated=0;const used=new Set();
+      for(const row of mixed){if(result.suggestions.length>=6)break;if(used.has(row.definitionId)||result.allocated+row.buyCeiling>result.available)continue;used.add(row.definitionId);result.suggestions.push(row);result.allocated+=row.buyCeiling;}result.eventIssues=eventResult.issues;
+      check();lastDiscovery={context,result:structuredClone(result),basis:discoveryBasis(state),eventBasis:JSON.stringify(events)};
       diagnostic({event:'candidate-result',phase:'screening',status:'success',count:result.suggestions.length,requestedCount:result.scanned,quotedCount:result.crossChecked});return result;
     },
     async followSuggestions({definitionId=null}={}){

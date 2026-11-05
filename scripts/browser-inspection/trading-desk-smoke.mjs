@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
+import {exerciseTradingEvents} from './trading-event-smoke.mjs';
 
 export async function exerciseTradingDesk(context,directory){
   const bundle=await build({absWorkingDir:path.resolve(import.meta.dirname,'../..'),stdin:{contents:
@@ -68,6 +69,7 @@ export async function exerciseTradingDesk(context,directory){
   await exerciseTradingDiscovery(context,directory,bundle.outputFiles[0].text);
   await exerciseTradingPairing(context,directory,bundle.outputFiles[0].text);
   await exerciseTradingInvestment(context,directory,bundle.outputFiles[0].text);
+  await exerciseTradingEvents(context,directory,bundle.outputFiles[0].text);
 }
 
 async function exerciseTradingInvestment(context,directory,bundle){
