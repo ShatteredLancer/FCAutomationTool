@@ -2,11 +2,13 @@ import {DESK_LIMITS,deskId,deskText,deskSettings,emptyDesk,readDesk,observeDeskQ
 import {tradingPreselection,rankTradingSuggestions} from '../../trading/shortlist.js';
 import {publicPriceSourceEnabled} from '../../gallery/public-price-policy.js';
 import {intelEvents} from '../../trading/intel.js';
+import {createInvestmentPlan} from '../../trading/investment-plan.js';
 
 export const tradingDeskKey=scope=>`fcat-fc27-trading-desk-v1:${scope}`;
-// A separate local notebook. No Gallery ownership, transaction journal or EA
-// write service is available to this module. All prices are reference data.
-export function createFc27TradingDesk({prices,get,set,locks,intel=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
+// The notebook stays separate from Gallery ownership and receipts. Optional
+// real execution has its own approval and durable journal, never a notebook
+// flag or a public reference quote masquerading as an EA transaction receipt.
+export function createFc27TradingDesk({prices,get,set,locks,intel=null,execution=null,readCandidates=()=>[],now=()=>Date.now(),id=()=>globalThis.crypto.randomUUID()}){
   let lastDiscovery=null,discoveryId=0,lastIntel=null;
   const discoveryBasis=state=>JSON.stringify([state.settings,state.configured,state.events,deskFunding(state)]);
   const rememberComplete=rows=>prices.remember(rows.filter(row=>Number.isSafeInteger(row.rating)&&row.rating>=1&&row.rating<=99
@@ -32,9 +34,24 @@ export function createFc27TradingDesk({prices,get,set,locks,intel=null,readCandi
   };
   const act=async mutate=>{const context=capture();return update(context,mutate);};
   return Object.freeze({read,context:capture,
+    async prepareInvestment({capitalLimit=20000,reserveCoins=0,definitionIds=null}={}){
+      if(!execution)throw Error('DESK_EXECUTION_DISABLED');const {context,state}=await read(),saved=lastDiscovery;
+      if(!saved||!current(saved.context)||saved.result.validUntil<=now()||discoveryBasis(state)!==saved.basis)throw Error('DESK_DISCOVERY_EXPIRED');
+      if(definitionIds!==null&&(!Array.isArray(definitionIds)||definitionIds.length>6||new Set(definitionIds).size!==definitionIds.length
+        ||definitionIds.some(id=>!saved.result.suggestions.some(row=>row.definitionId===id))))throw Error('DESK_PLAN_INVALID');
+      const advice=definitionIds===null?saved.result:{...saved.result,suggestions:saved.result.suggestions.filter(row=>definitionIds.includes(row.definitionId))};
+      return execution.prepare(createInvestmentPlan({advice,context,capitalLimit,reserveCoins,existingCapital:deskFunding(state).occupied,unitLimit:state.settings.unitLimit,
+        minProfit:state.settings.minProfit,buffer:state.settings.buffer,now:now(),id:id()}));
+    },
+    executionAvailable:()=>execution!==null,
+    inspectInvestment:()=>execution?.inspect()??Promise.resolve({record:null,running:false}),
+    startInvestment:options=>{if(!execution)throw Error('DESK_EXECUTION_DISABLED');return execution.start(options);},
+    recoverInvestment:()=>{if(!execution)throw Error('DESK_EXECUTION_DISABLED');return execution.recover();},
+    stopInvestment:()=>execution?.stop(),
     pairIntel:async key=>{if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');return intel.pair(key);},
     intelConfig:async()=>typeof intel?.config==='function'?intel.config():{configured:false},
     checkIntel:async()=>{if(typeof intel?.check!=='function')throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');return intel.check();},
+    stopIntel:async()=>{if(typeof intel?.stop!=='function')throw Error('DESK_INTEL_STATUS_UNSUPPORTED');return intel.stop();},
     async refreshIntel(){const context=capture();if(!intel)throw Error('DESK_INTEL_COLLECTOR_UNAVAILABLE');
       const feed=await intel.refresh();if(!current(context))throw Error('DESK_CONTEXT_CHANGED');lastIntel=feed;lastDiscovery=null;return feed;},
     async discover({isCurrent=()=>true,onProgress=()=>{}}={}){

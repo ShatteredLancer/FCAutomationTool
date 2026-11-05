@@ -1,4 +1,5 @@
 import {DESK_DEFAULTS,DESK_LIMITS,deskFunding,deskOpportunity,deskTrend,deskNet,deskPriceSignal,deskExit} from '../../trading/desk-model.js';
+import {mountTradingPlanView} from './fc27-trading-plan-view.js';
 
 export function mountFc27TradingView({document,parent,tab,service,timers=globalThis,now=()=>Date.now()}){
   if(!parent)return {setActive(){}};
@@ -6,10 +7,11 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   parent.replaceChildren();
   const style=add(parent,'style');style.textContent='.trading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.trading-card{margin:12px 0;padding:14px;border:1px solid #526671;border-radius:7px;background:#22323d}.trading-card small{display:block;color:#bdcbd3}.trading-card input,.trading-card select{max-width:100%}.trading-chart{width:100%;height:100px;background:#17212c}.trading-warning{color:#ffdb8c}.trading-opportunity{border-color:#9df3d5}.trading-funding{font-size:16px}.trading-ledger{overflow-wrap:anywhere}.trading-card label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}.trading-card input[type=checkbox]{width:auto}.trading-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trading-row>*{flex:1;min-width:100px}';
   style.textContent+='#page-trading{min-width:0;overflow-wrap:anywhere}.trading-grid>*{min-width:0}.trading-row>*{min-width:0;flex-basis:180px}.trading-card label{min-width:0;max-width:100%}.trading-card input,.trading-card select{min-width:0;width:100%}.trading-card input[type=checkbox]{width:18px;flex:0 0 18px}.trading-card a{color:#9df3d5;text-decoration:underline}';
-  add(parent,'h2','交易观察 · 手动执行');
-  add(parent,'p','只读公共参考价、机会提醒和手填记录；不搜索 EA 挂单，不自动买入、移动、挂牌或重挂。没有防封承诺。','module-note');
+  add(parent,'h2','交易观察与自动交易');
+  add(parent,'p','行情分析不会启动交易。先生成整批方案，审核并确认后才按方案搜索、买入、移到转会列表及上架；不自动降价或重挂。没有防封承诺。','module-note');
   const status=add(parent,'output');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   const funding=add(parent,'p','','trading-funding');
+  const investmentHost=add(parent,'section','','trading-card');investmentHost.setAttribute('aria-label','投资方案与执行');
   const controls=add(parent,'div','','row');
   let active=false,busy=false,epoch=0,timer=null,context=null,state=null,attempted=0,advice=null,pairingRevision=0,pairBusy=false,pairConfigured=false,intelFailed=false;
   const current=token=>active&&parent.isConnected&&token===epoch&&JSON.stringify(context)===JSON.stringify(service.context());
@@ -26,7 +28,8 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     DESK_DISCOVERY_UNAVAILABLE:'候选来源暂不可用，未生成建议；可稍后重试。',DESK_DISCOVERY_CHANGED:'资金或线索已变化，请重新分析候选。',
     DESK_DISCOVERY_EXPIRED:'本轮买价参考已过期，请重新分析候选。',FC27_PUBLIC_PRICE_FUTBIN_DISABLED:'自动候选需 FUTBIN 公共卡池；该来源当前已关闭，请在报价设置中启用后重试。',
     DESK_INTEL_PAIRING_REQUIRED:'请输入控制台显示的 48 位配对码，只复制冒号后的字符；不要填整行标签。',DESK_INTEL_COLLECTOR_UNAVAILABLE:'本机 X 采集器未启动或连接失败；价格候选仍可使用。',
-    DESK_INTEL_PAIRING_REJECTED:'采集器拒绝该配对码；请核对当前采集器窗口显示的码。',
+    DESK_INTEL_PAIRING_REJECTED:'采集器拒绝该配对码；请核对本机保存的码，不要把码发给他人。',
+    DESK_INTEL_STOPPED:'本机采集器已停止，本次采集已取消；已发出调用可能产生费用。价格候选仍可使用。',
     DESK_INTEL_SAVE_FAILED:'配对码写入失败，未确认保存；请重试。',DESK_INTEL_SAVE_UNVERIFIED:'配对码回读不一致，未确认保存；请重试。',
     DESK_INTEL_STORAGE_READ_FAILED:'读取本机配对配置失败，未确认保存。',DESK_INTEL_STATUS_TIMEOUT:'本机采集器连接检查超时；未调用 Grok。',
     DESK_INTEL_STATUS_UNSUPPORTED:'采集器版本较旧，请在更新后的项目目录重启采集器。',
@@ -76,7 +79,7 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   button(adviceControls,'跟踪本轮候选',()=>service.followSuggestions());
   const cancel=add(adviceControls,'button','取消候选分析');cancel.type='button';cancel.addEventListener('click',event=>{
     if(!event.isTrusted||!active||!busy)return;epoch++;busy=false;pause();advice=null;adviceList.textContent='分析已取消；不会产生交易。';});
-  function renderAdvice(){adviceList.replaceChildren();if(!advice){add(adviceList,'p','点击重新分析，按资金设置自动找候选。');return;}
+  function renderAdvice(){investmentView.setAdvice(advice);adviceList.replaceChildren();if(!advice){add(adviceList,'p','点击重新分析，按资金设置自动找候选。');return;}
     add(adviceList,'p',`样本 ${advice.scanned} 张 · 预算内 ${advice.affordable} 张 · 交叉核价 ${advice.crossChecked} 张 · 本批各一张最多占用 ${advice.allocated} / 可用 ${advice.available}`);
     add(adviceList,'small',`${advice.defaultBudget?'当前按预填 1 万试仓估算；请保存真实资金设置后再开启提醒。 ':''}读取 ${new Date(advice.at).toLocaleString()}；买价参考 5 分钟有效，进入原生市场前重新核价。`);
     if(!advice.suggestions.length)add(adviceList,'p',advice.available<150?'可用试仓不足：先核对资金设置或未售持仓。':'本轮没有满足利润/预算/数据条件的候选，不凑数推荐。');
@@ -96,28 +99,35 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
   const intelligence=add(parent,'section','','trading-card');add(intelligence,'h3','X 自动采集 · 按需刷新，不开定时');
   add(intelligence,'small','从 FutSheriff / FutPoliceLeaks / Fut_scoreboard / AsyFutTrader / DetectiveFUT 原生 X 搜索原帖，核对最多两条 EVO 线程及作者后续回复，包含点名球员。复用本机 Grok，可能产生模型费用；不保证实时、完整线程或爆料准确。15 分钟内重复刷新用缓存。');
   const pairing=add(intelligence,'details');add(pairing,'summary','连接本机采集器（首次设置）');
-  add(pairing,'small','在本项目电脑运行 npm.cmd run trading:intel，保持采集器窗口开启；只复制冒号后的 48 位本机配对码。配对码保存在本机，不导出、不发到 X。保存和检查连接均不调用 Grok。');
+  add(pairing,'small','双击桌面“FCAT X Collector → Start Collector”后台运行；提示窗口可关闭。也可运行 npm.cmd run trading:intel:start。停止用 Stop Collector 或下方按钮；不设开机自启、不自动采集。已有配对无需重填；首次配对码保存在本机用户目录 .fcat-trading-intel/pairing-key，也可用原前台命令 trading:intel 查看，切勿分享。');
   const pairKey=input(pairing,'本机采集器配对码','','password');pairKey.autocomplete='off';pairKey.placeholder='48 位十六进制配对码';
   const pairStatus=add(pairing,'output','未配置配对码。');pairStatus.setAttribute('role','status');pairStatus.setAttribute('aria-label','采集器连接状态');pairStatus.setAttribute('aria-live','polite');pairStatus.style.display='block';
-  const pairButtons=add(pairing,'div','','row'),pairSave=add(pairButtons,'button','保存采集器连接'),pairCheck=add(pairButtons,'button','检查连接（不采集）');pairSave.type=pairCheck.type='button';
+  const pairButtons=add(pairing,'div','','row'),pairSave=add(pairButtons,'button','保存采集器连接'),pairCheck=add(pairButtons,'button','检查连接（不采集）'),pairStop=add(pairButtons,'button','停止本机采集器');
+  pairSave.type=pairCheck.type=pairStop.type='button';
+  add(pairing,'small','停止会取消正在进行的 X 采集；已发出的模型调用可能产生费用。配对码和全部交易记录保留。');
   const pairingMessage=value=>value.connected?`配对码已保存；本机采集器已连接${value.collecting?'，当前有采集进行中':''}。检查未调用 Grok。`
     :value.connection==='legacy'?'配对码已保存；采集器版本较旧，不支持连接检查，请更新项目后重启采集器。'
-    :'配对码已保存；本机采集器未连接。请运行 npm.cmd run trading:intel 并保持窗口开启。';
-  const pairingAction=async(event,save)=>{
+    :'配对码已保存；本机采集器未连接。请双击桌面“启动采集器”或运行 npm.cmd run trading:intel:start 后检查连接。';
+  const pairingAction=async(event,action)=>{
+    const save=action==='save',stop=action==='stop';
     if(!event.isTrusted||!active||!parent.isConnected||!service)return;
     if(pairBusy){pairStatus.textContent='正在处理配对连接，请稍候；未采集 X。';return;}
     let captured;try{captured=JSON.stringify(service.context());if(captured!==JSON.stringify(context))throw Error('DESK_CONTEXT_CHANGED');}
     catch(error){pairStatus.textContent=errorText(error);return;}
     const ticket=++pairingRevision,currentPair=()=>{try{return active&&parent.isConnected&&ticket===pairingRevision&&captured===JSON.stringify(service.context());}catch{return false;}};
-    pairBusy=true;pairSave.disabled=pairCheck.disabled=true;pairStatus.textContent=save?'正在保存配对码并检查连接…（不采集 X）':'正在检查已保存连接…（不采集 X）';
-    try{const result=save?await service.pairIntel(pairKey.value):await service.checkIntel();if(!currentPair())return;
+    pairBusy=true;pairSave.disabled=pairCheck.disabled=pairStop.disabled=true;
+    pairStatus.textContent=stop?'正在停止本机采集器…':save?'正在保存配对码并检查连接…（不采集 X）':'正在检查已保存连接…（不采集 X）';
+    try{const result=stop?await service.stopIntel():save?await service.pairIntel(pairKey.value):await service.checkIntel();if(!currentPair())return;
       if(save&&result?.saved!==true)throw Error('DESK_INTEL_SAVE_UNVERIFIED');
-      pairConfigured=true;if(save)pairKey.value='';pairStatus.textContent=pairingMessage(result);status.textContent=pairStatus.textContent;
+      if(stop&&result?.stopping!==true)throw Error('DESK_INTEL_RESPONSE_INVALID');
+      pairConfigured=true;if(save)pairKey.value='';
+      pairStatus.textContent=stop?'采集器已接受停止请求；配对码和交易记录保留。需要时用桌面“启动采集器”重新启动；可检查连接确认已离线。':pairingMessage(result);status.textContent=pairStatus.textContent;
       if(intelFailed){intelList.replaceChildren();intelFailed=false;}
-    }catch(error){if(currentPair())pairStatus.textContent=save?`保存未完成：${errorText(error)}`:`${pairConfigured?'配对码已保存；':''}${errorText(error)}`;}
-    finally{if(ticket===pairingRevision){pairBusy=false;pairSave.disabled=pairCheck.disabled=false;}}
+    }catch(error){if(currentPair())pairStatus.textContent=save?`保存未完成：${errorText(error)}`:stop?`停止尚未确认：${errorText(error)}`:`${pairConfigured?'配对码已保存；':''}${errorText(error)}`;}
+    finally{if(ticket===pairingRevision){pairBusy=false;pairSave.disabled=pairCheck.disabled=pairStop.disabled=false;}}
   };
-  pairSave.addEventListener('click',event=>{void pairingAction(event,true);});pairCheck.addEventListener('click',event=>{void pairingAction(event,false);});
+  pairSave.addEventListener('click',event=>{void pairingAction(event,'save');});pairCheck.addEventListener('click',event=>{void pairingAction(event,'check');});
+  pairStop.addEventListener('click',event=>{void pairingAction(event,'stop');});
   const intelList=add(intelligence,'div');
   button(intelligence,'采集 X 线索并筛选',async()=>{const token=epoch;intelFailed=false;intelList.textContent='正在搜索原帖与作者回复；通常需要几十秒，不执行交易…';
     try{const feed=await service.refreshIntel();if(!current(token))return;intelList.replaceChildren();
@@ -135,6 +145,8 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
       await discover();
     }catch(error){if(current(token)){intelFailed=true;intelList.textContent=errorText(error);}throw error;}
   });
+  const investmentView=mountTradingPlanView({document,parent:investmentHost,service,now,timers,isCurrent:()=>{
+    try{return active&&parent.isConnected&&JSON.stringify(context)===JSON.stringify(service.context());}catch{return false;}}});
   const picker=add(parent,'details','','trading-card');add(picker,'summary','添加观察球员');
   const pickRows=add(picker,'div','','trading-row');const linkInput=input(pickRows,'FUTBIN FC27 链接 / EA版本ID','','text'),nameInput=input(pickRows,'球员名称（可选）','','text');
   button(picker,'加入观察',()=>service.add({input:linkInput.value,name:nameInput.value}));
@@ -191,10 +203,10 @@ export function mountFc27TradingView({document,parent,tab,service,timers=globalT
     newsList.replaceChildren();for(const row of state.events.slice().reverse()){const p=add(newsList,'p');const a=add(p,'a',`${new URL(row.url).pathname.split('/')[1]} · ${row.status}`);a.href=row.url;a.target='_blank';a.rel='noopener noreferrer';add(p,'span',` · ${row.note}`);}
   }
   if(!service){status.textContent='交易观察服务未接入。';for(const node of parent.querySelectorAll('button,input,select'))node.disabled=true;}
-  return {setActive(value){active=value;epoch++;pairingRevision++;busy=false;pairBusy=false;pause();
+  return {setActive(value){active=value;epoch++;pairingRevision++;busy=false;pairBusy=false;pause();investmentView.setActive(false);
     if(!value)return;if(!service)return;
-    state=null;advice=null;intelFailed=false;intelList.replaceChildren();pairKey.value='';pairConfigured=false;pairSave.disabled=pairCheck.disabled=false;pairStatus.textContent='读取本机配对保存状态…';adviceList.replaceChildren();watch.replaceChildren();ledger.replaceChildren();alerts.replaceChildren();newsList.replaceChildren();for(const key of Object.keys(names))inputs[key].value=String(DESK_DEFAULTS[key]);funding.textContent='读取本地交易观察记录…';
-    try{context=service.context();}catch{funding.textContent='交易账号上下文尚未就绪，请登录后重新打开。';return;}
+    state=null;advice=null;intelFailed=false;intelList.replaceChildren();pairKey.value='';pairConfigured=false;pairSave.disabled=pairCheck.disabled=pairStop.disabled=false;pairStatus.textContent='读取本机配对保存状态…';adviceList.replaceChildren();watch.replaceChildren();ledger.replaceChildren();alerts.replaceChildren();newsList.replaceChildren();for(const key of Object.keys(names))inputs[key].value=String(DESK_DEFAULTS[key]);funding.textContent='读取本地交易观察记录…';
+    try{context=service.context();}catch{funding.textContent='交易账号上下文尚未就绪，请登录后重新打开。';return;}investmentView.setActive(true);
     const pairTicket=pairingRevision,pairContext=JSON.stringify(context);
     void Promise.resolve(service.intelConfig?.()??{configured:false}).then(value=>{if(active&&pairTicket===pairingRevision&&pairContext===JSON.stringify(service.context())){
       pairConfigured=value.configured===true;pairStatus.textContent=pairConfigured?'配对码已保存（已回读）；连接尚未检查。可点下方检查，不采集 X。':'未配置配对码。';}})

@@ -14,7 +14,7 @@ export function createFc27TradingIntel({gmRequest,get,set,now=()=>Date.now()}){
         if(typeof response.responseText!=='string'||response.responseText.length>100000)throw Error('DESK_INTEL_RESPONSE_INVALID');
         const value=JSON.parse(response.responseText);
         if(response.status===401)throw Error('DESK_INTEL_PAIRING_REJECTED');
-        if(response.status===404&&route==='status')throw Error('DESK_INTEL_STATUS_UNSUPPORTED');
+        if(response.status===404&&['status','shutdown'].includes(route))throw Error('DESK_INTEL_STATUS_UNSUPPORTED');
         if(response.status!==200)throw Error(/^DESK_INTEL_[A-Z_]+$/.test(value?.error??'')?value.error:'DESK_INTEL_UNAVAILABLE');resolve(value);
       }catch(error){reject(error.message?.startsWith('DESK_INTEL_')?error:Error('DESK_INTEL_RESPONSE_INVALID'));}},
       onerror:()=>reject(Error('DESK_INTEL_COLLECTOR_UNAVAILABLE')),ontimeout:()=>reject(Error(route==='status'?'DESK_INTEL_STATUS_TIMEOUT':'DESK_INTEL_TIMEOUT'))});
@@ -28,6 +28,9 @@ export function createFc27TradingIntel({gmRequest,get,set,now=()=>Date.now()}){
     async config(){let configured=false;try{pairingKey(await readKey());configured=true;}catch(error){if(error.message==='DESK_INTEL_STORAGE_READ_FAILED')throw error;}
       return {configured};},
     async check(){return checkKey(pairingKey(await readKey()));},
+    async stop(){const value=await request('shutdown',pairingKey(await readKey()),4000);
+      if(value?.schema!==1||value.service!=='fcat-trading-intel'||value.status!=='stopping')throw Error('DESK_INTEL_RESPONSE_INVALID');
+      return {configured:true,connected:false,stopping:true};},
     async pair(value){const key=pairingKey(value);let connection;
       try{connection=await checkKey(key);}catch(error){
         if(!['DESK_INTEL_COLLECTOR_UNAVAILABLE','DESK_INTEL_STATUS_TIMEOUT','DESK_INTEL_STATUS_UNSUPPORTED'].includes(error.message))throw error;
