@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.99
+// @version      27.0.100
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.99", at: Date.now(), status: 'started',
+    state = { version: "27.0.100", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -239,9 +239,9 @@
   }
   function snapshotFc27ClubPlayer(item2, root) {
     const get = (key2) => ownData(item2, key2);
-    const id13 = get("id");
+    const id14 = get("id");
     const definitionId = get("definitionId");
-    if (!identity2(id13) || !identity2(definitionId)) throw new Error("FC27_CACHED_ITEM_IDENTITY_CONFLICT");
+    if (!identity2(id14) || !identity2(definitionId)) throw new Error("FC27_CACHED_ITEM_IDENTITY_CONFLICT");
     const upgrades = get("upgrades");
     const noUpgrades = upgrades === null;
     const pile = get("utasPile");
@@ -277,7 +277,7 @@
     }
     const tradeable = observedTradable !== null ? observedTradable : observedUntradeable !== null ? !observedUntradeable : methodTradeable !== null ? methodTradeable : observedUntradeableCount !== null ? observedUntradeableCount > 0 ? false : true : null;
     const snapshot = {
-      id: id13,
+      id: id14,
       definitionId,
       type: "player",
       pile: clubPile !== void 0 && pile === clubPile ? "club" : null,
@@ -540,14 +540,14 @@
     }
     function formationSnapshot(squad) {
       const formation = data(squad, "_formation");
-      const id13 = data(formation, "id");
+      const id14 = data(formation, "id");
       const raw = data(formation, "positions");
       let positions3 = null;
       if (Array.isArray(raw) && data(raw, "length") === 11) {
         const copied = Array.from({ length: 11 }, (_, index) => data(data(raw, String(index)), "typeId"));
         if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions3 = copied;
       }
-      return { id: Number.isSafeInteger(id13) && id13 >= 0 && id13 < 1e9 ? id13 : null, positions: positions3 };
+      return { id: Number.isSafeInteger(id14) && id14 >= 0 && id14 < 1e9 ? id14 : null, positions: positions3 };
     }
     function find() {
       if (![27, "27"].includes(data(root, "APP_YEAR_SHORT"))) return null;
@@ -577,7 +577,7 @@
         scope: JSON.stringify([userId, personaId, sku, data(club, "platform")])
       };
     }
-    if (![setId, challengeId].every((id13) => Number.isSafeInteger(id13) && id13 > 0 && id13 < 1e9)) return stop6("INVALID_CHALLENGE_IDENTITY");
+    if (![setId, challengeId].every((id14) => Number.isSafeInteger(id14) && id14 > 0 && id14 < 1e9)) return stop6("INVALID_CHALLENGE_IDENTITY");
     try {
       const initial = find();
       if (!initial) return stop6("IN_PROGRESS_CHALLENGE_UNCONFIRMED");
@@ -668,18 +668,18 @@
       const collection = ownData(set, "challenges");
       if (!collection) continue;
       for (const challenge of values2(collection, 50)) {
-        const id13 = ownData(challenge, "id");
+        const id14 = ownData(challenge, "id");
         const setId = ownData(set, "id");
-        if (ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "setId") !== setId || !Number.isSafeInteger(id13) || id13 <= 0 || !Number.isSafeInteger(setId) || setId <= 0) continue;
+        if (ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "setId") !== setId || !Number.isSafeInteger(id14) || id14 <= 0 || !Number.isSafeInteger(setId) || setId <= 0) continue;
         const name2 = ownData(challenge, "name");
-        targets.push({ id: id13, setId, name: typeof name2 === "string" && name2.length <= 160 ? name2 : `Challenge ${id13}` });
+        targets.push({ id: id14, setId, name: typeof name2 === "string" && name2.length <= 160 ? name2 : `Challenge ${id14}` });
       }
     }
     return targets;
   }
   function normalizeFc27TraditionalChallenge({ context, setId, challenge, layout, keys: keys2, scopes, qualities }) {
-    const id13 = ownData(challenge, "id");
-    if (ownData(challenge, "setId") !== setId || ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "eligibilityOperation") !== "AND" || layout.status !== "observed" || layout.setId !== setId || layout.challengeId !== id13 || layout.slotCount !== 11 || ownData(keys2, "PLAYER_MIN_OVR") !== 26 || ownData(keys2, "PLAYER_MAX_OVR") !== 28 || ownData(scopes, "GREATER") !== 0 || ownData(scopes, "EXACT") !== 2) {
+    const id14 = ownData(challenge, "id");
+    if (ownData(challenge, "setId") !== setId || ownData(challenge, "status") !== "IN_PROGRESS" || ownData(challenge, "eligibilityOperation") !== "AND" || layout.status !== "observed" || layout.setId !== setId || layout.challengeId !== id14 || layout.slotCount !== 11 || ownData(keys2, "PLAYER_MIN_OVR") !== 26 || ownData(keys2, "PLAYER_MAX_OVR") !== 28 || ownData(scopes, "GREATER") !== 0 || ownData(scopes, "EXACT") !== 2) {
       throw new Error("FC27_CHALLENGE_UNVERIFIED");
     }
     const count3 = layout.requiredPlayerCount;
@@ -714,7 +714,7 @@
       requirementsOperation: "AND",
       completed: false,
       setId,
-      id: id13,
+      id: id14,
       slotCount: layout.slotCount,
       brickIndices: [...layout.simpleBrickIndices, ...layout.customBrickIndices],
       requirements
@@ -776,9 +776,9 @@
     if (!integer2(slotCount, 1, 11) || !Array.isArray(brickIndices) || brickIndices.some((index) => !integer2(index, 0, slotCount - 1)) || new Set(brickIndices).size !== brickIndices.length || slotCount - brickIndices.length !== required2) {
       return stop2("SLOT_LAYOUT_UNVERIFIED");
     }
-    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id13) => !identity3(id13))) return stop2("PROTECTION_POLICY_UNVERIFIED");
+    if (policy.schema !== 1 || policy.reviewed !== true || !integer2(policy.maxRating, 1, 99) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean") || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((value) => !integer2(value, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || policy.excludedLeagueIds.some((id14) => !identity3(id14))) return stop2("PROTECTION_POLICY_UNVERIFIED");
     const lists = [policy.lockedItemIds, policy.activeSquadItemIds];
-    if (lists.some((value) => value !== void 0) && (lists.some((value) => !Array.isArray(value) || value.length > 2e4 || value.some((id13) => !identity3(id13)) || new Set(value).size !== value.length) || policy.protectFsuLockedPlayers !== true || policy.protectActiveSquad !== true)) {
+    if (lists.some((value) => value !== void 0) && (lists.some((value) => !Array.isArray(value) || value.length > 2e4 || value.some((id14) => !identity3(id14)) || new Set(value).size !== value.length) || policy.protectFsuLockedPlayers !== true || policy.protectActiveSquad !== true)) {
       return stop2("PROTECTION_POLICY_UNVERIFIED");
     }
     const lockedIds = Array.isArray(policy.lockedItemIds) ? new Set(policy.lockedItemIds) : null;
@@ -950,14 +950,14 @@
       }
     );
     const numbers3 = Array.from({ length: value.length }, (_, index) => ownData(value, String(index)));
-    const badIndex = numbers3.findIndex((id13) => !integer3(id13));
+    const badIndex = numbers3.findIndex((id14) => !integer3(id14));
     if (badIndex >= 0) protectionFail(phase, {
       count: value.length,
       offset: badIndex,
-      unknownCount: numbers3.filter((id13) => !integer3(id13)).length,
+      unknownCount: numbers3.filter((id14) => !integer3(id14)).length,
       mismatch: numbers3[badIndex] === null ? "null" : typeof numbers3[badIndex]
     });
-    return [...new Set(numbers3.filter((id13) => id13 > 0))].sort((a, b) => a - b);
+    return [...new Set(numbers3.filter((id14) => id14 > 0))].sort((a, b) => a - b);
   };
   function readFc27StreamlinedProtection(root) {
     const context = readFc27Context(root), lockedItemIds = ids(at2(root, "info.lock"));
@@ -1073,7 +1073,7 @@
       const goldenMax = ownData(set, "goldenrange");
       const rawLeagues = ownData(set, "shield_league");
       const leagues = Array.isArray(rawLeagues) && rawLeagues.length <= 200 ? Array.from({ length: rawLeagues.length }, (_, index) => ownData(rawLeagues, String(index))) : null;
-      if (flags2.some((value) => typeof value !== "boolean") || !Number.isInteger(goldenMax) || goldenMax < 75 || goldenMax > 99 || !leagues || leagues.some((id13) => !Number.isSafeInteger(id13) || id13 < 1)) throw new Error("FC27_FSU_POLICY_UNVERIFIED");
+      if (flags2.some((value) => typeof value !== "boolean") || !Number.isInteger(goldenMax) || goldenMax < 75 || goldenMax > 99 || !leagues || leagues.some((id14) => !Number.isSafeInteger(id14) || id14 < 1)) throw new Error("FC27_FSU_POLICY_UNVERIFIED");
       report.fsu.policy = {
         onlyUntradeable: flags2[0],
         excludeEvolution: flags2[1],
@@ -1462,7 +1462,7 @@
         return count3;
       },
       readPage: async ({ start, count: count3, definitionIds }) => {
-        if (!Number.isInteger(start) || start < 0 || start > 2e4 || !Number.isInteger(count3) || count3 < 1 || count3 > 250 || !Array.isArray(definitionIds) || definitionIds.length > 50 || definitionIds.some((id13) => !validId(id13)) || new Set(definitionIds).size !== definitionIds.length) throw new Error("FC27_CLUB_QUERY_INVALID");
+        if (!Number.isInteger(start) || start < 0 || start > 2e4 || !Number.isInteger(count3) || count3 < 1 || count3 > 250 || !Array.isArray(definitionIds) || definitionIds.length > 50 || definitionIds.some((id14) => !validId(id14)) || new Set(definitionIds).size !== definitionIds.length) throw new Error("FC27_CLUB_QUERY_INVALID");
         const body = { type: "player", start, count: count3 };
         if (definitionIds.length) body.defId = definitionIds.join(",");
         const response = await request("players", body);
@@ -1540,9 +1540,9 @@
     };
     async function request(action, target = {}, beforeDispatch = null) {
       if (busy || stopped) return fail3("FC27_TRANSACTION_TRANSPORT_BLOCKED");
-      const id13 = target.challengeId;
+      const id14 = target.challengeId;
       const mutation = action === "save" || action === "save-concept" || action === "save-purchase" || action === "submit";
-      if (!["unassigned", "packs", "save", "save-concept", "save-purchase", "submit"].includes(action) || mutation && (!Number.isSafeInteger(id13) || id13 <= 0 || canWrite() !== true)) return fail3("FC27_LIVE_DISABLED");
+      if (!["unassigned", "packs", "save", "save-concept", "save-purchase", "submit"].includes(action) || mutation && (!Number.isSafeInteger(id14) || id14 <= 0 || canWrite() !== true)) return fail3("FC27_LIVE_DISABLED");
       if (action === "save" || action === "save-concept" || action === "save-purchase") {
         const declaredBricks = target.simpleBrickIndices === void 0 ? [] : target.simpleBrickIndices;
         const empty2 = action === "save-purchase" ? target.emptySlotIndices : [];
@@ -1563,7 +1563,7 @@
         req.doReauth = false;
         req.timeout = 1e4;
         req.requestType = mutation ? "PUT" : "GET";
-        const endpoint = `/ut/game/${game}/${action === "unassigned" ? "purchased/items" : action === "packs" ? "store/purchaseGroup/all" : `sbs/challenge/${id13}${["save", "save-concept", "save-purchase"].includes(action) ? "/squad" : ""}`}`;
+        const endpoint = `/ut/game/${game}/${action === "unassigned" ? "purchased/items" : action === "packs" ? "store/purchaseGroup/all" : `sbs/challenge/${id14}${["save", "save-concept", "save-purchase"].includes(action) ? "/squad" : ""}`}`;
         req.setPath(endpoint);
         const url = new URL(ownData(req, "url"));
         if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) return fail3("FC27_TRANSACTION_ENDPOINT_UNVERIFIED");
@@ -1891,14 +1891,14 @@
     if (bricks.length >= 11 || new Set(bricks).size !== bricks.length || bricks.some((index) => !Number.isInteger(index) || index < 0 || index >= 11)) return fail31();
     const ids2 = Array.from({ length: slots.length }, (_, index) => {
       const slot = ownData(slots, String(index));
-      const id14 = ownData(ownData(slot, "_item"), "id");
-      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id14) || id14 < -1 || (index >= 11 || simple.includes(index)) && id14 > 0) return fail31();
-      return id14;
+      const id15 = ownData(ownData(slot, "_item"), "id");
+      if (ownData(slot, "index") !== index || !Number.isSafeInteger(id15) || id15 < -1 || (index >= 11 || simple.includes(index)) && id15 > 0) return fail31();
+      return id15;
     });
     const formation = ownData(squad, "_formation");
-    const id13 = ownData(formation, "id");
+    const id14 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
-    if (!Number.isSafeInteger(id13) || id13 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail31();
+    if (!Number.isSafeInteger(id14) || id14 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail31();
     const positions3 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
     if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail31();
     return {
@@ -1909,7 +1909,7 @@
       simpleBrickIndices: [...simple],
       customBrickIndices: [...custom],
       requiredPlayerCount: 11 - bricks.length,
-      formation: { id: id13, positions: positions3 },
+      formation: { id: id14, positions: positions3 },
       squadEmpty: ids2.every((value) => value === 0 || value === -1)
     };
   }
@@ -1924,13 +1924,13 @@
     return slots.map((slot, index) => {
       if (ownData(slot, "index") !== index) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
       const item2 = ownData(slot, "_item");
-      const id13 = ownData(item2, "id");
-      if (!Number.isSafeInteger(id13) || id13 < -1) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
-      if (id13 <= 0) return null;
+      const id14 = ownData(item2, "id");
+      if (!Number.isSafeInteger(id14) || id14 < -1) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
+      if (id14 <= 0) return null;
       const definitionId = ownData(item2, "definitionId");
       const concept = ownData(item2, "concept");
-      if (!Number.isSafeInteger(definitionId) || definitionId <= 0 || typeof concept !== "boolean" || concept && id13 !== definitionId) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
-      return { id: id13, definitionId, concept };
+      if (!Number.isSafeInteger(definitionId) || definitionId <= 0 || typeof concept !== "boolean" || concept && id14 !== definitionId) throw new Error("FC27_PUZZLE_FILL_LAYOUT_UNVERIFIED");
+      return { id: id14, definitionId, concept };
     });
   }
 
@@ -2002,8 +2002,8 @@
     if (!Array.isArray(slots) || slots.length < 11) return null;
     return slots.slice(0, 11).map((slot, index) => {
       const item2 = ownData(slot, "_item");
-      const id13 = ownData(item2, "id");
-      return [0, -1].includes(id13) ? null : { slot: index, id: id13, definitionId: ownData(item2, "definitionId"), concept: ownData(item2, "concept") };
+      const id14 = ownData(item2, "id");
+      return [0, -1].includes(id14) ? null : { slot: index, id: id14, definitionId: ownData(item2, "definitionId"), concept: ownData(item2, "concept") };
     });
   }
   function readFc27PuzzlePageSnapshot(root, { setId, challengeId }) {
@@ -2360,7 +2360,7 @@
         observedAt: Date.now(),
         setId: record.setId,
         challengeId: record.challengeId,
-        present: present.map(({ id: id13, definitionId, pile }) => ({ id: id13, definitionId, pile })),
+        present: present.map(({ id: id14, definitionId, pile }) => ({ id: id14, definitionId, pile })),
         setTimesCompleted: sets2[0].timesCompleted,
         packId: record.reward.value,
         packCount,
@@ -2502,14 +2502,14 @@
           return fail5("FC27_SQUAD_STATE_UNVERIFIED");
         }
         const ids2 = slots.map((slot) => ownData(ownData(slot, "_item"), "id"));
-        if (ids2.some((id13, index) => !Number.isSafeInteger(id13) || ownData(slots[index], "index") !== index || (index >= 11 || plan.challenge.brickIndices.includes(index)) && ![0, -1].includes(id13))) return fail5("FC27_SQUAD_STATE_UNVERIFIED");
+        if (ids2.some((id14, index) => !Number.isSafeInteger(id14) || ownData(slots[index], "index") !== index || (index >= 11 || plan.challenge.brickIndices.includes(index)) && ![0, -1].includes(id14))) return fail5("FC27_SQUAD_STATE_UNVERIFIED");
         return {
           context,
           fresh: true,
           observedAt: Date.now(),
           setId: plan.challenge.setId,
           challengeId: plan.challenge.id,
-          squadEmpty: ids2.every((id13) => id13 === 0 || id13 === -1),
+          squadEmpty: ids2.every((id14) => id14 === 0 || id14 === -1),
           ...plan.kind === "puzzle-fill" ? { layout: projectFc27PuzzleLayout(
             root,
             loaded,
@@ -2618,7 +2618,7 @@
         return {
           ...evidence,
           progressConfirmed: evidence.setTimesCompleted === plan.set.timesCompleted + 1,
-          consumed: evidence.present.length === 0 ? plan.selected.map(({ id: id13, definitionId, pile }) => ({ id: id13, definitionId, pile })) : [],
+          consumed: evidence.present.length === 0 ? plan.selected.map(({ id: id14, definitionId, pile }) => ({ id: id14, definitionId, pile })) : [],
           rewardDelta: evidence.packCount - baseline.count
         };
       },
@@ -3746,7 +3746,7 @@
     if (clubLinks?.schema !== 1 || clubLinks.complete !== true || !Array.isArray(clubLinks.links) || clubLinks.links.length > 2e4 || clubLinks.links.some((pair) => !Array.isArray(pair) || pair.length !== 2 || !pair.every(positive3))) return null;
     const links = new Map(clubLinks.links);
     if (links.size !== clubLinks.links.length) return null;
-    return (id13) => positive3(id13) ? links.get(id13) ?? id13 : null;
+    return (id14) => positive3(id14) ? links.get(id14) ?? id14 : null;
   }
   function matchFc27SbcItemRule(rule, item2, groupMatcher, clubResolver) {
     if (![
@@ -4102,8 +4102,8 @@
     const eligible = squad.map((item2, slot) => item2 !== null && item2.positions.includes(formation.positions[slot]));
     squad.forEach((item2, slot) => {
       if (eligible[slot]) fields4.forEach((field, index) => {
-        const id13 = field.value(item2);
-        counts[index].set(id13, (counts[index].get(id13) ?? 0) + 1);
+        const id14 = field.value(item2);
+        counts[index].set(id14, (counts[index].get(id14) ?? 0) + 1);
       });
     });
     const slotChemistry = squad.map((item2, slot) => eligible[slot] ? Math.min(3, fields4.reduce((total, field, index) => {
@@ -4215,6 +4215,45 @@
   }
 
   // src/fc27/puzzle-preview.js
+  var PUZZLE_SEARCH_STAGES = Object.freeze([5e4, 1e5, 2e5]);
+  var searchBudgets = /* @__PURE__ */ new WeakSet();
+  function createFc27PuzzleSearchBudget() {
+    let nodes = 0, stage = 0, feasible = false;
+    const snapshot = () => ({
+      budgetNodes: nodes,
+      maxNodes: PUZZLE_SEARCH_STAGES[stage],
+      budgetStage: stage + 1,
+      budgetStages: PUZZLE_SEARCH_STAGES.length,
+      nodeCap: PUZZLE_SEARCH_STAGES.at(-1)
+    });
+    const budget = Object.freeze({
+      cap: PUZZLE_SEARCH_STAGES.at(-1),
+      snapshot,
+      remaining: () => Math.max(0, (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)) - nodes),
+      markFeasible: () => {
+        feasible = true;
+      },
+      takeNode: () => {
+        if (nodes === PUZZLE_SEARCH_STAGES[stage]) {
+          if (feasible || stage === PUZZLE_SEARCH_STAGES.length - 1) return false;
+          stage++;
+        }
+        nodes++;
+        return true;
+      },
+      // Fixed refinement work shares the hard cap, never an adaptive allowance.
+      // Callers first clamp their unchanged fixed limit to remaining capacity.
+      accountFixed: (count3) => {
+        if (!Number.isSafeInteger(count3) || count3 < 0 || nodes + count3 > (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)))
+          throw new Error("FC27_PUZZLE_BUDGET_INVALID");
+        nodes += count3;
+        while (stage < PUZZLE_SEARCH_STAGES.length - 1 && nodes > PUZZLE_SEARCH_STAGES[stage]) stage++;
+      }
+    });
+    searchBudgets.add(budget);
+    return budget;
+  }
+  var isFc27PuzzleSearchBudget = (budget) => searchBudgets.has(budget);
   var DEFAULT_MAX_NODES = 5e4;
   var MAX_PUZZLE_QUOTE_PRICE = 15e6;
   var createFc27PuzzleCostBound = (costs, counted, requiredCount, definitionIds = costs.map((_cost, index) => index)) => {
@@ -4331,15 +4370,16 @@
       "exact-chemistry"
     ].includes(rule.kind));
   }
-  function evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, validate: validate2, searchPositions }) {
+  function* evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, validate: validate2, searchPositions }) {
     let found = null;
     let unavailable = null;
     let exhausted = false;
-    const evaluate2 = (ordered) => {
+    const evaluate2 = function* (ordered) {
       if (!takeNode("evaluations")) {
         exhausted = true;
         return;
       }
+      yield;
       let facts2;
       try {
         const brickIndices = Array.from({ length: formation?.slotCount ?? 0 }, (_, index) => index).filter((index) => !slots.includes(index));
@@ -4372,15 +4412,16 @@
     const preferred = chosen.slice();
     if (searchPositions) {
       const assigned = Array(slots.length).fill(-1);
-      const augment = (itemIndex, visited) => {
+      const augment = function* (itemIndex, visited) {
         if (!takeNode("placementNodes")) {
           exhausted = true;
           return false;
         }
+        yield;
         for (let slot = 0; slot < slots.length; slot++) {
           if (visited.has(slot) || !fits(chosen[itemIndex], slot)) continue;
           visited.add(slot);
-          if (assigned[slot] === -1 || augment(assigned[slot], visited)) {
+          if (assigned[slot] === -1 || (yield* augment(assigned[slot], visited))) {
             assigned[slot] = itemIndex;
             return true;
           }
@@ -4388,7 +4429,7 @@
         }
         return false;
       };
-      for (let index = 0; index < chosen.length && !exhausted; index++) augment(index, /* @__PURE__ */ new Set());
+      for (let index = 0; index < chosen.length && !exhausted; index++) yield* augment(index, /* @__PURE__ */ new Set());
       if (exhausted) return { found, unavailable, exhausted };
       const used2 = new Set(assigned.filter((index) => index !== -1));
       const fillers = chosen.filter((_item, index) => !used2.has(index));
@@ -4396,19 +4437,20 @@
         preferred[slot] = itemIndex === -1 ? fillers.shift() : chosen[itemIndex];
       });
     }
-    evaluate2(preferred);
+    yield* evaluate2(preferred);
     if (found || unavailable || exhausted || !searchPositions) return { found, unavailable, exhausted };
     const order2 = slots.map((_slot, index) => index).sort((a, b) => chosen.filter((item2) => fits(item2, a)).length - chosen.filter((item2) => fits(item2, b)).length || a - b);
     const arranged = Array(chosen.length);
     const used = /* @__PURE__ */ new Set();
-    const visit = (depth) => {
+    const visit = function* (depth) {
       if (found || unavailable || exhausted) return;
       if (!takeNode("placementNodes")) {
         exhausted = true;
         return;
       }
+      yield;
       if (depth === order2.length) {
-        if (!arranged.every((item2, index) => item2 === preferred[index])) evaluate2(arranged);
+        if (!arranged.every((item2, index) => item2 === preferred[index])) yield* evaluate2(arranged);
         return;
       }
       const slotIndex = order2[depth];
@@ -4417,11 +4459,11 @@
         if (found || unavailable || exhausted) break;
         used.add(index);
         arranged[slotIndex] = chosen[index];
-        visit(depth + 1);
+        yield* visit(depth + 1);
         used.delete(index);
       }
     };
-    visit(0);
+    yield* visit(0);
     return { found, unavailable, exhausted };
   }
   var itemKinds = /* @__PURE__ */ new Set([
@@ -4499,9 +4541,10 @@
     chemistry,
     maxNodes = DEFAULT_MAX_NODES,
     searchHint = null,
-    onProgress = null
+    onProgress = null,
+    searchBudget = null
   } = {}) {
-    if (!integer8(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
+    if (!integer8(maxNodes, 1, 25e4) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     if (challenge?.mechanism !== "traditional-puzzle") return blocked2("CHALLENGE_UNVERIFIED");
     const required2 = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
     const pool = collectSafeTraditionalCandidates({ context, inventory, policy, challenge: {
@@ -4511,7 +4554,7 @@
     } });
     if (pool.status !== "candidates") return pool;
     const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
-    return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
+    return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress, searchBudget });
   }
   function* iterateFc27PuzzleCandidateRoutes(input) {
     const maxNodes = input.maxNodes ?? DEFAULT_MAX_NODES;
@@ -4776,9 +4819,10 @@
     materialRules = [],
     nativeQualityFallback = false,
     costFirst = false,
-    ratingFirst = false
+    ratingFirst = false,
+    searchBudget = null
   } = {}) {
-    if (!integer8(maxNodes, 1, 25e4)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
+    if (!integer8(maxNodes, 1, 25e4) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     const required2 = pool.required;
     if (procurement && (!integer8(procurement.budget, 0, 11 * MAX_PUZZLE_QUOTE_PRICE) || !integer8(procurement.maxPurchases, 0, 11) || typeof procurement.costOf !== "function")) return blocked2("FC27_MARKET_POLICY_INVALID");
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required2);
@@ -4955,6 +4999,7 @@
           nodes,
           maxNodes,
           search: { ...search },
+          ...searchBudget?.snapshot() ?? {},
           safeCandidates: candidates.length,
           required: required2
         });
@@ -4964,14 +5009,16 @@
     let lastProgressAt = 0;
     let lastNodeKind = "combination";
     const takeNode = (kind) => {
-      if (nodes >= maxNodes) {
+      const previousStage = searchBudget?.snapshot().budgetStage;
+      if (nodes >= maxNodes || searchBudget && !searchBudget.takeNode()) {
         exhausted = true;
         return false;
       }
       nodes++;
       search[kind]++;
       lastNodeKind = kind === "combinationNodes" ? "combination" : kind === "placementNodes" ? "placement" : kind === "evaluations" ? "evaluation" : "bounds";
-      reportProgress();
+      const budget = searchBudget?.snapshot();
+      reportProgress(Boolean(budget && (budget.budgetStage !== previousStage || budget.budgetNodes === budget.maxNodes)));
       return true;
     };
     const needsFacts = ruleNeedsTeamFacts(parsed.rules);
@@ -5070,7 +5117,7 @@
             placementNodes++;
             return takeNode(kind);
           };
-          const result = evaluatePlacement({
+          const result = yield* evaluatePlacement({
             chosen,
             slots,
             formation: { ...challenge.formation, slotCount: challenge.slotCount },
@@ -5086,6 +5133,7 @@
           if (validation.status === "blocked") unavailable = validation.reason;
           if (validation.status === "satisfied") found = { items: chosen.slice(), facts: { chemistry: null, teamRating: null }, validation };
         }
+        if (found) searchBudget?.markFeasible();
         if (procurement && found) {
           const selectedOwned = found.items.filter((item2) => !item2.catalogRef);
           const purchasesList = found.items.filter((item2) => item2.catalogRef);
@@ -5259,7 +5307,7 @@
       const size = Object.getOwnPropertyDescriptor(Map.prototype, "size").get.call(map);
       if (size > 2e4) return null;
       const links = Array.from(Map.prototype.entries.call(map));
-      if (links.length !== size || links.some((pair) => !pair.every((id13) => Number.isSafeInteger(id13) && id13 > 0))) return null;
+      if (links.length !== size || links.some((pair) => !pair.every((id14) => Number.isSafeInteger(id14) && id14 > 0))) return null;
       return Object.freeze({ schema: 1, complete: true, links: Object.freeze(links.map((pair) => Object.freeze(pair))) });
     } catch {
       return null;
@@ -6031,7 +6079,7 @@
               brickIndices: [...plan.challenge.brickIndices],
               setId: plan.challenge.setId,
               challengeId: plan.challenge.id,
-              itemRefs: plan.selected.map(({ id: id13, definitionId, pile, slot }) => ({ id: id13, definitionId, pile, slot })),
+              itemRefs: plan.selected.map(({ id: id14, definitionId, pile, slot }) => ({ id: id14, definitionId, pile, slot })),
               phase: "save-pending",
               submitted: false,
               updatedAt: time2()
@@ -6142,7 +6190,7 @@
     allowed.sort((a, b) => priority(b.level) - priority(a.level) || belowFloor(a) - belowFloor(b) || a.min - b.min);
     const identities = parsed.rules.filter((rule) => rule.mode === "min" && rule.count > 0 && ["from-nations", "from-leagues", "from-clubs"].includes(rule.kind));
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
-    const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id13) => ({ [fields4[rule.kind]]: id13 })));
+    const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id14) => ({ [fields4[rule.kind]]: id14 })));
     const queries = [];
     const add3 = (query) => {
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
@@ -6224,6 +6272,111 @@
     }
     ranked.sort((a, b) => b.matched - a.matched || b.count - a.count || a.nation - b.nation);
     return ranked.map(({ nation }) => ({ start: 0, count: 20, level: level(required2[0].qualities[0]), nation })).find((query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) ?? null;
+  }
+
+  // src/fc27/puzzle-club-diversity-route.js
+  var id2 = (value) => Number.isSafeInteger(value) && value > 0;
+  var same9 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  function nationalPositionSupport(items, slots, nationCap) {
+    items = items.filter((item2) => slots.some((position) => item2.positions?.includes(position)));
+    const nations = /* @__PURE__ */ new Map();
+    for (const item2 of items) if (!nations.has(item2.nationId)) nations.set(item2.nationId, nations.size + 2);
+    const itemStart = nations.size + 2, slotStart = itemStart + items.length, graph = Array.from({ length: slotStart + slots.length }, () => []);
+    const add3 = (from, to, capacity) => {
+      const forward = { to, capacity, reverse: graph[to].length }, back = { to: from, capacity: 0, reverse: graph[from].length };
+      graph[from].push(forward);
+      graph[to].push(back);
+    };
+    for (const node of nations.values()) add3(0, node, nationCap);
+    items.forEach((item2, index) => {
+      add3(nations.get(item2.nationId), itemStart + index, 1);
+      slots.forEach((position, slot) => {
+        if (item2.positions.includes(position)) add3(itemStart + index, slotStart + slot, 1);
+      });
+    });
+    slots.forEach((_position, slot) => add3(slotStart + slot, 1, 1));
+    let flow = 0;
+    for (; ; ) {
+      const path = Array(graph.length).fill(null), queue = [0];
+      path[0] = [-1, -1];
+      for (let head = 0; head < queue.length && !path[1]; head++) for (let edge = 0; edge < graph[queue[head]].length; edge++) {
+        const next = graph[queue[head]][edge];
+        if (next.capacity > 0 && !path[next.to]) {
+          path[next.to] = [queue[head], edge];
+          queue.push(next.to);
+        }
+      }
+      if (!path[1]) return flow;
+      for (let node = 1; node !== 0; ) {
+        const [from, index] = path[node], edge = graph[from][index];
+        edge.capacity--;
+        graph[node][edge.reverse].capacity++;
+        node = from;
+      }
+      flow++;
+    }
+  }
+  function planPuzzleCappedNationClubFillers({ rules, required: required2, candidates, level: level2, usedQueries = [], pendingQueries = [], resolveClub, formation, brickIndices }) {
+    const nationCap = Math.min(required2, ...rules.filter((r) => r.kind === "same-nation" && r.mode !== "min").map((r) => r.value));
+    const clubMinimum = Math.max(0, ...rules.filter((r) => r.kind === "same-club" && r.mode !== "max").map((r) => r.value));
+    const leagueMinimum = Math.max(0, ...rules.filter((r) => r.kind === "distinct-leagues" && r.mode !== "max").map((r) => r.value));
+    if (nationCap >= required2 || clubMinimum < 2 || leagueMinimum < 2 || typeof resolveClub !== "function" || !Array.isArray(formation?.positions) || !Array.isArray(brickIndices)) return null;
+    const slots = formation.positions.filter((_p, index) => !brickIndices.includes(index));
+    const unused = (query) => ![...usedQueries, ...pendingQueries].some((old) => same9(old, query));
+    const broad = { start: 0, count: 20, level: level2 };
+    const clubs = /* @__PURE__ */ new Map();
+    for (const item2 of candidates) {
+      const club = resolveClub(item2.teamId);
+      if (!id2(club)) continue;
+      if (!clubs.has(club)) clubs.set(club, /* @__PURE__ */ new Map());
+      clubs.get(club).set(item2.definitionId, item2);
+    }
+    const support = (items) => nationalPositionSupport(items, slots, nationCap);
+    const compulsory = new Set(rules.filter((r) => r.kind === "from-clubs" && r.mode === "min").flatMap((r) => r.ids.map(resolveClub)));
+    const spines = [...clubs].map(([club, byId]) => {
+      const items = [...byId.values()];
+      return {
+        club,
+        items,
+        support: support(items),
+        compulsory: compulsory.has(club)
+      };
+    }).filter((group) => group.support >= clubMinimum).sort((a, b) => Number(b.compulsory) - Number(a.compulsory) || b.support - a.support || a.club - b.club);
+    const spine = spines[0], result = [];
+    if (!spine) {
+      const alternative = rules.filter((r) => r.kind === "from-clubs" && r.mode === "min").flatMap((r) => r.ids).map((team) => ({ start: 0, count: 20, level: level2, team })).find(unused);
+      if (alternative) result.push(alternative);
+    }
+    if (!usedQueries.some((q) => same9(q, broad))) {
+      if (unused(broad)) result.push(broad);
+      return result;
+    }
+    if (spine) {
+      const spineLeagues = new Set(spine.items.map((item2) => item2.leagueId)), nationalities = /* @__PURE__ */ new Map();
+      for (const item2 of spine.items) nationalities.set(item2.nationId, (nationalities.get(item2.nationId) ?? 0) + 1);
+      const dominant = [...nationalities].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+      const leagues = /* @__PURE__ */ new Map();
+      for (const item2 of candidates) {
+        if (!id2(item2.leagueId) || spineLeagues.has(item2.leagueId)) continue;
+        if (!leagues.has(item2.leagueId)) leagues.set(item2.leagueId, /* @__PURE__ */ new Map());
+        leagues.get(item2.leagueId).set(item2.definitionId, item2);
+      }
+      const target = Math.ceil(required2 / leagueMinimum);
+      const ranked = [...leagues].map(([league, byId]) => {
+        const items = [...byId.values()];
+        return {
+          league,
+          items,
+          support: support(items),
+          foreign: items.filter((item2) => item2.nationId !== dominant).length / items.length
+        };
+      }).filter((group) => group.support > 0).sort((a, b) => Number(b.support < target) - Number(a.support < target) || b.foreign - a.foreign || b.support - a.support || a.league - b.league);
+      const next = ranked.map((group) => ({ start: 0, count: 20, level: level2, league: group.league })).find(unused);
+      if (next) result.push(next);
+    }
+    const deeper = { ...broad, start: 20 };
+    if (unused(deeper)) result.push(deeper);
+    return result;
   }
 
   // src/fc27/puzzle-procurement.js
@@ -6786,21 +6939,21 @@
       for (const rule of rules) {
         const field = identityField(rule.kind);
         const ids2 = [...new Set(rule.ids.filter(positive7))];
-        const identity5 = (id13) => rule.kind === "from-clubs" ? resolveClub(id13) : id13;
+        const identity5 = (id14) => rule.kind === "from-clubs" ? resolveClub(id14) : id14;
         const groups = new Set(ids2.map(identity5));
         const queryField = field.replace("Id", "");
         if (queries.some((query) => positive7(query?.[queryField]) && groups.has(identity5(query[queryField])))) continue;
         const matching = candidates.filter((item2) => groups.has(identity5(item2[field])));
         const available = new Set(matching.map((item2) => item2.definitionId)).size;
         if (available >= rule.count) continue;
-        const alternatives = ids2.map((id13) => {
-          const support = new Set(candidates.filter((item2) => identity5(item2[field]) === identity5(id13)).map((item2) => item2.definitionId)).size;
+        const alternatives = ids2.map((id14) => {
+          const support = new Set(candidates.filter((item2) => identity5(item2[field]) === identity5(id14)).map((item2) => item2.definitionId)).size;
           return {
             kind: rule.kind,
-            id: id13,
+            id: id14,
             support,
             deficit: Math.max(0, rule.count - available),
-            query: { start: 0, count: 20, level: level2, [queryField]: id13 }
+            query: { start: 0, count: 20, level: level2, [queryField]: id14 }
           };
         }).sort((a, b) => b.support - a.support || a.id - b.id);
         const next = alternatives.find((lane) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(lane.query))) ?? alternatives[0];
@@ -6827,6 +6980,21 @@
       for (const query of identityShortageQueries(candidates, tiers2[0], resolveClub)) {
         if (queries.length >= 3) break;
         add3(query);
+      }
+      const diversified = planPuzzleCappedNationClubFillers({
+        rules: parsed.rules,
+        required: required(input),
+        candidates,
+        level: tiers2[0],
+        usedQueries,
+        pendingQueries: queries,
+        resolveClub,
+        formation: input.challenge.formation,
+        brickIndices: input.challenge.brickIndices
+      });
+      if (diversified) {
+        for (const query of diversified) push(query);
+        return { status: "ready", executable: false, queries, complete: false };
       }
       const counts = /* @__PURE__ */ new Map();
       for (const item2 of candidates) counts.set(item2.nationId, (counts.get(item2.nationId) ?? 0) + 1);
@@ -7058,11 +7226,14 @@
     incumbent = null,
     localOnly = false,
     localSearchBudget = 4e3,
-    onIncumbentCheck = null
+    onIncumbentCheck = null,
+    searchBudget = null
   } = {}) {
     if (!Array.isArray(entries2) || entries2.length > 60) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop4("FC27_MARKET_POLICY_INVALID");
-    if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > 5e4) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
+    if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
+      return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
+    if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > (searchBudget?.cap ?? 5e4)) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (!Number.isSafeInteger(localSearchBudget) || localSearchBudget < 1 || localSearchBudget > 4e3)
       return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (costCeiling !== null && (!positive7(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE2))
@@ -7176,6 +7347,7 @@
     const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({
       ...input,
       maxNodes: maxNodes - localNodes,
+      searchBudget,
       pool: { ...pool, candidates },
       procurement: {
         budget: prices ? Math.min(
@@ -7188,7 +7360,12 @@
         objective,
         costOf: (item2) => item2.catalogRef ? prices ? prices.get(item2.definitionId) : 1 : materialPrices ? materialPrices.get(item2.definitionId) : 0
       },
-      onProgress: onProgress ? (value) => onProgress({ ...value, nodes: localNodes + value.nodes, maxNodes }) : null
+      onProgress: onProgress ? (value) => onProgress({
+        ...value,
+        nodes: localNodes + value.nodes,
+        maxNodes,
+        ...searchBudget?.snapshot() ?? {}
+      }) : null
     }) : { status: "blocked", reason: "FC27_PUZZLE_SEARCH_LIMIT", nodes: 0 };
     const localPlan = local ? { ...local.preview, ...planMetrics(local.preview) } : null;
     const resultPlan = result.status === "preview" ? { ...result, ...planMetrics(result) } : null;
@@ -7321,7 +7498,7 @@
   };
   var integer9 = (value) => Number.isSafeInteger(value) && value >= 0;
   var validId3 = (value) => integer9(value) && value > 0;
-  var same9 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same10 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sources = ["futgg", "futbin"];
   function copyQuotes(reference, definitionId, season, platform, policy) {
     if (reference?.definitionId !== definitionId || reference.season !== season || reference.platform !== platform) fail13();
@@ -7385,7 +7562,7 @@
     for (const field of ["futbinEnabled", "futbinRefresh", "readSources", "listingSource", "quoteValidityMinutes", "futbinPlatform"]) {
       if (!Object.hasOwn(approval.policy, field)) delete rebuilt.policy[field];
     }
-    if (!same9(rebuilt, approval)) fail13();
+    if (!same10(rebuilt, approval)) fail13();
   }
   function purchaseApprovedPrice(approval, definitionId, { now = approval?.approvedAt, fresh = null } = {}) {
     const row = approval?.rows?.find((value) => value.definitionId === definitionId);
@@ -7547,7 +7724,7 @@
   }
 
   // src/fc27/puzzle-catalog-hints.js
-  var same10 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same11 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var positive9 = (n) => Number.isSafeInteger(n) && n > 0;
   var yieldPuzzleHintTask = () => yieldStreamlinedTask(typeof globalThis.MessageChannel === "function" ? { MessageChannel: globalThis.MessageChannel } : globalThis);
   var queryValid = (query) => query && ["bronze", "silver", "gold"].includes(query.level) && Number.isSafeInteger(query.start) && query.start >= 0 && query.start <= 1e3 && query.count === 20 && Object.keys(query).every((key2) => ["start", "count", "level", "team", "nation", "league"].includes(key2)) && ["team", "nation", "league"].every((key2) => query[key2] === void 0 || positive9(query[key2]));
@@ -7580,7 +7757,7 @@
     for (const key2 of keys2.filter((key3) => typeof key3 === "string" && key3.startsWith(prefix)).sort().slice(0, 64)) {
       const row = await get(key2, null);
       assertCurrent();
-      if (row?.schema !== 1 || row.kind !== "catalog" || row.state !== "observed" || !queryValid(row.query) || key2 !== `${prefix}${JSON.stringify(row.query)}` || !positive9(row.at) || row.at > now() || row.result?.status !== "observed" || row.result.source !== "ea-defid" || row.result.season !== "27" || !same10(row.query, row.result.query) || !positive9(row.result.observedAt) || row.result.observedAt > now() || now() - Math.min(row.at, row.result.observedAt) > 30 * 864e5 || !Array.isArray(row.result.entries) || row.result.entries.length > 20) continue;
+      if (row?.schema !== 1 || row.kind !== "catalog" || row.state !== "observed" || !queryValid(row.query) || key2 !== `${prefix}${JSON.stringify(row.query)}` || !positive9(row.at) || row.at > now() || row.result?.status !== "observed" || row.result.source !== "ea-defid" || row.result.season !== "27" || !same11(row.query, row.result.query) || !positive9(row.result.observedAt) || row.result.observedAt > now() || now() - Math.min(row.at, row.result.observedAt) > 30 * 864e5 || !Array.isArray(row.result.entries) || row.result.entries.length > 20) continue;
       const entries2 = marketCandidates(input, row.result.entries).filter((card) => tiers2.some((tier) => card.rating >= tier.min && card.rating <= tier.max));
       if (entries2.length) rows.push({ query: row.query, entries: entries2 });
     }
@@ -7609,12 +7786,12 @@
         assertCurrent();
       }
       const queries = a === b ? [rows[a].query] : [rows[a].query, rows[b].query];
-      if (queries.every((query) => usedQueries.some((used) => same10(used, query)))) continue;
+      if (queries.every((query) => usedQueries.some((used) => same11(used, query)))) continue;
       const unique2 = /* @__PURE__ */ new Map();
       let changed = false;
       for (const card of [...currentScaffold, ...rows[a].entries, ...rows[b].entries].filter(valued)) {
         const old = unique2.get(card.definitionId);
-        if (old && !same10(old, card)) {
+        if (old && !same11(old, card)) {
           changed = true;
           break;
         }
@@ -7661,16 +7838,17 @@
   // src/fc27/puzzle-procurement-session.js
   var safeReason3 = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_PURCHASE_READ_FAILED";
   var stop5 = (reason) => ({ status: "blocked", reason, executable: false, liveExecutionEnabled: false, plans: [] });
-  var same11 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var id2 = (value) => Number.isSafeInteger(value) && value > 0;
+  var same12 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var id3 = (value) => Number.isSafeInteger(value) && value > 0;
   var validPublicValue = (value) => Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE2;
   var AUTH_RETRY_DELAY = 3e4;
+  var localReadCancellation = (reason) => ["FC27_PUZZLE_FILL_TARGET_CHANGED", "FC27_PUZZLE_FILL_INPUTS_CHANGED"].includes(reason);
   var refinementCards = (plan) => plan.purchases.filter((card) => card.estimatedUnitPrice > (card.rating < 75 ? 300 : 600)).sort((a, b) => b.estimatedUnitPrice - a.estimatedUnitPrice);
   var matchesQuery = (card, query) => (!query.team || query.team === card.teamId) && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId) && query.level === (card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold");
   function refinementQueries(plan, pages, used, input) {
     const queries = [];
     const add3 = (query) => {
-      if (!used.some((old) => same11(old, query)) && !queries.some((old) => same11(old, query))) queries.push(query);
+      if (!used.some((old) => same12(old, query)) && !queries.some((old) => same12(old, query))) queries.push(query);
     };
     const cards = refinementCards(plan);
     const required2 = input.challenge.slotCount - input.challenge.brickIndices.length;
@@ -7679,10 +7857,10 @@
     if (cards.length && rating > 0 && rating <= 75 || cards.some((card) => card.rating >= 75) && parsed.status === "observed" && rating <= 75 && (plan.purchaseCount === 0 || parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind) && rule.mode !== "max" && rule.count > 0))) {
       const lower = allowedFc27MarketTiers(parsed.rules, input.policy).find((tier) => tier.max < 75 && !parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count >= required2 && !rule.qualities.includes(tier.level === "bronze" ? 1 : 2)));
       const league = parsed.rules.find((rule) => rule.kind === "from-leagues" && rule.mode === "min" && rule.count > 0)?.ids[0] ?? plan.purchases.map((card) => card.leagueId).sort((a, b) => plan.purchases.filter((card) => card.leagueId === b).length - plan.purchases.filter((card) => card.leagueId === a).length)[0];
-      if (plan.purchaseCount === 0 && lower && id2(cards[0]?.nationId)) {
+      if (plan.purchaseCount === 0 && lower && id3(cards[0]?.nationId)) {
         add3({ start: 0, count: 20, level: lower.level, nation: cards[0].nationId });
       }
-      if (lower && id2(league)) add3({ start: 0, count: 20, level: lower.level, league });
+      if (lower && id3(league)) add3({ start: 0, count: 20, level: lower.level, league });
     }
     for (const card of cards) {
       for (const page of pages.filter((page2) => matchesQuery(card, page2.query) || page2.entries.some((entry) => entry.definitionId === card.definitionId))) {
@@ -7801,13 +7979,15 @@
         onProgress = null,
         optimizeMaterialValue = false,
         materialCeiling = null,
-        ownedIncumbent = null
+        ownedIncumbent = null,
+        adaptiveSearch = false
       } = {}) {
         if (busy) return stop5("FC27_PURCHASE_BUSY");
         busy = true;
         let requests = 0;
         let cacheHits = 0;
         let transport;
+        let adaptiveBudget = null;
         const diagnostics = {
           stage: "repair-seed",
           route: null,
@@ -7882,6 +8062,8 @@
         const reportProgress = (value) => {
           const currentStage = value?.phase ?? diagnostics.stage;
           if (currentStage !== lastReportedStage) closeStage(currentStage);
+          const budget = adaptiveBudget?.snapshot();
+          if (budget) Object.assign(diagnostics, budget);
           if (typeof onProgress !== "function") return;
           try {
             onProgress({
@@ -7899,7 +8081,8 @@
               quoteCompleted,
               quoteTotal,
               refinementPasses: diagnostics.refinementPasses,
-              bestEstimatedCost: diagnostics.estimatedCost
+              bestEstimatedCost: diagnostics.estimatedCost,
+              ...budget ? { ...budget, nodes: budget.budgetNodes } : {}
             });
           } catch {
           }
@@ -7908,14 +8091,21 @@
         const finish = (result) => {
           closeStage(lastReportedStage);
           diagnostics.planningDurationMs = Math.max(0, now() - diagnostics.planningStartedAt);
-          return { ...result, ...ownedBaseline ? { ownedBaseline: { ...ownedBaseline } } : {}, quoteCeiling, requests, cacheHits, diagnostics: { ...diagnostics, cacheHits } };
+          return {
+            ...result,
+            ...ownedBaseline ? { ownedBaseline: { ...ownedBaseline } } : {},
+            quoteCeiling,
+            requests,
+            cacheHits,
+            diagnostics: { ...diagnostics, ...adaptiveBudget?.snapshot() ?? {}, cacheHits }
+          };
         };
         let incumbent = null;
         let totalValueMode = false;
         let finishIncumbent = null;
         try {
           if (!isPuzzleQuoteCeiling(quoteCeiling)) return finish(stop5("FC27_PURCHASE_PRICE_LIMIT_INVALID"));
-          if (materialCeiling !== null && (!id2(materialCeiling) || materialCeiling > 11 * MAX_PUZZLE_QUOTE_PRICE2)) {
+          if (materialCeiling !== null && (!id3(materialCeiling) || materialCeiling > 11 * MAX_PUZZLE_QUOTE_PRICE2)) {
             return finish(stop5("FC27_MARKET_POLICY_INVALID"));
           }
           const scope2 = traditionalJournalScope(input.context);
@@ -7940,13 +8130,14 @@
             const stored = await get(key2, null);
             assertCurrent();
             if (stored !== null) {
-              if (stored?.schema !== 1 || stored.kind !== kind || !same11(stored.query, query) || !id2(stored.at) || stored.at > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+              if (stored?.schema !== 1 || stored.kind !== kind || !same12(stored.query, query) || !id3(stored.at) || stored.at > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
               if (stored.state !== "observed") {
                 const reason = safeReason3({ message: stored.reason ?? "FC27_PURCHASE_READ_UNCONFIRMED" });
+                const cancelledBeforeSend = stored.state === "cancelled" && stored.requestAttempted === false && localReadCancellation(reason);
                 const authFailure = stored.state === "blocked" && reason === "FC27_MARKET_HTTP_401";
                 const remaining = Math.max(0, stored.at + AUTH_RETRY_DELAY - now());
                 const runtimeFailure = stored.state === "blocked" && retryableRuntimeFailure(reason);
-                if (!runtimeFailure && (!authFailure || remaining > 0)) {
+                if (!cancelledBeforeSend && !runtimeFailure && (!authFailure || remaining > 0)) {
                   Object.assign(diagnostics, failureDetails(reason, stored.details), {
                     failureSource: "cache",
                     retryAfterSeconds: authFailure ? Math.ceil(remaining / 1e3) : null
@@ -7956,7 +8147,7 @@
                 if (authFailure) diagnostics.authRecoveries++;
               } else {
                 const ttl = kind === "catalog" ? 864e5 : 6e5;
-                if (!id2(stored.result?.observedAt) || stored.result.observedAt > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+                if (!id3(stored.result?.observedAt) || stored.result.observedAt > now()) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
                 if (now() - Math.min(stored.at, stored.result.observedAt) <= ttl) {
                   cacheHits++;
                   reportProgress();
@@ -7966,22 +8157,18 @@
             }
             if (requests >= PUZZLE_MARKET_READ_LIMIT) throw new Error("FC27_PURCHASE_READ_BUDGET");
             const record = { schema: 1, kind, query, at: now(), state: "pending" };
-            await set(key2, record);
-            if (!same11(await get(key2, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
-            assertCurrent();
             let attempted = false;
-            try {
-              transport ??= await createTransport({ maxRequests: PUZZLE_MARKET_READ_LIMIT });
-              assertCurrent();
-              requests++;
-              diagnostics[kind === "catalog" ? "catalogAttempts" : "quoteAttempts"]++;
-              reportProgress();
-              attempted = true;
-              const result = await (kind === "catalog" ? transport.readCatalogPage(query) : transport.readQuotePage(query));
-              await set(key2, { ...record, state: "observed", result });
-              assertCurrent();
-              return result;
-            } catch (error2) {
+            const assertBeforeSend = async () => {
+              try {
+                assertCurrent();
+              } catch (error2) {
+                if (!attempted && localReadCancellation(safeReason3(error2)) && same12(await get(key2, null), record)) {
+                  await set(key2, { ...record, state: "cancelled", requestAttempted: false, reason: safeReason3(error2) });
+                }
+                throw error2;
+              }
+            };
+            const cacheFailure = async (error2) => {
               const reason = safeReason3(error2);
               const details = failureDetails(reason, Object.getOwnPropertyDescriptor(error2 ?? {}, "marketFailure")?.value);
               Object.assign(diagnostics, details, {
@@ -7989,8 +8176,31 @@
                 retryAfterSeconds: reason === "FC27_MARKET_HTTP_401" ? AUTH_RETRY_DELAY / 1e3 : null
               });
               await set(key2, { ...record, at: now(), state: "blocked", reason, details });
+            };
+            await set(key2, record);
+            if (!same12(await get(key2, null), record)) throw new Error("FC27_PURCHASE_CACHE_UNVERIFIED");
+            await assertBeforeSend();
+            try {
+              transport ??= await createTransport({ maxRequests: PUZZLE_MARKET_READ_LIMIT });
+            } catch (error2) {
+              await cacheFailure(error2);
               throw error2;
             }
+            await assertBeforeSend();
+            requests++;
+            diagnostics[kind === "catalog" ? "catalogAttempts" : "quoteAttempts"]++;
+            reportProgress();
+            attempted = true;
+            let result;
+            try {
+              result = await (kind === "catalog" ? transport.readCatalogPage(query) : transport.readQuotePage(query));
+              await set(key2, { ...record, state: "observed", result });
+            } catch (error2) {
+              await cacheFailure(error2);
+              throw error2;
+            }
+            assertCurrent();
+            return result;
           };
           const entries2 = /* @__PURE__ */ new Map();
           const quotes = /* @__PURE__ */ new Map();
@@ -7998,7 +8208,15 @@
           const positionSkipped = /* @__PURE__ */ new Set();
           const pages = [];
           let searchSpent = 0;
-          const searchBudget = seed.status === "ready" ? 2e4 : 5e4;
+          adaptiveBudget = adaptiveSearch === true && seed.status !== "ready" && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget() : null;
+          const searchBudget = adaptiveBudget?.cap ?? (seed.status === "ready" ? 2e4 : 5e4);
+          const searchRemaining = () => adaptiveBudget?.remaining() ?? Math.max(0, searchBudget - searchSpent);
+          const accountFixedNodes = (cumulative) => {
+            if (adaptiveBudget && Number.isSafeInteger(cumulative)) {
+              const delta = cumulative - adaptiveBudget.snapshot().budgetNodes;
+              if (delta > 0) adaptiveBudget.accountFixed(delta);
+            }
+          };
           const unavailable = /* @__PURE__ */ new Set();
           let hadPlans = false;
           const references = /* @__PURE__ */ new Map();
@@ -8126,7 +8344,7 @@
               references: snapshot.references,
               now: now()
             });
-            if (publicPolicy && !same11(publicPolicy, approved.policy)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+            if (publicPolicy && !same12(publicPolicy, approved.policy)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
             publicPolicy = approved.policy;
             for (const row of approved.rows) {
               references.set(row.definitionId, row);
@@ -8138,17 +8356,17 @@
           };
           let coverageChecked = false;
           const refineCoverage = async () => {
-            if (coverageChecked || !loadPublicPrices || !loadCachedPrices || !list2 || !refinementCards(refinementPlan(incumbent[0])).length) return;
+            if (coverageChecked || adaptiveBudget && searchRemaining() === 0 || !loadPublicPrices || !loadCachedPrices || !list2 || !refinementCards(refinementPlan(incumbent[0])).length) return;
             coverageChecked = true;
             diagnostics.stage = "catalog-hints";
             reportProgress();
-            const hint = await measure("hintMs", () => readFc27PuzzleCatalogHints({
+            const hint = adaptiveBudget && searchRemaining() < 24e3 ? { queries: [], nodes: 0, pairs: 0 } : await measure("hintMs", () => readFc27PuzzleCatalogHints({
               input,
               list: list2,
               get,
               now,
               usedQueries,
-              prices: new Map([...quotes].filter(([, quote2]) => id2(quote2.price)).map(([id13, quote2]) => [id13, quote2.price])),
+              prices: new Map([...quotes].filter(([, quote2]) => id3(quote2.price)).map(([id14, quote2]) => [id14, quote2.price])),
               materialPrices,
               costCeiling: planCost(incumbent[0]),
               assertCurrent,
@@ -8164,21 +8382,27 @@
             }));
             diagnostics.hintNodes = hint.nodes;
             diagnostics.hintPairs = hint.pairs;
+            if (adaptiveBudget) {
+              adaptiveBudget.accountFixed(hint.nodes);
+              searchSpent += hint.nodes;
+              diagnostics.nodes = searchSpent;
+              if (searchRemaining() === 0) return;
+            }
             const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input).sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
             if (!directions.length) return;
-            catalogTotal = usedQueries.length + directions.filter((query) => !usedQueries.some((used) => same11(used, query))).length;
+            catalogTotal = usedQueries.length + directions.filter((query) => !usedQueries.some((used) => same12(used, query))).length;
             if (totalValueMode) diagnostics.initialMaterialValue = incumbent[0].materialValue;
             diagnostics.coveragePages = 0;
             const fresh = /* @__PURE__ */ new Map();
             for (const query of directions) {
               const previousHits = cacheHits, page = await measure("catalogMs", () => cachedRead("catalog", query));
-              if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same11(page.query, query) || !id2(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
+              if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same12(page.query, query) || !id3(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
               for (const card of page.entries) {
-                if (entries2.has(card.definitionId) && !same11(entries2.get(card.definitionId), card)) throw Error("FC27_PURCHASE_CATALOG_CHANGED");
+                if (entries2.has(card.definitionId) && !same12(entries2.get(card.definitionId), card)) throw Error("FC27_PURCHASE_CATALOG_CHANGED");
                 entries2.set(card.definitionId, card);
                 fresh.set(card.definitionId, card);
               }
-              if (!usedQueries.some((used) => same11(used, query))) {
+              if (!usedQueries.some((used) => same12(used, query))) {
                 usedQueries.push(query);
                 diagnostics.catalogPages++;
                 diagnostics.coveragePages++;
@@ -8199,18 +8423,22 @@
               input,
               [...fresh.values()].filter((card) => !unavailable.has(card.definitionId)),
               {
-                prices: new Map([...quotes].map(([id13, quote2]) => [id13, quote2.price])),
+                prices: new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])),
                 materialPrices,
-                maxNodes: 2e4,
+                maxNodes: Math.min(2e4, adaptiveBudget ? searchRemaining() : 2e4),
                 costCeiling: planCost(incumbent[0]),
                 priceSource: publicPolicy.source,
                 incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
                 assertCurrent,
                 yieldControl: yieldPuzzleHintTask,
-                onProgress: (value) => reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 2e4 })
+                onProgress: (value) => {
+                  accountFixedNodes(searchSpent + (value.nodes ?? 0));
+                  reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 2e4 });
+                }
               }
             ));
             assertCurrent();
+            accountFixedNodes(searchSpent + (result.nodes ?? 0));
             searchSpent += result.nodes ?? 0;
             diagnostics.nodes = searchSpent;
             diagnostics.localSearchNodes += result.localSearchNodes ?? 0;
@@ -8319,9 +8547,9 @@
             ...item2,
             estimatedUnitPrice: materialPrices.get(item2.definitionId)
           })) }, [], [], input) : [];
-          let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same11(old, query)) === index);
+          let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
-            if (loadPublicPrices && searchSpent >= searchBudget) {
+            if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
               diagnostics.optimizationBudgetExhausted = true;
               diagnostics.searchComplete = false;
               diagnostics.optimalWithinPool = false;
@@ -8333,11 +8561,11 @@
             const previousHits = cacheHits;
             const page = await measure("catalogMs", () => cachedRead("catalog", query));
             usedQueries.push(query);
-            if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same11(page.query, query) || !id2(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw new Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
+            if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same12(page.query, query) || !id3(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw new Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
             pages.push(page);
             diagnostics.catalogQueries.push({ ...query, returnedCount: page.entries.length, cached: cacheHits > previousHits });
             for (const entry of page.entries) {
-              if (entries2.has(entry.definitionId) && !same11(entries2.get(entry.definitionId), entry)) throw new Error("FC27_PURCHASE_CATALOG_CHANGED");
+              if (entries2.has(entry.definitionId) && !same12(entries2.get(entry.definitionId), entry)) throw new Error("FC27_PURCHASE_CATALOG_CHANGED");
               entries2.set(entry.definitionId, entry);
             }
             diagnostics.catalogPages++;
@@ -8351,8 +8579,8 @@
               assertCurrent();
               diagnostics.stage = "local-market-search";
               const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
-              const prices = loadPublicPrices ? new Map([...quotes].map(([id13, quote2]) => [id13, quote2.price])) : null;
-              if (loadPublicPrices && searchSpent >= searchBudget) {
+              const prices = loadPublicPrices ? new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])) : null;
+              if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
@@ -8361,19 +8589,30 @@
                 break;
               }
               const remainingLanes = Math.max(1, 4 - usedQueries.length);
-              const passBudget = Math.max(1, Math.floor((searchBudget - searchSpent) / remainingLanes));
-              const searchOptions = loadPublicPrices ? {
+              const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
+              const passBudget = Math.max(1, Math.min(
+                adaptiveBudget && !adaptivePass ? 5e4 : Infinity,
+                Math.floor(searchRemaining() / remainingLanes)
+              ));
+              const searchOptions = loadPublicPrices || adaptiveBudget ? {
                 costCeiling: incumbent ? planCost(incumbent[0]) : totalValueMode ? materialCeiling : null,
-                ...jointSearch ? { maxNodes: passBudget, materialPrices } : { maxChecks: passBudget }
+                ...jointSearch ? {
+                  maxNodes: passBudget,
+                  materialPrices,
+                  ...adaptivePass ? { searchBudget: adaptiveBudget } : {}
+                } : { maxChecks: passBudget }
               } : {};
               const refining = incumbent !== null;
               if (refining) diagnostics.refinementPasses++;
-              const searchProgress = (value) => reportProgress(loadPublicPrices ? {
-                ...value,
-                nodes: searchSpent + (value.nodes ?? 0),
-                maxNodes: searchBudget,
-                ...seed.status === "ready" ? { checks: searchSpent + (value.checks ?? 0) } : {}
-              } : value);
+              const searchProgress = (value) => {
+                if (!adaptivePass) accountFixedNodes(searchSpent + (value.nodes ?? value.checks ?? 0));
+                reportProgress(loadPublicPrices ? {
+                  ...value,
+                  nodes: searchSpent + (value.nodes ?? 0),
+                  maxNodes: searchBudget,
+                  ...seed.status === "ready" ? { checks: searchSpent + (value.checks ?? 0) } : {}
+                } : value);
+              };
               const selectedOwnedDefinitions = new Set(incumbent?.[0]?.selectedOwned?.map((item2) => item2.definitionId) ?? []);
               const hasQuotedLowerTierOwned = totalValueMode && Boolean(incumbent) && ownedPool.some((item2) => !selectedOwnedDefinitions.has(item2.definitionId) && item2.rating < 75 && validPublicValue(materialPrices?.get(item2.definitionId)));
               const localOnlyMaterial = totalValueMode && hasOwnedIncumbent && Boolean(incumbent) && !hasQuotedLowerTierOwned && incumbent[0].selectedOwned.every((item2) => validPublicValue(materialPrices?.get(item2.definitionId))) && incumbent[0].purchases.every((item2) => validPublicValue(prices?.get(item2.definitionId)));
@@ -8416,7 +8655,8 @@
                 diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
                 for (const key2 of Object.keys(diagnostics.search)) diagnostics.search[key2] += suggestion.search[key2] ?? 0;
               }
-              if (loadPublicPrices) {
+              if (loadPublicPrices || adaptiveBudget) {
+                if (!adaptivePass) accountFixedNodes(searchSpent + (suggestion.nodes ?? suggestion.checks ?? 0));
                 searchSpent += suggestion.nodes ?? suggestion.checks ?? 0;
                 diagnostics.nodes = searchSpent;
                 if (seed.status === "ready") diagnostics.checks = searchSpent;
@@ -8451,7 +8691,7 @@
                 for (const item2 of plan.purchases) {
                   if (!quotes.has(item2.definitionId)) {
                     const quote2 = await measure("pricingMs", () => cachedRead("quote", { definitionId: item2.definitionId, start: 0, count: 20, maxBuy: quoteCeiling }));
-                    if (quote2?.status !== "observed" || quote2.season !== "27" || quote2.platform !== input.context.platform || quote2.source !== "ea-visible-buy-now" || quote2.definitionId !== item2.definitionId || !id2(quote2.observedAt) || quote2.observedAt > now() || now() - quote2.observedAt > 6e5 || !Number.isInteger(quote2.eligible) || quote2.eligible < 0 || quote2.eligible > 20 || (quote2.eligible === 0 ? quote2.price !== null : !Number.isInteger(quote2.price) || quote2.price < 150 || quote2.price > (quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE2))) throw new Error("FC27_PURCHASE_QUOTE_UNVERIFIED");
+                    if (quote2?.status !== "observed" || quote2.season !== "27" || quote2.platform !== input.context.platform || quote2.source !== "ea-visible-buy-now" || quote2.definitionId !== item2.definitionId || !id3(quote2.observedAt) || quote2.observedAt > now() || now() - quote2.observedAt > 6e5 || !Number.isInteger(quote2.eligible) || quote2.eligible < 0 || quote2.eligible > 20 || (quote2.eligible === 0 ? quote2.price !== null : !Number.isInteger(quote2.price) || quote2.price < 150 || quote2.price > (quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE2))) throw new Error("FC27_PURCHASE_QUOTE_UNVERIFIED");
                     quotes.set(item2.definitionId, quote2);
                     quoteCompleted = plan.purchases.filter((card) => quotes.get(card.definitionId)?.price > 0).length;
                     reportProgress();
@@ -8498,6 +8738,7 @@
                 return { ...plan, purchases, estimatedCost, ...values8 };
               }).filter((plan) => !totalValueMode || Number.isSafeInteger(plan.materialValue) && (materialCeiling === null || plan.materialValue < materialCeiling)).sort((a, b) => comparePuzzlePlans(a, b, objective()));
               if (priced3.length) {
+                adaptiveBudget?.markFeasible();
                 diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
                 if (!incumbent || comparePuzzlePlans(priced3[0], incumbent[0], objective()) < 0) incumbent = priced3;
                 diagnostics.estimatedCost = incumbent[0].estimatedCost;
@@ -8517,13 +8758,13 @@
             }
             if (incumbent) {
               if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
-              if (searchSpent >= searchBudget) {
+              if (searchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
                 return await finishIncumbent();
               }
-              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same11(used, candidate)) && all.findIndex((other) => same11(other, candidate)) === index);
+              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
             } else if (seed.status !== "ready" && usedQueries.length < 3) {
               const nextRoute = planFc27PuzzleShortageQueries(
                 input,
@@ -8531,7 +8772,7 @@
                 { usedQueries }
               );
               if (nextRoute.status !== "ready") return finish(nextRoute);
-              pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same11(used, candidate)) && all.findIndex((other) => same11(other, candidate)) === index);
+              pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
             }
           }
           if (incumbent) return await finishIncumbent();
@@ -8895,7 +9136,7 @@
   }
 
   // src/fc27/puzzle-concept-draft.js
-  var same12 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same13 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var blocked6 = (reason, mismatch2 = null) => ({
     status: "blocked",
     reason,
@@ -8945,7 +9186,7 @@
   };
   function assess2(input, slots, owned2, purchases) {
     const { challenge, context, policy } = input;
-    if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || typeof policy?.onlyUntradeable !== "boolean" || !same12(challenge.context, context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
+    if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || typeof policy?.onlyUntradeable !== "boolean" || !same13(challenge.context, context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
     const pool = collectSafeTraditionalCandidates({
       context,
       policy,
@@ -8962,7 +9203,7 @@
     });
     if (squad.some((item2, slot) => slots[slot] && (!item2 || item2.definitionId !== slots[slot].definitionId || item2.rating !== slots[slot].rating))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED");
     for (const item2 of purchases) {
-      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || ![0, 1].includes(item2.rarity) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id13) => Number.isSafeInteger(id13) && id13 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id13) => !Number.isSafeInteger(id13) || id13 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
+      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || ![0, 1].includes(item2.rarity) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id14) => Number.isSafeInteger(id14) && id14 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id14) => !Number.isSafeInteger(id14) || id14 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
     }
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, squad.filter(Boolean).length);
     if (parsed.status !== "observed") return blocked6(parsed.reason);
@@ -8990,7 +9231,7 @@
         plan: { ...suggestion, status: "preview", setId: input.challenge.setId, challengeId: input.challenge.id }
       });
       if (plan.status !== "prepared" || plan.purchaseCount < 1) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED");
-      if (input.inventory?.kind !== "normalized-inventory" || !same12(input.context, input.inventory.context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
+      if (input.inventory?.kind !== "normalized-inventory" || !same13(input.context, input.inventory.context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
       const owned2 = suggestion.selectedOwned.map((ref) => {
         const found = input.inventory.items.filter((item2) => item2.id === ref.id);
         return found.length === 1 ? project2(found[0]) : null;
@@ -9009,7 +9250,7 @@
   }
   function validateFc27PuzzleConceptDraft(plan, current2, freshOwned) {
     try {
-      if (plan?.kind !== "puzzle-concept-draft" || plan.status !== "prepared" || !same12(scope(plan), scope(current2))) return blocked6("FC27_CONCEPT_INPUTS_CHANGED");
+      if (plan?.kind !== "puzzle-concept-draft" || plan.status !== "prepared" || !same13(scope(plan), scope(current2))) return blocked6("FC27_CONCEPT_INPUTS_CHANGED");
       const rebuilt = prepareFc27PuzzleConceptDraft({ ...scope(plan), inventory: {
         schema: 1,
         context: plan.context,
@@ -9017,16 +9258,16 @@
         status: "provisional",
         items: plan.owned
       } }, {
-        selectedOwned: plan.slots.filter((ref) => ref?.kind === "owned").map(({ id: id13, definitionId, rating, pile, slot }) => ({ id: id13, definitionId, rating, pile, slot })),
+        selectedOwned: plan.slots.filter((ref) => ref?.kind === "owned").map(({ id: id14, definitionId, rating, pile, slot }) => ({ id: id14, definitionId, rating, pile, slot })),
         purchases: plan.purchases,
         purchaseCount: plan.purchaseCount
       });
-      if (rebuilt.status !== "prepared" || !same12(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED", "plan");
+      if (rebuilt.status !== "prepared" || !same13(rebuilt.slots, plan.slots) || rebuilt.estimatedCost !== plan.estimatedCost) return blocked6("FC27_CONCEPT_PLAN_UNVERIFIED", "plan");
       if (!Array.isArray(freshOwned) || freshOwned.length >= 250 || new Set(freshOwned.map((item2) => item2.id)).size !== freshOwned.length || freshOwned.some((item2) => !plan.owned.some((ref) => ref.definitionId === item2.definitionId))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-shape");
       const owned2 = plan.owned.map((expected) => {
         const fresh = freshOwned.find((item2) => item2.id === expected.id);
         const actual = fresh && project2({ ...fresh, protected: fresh.protected ?? expected.protected });
-        return same12(actual, expected) ? actual : null;
+        return same13(actual, expected) ? actual : null;
       });
       if (owned2.some((item2) => !item2)) return blocked6("FC27_CONCEPT_ITEMS_CHANGED", "club-identity");
       return assess2(current2, plan.slots, owned2, plan.purchases);
@@ -9039,7 +9280,7 @@
   var fail14 = (reason) => {
     throw new Error(reason);
   };
-  var same13 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same14 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var reasonOf = (error2) => /^FC27_[A-Z0-9_]{1,100}$/.test(error2?.message ?? "") ? error2.message : "FC27_CONCEPT_UNCONFIRMED";
   var blocked7 = (reason) => ({ status: "blocked", reason, saved: false, submitted: false });
   var mismatch = (value) => typeof value === "string" && /^[a-z-]{1,40}$/.test(value) ? value : null;
@@ -9056,7 +9297,7 @@
   var keyOf2 = (scope2, target) => `fcat-fc27-concept-draft:${scope2}:${target.setId}:${target.challengeId}`;
   var indexKeyOf2 = (scope2) => `${fc27ConceptPendingKey(scope2)}:index`;
   var sameTarget = (a, b) => a?.setId === b?.setId && a?.challengeId === b?.challengeId;
-  var validTarget = (target) => [target?.setId, target?.challengeId].every((id13) => Number.isSafeInteger(id13) && id13 > 0);
+  var validTarget = (target) => [target?.setId, target?.challengeId].every((id14) => Number.isSafeInteger(id14) && id14 > 0);
   var accountOf = (context) => ({ accountScope: context?.accountScope, platform: context?.platform });
   var accountMatches = (record, context) => !record?.account || record.account.accountScope === context?.accountScope && record.account.platform === context?.platform;
   var validReservationId = (value) => Number.isSafeInteger(value) && value > 0;
@@ -9108,10 +9349,10 @@
   } = {}) {
     const store = async (key2, value) => {
       await set(key2, structuredClone(value));
-      if (!same13(await get(key2, null), value)) fail14("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+      if (!same14(await get(key2, null), value)) fail14("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
     };
     const evidence = (reply, plan) => {
-      if (!reply?.fresh || !Number.isSafeInteger(reply.observedAt) || now() - reply.observedAt < 0 || now() - reply.observedAt > 15e3 || !same13(reply.context, plan.context)) fail14("FC27_CONCEPT_EVIDENCE_UNVERIFIED");
+      if (!reply?.fresh || !Number.isSafeInteger(reply.observedAt) || now() - reply.observedAt < 0 || now() - reply.observedAt > 15e3 || !same14(reply.context, plan.context)) fail14("FC27_CONCEPT_EVIDENCE_UNVERIFIED");
     };
     const validate2 = (plan, current2, owned2) => {
       const result = validateFc27PuzzleConceptDraft(plan, current2, owned2);
@@ -9160,7 +9401,7 @@
         try {
           return await exclusive(scope2, async () => {
             assertCurrent();
-            if (!same13(plan.context, context)) fail14("FC27_CONCEPT_INPUTS_CHANGED");
+            if (!same14(plan.context, context)) fail14("FC27_CONCEPT_INPUTS_CHANGED");
             const target = targetOf(plan);
             if (await checkOtherTransactions() !== true || await readFc27ConceptPending(get, scope2, target) !== null) fail14("FC27_CONCEPT_RECOVERY_REQUIRED");
             const previous = await get(keyOf2(scope2, target), null);
@@ -9204,7 +9445,7 @@
               assertCurrent();
               evidence(fresh, plan);
             }, { replaceBaseline });
-            if (receipt?.status !== "confirmed" || !same13({ setId: receipt.setId, challengeId: receipt.challengeId }, targetOf(plan))) fail14("FC27_CONCEPT_SAVE_UNCONFIRMED");
+            if (receipt?.status !== "confirmed" || !same14({ setId: receipt.setId, challengeId: receipt.challengeId }, targetOf(plan))) fail14("FC27_CONCEPT_SAVE_UNCONFIRMED");
             return readback(provider, record);
           }) ?? blocked7("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
         } catch (error2) {
@@ -9232,7 +9473,7 @@
             if (pending3 && (pending3.setId !== target.setId || pending3.challengeId !== target.challengeId)) {
               return { ...blocked7("FC27_CONCEPT_RECOVERY_REQUIRED"), recoverySetId: pending3.setId, recoveryChallengeId: pending3.challengeId };
             }
-            if (!record || record.schema !== 1 || record.scope !== scope2 || record.submitted !== false || !same13(targetOf(record.plan), target) || !["saved", "save-pending"].includes(record.phase) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId) || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0 || record.updatedAt > now() || !same13(record.plan?.context, context) || !accountMatches(record, record.plan?.context) || pending3?.account && !accountMatches(pending3, record.plan?.context) || pending3 && pending3.operationId !== record.operationId) fail14("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
+            if (!record || record.schema !== 1 || record.scope !== scope2 || record.submitted !== false || !same14(targetOf(record.plan), target) || !["saved", "save-pending"].includes(record.phase) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(record.operationId) || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0 || record.updatedAt > now() || !same14(record.plan?.context, context) || !accountMatches(record, record.plan?.context) || pending3?.account && !accountMatches(pending3, record.plan?.context) || pending3 && pending3.operationId !== record.operationId) fail14("FC27_CONCEPT_JOURNAL_UNCONFIRMED");
             validate2(record.plan, record.plan, record.plan.owned);
             if (record.invalidation !== void 0) {
               const invalidation = record.invalidation;
@@ -9287,8 +9528,8 @@
     if (!Array.isArray(slots) || slots.length !== record.base.slots.length) return false;
     const old = puzzleBuySlotRefs(record.base, record.applied);
     const next = puzzleBuySlotRefs(record.base, record.entries);
-    const same31 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    return slots.every((slot, i) => same31(slot, old[i]) || same31(slot, next[i]));
+    const same32 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return slots.every((slot, i) => same32(slot, old[i]) || same32(slot, next[i]));
   }
   function puzzleBuyReplacementOnly(record) {
     return ["ready", "saved"].includes(record?.phase) && Array.isArray(record.entries) && Array.isArray(record.applied) && record.entries.every((entry) => ["waiting", "club"].includes(entry.state)) && record.applied.every((entry) => entry.state === "club" && record.entries.some((row) => JSON.stringify(row) === JSON.stringify(entry))) && record.entries.filter((entry) => entry.state === "club").length > record.applied.length;
@@ -9439,7 +9680,7 @@
   }
 
   // src/fc27/puzzle-buy-session.js
-  var same14 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail16 = (reason) => {
     throw new Error(reason);
   };
@@ -9466,10 +9707,10 @@
   } = {}) {
     const store = async (key2, value) => {
       await set(key2, structuredClone(value));
-      if (!same14(await get(key2, null), value)) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
+      if (!same15(await get(key2, null), value)) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
     };
     const check = (record) => {
-      if (!record || record.schema !== 1 || record.scope !== scope2 || !same14(record.context, context) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !integer12(e.slot) || e.slot > 31 || !integer12(e.definitionId, 1) || !["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"].includes(e.state) || e.state !== "waiting" && (!integer12(e.itemId, 1) || (e.source === "owned" ? e.state !== "club" || e.tradeId !== "0" || e.price !== 0 : typeof e.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer12(e.price, 150)))) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !["ready", "save-pending", "saved"].includes(record.phase)) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
+      if (!record || record.schema !== 1 || record.scope !== scope2 || !same15(record.context, context) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !integer12(e.slot) || e.slot > 31 || !integer12(e.definitionId, 1) || !["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"].includes(e.state) || e.state !== "waiting" && (!integer12(e.itemId, 1) || (e.source === "owned" ? e.state !== "club" || e.tradeId !== "0" || e.price !== 0 : typeof e.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(e.tradeId) || !integer12(e.price, 150)))) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !["ready", "save-pending", "saved"].includes(record.phase)) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
       if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope2, record.entries.map((entry) => entry.definitionId));
       validatePurchaseAttempts(record);
     };
@@ -9495,7 +9736,7 @@
           return await exclusive(scope2, async () => {
             assertCurrent();
             const draft = await loadDraft(target);
-            if (!draft || draft.phase !== "saved" || draft.operationId !== expectedOperationId || !same14(draft.plan.context, context)) fail16("FC27_BUY_PLAN_CHANGED");
+            if (!draft || draft.phase !== "saved" || draft.operationId !== expectedOperationId || !same15(draft.plan.context, context)) fail16("FC27_BUY_PLAN_CHANGED");
             const key2 = puzzleBuyKey(scope2, target);
             const pending3 = await get(puzzleBuyPendingKey(scope2), null);
             if (pending3 !== null && (pending3.key !== key2 || pending3.operationId !== draft.operationId)) fail16("FC27_BUY_RECOVERY_REQUIRED");
@@ -9504,7 +9745,7 @@
               check(record);
               if (record.closure) {
                 const history = await get(puzzleBuyHistoryKey(scope2, target), []);
-                if (!Array.isArray(history) || !history.some((row) => same14(row, record))) fail16("FC27_BUY_HISTORY_UNCONFIRMED");
+                if (!Array.isArray(history) || !history.some((row) => same15(row, record))) fail16("FC27_BUY_HISTORY_UNCONFIRMED");
                 if (record.operationId === draft.operationId || recoverOnly || retry || draft.closedOperationId !== record.operationId) fail16("FC27_BUY_ARCHIVED_APPROVAL_EXPIRED");
                 record = null;
               } else if (record.operationId !== draft.operationId) {
@@ -9514,9 +9755,9 @@
                 const previous = history.find((row) => row.operationId === record.operationId);
                 if (previous) {
                   const { closure, ...original } = previous;
-                  if (closure?.autoRetryAllowed !== false || !same14(original, record)) fail16("FC27_BUY_HISTORY_UNCONFIRMED");
+                  if (closure?.autoRetryAllowed !== false || !same15(original, record)) fail16("FC27_BUY_HISTORY_UNCONFIRMED");
                 } else {
-                  const complete = record.entries.every((e) => e.state === "club") && same14(record.entries, record.applied);
+                  const complete = record.entries.every((e) => e.state === "club") && same15(record.entries, record.applied);
                   await store(historyKey, [...history, { ...record, closure: {
                     schema: 1,
                     reason: complete ? "settled" : "target-changed",
@@ -9525,7 +9766,7 @@
                   } }]);
                 }
                 record = null;
-              } else if (!same14(record.base, draft.plan)) fail16("FC27_BUY_PLAN_CHANGED");
+              } else if (!same15(record.base, draft.plan)) fail16("FC27_BUY_PLAN_CHANGED");
             }
             record ??= {
               schema: 1,
@@ -9540,7 +9781,7 @@
             };
             check(record);
             record.budget = budget;
-            if (!same14(record.target, target) || !same14(record.base.context, context) || record.entries.length !== record.base.slots.filter((s) => s?.kind === "concept").length || record.entries.some((e) => record.base.slots[e.slot]?.kind !== "concept" || record.base.slots[e.slot].definitionId !== e.definitionId) || !Array.isArray(record.applied) || record.applied.some((e) => e.state !== "club" || !record.entries.some((entry) => same14(entry, e)))) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
+            if (!same15(record.target, target) || !same15(record.base.context, context) || record.entries.length !== record.base.slots.filter((s) => s?.kind === "concept").length || record.entries.some((e) => record.base.slots[e.slot]?.kind !== "concept" || record.base.slots[e.slot].definitionId !== e.definitionId) || !Array.isArray(record.applied) || record.applied.some((e) => e.state !== "club" || !record.entries.some((entry) => same15(entry, e)))) fail16("FC27_BUY_JOURNAL_UNCONFIRMED");
             adapter = await createAdapter({ onSearch: (definitionId) => {
               recordPurchaseSearch(record, definitionId);
               report("search-query", record.entries.find((entry) => entry.definitionId === definitionId));
@@ -9758,7 +9999,7 @@
             await persist();
             if (!settled(record)) return { status: "recovery-required", ...record.lastResult, ...await priceResult(), ...summary3(record) };
             const acquired = record.entries.filter((e) => e.state === "club");
-            if (!same14(acquired, record.applied)) {
+            if (!same15(acquired, record.applied)) {
               const result = await adapter.save(record, async () => {
                 record.phase = "save-pending";
                 await mark();
@@ -9801,11 +10042,11 @@
   }
 
   // src/fc27/puzzle-buy-lifecycle.js
-  var same15 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same16 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail17 = (code2) => {
     throw Error(`FC27_BUY_${code2}`);
   };
-  var id3 = (value) => Number.isSafeInteger(value) && value > 0;
+  var id4 = (value) => Number.isSafeInteger(value) && value > 0;
   var states = ["waiting", "buy-pending", "bought", "move-pending", "move-rejected", "club"];
   async function readPuzzleBuyPending(get, scope2, context = null) {
     const pending3 = await get(puzzleBuyPendingKey(scope2), null);
@@ -9820,12 +10061,12 @@
     } catch {
       fail17("JOURNAL_READ_FAILED");
     }
-    if (record?.schema !== 1 || record.scope !== scope2 || !same15(record.target, target) || context && !same15(record.context, context) || record.operationId !== pending3.operationId || !["ready", "save-pending", "saved"].includes(record.phase) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !states.includes(e?.state) || !id3(e.definitionId) || !Number.isSafeInteger(e.slot) || e.slot < 0 || e.slot > 31 || e.state !== "waiting" && !id3(e.itemId)) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !Array.isArray(record.applied)) fail17("JOURNAL_UNCONFIRMED");
+    if (record?.schema !== 1 || record.scope !== scope2 || !same16(record.target, target) || context && !same16(record.context, context) || record.operationId !== pending3.operationId || !["ready", "save-pending", "saved"].includes(record.phase) || !Array.isArray(record.entries) || record.entries.length > 32 || record.entries.some((e) => !states.includes(e?.state) || !id4(e.definitionId) || !Number.isSafeInteger(e.slot) || e.slot < 0 || e.slot > 31 || e.state !== "waiting" && !id4(e.itemId)) || new Set(record.entries.map((e) => e.slot)).size !== record.entries.length || !Array.isArray(record.applied)) fail17("JOURNAL_UNCONFIRMED");
     return { pending: pending3, record, target };
   }
   async function assertPuzzleBuyTargetAvailable(get, scope2, target = null, context = null) {
     const active = await readPuzzleBuyPending(get, scope2, context);
-    if (active && !active.record.closure && target && same15(active.target, { setId: target.setId, challengeId: target.challengeId })) {
+    if (active && !active.record.closure && target && same16(active.target, { setId: target.setId, challengeId: target.challengeId })) {
       fail17("RECOVERY_REQUIRED");
     }
   }
@@ -9846,7 +10087,7 @@
     const { pending: pending3, record, target } = active;
     const unchanged = async () => {
       assertCurrent();
-      if (!same15(await get(puzzleBuyPendingKey(scope2), null), pending3) || !same15(await get(pending3.key, null), record)) fail17("JOURNAL_CHANGED");
+      if (!same16(await get(puzzleBuyPendingKey(scope2), null), pending3) || !same16(await get(pending3.key, null), record)) fail17("JOURNAL_CHANGED");
       assertCurrent();
     };
     const store = async (key2, value) => {
@@ -9857,28 +10098,28 @@
         fail17("JOURNAL_WRITE_FAILED");
       }
       assertCurrent();
-      if (!same15(await get(key2, null), value)) fail17("JOURNAL_READBACK_FAILED");
+      if (!same16(await get(key2, null), value)) fail17("JOURNAL_READBACK_FAILED");
     };
     const historyKey = puzzleBuyHistoryKey(scope2, target), history = await get(historyKey, []);
     if (!Array.isArray(history)) fail17("HISTORY_UNCONFIRMED");
     const prior = history.find((row) => row.operationId === record.operationId);
     if (record.closure) {
-      if (!Array.isArray(history) || !history.some((row) => same15(row, record))) fail17("HISTORY_UNCONFIRMED");
+      if (!Array.isArray(history) || !history.some((row) => same16(row, record))) fail17("HISTORY_UNCONFIRMED");
       await unchanged();
       await store(puzzleBuyPendingKey(scope2), null);
       return { status: "archived", reason: record.closure.reason, ...target };
     }
     if (prior) {
       const { closure, ...original } = prior;
-      if (closure?.schema !== 1 || closure.autoRetryAllowed !== false || !same15(original, record)) fail17("HISTORY_UNCONFIRMED");
+      if (closure?.schema !== 1 || closure.autoRetryAllowed !== false || !same16(original, record)) fail17("HISTORY_UNCONFIRMED");
       await unchanged();
       await store(pending3.key, prior);
       await store(puzzleBuyPendingKey(scope2), null);
       return { status: "archived", reason: closure.reason, ...target };
     }
     const uncertain2 = record.entries.filter((e) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(e.state));
-    const complete = record.entries.every((e) => e.state === "club") && record.phase !== "save-pending" && same15(record.entries, record.applied);
-    const switched = requestedTarget && id3(requestedTarget.setId) && id3(requestedTarget.challengeId) && !same15(target, requestedTarget);
+    const complete = record.entries.every((e) => e.state === "club") && record.phase !== "save-pending" && same16(record.entries, record.applied);
+    const switched = requestedTarget && id4(requestedTarget.setId) && id4(requestedTarget.challengeId) && !same16(target, requestedTarget);
     const state = complete || switched || uncertain2.length ? "unknown" : await targetState(target);
     assertCurrent();
     if (!complete && !uncertain2.length && !switched && !["retired", "completed"].includes(state)) return { status: "target-recovery", ...target };
@@ -9917,7 +10158,7 @@
   }
 
   // src/adapters/browser/fc27-puzzle-buy-lifecycle.js
-  var same16 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same17 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function puzzlePurchaseTargetState(root, target, now = Date.now()) {
     const repo = root.services?.SBC?.repository ?? root.repositories?.SBC;
     const set = repo?.getSetById?.(target.setId);
@@ -9993,7 +10234,7 @@
   } = {}) {
     const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
     const assertCurrent = () => {
-      if (!same16(context, readFc27Context(root))) throw Error("FC27_BUY_CONTEXT_CHANGED");
+      if (!same17(context, readFc27Context(root))) throw Error("FC27_BUY_CONTEXT_CHANGED");
     };
     const lock = createTraditionalExclusive({ context, lockManager: root.navigator?.locks });
     let club, transport, locations;
@@ -10050,7 +10291,7 @@
   }
 
   // src/adapters/ea/fc27-purchase-squad.js
-  var same17 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var refs2 = (squad) => squad?._players?.slice(0, 11).map((slot, index) => [0, -1].includes(slot._item.id) ? null : { slot: index, id: slot._item.id, definitionId: slot._item.definitionId, concept: slot._item.concept });
   var planRefs = (slots) => slots.filter(Boolean).map((slot) => slot.concept ? { slot: slot.slot, kind: "concept", definitionId: slot.definitionId, catalogRef: `fc27:${slot.definitionId}` } : { slot: slot.slot, kind: "owned", definitionId: slot.definitionId, id: slot.id, pile: "club" });
   async function createFc27PurchaseSquad(root, { canWrite, assertTarget }) {
@@ -10063,7 +10304,7 @@
     const assert = () => {
       runtime();
       assertTarget();
-      if (!same17(context, readFc27Context(root)) || dao !== root.services.SBC.sbcDAO || dao.loadChallenge !== root.UTSquadBuildingChallengeDAO.prototype.loadChallenge) throw Error("FC27_BUY_CONTEXT_CHANGED");
+      if (!same18(context, readFc27Context(root)) || dao !== root.services.SBC.sbcDAO || dao.loadChallenge !== root.UTSquadBuildingChallengeDAO.prototype.loadChallenge) throw Error("FC27_BUY_CONTEXT_CHANGED");
     };
     const load = async (record) => {
       assert();
@@ -10095,7 +10336,7 @@
       });
       assert();
       const layout = projectFc27PuzzleLayout(root, squad, record.target);
-      if (!same17(layout.formation, record.base.challenge.formation) || !same17(layout.simpleBrickIndices, record.base.challenge.brickIndices) || layout.customBrickIndices.length) throw Error("FC27_BUY_SQUAD_CHANGED");
+      if (!same18(layout.formation, record.base.challenge.formation) || !same18(layout.simpleBrickIndices, record.base.challenge.brickIndices) || layout.customBrickIndices.length) throw Error("FC27_BUY_SQUAD_CHANGED");
       return squad;
     };
     const sync = async (record, squad) => {
@@ -10120,7 +10361,7 @@
       async save(record, beforeDispatch) {
         let squad = await load(record);
         const expected = puzzleBuySlotRefs(record.base, record.entries);
-        if (!same17(refs2(squad), expected)) {
+        if (!same18(refs2(squad), expected)) {
           if (!puzzleBuyMatchesSlots(record, refs2(squad))) throw Error("FC27_BUY_SQUAD_CHANGED");
           const players = squad._players.map((slot, index) => ({ index, itemData: {
             id: expected[index]?.id ?? slot._item.id,
@@ -10140,12 +10381,12 @@
           if (result?.success !== true || result.status !== 200) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
           squad = await load(record);
         }
-        if (!same17(refs2(squad), expected)) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
+        if (!same18(refs2(squad), expected)) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
         await sync(record, squad);
       },
       async recoverSave(record) {
         const squad = await load(record);
-        if (!same17(refs2(squad), puzzleBuySlotRefs(record.base, record.entries))) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
+        if (!same18(refs2(squad), puzzleBuySlotRefs(record.base, record.entries))) throw Error("FC27_BUY_SAVE_UNCONFIRMED");
         await sync(record, squad);
       },
       cancel: () => transport.cancel()
@@ -10251,8 +10492,8 @@
       "92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93"
     ])
   });
-  var same18 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var id4 = (n) => Number.isSafeInteger(n) && n > 0;
+  var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var id5 = (n) => Number.isSafeInteger(n) && n > 0;
   var fail18 = (reason) => {
     throw new Error(reason);
   };
@@ -10260,7 +10501,7 @@
     const page = readFc27PurchasePage(root, target);
     if (!page) fail18("FC27_BUY_TARGET_CHANGED");
     const { items, slots: refs3 } = page;
-    if (refs3.filter(Boolean).some((ref) => !id4(ref.id) || !id4(ref.definitionId) || typeof ref.concept !== "boolean")) fail18("FC27_BUY_PLAN_CHANGED");
+    if (refs3.filter(Boolean).some((ref) => !id5(ref.id) || !id5(ref.definitionId) || typeof ref.concept !== "boolean")) fail18("FC27_BUY_PLAN_CHANGED");
     const purchases = refs3.filter((ref) => ref?.concept).map((ref) => {
       const item2 = items[ref.slot];
       return {
@@ -10335,7 +10576,7 @@
     const pin = (pgid) => root.services.PIN.sendData(root.PINEventType.PAGE_VIEW, { type: root.PIN_PAGEVIEW_EVT_TYPE, pgid });
     const assertAccount = () => {
       runtime();
-      if (closed || !same18(context, readFc27Context(root)) || root.services.Item !== service || Object.getPrototypeOf(service) !== proto || Object.keys(functions).some((name2) => service[name2] !== functions[name2])) fail18("FC27_BUY_CONTEXT_CHANGED");
+      if (closed || !same19(context, readFc27Context(root)) || root.services.Item !== service || Object.getPrototypeOf(service) !== proto || Object.keys(functions).some((name2) => service[name2] !== functions[name2])) fail18("FC27_BUY_CONTEXT_CHANGED");
     };
     const writable = () => {
       assertAccount();
@@ -10750,10 +10991,10 @@
   var GALLERY_MARKET_TAX_BPS = 500;
   var STATES = /* @__PURE__ */ new Set(["held", "listed", "sold", "unsold", "unknown"]);
   var integer13 = (value, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(value) && value >= min && value <= max;
-  var id5 = (value) => integer13(value, 1);
+  var id6 = (value) => integer13(value, 1);
   var price = (value) => integer13(value, 150, 15e6);
   function normalizePurchase(value) {
-    if (!value || !id5(value.itemId) || !id5(value.definitionId) || !price(value.purchasePrice)) return null;
+    if (!value || !id6(value.itemId) || !id6(value.definitionId) || !price(value.purchasePrice)) return null;
     const state = STATES.has(value.state) ? value.state : "held";
     if (value.listedPrice != null && !price(value.listedPrice)) return null;
     if (state === "sold" && !price(value.soldPrice)) return null;
@@ -10811,7 +11052,7 @@
   }
   function recordGallerySale(ledger, sale = {}) {
     const current2 = normalizeGalleryNetCostLedger(ledger);
-    if (!current2 || !id5(sale.itemId)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
+    if (!current2 || !id6(sale.itemId)) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_SALE_INVALID" };
     const index = current2.entries.findIndex((entry) => entry.itemId === sale.itemId);
     if (index < 0) return { status: "blocked", reason: "FC27_GALLERY_NET_COST_IDENTITY_UNKNOWN" };
     const existing = current2.entries[index];
@@ -10870,8 +11111,8 @@
   }
 
   // src/gallery/listing-candidates.js
-  var id6 = (value) => Number.isSafeInteger(value) && value > 0;
-  var same19 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var id7 = (value) => Number.isSafeInteger(value) && value > 0;
+  var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var blocked8 = (reason) => ({ status: "blocked", reason, entries: [] });
   var pendingStates = /* @__PURE__ */ new Set(["buy-pending", "bought", "move-pending", "move-rejected"]);
   function projectGalleryListingReceipts({
@@ -10921,7 +11162,7 @@
     if (source?.status !== "observed" || !Array.isArray(source.entries) || !Array.isArray(items)) {
       return blocked8("FC27_GALLERY_LISTING_INPUT_UNCONFIRMED");
     }
-    if (!Array.isArray(source.skipped) || source.entries.some((row) => !id6(row?.itemId) || !id6(row?.definitionId)) || new Set(source.entries.map((row) => row.itemId)).size !== source.entries.length || items.some((item2) => !id6(item2?.id) || !id6(item2?.definitionId)) || new Set(items.map((item2) => item2.id)).size !== items.length) return blocked8("FC27_GALLERY_LISTING_ITEM_CONFLICT");
+    if (!Array.isArray(source.skipped) || source.entries.some((row) => !id7(row?.itemId) || !id7(row?.definitionId)) || new Set(source.entries.map((row) => row.itemId)).size !== source.entries.length || items.some((item2) => !id7(item2?.id) || !id7(item2?.definitionId)) || new Set(items.map((item2) => item2.id)).size !== items.length) return blocked8("FC27_GALLERY_LISTING_ITEM_CONFLICT");
     const byId = new Map(items.map((item2) => [item2.id, item2]));
     const entries2 = [], skipped = [...source.skipped];
     for (const receipt of source.entries) {
@@ -10958,7 +11199,7 @@
         if (source.status !== "observed") return source;
         const current2 = await get(key2, null), pending3 = await get(pendingKey, null);
         assertCurrent();
-        if (!same19(purchase, current2) || !same19(marker, pending3)) return blocked8("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
+        if (!same20(purchase, current2) || !same20(marker, pending3)) return blocked8("FC27_GALLERY_LISTING_PURCHASE_CHANGED");
         return source;
       });
       return result ?? blocked8("FC27_GALLERY_PURCHASE_BUSY");
@@ -10969,7 +11210,7 @@
   var GALLERY_LISTING_MIN_PRICE = 150;
   var GALLERY_LISTING_MAX_PRICE = 14999e3;
   function normalizeTiers(input) {
-    if (!Array.isArray(input) || !input.length || input.length > 32 || input.some((tier, index) => !Number.isSafeInteger(tier?.min) || tier.min < 0 || !id6(tier.inc) || index > 0 && tier.min >= input[index - 1].min)) return null;
+    if (!Array.isArray(input) || !input.length || input.length > 32 || input.some((tier, index) => !Number.isSafeInteger(tier?.min) || tier.min < 0 || !id7(tier.inc) || index > 0 && tier.min >= input[index - 1].min)) return null;
     return input.map(({ min, inc }) => ({ min, inc }));
   }
   function tierFor(value, tiers2, direction) {
@@ -11057,7 +11298,7 @@
     random = Math.random
   } = {}) {
     const mode = settings.priceMode ?? "percentage", duration = settings.durationSeconds ?? 3600;
-    if (!["fixed", "percentage", "steps"].includes(mode) || ![3600, 10800, 21600, 43200, 86400, 259200].includes(duration) || !Array.isArray(candidates) || candidates.some((row) => !id6(row?.item?.id) || !id6(row?.item?.definitionId)) || new Set(candidates.map((row) => row.item.id)).size !== candidates.length) return blocked8("FC27_GALLERY_LISTING_SETTINGS_INVALID");
+    if (!["fixed", "percentage", "steps"].includes(mode) || ![3600, 10800, 21600, 43200, 86400, 259200].includes(duration) || !Array.isArray(candidates) || candidates.some((row) => !id7(row?.item?.id) || !id7(row?.item?.definitionId)) || new Set(candidates.map((row) => row.item.id)).size !== candidates.length) return blocked8("FC27_GALLERY_LISTING_SETTINGS_INVALID");
     const output = [], skipped = [];
     for (const candidate of Array.isArray(candidates) ? candidates : []) {
       const itemId = candidate.item.id, definitionId = candidate.item.definitionId;
@@ -11141,14 +11382,14 @@
     if (!["market", "paid"].includes(from) || !Number.isSafeInteger(adjustment)) throw Error("FC27_GALLERY_BATCH_OPTIONS_INVALID");
     const bins = {}, origins = {};
     for (const row of candidates) {
-      const id13 = row.item.id, def = row.item.definitionId;
-      const sibling = candidates.find((other) => other.item.definitionId === def && other.item.id !== id13 && overrides[other.item.id] != null);
-      const typed = overrides[id13] ?? (sibling ? overrides[sibling.item.id] : null);
+      const id14 = row.item.id, def = row.item.definitionId;
+      const sibling = candidates.find((other) => other.item.definitionId === def && other.item.id !== id14 && overrides[other.item.id] != null);
+      const typed = overrides[id14] ?? (sibling ? overrides[sibling.item.id] : null);
       const paid = row.boughtFor ?? row.purchase?.purchasePrice;
       const usePaid = from === "paid" && paid > 0;
       const base = usePaid ? paid : prices[def];
-      bins[id13] = typed ?? (base > 0 ? Math.max(200, roundGalleryListingPrice(base * Math.max(0, 100 + adjustment) / 100, priceTiers) ?? 0) : null);
-      origins[id13] = typed != null ? "manual" : usePaid ? "paid" : "market";
+      bins[id14] = typed ?? (base > 0 ? Math.max(200, roundGalleryListingPrice(base * Math.max(0, 100 + adjustment) / 100, priceTiers) ?? 0) : null);
+      origins[id14] = typed != null ? "manual" : usePaid ? "paid" : "market";
     }
     return { bins, origins };
   }
@@ -11192,8 +11433,8 @@
   }
 
   // src/gallery/purchase-session.js
-  var same20 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var id7 = (value) => Number.isSafeInteger(value) && value > 0;
+  var same21 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var id8 = (value) => Number.isSafeInteger(value) && value > 0;
   var safeReason5 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_GALLERY_PURCHASE_UNCONFIRMED";
   var completedStates = ["club", "unassigned", "acquired", "collected"];
   var states2 = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "move-rejected", ...completedStates]);
@@ -11210,10 +11451,10 @@
     }
     return changed;
   };
-  var quote = (value, definitionId) => value?.definitionId === definitionId && id7(value.itemId) && typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15e6;
+  var quote = (value, definitionId) => value?.definitionId === definitionId && id8(value.itemId) && typeof value.tradeId === "string" && /^[1-9]\d{0,19}$/.test(value.tradeId) && Number.isSafeInteger(value.price) && value.price >= 150 && value.price <= 15e6;
   var summary = (record) => {
     const entries2 = record?.entries ?? [], acquired = entries2.filter((entry) => ["bought", "move-pending", "move-rejected", "club", "unassigned", "acquired"].includes(entry.state));
-    const purchases = acquired.filter((entry) => id7(entry.itemId) && id7(entry.definitionId) && Number.isSafeInteger(entry.price)).map((entry) => ({
+    const purchases = acquired.filter((entry) => id8(entry.itemId) && id8(entry.definitionId) && Number.isSafeInteger(entry.price)).map((entry) => ({
       itemId: entry.itemId,
       definitionId: entry.definitionId,
       tradeId: entry.tradeId,
@@ -11239,7 +11480,7 @@
     reason: record.lastResult?.failures?.find((row) => row.definitionId === entry.definitionId)?.reason ?? null
   }));
   function validateGalleryPurchaseRecord(record, scope2, context) {
-    if (!record || record.schema !== 1 || record.scope !== scope2 || !same20(record.context, context) || !["club", "unassigned"].includes(record.destination ?? "club") || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || record.entries.some((entry) => entry?.state === "unassigned" && record.destination !== "unassigned") || record.plan.some((item2) => !id7(item2?.definitionId)) || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id7(entry?.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states2.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+    if (!record || record.schema !== 1 || record.scope !== scope2 || !same21(record.context, context) || !["club", "unassigned"].includes(record.destination ?? "club") || typeof record.operationId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(record.operationId) || typeof record.binding !== "string" || !record.binding || record.binding.length > 12e3 || record.budget != null && (!Number.isSafeInteger(record.budget) || record.budget < 0 || record.budget > 165e6) || !Array.isArray(record.plan) || !Array.isArray(record.entries) || record.plan.length < 1 || record.plan.length > 256 || record.entries.length !== record.plan.length || record.entries.some((entry) => entry?.state === "unassigned" && record.destination !== "unassigned") || record.plan.some((item2) => !id8(item2?.definitionId)) || new Set(record.plan.map((item2) => item2.definitionId)).size !== record.plan.length || record.entries.some((entry, index) => !id8(entry?.definitionId) || entry.definitionId !== record.plan[index].definitionId || !states2.has(entry.state) || !["waiting", "collected"].includes(entry.state) && !quote(entry, entry.definitionId))) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
     if (record.priceApproval) validatePurchasePriceApproval(record.priceApproval, scope2, record.entries.map((entry) => entry.definitionId));
     if (record.batchOptions) normalizeFodderBuyOptions(record.batchOptions);
     validatePurchaseAttempts(record);
@@ -11276,7 +11517,7 @@
     const write = async (storageKey, value) => {
       try {
         await set(storageKey, structuredClone(value));
-        if (!same20(await get(storageKey, null), value)) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
+        if (!same21(await get(storageKey, null), value)) throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED");
       } catch (error2) {
         if (error2?.message === "FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED") throw error2;
         throw new Error("FC27_GALLERY_PURCHASE_JOURNAL_WRITE_FAILED");
@@ -11337,7 +11578,7 @@
               binding = record.binding;
               budget = record.budget ?? null;
             }
-            if (plan.some((item2) => !id7(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
+            if (plan.some((item2) => !id8(item2.definitionId)) || new Set(plan.map((item2) => item2.definitionId)).size !== plan.length) throw new Error("FC27_GALLERY_PURCHASE_PLAN_CHANGED");
             if (record) {
               if (settleUnassignedPurchases(record)) {
                 assertCurrent();
@@ -11349,7 +11590,7 @@
                 oldPending = null;
               }
             }
-            const changed = record && (!same20(record.binding, binding) || !same20(record.plan, plan));
+            const changed = record && (!same21(record.binding, binding) || !same21(record.plan, plan));
             if (changed && (oldPending || pending(record))) throw new Error("FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED");
             if (changed) await write(`${key2}:${record.operationId}`, record);
             if (!record || changed) {
@@ -11687,9 +11928,9 @@
   var MUTATING = /* @__PURE__ */ new Set(["list-pending", "unknown"]);
   var DURATIONS = /* @__PURE__ */ new Set([3600, 10800, 21600, 43200, 86400, 259200]);
   var clone2 = (value) => structuredClone(value);
-  var same21 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same22 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sameItem = (a, b) => a?.id === b?.id && a?.definitionId === b?.definitionId && a?.pile === b?.pile;
-  var id8 = (value) => Number.isSafeInteger(value) && value > 0;
+  var id9 = (value) => Number.isSafeInteger(value) && value > 0;
   var tradeId2 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var fail19 = (reason) => {
     throw new Error(reason);
@@ -11698,7 +11939,7 @@
   var FC27_GALLERY_BULK_LIST_KEY_PREFIX = "fcat-fc27-gallery-bulk-list-v1:";
   var galleryBulkListKey = (scope2) => `${FC27_GALLERY_BULK_LIST_KEY_PREFIX}${scope2}`;
   var validPrices = (entry) => entry.action === "transfer" ? entry.startPrice == null && entry.buyNow == null && entry.durationSeconds == null : Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150 && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15e6 && DURATIONS.has(entry.durationSeconds);
-  var validRef = (ref) => id8(ref?.id) && id8(ref?.definitionId) && ["club", "unassigned", "transfer"].includes(ref.pile);
+  var validRef = (ref) => id9(ref?.id) && id9(ref?.definitionId) && ["club", "unassigned", "transfer"].includes(ref.pile);
   var validDelay = (value) => Array.isArray(value) && value.length === 2 && value.every((v) => Number.isFinite(v) && v >= 1 && v <= 15) && value[0] <= value[1];
   var validSetSource = (source) => source?.kind === "set" && typeof source.setId === "string" && /^(futgg|fodder):[a-zA-Z0-9/_-]+$/.test(source.setId) && source.setId.length <= 240;
   var validPurchase = (value, source) => validSetSource(source) ? value === null : tradeId2(value);
@@ -11721,7 +11962,7 @@
     assertCurrent();
     const key2 = galleryBulkListKey(scope2), raw = await get(key2, null);
     const record = normalizeGalleryBulkListJournal(raw);
-    if (!record || record.scope !== scope2 || !same21(record.context, context)) fail19("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
+    if (!record || record.scope !== scope2 || !same22(record.context, context)) fail19("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
     assertCurrent();
     let changed = false;
     for (const entry of record.entries.filter((e) => MUTATING.has(e.status))) {
@@ -11742,11 +11983,11 @@
       record.status = record.entries.some((e) => MUTATING.has(e.status)) ? "recovery-required" : record.entries.every((e) => TERMINAL.has(e.status)) ? "completed" : "active";
       if (record.status !== "recovery-required") record.lastReason = null;
       record.updatedAt = Date.now();
-      if (!same21(await get(key2, null), raw)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same22(await get(key2, null), raw)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
       assertCurrent();
       await set(key2, clone2(record));
       assertCurrent();
-      if (!same21(await get(key2, null), record)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+      if (!same22(await get(key2, null), record)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
     }
     if (record.entries.some((e) => MUTATING.has(e.status))) fail19("FC27_GALLERY_BULK_LIST_RECOVERY_REQUIRED");
   }
@@ -11818,13 +12059,13 @@
       if (raw === null) return null;
       const value = normalizeGalleryBulkListJournal(raw);
       if (!value) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_INVALID");
-      if (value.scope !== scope2 || !same21(value.context, context)) fail19("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
+      if (value.scope !== scope2 || !same22(value.context, context)) fail19("FC27_GALLERY_BULK_LIST_CONTEXT_CHANGED");
       return value;
     };
     const storeConfirmed = async (storageKey, record) => {
       try {
         await set(storageKey, clone2(record));
-        if (!same21(await get(storageKey, null), record)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
+        if (!same22(await get(storageKey, null), record)) fail19("FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED");
       } catch (error2) {
         if (error2?.message === "FC27_GALLERY_BULK_LIST_JOURNAL_UNCONFIRMED") throw error2;
         fail19("FC27_GALLERY_BULK_LIST_JOURNAL_WRITE_FAILED");
@@ -12203,7 +12444,7 @@
         if (!entries2 || typeof entries2 !== "object") return [];
         const keys2 = Object.getOwnPropertyNames(entries2).filter((key2) => key2 !== "length");
         if (keys2.length > 50) return [];
-        const ids2 = keys2.map((key2) => ownData(entries2, key2)?.id).filter((id13) => Number.isSafeInteger(id13) && id13 > 0);
+        const ids2 = keys2.map((key2) => ownData(entries2, key2)?.id).filter((id14) => Number.isSafeInteger(id14) && id14 > 0);
         return [...new Set(ids2)];
       } catch {
         return [];
@@ -12367,7 +12608,7 @@
       const activePuzzle = readFc27PuzzlePage(root);
       const conceptPending = await readFc27ConceptPending(gmGetValue, scope2, activePuzzle);
       if (conceptPending !== null) {
-        const valid3 = [conceptPending?.setId, conceptPending?.challengeId].every((id13) => Number.isSafeInteger(id13) && id13 > 0);
+        const valid3 = [conceptPending?.setId, conceptPending?.challengeId].every((id14) => Number.isSafeInteger(id14) && id14 > 0);
         return {
           status: "blocked",
           kind: "puzzle-concept",
@@ -12521,6 +12762,7 @@
           progress("procurement");
           const purchaseSuggestion = await persistence.exclusive(scope2, () => procurement.plan(inputs, {
             quoteCeiling: purchaseSettings.quoteCeiling,
+            adaptiveSearch: true,
             optimizeMaterialValue: purchaseSettings.objective === "material-value",
             materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
             ownedIncumbent: compareOwnedCost ? preview : null,
@@ -13331,6 +13573,11 @@
             count: d?.catalogCandidates,
             evaluations: d?.nodes,
             localReason: d?.localReason,
+            budgetNodes: d?.budgetNodes,
+            maxNodes: d?.maxNodes,
+            budgetStage: d?.budgetStage,
+            budgetStages: d?.budgetStages,
+            nodeCap: d?.nodeCap,
             objective: d?.objective,
             materialValue: d?.materialValue,
             unknownCount: d?.unknownCount,
@@ -13725,8 +13972,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     ["activity", "\u6D3B\u52A8\u8BB0\u5F55"],
     ["settings", "\u8BBE\u7F6E"]
   ]);
-  var planned = (id13, title, description, features, status = "\u89C4\u5212\u4E2D \xB7 \u5C1A\u672A\u63A5\u5165") => `
-  <section id="page-${id13}" role="tabpanel" aria-labelledby="tab-${id13}" tabindex="0" hidden>
+  var planned = (id14, title, description, features, status = "\u89C4\u5212\u4E2D \xB7 \u5C1A\u672A\u63A5\u5165") => `
+  <section id="page-${id14}" role="tabpanel" aria-labelledby="tab-${id14}" tabindex="0" hidden>
     <div class="section-heading"><div><p class="eyebrow">${title}</p><h2>${description}</h2></div><span class="badge planned">${status}</span></div>
     <div class="feature-grid">${features.map(([name2, text5]) => `<article class="card"><h3>${name2}</h3><p>${text5}</p></article>`).join("")}</div>
     <p class="module-note">\u672C\u9875\u5F53\u524D\u4EC5\u5C55\u793A\u529F\u80FD\u89C4\u5212\uFF0C\u5C1A\u4E0D\u6267\u884C\u64CD\u4F5C\u3002</p>
@@ -13788,7 +14035,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     .gallery-header{justify-content:flex-start;align-items:center;gap:10px 20px;margin-bottom:6px}.gallery-header h2{flex:0 0 auto}.gallery-header .gallery-toolbar{flex:1;gap:6px}.gallery-header .gallery-toolbar button,.gallery-header .gallery-toolbar select{min-height:32px;height:32px;padding:4px 8px;font-size:12px;line-height:20px}.gallery-header .gallery-toolbar button{min-width:32px}.gallery-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:#bdcbd3}.gallery-meta #gallery-accounting{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%;margin:0}.gallery-meta #gallery-accounting-summary{min-width:0;overflow-wrap:anywhere}.gallery-meta #gallery-accounting-refresh{flex:0 0 28px;min-height:28px;height:28px;padding:0;line-height:1}.gallery-meta .gallery-source-details{margin:0;min-width:0;max-width:100%}.gallery-meta .gallery-source-details summary{padding:2px 0}.gallery-meta .gallery-source-details[open]{flex-basis:100%}.gallery-notices{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 16px;margin-top:4px;font-size:12px}.gallery-notices>*{min-width:0;max-width:100%;overflow-wrap:anywhere;margin:0}.gallery-notices>:empty{display:none}.gallery-notices #gallery-relist-status,.gallery-notices #gallery-purchase-journal-status{color:#e7dbad}.gallery-modes{margin:8px 0 12px}.gallery-modes button{min-height:34px;padding:5px 12px}.gallery-background-progress{margin-top:6px}
     @media(max-width:650px){.gallery-header .gallery-toolbar{flex-basis:100%}.gallery-header .gallery-toolbar button,.gallery-header .gallery-toolbar select{min-height:40px;height:40px}.gallery-meta{gap:4px 12px}.gallery-meta #gallery-accounting{flex-basis:100%}.gallery-modes button{min-height:40px}}
   </style><div class="workbench"><details open><summary></summary>
-    <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id13, label], index) => `<button type="button" role="tab" id="tab-${id13}" aria-controls="page-${id13}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
+    <nav class="module-tabs" role="tablist" aria-label="FCAT \u529F\u80FD\u6A21\u5757">${FC27_WORKBENCH_TABS.map(([id14, label], index) => `<button type="button" role="tab" id="tab-${id14}" aria-controls="page-${id14}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join("")}</nav>
     <div class="body">
       <section id="page-sbc" role="tabpanel" aria-labelledby="tab-sbc" tabindex="0">
         <div class="section-heading"><div><p class="eyebrow">SBC PUZZLE</p><h2>\u89E3\u9898\u4E0E\u8865\u5361</h2></div><span class="badge">\u5DF2\u63A5\u5165\u539F\u751F SBC</span></div>
@@ -13846,18 +14093,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   function bindFc27WorkbenchTabs(shadow, host, onSelect = () => {
   }) {
-    const tabs = FC27_WORKBENCH_TABS.map(([id13]) => shadow.getElementById(`tab-${id13}`));
-    const select = (id13) => {
-      if (!FC27_WORKBENCH_TABS.some(([key2]) => key2 === id13)) return;
+    const tabs = FC27_WORKBENCH_TABS.map(([id14]) => shadow.getElementById(`tab-${id14}`));
+    const select = (id14) => {
+      if (!FC27_WORKBENCH_TABS.some(([key2]) => key2 === id14)) return;
       for (const [key2] of FC27_WORKBENCH_TABS) {
-        const active = key2 === id13;
+        const active = key2 === id14;
         const tab = shadow.getElementById(`tab-${key2}`);
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
         shadow.getElementById(`page-${key2}`).hidden = !active;
       }
-      host.dataset.activeTab = id13;
-      onSelect(id13);
+      host.dataset.activeTab = id14;
+      onSelect(id14);
     };
     tabs.forEach((tab, index) => {
       tab.addEventListener("click", (event) => {
@@ -13952,8 +14199,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const categoryIds = [], setIds = [];
     const categories = list(data.categories, 256, true).map((category) => {
       if (!text2(category?.name) || !slug(category.slug) || category.isTruncated === true || source === "futgg" && !integer14(category.id, 1)) invalid();
-      const id13 = `${source}:${source === "futgg" ? category.id : category.slug}`;
-      categoryIds.push(id13);
+      const id14 = `${source}:${source === "futgg" ? category.id : category.slug}`;
+      categoryIds.push(id14);
       const sets2 = list(category.sets, 4096).map((set) => {
         if (!text2(set?.name) || !slug(set.slug) || source === "futgg" && (!integer14(set.id, 1) || set.categoryId !== category.id)) invalid();
         const requiredCards = source === "futgg" ? set.requiredCards : set.required;
@@ -13974,7 +14221,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (description !== null && (typeof description !== "string" || description.length > 2e3)) invalid();
         return {
           id: setId,
-          categoryId: id13,
+          categoryId: id14,
           name: set.name,
           slug: set.slug,
           requiredCards,
@@ -13984,7 +14231,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         };
       }).sort((a, b) => a.id.localeCompare(b.id));
       unique(sets2.map((set) => set.slug));
-      return { id: id13, name: category.name, slug: category.slug, sets: sets2 };
+      return { id: id14, name: category.name, slug: category.slug, sets: sets2 };
     }).sort((a, b) => a.id.localeCompare(b.id));
     unique(categoryIds);
     unique(setIds);
@@ -14044,18 +14291,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const before = new Map(previous.categories.flatMap((category) => category.sets).map((set) => [set.id, set]));
     const after = new Map(current2.categories.flatMap((category) => category.sets).map((set) => [set.id, set]));
     const different = (a, b) => galleryCanonical(a) !== galleryCanonical(b);
-    for (const [id13, set] of after) {
-      const old = before.get(id13);
+    for (const [id14, set] of after) {
+      const old = before.get(id14);
       if (!old) {
-        result.added.push(id13);
+        result.added.push(id14);
         continue;
       }
-      if (different([old.name, old.slug], [set.name, set.slug])) result.renamed.push(id13);
+      if (different([old.name, old.slug], [set.name, set.slug])) result.renamed.push(id14);
       const rules = (row) => [row.categoryId, row.requiredCards, row.description, row.conditions, row.grades.map((g) => [g.name, g.threshold])];
-      if (different(rules(old), rules(set))) result.requirements.push(id13);
-      if (different(old.grades.map((g) => g.rewards), set.grades.map((g) => g.rewards))) result.rewards.push(id13);
+      if (different(rules(old), rules(set))) result.requirements.push(id14);
+      if (different(old.grades.map((g) => g.rewards), set.grades.map((g) => g.rewards))) result.rewards.push(id14);
     }
-    for (const id13 of before.keys()) if (!after.has(id13)) result.removed.push(id13);
+    for (const id14 of before.keys()) if (!after.has(id14)) result.removed.push(id14);
     result.categoriesChanged = different(previous.categories.map((c) => [c.id, c.name, c.slug]), current2.categories.map((c) => [c.id, c.name, c.slug]));
     result.tagsChanged = different(previous.tags, current2.tags);
     return result;
@@ -14180,8 +14427,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     const result = /* @__PURE__ */ Object.create(null);
     for (const entry of Array.isArray(response?.data) ? response.data : []) {
-      const id13 = Number(entry?.eaId ?? entry?.definitionId), price3 = Number(entry?.price);
-      if (validId4(id13) && Number.isSafeInteger(price3) && price3 > 0) result[String(id13)] = price3;
+      const id14 = Number(entry?.eaId ?? entry?.definitionId), price3 = Number(entry?.price);
+      if (validId4(id14) && Number.isSafeInteger(price3) && price3 > 0) result[String(id14)] = price3;
     }
     return Object.freeze(result);
   }
@@ -14190,16 +14437,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const result = /* @__PURE__ */ Object.create(null);
     if (!data || typeof data !== "object") return result;
     for (const rawId of ids2) {
-      const id13 = Number(rawId);
-      if (!validId4(id13)) continue;
-      const entry = data[String(id13)] ?? data[id13];
+      const id14 = Number(rawId);
+      if (!validId4(id14)) continue;
+      const entry = data[String(id14)] ?? data[id14];
       const value = Number(entry?.n);
-      if (Number.isSafeInteger(value) && value > 0) result[String(id13)] = value;
+      if (Number.isSafeInteger(value) && value > 0) result[String(id14)] = value;
     }
     return result;
   }
-  function readCachedGalleryPrice(root, id13) {
-    return readCachedGalleryPrices(root, [id13])[String(id13)] ?? null;
+  function readCachedGalleryPrice(root, id14) {
+    return readCachedGalleryPrices(root, [id14])[String(id14)] ?? null;
   }
 
   // src/adapters/browser/fc27-gallery-cache-codec.js
@@ -14764,7 +15011,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             }
             if (!Array.isArray(payload?.data)) throw new Error("FC27_GALLERY_PRICE_PAYLOAD_INVALID");
             const parsed = parseGalleryPriceResponse(response.text);
-            const prices = Object.fromEntries(batch.filter((id13) => Object.hasOwn(parsed, id13)).map((id13) => [id13, parsed[id13]]));
+            const prices = Object.fromEntries(batch.filter((id14) => Object.hasOwn(parsed, id14)).map((id14) => [id14, parsed[id14]]));
             entry = { prices, fetchedAt: now(), retryAt: null, error: null };
           }
         } catch (error2) {
@@ -14843,15 +15090,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           if (entry?.error) error2 ??= entry.error;
           if (entry?.retryAt > now()) retryAt2 = Math.max(retryAt2 ?? 0, entry.retryAt);
           if (fresh) expiresAt = Math.min(expiresAt ?? Infinity, entry.fetchedAt + ttlMs);
-          for (const id13 of batch) {
-            const price3 = entry?.prices?.[id13];
+          for (const id14 of batch) {
+            const price3 = entry?.prices?.[id14];
             if (price3 == null) {
-              missingIds.push(id13);
+              missingIds.push(id14);
               continue;
             }
-            prices[id13] = price3;
-            if (fresh) freshPrices[id13] = price3;
-            else staleIds.push(id13);
+            prices[id14] = price3;
+            if (fresh) freshPrices[id14] = price3;
+            else staleIds.push(id14);
           }
         }
         if (error2) priceErrors.set(key2, error2);
@@ -15460,7 +15707,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       peek: (scope2, setId) => entries2.get(`${scope2}:${setId}`)?.summary ?? null,
       read(scope2, input, { priority = 1 } = {}) {
         if (disposed) return null;
-        const id13 = `${scope2}:${input.set.id}`;
+        const id14 = `${scope2}:${input.set.id}`;
         const catalog = input.catalog;
         const tags = (catalog.tags ?? []).map((tag) => pick3(tag, catalog.source === "fodder" ? ["id", "match", "steps"] : ["id", "rules", "tiers", "bonusType", "thresholdType"]));
         const key2 = JSON.stringify(stable([
@@ -15471,10 +15718,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           catalog.source === "fodder" ? pick3(catalog.engine, ["version", "goldFrom", "silverFrom", "bonusMinusOne"]) : null,
           scoringKey(input)
         ]));
-        let entry = entries2.get(id13);
+        let entry = entries2.get(id14);
         if (entry?.key !== key2) {
-          entry = { id: id13, key: key2, scope: scope2, input, priority, pending: true, summary: { status: "calculating" } };
-          entries2.set(id13, entry);
+          entry = { id: id14, key: key2, scope: scope2, input, priority, pending: true, summary: { status: "calculating" } };
+          entries2.set(id14, entry);
           while (entries2.size > 256) entries2.delete(entries2.keys().next().value);
         }
         entry.priority = Math.max(entry.priority, priority);
@@ -15838,7 +16085,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         for (const row of lineup) if (!target.ownedIds.has(row.eaId)) ids2.add(row.eaId);
       }
       if (reached && ids2.size) {
-        const cost = [...ids2].reduce((sum2, id13) => sum2 + byId.get(id13).price, 0);
+        const cost = [...ids2].reduce((sum2, id14) => sum2 + byId.get(id14).price, 0);
         if (!best || cost < best.cost) best = { ids: [...ids2], cost };
       }
       if (yield { work: ++work }) return;
@@ -15918,9 +16165,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     let best = initial, evaluations = 0, stopped = false;
     if (!reached(initial)) return { state: best, evaluations, stopped };
     const ids2 = initial.ids.slice().sort((a, b) => price3(b) - price3(a) || a - b);
-    for (const id13 of ids2) {
+    for (const id14 of ids2) {
       if (evaluations >= maxEvaluations) break;
-      const remaining = best.ids.filter((value) => value !== id13);
+      const remaining = best.ids.filter((value) => value !== id14);
       const candidate = yield* evaluate2(remaining);
       evaluations++;
       if (candidate && reached(candidate)) best = candidate;
@@ -16023,16 +16270,16 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       byId.set(candidate.id, { row: { ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }, price: candidate.price });
     }
     if (byId.size < required2 || ![...byId.values()].some((value) => value.price > 0)) return null;
-    const pool = [...byId].map(([id13, value]) => ({
-      id: id13,
+    const pool = [...byId].map(([id14, value]) => ({
+      id: id14,
       price: value.price,
       score: value.row.gradingScore,
       diversityKeys: galleryRuleKeys(value.row, compiled.tags)
     }));
     let bestPrice = null;
     const evaluate2 = (ids2) => {
-      const rows = ids2.map((id13) => byId.get(id13).row), summary3 = evaluateGalleryLineup(rows, compiled);
-      const cost = ids2.reduce((sum2, id13) => sum2 + byId.get(id13).price, 0);
+      const rows = ids2.map((id14) => byId.get(id14).row), summary3 = evaluateGalleryLineup(rows, compiled);
+      const cost = ids2.reduce((sum2, id14) => sum2 + byId.get(id14).price, 0);
       if (summary3.total >= threshold && (bestPrice === null || cost < bestPrice)) bestPrice = cost;
       return {
         ids: ids2,
@@ -16097,8 +16344,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice2 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
-  var asPrice = (prices, id13) => {
-    const value = prices?.[String(id13)] ?? prices?.[id13];
+  var asPrice = (prices, id14) => {
+    const value = prices?.[String(id14)] ?? prices?.[id14];
     return validPrice2(value) ? value : null;
   };
   var candidateScore = (row) => validScore2(row?.gradingScore) ? { value: row.gradingScore, source: "ea" } : validScore2(row?.galleryScore) ? { value: row.galleryScore, source: "catalog" } : null;
@@ -16381,18 +16628,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const seen = /* @__PURE__ */ new Set(), byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
         const finalists = next.value.plans.length ? next.value.plans : next.value.bestState ? [next.value.bestState] : [];
         for (const lineup of finalists) {
-          const picked = lineup.ids.filter((id13) => byId.has(id13)), key2 = picked.slice().sort((a, b) => a - b).join(",");
+          const picked = lineup.ids.filter((id14) => byId.has(id14)), key2 = picked.slice().sort((a, b) => a - b).join(",");
           if (seen.has(key2)) continue;
           seen.add(key2);
-          const chosen = picked.map((id13) => byId.get(id13));
+          const chosen = picked.map((id14) => byId.get(id14));
           const selected = chosen.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
           const summary3 = lineup.score < threshold ? yield* score2.steps({ set, catalog, progress: {
             ...progress,
             complete: true,
-            rows: lineup.ids.map((id13) => ({
-              ...byId.get(id13)?.row ?? existing.find((row) => row.eaId === id13),
-              gradingScore: byId.get(id13)?.score.value ?? existing.find((row) => row.eaId === id13)?.gradingScore,
-              ...byId.has(id13) ? { firstOwned: false } : {},
+            rows: lineup.ids.map((id14) => ({
+              ...byId.get(id14)?.row ?? existing.find((row) => row.eaId === id14),
+              gradingScore: byId.get(id14)?.score.value ?? existing.find((row) => row.eaId === id14)?.gradingScore,
+              ...byId.has(id14) ? { firstOwned: false } : {},
               collected: true
             }))
           } }) : yield* summaryFor(selected);
@@ -16434,7 +16681,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           diversityKey: (state.summary?.low?.tags ?? []).map((tag) => `${tag.id}:${tag.count}:${tag.pct}`).join("|")
         }),
         evaluate: function* (ids2) {
-          const picked = ids2.map((id13) => byId.get(id13));
+          const picked = ids2.map((id14) => byId.get(id14));
           const selected = picked.map((candidate) => ({ ...candidate.row, gradingScore: candidate.score.value, firstOwned: false }));
           const items = picked.map((candidate) => ({
             ...candidate.row,
@@ -16518,7 +16765,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const trim = trimGalleryPlanSteps({
         initial,
         maxEvaluations: Math.min(64, maxEvaluations - evaluations),
-        price: (id13) => asPrice(prices, id13) ?? 0,
+        price: (id14) => asPrice(prices, id14) ?? 0,
         reached: (state) => state.summary?.full === true && scoreOf2(state) >= threshold,
         evaluate: function* (ids2) {
           const selected = initial.selected.filter((row) => ids2.includes(row.eaId));
@@ -16680,18 +16927,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     return progress(b) - progress(a) || cost(a) - cost(b) || a.ids.length - b.ids.length;
   }
   function materialize2(state, candidates, budget, rewardObjective = null) {
-    const missingPriceIds = state.ids.filter((id13) => candidates.get(id13).price == null);
+    const missingPriceIds = state.ids.filter((id14) => candidates.get(id14).price == null);
     return {
       totalPrice: missingPriceIds.length ? null : state.cost,
       missingPriceIds,
       remainingBudget: budget == null || missingPriceIds.length ? null : budget - state.cost,
-      items: state.ids.map((id13) => {
-        const candidate = candidates.get(id13);
+      items: state.ids.map((id14) => {
+        const candidate = candidates.get(id14);
         return {
           ...candidate.row,
           price: candidate.price,
           scoreSource: validScore3(candidate.row.gradingScore) ? "ea" : "catalog",
-          targetIds: state.results.filter((result) => result.summary.lineup?.some((row) => row.eaId === id13)).map((result) => result.target.set.id)
+          targetIds: state.results.filter((result) => result.summary.lineup?.some((row) => row.eaId === id14)).map((result) => result.target.set.id)
         };
       }),
       targets: state.results.map(({ target, summary: summary3, reached }) => {
@@ -16821,7 +17068,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
       prepared.push({ ...target, grade, threshold: grade.threshold, summaries: /* @__PURE__ */ new Map(), summarize: createGalleryScoreSummarizer(catalog) });
     }
-    for (const id13 of ownedIds) allCandidates.delete(id13);
+    for (const id14 of ownedIds) allCandidates.delete(id14);
     for (const target of prepared) target.progress = { ...target.progress, rows: target.progress.rows.map((row) => ownedIds.has(row.eaId) && !isGalleryOwned(row) ? { ...row, held: true } : row) };
     const candidateRows = [...allCandidates.values()].filter((candidate) => score(candidate.row) != null).map((candidate) => ({ ...candidate, id: candidate.row.eaId, score: score(candidate.row) }));
     const selectedCandidates = selectGalleryCandidatePool(candidateRows, maxCandidates);
@@ -16903,8 +17150,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         for (const candidate of candidates.slice(0, Math.max(1, missingSlots))) selected.add(candidate.row.eaId);
       }
       if (!selected.size) continue;
-      const ids2 = [...selected], cost = ids2.reduce((sum2, id13) => sum2 + (candidateMap.get(id13).price ?? 0), 0);
-      const missingPrices = ids2.some((id13) => candidateMap.get(id13).price == null);
+      const ids2 = [...selected], cost = ids2.reduce((sum2, id14) => sum2 + (candidateMap.get(id14).price ?? 0), 0);
+      const missingPrices = ids2.some((id14) => candidateMap.get(id14).price == null);
       if (budget != null && (missingPrices || cost > budget)) continue;
       const results = yield* resultsFor(selected);
       evaluations++;
@@ -16939,13 +17186,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
             diversityKey: state.results.map((result) => (result.summary.low?.tags ?? []).map((tag) => `${result.target.set.id}:${tag.id}:${tag.count}:${tag.pct}`).join("|")).join(";")
           }),
           evaluate: function* (ids3) {
-            const cost2 = ids3.reduce((sum2, id13) => sum2 + (candidateMap.get(id13).price ?? 0), 0);
+            const cost2 = ids3.reduce((sum2, id14) => sum2 + (candidateMap.get(id14).price ?? 0), 0);
             if (budget != null && cost2 > budget) return null;
             return {
               ids: ids3,
               nextIndex: selectedCandidates.length,
               cost: cost2,
-              missingPrices: ids3.some((id13) => candidateMap.get(id13).price == null),
+              missingPrices: ids3.some((id14) => candidateMap.get(id14).price == null),
               results: yield* resultsFor(new Set(ids3))
             };
           }
@@ -17008,15 +17255,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       const trim = trimGalleryPlanSteps({
         initial,
         maxEvaluations: Math.min(64, maxEvaluations - evaluations),
-        price: (id13) => candidateMap.get(id13).price ?? 0,
+        price: (id14) => candidateMap.get(id14).price ?? 0,
         reached: (state) => rewardObjective ? annotate(state).reward.quantity >= annotate(initial).reward.quantity : state.results.every((result) => result.reached),
         evaluate: function* (ids2) {
           return {
             ...initial,
             reward: void 0,
             ids: ids2,
-            cost: ids2.reduce((sum2, id13) => sum2 + (candidateMap.get(id13).price ?? 0), 0),
-            missingPrices: ids2.some((id13) => candidateMap.get(id13).price == null),
+            cost: ids2.reduce((sum2, id14) => sum2 + (candidateMap.get(id14).price ?? 0), 0),
+            missingPrices: ids2.some((id14) => candidateMap.get(id14).price == null),
             results: yield* resultsFor(new Set(ids2))
           };
         }
@@ -17081,7 +17328,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var sources2 = /* @__PURE__ */ new Set(["futgg", "fodder"]);
   var grades2 = /* @__PURE__ */ new Set(["D", "C", "B", "A", "S"]);
   var validScope2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f]/.test(value);
-  var validId7 = (id13, source) => typeof id13 === "string" && id13.length <= 330 && id13.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id13) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id13));
+  var validId7 = (id14, source) => typeof id14 === "string" && id14.length <= 330 && id14.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id14) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id14));
   var emptyGalleryTargets = () => ({ targets: [], budget: null });
   function normalizeGalleryTargets(value, source) {
     if (!sources2.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId7(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
@@ -17166,8 +17413,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var validId8 = (value) => Number.isSafeInteger(value) && value > 0;
   var keyOf3 = (row) => validId8(row?.eaId) ? String(row.eaId) : null;
   var textOf = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase().trim();
-  var priceOf3 = (prices, id13) => {
-    const value = prices?.[id13] ?? prices?.[Number(id13)];
+  var priceOf3 = (prices, id14) => {
+    const value = prices?.[id14] ?? prices?.[Number(id14)];
     return Number.isSafeInteger(value) && value > 0 ? value : null;
   };
   function filterGalleryCards(rows, { filter = "all", query = "", order: order2 = "catalog", prices = {}, lineupIds = [] } = {}) {
@@ -17197,8 +17444,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function reconcileGallerySelection(selection, rows) {
     const allowed = new Map((Array.isArray(rows) ? rows : []).filter((row) => !isGalleryOwned(row) && row?.collected === false && keyOf3(row)).map((row) => [keyOf3(row), row]));
     const next = /* @__PURE__ */ new Map();
-    for (const [id13, value] of selection instanceof Map ? selection : []) {
-      if (allowed.has(String(id13))) next.set(String(id13), { ...value, eaId: Number(id13), name: allowed.get(String(id13)).name });
+    for (const [id14, value] of selection instanceof Map ? selection : []) {
+      if (allowed.has(String(id14))) next.set(String(id14), { ...value, eaId: Number(id14), name: allowed.get(String(id14)).name });
     }
     return next;
   }
@@ -17210,11 +17457,11 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const rowMap = new Map((Array.isArray(rows) ? rows : []).map((row) => [keyOf3(row), row]));
     const selected = [];
     let total = 0, unknownPrice = false, score2 = 0;
-    for (const [id13] of selection instanceof Map ? selection : []) {
-      const row = rowMap.get(String(id13));
+    for (const [id14] of selection instanceof Map ? selection : []) {
+      const row = rowMap.get(String(id14));
       if (!row || isGalleryOwned(row) || row.collected !== false) continue;
       selected.push(row);
-      const price3 = priceOf3(prices, id13);
+      const price3 = priceOf3(prices, id14);
       if (price3 == null) unknownPrice = true;
       else total += price3;
       const value = Number.isSafeInteger(row.gradingScore) ? row.gradingScore : row.galleryScore;
@@ -17329,7 +17576,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   function replanableGalleryFailures(outcome = {}) {
     if (!isGalleryPurchaseReplanSafe(outcome)) return [];
-    return outcome.failures.map((row) => row.definitionId).filter((id13, index, values8) => values8.indexOf(id13) === index);
+    return outcome.failures.map((row) => row.definitionId).filter((id14, index, values8) => values8.indexOf(id14) === index);
   }
   function* planGalleryRemainderSteps({
     targets,
@@ -17372,7 +17619,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (!validPrice4(failure.observedPrice)) return blocked10("purchase-result-mismatch");
       }
     }
-    if ([...exclusions].some((id13) => !validId9(id13))) return blocked10("purchase-ledger-invalid");
+    if ([...exclusions].some((id14) => !validId9(id14))) return blocked10("purchase-ledger-invalid");
     const spent = [...receipts.values()].reduce((sum2, row) => sum2 + row.price, 0);
     if (budget !== null && spent > budget) return blocked10("purchase-ledger-invalid");
     const remainingBudget = budget === null ? null : budget - spent;
@@ -17422,15 +17669,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   function toggleGalleryFirstOwnerHistory(history, definitionId, firstOwned, updatedAt = Date.now()) {
     const current2 = normalizeGalleryFirstOwnerHistory(history);
-    const id13 = Number(definitionId);
-    if (!validId10(id13) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
-    const next = current2.filter((row) => row.definitionId !== id13);
-    next.push({ definitionId: id13, firstOwned, updatedAt });
+    const id14 = Number(definitionId);
+    if (!validId10(id14) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
+    const next = current2.filter((row) => row.definitionId !== id14);
+    next.push({ definitionId: id14, firstOwned, updatedAt });
     return normalizeGalleryFirstOwnerHistory(next);
   }
   function removeGalleryFirstOwnerHistory(history, definitionId) {
-    const id13 = Number(definitionId);
-    return normalizeGalleryFirstOwnerHistory(history).filter((row) => row.definitionId !== id13);
+    const id14 = Number(definitionId);
+    return normalizeGalleryFirstOwnerHistory(history).filter((row) => row.definitionId !== id14);
   }
 
   // src/adapters/browser/fc27-listing-range.js
@@ -18036,18 +18283,18 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         previewPrices: generatedPrices
       });
       let total = 0, costKnown = true;
-      for (const [id13, row] of rows) {
-        const entry = plan.entries?.find((e) => e.item.id === id13), skip = plan.skipped?.find((e) => e.itemId === id13);
+      for (const [id14, row] of rows) {
+        const entry = plan.entries?.find((e) => e.item.id === id14), skip = plan.skipped?.find((e) => e.itemId === id14);
         if (!row.price) continue;
-        const bin = overrides[id13] ?? generatedPrices[id13] ?? entry?.buyNow;
+        const bin = overrides[id14] ?? generatedPrices[id14] ?? entry?.buyNow;
         row.currency.setValue(bin ?? null);
-        row.state.textContent = !selected.has(id13) ? "" : entry ? "" : reasonText(skip?.reason ?? "\u4E0D\u53EF\u7528");
+        row.state.textContent = !selected.has(id14) ? "" : entry ? "" : reasonText(skip?.reason ?? "\u4E0D\u53EF\u7528");
         row.price.title = entry ? `${entry.startPrice} \u2192 ${entry.buyNow}` : row.state.textContent;
-        row.check.checked = selected.has(id13);
+        row.check.checked = selected.has(id14);
         const amount2 = Number.isFinite(bin) && row.purchasePrice > 0 ? Math.round(bin * 0.95) - row.purchasePrice : null;
         profit(row.profit, amount2);
-        if (selected.has(id13) && amount2 != null) total += amount2;
-        if (selected.has(id13) && amount2 == null) costKnown = false;
+        if (selected.has(id14) && amount2 != null) total += amount2;
+        if (selected.has(id14) && amount2 == null) costKnown = false;
       }
       profit(totalProfit, costKnown ? total : null);
       submit.disabled = plan.status !== "observed" || !plan.entries?.length || prepared.liveEnabled !== true;
@@ -18414,10 +18661,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     parent.append(node);
     return node;
   };
-  function createFodderDialog(document, parent, id13, title) {
+  function createFodderDialog(document, parent, id14, title) {
     const add3 = (parent2, tag, text5, cls) => fodderAdd(document, parent2, tag, text5, cls);
     const dialog = add3(parent, "dialog", "", "fcat-fodder");
-    dialog.id = id13;
+    dialog.id = id14;
     dialog.setAttribute("aria-label", title);
     add3(dialog, "style", fodderTradeStyles);
     const header = add3(dialog, "header"), heading = add3(header, "strong", title);
@@ -18541,15 +18788,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       totalAdjust.textContent = `${adjustment > 0 ? "+" : ""}${adjustment}%`;
       const value = plan();
       let proceeds = 0;
-      for (const [id13, row] of rows) {
-        const bin = value.bins?.[id13];
+      for (const [id14, row] of rows) {
+        const bin = value.bins?.[id14];
         row.currency.setValue(bin);
-        row.check.checked = selected.has(id13);
+        row.check.checked = selected.has(id14);
         const cost = row.entry.boughtFor ?? row.entry.purchase?.purchasePrice;
         const amount2 = bin > 0 && (cost > 0 || row.entry.boughtForSource === "first-owner") ? Math.round(bin * 0.95) - (cost ?? 0) : null;
         row.profit.textContent = amount2 == null ? "\u2014" : `${amount2 > 0 ? "+" : ""}${amount2.toLocaleString()}`;
         row.profit.dataset.negative = String(amount2 < 0);
-        row.state.textContent = value.skipped?.find((item2) => item2.itemId === id13)?.reason ?? "";
+        row.state.textContent = value.skipped?.find((item2) => item2.itemId === id14)?.reason ?? "";
       }
       for (const entry of value.entries ?? []) proceeds += Math.round(entry.buyNow * 0.95);
       net.textContent = `You receive ${proceeds.toLocaleString()} after EA tax`;
@@ -18562,7 +18809,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     all.addEventListener("change", (event) => {
       if (!event.isTrusted || busy) return;
       selected.clear();
-      if (all.checked) for (const id13 of rows.keys()) selected.add(id13);
+      if (all.checked) for (const id14 of rows.keys()) selected.add(id14);
       render();
     });
     duration.addEventListener("change", () => {
@@ -18858,7 +19105,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
       if (errorText) add3(root, "p", errorText, "fd-retry-error");
       const update = () => {
-        const total = [...selected].reduce((sum2, id13) => sum2 + (Number.isFinite(edits.get(id13)) ? edits.get(id13) : 0), 0);
+        const total = [...selected].reduce((sum2, id14) => sum2 + (Number.isFinite(edits.get(id14)) ? edits.get(id14) : 0), 0);
         totals2.textContent = `${selected.size} selected \xB7 Maximum ${total.toLocaleString()} coins \xB7 ${context?.policy?.purchaseAttempts ?? "\u2014"} attempts/player`;
         retryButton.textContent = `Retry selected (${selected.size})`;
         retryButton.disabled = busy || recovery || !selected.size || !context || !isCurrent();
@@ -19238,7 +19485,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const batch = ids2.slice(start, start + 250);
       const part = await load(batch, {
-        rows: batch.map((id13) => rows.get(id13)),
+        rows: batch.map((id14) => rows.get(id14)),
         ...snapshot.policy ?? policy ? { policy: snapshot.policy ?? policy } : {},
         ...purpose ? { purpose } : {},
         ...deadlineAt !== null ? { deadlineAt } : {},
@@ -19279,14 +19526,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       Object.assign(snapshot.references, fresh.references);
       if (fresh.budgetExpired) snapshot.budgetExpired = true;
     }
-    for (const id13 of Object.keys(snapshot.freshPrices)) {
-      const quote2 = snapshot.references[id13]?.quotes?.[snapshot.policy?.source];
+    for (const id14 of Object.keys(snapshot.freshPrices)) {
+      const quote2 = snapshot.references[id14]?.quotes?.[snapshot.policy?.source];
       if (quote2 && (quote2.error || quote2.fetchedAt > now() || quote2.expiresAt <= now())) {
-        delete snapshot.prices[id13];
-        delete snapshot.freshPrices[id13];
+        delete snapshot.prices[id14];
+        delete snapshot.freshPrices[id14];
       }
     }
-    const expiries = Object.keys(snapshot.freshPrices).map((id13) => snapshot.references[id13]?.quotes?.[snapshot.policy?.source]?.expiresAt).filter((value) => Number.isSafeInteger(value));
+    const expiries = Object.keys(snapshot.freshPrices).map((id14) => snapshot.references[id14]?.quotes?.[snapshot.policy?.source]?.expiresAt).filter((value) => Number.isSafeInteger(value));
     if (expiries.length) snapshot.expiresAt = Math.min(...expiries);
     if (rows.length && !Object.keys(snapshot.freshPrices).length)
       throw Error(snapshot.budgetExpired ? "FC27_GALLERY_PLAN_PRICE_TIMEOUT" : "FC27_GALLERY_PLAN_PRICE_UNAVAILABLE");
@@ -19512,10 +19759,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         button(actions, "\u5E94\u7528\u5230\u6240\u9009\u5361", () => {
           const value = Number(premium.value);
           if (!Number.isSafeInteger(value) || value < 0) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
-          for (const id13 of selected) {
-            const quotes = references[id13]?.quotes;
+          for (const id14 of selected) {
+            const quotes = references[id14]?.quotes;
             const price3 = galleryReferenceQuote({ futgg: quotes?.futgg?.price, futbin: quotes?.futbin?.price }, { ...context.policy, premiumMode: mode.value, premium: value });
-            edits.set(id13, price3.maxBuy === null ? null : purchasePriceCap({ maxBuy: price3.maxBuy, priceTiers: context.priceTiers }));
+            edits.set(id14, price3.maxBuy === null ? null : purchasePriceCap({ maxBuy: price3.maxBuy, priceTiers: context.priceTiers }));
           }
           busy = false;
           render();
@@ -19833,9 +20080,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const catalog = normalizeGalleryCatalog("fodder", index), sets2 = [], seen = /* @__PURE__ */ new Set();
     const definitions = new Map(catalog.categories.flatMap((category) => category.sets.map((set) => [key(category.slug, set.slug), set])));
     for (const row of input.sets) {
-      const id13 = key(row?.category, row?.slug), set = definitions.get(id13);
-      if (!set || seen.has(id13) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
-      seen.add(id13);
+      const id14 = key(row?.category, row?.slug), set = definitions.get(id14);
+      if (!set || seen.has(id14) || row.required !== set.requiredCards || row.count !== 0 || row.total !== 0 || row.full !== false || !Array.isArray(row.grades) || row.grades.length !== 5) invalid2();
+      seen.add(id14);
       const grades3 = [], names = /* @__PURE__ */ new Set();
       for (const grade of row.grades) {
         const definition2 = set.grades.find((g) => g.name === grade?.grade);
@@ -19845,10 +20092,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           grades3.push({ grade: grade.grade, cost: null, ids: [] });
           continue;
         }
-        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id14) => !integer16(id14, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price3) => !integer16(price3, 150, 15e6)) || grade.prices.reduce((sum2, price3) => sum2 + price3, 0) !== grade.cost) invalid2();
+        if (!integer16(grade.cost, 1, 1e9) || !integer16(grade.total, 0, 1e10) || !Array.isArray(grade.ids) || grade.ids.length < set.requiredCards || grade.ids.length > 2e3 || grade.ids.some((id15) => !integer16(id15, 1)) || new Set(grade.ids).size !== grade.ids.length || !Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price3) => !integer16(price3, 150, 15e6)) || grade.prices.reduce((sum2, price3) => sum2 + price3, 0) !== grade.cost) invalid2();
         grades3.push({ grade: grade.grade, cost: grade.cost, total: grade.total, ids: [...grade.ids], prices: [...grade.prices] });
       }
-      sets2.push({ key: id13, set, grades: grades3 });
+      sets2.push({ key: id14, set, grades: grades3 });
     }
     return {
       source: "fodder",
@@ -19902,10 +20149,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const grade of reference.grades) {
         if (grade.cost == null) continue;
         if (!Array.isArray(grade.prices) || grade.prices.length !== grade.ids.length || grade.prices.some((price3) => !integer16(price3, 150, 15e6))) invalid2();
-        grade.ids.forEach((id13, i) => {
-          if (!integer16(id13, 1)) invalid2();
-          if (prices[id13] != null && prices[id13] !== grade.prices[i]) conflicts.add(id13);
-          prices[id13] = Math.max(prices[id13] ?? 0, grade.prices[i]);
+        grade.ids.forEach((id14, i) => {
+          if (!integer16(id14, 1)) invalid2();
+          if (prices[id14] != null && prices[id14] !== grade.prices[i]) conflicts.add(id14);
+          prices[id14] = Math.max(prices[id14] ?? 0, grade.prices[i]);
         });
       }
     }
@@ -20295,7 +20542,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const plannedEarlier = /* @__PURE__ */ new Map();
     const route = funding.steps.map((step, index) => {
       const { row, option } = selected.get(step.setId);
-      const dependencySetIds = [...new Set(step.reusedIds.map((id13) => plannedEarlier.get(id13)).filter(Boolean))];
+      const dependencySetIds = [...new Set(step.reusedIds.map((id14) => plannedEarlier.get(id14)).filter(Boolean))];
       for (const cycle of step.cycles) plannedEarlier.set(cycle.eaId, step.setId);
       return {
         ...step,
@@ -20368,11 +20615,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (rows.size !== progress.rows.length || new Set(proposal.ids).size !== proposal.ids.length) return null;
     const existing = progress.rows.filter(isGalleryOwned), selected = [], items = [];
     if (existing.some((row) => !Number.isSafeInteger(row.gradingScore) || row.gradingScore < 0)) return null;
-    for (const id13 of proposal.ids) {
-      const row = rows.get(id13);
+    for (const id14 of proposal.ids) {
+      const row = rows.get(id14);
       if (!row) return null;
       if (isGalleryOwned(row)) continue;
-      const price3 = prices?.[id13], score2 = row.gradingScore ?? row.galleryScore;
+      const price3 = prices?.[id14], score2 = row.gradingScore ?? row.galleryScore;
       if (row.collected !== false || !Number.isSafeInteger(price3) || price3 < 150 || price3 > 15e6 || capital !== null && price3 > capital || !Number.isSafeInteger(score2) || score2 < 0) return null;
       selected.push({ ...row, gradingScore: score2, firstOwned: false, collected: true });
       items.push({ ...row, price: price3, score: score2, scoreSource: row.gradingScore == null ? "catalog" : "ea" });
@@ -20390,7 +20637,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const purchased = new Map(selected.map((row) => [row.eaId, row]));
       summary3 = yield* summarize2({ set, catalog, progress: {
         ...progress,
-        rows: proposal.ids.map((id13) => purchased.get(id13) ?? { ...rows.get(id13), collected: true })
+        rows: proposal.ids.map((id14) => purchased.get(id14) ?? { ...rows.get(id14), collected: true })
       } });
     }
     if (!summary3?.full || summary3.low?.total < threshold) summary3 = yield* measure(selected);
@@ -20511,14 +20758,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (scoringLineupIds !== null && !witnessed) return unavailable;
     if (witnessed && new Set(scoringLineupIds).size !== scoringLineupIds.length) return unavailable;
     const ids2 = witnessed ? scoringLineupIds : [...available];
-    if (witnessed && ids2.some((id13) => !available.has(id13))) return unavailable;
-    const scoringCount = Math.min(required2, ids2.length), ownedIds = ids2.filter((id13) => owned2.has(id13));
+    if (witnessed && ids2.some((id14) => !available.has(id14))) return unavailable;
+    const scoringCount = Math.min(required2, ids2.length), ownedIds = ids2.filter((id14) => owned2.has(id14));
     return {
       status: ids2.length >= required2 && (!witnessed || ids2.length === required2) ? "complete" : "incomplete",
       required: required2,
       scoringCount,
       ownedCount: ownedIds.length,
-      purchaseCount: ids2.filter((id13) => purchased.has(id13)).length,
+      purchaseCount: ids2.filter((id14) => purchased.has(id14)).length,
       purchaseRows: items.length,
       missingCount: Math.max(0, required2 - ids2.length),
       ownedIds,
@@ -21094,7 +21341,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       status: selected.length ? "ready" : "no-route",
       funding,
       route: funding.steps.map((step, index) => {
-        const dependencySetIds = [...new Set(step.reusedIds.map((id13) => earlier.get(id13)).filter(Boolean))];
+        const dependencySetIds = [...new Set(step.reusedIds.map((id14) => earlier.get(id14)).filter(Boolean))];
         for (const cycle of step.cycles) earlier.set(cycle.eaId, step.setId);
         return { ...byId.get(step.setId), ...step, dependencySetIds, order: index + 1 };
       }),
@@ -21155,7 +21402,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!prior || isGalleryOwned(prior) !== isGalleryOwned(row) || ["firstOwned", "gradingScore", "galleryScore"].some((key2) => prior[key2] !== row[key2])) versions.add(row.eaId);
         before.delete(row.eaId);
       }
-      for (const id13 of before.keys()) versions.add(id13);
+      for (const id14 of before.keys()) versions.add(id14);
       return {
         ...old,
         progress: next.progress,
@@ -21199,7 +21446,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       quotes = /* @__PURE__ */ new Map();
       attempted = /* @__PURE__ */ new Set();
     };
-    const fresh = (id13, at11) => quotes.get(id13)?.expiresAt > at11 ? quotes.get(id13) : null;
+    const fresh = (id14, at11) => quotes.get(id14)?.expiresAt > at11 ? quotes.get(id14) : null;
     const selections = (job, limit) => {
       const { target } = job, compiled = compileGalleryScoringRules(target.catalog);
       if (compiled.status !== "ready") return [];
@@ -21215,7 +21462,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const add3 = (candidate) => {
         if (candidate && selected.size < limit) selected.set(candidate.id, candidate.row);
       };
-      for (const id13 of job.ids) add3(byId.get(id13));
+      for (const id14 of job.ids) add3(byId.get(id14));
       for (const option of (job.forecast.options ?? []).slice().sort((a, b) => a.items.reduce((n, row) => n + row.price, 0) - b.items.reduce((n, row) => n + row.price, 0))) {
         for (const item2 of option.items) add3(byId.get(item2.eaId));
       }
@@ -21358,13 +21605,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         }
         for (const job of jobs) job.deferred = false;
-        for (const [id13, quote2] of quotes) if (quote2.expiresAt <= now()) attempted.delete(id13);
-        for (const job of jobs) if (job.input && job.ids.some((id13) => quotes.has(id13) && !fresh(id13, now()))) {
+        for (const [id14, quote2] of quotes) if (quote2.expiresAt <= now()) attempted.delete(id14);
+        for (const job of jobs) if (job.input && job.ids.some((id14) => quotes.has(id14) && !fresh(id14, now()))) {
           job.input = null;
           job.result = null;
           job.done = false;
           job.work.clear();
-          for (const id13 of job.ids) if (!fresh(id13, now())) attempted.delete(id13);
+          for (const id14 of job.ids) if (!fresh(id14, now())) attempted.delete(id14);
         }
         while (remaining() > 0 && !stopped()) {
           checking();
@@ -21420,10 +21667,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
               policy ??= part.policy;
               for (const row of batch) {
-                const id13 = row.eaId, price3 = part.freshPrices?.[id13], evidence = part.references?.[id13]?.quotes?.[policy.source];
+                const id14 = row.eaId, price3 = part.freshPrices?.[id14], evidence = part.references?.[id14]?.quotes?.[policy.source];
                 const expiresAt = evidence?.expiresAt ?? part.expiresAt, fetchedAt = evidence?.fetchedAt ?? now();
-                if (priced2(price3) && Number.isSafeInteger(expiresAt) && expiresAt > now() && Number.isSafeInteger(fetchedAt) && fetchedAt <= now()) quotes.set(id13, { price: price3, fetchedAt, expiresAt });
-                if (fresh(id13, now()) || !part.budgetExpired) attempted.add(id13);
+                if (priced2(price3) && Number.isSafeInteger(expiresAt) && expiresAt > now() && Number.isSafeInteger(fetchedAt) && fetchedAt <= now()) quotes.set(id14, { price: price3, fetchedAt, expiresAt });
+                if (fresh(id14, now()) || !part.budgetExpired) attempted.add(id14);
               }
               if (part.budgetExpired) break;
             }
@@ -21705,7 +21952,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         target.status
       ])
     });
-    const same31 = (mark) => {
+    const same32 = (mark) => {
       const state = read("binding");
       if (!state.active) return mismatch2("PAGE");
       if (state.scope !== mark.scope) return mismatch2("ACCOUNT");
@@ -21810,7 +22057,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const td = add(document, tr, "td"), open = add(document, td, "button", "\u8FDB\u5165\u4FF1\u4E50\u90E8 / \u5408\u96C6");
         open.type = "button";
         open.addEventListener("click", (event) => {
-          if (!event.isTrusted || !binding || !same31(binding) || !pricesUsable(planInputs) || result.demandDriven && step.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) {
+          if (!event.isTrusted || !binding || !same32(binding) || !pricesUsable(planInputs) || result.demandDriven && step.items.some((item2) => item2.roadmapQuote?.expiresAt <= Date.now())) {
             status.textContent = "\u6570\u636E\u3001\u8D26\u53F7\u6216\u62A5\u4EF7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u8DEF\u7EBF\u3002";
             return;
           }
@@ -21822,10 +22069,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const cards = add(document, output2, "details");
         add(document, cards, "summary", `${step.order}. ${step.name} \xB7 \u8865\u5361\u4E0E\u9010\u5361\u5468\u8F6C\u660E\u7EC6`);
         add(document, cards, "p", `\u672C\u5408\u96C6\u5B8C\u6574\u8865\u5361\u6E05\u5355 ${step.items.length} \u5F20\uFF1B\u672C\u6B65\u9AA4\u9996\u6B21\u91C7\u8D2D ${step.cycles.length} \u5F20\uFF0C\u53E6\u6709 ${step.reusedIds.length} \u5F20\u4F9D\u8D56\u524D\u5E8F\u8DEF\u7EBF\u3002\u5171\u4EAB\u5361\u5728\u5B9E\u9645\u4E70\u5165\u5E76\u786E\u8BA4\u6536\u85CF\u524D\uFF0C\u4E0D\u7B97\u4F60\u5DF2\u6536\u96C6\u3002\u8FDB\u5165\u672C\u5408\u96C6\u540E\u4F1A\u6309\u5B9E\u9645\u6536\u96C6\u72B6\u6001\u91CD\u65B0\u751F\u6210\u5B8C\u6574\u8865\u5361\u65B9\u6848\u3002`);
-        if (step.dependencySetIds?.length) add(document, cards, "p", `\u524D\u5E8F\u4F9D\u8D56\uFF1A${step.dependencySetIds.map((id13) => result.route.find((row) => row.setId === id13)?.name ?? id13).join("\u3001")}\u3002\u672A\u5B8C\u6210\u524D\u5E8F\u65F6\uFF0C\u53EF\u76F4\u63A5\u8FDB\u5165\u672C\u5408\u96C6\u91CD\u65B0\u89C4\u5212\uFF0C\u4E0D\u53EA\u4E70\u672C\u6B65\u9AA4\u9996\u6B21\u91C7\u8D2D\u7684\u5361\u3002`);
-        for (const id13 of step.reusedIds) {
-          const item2 = step.items.find((row) => row.eaId === id13);
-          add(document, cards, "p", `${item2?.name ?? id13} \xB7 \u5171\u4EAB\u5F85\u91C7\u8D2D/\u5F85\u786E\u8BA4\u6536\u85CF \xB7 \u4F30\u4EF7 ${money(item2?.price)}`);
+        if (step.dependencySetIds?.length) add(document, cards, "p", `\u524D\u5E8F\u4F9D\u8D56\uFF1A${step.dependencySetIds.map((id14) => result.route.find((row) => row.setId === id14)?.name ?? id14).join("\u3001")}\u3002\u672A\u5B8C\u6210\u524D\u5E8F\u65F6\uFF0C\u53EF\u76F4\u63A5\u8FDB\u5165\u672C\u5408\u96C6\u91CD\u65B0\u89C4\u5212\uFF0C\u4E0D\u53EA\u4E70\u672C\u6B65\u9AA4\u9996\u6B21\u91C7\u8D2D\u7684\u5361\u3002`);
+        for (const id14 of step.reusedIds) {
+          const item2 = step.items.find((row) => row.eaId === id14);
+          add(document, cards, "p", `${item2?.name ?? id14} \xB7 \u5171\u4EAB\u5F85\u91C7\u8D2D/\u5F85\u786E\u8BA4\u6536\u85CF \xB7 \u4F30\u4EF7 ${money(item2?.price)}`);
         }
         for (const cycle of step.cycles) {
           const card = step.items.find((item2) => item2.eaId === cycle.eaId);
@@ -22025,7 +22272,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const computeCurrent = () => token === epoch2 && dialog.open;
       try {
         onBusyChange(true);
-        const resume = (last?.retainedChanges || last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same31(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
+        const resume = (last?.retainedChanges || last?.coverage.stopped || last?.demandDriven && !demand.validResult()) && binding && same32(binding) && fingerprint === JSON.stringify(options) && pricesUsable(planInputs);
         if (!resume) {
           work.clear();
           demand.clear();
@@ -22081,7 +22328,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const state = read();
         if (!state.catalog) throw Error("\u76EE\u5F55\u5C1A\u672A\u8F7D\u5165");
         binding = capture(state);
-        const valid3 = () => current2() && same31(binding) && (stage !== "planning" || pricesUsable(targets));
+        const valid3 = () => current2() && same32(binding) && (stage !== "planning" || pricesUsable(targets));
         let targets = resume ? planInputs : structuredClone(state.targets);
         targetCount = targets.length;
         if (!resume && referenceSnapshot) targets = attachFodderPlanningReferences(targets, referenceSnapshot);
@@ -22305,7 +22552,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         updateForecastNote();
         reconcileSaved();
-        const state = read(), current2 = binding && same31(binding) && pricesUsable(planInputs);
+        const state = read(), current2 = binding && same32(binding) && pricesUsable(planInputs);
         const payload = buildGalleryAnalysisSnapshot({
           ...state,
           targets: current2 && planInputs ? planInputs : state.targets,
@@ -22517,7 +22764,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function sameGalleryRuntimeCards(left, right) {
     if (left === right) return true;
     if (!(left instanceof Map) || !(right instanceof Map) || left.size !== right.size) return false;
-    for (const [id13, card] of left) if (!right.has(id13) || right.get(id13) !== card) return false;
+    for (const [id14, card] of left) if (!right.has(id14) || right.get(id14) !== card) return false;
     return true;
   }
   function galleryPlanningStateKey(detail) {
@@ -22587,7 +22834,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     timers = document.defaultView,
     visible = () => host.isConnected && host.getClientRects().length > 0 && document.visibilityState !== "hidden"
   }) {
-    const node = (id13) => shadow.getElementById(id13);
+    const node = (id14) => shadow.getElementById(id14);
     let roadmap = null, roadmapTarget = null, levelPanel = null;
     let roadmapBusy = false, catalogRefreshDeferred = false;
     const runningPlanSurfaces = /* @__PURE__ */ new Map();
@@ -23164,9 +23411,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const dialog = node("gallery-purchase-dialog");
       if (!dialog.open) dialog.showModal();
     });
-    const asset = (kind, id13) => {
+    const asset = (kind, id14) => {
       try {
-        const value = assets?.[kind]?.(id13);
+        const value = assets?.[kind]?.(id14);
         return typeof value === "string" && /^https:\/\/www\.ea\.com\//i.test(value) ? value : "";
       } catch {
         return "";
@@ -23351,7 +23598,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           grades3.replaceChildren();
           gradeTrack(grades3, set.grades, summary3);
         }
-        if ([...changed].some((id13) => jointTargets.has(id13))) renderJoint();
+        if ([...changed].some((id14) => jointTargets.has(id14))) renderJoint();
         if (changed.has(selectedSetId) && !activePlans && !foregroundSync && !jointMode && selectedSetId && details.has(selectedSetId)) {
           const set = result?.catalog?.categories.flatMap((category) => category.sets).find((row) => row.id === selectedSetId);
           const value = details.get(selectedSetId), summary3 = set && scoreSummary(value, set, 3);
@@ -23646,13 +23893,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           add3(details2, "p", slotNote, "gallery-plan-completeness");
           if (slots.ownedIds.length) {
             const byId = new Map(value.progress.rows.map((row2) => [row2.eaId, row2]));
-            const confirmed = slots.ownedIds.every((id13) => byId.get(id13)?.collected === true);
+            const confirmed = slots.ownedIds.every((id14) => byId.get(id14)?.collected === true);
             const reused = add3(details2, "details");
             add3(reused, "summary", `${slots.witnessed ? confirmed ? "\u672C\u65B9\u6848\u590D\u7528\u7684\u5DF2\u6536\u96C6\u5361" : "\u672C\u65B9\u6848\u590D\u7528\u7684\u5DF2\u6536\u96C6\u6216\u6301\u6709\u5361" : "\u5DF2\u6709\u53EF\u8BA1\u5206\u5019\u9009"}\uFF08${slots.ownedIds.length} \u4EBA\uFF09`);
             const ownList = add3(reused, "ul");
-            for (const id13 of slots.ownedIds) {
-              const card = byId.get(id13);
-              add3(ownList, "li", `${card?.name ?? id13} \xB7 ${card?.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${card?.collected === true ? "\u5DF2\u6536\u96C6" : "\u5DF2\u6301\u6709\uFF0C\u6536\u85CF\u786E\u8BA4\u5F85\u540C\u6B65"}\uFF0C\u65E0\u9700\u91CD\u4E70`);
+            for (const id14 of slots.ownedIds) {
+              const card = byId.get(id14);
+              add3(ownList, "li", `${card?.name ?? id14} \xB7 ${card?.version ?? "\u7248\u672C\u672A\u77E5"} \xB7 ${card?.collected === true ? "\u5DF2\u6536\u96C6" : "\u5DF2\u6301\u6709\uFF0C\u6536\u85CF\u786E\u8BA4\u5F85\u540C\u6B65"}\uFF0C\u65E0\u9700\u91CD\u4E70`);
             }
           }
           const list2 = add3(details2, "ul");
@@ -23917,13 +24164,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const detail of details.values()) {
         const fresh = detail.status === "observed" && detail.stale !== true && detail.poolStale !== true;
         for (const row of detail.progress?.rows ?? []) {
-          const id13 = String(row.eaId), previous = rows.get(id13);
-          if (!previous || row.collected === true || fresh && previous.collected !== true) rows.set(id13, row);
-          if (fresh && !isGalleryOwned(row) && row.collected === false) confirmedMissing.add(id13);
+          const id14 = String(row.eaId), previous = rows.get(id14);
+          if (!previous || row.collected === true || fresh && previous.collected !== true) rows.set(id14, row);
+          if (fresh && !isGalleryOwned(row) && row.collected === false) confirmedMissing.add(id14);
         }
         Object.assign(prices2, planningPrices(detail) ?? {});
       }
-      return { rows: [...rows.values()], prices: prices2, valid: [...selectedCards.keys()].every((id13) => confirmedMissing.has(id13)) };
+      return { rows: [...rows.values()], prices: prices2, valid: [...selectedCards.keys()].every((id14) => confirmedMissing.has(id14)) };
     };
     const showBrowseLevel = () => {
       const detail = selectedSetId !== null, category = categoryId !== null;
@@ -23948,9 +24195,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const overviewCache = /* @__PURE__ */ new Map();
     const planCache = /* @__PURE__ */ new Map();
     const planNotices = /* @__PURE__ */ new Map();
-    const rememberPlanNotice = (id13, notice) => {
-      planNotices.delete(id13);
-      planNotices.set(id13, notice);
+    const rememberPlanNotice = (id14, notice) => {
+      planNotices.delete(id14);
+      planNotices.set(id14, notice);
       while (planNotices.size > 20) planNotices.delete(planNotices.keys().next().value);
     };
     const restoringPlans = /* @__PURE__ */ new Map();
@@ -24031,9 +24278,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       };
     };
-    const finishSetPlanning = (id13, surface) => {
+    const finishSetPlanning = (id14, surface) => {
       activePlans = Math.max(0, activePlans - 1);
-      if (runningPlanSurfaces.get(id13) === surface) runningPlanSurfaces.delete(id13);
+      if (runningPlanSurfaces.get(id14) === surface) runningPlanSurfaces.delete(id14);
       if (catalogRefreshDeferred) queueMicrotask(() => {
         if (!activePlans && !roadmapBusy && active && !disposed && catalogRefreshDeferred) check();
       });
@@ -24072,12 +24319,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       restoringPlans.set(key2, task);
       return task;
     };
-    const currentGallerySet = (id13) => result?.catalog?.categories?.flatMap((category) => category.sets ?? []).find((set) => set.id === id13) ?? null;
-    const thisDetailCurrent = (value, id13) => details.get(id13) === value && selectedSetId === id13 && !jointMode;
-    const currentDetailMatches = (id13, expectedBinding) => {
-      const current2 = details.get(id13), set = currentGallerySet(id13);
-      if (!set || selectedSetId !== id13 || jointMode || current2?.status !== "observed" || current2.stale || current2.poolStale) return false;
-      return planBinding(current2, set) === expectedBinding && planCache.get(id13)?.binding === expectedBinding;
+    const currentGallerySet = (id14) => result?.catalog?.categories?.flatMap((category) => category.sets ?? []).find((set) => set.id === id14) ?? null;
+    const thisDetailCurrent = (value, id14) => details.get(id14) === value && selectedSetId === id14 && !jointMode;
+    const currentDetailMatches = (id14, expectedBinding) => {
+      const current2 = details.get(id14), set = currentGallerySet(id14);
+      if (!set || selectedSetId !== id14 || jointMode || current2?.status !== "observed" || current2.stale || current2.poolStale) return false;
+      return planBinding(current2, set) === expectedBinding && planCache.get(id14)?.binding === expectedBinding;
     };
     const jointTargets = /* @__PURE__ */ new Map();
     const catalogObjective = () => node("gallery-joint-objective").value === "catalog";
@@ -24170,7 +24417,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const rewardSelect = node("gallery-joint-reward"), previousReward = rewardSelect.value;
       rewardSelect.replaceChildren();
       rewardSelect.hidden = !catalogObjective();
-      for (const choice of galleryRewardOptions([...jointTargets.keys()].map((id13) => ({ set: currentGallerySet(id13) })))) {
+      for (const choice of galleryRewardOptions([...jointTargets.keys()].map((id14) => ({ set: currentGallerySet(id14) })))) {
         const option = document.createElement("option");
         option.value = choice.key;
         option.textContent = choice.label;
@@ -24183,20 +24430,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return;
       }
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
-      for (const [id13, grade] of jointTargets) {
-        const set = sets2.find((set2) => set2.id === id13);
+      for (const [id14, grade] of jointTargets) {
+        const set = sets2.find((set2) => set2.id === id14);
         const row = add3(container, "div", "", "gallery-joint-target");
-        row.dataset.setId = id13;
+        row.dataset.setId = id14;
         if (!set) {
-          add3(row, "strong", id13);
+          add3(row, "strong", id14);
           add3(row, "small", "\u96C6\u5408\u6682\u4E0D\u5728\u5F53\u524D\u76EE\u5F55\uFF0C\u76EE\u6807\u4FDD\u7559\u5F85\u6838\u5B9E");
           const remove2 = add3(row, "button", "\xD7");
           remove2.title = "\u79FB\u9664\u76EE\u6807";
-          remove2.setAttribute("aria-label", `\u79FB\u9664 ${id13}`);
+          remove2.setAttribute("aria-label", `\u79FB\u9664 ${id14}`);
           remove2.disabled = restoringTargets;
           remove2.addEventListener("click", (event) => {
             if (!event.isTrusted || checkScope() === false) return;
-            jointTargets.delete(id13);
+            jointTargets.delete(id14);
             invalidateJoint();
             renderJoint();
             renderSets();
@@ -24218,7 +24465,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         row.append(select);
         select.addEventListener("change", () => {
           if (restoringTargets || checkScope() === false) return;
-          jointTargets.set(id13, select.value);
+          jointTargets.set(id14, select.value);
           invalidateJoint();
           persistTargets();
         });
@@ -24228,13 +24475,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         remove.disabled = restoringTargets;
         remove.addEventListener("click", (event) => {
           if (!event.isTrusted || checkScope() === false) return;
-          jointTargets.delete(id13);
+          jointTargets.delete(id14);
           invalidateJoint();
           renderJoint();
           renderSets();
           persistTargets();
         });
-        const value = details.get(id13);
+        const value = details.get(id14);
         if (!value?.progress || value.status !== "observed" || value.stale || value.poolStale) add3(row, "small", "\u96C6\u5408\u72B6\u6001\u5F85\u66F4\u65B0", "gallery-unknown");
         else add3(row, "small", scoreText(scoreSummary(value, set)));
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
@@ -24360,10 +24607,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           targetValue().budget,
           node("gallery-joint-objective").value,
           node("gallery-joint-reward").value,
-          [...jointTargets].map(([id13, grade]) => [
-            id13,
+          [...jointTargets].map(([id14, grade]) => [
+            id14,
             grade,
-            planBinding(details.get(id13), currentGallerySet(id13))
+            planBinding(details.get(id14), currentGallerySet(id14))
           ]).sort((a, b) => a[0].localeCompare(b[0]))
         ]);
         const jointSemanticBinding = jointBinding();
@@ -24403,8 +24650,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       checkScope();
       const sets2 = result?.catalog?.categories.flatMap((category) => category.sets) ?? [];
       const targets = [];
-      for (const [id13, targetGrade] of jointTargets) {
-        const value = details.get(id13), set = sets2.find((set2) => set2.id === id13);
+      for (const [id14, targetGrade] of jointTargets) {
+        const value = details.get(id14), set = sets2.find((set2) => set2.id === id14);
         if (!set || !value?.progress || value.status !== "observed" || value.stale || value.poolStale) {
           void diag({ event: "joint-plan", phase: "preflight", status: "blocked", reason: "FC27_GALLERY_JOINT_TARGET_STATE_UNKNOWN", count: targets.length });
           showJointPlan({ status: "partial", reason: "target-state-unknown" });
@@ -24706,7 +24953,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       next.disabled = page.page >= page.pages;
       const reconciled = reconcileGallerySelection(selectedCards, selectionContext().rows);
       selectedCards.clear();
-      for (const [id13, row] of reconciled) selectedCards.set(id13, row);
+      for (const [id14, row] of reconciled) selectedCards.set(id14, row);
       const list2 = add3(target, "div", "", "gallery-card-list");
       const selectionBar = node("gallery-selection-footer");
       selectionBar.hidden = typeof purchase !== "function" || !selectedCards.size;
@@ -24727,7 +24974,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         clear.disabled = !selectedSummary.count;
         selectionSummary.textContent = `${selectedSummary.count} \u5F20 \xB7 ${selectedSummary.totalPrice == null ? "\u62A5\u4EF7\u672A\u77E5" : `${count3(selectedSummary.totalPrice)} \u91D1\u5E01`}`;
         for (const button of list2.querySelectorAll(".gallery-card-select")) {
-          const id13 = button.closest("[data-definition-id]").dataset.definitionId, added = selectedCards.has(id13);
+          const id14 = button.closest("[data-definition-id]").dataset.definitionId, added = selectedCards.has(id14);
           button.textContent = added ? "Added" : "Buy";
           button.setAttribute("aria-pressed", String(added));
           button.style.color = added ? "#152c22" : "";
@@ -24880,7 +25127,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               await setFirstOwner(row.eaId, localFirstOwner ? null : true);
               const current2 = details.get(set.id);
               if (!current2 || current2 !== value || identity5 !== scope2() || !thisDetailCurrent(value, set.id)) return;
-              for (const [id13, detail] of details) {
+              for (const [id14, detail] of details) {
                 if (!detail.progress?.rows.some((item2) => item2.eaId === row.eaId)) continue;
                 const rows = detail.progress.rows.map((item2) => {
                   if (item2.eaId !== row.eaId) return item2;
@@ -24892,7 +25139,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                     firstOwnedSource: localFirstOwner ? observed === null ? null : "ea-observed" : "local-history"
                   };
                 });
-                details.set(id13, { ...detail, progress: { ...detail.progress, rows, totals: {
+                details.set(id14, { ...detail, progress: { ...detail.progress, rows, totals: {
                   ...detail.progress.totals,
                   firstOwned: rows.filter((item2) => item2.firstOwned === true).length,
                   firstOwnedUnknown: rows.filter((item2) => item2.firstOwned === null).length
@@ -25047,7 +25294,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return;
       }
       node("gallery-category-title").textContent = category.name;
-      const summaries = new Map([...details].map(([id13, value]) => [id13, value?.progress?.totals]));
+      const summaries = new Map([...details].map(([id14, value]) => [id14, value?.progress?.totals]));
       const filtered = browseGallerySets(result?.catalog, {
         categoryId,
         query: node("gallery-search").value,
@@ -25134,17 +25381,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const value of values8 ?? []) {
         const setId = value?.pool?.setId ?? value?.progress?.setId;
         const source = value?.pool?.source ?? value?.progress?.source;
-        const id13 = `${source}:${setId}`;
-        if (source !== result?.source || !sets2.some((set2) => set2.id === id13) || value.scope && value.scope !== currentScope || !value.progress) continue;
-        const previous = details.get(id13);
+        const id14 = `${source}:${setId}`;
+        if (source !== result?.source || !sets2.some((set2) => set2.id === id14) || value.scope && value.scope !== currentScope || !value.progress) continue;
+        const previous = details.get(id14);
         if (previous && JSON.stringify(previous.progress) === JSON.stringify(value.progress) && previous.pool?.revision === value.pool?.revision && previous.stale === value.stale && sameGalleryRuntimeCards(previous.runtimeCards, value.runtimeCards)) continue;
         const merged = { ...previous, ...value };
-        if (jointTargets.has(id13) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
-        details.set(id13, merged);
-        const set = sets2.find((row) => row.id === id13);
-        scoreSummary(merged, set, id13 === selectedSetId ? 3 : 0);
+        if (jointTargets.has(id14) && galleryPlanningStateKey(previous) !== galleryPlanningStateKey(merged)) jointChanged = true;
+        details.set(id14, merged);
+        const set = sets2.find((row) => row.id === id14);
+        scoreSummary(merged, set, id14 === selectedSetId ? 3 : 0);
         changed = true;
-        if (id13 === selectedSetId) selectedChanged = true;
+        if (id14 === selectedSetId) selectedChanged = true;
       }
       if (!changed) return;
       if (jointChanged) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
@@ -25278,17 +25525,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const changed = diffGalleryCatalog(previous?.catalog, catalog);
       const sourceChanged = previous?.source && previous.source !== value.source;
       const removed = new Set(changed?.removed ?? []);
-      for (const id13 of removed) {
-        setIconSelections.delete(id13);
-        planNotices.delete(id13);
+      for (const id14 of removed) {
+        setIconSelections.delete(id14);
+        planNotices.delete(id14);
       }
       const requirementChanges = new Set(changed?.requirements ?? []);
       const selectedStillExists = selectedSetId != null && catalog.categories.some((category) => category.sets.some((set) => set.id === selectedSetId));
       const selectedRemoved = selectedSetId != null && !selectedStillExists;
-      for (const id13 of [...removed, ...requirementChanges]) {
-        details.delete(id13);
-        if (requirementChanges.has(id13)) invalidated.add(id13);
-        else invalidated.delete(id13);
+      for (const id14 of [...removed, ...requirementChanges]) {
+        details.delete(id14);
+        if (requirementChanges.has(id14)) invalidated.add(id14);
+        else invalidated.delete(id14);
       }
       if (sourceChanged || selectedRemoved) {
         disposeNativeCards();
@@ -25320,7 +25567,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         showBrowseLevel();
       }
       if (!catalog.categories.some((row) => row.id === categoryId)) categoryId = null;
-      const targetCatalogChanged = [...changed.requirements, ...changed.rewards, ...changed.removed, ...changed.renamed].some((id13) => jointTargets.has(id13));
+      const targetCatalogChanged = [...changed.requirements, ...changed.rewards, ...changed.removed, ...changed.renamed].some((id14) => jointTargets.has(id14));
       if (changed.tagsChanged || targetCatalogChanged || sourceChanged) invalidateJoint("\u76EE\u6807\u89C4\u5219\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
       if (changed.tagsChanged || changed.requirements.length || changed.rewards.length || changed.removed.length || changed.renamed.length || sourceChanged) overviewCache.clear();
       restoreTargets();
@@ -25701,12 +25948,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         status.textContent = reason(error2);
       } finally {
         busy = false;
-        let same31 = false;
+        let same32 = false;
         try {
-          same31 = scope2 === service.scope();
+          same32 = scope2 === service.scope();
         } catch {
         }
-        enabled(same31);
+        enabled(same32);
       }
     });
     readSources.addEventListener("change", () => {
@@ -26231,11 +26478,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       service?.stopInvestment?.();
       sync();
     };
-    const monitorResult = (result, id13, grant) => {
-      if (grant !== grantRevision || result?.record?.plan.id !== id13) return;
-      buyArmed = noOfferRecheck(result.record, now()).rows.length ? id13 : null;
+    const monitorResult = (result, id14, grant) => {
+      if (grant !== grantRevision || result?.record?.plan.id !== id14) return;
+      buyArmed = noOfferRecheck(result.record, now()).rows.length ? id14 : null;
       nextBuyAt = now() + 6e4;
-      eventArmed = result.record.status === "waiting-events" ? id13 : null;
+      eventArmed = result.record.status === "waiting-events" ? id14 : null;
       if (buyArmed || eventArmed || result.record.status === "waiting-sales") autoRead();
       else haltTimer();
     };
@@ -26689,11 +26936,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const nav = add3(parent, "div", "", "trading-nav");
     nav.setAttribute("role", "tablist");
     nav.setAttribute("aria-label", "\u4EA4\u6613\u53F0\u5DE5\u4F5C\u533A");
-    const sections = [["execute", "\u6295\u8D44\u4E0E\u6267\u884C"], ["research", "\u5019\u9009\u4E0E\u7EBF\u7D22"], ["notebook", "\u89C2\u5BDF\u7B14\u8BB0"], ["config", "\u8BBE\u7F6E"]].map(([id13, label], index) => {
+    const sections = [["execute", "\u6295\u8D44\u4E0E\u6267\u884C"], ["research", "\u5019\u9009\u4E0E\u7EBF\u7D22"], ["notebook", "\u89C2\u5BDF\u7B14\u8BB0"], ["config", "\u8BBE\u7F6E"]].map(([id14, label], index) => {
       const button2 = add3(nav, "button", label), panel = add3(parent, "div");
       button2.type = "button";
-      button2.id = `trading-section-${id13}`;
-      panel.id = `trading-panel-${id13}`;
+      button2.id = `trading-section-${id14}`;
+      panel.id = `trading-panel-${id14}`;
       button2.setAttribute("role", "tab");
       button2.setAttribute("aria-controls", panel.id);
       panel.setAttribute("role", "tabpanel");
@@ -27348,16 +27595,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
     const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
     const trading = mountFc27TradingView({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), service: tradingDesk2 });
-    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id13) => {
-      gallery.setActive(id13 === "gallery");
-      trading.setActive(id13 === "trading");
-      if (id13 === "settings") {
+    const selectTab = bindFc27WorkbenchTabs(shadow, host, (id14) => {
+      gallery.setActive(id14 === "gallery");
+      trading.setActive(id14 === "trading");
+      if (id14 === "settings") {
         void priceSettings.refresh();
         void tradeSettings.refresh();
         void planningSettings.refresh();
       }
     });
-    const node = (id13) => shadow.getElementById(id13);
+    const node = (id14) => shadow.getElementById(id14);
     node("workbench-version").textContent = version ?? title;
     node("workbench-mode").textContent = liveEnabled === true ? "\u5DF2\u5F00\u653E\u73B0\u6709\u5355\u6B21\u64CD\u4F5C\uFF1B\u63D0\u4EA4\u9700\u5355\u72EC\u786E\u8BA4\u3002" : "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002";
     node("diagnostic-export-card").hidden = typeof exportDiagnostics !== "function";
@@ -27515,7 +27762,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         update();
       }
     };
-    const on = (id13, callback) => node(id13).addEventListener("click", (event) => {
+    const on = (id14, callback) => node(id14).addEventListener("click", (event) => {
       if (event.isTrusted && !busy) callback();
     });
     on("refresh", () => {
@@ -27648,7 +27895,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       action = null;
     });
-    for (const id13 of ["target", "rating"]) node(id13).addEventListener("change", () => {
+    for (const id14 of ["target", "rating"]) node(id14).addEventListener("change", () => {
       clear();
       update();
     });
@@ -27734,6 +27981,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);
     const lines = [hasBudget ? `${stage}
 \u8282\u70B9 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
+    if (Number.isSafeInteger(progress.budgetStage) && Number.isSafeInteger(progress.budgetStages) && Number.isSafeInteger(progress.nodeCap)) {
+      lines.push(`\u641C\u7D22\u9636\u6BB5 ${progress.budgetStage} / ${progress.budgetStages} \xB7 \u603B\u4E0A\u9650 ${progressCount(progress.nodeCap)}`);
+    }
     const search = progress.search;
     if (search && typeof search === "object") {
       const parts = [["combinationNodes", "\u7EC4\u5408"], ["placementNodes", "\u9635\u4F4D"], ["evaluations", "\u8BC4\u4F30"], ["bounds", "\u526A\u679D"]].filter(([key2]) => Number.isSafeInteger(search[key2])).map(([key2, label]) => `${label} ${progressCount(search[key2])}`);
@@ -27755,14 +28005,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var shortageReasons = ["FC27_PUZZLE_SEARCH_LIMIT", "FC27_PUZZLE_CONSTRAINT_SHORTAGE", "SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND"];
   function materialPolicyText(result) {
     const policy = result.policy;
-    const validId13 = (id13) => Number.isSafeInteger(id13) && id13 > 0;
+    const validId13 = (id14) => Number.isSafeInteger(id14) && id14 > 0;
     const excluded = Array.isArray(policy?.excludedLeagueIds) ? [...new Set(policy.excludedLeagueIds.filter(validId13))] : [];
     const restrictions = [
       policy?.onlyUntradeable === true ? "\u4EC5\u4E0D\u53EF\u4EA4\u6613" : "",
       excluded.length ? `\u6392\u9664\u8054\u8D5B ID\uFF1A${excluded.join("\u3001")}` : ""
     ].filter(Boolean);
     if (!restrictions.length) return "";
-    const conflicts = (Array.isArray(result.rules) ? result.rules : []).filter((rule) => rule?.kind === "from-leagues" && ["min", "exact"].includes(rule.mode) && Number.isSafeInteger(rule.count) && rule.count > 0 && rule.count <= 11 && Array.isArray(rule.ids) && rule.ids.length > 0 && rule.ids.every((id13) => validId13(id13) && excluded.includes(id13))).map((rule) => `EA \u8981\u6C42${rule.mode === "exact" ? "\u6070\u597D" : "\u81F3\u5C11"} ${rule.count} \u5F20\u6765\u81EA\u8054\u8D5B ID ${rule.ids.join("\uFF0F")} \u7684\u5361\uFF0C\u4E0E FSU \u6392\u9664\u8054\u8D5B\u8BBE\u7F6E\u51B2\u7A81\uFF1B\u4FDD\u7559\u8BE5\u8BBE\u7F6E\u65F6\uFF0C\u5E93\u5B58\u548C\u8865\u5361\u90FD\u65E0\u6CD5\u6EE1\u8DB3\u6B64\u6761\u4EF6\u3002`);
+    const conflicts = (Array.isArray(result.rules) ? result.rules : []).filter((rule) => rule?.kind === "from-leagues" && ["min", "exact"].includes(rule.mode) && Number.isSafeInteger(rule.count) && rule.count > 0 && rule.count <= 11 && Array.isArray(rule.ids) && rule.ids.length > 0 && rule.ids.every((id14) => validId13(id14) && excluded.includes(id14))).map((rule) => `EA \u8981\u6C42${rule.mode === "exact" ? "\u6070\u597D" : "\u81F3\u5C11"} ${rule.count} \u5F20\u6765\u81EA\u8054\u8D5B ID ${rule.ids.join("\uFF0F")} \u7684\u5361\uFF0C\u4E0E FSU \u6392\u9664\u8054\u8D5B\u8BBE\u7F6E\u51B2\u7A81\uFF1B\u4FDD\u7559\u8BE5\u8BBE\u7F6E\u65F6\uFF0C\u5E93\u5B58\u548C\u8865\u5361\u90FD\u65E0\u6CD5\u6EE1\u8DB3\u6B64\u6761\u4EF6\u3002`);
     return [`\u5F53\u524D FSU \u9009\u6750\u9650\u5236\uFF1A${restrictions.join("\uFF1B")}\u3002`, ...conflicts].join("\n");
   }
   var resultText = (result) => {
@@ -27884,6 +28134,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     button.title = "\u4E00\u952E\u89E3\u9898\u3001\u590D\u6838\u5E76\u4FDD\u5B58\u9635\u5BB9\uFF0C\u4E0D\u63D0\u4EA4 SBC";
     button.className = "btn-standard call-to-action";
     button.style.cssText = "display:block;width:calc(100% - 1rem);margin:.5rem auto;min-height:38px";
+    const cancel = document.createElement("button");
+    cancel.id = "fcat-fc27-puzzle-cancel";
+    cancel.type = "button";
+    cancel.textContent = "\u53D6\u6D88\u8BA1\u7B97";
+    cancel.title = "\u505C\u6B62\u672C\u6B21\u89E3\u9898\u8BA1\u7B97\uFF1B\u4E0D\u7528\u4E8E\u4E2D\u6B62\u5DF2\u53D1\u9001\u7684\u4FDD\u5B58\u8BF7\u6C42";
+    cancel.className = "btn-standard";
+    cancel.style.cssText = "display:none;width:calc(100% - 1rem);margin:.5rem;min-height:38px";
+    cancel.hidden = true;
+    cancel.disabled = true;
     const status = document.createElement("div");
     status.id = "fcat-fc27-puzzle-status";
     status.setAttribute("role", "status");
@@ -27892,6 +28151,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let target = null;
     let busy = false;
     let disposed = false;
+    let activeRun = null;
+    const hideCancel = () => {
+      cancel.hidden = true;
+      cancel.disabled = true;
+      cancel.style.display = "none";
+    };
     const read = () => {
       try {
         return readTarget?.();
@@ -27902,20 +28167,35 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const update = () => {
       const next = read();
       if (!next?.anchor?.isConnected) {
+        if (activeRun) activeRun.stale = true;
         target = null;
+        hideCancel();
         button.remove();
+        cancel.remove();
         status.remove();
         return;
       }
       if (!sameTarget2(next, target)) {
+        if (activeRun) activeRun.stale = true;
+        hideCancel();
         status.textContent = "";
         status.hidden = true;
       }
       target = next;
       if (button.nextSibling !== next.anchor) next.anchor.before(button);
-      if (status.nextSibling !== button) button.before(status);
+      if (cancel.nextSibling !== button) button.before(cancel);
+      if (status.nextSibling !== cancel) cancel.before(status);
       button.disabled = busy;
     };
+    cancel.addEventListener("click", (event) => {
+      const run = activeRun;
+      if (!event.isTrusted || !busy || !run || !run.cancellable || run.boundary || !run.targetCurrent()) return;
+      run.cancelled = true;
+      run.cancellable = false;
+      hideCancel();
+      status.hidden = false;
+      status.textContent = "\u6B63\u5728\u53D6\u6D88\u8BA1\u7B97\u2026";
+    });
     button.addEventListener("click", async (event) => {
       if (!event.isTrusted || !target || busy || disposed || typeof onFill !== "function") return;
       const next = read();
@@ -27924,9 +28204,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return;
       }
       const origin = { ...next };
-      const isCurrent = () => !disposed && origin.anchor.isConnected && sameTarget2(read(), origin);
+      const targetCurrent = () => !disposed && !run.stale && origin.anchor.isConnected && sameTarget2(read(), origin);
+      const run = { cancelled: false, cancellable: false, boundary: false, stale: false, targetCurrent };
+      activeRun = run;
+      const isCurrent = () => !run.cancelled && targetCurrent();
       const onProgress = (progress) => {
         if (!isCurrent()) return;
+        const stage = typeof progress === "string" ? progress : progress?.stage ?? progress?.phase;
+        if (!["planning", "procurement"].includes(stage)) run.boundary = true;
+        run.cancellable = !run.boundary;
+        cancel.hidden = !run.cancellable;
+        cancel.disabled = !run.cancellable;
+        cancel.style.display = run.cancellable ? "block" : "none";
         status.hidden = false;
         status.textContent = formatFc27PuzzleProgress(progress);
       };
@@ -27947,6 +28236,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           status.textContent = "\u586B\u9635\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u540E\u53F0\u8BB0\u5F55\u3002";
         }
       } finally {
+        hideCancel();
+        activeRun = null;
+        if (run.cancelled && targetCurrent()) {
+          status.hidden = false;
+          status.textContent = "\u5DF2\u53D6\u6D88\u8BA1\u7B97\uFF0C\u672A\u8FDB\u5165\u586B\u9635\u4FDD\u5B58\u3002";
+        }
         busy = false;
         button.textContent = "FCAT \u89E3\u9898\u586B\u5145";
         if (!disposed) update();
@@ -27956,8 +28251,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const timer = schedule(update, 1e3);
     return () => {
       disposed = true;
+      activeRun = null;
+      hideCancel();
       unschedule(timer);
       button.remove();
+      cancel.remove();
       status.remove();
     };
   }
@@ -28451,10 +28749,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const concepts = /* @__PURE__ */ new Map();
     const allowed = new Set(pool.items.map((item2) => item2.eaId));
     for (const raw of conceptItems) {
-      const id13 = raw?.definitionId ?? raw?.resourceId;
-      if (!validId11(id13) || !allowed.has(id13)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
-      if (concepts.has(id13)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
-      concepts.set(id13, raw);
+      const id14 = raw?.definitionId ?? raw?.resourceId;
+      if (!validId11(id14) || !allowed.has(id14)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (concepts.has(id14)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
+      concepts.set(id14, raw);
     }
     const club = /* @__PURE__ */ new Map();
     for (const raw of clubItems) {
@@ -28497,7 +28795,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/gallery/fodder-pool.js
   function fodderPoolQueries(set) {
     const value = set?.conditions;
-    if (!value || Object.keys(value).some((key2) => !["clubs", "leagues", "rareflags", "holo"].includes(key2)) || typeof value.holo !== "boolean" || ["clubs", "leagues", "rareflags"].some((key2) => !Array.isArray(value[key2]) || value[key2].length > 256 || value[key2].some((id13) => !Number.isSafeInteger(id13) || id13 < 0))) {
+    if (!value || Object.keys(value).some((key2) => !["clubs", "leagues", "rareflags", "holo"].includes(key2)) || typeof value.holo !== "boolean" || ["clubs", "leagues", "rareflags"].some((key2) => !Array.isArray(value[key2]) || value[key2].length > 256 || value[key2].some((id14) => !Number.isSafeInteger(id14) || id14 < 0))) {
       throw Error("FC27_GALLERY_FODDER_CONDITIONS_UNSUPPORTED");
     }
     const rarities = value.rareflags.length ? { rarities: [...value.rareflags] } : {};
@@ -28539,10 +28837,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/adapters/ea/fc27-gallery-progress.js
   var at7 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
-  var id9 = (value) => Number.isSafeInteger(value) && value > 0;
-  var databaseId = (value) => id9(value) ? value % 16777216 : null;
+  var id10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var databaseId = (value) => id10(value) ? value % 16777216 : null;
   var sameDatabaseId = (left, right) => databaseId(left) === databaseId(right);
-  var same22 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same23 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var safeReason8 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PROGRESS_UNAVAILABLE";
   var fail24 = (reason) => {
     throw new Error(reason);
@@ -28611,17 +28909,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
     const guid = result.guidAssetId;
-    if (!id9(definitionId) || result.itemType !== "player" || result.dream !== true || result.definitionId != null && result.definitionId !== definitionId || !Number.isSafeInteger(result.rareflag) || !Number.isFinite(result.rating) || !Array.isArray(result.attributeArray) || result.attributeArray.length !== 6 || !result.attributeArray.every(Number.isFinite) || guid != null && (typeof guid !== "string" || guid.length > 100)) return null;
+    if (!id10(definitionId) || result.itemType !== "player" || result.dream !== true || result.definitionId != null && result.definitionId !== definitionId || !Number.isSafeInteger(result.rareflag) || !Number.isFinite(result.rating) || !Array.isArray(result.attributeArray) || result.attributeArray.length !== 6 || !result.attributeArray.every(Number.isFinite) || guid != null && (typeof guid !== "string" || guid.length > 100)) return null;
     result.resourceId = definitionId;
     result.definitionId = definitionId;
-    result.id = id9(result.id) ? result.id : definitionId;
+    result.id = id10(result.id) ? result.id : definitionId;
     return Object.freeze(result);
   };
   function sanitizeRows(rows, allowed, accepts = (value) => allowed.has(value), maxRows = allowed.size) {
     if (!Array.isArray(rows) || rows.length > maxRows) fail24("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
     const result = rows.map((raw) => {
       const definitionId = ownData(raw, "resourceId") ?? ownData(raw, "definitionId");
-      if (!id9(definitionId) || !accepts(definitionId)) fail24("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!id10(definitionId) || !accepts(definitionId)) fail24("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       const flag = ownData(raw, "isCollected"), score2 = ownData(raw, "gradingScore");
       const cardData = nativeCardData(ownData(raw, "cardData") ?? raw);
       return {
@@ -28641,7 +28939,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!items || typeof items !== "object" || Object.keys(items).length > 2e4) return result;
     for (const key2 of Object.keys(items)) {
       const raw = ownData(items, key2), definitionId = ownData(raw, "definitionId");
-      if (ownData(raw, "type") !== "player" || ownData(raw, "concept") !== false || !id9(ownData(raw, "id"))) continue;
+      if (ownData(raw, "type") !== "player" || ownData(raw, "concept") !== false || !id10(ownData(raw, "id"))) continue;
       const owners = ownData(raw, "owners");
       result.push({ definitionId, owners: Number.isSafeInteger(owners) && owners > 0 && owners <= 1e4 ? owners : null });
     }
@@ -28662,7 +28960,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!source || typeof source !== "object") continue;
       for (const key2 of Object.keys(source).slice(0, 2e4)) {
         const raw = ownData(source, key2), definitionId = ownData(raw, "definitionId");
-        if (id9(definitionId) && id9(ownData(raw, "id")) && ownData(raw, "type") === "player" && ownData(raw, "concept") === false) result.push({ definitionId });
+        if (id10(definitionId) && id10(ownData(raw, "id")) && ownData(raw, "type") === "player" && ownData(raw, "concept") === false) result.push({ definitionId });
       }
     }
     return [...new Map(result.map((row) => [row.definitionId, row])).values()];
@@ -28709,13 +29007,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return states4.get(key2);
     };
     const assert = (context) => {
-      if (disposed || !same22(context, readFc27Context(root))) fail24("FC27_GALLERY_CONTEXT_CHANGED");
+      if (disposed || !same23(context, readFc27Context(root))) fail24("FC27_GALLERY_CONTEXT_CHANGED");
     };
     const merge = (state, rows) => {
       let changed = false;
       for (const row of rows) {
         const previous = state.rows.get(row.definitionId);
-        const owners = [previous?.collectedOwners, row.collectedOwners].filter((value) => id9(value));
+        const owners = [previous?.collectedOwners, row.collectedOwners].filter((value) => id10(value));
         const next = {
           ...previous,
           ...row,
@@ -28723,7 +29021,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           ...owners.length ? { collectedOwners: Math.min(...owners) } : {},
           cardData: row.cardData ?? previous?.cardData
         };
-        if (!same22(previous, next)) {
+        if (!same23(previous, next)) {
           state.rows.set(row.definitionId, next);
           changed = true;
         }
@@ -28744,11 +29042,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } catch {
       }
       assert(state.context);
-      if (saved?.schema !== 3 || !same22(saved.context, state.context) || !Array.isArray(saved.concepts) || saved.concepts.length > 1e5 || !Number.isSafeInteger(saved.fetchedAt) || saved.fetchedAt > now()) return;
+      if (saved?.schema !== 3 || !same23(saved.context, state.context) || !Array.isArray(saved.concepts) || saved.concepts.length > 1e5 || !Number.isSafeInteger(saved.fetchedAt) || saved.fetchedAt > now()) return;
       try {
         const rows = sanitizeRows(saved.concepts, new Set(saved.concepts.map((row) => row.definitionId)));
         for (let i = 0; i < rows.length; i++) {
-          if (id9(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
+          if (id10(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
           const readAt = saved.concepts[i].readAt ?? saved.fetchedAt;
           if (Number.isSafeInteger(readAt) && readAt >= 0 && readAt <= now()) rows[i].readAt = readAt;
         }
@@ -28760,7 +29058,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         state.syncedAt = Number.isSafeInteger(saved.syncedAt) && saved.syncedAt <= now() ? saved.syncedAt : null;
         state.fullSyncAt = Number.isSafeInteger(saved.fullSyncAt) && saved.fullSyncAt <= now() ? saved.fullSyncAt : null;
         if (Array.isArray(saved.coveredDefinitionIds) && saved.coveredDefinitionIds.length <= 1e5) {
-          state.coveredDefinitionIds = new Set(saved.coveredDefinitionIds.filter(id9));
+          state.coveredDefinitionIds = new Set(saved.coveredDefinitionIds.filter(id10));
         }
         state.setSyncedAt = saved.setSyncedAt && typeof saved.setSyncedAt === "object" ? { ...saved.setSyncedAt } : {};
         state.firstOwnerHistory = normalizeGalleryFirstOwnerHistory(saved.firstOwnerHistory);
@@ -28813,16 +29111,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       rawByItem.set(item2, raw);
       if (!item2.isPlayer() || !item2.isCollected || !context) return;
       assert(context);
-      if ([...nativePending].some((pending3) => !same22(context, pending3.context))) return;
+      if ([...nativePending].some((pending3) => !same23(context, pending3.context))) return;
       const definitionId = item2.definitionId;
-      if (!id9(definitionId)) return;
+      if (!id10(definitionId)) return;
       const state = stateFor(context), owners = ownerCount(item2);
       const changed = merge(state, [{
         definitionId,
         isCollected: true,
         gradingScore: Number.isFinite(item2.gradingScore) ? item2.gradingScore : null,
         cardData: nativeCardData(raw),
-        ...id9(owners) ? { collectedOwners: owners } : {}
+        ...id10(owners) ? { collectedOwners: owners } : {}
       }]);
       state.clubSnapshot = null;
       state.heldSnapshot = null;
@@ -28853,11 +29151,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return true;
     };
     const validatePool = (pool, context) => {
-      if (!["futgg", "fodder"].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== "boolean" || !(pool.source === "fodder" ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id9(pool.setId)) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id9(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id9(pool.requiredCards) || !id9(pool.poolSize) || (pool.source === "futgg" ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length) || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail24("FC27_GALLERY_POOL_UNAVAILABLE");
+      if (!["futgg", "fodder"].includes(pool?.source) || pool.season !== context.season || typeof pool.complete !== "boolean" || !(pool.source === "fodder" ? /^fodder:[a-z0-9-]+\/[a-z0-9-]+$/.test(pool.setId) : id10(pool.setId)) || !Array.isArray(pool.items) || pool.items.length > 1e5 || pool.items.some((row) => !id10(row.eaId)) || new Set(pool.items.map((row) => row.eaId)).size !== pool.items.length || pool.complete === false && (pool.candidateOnly !== true || !id10(pool.requiredCards) || !id10(pool.poolSize) || (pool.source === "futgg" ? pool.poolSize <= pool.items.length : pool.poolSize < pool.items.length) || pool.items.length < pool.requiredCards || pool.items.length > GALLERY_TOP_CANDIDATE_LIMIT || pool.candidateLimit !== pool.items.length) || pool.complete && pool.candidateOnly === true) fail24("FC27_GALLERY_POOL_UNAVAILABLE");
     };
     const projectState = (pool, state, extra = {}) => {
       assert(state.context);
-      const allowed = new Set(pool.items.map((row) => row.eaId)), concepts = [...allowed].map((id13) => state.rows.get(id13)).filter(Boolean);
+      const allowed = new Set(pool.items.map((row) => row.eaId)), concepts = [...allowed].map((id14) => state.rows.get(id14)).filter(Boolean);
       if (!state.clubSnapshot || now() - state.clubSnapshotAt >= 5e3) {
         state.clubSnapshot = readClubSnapshot(root);
         state.heldSnapshot = readHeldSnapshot(root);
@@ -28969,7 +29267,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         context = readFc27Context(root);
         if (pool) validatePool(pool, context);
-        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id9(value)) || new Set(definitionIds).size !== definitionIds.length)) fail24("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+        if (definitionIds !== null && (pool !== null || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 1e3 || definitionIds.some((value) => !id10(value)) || new Set(definitionIds).size !== definitionIds.length)) fail24("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
       } catch (error2) {
         return Promise.resolve({ status: "blocked", reason: safeReason8(error2) });
       }
@@ -28989,7 +29287,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await restore(state);
           assert(context);
           const allIds = definitionIds ?? (pool ? pool.items.map((row) => row.eaId) : root.repositories.Item.getStaticData().map((row) => row.id));
-          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id9(value))) fail24("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
+          if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id10(value))) fail24("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
           const fullSync = !pool && definitionIds === null;
           let ids2 = fullSync && !force ? allIds.filter((value) => !state.coveredDefinitionIds.has(value)) : pool && incremental && !force ? allIds.filter((value) => needsRead(state, value, missingOnly)) : allIds;
           let rechecking = false;
@@ -29038,7 +29336,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const exactProjection = pool || definitionIds !== null || rechecking;
               const pageAllowed = exactProjection ? allowed : new Set(data.items.map((item2) => item2.definitionId));
               const accepts = pool || rechecking ? (value) => [...allowed].some((requested) => sameDatabaseId(requested, value)) : (value) => pageAllowed.has(value);
-              const responseIds = data.items.map((item2) => item2?.definitionId).filter(id9);
+              const responseIds = data.items.map((item2) => item2?.definitionId).filter(id10);
               record({
                 event: "concept-response",
                 status: "validated",
@@ -29050,7 +29348,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 recheck: rechecking
               });
               const nativeItems = new Map(data.items.map((item2) => [item2?.definitionId, item2]));
-              const acceptedItems = data.items.filter((item2) => id9(item2?.definitionId) && accepts(item2.definitionId));
+              const acceptedItems = data.items.filter((item2) => id10(item2?.definitionId) && accepts(item2.definitionId));
               if (acceptedItems.length) familyEvidence = true;
               const payloadItems = exactProjection && acceptedItems.length ? acceptedItems : data.items;
               const rows = sanitizeRows(
@@ -29126,7 +29424,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             });
           }
           if ((definitionIds !== null || rechecking) && incoming.length !== ids2.length) fail24("FC27_GALLERY_CONCEPT_INCOMPLETE");
-          if (pool && incoming.length < ids2.length && ids2.every((id13) => state.rows.has(id13))) fail24("FC27_GALLERY_CONCEPT_INCOMPLETE");
+          if (pool && incoming.length < ids2.length && ids2.every((id14) => state.rows.has(id14))) fail24("FC27_GALLERY_CONCEPT_INCOMPLETE");
           merge(state, incoming);
           state.fetchedAt = now();
           if (fullSync && !rechecking) for (const value of ids2) state.coveredDefinitionIds.add(value);
@@ -29184,7 +29482,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           try {
             const saved = await gmGetValue(contextKey(context, `gallery-progress:${pool.source}:${pool.setId}`), null);
             assert(context);
-            if ([1, 2].includes(saved?.schema) && same22(saved.context, context) && saved.revision === pool.revision && Number.isSafeInteger(saved.fetchedAt) && saved.fetchedAt >= 0 && saved.fetchedAt <= now()) {
+            if ([1, 2].includes(saved?.schema) && same23(saved.context, context) && saved.revision === pool.revision && Number.isSafeInteger(saved.fetchedAt) && saved.fetchedAt >= 0 && saved.fetchedAt <= now()) {
               merge(state, sanitizeRows(saved.concepts, new Set(pool.items.map((row) => row.eaId))).map((row) => ({ ...row, readAt: saved.fetchedAt })));
               state.fetchedAt = Math.max(state.fetchedAt, saved.fetchedAt);
               await persist(state);
@@ -29238,7 +29536,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               const data = reply.response ?? reply.data;
               if (!Array.isArray(data?.items) || data.items.length > 200) fail24("FC27_GALLERY_CONCEPT_PAYLOAD_UNVERIFIED");
               let added = 0;
-              for (const item2 of data.items) if (id9(item2?.definitionId) && !items.has(item2.definitionId) && matchesFodderPool(set, item2)) {
+              for (const item2 of data.items) if (id10(item2?.definitionId) && !items.has(item2.definitionId) && matchesFodderPool(set, item2)) {
                 items.set(item2.definitionId, item2);
                 added++;
               }
@@ -29268,7 +29566,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             cardData: nativeCardData(rawByItem.get(item2) ?? item2)
           })), new Set(items.keys()));
           merge(state, rows.map((row) => ({ ...row, readAt: now() })));
-          for (const [id13, item2] of items) if (typeof root.UTItemEntity === "function" && item2 instanceof root.UTItemEntity) state.displayEntities.set(id13, item2);
+          for (const [id14, item2] of items) if (typeof root.UTItemEntity === "function" && item2 instanceof root.UTItemEntity) state.displayEntities.set(id14, item2);
           state.setSyncedAt[set.id] = now();
           state.fetchedAt = now();
           await persist(state);
@@ -29296,7 +29594,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const context = readFc27Context(root), state = stateFor(context);
       await restore(state);
       assert(context);
-      if (!id9(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail24("FC27_GALLERY_FO_INPUT_INVALID");
+      if (!id10(Number(definitionId)) || firstOwned !== null && typeof firstOwned !== "boolean") fail24("FC27_GALLERY_FO_INPUT_INVALID");
       const saved = await persist(state, (history) => firstOwned === null ? removeGalleryFirstOwnerHistory(history, Number(definitionId)) : toggleGalleryFirstOwnerHistory(history, Number(definitionId), firstOwned, now()));
       if (!saved) fail24("FC27_GALLERY_FO_SAVE_FAILED");
       assert(context);
@@ -29403,7 +29701,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }, now = Date.now } = {}) {
     const snapshots = /* @__PURE__ */ new Map(), pending3 = /* @__PURE__ */ new Map();
     const scope2 = () => contextKey(readFc27Context(root), "gallery-level");
-    const same31 = (expected) => {
+    const same32 = (expected) => {
       if (scope2() !== expected) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
     };
     const noteKey = (expected) => `fcat-fc27-gallery-console-level-v1:${expected}`;
@@ -29418,16 +29716,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       },
       async readNote() {
         const expected = scope2(), note = await get(noteKey(expected), null);
-        same31(expected);
+        same32(expected);
         return note?.source === "console-user-recorded" && Number.isSafeInteger(note.level) && note.level > 0 && note.level <= 1e3 && Number.isSafeInteger(note.recordedAt) && note.recordedAt >= 0 && note.recordedAt <= now() ? { level: note.level, recordedAt: note.recordedAt, source: note.source } : null;
       },
       async saveNote(level2) {
         if (!Number.isSafeInteger(level2) || level2 < 1 || level2 > 1e3) throw Error("FC27_GALLERY_LEVEL_NOTE_INVALID");
         const expected = scope2(), note = { level: level2, recordedAt: now(), source: "console-user-recorded" };
         await set(noteKey(expected), note);
-        same31(expected);
+        same32(expected);
         const saved = await get(noteKey(expected), null);
-        same31(expected);
+        same32(expected);
         if (JSON.stringify(saved) !== JSON.stringify(note)) throw Error("FC27_GALLERY_LEVEL_NOTE_UNCONFIRMED");
         return note;
       },
@@ -29450,7 +29748,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               new globalThis.TextEncoder().encode(Function.prototype.toString.call(read))
             )), (value) => value.toString(16).padStart(2, "0")).join("");
             if (hash !== FC27_GALLERY_LEVEL_CATEGORIES_HASH) throw Error("FC27_GALLERY_LEVEL_RUNTIME_UNVERIFIED");
-            same31(expected);
+            same32(expected);
             const result = await new Promise((resolve, reject) => {
               const owner = {};
               let observable, finished = false;
@@ -29470,7 +29768,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 observable = read.call(dao);
                 observable.observe(owner, (_sender, response) => {
                   try {
-                    same31(expected);
+                    same32(expected);
                     if (response?.success !== true || response.status !== 200 || !Array.isArray(response.response?.categories) || response.response.categories.length > 64) throw Error("FC27_GALLERY_LEVEL_READ_UNCONFIRMED");
                     finish(null, projectGalleryLevelMilestones(detach(response.response.categories), now()));
                   } catch (error2) {
@@ -29481,7 +29779,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 finish(error2);
               }
             });
-            same31(expected);
+            same32(expected);
             snapshots.set(expected, result);
             return result;
           } catch (error2) {
@@ -29857,8 +30155,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return null;
     }
   }
-  var same23 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  var scopedRecord = (value, meta) => value && typeof value === "object" && same23(value.context, meta.context);
+  var same24 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var scopedRecord = (value, meta) => value && typeof value === "object" && same24(value.context, meta.context);
   async function compactFc27Storage({ list: list2, get, set, locks, onProgress } = {}) {
     const report = {
       status: "running",
@@ -29885,11 +30183,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (meta.kind ? value?.schema !== 1 || value.scope !== meta.scope || meta.kind === "score" && !Array.isArray(value.entries) || meta.kind === "mapping" && (value.season !== "27" || value.source !== meta.source || !Array.isArray(value.rows)) : meta.retired ? !Array.isArray(value) || value.some((row) => !scopedRecord(row?.record, meta) || row.contributionJournal != null && !scopedRecord(row.contributionJournal, meta)) : !scopedRecord(value, meta)) return;
         const beforeBytes = storedJsonBytes(raw);
         const packed = raw?.fcatStorage ? raw : await encodeStoredValue(value);
-        if (!same23(await decodeStoredValue(packed), value)) throw Error("roundtrip");
-        if (!same23(raw, packed)) {
-          if (!same23(await get(key2, null), raw)) throw Error("changed");
+        if (!same24(await decodeStoredValue(packed), value)) throw Error("roundtrip");
+        if (!same24(raw, packed)) {
+          if (!same24(await get(key2, null), raw)) throw Error("changed");
           await set(key2, packed);
-          if (!same23(await get(key2, null), packed)) throw Error("write unverified");
+          if (!same24(await get(key2, null), packed)) throw Error("write unverified");
           report.compacted++;
         }
         report.beforeBytes += beforeBytes;
@@ -29937,11 +30235,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const states4 = /* @__PURE__ */ new Map();
     const key2 = (scope2, source) => `fcat-fc27-gallery-mapping:27:${source}:${scope2}`;
     const read = (scope2, source) => {
-      const id13 = key2(scope2, source);
-      if (!states4.has(id13)) states4.set(id13, (async () => {
+      const id14 = key2(scope2, source);
+      if (!states4.has(id14)) states4.set(id14, (async () => {
         let saved;
         try {
-          saved = await get?.(id13, null);
+          saved = await get?.(id14, null);
         } catch {
         }
         const rows = /* @__PURE__ */ new Map();
@@ -29952,7 +30250,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return { scope: scope2, source, rows };
       })());
-      const state = states4.get(id13);
+      const state = states4.get(id14);
       while (states4.size > 4) states4.delete(states4.keys().next().value);
       return state;
     };
@@ -30034,7 +30332,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (details.length % 8 === 0) await wait(0);
       }
       if (scope2 !== reader.scope()) return [];
-      for (const [id13, pool] of pools) if (pool.source === source && !activePools.has(id13)) pools.delete(id13);
+      for (const [id14, pool] of pools) if (pool.source === source && !activePools.has(id14)) pools.delete(id14);
       if (sets2.length) {
         poolsNeedRefresh = stale;
         if (allMapped) mappedScope = scope2;
@@ -30086,7 +30384,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const mapping = await mappings.read(scope2, source);
         if (!current2()) return { status: "stopped", scope: scope2 };
         const activeIds = new Set(catalog.catalog.categories.flatMap((category) => category.sets).map((set) => String(set.id)));
-        for (const id13 of mapping.rows.keys()) if (!activeIds.has(id13)) mapping.rows.delete(id13);
+        for (const id14 of mapping.rows.keys()) if (!activeIds.has(id14)) mapping.rows.delete(id14);
         operation.mapping = mapping;
         operation.catalogRevision = catalog.catalog.revision;
         let currentPool = null;
@@ -30108,9 +30406,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const cached = currentPool ? null : await provider.peekPool?.({ source, setId: set.id });
           const detail = cached?.pool ? await reader.project(cached.pool) : null;
           if (!current2()) return { status: "stopped", scope: scope2 };
-          const same31 = cached?.pool && matches2(mapping, set, catalog.catalog, cached.pool);
+          const same32 = cached?.pool && matches2(mapping, set, catalog.catalog, cached.pool);
           const legacy = !mapping.rows.has(String(set.id));
-          if (!force && cached?.pool && !cached.stale && covered(detail) && (same31 || legacy)) {
+          if (!force && cached?.pool && !cached.stale && covered(detail) && (same32 || legacy)) {
             remember(cached.pool);
             checkpoint(mapping, set, catalog.catalog, cached.pool);
             updates.push(detail);
@@ -30127,9 +30425,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (!current2()) return { status: "stopped", scope: scope2 };
           if (result.pool) {
             remember(result.pool);
-            const same31 = matches2(mapping, set, catalog.catalog, result.pool);
+            const same32 = matches2(mapping, set, catalog.catalog, result.pool);
             const legacy = !mapping.rows.has(String(set.id)) && cached?.pool?.revision === result.pool.revision;
-            const reusable = !force && (same31 || legacy) && covered(cachedDetail) && cached?.pool?.revision === result.pool.revision;
+            const reusable = !force && (same32 || legacy) && covered(cachedDetail) && cached?.pool?.revision === result.pool.revision;
             const detail = !currentPool && !reusable && typeof reader.load === "function" ? await reader.load(result.pool, { missingOnly: true, onProgress: report }) : await reader.project(result.pool);
             if (!current2()) return { status: "stopped", scope: scope2 };
             if (reusable) reused++;
@@ -30484,7 +30782,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var fail25 = (reason) => {
     throw Error(reason);
   };
-  var same24 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same25 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function createGalleryNetCostStore({ get, set, exclusive, now = () => Date.now() }) {
     const load = async (scope2) => {
       let raw;
@@ -30502,7 +30800,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (ledger.entries.length > 5e3) fail25("FC27_GALLERY_ACCOUNTING_FULL");
       try {
         await set(galleryNetCostKey(scope2), ledger);
-        if (!same24(await get(galleryNetCostKey(scope2), null), ledger)) fail25("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
+        if (!same25(await get(galleryNetCostKey(scope2), null), ledger)) fail25("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
       } catch {
         fail25("FC27_GALLERY_ACCOUNTING_WRITE_FAILED");
       }
@@ -30524,7 +30822,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (result.status === "blocked") fail25(result.reason);
           next = result.ledger;
         }
-        if (!same24(next, ledger)) await write(scope2, next);
+        if (!same25(next, ledger)) await write(scope2, next);
         return { ...summarizeGalleryNetCost(next), ledger: next };
       }),
       markListed: (scope2, receipts) => run(scope2, async (ledger) => {
@@ -30535,7 +30833,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (result.status === "blocked") fail25(result.reason);
           next = result.ledger;
         }
-        if (!same24(next, ledger)) await write(scope2, next);
+        if (!same25(next, ledger)) await write(scope2, next);
         return { ...summarizeGalleryNetCost(next), ledger: next };
       }),
       reconcile: (scope2, snapshot) => run(scope2, async (ledger) => {
@@ -30567,7 +30865,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (result.status === "blocked") fail25(result.reason);
           next = result.ledger;
         }
-        if (!same24(next, ledger)) await write(scope2, next);
+        if (!same25(next, ledger)) await write(scope2, next);
         return { ...summarizeGalleryNetCost(next), ledger: next, unknown };
       })
     });
@@ -30854,8 +31152,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/inventory/unassigned-duplicate-identity.js
   function positiveId(value) {
-    const id13 = Number(value || 0);
-    return Number.isFinite(id13) && id13 > 0 ? id13 : 0;
+    const id14 = Number(value || 0);
+    return Number.isFinite(id14) && id14 > 0 ? id14 : 0;
   }
   function classifyUnassignedDuplicateIdentity(item2 = {}, clubItems = []) {
     const itemId = positiveId(item2.id || item2.ref?.id);
@@ -30901,9 +31199,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const seenObjects = /* @__PURE__ */ new Set();
     for (const item2 of collections.flatMap((collection) => collectionValues(collection))) {
       if (!item2 || typeof item2 !== "object") continue;
-      const id13 = Number(item2.id || 0);
-      if (id13 ? seenIds.has(id13) : seenObjects.has(item2)) continue;
-      if (id13) seenIds.add(id13);
+      const id14 = Number(item2.id || 0);
+      if (id14 ? seenIds.has(id14) : seenObjects.has(item2)) continue;
+      if (id14) seenIds.add(id14);
       else seenObjects.add(item2);
       merged.push(item2);
     }
@@ -31124,18 +31422,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     async function invalidateUnassigned() {
       const resolvedPile = pileValue("purchased");
       const actions = [];
-      const run = async (id13, owner, methodName, args = []) => {
+      const run = async (id14, owner, methodName, args = []) => {
         const method8 = owner?.[methodName];
         if (typeof method8 !== "function") {
-          actions.push({ id: id13, available: false, succeeded: false, error: null });
+          actions.push({ id: id14, available: false, succeeded: false, error: null });
           return;
         }
         try {
           await method8.apply(owner, args);
-          actions.push({ id: id13, available: true, succeeded: true, error: null });
+          actions.push({ id: id14, available: true, succeeded: true, error: null });
         } catch (error2) {
           actions.push({
-            id: id13,
+            id: id14,
             available: true,
             succeeded: false,
             error: error2?.message || String(error2)
@@ -31217,14 +31515,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       });
     }
     function resolveItem2(ref, preferredPiles = INVENTORY_PILES) {
-      const id13 = Number(ref?.id || 0);
+      const id14 = Number(ref?.id || 0);
       const definitionId = Number(ref?.definitionId || 0);
       const piles = [...new Set([ref?.pile, ...preferredPiles || []].filter((pile) => INVENTORY_PILES.includes(pile)))];
       for (const pile of piles) {
         const items = readPile(pile);
-        const byId = id13 ? items.find((item2) => Number(item2?.id || 0) === id13) : null;
+        const byId = id14 ? items.find((item2) => Number(item2?.id || 0) === id14) : null;
         if (byId) return { item: byId, pile };
-        const byDefinition = !id13 && definitionId ? items.find((item2) => Number(item2?.definitionId || 0) === definitionId) : null;
+        const byDefinition = !id14 && definitionId ? items.find((item2) => Number(item2?.definitionId || 0) === definitionId) : null;
         if (byDefinition) return { item: byDefinition, pile };
       }
       return null;
@@ -31493,16 +31791,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const items = rawRepositoryPile(runtime, pile);
     if (pile !== "club") return items;
     const occupiedIds = new Set(
-      ["unassigned", "storage", "transfer"].flatMap((otherPile) => rawRepositoryPile(runtime, otherPile)).map((item2) => Number(item2?.id || 0)).filter((id13) => id13 > 0)
+      ["unassigned", "storage", "transfer"].flatMap((otherPile) => rawRepositoryPile(runtime, otherPile)).map((item2) => Number(item2?.id || 0)).filter((id14) => id14 > 0)
     );
     return items.filter((item2) => !occupiedIds.has(Number(item2?.id || 0)));
   }
   function resolveItem(runtime, ref = {}) {
-    const id13 = Number(ref.id || 0);
+    const id14 = Number(ref.id || 0);
     const definitionId = Number(ref.definitionId || 0);
     const piles = [...new Set([ref.pile, "unassigned", "storage", "transfer", "club"].filter(Boolean))];
     for (const pile of piles) {
-      const item2 = repositoryPile(runtime, pile).find((candidate) => id13 > 0 && Number(candidate?.id || 0) === id13 || !id13 && definitionId > 0 && Number(candidate?.definitionId || 0) === definitionId);
+      const item2 = repositoryPile(runtime, pile).find((candidate) => id14 > 0 && Number(candidate?.id || 0) === id14 || !id14 && definitionId > 0 && Number(candidate?.definitionId || 0) === definitionId);
       if (item2) return { item: item2, pile };
     }
     return null;
@@ -31619,9 +31917,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       await adapterOptions.requestPacer?.recordSuccess?.(action, adapterOptions.pacingContext || {});
     }
     function marketItemKey(ref = {}) {
-      const id13 = Number(ref.id || 0);
+      const id14 = Number(ref.id || 0);
       const tradeId4 = Number(ref.tradeId ?? ref.auction?.tradeId ?? 0);
-      return id13 > 0 && tradeId4 > 0 ? `${id13}:${tradeId4}` : null;
+      return id14 > 0 && tradeId4 > 0 ? `${id14}:${tradeId4}` : null;
     }
     function rememberMarketItem(item2) {
       const auction = auctionSnapshot(item2);
@@ -31746,7 +32044,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         const inventory = createEaInventoryAdapter(runtime);
         const occupiedClubItemIds = new Set(
-          ["unassigned", "storage", "transfer"].flatMap((pile) => rawRepositoryPile(runtime, pile)).map((item2) => Number(item2?.id || 0)).filter((id13) => id13 > 0)
+          ["unassigned", "storage", "transfer"].flatMap((pile) => rawRepositoryPile(runtime, pile)).map((item2) => Number(item2?.id || 0)).filter((id14) => id14 > 0)
         );
         const seen = /* @__PURE__ */ new Set();
         const candidates = [];
@@ -31755,10 +32053,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const rawItems = inventory.readPile(pile);
           let sourceCount = 0;
           for (const item2 of rawItems) {
-            const id13 = Number(item2?.id || 0);
+            const id14 = Number(item2?.id || 0);
             const definitionId = Number(item2?.definitionId || 0);
-            if (pile === "club" && id13 > 0 && occupiedClubItemIds.has(id13)) continue;
-            const key2 = id13 > 0 ? `${pile}:${id13}` : `${pile}:definition:${definitionId}:index:${sourceCount}`;
+            if (pile === "club" && id14 > 0 && occupiedClubItemIds.has(id14)) continue;
+            const key2 = id14 > 0 ? `${pile}:${id14}` : `${pile}:definition:${definitionId}:index:${sourceCount}`;
             if (seen.has(key2)) continue;
             seen.add(key2);
             sourceCount += 1;
@@ -31795,7 +32093,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     function inspectBulkRelistSnapshot(options = {}) {
       const listing = inspectListingCandidates({ sources: ["transfer"], limit: 0 });
       const candidates = Array.isArray(listing.candidates) ? listing.candidates : [];
-      const requestedIds = new Set((options.itemIds || []).map(Number).filter((id13) => id13 > 0));
+      const requestedIds = new Set((options.itemIds || []).map(Number).filter((id14) => id14 > 0));
       const byState = {};
       for (const candidate of candidates) {
         const state = String(candidate?.auction?.state || "unknown");
@@ -32144,16 +32442,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         club: rawRepositoryPile(runtime, "club")
       };
       const occupiedIds = new Set(
-        ["unassigned", "storage", "transfer"].flatMap((pile) => rawPiles[pile]).map((item2) => Number(item2?.id || 0)).filter((id13) => id13 > 0)
+        ["unassigned", "storage", "transfer"].flatMap((pile) => rawPiles[pile]).map((item2) => Number(item2?.id || 0)).filter((id14) => id14 > 0)
       );
       for (const [pile, items] of Object.entries(rawPiles)) {
         const seen = /* @__PURE__ */ new Set();
         for (const item2 of items) {
           const definitionId = Number(item2?.definitionId || 0);
           if (!requested.has(definitionId)) continue;
-          const id13 = Number(item2?.id || 0);
-          if (pile === "club" && id13 > 0 && occupiedIds.has(id13)) continue;
-          const key2 = id13 > 0 ? `${pile}:${id13}` : item2;
+          const id14 = Number(item2?.id || 0);
+          if (pile === "club" && id14 > 0 && occupiedIds.has(id14)) continue;
+          const key2 = id14 > 0 ? `${pile}:${id14}` : item2;
           if (seen.has(key2)) continue;
           seen.add(key2);
           ownerships[definitionId][pile] += 1;
@@ -32309,7 +32607,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-gallery-accounting.js
-  var same25 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same26 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function createFc27GalleryAccounting({ root, get, set, adapterFactory = createFc27GallerySaleReader }) {
     const store = createGalleryNetCostStore({ get, set, exclusive: async (scope2, task) => {
       if (typeof root.navigator?.locks?.request !== "function") throw Error("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
@@ -32318,7 +32616,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const environment = () => {
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
       const assert = () => {
-        if (!same25(context, readFc27Context(root))) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same26(context, readFc27Context(root))) throw Error("FC27_GALLERY_CONTEXT_CHANGED");
       };
       return { context, scope: scope2, assert };
     };
@@ -32482,10 +32780,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var FC27_GALLERY_LISTING_SCHEDULE_KEY_PREFIX = "fcat-fc27-gallery-listing-schedule-v1:";
   var TYPES = /* @__PURE__ */ new Set(["once", "daily", "interval", "window"]);
   var DURATIONS2 = /* @__PURE__ */ new Set([3600, 10800, 21600, 43200, 86400, 259200]);
-  var id10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var id11 = (value) => Number.isSafeInteger(value) && value > 0;
   var tradeId3 = (value) => typeof value === "string" && /^[1-9]\d{0,19}$/.test(value);
   var clone3 = (value) => structuredClone(value);
-  var same26 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same27 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail26 = (reason) => {
     throw new Error(reason);
   };
@@ -32508,7 +32806,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return true;
   }
   function validEntry(entry) {
-    return id10(entry?.item?.id) && id10(entry?.item?.definitionId) && entry.item.pile === "club" && tradeId3(entry.purchaseTradeId) && Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150 && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15e6 && DURATIONS2.has(entry.durationSeconds);
+    return id11(entry?.item?.id) && id11(entry?.item?.definitionId) && entry.item.pile === "club" && tradeId3(entry.purchaseTradeId) && Number.isSafeInteger(entry.startPrice) && entry.startPrice >= 150 && Number.isSafeInteger(entry.buyNow) && entry.buyNow >= entry.startPrice && entry.buyNow <= 15e6 && DURATIONS2.has(entry.durationSeconds);
   }
   function normalizeGalleryListingSchedule(input) {
     const entries2 = Array.isArray(input?.entries) ? input.entries : null;
@@ -32556,14 +32854,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const raw = await get(key2, null);
       if (raw === null) return null;
       const value = normalizeGalleryListingSchedule(raw);
-      if (!value || value.scope !== scope2 || !same26(value.context, context)) fail26("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
+      if (!value || value.scope !== scope2 || !same27(value.context, context)) fail26("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       return value;
     };
     const write = async (value) => {
       const normalized = normalizeGalleryListingSchedule(value);
       if (!normalized) fail26("FC27_GALLERY_LISTING_SCHEDULE_INVALID");
       await set(key2, clone3(normalized));
-      if (!same26(await get(key2, null), normalized)) fail26("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
+      if (!same27(await get(key2, null), normalized)) fail26("FC27_GALLERY_LISTING_SCHEDULE_UNCONFIRMED");
       return normalized;
     };
     const inspect = async ({ purchase = null, at: at11 = now(), sessionReady = true } = {}) => {
@@ -32668,7 +32966,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var fail27 = (reason) => {
     throw Error(reason);
   };
-  var id11 = (value) => Number.isSafeInteger(value) && value > 0;
+  var id12 = (value) => Number.isSafeInteger(value) && value > 0;
   function createFc27GalleryListingInventory(root, {
     createTransport = createFc27ClubReadTransport,
     assertCurrent = () => {
@@ -32699,7 +32997,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (!Array.isArray(target.pool?.items) || target.pool.candidateOnly === true || target.pool.complete !== true) fail27("FC27_GALLERY_LISTING_SET_POOL_INCOMPLETE");
           if (`futgg:${target.pool.setId}` !== target.set.id) fail27("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
           const ids2 = new Set(target.pool.items.map((row) => row.eaId));
-          if (!ids2.size || [...ids2].some((value) => !id11(value))) fail27("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
+          if (!ids2.size || [...ids2].some((value) => !id12(value))) fail27("FC27_GALLERY_LISTING_SET_UNAVAILABLE");
           matches2 = (item2) => ids2.has(item2.definitionId);
         }
         assertCurrent();
@@ -32765,7 +33063,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     for (let offset = 0; offset < ids2.length; offset += 200) {
       assertCurrent();
       const batch = ids2.slice(offset, offset + 200);
-      if (batch.some((id13) => !Number.isSafeInteger(id13) || id13 <= 0)) throw Error("FC27_GALLERY_LISTING_ITEM_CHANGED");
+      if (batch.some((id14) => !Number.isSafeInteger(id14) || id14 <= 0)) throw Error("FC27_GALLERY_LISTING_ITEM_CHANGED");
       const reply = read.call(dao, batch);
       const dto = await new Promise((resolve, reject) => {
         const owner = {};
@@ -32820,7 +33118,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (Number.isSafeInteger(code2) && code2 > 0) value.httpStatus = code2;
     return value;
   };
-  var same27 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same28 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var circuitKey = (scope2) => `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
   var settingsKey = (scope2) => `fcat-fc27-gallery-list-settings-v1:${scope2}`;
   var normalizeSettings = (value) => {
@@ -32851,7 +33149,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   };
   var saveCircuit = async (get, set, scope2, value) => {
     await set(circuitKey(scope2), value);
-    if (same27(await get(circuitKey(scope2), null), value) === false) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+    if (same28(await get(circuitKey(scope2), null), value) === false) fail28("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
   };
   function createFc27GalleryListing({
     root,
@@ -32882,7 +33180,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assertCurrent = () => {
-        if (!same27(context, readFc27Context(root)) || !isCurrent()) fail28("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same28(context, readFc27Context(root)) || !isCurrent()) fail28("FC27_GALLERY_CONTEXT_CHANGED");
       };
       if (setSource && !inventory) inventory = inventoryFactory(root, { assertCurrent });
       const adapter = adapterFactory(inventory ? galleryListingInventoryRuntime(root, inventory) : root);
@@ -32968,7 +33266,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       // Display-only lookup in existing repositories. It grants no ownership or
       // listing authority and does not refresh inventory or call an EA service.
       readDisplayItem(ref) {
-        if (!prepared || !same27(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same27(row.item, ref))) return null;
+        if (!prepared || !same28(prepared.context, readFc27Context(root)) || !prepared.candidates.some((row) => same28(row.item, ref))) return null;
         if (prepared.setSource && ref.pile === "club") return prepared.inventory.resolve(ref)?.item ?? null;
         return createEaInventoryAdapter(root).readPile(ref.pile).find((item2) => Number(item2?.id) === ref.id && Number(item2?.definitionId) === ref.definitionId) ?? null;
       },
@@ -32988,7 +33286,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const { fixedPrice, fixedStartPrice, ...persistent } = normalized;
         sessionPrices.set(scope2, { fixedPrice, fixedStartPrice });
         await set(settingsKey(scope2), persistent);
-        return same27(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
+        return same28(await get(settingsKey(scope2), null), persistent) ? normalized : { status: "blocked", reason: "FC27_GALLERY_LISTING_SETTINGS_UNCONFIRMED" };
       },
       async readSchedule({ purchaseSnapshot = null, sessionReady = true, at: at11 = Date.now() } = {}) {
         try {
@@ -33014,14 +33312,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (schedule?.type !== "once" || !Number.isSafeInteger(schedule.runAt) || schedule.runAt <= Date.now()) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
         }
-        if (!planned2 || plan?.status !== "observed" || !same27(plan, planned2)) {
+        if (!planned2 || plan?.status !== "observed" || !same28(plan, planned2)) {
           return { status: "blocked", reason: "FC27_GALLERY_LISTING_PLAN_CHANGED" };
         }
         return withScheduleLock(async () => {
           try {
             const context = readFc27Context(root), scope2 = traditionalJournalScope(context);
             const purchaseSnapshot = await purchase.inspect();
-            if (!same27(prepared?.context, context) || !same27(context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same28(prepared?.context, context) || !same28(context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
             if (prepared?.binding !== `${purchaseSnapshot.operationId}:${purchaseSnapshot.binding}`) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_PURCHASE_CHANGED" };
             }
@@ -33040,7 +33338,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const store = createGalleryListingScheduleStore({ get, set, scope: scope2, context });
             const purchaseSnapshot = await purchase.inspect();
             const state = await store.inspect({ purchase: purchaseSnapshot, sessionReady: true, at: Date.now() });
-            if (!same27(context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
+            if (!same28(context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
             if (state.status === "blocked") return state;
             if (state.status !== "disarmed") return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_STATE_LOCKED" };
             if (!liveEnabled || state.schedule?.schedule?.type !== "once" || state.schedule.runCount !== 0 || !(state.schedule.nextRunAt > Date.now())) {
@@ -33080,7 +33378,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (!liveEnabled || saved.schedule.type !== "once" || saved.runCount !== 0) {
               return { status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_INPUT_INVALID" };
             }
-            const scheduleCurrent = () => isCurrent() && same27(context, readFc27Context(root));
+            const scheduleCurrent = () => isCurrent() && same28(context, readFc27Context(root));
             if (!scheduleCurrent()) fail28("FC27_GALLERY_CONTEXT_CHANGED");
             await store.checkpoint({ status: "running", reason: null, at: Date.now(), runCount: saved.runCount });
             const preparedResult = await publicApi.prepare({ isCurrent: scheduleCurrent });
@@ -33098,7 +33396,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const plannedResult = publicApi.plan({ selectedIds, settings: { ...saved.listingSettings || {}, priceMode: "fixed", durationSeconds: saved.entries[0].durationSeconds }, overridesByItem });
             const exact = plannedResult.status === "observed" && plannedResult.entries.length === saved.entries.length && plannedResult.entries.every((entry, index) => {
               const prior = saved.entries[index];
-              return same27(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
+              return same28(entry.item, prior.item) && String(entry.purchase?.tradeId) === prior.purchaseTradeId && entry.startPrice === prior.startPrice && entry.buyNow === prior.buyNow && entry.durationSeconds === prior.durationSeconds;
             });
             if (!exact) {
               await store.checkpoint({ status: "blocked", reason: "FC27_GALLERY_LISTING_SCHEDULE_ITEMS_CHANGED" });
@@ -33246,8 +33544,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             env.assertCurrent();
             const prices = quotes?.expiresAt > Date.now() ? quotes.freshPrices ?? {} : {};
             const listingPriceSource = quotes?.listingPriceSource ?? "futgg";
-            const pricesBySource = Object.fromEntries(Object.entries(quotes?.references ?? {}).map(([id13, ref]) => [
-              id13,
+            const pricesBySource = Object.fromEntries(Object.entries(quotes?.references ?? {}).map(([id14, ref]) => [
+              id14,
               Object.fromEntries(["futgg", "futbin"].map((source2) => [source2, ref.quotes?.[source2]?.expiresAt > Date.now() && !ref.quotes[source2].error ? ref.quotes[source2].price : null]))
             ]));
             const sourceLabel = listingPriceSource === "futbin" ? "FUTBIN" : "FUT.GG";
@@ -33291,7 +33589,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       },
       plan({ selectedIds, settings, overridesByItem = {}, previewPrices = null }) {
-        if (!prepared || !same27(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+        if (!prepared || !same28(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
         const selected = new Set(selectedIds);
         const result = planGalleryListingPrices({
           ...prepared,
@@ -33306,7 +33604,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return result;
       },
       planFodder(options) {
-        if (!prepared || !same27(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+        if (!prepared || !same28(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
         planned2 = planFodderListings({
           ...options,
           candidates: prepared.candidates,
@@ -33324,17 +33622,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         busy = true;
         stopped = false;
         try {
-          const ids2 = [...new Set(previous.candidates.map((row) => row.item.definitionId))].filter((id13) => !definitionIds || definitionIds.includes(id13));
+          const ids2 = [...new Set(previous.candidates.map((row) => row.item.definitionId))].filter((id14) => !definitionIds || definitionIds.includes(id14));
           if (!ids2.length) return { prices: structuredClone(previous.marketPrices), expiresAt: previous.expiresAt };
           const quotes = await loadPrices(ids2, { force: true, isCurrent: () => isCurrent() && !stopped });
-          if (!isCurrent() || prepared !== previous || !same27(previous.context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
+          if (!isCurrent() || prepared !== previous || !same28(previous.context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
           if (stopped) fail28("FC27_GALLERY_BULK_LIST_STOPPED");
           if (quotes.listingPriceSource && quotes.listingPriceSource !== previous.listingPriceSource) fail28("FC27_GALLERY_LISTING_PLAN_CHANGED");
           const merged = { ...previous.marketPrices };
-          for (const id13 of ids2) {
-            delete merged[id13];
-            if (quotes.freshPrices?.[id13] > 0) merged[id13] = quotes.freshPrices[id13];
-            prepared.quoteExpiresAt[id13] = quotes.expiresAt ?? 0;
+          for (const id14 of ids2) {
+            delete merged[id14];
+            if (quotes.freshPrices?.[id14] > 0) merged[id14] = quotes.freshPrices[id14];
+            prepared.quoteExpiresAt[id14] = quotes.expiresAt ?? 0;
           }
           prepared.marketPrices = merged;
           prepared.expiresAt = ids2.length === new Set(previous.candidates.map((row) => row.item.definitionId)).size ? quotes.expiresAt : Math.min(previous.expiresAt, quotes.expiresAt);
@@ -33345,7 +33643,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       },
       planTransfer({ selectedIds }) {
-        if (!prepared || !same27(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
+        if (!prepared || !same28(prepared.context, readFc27Context(root))) return { status: "blocked", reason: "FC27_GALLERY_CONTEXT_CHANGED" };
         const ids2 = new Set(selectedIds);
         planned2 = { status: "observed", entries: prepared.candidates.filter((row) => ids2.has(row.item.id)).map((row) => ({ ...row, action: "transfer", startPrice: null, buyNow: null, durationSeconds: null })), skipped: [] };
         return structuredClone(planned2);
@@ -33379,7 +33677,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const circuit = await readCircuit(get, env.scope);
           if (circuit.persistent) fail28("FC27_GALLERY_LISTING_CIRCUIT_OPEN");
           if (circuit.retryAt > Date.now()) fail28("FC27_GALLERY_LISTING_RATE_LIMIT_COOLDOWN");
-          if (!resume && (!prepared || !same27(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same27(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same27(c.item, e.item) && same27(c.purchase, e.purchase))))) fail28("FC27_GALLERY_LISTING_PLAN_CHANGED");
+          if (!resume && (!prepared || !same28(prepared.context, env.context) || plan?.status !== "observed" || !planned2 || !same28(plan, planned2) || !plan.entries?.length || plan.entries.some((e) => !prepared.candidates.some((c) => same28(c.item, e.item) && same28(c.purchase, e.purchase))))) fail28("FC27_GALLERY_LISTING_PLAN_CHANGED");
           if (!resume && plan.entries.some((e) => e.priceOrigin === "market" && (e.quoteExpiresAt ?? prepared.expiresAt) <= Date.now())) {
             fail28("FC27_GALLERY_LISTING_QUOTE_EXPIRED");
           }
@@ -33525,7 +33823,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           requested
         });
       }
-      const itemIds = before.items.map((entry) => Number(entry.item.id)).filter((id13) => id13 > 0);
+      const itemIds = before.items.map((entry) => Number(entry.item.id)).filter((id14) => id14 > 0);
       const transferPreflight = await adapter.refreshTransferItems({ wait: input.deferWhenWaiting !== true });
       if (transferPreflight.status !== "completed") {
         if (input.deferWhenWaiting === true && ["pacing-deferred", "rate-limit"].includes(transferPreflight.error?.kind) && Number(transferPreflight.error?.retryAt) > Number(now())) {
@@ -33771,7 +34069,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-gallery-relist.js
-  var same28 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same29 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var copy = (value) => structuredClone(value);
   var fail29 = (reason) => {
     throw Error(reason);
@@ -33795,18 +34093,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const read = async (context, scope2) => {
       const raw = await get(galleryRelistKey(scope2), null);
       if (raw === null) return null;
-      if (raw.schema !== 1 || !same28(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive11(raw.nextAt) || !positive11(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive11(ref.id) || !positive11(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive11(row?.item?.id) || !positive11(row?.item?.definitionId) || !positive11(row.auction?.startingBid) || !positive11(row.auction?.buyNowPrice)))) fail29("FC27_GALLERY_RELIST_RECORD_INVALID");
+      if (raw.schema !== 1 || !same29(raw.context, context) || raw.scope !== scope2 || typeof raw.id !== "string" || !raw.id || !["batch", "all"].includes(raw.range) || ![1, 5, 10].includes(raw.minutes) || !["armed", "disarmed", "running", "blocked", "completed"].includes(raw.status) || !positive11(raw.nextAt) || !positive11(raw.expiresAt) || !Number.isInteger(raw.runs) || raw.runs < 0 || raw.runs > 2 || !Array.isArray(raw.items) || raw.items.length > 256 || raw.items.some((ref) => !positive11(ref.id) || !positive11(ref.definitionId)) || new Set(raw.items.map((ref) => ref.id)).size !== raw.items.length || raw.range === "batch" && (!raw.items.length || typeof raw.purchaseBinding !== "string" || !raw.purchaseBinding) || raw.pending !== null && (!Array.isArray(raw.pending) || !raw.pending.length || raw.pending.length > 100 || raw.pending.some((row) => !positive11(row?.item?.id) || !positive11(row?.item?.definitionId) || !positive11(row.auction?.startingBid) || !positive11(row.auction?.buyNowPrice)))) fail29("FC27_GALLERY_RELIST_RECORD_INVALID");
       return copy(raw);
     };
     const write = async (scope2, value) => {
       await set(galleryRelistKey(scope2), copy(value));
-      if (!same28(await get(galleryRelistKey(scope2), null), value)) fail29("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
+      if (!same29(await get(galleryRelistKey(scope2), null), value)) fail29("FC27_GALLERY_RELIST_RECORD_UNCONFIRMED");
     };
     const environment = () => {
       const context = contextNow(), scope2 = traditionalJournalScope(context);
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       const assert = () => {
-        if (!same28(context, contextNow())) fail29("FC27_GALLERY_CONTEXT_CHANGED");
+        if (!same29(context, contextNow())) fail29("FC27_GALLERY_CONTEXT_CHANGED");
       };
       const adapter = adapterFactory(root);
       const guard = async () => {
@@ -33826,7 +34124,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const value = { schema: 1, scope: scope2, persistent: code2 === 427, retryAt: code2 === 429 ? now() + 6e4 : 0 };
           const key2 = `fcat-fc27-gallery-listing-circuit-v1:${scope2}`;
           await set(key2, value);
-          if (!same28(await get(key2, null), value)) fail29("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
+          if (!same29(await get(key2, null), value)) fail29("FC27_GALLERY_LISTING_CIRCUIT_UNCONFIRMED");
         }
       };
       return { context, scope: scope2, persistence, assert, adapter, guard, response };
@@ -33994,7 +34292,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             await write(env.scope, value);
             const current2 = async () => {
               await env.guard();
-              if (stopped || !same28(await read(env.context, env.scope), value)) fail29("FC27_GALLERY_RELIST_PLAN_CHANGED");
+              if (stopped || !same29(await read(env.context, env.scope), value)) fail29("FC27_GALLERY_RELIST_PLAN_CHANGED");
               if (value.range === "batch") {
                 const snapshot = await purchase.inspect();
                 env.assert();
@@ -34176,13 +34474,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/trading/shortlist.js
-  var id12 = (n) => Number.isSafeInteger(n) && n > 0 && n <= 1e9;
+  var id13 = (n) => Number.isSafeInteger(n) && n > 0 && n <= 1e9;
   var price2 = (n) => Number.isSafeInteger(n) && n >= 150 && n <= 15e6;
   var TRADING_DISCOVERY_RATINGS = Object.freeze([80, 82, 84]);
   var canonical = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
   var tradingMentionNames = (names) => [...new Set((Array.isArray(names) ? names : []).map((n) => deskText(n, 60)).filter((n) => canonical(n).length >= 4))].slice(0, 3);
   function candidateFact(row, platform, now) {
-    if (!id12(row?.resource_id) || !id12(row.ID) || !Number.isSafeInteger(row.rating) || row.rating < 1 || row.rating > 99) throw Error("DESK_DISCOVERY_RESPONSE_INVALID");
+    if (!id13(row?.resource_id) || !id13(row.ID) || !Number.isSafeInteger(row.rating) || row.rating < 1 || row.rating > 99) throw Error("DESK_DISCOVERY_RESPONSE_INVALID");
     if (![0, 1].includes(row.raretype)) return null;
     const quote2 = parsePublicFutbinPrice({ data: [row] }, row.resource_id, platform, false);
     if (!price2(quote2.price)) return null;
@@ -34227,7 +34525,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (page.length > 100) throw Error("DESK_DISCOVERY_RESPONSE_INVALID");
       scanned += page.length;
       for (const row of page) {
-        if (!id12(row?.resource_id) || !id12(row.ID) || row.rating !== rating || seen.has(row.resource_id)) throw Error("DESK_DISCOVERY_RESPONSE_INVALID");
+        if (!id13(row?.resource_id) || !id13(row.ID) || row.rating !== rating || seen.has(row.resource_id)) throw Error("DESK_DISCOVERY_RESPONSE_INVALID");
         seen.add(row.resource_id);
         const fact = candidateFact(row, platform, now());
         if (fact) rows.push(fact);
@@ -34273,7 +34571,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function tradingPreselection(pool, state, now) {
     const available = deskFunding(state).available, limit = Math.min(state.settings.unitLimit, available);
-    const valid3 = pool.rows.filter((row) => row.season === "27" && row.platform === pool.platform && id12(row.definitionId) && price2(row.price) && row.fetchedAt <= now && now - row.fetchedAt <= 3e5);
+    const valid3 = pool.rows.filter((row) => row.season === "27" && row.platform === pool.platform && id13(row.definitionId) && price2(row.price) && row.fetchedAt <= now && now - row.fetchedAt <= 3e5);
     const affordable = valid3.filter((row) => row.price <= limit), lanes = /* @__PURE__ */ new Map();
     for (const row of affordable) {
       const lane = lanes.get(row.rating) ?? [];
@@ -34389,7 +34687,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function normalizeTradingIntel(value, now, evidence = null) {
     if (value?.schema !== 1 || !Array.isArray(value.posts) || value.posts.length > 30) throw Error("DESK_INTEL_RESPONSE_INVALID");
     const calls = evidence?.calls ?? [], search = calls.some((c) => ["x_keyword_search", "x_semantic_search"].includes(c.name)) || evidence?.search === true;
-    const threads = [.../* @__PURE__ */ new Set([...evidence?.threads ?? [], ...calls.filter((c) => c.name === "x_thread_fetch").map((c) => c.input?.post_id)])].filter((id13) => /^\d{15,22}$/.test(String(id13))).map(String).slice(0, 6);
+    const threads = [.../* @__PURE__ */ new Set([...evidence?.threads ?? [], ...calls.filter((c) => c.name === "x_thread_fetch").map((c) => c.input?.post_id)])].filter((id14) => /^\d{15,22}$/.test(String(id14))).map(String).slice(0, 6);
     const authors = [...evidence?.authors ?? [], ...calls.filter((c) => c.name === "x_keyword_search").flatMap((c) => {
       const query = c.input?.query ?? "", root = /\bconversation_id:(\d{15,22})\b/.exec(query), author = /\bfrom:([A-Za-z0-9_]{1,30})\b/.exec(query);
       return root && author ? [{ rootId: root[1], handle: author[1] }] : [];
@@ -34461,8 +34759,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var validEvent = (event, createdAt) => event && typeof event === "object" && !Array.isArray(event) && Object.keys(event).every((key2) => eventKeys.includes(key2)) && typeof event.sourceUrl === "string" && /^https:\/\/x\.com\/[A-Za-z0-9_]{1,30}\/status\/[1-9]\d{14,21}$/.test(event.sourceUrl) && integer18(event.sourceAt, 0, createdAt) && integer18(event.entryCeiling, 150, 15e6) && typeof event.strictBelow === "boolean" && typeof event.entryQuote === "string" && event.entryQuote.trim().length > 0 && event.entryQuote.length <= 180 && !/[\u0000-\u001f]/.test(event.entryQuote) && ["target-hold", "immediate-target"].includes(event.exitMode) && integer18(event.reviewAt, createdAt + 1, createdAt + 864e5) && ["source", "required-return"].includes(event.targetBasis) && event.status === "leak" && event.evidence === "native-thread-post";
   var sourceCap = (event) => deskFloorPrice(event.entryCeiling - (event.strictBelow ? 1 : 0));
   var validStrategy = (row) => row.strategy == null ? row.event == null : row.strategy === "spread" ? row.event == null : row.strategy === "evo-event";
-  function createInvestmentPlan({ advice, context, capitalLimit = 2e4, reserveCoins = 0, existingCapital = 0, unitLimit = 2e3, minProfit = 150, buffer = 100, now = Date.now(), id: id13 }) {
-    if (!advice || !Array.isArray(advice.suggestions) || !context?.scope || !id13 || !integer18(capitalLimit, 150, 1e8) || !integer18(reserveCoins, 0, 1e8) || !integer18(existingCapital, 0, 1e8) || !integer18(unitLimit, 150, 15e6) || !integer18(minProfit, 0, 1e8) || !integer18(buffer, 0, 1e8) || !integer18(advice.validUntil, now + 1, now + 3e5) || advice.platform !== context.platform) throw Error("DESK_PLAN_INVALID");
+  function createInvestmentPlan({ advice, context, capitalLimit = 2e4, reserveCoins = 0, existingCapital = 0, unitLimit = 2e3, minProfit = 150, buffer = 100, now = Date.now(), id: id14 }) {
+    if (!advice || !Array.isArray(advice.suggestions) || !context?.scope || !id14 || !integer18(capitalLimit, 150, 1e8) || !integer18(reserveCoins, 0, 1e8) || !integer18(existingCapital, 0, 1e8) || !integer18(unitLimit, 150, 15e6) || !integer18(minProfit, 0, 1e8) || !integer18(buffer, 0, 1e8) || !integer18(advice.validUntil, now + 1, now + 3e5) || advice.platform !== context.platform) throw Error("DESK_PLAN_INVALID");
     let allocated = 0;
     const rows = [], seen = /* @__PURE__ */ new Set();
     for (const row of advice.suggestions.slice(0, 6)) {
@@ -34495,7 +34793,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!rows.length) throw Error("DESK_PLAN_NO_CANDIDATES");
     return {
       schema: 1,
-      id: id13,
+      id: id14,
       context: structuredClone(context),
       createdAt: now,
       expiresAt: Math.min(advice.validUntil, ...advice.suggestions.filter((r) => seen.has(r.definitionId)).map((r) => r.ggQuote.expiresAt)),
@@ -34639,7 +34937,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/adapters/browser/fc27-trading-desk.js
   var tradingDeskKey = (scope2) => `fcat-fc27-trading-desk-v1:${scope2}`;
-  function createFc27TradingDesk({ prices, get, set, locks, intel = null, execution = null, diagnosticLog: diagnosticLog2 = null, readCandidates = () => [], now = () => Date.now(), id: id13 = () => globalThis.crypto.randomUUID() }) {
+  function createFc27TradingDesk({ prices, get, set, locks, intel = null, execution = null, diagnosticLog: diagnosticLog2 = null, readCandidates = () => [], now = () => Date.now(), id: id14 = () => globalThis.crypto.randomUUID() }) {
     let lastDiscovery = null, discoveryId = 0, lastIntel = null, intelId = 0, eventImportId = 0;
     const diagnostic = (fields4) => {
       try {
@@ -34821,7 +35119,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           check();
           if (!saved || !current2(saved.context) || saved.result.validUntil <= now() || discoveryBasis(state) !== saved.basis || JSON.stringify(await readEvents(context)) !== saved.eventBasis) throw Error("DESK_DISCOVERY_EXPIRED");
           check();
-          if (definitionIds !== null && (!Array.isArray(definitionIds) || definitionIds.length > 6 || new Set(definitionIds).size !== definitionIds.length || definitionIds.some((id14) => !saved.result.suggestions.some((row) => row.definitionId === id14)))) throw Error("DESK_PLAN_INVALID");
+          if (definitionIds !== null && (!Array.isArray(definitionIds) || definitionIds.length > 6 || new Set(definitionIds).size !== definitionIds.length || definitionIds.some((id15) => !saved.result.suggestions.some((row) => row.definitionId === id15)))) throw Error("DESK_PLAN_INVALID");
           const advice = definitionIds === null ? saved.result : { ...saved.result, suggestions: saved.result.suggestions.filter((row) => definitionIds.includes(row.definitionId)) };
           const result = await execution.prepare(createInvestmentPlan({
             advice,
@@ -34833,7 +35131,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             minProfit: state.settings.minProfit,
             buffer: state.settings.buffer,
             now: now(),
-            id: id13()
+            id: id14()
           }));
           check();
           diagnostic({ event: "plan-result", phase: "prepare", status: "ready", approvedBudget: capitalLimit, requestedCount: result.plan?.rows?.length ?? 0 });
@@ -35046,7 +35344,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!deskId(definitionId) || !Number.isSafeInteger(buy) || buy < 150 || buy > 15e6) throw Error("DESK_RECORD_INVALID");
         if (state.records.length >= DESK_LIMITS.records) throw Error("DESK_RECORD_LIMIT");
         const plan = state.watch.find((card) => card.definitionId === definitionId)?.plan;
-        state.records.push({ id: id13(), definitionId, name: deskText(name2 || definitionId), buy, sell: null, at: now(), ...plan ? { plan: structuredClone(plan) } : {} });
+        state.records.push({ id: id14(), definitionId, name: deskText(name2 || definitionId), buy, sell: null, at: now(), ...plan ? { plan: structuredClone(plan) } : {} });
       }),
       recordSale: ({ recordId, sell }) => act((state) => {
         if (!Number.isSafeInteger(sell) || sell < 150 || sell > 15e6) throw Error("DESK_PRICE_INVALID");
@@ -35084,7 +35382,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var phases2 = /* @__PURE__ */ new Set(["waiting", "buy-pending", "bought", "move-pending", "transfer", "holding", "list-pending", "listed", "sold", "skipped", "rejected"]);
   var pending2 = /* @__PURE__ */ new Set(["buy-pending", "move-pending", "list-pending"]);
   var terminal = /* @__PURE__ */ new Set(["sold", "skipped", "rejected"]);
-  var same29 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same30 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var targetHold = (row) => row.strategy === "evo-event" && row.event.exitMode === "target-hold";
   var settledStatus = (record) => record.entries.some((e) => pending2.has(e.phase)) ? "recovery-required" : record.entries.every((e) => terminal.has(e.phase)) ? "completed" : record.entries.some((e) => e.phase === "holding") ? "waiting-events" : record.entries.some((e) => ["waiting", "bought", "transfer"].includes(e.phase)) ? "paused" : "waiting-sales";
   var pristine = (record) => record.entries.every((e) => e.phase === "waiting" && e.offer === null && Object.keys(e).every((key2) => ["definitionId", "phase", "offer"].includes(key2)));
@@ -35167,7 +35465,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       assertCurrent();
       readTradingExecution(record, context);
       await set(key2, record);
-      if (!same29(record, await get(key2, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
+      if (!same30(record, await get(key2, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
       assertCurrent();
       report("execution-checkpoint", currentPhase, record.status, record);
       try {
@@ -35230,7 +35528,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 const archived = [...history, record];
                 assertCurrent();
                 await set(historyKey, archived);
-                if (!same29(archived, await get(historyKey, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
+                if (!same30(archived, await get(historyKey, null))) throw Error("DESK_EXECUTION_SAVE_UNVERIFIED");
                 assertCurrent();
               }
               record = { schema: 1, status: "active", plan: structuredClone(plan), entries: plan.rows.map((row) => ({ definitionId: row.definitionId, phase: "waiting", offer: null })), reason: null };
@@ -35330,7 +35628,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   if ([401, 403, 427, 429].includes(bought.httpStatus) || !["FC27_BUY_LISTING_UNAVAILABLE", "FC27_BUY_LISTING_CHANGED"].includes(bought.reason)) throw Error("DESK_EXECUTION_SERVICE_STOP");
                   continue;
                 }
-                if (bought?.status === "bought" && validOffer(bought, row) && same29(offer, { definitionId: bought.definitionId, itemId: bought.itemId, tradeId: bought.tradeId, price: bought.price })) e.buyAcknowledged = true;
+                if (bought?.status === "bought" && validOffer(bought, row) && same30(offer, { definitionId: bought.definitionId, itemId: bought.itemId, tradeId: bought.tradeId, price: bought.price })) e.buyAcknowledged = true;
                 stage("buy-readback", record);
                 const recovered2 = await adapter.reconcile(e, row);
                 applyReconciliation(e, recovered2);
@@ -35514,7 +35812,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-trading-execution.js
-  var same30 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var same31 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail30 = (reason) => {
     throw Error(reason);
   };
@@ -35543,7 +35841,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (Object.values(functions).some((fn) => typeof fn !== "function")) fail30("DESK_EXECUTION_RUNTIME_UNAVAILABLE");
     const assert = () => {
       assertCurrent();
-      if (!same30(context, readFc27Context(root)) || root.services.Item !== service || root.repositories?.Item !== repository || Object.keys(functions).some((k) => functions[k] !== service[k])) fail30("DESK_CONTEXT_CHANGED");
+      if (!same31(context, readFc27Context(root)) || root.services.Item !== service || root.repositories?.Item !== repository || Object.keys(functions).some((k) => functions[k] !== service[k])) fail30("DESK_CONTEXT_CHANGED");
     };
     let reference = null, lastRequest = 0, lastReadAt = -Infinity, cancelled = false;
     const purchaseQuotes = /* @__PURE__ */ new Map(), exitQuotes = /* @__PURE__ */ new Map();
@@ -35634,7 +35932,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const isEvent = (row) => row?.strategy === "evo-event";
     const targetHold2 = (row) => isEvent(row) && row.event.exitMode === "target-hold";
     const approvedRow = (row) => {
-      if (!same30(plan.rows.find((r) => r.definitionId === row.definitionId), row)) fail30("DESK_PLAN_INVALID");
+      if (!same31(plan.rows.find((r) => r.definitionId === row.definitionId), row)) fail30("DESK_PLAN_INVALID");
     };
     const loadQuotes = async (rows, force = false) => {
       onStage("reference-prices");
@@ -35925,7 +36223,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       bound = binding;
       prepared = null;
       const assertCurrent = () => {
-        if (!same30(context, readFc27Context(root)) || !same30(deskContext, prices.context())) fail30("DESK_CONTEXT_CHANGED");
+        if (!same31(context, readFc27Context(root)) || !same31(deskContext, prices.context())) fail30("DESK_CONTEXT_CHANGED");
       };
       const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
       session2 = createTradingExecutionSession({
@@ -36039,7 +36337,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         try {
           const current2 = create();
           if (liveEnabled !== true) fail30("DESK_EXECUTION_DISABLED");
-          if (!resume && (!prepared || !same30(prepared, plan))) fail30("DESK_EXECUTION_APPROVAL_REQUIRED");
+          if (!resume && (!prepared || !same31(prepared, plan))) fail30("DESK_EXECUTION_APPROVAL_REQUIRED");
           progress = callback;
           try {
             handedOff = true;
@@ -36604,8 +36902,8 @@ ${version ?? ""}`;
       return buckets.get(scope2);
     };
     return Object.freeze({
-      async read(scope2, id13, key2) {
-        const bucket = await load(scope2), row = bucket?.get(id13);
+      async read(scope2, id14, key2) {
+        const bucket = await load(scope2), row = bucket?.get(id14);
         return row?.key === key2 ? clone5(row.summary) : null;
       },
       write(scope2, rows) {
@@ -37036,6 +37334,11 @@ ${version ?? ""}`;
     "evaluationNodes",
     "boundNodes",
     "strategyAttempts",
+    "budgetNodes",
+    "maxNodes",
+    "budgetStage",
+    "budgetStages",
+    "nodeCap",
     "incumbentCandidateCount",
     "incumbentSelectedCount",
     "targetScore",
@@ -37104,9 +37407,9 @@ ${version ?? ""}`;
       if (typeof input[key2] === "boolean") entry[key2] = input[key2];
     }
     if (input.area === "gallery" && Array.isArray(input.pendingTasks)) entry.pendingTasks = input.pendingTasks.slice(0, 13).flatMap((task) => {
-      const id13 = Number.isSafeInteger(task?.setId) && task.setId > 0 && task.setId < 1e9 ? task.setId : typeof task?.setId === "string" && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
-      if (id13 === null || !["verify", "refine"].includes(task.phase)) return [];
-      const value = { setId: id13, phase: task.phase };
+      const id14 = Number.isSafeInteger(task?.setId) && task.setId > 0 && task.setId < 1e9 ? task.setId : typeof task?.setId === "string" && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
+      if (id14 === null || !["verify", "refine"].includes(task.phase)) return [];
+      const value = { setId: id14, phase: task.phase };
       for (const key2 of ["turns", "durationMs", "processingMs", "schedulingMs", "validationMs", "microSteps", "checkpointCount"])
         if (Number.isSafeInteger(task[key2]) && task[key2] >= 0) value[key2] = task[key2];
       return [Object.freeze(value)];
@@ -37234,7 +37537,7 @@ ${version ?? ""}`;
   var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
   var reasonOf2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE";
   var platformSuffix = (source, options) => source === "futbin" && options.futbinPlatform ? `:${options.futbinPlatform}` : "";
-  var keyOf4 = (source, options, id13) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id13}${platformSuffix(source, options)}`;
+  var keyOf4 = (source, options, id14) => `fcat-public-quotes-v2:${options.season}:${options.platform}:${source}:${id14}${platformSuffix(source, options)}`;
   var cooldownKeyOf = (source, options) => `${source}:${options.season}:${options.platform}${platformSuffix(source, options)}`;
   function createGalleryReferencePrices({
     readFutgg,
@@ -37250,7 +37553,7 @@ ${version ?? ""}`;
   }) {
     const cache = /* @__PURE__ */ new Map(), pending3 = /* @__PURE__ */ new Map(), cooldowns = /* @__PURE__ */ new Map();
     let queue = Promise.resolve();
-    const valid3 = (row, source, options, id13) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id13 && (source !== "futbin" || row.futbinPlatform === options.futbinPlatform) && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
+    const valid3 = (row, source, options, id14) => row?.schema === 2 && row.source === source && row.season === options.season && row.platform === options.platform && row.definitionId === id14 && (source !== "futbin" || row.futbinPlatform === options.futbinPlatform) && (row.price === null || validPublicPrice(row.price)) && timestamp(row.fetchedAt) && row.fetchedAt <= now() && timestamp(row.expiresAt) && row.expiresAt > row.fetchedAt && (row.sourceUpdatedAt === null || timestamp(row.sourceUpdatedAt) && row.sourceUpdatedAt <= row.fetchedAt) && (row.error === null || typeof row.error === "string" && /^FC27_[A-Z0-9_]+$/.test(row.error));
     const record = (fields4) => {
       try {
         Promise.resolve(diagnosticLog2?.record?.({ area: "pricing", event: "public-quote", ...fields4 })).catch(() => {
@@ -37261,7 +37564,7 @@ ${version ?? ""}`;
     const lifetime2 = (row, duration) => row && !row.error ? { ...row, expiresAt: row.fetchedAt + duration } : row;
     const ensure = (source, ids2, options, byId, current2, force, progress, duration, futbinBatch, deadlineAt) => {
       const withinBudget = () => deadlineAt === null || now() < deadlineAt;
-      const freshIds = ids2.filter((id13) => !pending3.has(keyOf4(source, options, id13)));
+      const freshIds = ids2.filter((id14) => !pending3.has(keyOf4(source, options, id14)));
       if (freshIds.length) {
         const task = queue.catch(() => {
         }).then(async () => {
@@ -37269,8 +37572,8 @@ ${version ?? ""}`;
           let requests = 0;
           current2();
           const missing = [];
-          for (const id13 of freshIds) {
-            const key2 = keyOf4(source, options, id13);
+          for (const id14 of freshIds) {
+            const key2 = keyOf4(source, options, id14);
             let saved = cache.get(key2);
             if (!saved) {
               try {
@@ -37278,11 +37581,11 @@ ${version ?? ""}`;
               } catch {
               }
             }
-            if (valid3(saved, source, options, id13)) saved = lifetime2(saved, duration);
-            if (valid3(saved, source, options, id13) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
+            if (valid3(saved, source, options, id14)) saved = lifetime2(saved, duration);
+            if (valid3(saved, source, options, id14) && saved.expiresAt > now() && (!force || saved.error) && !["FC27_PUBLIC_PRICE_PLAYER_INVALID", "FC27_PUBLIC_PRICE_FUTBIN_DISABLED", "FC27_PUBLIC_PRICE_FUTGG_DISABLED"].includes(saved.error)) {
               cache.set(key2, saved);
               if (saved.error) cooldowns.set(cooldownKeyOf(source, options), { retryAt: saved.expiresAt, reason: saved.error });
-            } else missing.push(id13);
+            } else missing.push(id14);
           }
           let completed = ids2.length - missing.length;
           progress({ source, index: completed, total: ids2.length });
@@ -37290,19 +37593,19 @@ ${version ?? ""}`;
           const batchSize = source === "futgg" ? 50 : 1;
           const jobs = [], fallbackJobs = [], grouped2 = /* @__PURE__ */ new Map();
           if (source === "futbin" && futbinBatch && typeof readFutbinBatch === "function") {
-            for (const id13 of missing) {
-              const rating = byId.get(id13)?.rating;
+            for (const id14 of missing) {
+              const rating = byId.get(id14)?.rating;
               const group = grouped2.get(rating) ?? [];
-              group.push(id13);
+              group.push(id14);
               grouped2.set(rating, group);
             }
           }
           const bulkIds = /* @__PURE__ */ new Set();
           for (const [rating, batch] of grouped2) if (Number.isSafeInteger(rating) && rating >= 1 && rating <= 99) {
             jobs.push({ ids: batch, bulk: true, cacheOnly: batch.length < 12 });
-            for (const id13 of batch) bulkIds.add(id13);
+            for (const id14 of batch) bulkIds.add(id14);
           }
-          const singles = missing.filter((id13) => !bulkIds.has(id13));
+          const singles = missing.filter((id14) => !bulkIds.has(id14));
           for (let offset = 0; offset < singles.length; offset += batchSize) jobs.push({ ids: singles.slice(offset, offset + batchSize), bulk: false });
           let next = 0, sourceFailure = null;
           const readBatch = async () => {
@@ -37317,7 +37620,7 @@ ${version ?? ""}`;
               }
               requests++;
               if (job.bulk) {
-                const result = await readFutbinBatch(batch, batch.map((id13) => byId.get(id13)), {
+                const result = await readFutbinBatch(batch, batch.map((id14) => byId.get(id14)), {
                   ...options,
                   check: current2,
                   force,
@@ -37344,25 +37647,25 @@ ${version ?? ""}`;
                 cooldowns.set(cooldownKey, { retryAt, reason: error2 });
               }
             }
-            const completedIds = job.bulk && !error2 ? batch.filter((id13) => rows.some((row) => row.definitionId === id13 && row.price !== null)) : batch;
+            const completedIds = job.bulk && !error2 ? batch.filter((id14) => rows.some((row) => row.definitionId === id14 && row.price !== null)) : batch;
             if (job.bulk && !error2) {
-              for (const id13 of batch) if (!completedIds.includes(id13)) fallbackJobs.push({ ids: [id13], bulk: false });
+              for (const id14 of batch) if (!completedIds.includes(id14)) fallbackJobs.push({ ids: [id14], bulk: false });
             }
-            for (const id13 of completedIds) {
-              const value = rows.find((row) => row.definitionId === id13);
+            for (const id14 of completedIds) {
+              const value = rows.find((row) => row.definitionId === id14);
               const fetchedAt = job.bulk && !error2 ? value.fetchedAt : now(), expiresAt = error2 ? retryAt : fetchedAt + duration;
               const entry = {
                 schema: 2,
                 source,
                 ...options,
-                definitionId: id13,
+                definitionId: id14,
                 price: value?.price ?? null,
                 fetchedAt,
                 sourceUpdatedAt: value?.sourceUpdatedAt ?? null,
                 expiresAt,
                 error: error2
               };
-              const key2 = keyOf4(source, options, id13);
+              const key2 = keyOf4(source, options, id14);
               cache.set(key2, entry);
               try {
                 await set(key2, structuredClone(entry));
@@ -37372,7 +37675,7 @@ ${version ?? ""}`;
                 source,
                 status: error2 ? "failed" : entry.price === null ? "missing" : "success",
                 reason: error2,
-                definitionId: id13,
+                definitionId: id14,
                 referencePrice: entry.price,
                 fetchedAt,
                 sourceUpdatedAt: entry.sourceUpdatedAt,
@@ -37409,24 +37712,24 @@ ${version ?? ""}`;
         });
         queue = task.catch(() => {
         });
-        for (const id13 of freshIds) {
-          const key2 = keyOf4(source, options, id13);
+        for (const id14 of freshIds) {
+          const key2 = keyOf4(source, options, id14);
           const result = task.then(() => cache.get(key2)).finally(() => pending3.delete(key2));
           pending3.set(key2, result);
         }
       }
-      return Promise.all(ids2.map((id13) => pending3.get(keyOf4(source, options, id13))));
+      return Promise.all(ids2.map((id14) => pending3.get(keyOf4(source, options, id14))));
     };
     return Object.freeze({
       // Query-direction hints only. No requests, writes, TTL projection or
       // approval-shaped references; expired prices must never authorize buys.
       async cachedEstimates(ids2, { season = "27", platform, policy = {}, isCurrent = () => true } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id13) => !positive12(id13))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id14) => !positive12(id14))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const options = { season, platform, ...policy.source === "futbin" && policy.futbinPlatform ? { futbinPlatform: policy.futbinPlatform } : {} }, prices = /* @__PURE__ */ new Map();
-        for (const id13 of new Set(ids2)) {
+        for (const id14 of new Set(ids2)) {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
-          const key2 = keyOf4(policy.source, options, id13);
+          const key2 = keyOf4(policy.source, options, id14);
           let row = cache.get(key2);
           if (!row) {
             try {
@@ -37434,7 +37737,7 @@ ${version ?? ""}`;
             } catch {
             }
           }
-          if (valid3(row, policy.source, options, id13) && row.error === null && validPublicPrice(row.price) && now() - row.fetchedAt <= 30 * 864e5) prices.set(id13, row.price);
+          if (valid3(row, policy.source, options, id14) && row.error === null && validPublicPrice(row.price) && now() - row.fetchedAt <= 30 * 864e5) prices.set(id14, row.price);
         }
         if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         return { hintOnly: true, prices };
@@ -37456,7 +37759,7 @@ ${version ?? ""}`;
         deadlineAt = null
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id13) => !positive12(id13)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id14) => !positive12(id14)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const current2 = () => {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         };
@@ -37495,9 +37798,9 @@ ${version ?? ""}`;
           }
           current2();
           if (values8 === null) {
-            values8 = unique2.map((id13) => {
-              const row = cache.get(keyOf4(source, options, id13));
-              return valid3(row, source, options, id13) && (!forced.has(source) || row.fetchedAt >= startedAt) ? row : void 0;
+            values8 = unique2.map((id14) => {
+              const row = cache.get(keyOf4(source, options, id14));
+              return valid3(row, source, options, id14) && (!forced.has(source) || row.fetchedAt >= startedAt) ? row : void 0;
             });
           }
           quotes[source] = values8.map((row) => lifetime2(row, quoteTtlMs));
@@ -37506,14 +37809,14 @@ ${version ?? ""}`;
         }
         const prices = {}, references = {};
         let expiresAt = null;
-        for (const [index, id13] of unique2.entries()) {
+        for (const [index, id14] of unique2.entries()) {
           const pair = Object.fromEntries(["futgg", "futbin"].map((source) => [
             source,
             requested.includes(source) ? structuredClone(quotes[source][index]) : {
               schema: 2,
               source,
               ...baseOptions,
-              definitionId: id13,
+              definitionId: id14,
               price: null,
               fetchedAt: now(),
               sourceUpdatedAt: null,
@@ -37522,9 +37825,9 @@ ${version ?? ""}`;
             }
           ]));
           const ref = galleryReferenceQuote(Object.fromEntries(Object.entries(pair).map(([source, row]) => [source, row && !row.error && row.expiresAt > now() ? row.price : null])), policy);
-          references[id13] = { ...ref, definitionId: id13, season, platform, quotes: pair };
+          references[id14] = { ...ref, definitionId: id14, season, platform, quotes: pair };
           if (ref.estimate !== null) {
-            prices[id13] = ref.estimate;
+            prices[id14] = ref.estimate;
             expiresAt = Math.min(expiresAt ?? Infinity, pair[policy.source].expiresAt);
           }
         }
@@ -37537,7 +37840,7 @@ ${version ?? ""}`;
           source: "public-references",
           expiresAt,
           ...deadlineAt !== null ? { budgetExpired } : {},
-          missingIds: unique2.filter((id13) => !Object.hasOwn(prices, id13)),
+          missingIds: unique2.filter((id14) => !Object.hasOwn(prices, id14)),
           staleIds: [],
           stale: false
         };
@@ -37560,7 +37863,7 @@ ${version ?? ""}`;
     deadlineAt = null
   } = {}) {
     const rating = players.find((row) => ids2.includes(row?.definitionId ?? row?.eaId))?.rating;
-    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || typeof cacheOnly !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id13) => !Number.isSafeInteger(id13) || id13 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id13 && row.rating === rating))) {
+    if (season !== "27" || !["pc", "console"].includes(platform) || !Number.isSafeInteger(quoteTtlMs) || deadlineAt !== null && (!Number.isSafeInteger(deadlineAt) || deadlineAt < 0) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || typeof force !== "boolean" || typeof cacheOnly !== "boolean" || !Number.isSafeInteger(rating) || rating < 1 || rating > 99 || !ids2.length || ids2.length > 250 || ids2.some((id14) => !Number.isSafeInteger(id14) || id14 <= 0 || !players.some((row) => (row.definitionId ?? row.eaId) === id14 && row.rating === rating))) {
       throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
     }
     const found = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
@@ -37605,8 +37908,8 @@ ${version ?? ""}`;
         })) });
         while (cache.size > 256) cache.delete(cache.keys().next().value);
       }
-      const newCount = [...pageIds].filter((id13) => !seen.has(id13)).length;
-      for (const id13 of pageIds) seen.add(id13);
+      const newCount = [...pageIds].filter((id14) => !seen.has(id14)).length;
+      for (const id14 of pageIds) seen.add(id14);
       if (!newCount || rows.length < 32) break;
     }
     return { rows: [...found.values()], requests };
@@ -37630,7 +37933,7 @@ ${version ?? ""}`;
       const task = mappingQueue.catch(() => {
       }).then(async () => {
         const ids2 = { ...await get(key2, {}) };
-        for (const [id13, previous] of Object.entries(removed)) if (ids2[id13] === previous) delete ids2[id13];
+        for (const [id14, previous] of Object.entries(removed)) if (ids2[id14] === previous) delete ids2[id14];
         Object.assign(ids2, learned);
         await set(key2, ids2);
       });
@@ -37777,7 +38080,7 @@ ${version ?? ""}`;
         season: captured.context.season,
         platform: captured.platform,
         policy,
-        rows: options.rows ?? ids2.map((id13) => rows.get(id13)).filter(Boolean),
+        rows: options.rows ?? ids2.map((id14) => rows.get(id14)).filter(Boolean),
         isCurrent: () => {
           captured.assert();
           return options.isCurrent?.() ?? true;
@@ -37918,7 +38221,7 @@ ${version ?? ""}`;
           });
         }
         const policy = await policyStore.read(captured.scope), references = {};
-        const players = options.rows ?? record2.base?.purchases ?? ids2.map((id13) => rows.get(id13)).filter(Boolean);
+        const players = options.rows ?? record2.base?.purchases ?? ids2.map((id14) => rows.get(id14)).filter(Boolean);
         for (let start = 0; start < ids2.length; start += 250) {
           const snapshot = await load(ids2.slice(start, start + 250), { ...options, purpose: "purchase", rows: players, policy });
           Object.assign(references, snapshot.references);
@@ -38440,7 +38743,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return null;
       }
     };
-    const same31 = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
+    const same32 = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
     const setBusy = (value) => {
       busy = value;
       entry.disabled = value;
@@ -38476,7 +38779,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           menu.append(externalEntry);
         } else if (!menu) externalEntry.remove();
       }
-      if (origin && !same31(origin, target)) close();
+      if (origin && !same32(origin, target)) close();
       refreshClock();
     };
     const applySettings = (s) => {
@@ -38624,7 +38927,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       await readExternal();
     });
     on("external-refresh", () => {
-      if (!busy && origin && same31(origin, read())) return readExternal();
+      if (!busy && origin && same32(origin, read())) return readExternal();
     });
     on("save", async () => {
       if (busy) return;
@@ -38881,7 +39184,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       node("contribute").hidden = false;
     };
     on("external-prepare", async () => {
-      if (busy || !externalList?.keys().length || !origin || !same31(origin, read())) return;
+      if (busy || !externalList?.keys().length || !origin || !same32(origin, read())) return;
       const keys2 = externalList.keys(), serial = opened;
       setBusy(true);
       try {
@@ -38897,7 +39200,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
     });
     on("solve", async () => {
-      if (busy || !origin || !same31(origin, read())) return;
+      if (busy || !origin || !same32(origin, read())) return;
       resetProgress();
       node("review-stock").hidden = true;
       const serial = opened;
@@ -39956,20 +40259,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var fatalStreamlinedQuoteFailure = (reason) => /(?:CONTEXT_CHANGED|CANCELLED|PRICE_POLICY_CHANGED|_DISABLED|INPUT_INVALID)$/.test(reason ?? "");
   function streamlinedQuoteCoverage(references, source, ids2, at11) {
     const result = { requested: new Set(ids2).size, valid: 0, failed: 0, missing: 0 };
-    for (const id13 of new Set(ids2)) {
-      if (validStreamlinedQuote(references[id13]?.quotes?.[source], source, id13, at11)) result.valid++;
-      else if (references[id13]?.quotes?.[source]?.error) result.failed++;
+    for (const id14 of new Set(ids2)) {
+      if (validStreamlinedQuote(references[id14]?.quotes?.[source], source, id14, at11)) result.valid++;
+      else if (references[id14]?.quotes?.[source]?.error) result.failed++;
       else result.missing++;
     }
     return result;
   }
-  function validStreamlinedQuote(q, source, id13, at11) {
-    return q?.definitionId === id13 && q.source === source && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11;
+  function validStreamlinedQuote(q, source, id14, at11) {
+    return q?.definitionId === id14 && q.source === source && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11;
   }
   function streamlinedQuoteFailure(references, source, ids2, at11, { requireFresh = true } = {}) {
     let failure = null;
-    for (const id13 of ids2) {
-      const quote2 = references[id13]?.quotes?.[source];
+    for (const id14 of ids2) {
+      const quote2 = references[id14]?.quotes?.[source];
       if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") {
         if (fatalStreamlinedQuoteFailure(quote2.error)) return quote2.error;
         failure ??= quote2.error;
@@ -40000,7 +40303,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     });
   }
   function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
-    if (!integer5(expected.challengeId, 1) || !integer5(expected.setId, 1) || !integer5(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id13) => !integer5(id13, 1))) fail4("CONTRIBUTION_INPUT_INVALID");
+    if (!integer5(expected.challengeId, 1) || !integer5(expected.setId, 1) || !integer5(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id14) => !integer5(id14, 1))) fail4("CONTRIBUTION_INPUT_INVALID");
     const response = reply?.response, code2 = integer5(reply?.status, 100, 599) ? reply.status : null;
     const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
     const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
@@ -40206,7 +40509,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       })) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     }
     const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
-    if (ids2.some((id13) => !integer5(id13, 1))) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (ids2.some((id14) => !integer5(id14, 1))) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
     if (record.contribution) {
       const { batchPlan, material } = record.contribution;
       try {
@@ -40246,7 +40549,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       assertStreamlinedPlan(record.plan);
       if (record.plan.fingerprint !== record.fingerprint || !same2(record.plan.context, context) || !same2(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same2(record.plan.challenge, record.challenge) || !same2(record.plan.policy, record.policy)) fail4("PURCHASE_JOURNAL_INVALID");
     }
-    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same2(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer5(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer5(record.budget) || !integer5(record.spent) || record.spent > record.budget || !integer5(record.submittedScore) || !integer5(record.challenge?.id, 1) || !integer5(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer5(record.confirmedBatches) || !integer5(record.challenge?.targetScore, 1) || !integer5(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer5(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer5(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id13) => !integer5(id13, 1))) fail4("PURCHASE_JOURNAL_INVALID");
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same2(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer5(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer5(record.budget) || !integer5(record.spent) || record.spent > record.budget || !integer5(record.submittedScore) || !integer5(record.challenge?.id, 1) || !integer5(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer5(record.confirmedBatches) || !integer5(record.challenge?.targetScore, 1) || !integer5(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer5(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer5(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id14) => !integer5(id14, 1))) fail4("PURCHASE_JOURNAL_INVALID");
     for (const group of record.route.groups) {
       if (!["inventory", "market"].includes(group.source) || !integer5(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer5(group.item?.points, 1) || group.items.some((item2) => !integer5(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer5(item2.price, 150, 15e6) || !integer5(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer5(item2.id, 1))) fail4("PURCHASE_JOURNAL_INVALID");
     }
@@ -40883,11 +41186,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
                 purchaseAttempts = data.pricePolicy.purchaseAttempts ?? 3;
               }
               const at11 = now();
-              for (const id13 of ids2) {
-                const q = data.references?.[id13]?.quotes?.[quoteSource];
-                const old = references[id13]?.quotes?.[quoteSource];
-                if (q?.source === quoteSource && q.definitionId === id13 && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11 && (!old || q.fetchedAt > old.fetchedAt)) {
-                  references[id13] = { ...references[id13], quotes: { ...references[id13]?.quotes, [quoteSource]: q } };
+              for (const id14 of ids2) {
+                const q = data.references?.[id14]?.quotes?.[quoteSource];
+                const old = references[id14]?.quotes?.[quoteSource];
+                if (q?.source === quoteSource && q.definitionId === id14 && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11 && (!old || q.fetchedAt > old.fetchedAt)) {
+                  references[id14] = { ...references[id14], quotes: { ...references[id14]?.quotes, [quoteSource]: q } };
                 }
               }
             } catch (error2) {
@@ -41597,10 +41900,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (!Array.isArray(result.ids) || result.ids.length > 3e3) fail4("MARKET_CANDIDATES_UNVERIFIED");
         if (root.GAME_NAME !== "fc27" || typeof root.UTSearchCriteriaDTO !== "function" || typeof root.services?.Item?.searchConceptItems !== "function") fail4("MARKET_RUNTIME_UNVERIFIED");
         const contextKey2 = JSON.stringify(input.context), entities = /* @__PURE__ */ new Map(), missing = [];
-        for (const id13 of result.ids) {
-          const row = cache.get(`${contextKey2}:${id13}`);
-          if (row && now() - row.at < 3e5) entities.set(id13, row.entity);
-          else missing.push(id13);
+        for (const id14 of result.ids) {
+          const row = cache.get(`${contextKey2}:${id14}`);
+          if (row && now() - row.at < 3e5) entities.set(id14, row.entity);
+          else missing.push(id14);
         }
         for (let start = 0; start < missing.length; start += 100) {
           const batch = missing.slice(start, start + 100), seen = /* @__PURE__ */ new Set();
@@ -41622,7 +41925,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               entities.set(entity.definitionId, entity);
               cache.set(`${contextKey2}:${entity.definitionId}`, { at: now(), entity });
             }
-            if (rows.length < 250 || batch.every((id13) => seen.has(id13))) break;
+            if (rows.length < 250 || batch.every((id14) => seen.has(id14))) break;
             if (offset === 750) fail4("MARKET_READ_LIMIT");
           }
         }
@@ -41702,8 +42005,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
         const ids2 = filtered.items.map((row) => row.definitionId), checkedAt = now();
         const refreshWindowMs = Math.max(0, checkedAt - quotesStartedAt);
-        const staleIds = ids2.filter((id13) => {
-          const quote2 = references[id13]?.quotes?.[pricePolicy?.source];
+        const staleIds = ids2.filter((id14) => {
+          const quote2 = references[id14]?.quotes?.[pricePolicy?.source];
           return quote2?.price != null && Number.isSafeInteger(quote2.expiresAt) && quote2.expiresAt <= checkedAt + refreshWindowMs;
         });
         if (staleIds.length) record({
@@ -41729,10 +42032,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             futbinBatch: true,
             deadlineAt: quoteDeadlineAt,
             forceSources: [pricePolicy.source],
-            rows: batch.map((id13) => {
-              const raw = entities.get(id13);
+            rows: batch.map((id14) => {
+              const raw = entities.get(id14);
               return {
-                definitionId: id13,
+                definitionId: id14,
                 rating: raw?._rating,
                 nationId: raw?.nationId,
                 leagueId: raw?.leagueId,
@@ -41763,9 +42066,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const quoteAt = now();
         const quoteError = streamlinedQuoteFailure(references, pricePolicy?.source, ids2, quoteAt);
         if (quoteError) {
-          const invalidIds = ids2.filter((id13) => streamlinedQuoteFailure(references, pricePolicy?.source, [id13], quoteAt));
-          for (const id13 of invalidIds.slice(0, 3)) {
-            const quote2 = references[id13]?.quotes?.[pricePolicy?.source];
+          const invalidIds = ids2.filter((id14) => streamlinedQuoteFailure(references, pricePolicy?.source, [id14], quoteAt));
+          for (const id14 of invalidIds.slice(0, 3)) {
+            const quote2 = references[id14]?.quotes?.[pricePolicy?.source];
             record({
               source: pricePolicy?.source,
               phase: "validate",
@@ -41773,7 +42076,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               reason: quoteError,
               requestedCount: ids2.length,
               count: invalidIds.length,
-              definitionId: id13,
+              definitionId: id14,
               fetchedAt: quote2?.fetchedAt,
               expiresAt: quote2?.expiresAt,
               durationMs: Math.max(0, quoteAt - quotesStartedAt)
@@ -42550,7 +42853,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       async request(action, target, beforeDispatch) {
         if (busy || stopped) fail4("TRANSPORT_BLOCKED");
         if (!["initiate", "contribute"].includes(action) || !integer5(target?.challengeId, 1) || typeof beforeDispatch !== "function" || canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
-        const id13 = target.challengeId;
+        const id14 = target.challengeId;
         const ids2 = action === "contribute" && Array.isArray(target?.itemIds) ? [...target.itemIds] : null;
         if (action === "contribute" && (!Array.isArray(ids2) || !ids2.length || ids2.length > 1e3 || ids2.some((value) => !integer5(value, 1)) || new Set(ids2).size !== ids2.length)) fail4("CONTRIBUTION_INPUT_INVALID");
         busy = true;
@@ -42564,7 +42867,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           req.doReauth = false;
           req.timeout = 1e4;
           req.requestType = "POST";
-          const endpoint = `/ut/game/${game}/sbs/challenge/${id13}${action === "contribute" ? "/item/submit" : ""}`;
+          const endpoint = `/ut/game/${game}/sbs/challenge/${id14}${action === "contribute" ? "/item/submit" : ""}`;
           req.setPath(endpoint);
           const url = new URL(ownData(req, "url"));
           if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) fail4("ENDPOINT_UNVERIFIED");
@@ -42888,7 +43191,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     if (typeof move !== "function" || root.ItemPile?.CLUB !== 7) fail4("MATERIALIZE_RUNTIME_UNVERIFIED");
     if (!same2(plan?.context, context) || typeof get !== "function" || typeof set !== "function") fail4("MATERIALIZE_JOURNAL_UNAVAILABLE");
     let busy = false;
-    const report = (stage, index, total, id13) => {
+    const report = (stage, index, total, id14) => {
       try {
         onProgress({
           phase: "materialize",
@@ -42897,7 +43200,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           completed: stage === "confirmed" ? index + 1 : index,
           total,
           materialTotal: total,
-          id: id13
+          id: id14
         });
       } catch {
       }
@@ -43249,13 +43552,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       verified();
       if (!same2(readFc27Context(root), context) || root.services?.SBC !== service || root.services?.Squad !== squad || service._evictSubmittedItems !== methods.evict || service.removeItemsById !== methods.removeFromSbc || squad.resetSquadsCache !== methods.resetSquads || root.events?.markClubCacheDirty !== methods.dirty) fail4("CACHE_RUNTIME_CHANGED");
     };
-    const item2 = (pile, id13) => {
+    const item2 = (pile, id14) => {
       const repo = ownData(ownData(root.repositories, "Item"), pile);
       const collection = ownData(ownData(repo, "items"), "_collection");
       if (pile === "club" && (!collection || typeof collection !== "object")) fail4("CACHE_UNVERIFIED");
       const storage = pile === "storage" ? ownData(repo, "_collection") : void 0;
       if (repo && !collection && !storage) fail4("CACHE_UNVERIFIED");
-      return ownData(collection ?? storage, String(id13));
+      return ownData(collection ?? storage, String(id14));
     };
     const validateRefs = (refs3, { preMaterialize = false } = {}) => {
       if (!Array.isArray(refs3) || new Set(refs3.map((ref) => ref.id)).size !== refs3.length || refs3.some((ref) => !integer5(ref.id, 1) || !integer5(ref.definitionId, 1) || !["club", "storage", "unassigned", "transfer"].includes(ref.pile) || ["unassigned", "transfer"].includes(ref.pile) && ref.executionPile !== "club" || ["club", "storage"].includes(ref.pile) && ref.executionPile !== void 0)) fail4("CACHE_UNVERIFIED");
@@ -43795,7 +44098,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         if (invalid4 || duplicate) fail4("PURCHASE_HOLDINGS_UNVERIFIED");
         if (itemId !== null && evolutionIds.has(itemId)) fail4("PURCHASE_MATERIAL_UNKNOWN");
         matched.push(...current2.filter((row) => itemId === null || row.id === itemId));
-        if (itemId !== null && matched.length || itemId === null && definitionIds.every((id13) => matched.some((row) => row.definitionId === id13))) return matched;
+        if (itemId !== null && matched.length || itemId === null && definitionIds.every((id14) => matched.some((row) => row.definitionId === id14))) return matched;
         if (rows.length < 250) return matched;
       }
       fail4("PURCHASE_HOLDINGS_UNVERIFIED");
@@ -44015,7 +44318,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     freeSlots,
     blockedDefinitions = []
   } = {}) {
-    if (!Array.isArray(route?.groups) || !integer5(limit, 1, 1e3) || !integer5(submittedScore) || !integer5(targetScore, 1) || !integer5(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id13) => integer5(id13, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer5(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail4("WAVE_INPUT_INVALID");
+    if (!Array.isArray(route?.groups) || !integer5(limit, 1, 1e3) || !integer5(submittedScore) || !integer5(targetScore, 1) || !integer5(freeSlots, 0, 2e4) || ![consumedIds, heldDefinitions, blockedDefinitions].every((rows) => Array.isArray(rows) && rows.every((id14) => integer5(id14, 1))) || !Array.isArray(fulfilled) || fulfilled.some((n) => !integer5(n)) || !Array.isArray(ready) || ready.length > limit || new Set(ready.map((r) => r.item?.id)).size !== ready.length) fail4("WAVE_INPUT_INVALID");
     const material = [], purchases = [], blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
     let points = submittedScore, capacity = freeSlots;
     const append = (row) => {
@@ -45006,7 +45309,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.99" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.100" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -45039,48 +45342,48 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return "";
       }
     },
-    filter: (kind, id13) => {
+    filter: (kind, id14) => {
       try {
-        const value = Number(id13), util = unsafeWindow.AssetLocationUtils;
+        const value = Number(id14), util = unsafeWindow.AssetLocationUtils;
         const type = util?.FILTER?.[String(kind).toUpperCase()];
         return Number.isSafeInteger(value) && value > 0 && type ? util.getFilterImage(type, value) : "";
       } catch {
         return "";
       }
     },
-    club: (id13) => {
+    club: (id14) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.CLUB, Number(id13)) || "";
+        return u?.getFilterImage(u.FILTER.CLUB, Number(id14)) || "";
       } catch {
         return "";
       }
     },
-    league: (id13) => {
+    league: (id14) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.LEAGUE, Number(id13)) || "";
+        return u?.getFilterImage(u.FILTER.LEAGUE, Number(id14)) || "";
       } catch {
         return "";
       }
     },
-    rarity: (id13) => {
+    rarity: (id14) => {
       try {
-        const rarity = unsafeWindow.repositories?.Rarity?.get?.(Number(id13));
+        const rarity = unsafeWindow.repositories?.Rarity?.get?.(Number(id14));
         const u = unsafeWindow.AssetLocationUtils;
         if (!rarity || typeof u?.getShellUri !== "function") return "";
         const size = unsafeWindow.ItemViewSize?.LARGE;
         const tier = rarity.levels ? unsafeWindow.ItemRatingTier?.GOLD : unsafeWindow.ItemRatingTier?.NONE;
         if (size == null || tier == null || typeof rarity.getGuid !== "function") return "";
-        return u.getShellUri(size, 1, Number(rarity.id ?? id13), tier, rarity.getGuid()) || "";
+        return u.getShellUri(size, 1, Number(rarity.id ?? id14), tier, rarity.getGuid()) || "";
       } catch {
         return "";
       }
     },
-    nation: (id13) => {
+    nation: (id14) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
-        return u?.getFilterImage(u.FILTER.NATION, Number(id13)) || "";
+        return u?.getFilterImage(u.FILTER.NATION, Number(id14)) || "";
       } catch {
         return "";
       }
@@ -45090,17 +45393,17 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       const rarityCategory = key2.includes("rarit");
       if (rarityCategory) return [...new Set(sets2.flatMap((set) => galleryAssets.set(set.name, { slug: "rarities" }, set)))];
       const ids2 = key2.includes("england") || key2.includes("premier") || key2.includes("wsl") ? [13, 2216] : key2.includes("spain") || key2.includes("laliga") || key2.includes("liga-f") || key2.includes("la-liga") ? [53, 2222] : key2.includes("germany") || key2.includes("bundesliga") ? [19, 2215] : key2.includes("france") || key2.includes("ligue") || key2.includes("arkema") ? [16, 2218] : key2.includes("italy") || key2.includes("serie-a") || key2.includes("serie a") ? [31] : key2.includes("leagues") || key2 === "league" ? [13, 53, 19, 2215, 16, 31] : [];
-      return ids2.map((id13) => rarityCategory ? galleryAssets.rarity(id13) : galleryAssets.league(id13)).filter(Boolean);
+      return ids2.map((id14) => rarityCategory ? galleryAssets.rarity(id14) : galleryAssets.league(id14)).filter(Boolean);
     },
     set: (name2, category = {}, set = {}, pool = []) => {
       try {
         const kind = category.slug === "leagues" ? "LEAGUE" : category.slug === "rarities" ? "RARITY" : "CLUB";
-        const idsFor = (values8) => [...new Set((values8 ?? []).map(Number))].filter((id13) => Number.isSafeInteger(id13) && id13 > 0);
+        const idsFor = (values8) => [...new Set((values8 ?? []).map(Number))].filter((id14) => Number.isSafeInteger(id14) && id14 > 0);
         const explicit = idsFor(set.conditions?.[kind === "LEAGUE" ? "leagues" : kind === "RARITY" ? "rareflags" : "clubs"]);
         if (kind === "RARITY" && (set.slug === "holographics" || set.conditions?.holo === true)) {
           return [galleryAssets.rarity(12)].filter(Boolean);
         }
-        if (explicit.length) return explicit.map((id13) => kind === "RARITY" ? galleryAssets.rarity(id13) : galleryAssets.filter(kind, id13)).filter(Boolean);
+        if (explicit.length) return explicit.map((id14) => kind === "RARITY" ? galleryAssets.rarity(id14) : galleryAssets.filter(kind, id14)).filter(Boolean);
         if (kind !== "CLUB") {
           const leagueIds = {
             "premier-league": [13],
@@ -45131,10 +45434,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             loaded = (Array.isArray(rows2) ? rows2 : Object.values(rows2)).filter((row) => {
               const rowName = normalize3(row?.label ?? row?.name ?? row?.sortName);
               return rowName === nameValue || rowName === wanted;
-            }).map((row) => Number(row?.id ?? row?.leagueId ?? row?.eaId)).filter((id13) => Number.isSafeInteger(id13) && id13 > 0);
+            }).map((row) => Number(row?.id ?? row?.leagueId ?? row?.eaId)).filter((id14) => Number.isSafeInteger(id14) && id14 > 0);
           }
           const ids3 = known ?? (loaded.length ? [...new Set(loaded)] : uniform ? observed : []);
-          return ids3.map((id13) => kind === "RARITY" ? galleryAssets.rarity(id13) : galleryAssets.filter(kind, id13)).filter(Boolean);
+          return ids3.map((id14) => kind === "RARITY" ? galleryAssets.rarity(id14) : galleryAssets.filter(kind, id14)).filter(Boolean);
         }
         const raw = unsafeWindow.repositories?.TeamConfig?.getTeams?.() ?? [];
         const teams = Array.isArray(raw) ? raw : raw && typeof raw[Symbol.iterator] === "function" ? [...raw] : Object.values(raw);
@@ -45142,13 +45445,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const needle = normalize2(name2);
         const rows = teams.map((team) => ({ team, value: normalize2(team?.name ?? team?.sortName ?? team?.label) })).filter((row) => row.value && row.value === needle);
         const ids2 = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId)).filter((value) => Number.isSafeInteger(value) && value > 0).slice(0, 3);
-        return (ids2.length ? [...new Set(ids2)] : idsFor(pool.slice(0, 3).map((item2) => item2.clubEaId))).map((id13) => galleryAssets.club(id13)).filter(Boolean);
+        return (ids2.length ? [...new Set(ids2)] : idsFor(pool.slice(0, 3).map((item2) => item2.clubEaId))).map((id14) => galleryAssets.club(id14)).filter(Boolean);
       } catch {
         return [];
       }
     }
   });
-  var galleryPrices = (id13) => readCachedGalleryPrice(unsafeWindow, id13);
+  var galleryPrices = (id14) => readCachedGalleryPrice(unsafeWindow, id14);
   var galleryTransport = createFc27GalleryTransport(GM_xmlhttpRequest, { diagnosticLog });
   var publicPrices = createFc27PublicPrices({
     root: unsafeWindow,
@@ -45358,8 +45661,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.99"}`,
-    version: "27.0.99",
+    title: `FC Automation Tool ${"27.0.100"}`,
+    version: "27.0.100",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

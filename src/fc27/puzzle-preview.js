@@ -5,6 +5,44 @@ import { createFc27PuzzlePartialChemistryBound, evaluateFc27PuzzleRating } from 
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
+const PUZZLE_SEARCH_STAGES = Object.freeze([50000, 100000, 200000]);
+const searchBudgets = new WeakSet();
+
+// One planning run owns this ledger. Traversals keep their own DFS stacks and
+// fixed lane ceilings; only actual work advances the cumulative stage.
+export function createFc27PuzzleSearchBudget() {
+  let nodes = 0, stage = 0, feasible = false;
+  const snapshot = () => ({ budgetNodes: nodes, maxNodes: PUZZLE_SEARCH_STAGES[stage],
+    budgetStage: stage + 1, budgetStages: PUZZLE_SEARCH_STAGES.length, nodeCap: PUZZLE_SEARCH_STAGES.at(-1) });
+  const budget = Object.freeze({
+    cap: PUZZLE_SEARCH_STAGES.at(-1),
+    snapshot,
+    remaining: () => Math.max(0, (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)) - nodes),
+    markFeasible: () => { feasible = true; },
+    takeNode: () => {
+      if (nodes === PUZZLE_SEARCH_STAGES[stage]) {
+        if (feasible || stage === PUZZLE_SEARCH_STAGES.length - 1) return false;
+        stage++;
+      }
+      nodes++;
+      return true;
+    },
+    // Fixed refinement work shares the hard cap, never an adaptive allowance.
+    // Callers first clamp their unchanged fixed limit to remaining capacity.
+    accountFixed: count => {
+      if (!Number.isSafeInteger(count) || count < 0 || nodes + count > (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)))
+        throw new Error('FC27_PUZZLE_BUDGET_INVALID');
+      nodes += count;
+      while (stage < PUZZLE_SEARCH_STAGES.length - 1 && nodes > PUZZLE_SEARCH_STAGES[stage]) stage++;
+    },
+  });
+  searchBudgets.add(budget);
+  return budget;
+}
+
+const isFc27PuzzleSearchBudget = budget => searchBudgets.has(budget);
+export { isFc27PuzzleSearchBudget };
+
 const DEFAULT_MAX_NODES = 50000;
 // EA amount domain only; keep the detached solver independent of procurement
 // policy/transport dependencies. Priced-joint boundary tests lock agreement.
@@ -101,10 +139,11 @@ function ruleNeedsTeamFacts(rules) {
     'min-chemistry', 'max-chemistry', 'exact-chemistry'].includes(rule.kind));
 }
 
-function evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, validate, searchPositions }) {
+function* evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, validate, searchPositions }) {
   let found = null; let unavailable = null; let exhausted = false;
-  const evaluate = ordered => {
+  const evaluate = function* (ordered) {
     if (!takeNode('evaluations')) { exhausted = true; return; }
+    yield;
     let facts;
     try {
       const brickIndices = Array.from({ length: formation?.slotCount ?? 0 }, (_, index) => index)
@@ -134,36 +173,38 @@ function evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, 
   const preferred = chosen.slice();
   if (searchPositions) {
     const assigned = Array(slots.length).fill(-1);
-    const augment = (itemIndex, visited) => {
+    const augment = function* (itemIndex, visited) {
       if (!takeNode('placementNodes')) { exhausted = true; return false; }
+      yield;
       for (let slot = 0; slot < slots.length; slot++) {
         if (visited.has(slot) || !fits(chosen[itemIndex], slot)) continue;
         visited.add(slot);
-        if (assigned[slot] === -1 || augment(assigned[slot], visited)) {
+        if (assigned[slot] === -1 || (yield* augment(assigned[slot], visited))) {
           assigned[slot] = itemIndex; return true;
         }
         if (exhausted) return false;
       }
       return false;
     };
-    for (let index = 0; index < chosen.length && !exhausted; index++) augment(index, new Set());
+    for (let index = 0; index < chosen.length && !exhausted; index++) yield* augment(index, new Set());
     if (exhausted) return { found, unavailable, exhausted };
     const used = new Set(assigned.filter(index => index !== -1));
     const fillers = chosen.filter((_item, index) => !used.has(index));
     assigned.forEach((itemIndex, slot) => { preferred[slot] = itemIndex === -1 ? fillers.shift() : chosen[itemIndex]; });
   }
-  evaluate(preferred);
+  yield* evaluate(preferred);
   if (found || unavailable || exhausted || !searchPositions) return { found, unavailable, exhausted };
   // Constrained positions first, preferred positions before off-position fillers.
   // Off-position is legal in SBCs and must never be pruned solely for being off.
   const order = slots.map((_slot, index) => index).sort((a, b) =>
     chosen.filter(item => fits(item, a)).length - chosen.filter(item => fits(item, b)).length || a - b);
   const arranged = Array(chosen.length); const used = new Set();
-  const visit = depth => {
+  const visit = function* (depth) {
     if (found || unavailable || exhausted) return;
     if (!takeNode('placementNodes')) { exhausted = true; return; }
+    yield;
     if (depth === order.length) {
-      if (!arranged.every((item, index) => item === preferred[index])) evaluate(arranged);
+      if (!arranged.every((item, index) => item === preferred[index])) yield* evaluate(arranged);
       return;
     }
     const slotIndex = order[depth];
@@ -171,10 +212,10 @@ function evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode, 
       .sort((a, b) => Number(fits(chosen[b], slotIndex)) - Number(fits(chosen[a], slotIndex)) || a - b);
     for (const index of choices) {
       if (found || unavailable || exhausted) break;
-      used.add(index); arranged[slotIndex] = chosen[index]; visit(depth + 1); used.delete(index);
+      used.add(index); arranged[slotIndex] = chosen[index]; yield* visit(depth + 1); used.delete(index);
     }
   };
-  visit(0);
+  yield* visit(0);
   return { found, unavailable, exhausted };
 }
 
@@ -252,8 +293,8 @@ export const previewFc27PuzzleSquadCooperatively = (input, options) =>
   finishPuzzleSearchCooperatively(iterateFc27PuzzleSquad(input), options);
 
 export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
-  maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null } = {}) {
-  if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
+  maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, searchBudget = null } = {}) {
+  if (!integer(maxNodes, 1, 250000) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   if (challenge?.mechanism !== 'traditional-puzzle') return blocked('CHALLENGE_UNVERIFIED');
   const required = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
   // Reuse the exact existing safety gates. This cardinality-only view is never
@@ -263,7 +304,7 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
   } });
   if (pool.status !== 'candidates') return pool;
   const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
-  return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress });
+  return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress, searchBudget });
 }
 
 export function* iterateFc27PuzzleCandidateRoutes(input) {
@@ -505,8 +546,8 @@ export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc2
 
 export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null,
-  materialRules = [], nativeQualityFallback = false, costFirst = false, ratingFirst = false } = {}) {
-  if (!integer(maxNodes, 1, 250000)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
+  materialRules = [], nativeQualityFallback = false, costFirst = false, ratingFirst = false, searchBudget = null } = {}) {
+  if (!integer(maxNodes, 1, 250000) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   // Planning amounts use the same public-price domain as procurement: at
   // most eleven slots, each up to EA's 15m ceiling. This is not spend approval.
@@ -741,16 +782,19 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     const now = Date.now();
     if (!force && (nodes % 256 !== 0 || now - lastProgressAt < 100)) return;
     lastProgressAt = now;
-    try { onProgress({ phase: lastNodeKind, nodes, maxNodes, search: { ...search },
+    try { onProgress({ phase: lastNodeKind, nodes, maxNodes, search: { ...search }, ...(searchBudget?.snapshot() ?? {}),
       safeCandidates: candidates.length, required }); } catch { /* Progress presentation cannot affect the search. */ }
   };
   let lastProgressAt = 0;
   let lastNodeKind = 'combination';
   const takeNode = kind => {
-    if (nodes >= maxNodes) { exhausted = true; return false; }
+    const previousStage = searchBudget?.snapshot().budgetStage;
+    if (nodes >= maxNodes || searchBudget && !searchBudget.takeNode()) { exhausted = true; return false; }
     nodes++; search[kind]++; lastNodeKind = kind === 'combinationNodes' ? 'combination'
       : kind === 'placementNodes' ? 'placement' : kind === 'evaluations' ? 'evaluation' : 'bounds';
-    reportProgress(); return true;
+    const budget = searchBudget?.snapshot();
+    reportProgress(Boolean(budget && (budget.budgetStage !== previousStage || budget.budgetNodes === budget.maxNodes)));
+    return true;
   };
   const needsFacts = ruleNeedsTeamFacts(parsed.rules);
   const ratingRules = parsed.rules.filter(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating'].includes(rule.kind));
@@ -833,7 +877,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
           if (placementNodes >= placementCap) { deferredPlacements = true; return false; }
           placementNodes++; return takeNode(kind);
         };
-        const result = evaluatePlacement({ chosen, slots,
+        const result = yield* evaluatePlacement({ chosen, slots,
           formation: { ...challenge.formation, slotCount: challenge.slotCount }, evaluateSquad,
           takeNode: placementNode, validate, searchPositions });
         found = result.found; unavailable = result.unavailable;
@@ -842,6 +886,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
         if (validation.status === 'blocked') unavailable = validation.reason;
         if (validation.status === 'satisfied') found = { items: chosen.slice(), facts: { chemistry: null, teamRating: null }, validation };
       }
+      if (found) searchBudget?.markFeasible();
       if (procurement && found) {
         // `spent` is the objective cost used by the branch bound.  In
         // material-value mode it includes the reference value of owned cards,

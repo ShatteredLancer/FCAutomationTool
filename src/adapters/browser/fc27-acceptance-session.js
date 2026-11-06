@@ -416,7 +416,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         if (inputs.squadEmpty === true && (compareOwnedCost || ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(preview.reason))) {
           progress('procurement');
-          const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling,
+          const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling, adaptiveSearch: true,
             optimizeMaterialValue: purchaseSettings.objective === 'material-value',
             materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
             ownedIncumbent: compareOwnedCost ? preview : null,
@@ -1014,6 +1014,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           source: d?.failureSource, phase: d?.stage, transportPhase: d?.failurePhase, route: d?.route, httpStatus: d?.httpStatus,
           requests: purchase.requests, catalogAttempts: d?.catalogAttempts, quoteAttempts: d?.quoteAttempts,
           count: d?.catalogCandidates, evaluations: d?.nodes, localReason: d?.localReason,
+          budgetNodes: d?.budgetNodes, maxNodes: d?.maxNodes, budgetStage: d?.budgetStage,
+          budgetStages: d?.budgetStages, nodeCap: d?.nodeCap,
           objective: d?.objective, materialValue: d?.materialValue,
           unknownCount: d?.unknownCount, scopeTruncated: d?.scopeTruncated,
           combinationNodes: d?.search?.combinationNodes, placementNodes: d?.search?.placementNodes,

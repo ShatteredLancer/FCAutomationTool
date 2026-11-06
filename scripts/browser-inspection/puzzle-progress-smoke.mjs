@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import path from 'node:path';
+import { exercisePuzzleAdaptiveProgress } from './puzzle-adaptive-progress-smoke.mjs';
 
 export async function exercisePuzzleProgress(context) {
   const page = await context.newPage();
@@ -65,4 +66,5 @@ export async function exercisePuzzleProgress(context) {
     console.log('Puzzle cooperative progress smoke passed: trusted button, painted node updates, same 50000 budget, no EA access.');
     console.log('Puzzle browser scheduling passed: default pure solver avoids simulated hidden-tab zero-timer clamping and retains context checks.');
   } finally { await page.close(); }
+  await exercisePuzzleAdaptiveProgress(context);
 }

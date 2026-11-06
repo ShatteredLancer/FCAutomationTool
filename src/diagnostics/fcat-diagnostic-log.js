@@ -37,6 +37,7 @@ const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'co
   'marketBronzeCandidates', 'marketSilverCandidates', 'marketGoldCandidates',
   'purchasedBronzeCount', 'purchasedSilverCount', 'purchasedGoldCount',
   'combinationNodes', 'placementNodes', 'evaluationNodes', 'boundNodes', 'strategyAttempts',
+  'budgetNodes', 'maxNodes', 'budgetStage', 'budgetStages', 'nodeCap',
   'incumbentCandidateCount', 'incumbentSelectedCount',
   'targetScore', 'currentScore', 'cycleCountBefore', 'cycleCountAfter', 'requiredSlots', 'quotedCount', 'eaScoreCount', 'catalogScoreCount', 'responseBytes',
   'wrongPileCount', 'identityMismatchCount', 'factoryMismatchCount',

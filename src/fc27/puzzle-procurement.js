@@ -1,5 +1,5 @@
 import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
-  finishPuzzleSearch, finishPuzzleSearchCooperatively } from './puzzle-preview.js';
+  finishPuzzleSearch, finishPuzzleSearchCooperatively, isFc27PuzzleSearchBudget } from './puzzle-preview.js';
 import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
@@ -7,6 +7,7 @@ import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResol
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 import { planPuzzleNationalityAffinity,planPuzzleLeagueMinimumAffinity } from './puzzle-query-affinity.js';
+import { planPuzzleCappedNationClubFillers } from './puzzle-club-diversity-route.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const seeds = new WeakMap();
@@ -561,6 +562,9 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
       if (queries.length >= 3) break;
       add(query);
     }
+    const diversified=planPuzzleCappedNationClubFillers({rules:parsed.rules,required:required(input),candidates,
+      level:tiers[0],usedQueries,pendingQueries:queries,resolveClub,formation:input.challenge.formation,brickIndices:input.challenge.brickIndices});
+    if(diversified){for(const query of diversified)push(query);return {status:'ready',executable:false,queries,complete:false};}
     const counts = new Map();
     for (const item of candidates) counts.set(item.nationId, (counts.get(item.nationId) ?? 0) + 1);
     const nation = nations[0] ?? [...counts].sort((a,b) => b[1]-a[1] || a[0]-b[0])[0]?.[0];
@@ -808,10 +812,13 @@ export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
 export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
-  costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null } = {}) {
+  costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null,
+  searchBudget = null } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
-  if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > 50000) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
+  if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
+    return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
+  if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > (searchBudget?.cap ?? 50000)) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (!Number.isSafeInteger(localSearchBudget) || localSearchBudget < 1 || localSearchBudget > 4000)
     return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
@@ -890,14 +897,15 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
       optimalWithinPool: false, estimatedCost: addedCost, ...values, safeCandidates: candidates.length,
       search: { evaluations: localNodes }, priceSource, marketWideInfeasibilityProven: false };
   }
-  const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes,
+  const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes, searchBudget,
     pool: { ...pool, candidates },
     procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
       costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: required(input),
       priceAware: prices instanceof Map, objective,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1
         : materialPrices ? materialPrices.get(item.definitionId) : 0 },
-    onProgress: onProgress ? value => onProgress({ ...value, nodes: localNodes + value.nodes, maxNodes }) : null })
+    onProgress: onProgress ? value => onProgress({ ...value, nodes: localNodes + value.nodes, maxNodes,
+      ...(searchBudget?.snapshot() ?? {}) }) : null })
     : { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT', nodes: 0 };
   const localPlan = local ? { ...local.preview, ...planMetrics(local.preview) } : null;
   const resultPlan = result.status === 'preview' ? { ...result, ...planMetrics(result) } : null;

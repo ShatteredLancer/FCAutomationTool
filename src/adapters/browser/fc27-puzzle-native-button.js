@@ -9,6 +9,10 @@ export const formatFc27PuzzleProgress = progress => {
   const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
   const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);
   const lines = [hasBudget ? `${stage}\n节点 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
+  if (Number.isSafeInteger(progress.budgetStage) && Number.isSafeInteger(progress.budgetStages)
+      && Number.isSafeInteger(progress.nodeCap)) {
+    lines.push(`搜索阶段 ${progress.budgetStage} / ${progress.budgetStages} · 总上限 ${progressCount(progress.nodeCap)}`);
+  }
   const search = progress.search;
   if (search && typeof search === 'object') {
     const parts = [['combinationNodes', '组合'], ['placementNodes', '阵位'], ['evaluations', '评估'], ['bounds', '剪枝']]
@@ -161,28 +165,56 @@ export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
   button.textContent = 'FCAT 解题填充'; button.title = '一键解题、复核并保存阵容，不提交 SBC';
   button.className = 'btn-standard call-to-action';
   button.style.cssText = 'display:block;width:calc(100% - 1rem);margin:.5rem auto;min-height:38px';
+  const cancel = document.createElement('button');
+  cancel.id = 'fcat-fc27-puzzle-cancel'; cancel.type = 'button'; cancel.textContent = '取消计算';
+  cancel.title = '停止本次解题计算；不用于中止已发送的保存请求';
+  cancel.className = 'btn-standard';
+  cancel.style.cssText = 'display:none;width:calc(100% - 1rem);margin:.5rem;min-height:38px';
+  cancel.hidden = true; cancel.disabled = true;
   const status = document.createElement('div'); status.id = 'fcat-fc27-puzzle-status';
   status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   status.style.cssText = 'margin:.5rem;text-align:center;white-space:pre-line;overflow-wrap:anywhere;font-size:13px;max-height:180px;overflow-y:auto';
-  let target = null; let busy = false; let disposed = false;
+  let target = null; let busy = false; let disposed = false; let activeRun = null;
+  const hideCancel = () => { cancel.hidden = true; cancel.disabled = true; cancel.style.display = 'none'; };
   const read = () => { try { return readTarget?.(); } catch { return null; } };
   const update = () => {
     const next = read();
-    if (!next?.anchor?.isConnected) { target = null; button.remove(); status.remove(); return; }
-    if (!sameTarget(next, target)) { status.textContent = ''; status.hidden = true; }
+    if (!next?.anchor?.isConnected) {
+      if (activeRun) activeRun.stale = true;
+      target = null; hideCancel(); button.remove(); cancel.remove(); status.remove(); return;
+    }
+    if (!sameTarget(next, target)) {
+      if (activeRun) activeRun.stale = true;
+      hideCancel(); status.textContent = ''; status.hidden = true;
+    }
     target = next;
     if (button.nextSibling !== next.anchor) next.anchor.before(button);
-    if (status.nextSibling !== button) button.before(status);
+    if (cancel.nextSibling !== button) button.before(cancel);
+    if (status.nextSibling !== cancel) cancel.before(status);
     button.disabled = busy;
   };
+  cancel.addEventListener('click', event => {
+    const run = activeRun;
+    if (!event.isTrusted || !busy || !run || !run.cancellable || run.boundary || !run.targetCurrent()) return;
+    run.cancelled = true; run.cancellable = false; hideCancel();
+    status.hidden = false; status.textContent = '正在取消计算…';
+  });
   button.addEventListener('click', async event => {
     if (!event.isTrusted || !target || busy || disposed || typeof onFill !== 'function') return;
     const next = read();
     if (!sameTarget(next, target)) { update(); return; }
     const origin = { ...next };
-    const isCurrent = () => !disposed && origin.anchor.isConnected && sameTarget(read(), origin);
+    const targetCurrent = () => !disposed && !run.stale && origin.anchor.isConnected && sameTarget(read(), origin);
+    const run = { cancelled: false, cancellable: false, boundary: false, stale: false, targetCurrent };
+    activeRun = run;
+    const isCurrent = () => !run.cancelled && targetCurrent();
     const onProgress = progress => {
       if (!isCurrent()) return;
+      const stage = typeof progress === 'string' ? progress : progress?.stage ?? progress?.phase;
+      if (!['planning', 'procurement'].includes(stage)) run.boundary = true;
+      run.cancellable = !run.boundary;
+      cancel.hidden = !run.cancellable; cancel.disabled = !run.cancellable;
+      cancel.style.display = run.cancellable ? 'block' : 'none';
       status.hidden = false; status.textContent = formatFc27PuzzleProgress(progress);
     };
     onProgress.wantsPuzzleProgress = true;
@@ -194,11 +226,15 @@ export function mountFc27PuzzleNativeButton({ document, onFill, readTarget,
     } catch {
       if (isCurrent()) { status.hidden = false; status.textContent = '填阵未完成，请查看后台记录。'; }
     } finally {
+      hideCancel(); activeRun = null;
+      if (run.cancelled && targetCurrent()) {
+        status.hidden = false; status.textContent = '已取消计算，未进入填阵保存。';
+      }
       busy = false; button.textContent = 'FCAT 解题填充';
       if (!disposed) update();
     }
   });
   update();
   const timer = schedule(update, 1000);
-  return () => { disposed = true; unschedule(timer); button.remove(); status.remove(); };
+  return () => { disposed = true; activeRun = null; hideCancel(); unschedule(timer); button.remove(); cancel.remove(); status.remove(); };
 }
