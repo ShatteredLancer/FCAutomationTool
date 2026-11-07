@@ -14,6 +14,7 @@ import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.
 import observation from '../fixtures/fc27-puzzle-plan-observation.json';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import * as procurement from '../../src/fc27/puzzle-procurement.js';
 
 const fsuSource = readFileSync(new URL('../../FSU_mod/【FSU】EAFC FUT WEB 增强器-26.09_mod.user.js', import.meta.url), 'utf8');
 const fsuBuyStart = fsuSource.indexOf('events.buyConceptPlayer = async');
@@ -233,6 +234,42 @@ it('does not display an expired owned baseline value after a failed market compa
   expect(result).toMatchObject({ status: 'filled', saved: true });
   expect(result.materialValue).toBeUndefined();
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+});
+
+it('saves the cheaper exact owned squad after optional refinement expires and final quotes renew', async () => {
+  const publicPrices = { load: vi.fn(async ids => ({ policy: { source: 'futgg' },
+    references: Object.fromEntries(ids.map(definitionId => [definitionId, { definitionId, season: '27', platform: 'pc',
+      quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source,
+        definitionId, season: '27', platform: 'pc', price: definitionId === 9123 ? 200 : 1000,
+        fetchedAt: Date.now(), sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
+  const x = fixture({ publicPrices });
+  const extra = { ...x.state.players[0], id: 9023, resourceId: 9123 };
+  x.state.players.push(extra);
+  x.root.repositories.Item.club.items._collection[extra.id] = x.root.factories.Item.createItem(extra);
+  await x.session.setPuzzlePolicy({ objective: 'material-value' });
+  const scope = traditionalJournalScope(readFc27Context(x.root));
+  for (const filters of [{ nation: 27, league: 10 }, { nation: 27 }, { league: 10 }]) {
+    const query = { start: 0, count: 20, level: 'bronze', ...filters };
+    x.data.set(`fcat-fc27-puzzle-market:${scope}:catalog:${JSON.stringify(query)}`, {
+      schema: 1, kind: 'catalog', query, at: Date.now(), state: 'observed', result: {
+        status: 'observed', source: 'ea-defid', season: '27', query, observedAt: Date.now(), entries: [],
+      },
+    });
+  }
+  const original = procurement.suggestFc27PuzzleJointPurchasesCooperatively;
+  const search = vi.spyOn(procurement, 'suggestFc27PuzzleJointPurchasesCooperatively').mockImplementation((input, entries, options) => {
+    vi.setSystemTime(Date.now() + 300001);
+    options.assertCurrent();
+    return original(input, entries, options);
+  });
+  try {
+    const result = await x.fill();
+    expect(result, JSON.stringify({ result, loads: publicPrices.load.mock.calls.map(([ids]) => ids), calls: x.calls })).toMatchObject({ status: 'filled', saved: true, submitted: false, materialValue: 10200 });
+    expect(x.state.saved.some(slot => slot.itemData?.id === extra.id)).toBe(true);
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+    expect(x.calls.some(call => call.kind === 'bid')).toBe(false);
+    expect(publicPrices.load.mock.calls.some(([ids]) => ids.length === 12 && ids.includes(9123))).toBe(true);
+  } finally { search.mockRestore(); }
 });
 
 it('keeps market failure evidence when a priced owned baseline is saved instead', async () => {

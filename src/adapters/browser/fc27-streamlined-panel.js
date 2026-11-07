@@ -106,7 +106,7 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
       'protection-slot-list': `原生主阵容卡位未完整核验（${number(evidence?.count)} / ${number(evidence?.requiredSlots)}）。请导出诊断排查。`,
       'protection-slot-id': '原生主阵容卡位中的物品标识未通过核验。请导出诊断排查。',
       'protection-fsu-roster': 'FSU 主阵容快照未读到或格式异常。请导出诊断排查。',
-      'protection-cache': '原生主阵容缓存缺失，且没有当前账号/主阵容的有效已核验快照。请导出诊断排查。',
+      'protection-cache': '原生主阵容缓存缺失，且没有当前账号/主阵容的有效已核验快照。请先在 Squads 打开当前主阵容，再返回刷新列表；仍失败时导出诊断。',
     };
     return `${labels[evidence?.phase] ?? '锁卡或当前主阵容信息尚未核验。请先打开 EA 主阵容，再返回生成方案；若仍报错，请导出诊断。'} 本次未投入新材料。`;
   }
@@ -365,7 +365,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       const c = result.challenge;
       node('target').textContent = `${c.name ?? 'Streamlined SBC'} · ${number(c.submittedScore)} / ${number(c.targetScore)} · 剩余 ${number(c.remainingScore)}`;
       const snapshot = await session.readExternalInventory(result.settings); if (serial !== opened) return;
-      if (snapshot.status !== 'observed') { node('status').textContent = streamlinedExecutionMessage(snapshot.reason); return; }
+      if (snapshot.status !== 'observed') { node('status').textContent = streamlinedExecutionMessage(snapshot.reason, null, snapshot.protectionFailure); return; }
       externalList = renderStreamlinedExternalSelection({ document, parent: node('result'), snapshot, renderCard,
         isBusy: () => busy, onSelection: keys => { node('external-prepare').disabled = busy || !keys.length; } });
       node('status').textContent = '选择球员后查看完整贡献顺序；此处不移动、不购买、不贡献。';
@@ -595,6 +595,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       renderResult(result);
       node('status').textContent = result.plan ? '贡献预览已生成，尚未移动或消耗。请核对 Club 前置及所选外部卡。'
         : streamlinedExecutionMessage(result.reason);
+      if (result.historyAction) showOutcome(result);
     } catch (error) { if (serial === opened) node('status').textContent = streamlinedExecutionMessage(safeReason(error)); }
     finally { setBusy(false); }
   });
@@ -626,8 +627,22 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     finally { setBusy(false); }
   });
   const showOutcome = result => {
+    if (result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' && !result.record) resetProgress();
     const canArchive = result.historyAction?.canArchive === true && typeof session.archiveHistory === 'function';
-    node('archive-history').hidden = !canArchive; node('history-note').hidden = !canArchive;
+    const archiveBlocked = result.historyAction?.canArchive === false && result.historyAction.kind === 'contribution';
+    node('archive-history').hidden = !canArchive; node('history-note').hidden = !canArchive && !archiveBlocked;
+    if (archiveBlocked) {
+      const labels = {
+        FC27_STREAMLINED_HISTORY_NO_CONFIRMED: '没有足够的已确认贡献证据。',
+        FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING: '仍有贡献请求结果未知，需要先核对回执。',
+        FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL: '旧任务包含购入材料或未结清的购卡记录，需先核对旧采购任务。',
+        FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED: '已确认标记缺少完整回执，或回执积分与记录不符。',
+        FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED: '旧任务出现过积分变化，尚不能确认实际贡献结果。',
+        FC27_STREAMLINED_HISTORY_NO_REMAINDER: '没有可取消的未发送余批。',
+        FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED: '余批带有请求或回执痕迹，不能当作从未发送。',
+      };
+      node('history-note').textContent = `暂不能结束旧任务：${labels[result.historyAction.reason] ?? '旧任务状态未核验。'} 请保留记录并导出诊断，不必反复点击恢复。`;
+    }
     if (canArchive) {
       const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
       const name = typeof old?.name === 'string' ? `「${old.name.slice(0, 160)}」` : '';
@@ -655,6 +670,14 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       'recovery-required': '结果尚未确认，请核对并恢复；不会重复贡献。', rejected: 'EA 拒绝了本次贡献，请重新规划。' };
     node('status').textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
       : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status;
+    if (archiveBlocked && result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED') {
+      const old = result.recovery;
+      node('status').textContent = `旧 SBC（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）尚未结束：已确认 ${number(old?.confirmedBatches)} 批、未发送 ${number(old?.waitingBatches)} 批、结果未知 ${number(old?.pendingWriteCount)} 批。阻断原因见下方。`;
+    }
+    if (canArchive && result.historyAction.kind === 'contribution'
+        && result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED') {
+      node('status').textContent = '旧贡献任务尚有未发送余批。请先点击“结束旧贡献余批并归档”，再刷新列表重新选择；本次尚未移动或消耗卡片。';
+    }
     if (result.warning?.reason === 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED') {
       node('status').textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
     }

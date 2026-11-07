@@ -80,6 +80,68 @@ function publicPrices(x, priceOf) {
       }])) }])) }));
 }
 
+it.each(['deadline', 'expiry'])('keeps the cheaper owned refinement after optional search %s', async mode => {
+  const x = fixture();
+  x.input.inventory.items[10].positions = [5];
+  const baseline = previewFc27PuzzleSquad(x.input);
+  const cheap = { ...x.input.inventory.items[0], id: 9001, definitionId: 9001 };
+  x.input.inventory.items.push(cheap);
+  let at = x.now;
+  const loadPublicPrices = vi.fn(async ids => publicPrices({ ...x, now: at }, id => id === 9001 ? 200 : 1000)(ids));
+  x.transport.readCatalogPage.mockImplementation(async query => {
+    at += mode === 'expiry' ? 300001 : 30001;
+    return { status: 'observed', season: '27', source: 'ea-defid', query, observedAt: at, entries: [] };
+  });
+  const result = await createFc27PuzzleProcurementSession({ ...x.options, now: () => at, loadPublicPrices })
+    .plan(x.input, { optimizeMaterialValue: true, ownedIncumbent: baseline });
+  expect(result.status, JSON.stringify(result)).toBe('suggested');
+  expect(result.plans[0]).toMatchObject({ purchaseCount: 0, estimatedCost: 0, materialValue: 10200 });
+  expect(result.plans[0].selectedOwned.some(item => item.id === cheap.id)).toBe(true);
+  expect(result.ownedBaseline.materialValue).toBe(11000);
+  expect(result.valueExpiresAt).toBeGreaterThan(at);
+  expect(result.ownedBaseline.valueExpiresAt).toBeGreaterThan(at);
+  expect(x.transport.readCatalogPage).toHaveBeenCalledOnce();
+  expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  expect(loadPublicPrices).toHaveBeenCalledTimes(mode === 'expiry' ? 2 : 1);
+  if (mode === 'expiry') expect(loadPublicPrices.mock.calls[1][0]).toHaveLength(12);
+});
+
+it.each(['increased', 'missing', 'expired', 'source-changed', '401', 'context-changed'])(
+  'revalidates the final owned comparison after expiry: %s', async mode => {
+    const x = fixture(); x.input.inventory.items[10].positions = [5];
+    const baseline = previewFc27PuzzleSquad(x.input);
+    x.input.inventory.items.push({ ...x.input.inventory.items[0], id: 9001, definitionId: 9001 });
+    let at = x.now, changed = false;
+    const loadPublicPrices = vi.fn(async ids => {
+      const refresh = at > x.now;
+      if (refresh && mode === '401') throw Error('FC27_MARKET_HTTP_401');
+      if (refresh && mode === 'context-changed') changed = true;
+      const snapshot = await publicPrices({ ...x, now: mode === 'expired' ? x.now : at }, id =>
+        id === 9001 ? refresh && mode === 'increased' ? 2000 : refresh && mode === 'missing' ? null : 200 : 1000)(ids);
+      if (refresh && mode === 'source-changed') snapshot.policy.source = 'futbin';
+      return snapshot;
+    });
+    x.transport.readCatalogPage.mockImplementation(async query => {
+      at += 300001;
+      return { status: 'observed', season: '27', source: 'ea-defid', query, observedAt: at, entries: [] };
+    });
+    const result = await createFc27PuzzleProcurementSession({ ...x.options, now: () => at, loadPublicPrices })
+      .plan(x.input, { optimizeMaterialValue: true, ownedIncumbent: baseline,
+        assertCurrent: () => { if (changed) throw Error('FC27_PUZZLE_FILL_INPUTS_CHANGED'); } });
+    if (mode === 'increased') {
+      expect(result).toMatchObject({ status: 'suggested', plans: [{ materialValue: 11000, purchaseCount: 0 }] });
+      expect(result.plans[0].selectedOwned.some(card => card.id === 9001)).toBe(false);
+    } else {
+      expect(result.status).toBe('blocked'); expect(result.plans).toEqual([]);
+      if (mode === '401') expect(result.reason).toBe('FC27_MARKET_HTTP_401');
+      if (mode === 'context-changed') expect(result.reason).toBe('FC27_PUZZLE_FILL_INPUTS_CHANGED');
+      if (mode === 'source-changed') expect(result.reason).toBe('FC27_PUBLIC_PRICE_POLICY_INVALID');
+    }
+    expect(loadPublicPrices).toHaveBeenCalledTimes(2);
+    expect(x.transport.readCatalogPage).toHaveBeenCalledOnce();
+    expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+  });
+
 it.each(['mixed', 'no-rating', 'native-gold-quality', 'native-exact-gold-count'])('compares a cheap lower-tier league route without bypassing %s', async mode => {
   // Live FUTNEXT Set78/121 illustrates 5 capped gold + 6 bronze at rating75/
   // chem26. IDs, positions, clubs and prices here are synthetic, not its squad.

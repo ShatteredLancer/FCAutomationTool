@@ -17,7 +17,11 @@ export function readFc27RunnerPolicy(root, maxRating = 74) {
 // existing 74/83 contract; neither path raises the cap to satisfy a Challenge.
 export function readFc27PuzzlePolicy(root, maxRating = 82, { protectRoster = true } = {}) {
   if (!Number.isSafeInteger(maxRating) || maxRating < 1 || maxRating > 99) throw new Error('FC27_PUZZLE_POLICY_INVALID');
-  const report = inspectFc27RunnerInputs(root);
+  // Search checks this policy at every cooperative boundary. Inventory counts
+  // are diagnostic only: material loading/verification has its own boundary.
+  // Keep all live readiness/settings/protection reads, without rebuilding the
+  // entire Club DTO just to discard its counts on each check.
+  const report = inspectFc27RunnerInputs(root, { includeInventoryDiagnostics: false });
   if (report.status !== 'observed') throw new Error(report.reason);
   const leagues = ownData(ownData(ownData(root, 'info'), 'set'), 'shield_league');
   const protection = protectRoster ? readFc27StreamlinedProtection(root) : null;
@@ -79,7 +83,7 @@ export function readFc27ChallengeTargets(root) {
 }
 
 // Diagnostic projection only: do not invoke FSU methods, expose identities or promote cached inventory.
-export function inspectFc27RunnerInputs(root) {
+export function inspectFc27RunnerInputs(root, { includeInventoryDiagnostics = true } = {}) {
   const report = { schema: 1, status: 'blocked', reason: 'FC27_CONTEXT_UNAVAILABLE',
     liveExecutionEnabled: false, contextVerified: false, fsu: null, club: null, inProgressChallenges: null };
   try {
@@ -108,9 +112,11 @@ export function inspectFc27RunnerInputs(root) {
     report.fsu.policy = { onlyUntradeable: flags[0], excludeEvolution: flags[1], excludeDesignatedLeagues: flags[2],
       storageFirst: flags[3], goldRange: [75, goldenMax], excludedLeagueCount: flags[2] ? new Set(leagues).size : 0 };
     if (!report.fsu.targetedValidationAvailable) throw new Error('FC27_FSU_VALIDATION_UNAVAILABLE');
-    const club = readFc27CachedClub(root);
-    report.club = { status: club.status, complete: club.complete, cachedEntries: club.cachedEntries, cachedPlayers: club.items.length };
-    report.inProgressChallenges = listFc27InProgressChallenges(root).length;
+    if (includeInventoryDiagnostics) {
+      const club = readFc27CachedClub(root);
+      report.club = { status: club.status, complete: club.complete, cachedEntries: club.cachedEntries, cachedPlayers: club.items.length };
+      report.inProgressChallenges = listFc27InProgressChallenges(root).length;
+    }
     if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error('FC27_CONTEXT_CHANGED');
     return { ...report, status: 'observed', reason: 'FC27_TRANSACTION_UNVERIFIED',
       pending: ['REVIEWED_RUNNER_POLICY', 'EXACT_ITEM_VALIDATION', 'SBC_PLAN_AND_REWARD', 'LIVE_TRANSACTION_ACCEPTANCE'] };

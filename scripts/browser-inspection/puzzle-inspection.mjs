@@ -30,6 +30,7 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
   const result = await build({ absWorkingDir: root, stdin: { contents: `
     export { inspectFc27VerifiedPuzzlePlan } from './src/adapters/ea/fc27-puzzle-verify.js';
     export { probeFc27TeamFactsRuntime } from './src/adapters/ea/fc27-team-facts-probe.js';
+    export { createFc27PuzzleEvaluator, evaluateFc27PuzzleSquad } from './src/fc27/puzzle-evaluator.js';
     export { mountFc27PuzzleResultPanel } from './src/adapters/browser/fc27-puzzle-result-panel.js';`, resolveDir: root,
     sourcefile: 'puzzle-exact-inspection.js' },
     bundle: true, write: false, metafile: true, format: 'iife', globalName: 'FC27PuzzleRead', target: 'chrome120' });
@@ -43,20 +44,40 @@ export async function inspectPuzzlePlan(page, setId, challengeId) {
     'src/streamlined/contract.js',
     'src/adapters/ea/fc27-item-factory-observer.js',
     'src/adapters/ea/fc27-team-facts-probe.js', 'src/fc27/puzzle-material-policy.js',
-    'src/fc27/puzzle-price-starts.js',
+    'src/fc27/puzzle-group-capacity.js', 'src/fc27/puzzle-price-starts.js',
     'src/adapters/browser/fc27-puzzle-result-panel.js']);
   if (Object.keys(result.metafile.inputs).some(name => !allowed.has(name.replaceAll('\\', '/')))) throw new Error('Unreviewed Puzzle inspection dependency');
   const { value: payload, catalogTraffic } = await observePuzzleCatalogTraffic(page, () => page.evaluate(`(async () => { ${result.outputFiles[0].text}
     globalThis.document.getElementById('fcat-puzzle-readonly')?.remove();
-    let transient = null;
-    const report = await FC27PuzzleRead.inspectFc27VerifiedPuzzlePlan(globalThis, { setId: ${setId}, challengeId: ${challengeId} }, value => {
+    let transient = null, evaluationPerformance = null;
+    const report = await FC27PuzzleRead.inspectFc27VerifiedPuzzlePlan(globalThis, { setId: ${setId}, challengeId: ${challengeId} }, async value => {
       transient = value;
+      const config = { formation: value.formation, chemistry: value.chemistry, rating: value.chemistry.rating };
+      const prepared = FC27PuzzleRead.createFc27PuzzleEvaluator(config);
+      const signature = JSON.stringify(value);
+      const reference = FC27PuzzleRead.evaluateFc27PuzzleSquad({ ...config, squad: value.squad });
+      const optimized = prepared.evaluateSquad(value.squad);
+      const run = async evaluate => {
+        let computeMs = 0;
+        for (let batch = 0; batch < 5; batch++) {
+          const started = performance.now();
+          for (let index = 0; index < 100; index++) evaluate();
+          computeMs += performance.now() - started;
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        return Math.round(computeMs * 10) / 10;
+      };
+      evaluationPerformance = { callsPerPath: 500,
+        referenceComputeMs: await run(() => FC27PuzzleRead.evaluateFc27PuzzleSquad({ ...config, squad: value.squad })),
+        preparedComputeMs: await run(() => prepared.evaluateSquad(value.squad)),
+        resultMatches: JSON.stringify(reference) === JSON.stringify(optimized), inputUnchanged: signature === JSON.stringify(value),
+        scope: 'same-selected-squad-local-evaluator-only', pricingMeasured: false, eaMutationsPerformed: false };
     });
     if (report.status !== 'preview' || report.plan?.exactValidation?.status !== 'verified') transient = null;
     report.eaTeamFactsProbe = await FC27PuzzleRead.probeFc27TeamFactsRuntime(globalThis);
     try { FC27PuzzleRead.mountFc27PuzzleResultPanel({ document: globalThis.document, report }); }
     catch { /* Display failure cannot change the verification result. */ }
-    return { report, transient }; })()`));
+    return { report: { ...report, evaluationPerformance }, transient }; })()`));
   const report = payload && Object.hasOwn(payload, 'report') ? payload.report : payload;
   if (!report || typeof report !== 'object' || Array.isArray(report)
       || Object.hasOwn(report, 'transient')) {

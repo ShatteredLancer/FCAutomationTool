@@ -29,6 +29,12 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     return evidence;
   };
   const log = row => { try { Promise.resolve(diagnosticLog?.record?.({ area: 'streamlined', event: 'plan', ...row })).catch(() => {}); } catch { /* diagnostic only */ } };
+  const externalFailure = (error, event) => {
+    const reason = safeReason(error), protectionFailure = reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
+      ? normalizeStreamlinedProtectionFailure(error?.evidence) : null;
+    log({ event, status: 'blocked', reason, ...protectionFailure });
+    return { status: 'blocked', reason, liveExecutionEnabled: false, ...(protectionFailure ? { protectionFailure } : {}) };
+  };
   const logRoute = (route, phase = 'selected') => {
     if (!route) return;
     log({ event: 'route-summary', phase, currentScore: route.score, count: route.count,
@@ -43,6 +49,15 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
   };
   const capture = () => { const value = inspect(); if (!value?.context || !value.challenge) fail('PAGE_UNAVAILABLE'); return value; };
   const unchanged = origin => { const current = capture(); if (!same(current, origin)) fail('CONTEXT_CHANGED'); };
+  const foreignContributionHistory = async (execution, origin) => {
+    if (typeof execution?.inspectContributionHistory !== 'function') return null;
+    const candidate = await execution.inspectContributionHistory(origin.challenge);
+    unchanged(origin);
+    const old = candidate?.recovery;
+    if (!old || old.setId === origin.challenge.setId && old.challengeId === origin.challenge.id
+        && old.targetScore === origin.challenge.targetScore) return null;
+    return { ...candidate, status: 'blocked', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' };
+  };
   const confirmedCompletion = record => record?.submittedScore >= record?.plan?.challenge.targetScore
     && Array.isArray(record.batches) && record.batches.length > 0
     && record.batches.every(batch => batch.state === 'confirmed' && batch.receipt?.status === 'accepted')
@@ -79,7 +94,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         const snapshot = readStreamlinedExternalRows({ ...input, reservedIds });
         if (snapshot.status === 'observed') externalView = { origin, config, input, snapshot };
         return snapshot;
-      } catch (error) { return { status: 'blocked', reason: safeReason(error), liveExecutionEnabled: false }; }
+      } catch (error) { return externalFailure(error, 'external-read'); }
       finally { busy = false; }
     },
     async planExternalSelection(keys) {
@@ -113,12 +128,17 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           catch (error) { execution = null; executionReason = safeReason(error); executionRecovery = error?.recovery ?? null; }
           check();
         }
-        preview = { origin: saved.origin, input, items: result.items, plan, execution, externalSelection: true };
-        log({ phase: 'external-selection', status: result.status, count: result.items.length,
+        const blocked = execution ? await foreignContributionHistory(execution, saved.origin) : null;
+        check();
+        if (blocked?.historyAction?.canArchive) history = { origin: saved.origin, execution, kind: 'contribution' };
+        preview = blocked ? null : { origin: saved.origin, input, items: result.items, plan, execution, externalSelection: true };
+        log({ phase: 'external-selection', status: blocked?.status ?? result.status, reason: blocked?.reason,
+          localReason: blocked?.historyAction?.reason, count: result.items.length,
           currentScore: result.score, targetScore: input.challenge.targetScore });
         return { ...result, plan, policy: input.policy, inventoryStats: input.inventoryStats,
-          executionReason, executionRecovery, liveExecutionEnabled: !!execution };
-      } catch (error) { return { status: 'blocked', reason: safeReason(error), liveExecutionEnabled: false }; }
+          ...blocked, executionReason: blocked?.reason ?? executionReason, executionRecovery: blocked?.recovery ?? executionRecovery,
+          liveExecutionEnabled: !!execution && !blocked };
+      } catch (error) { return externalFailure(error, 'external-selection'); }
       finally { busy = false; }
     },
     async plan(value, { onProgress = () => {} } = {}) {
@@ -446,6 +466,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           ? await activeExecution.purchase(selected.plan, { approved: true, fingerprint, allowPartial, ...(budget !== undefined ? { budget } : {}) }, callbacks)
           : await activeExecution.transaction.execute(selected.plan,
             { approved: true, fingerprint, batchIndices, allowPartial }, callbacks);
+        if (result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED') {
+          // A journal may have appeared in another tab after preview. Offer the
+          // same explicit cleanup action here; do not retry or archive for the user.
+          const blocked = await foreignContributionHistory(activeExecution, selected.origin);
+          if (blocked) {
+            result = { ...result, ...blocked };
+            if (!stopRequested && blocked.historyAction?.canArchive) {
+              history = { origin: selected.origin, execution: activeExecution, kind: 'contribution' };
+            }
+          }
+          preview = null; routePreview = null;
+        }
         const oldTarget = result.record?.challenge;
         if (result.reason === 'FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED' && oldTarget
             && (oldTarget.id !== selected.plan.challenge.id || oldTarget.setId !== selected.plan.challenge.setId)
@@ -470,7 +502,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           else preview = null;
         }
         const approvedBudget = result.record?.budget, spent = result.record?.spent;
-        log({ event: 'contribution', status: result.status, reason: result.reason, mismatch: result.mismatch,
+        log({ event: 'contribution', status: result.status, reason: result.reason, localReason: result.historyAction?.reason, mismatch: result.mismatch,
           currentScore: result.confirmation?.submittedScore ?? result.record?.submittedScore,
           targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
           approvedBudget, spent, remainingBudget: Number.isSafeInteger(approvedBudget) && Number.isSafeInteger(spent)
@@ -543,13 +575,14 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         }
         contribution ??= await activeExecution.transaction.recover(origin.context,
           { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
-        if (!history && contribution.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED'
+        if (!history && (contribution.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED'
+            || ['observed', 'recovered'].includes(contribution.status))
             && typeof activeExecution.inspectContributionHistory === 'function') {
           const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
           unchanged(origin);
-          if (candidate?.historyAction?.canArchive) {
+          if (candidate) {
             contribution = { ...contribution, ...candidate };
-            history = { origin, execution: activeExecution, kind: 'contribution' };
+            if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: 'contribution' };
           }
         }
         let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
@@ -570,7 +603,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
             && current.challenge.submittedScore < result.record.submittedScore) {
           result = { ...result, status: 'completed', reason: 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' };
         }
-        log({ event: 'recovery', status: result.status, reason: result.reason, currentScore: result.record?.submittedScore,
+        log({ event: 'recovery', status: result.status, reason: result.reason, localReason: result.historyAction?.reason, currentScore: result.record?.submittedScore,
           targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
           setId: origin.challenge.setId, challengeId: origin.challenge.id,
           ...(result.recovery ? { setId: result.recovery.setId, challengeId: result.recovery.challengeId,

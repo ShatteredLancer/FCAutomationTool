@@ -50,6 +50,27 @@ function fixture() {
   return { input, preview, silver, prices, route };
 }
 
+it('reaches a chemistry-dependent cheap pair at the end of the squad within the original local budget', async () => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const slots = x.preview.selected.slice(-2).map(ref => ref.slot);
+  const last = x.input.inventory.items.find(item => item.id === x.preview.selected.at(-1).id);
+  const targets = [7000, 7001].map(id => ({ ...last, id, definitionId: id, rating: 73 }));
+  const decoys = Array.from({ length: 100 }, (_, i) => ({ ...last, id: 8000 + i, definitionId: 8000 + i }));
+  x.input.inventory.items.push(...targets, ...decoys);
+  x.prices = new Map(x.input.inventory.items.map(item => [item.definitionId, item.id >= 7000 ? 200 : 1000]));
+  const evaluate = x.input.evaluateSquad;
+  x.input.evaluateSquad = squad => {
+    const replacements = squad.filter(item => item?.id >= 7000);
+    const valid = replacements.length === 0 || replacements.length === 2
+      && slots.every((slot, i) => squad[slot]?.id === targets[i].id);
+    return valid ? evaluate(squad) : { status: 'observed', chemistry: 0, teamRating: 80 };
+  };
+  const result = await refineFc27PuzzleOwnedValue(x.input, x.preview, x.prices, { localOnly: true, localNodeLimit: 1600 });
+  expect(result.materialValue).toBe(9400);
+  expect(result.nodes).toBeLessThanOrEqual(1600);
+  expect(result.selected.filter(ref => ref.id >= 7000).map(ref => ref.id).sort()).toEqual([7000, 7001]);
+});
+
 it('finds a cheap same-slot native-verified silver replacement before bounded whole-squad search', async () => {
   const x = fixture();
   const result = await refineFc27PuzzleOwnedValue(x.input, x.preview, x.prices);
@@ -62,6 +83,26 @@ it('finds a cheap same-slot native-verified silver replacement before bounded wh
   expect(result.nodes).toBeLessThanOrEqual(20000);
   expect(result.maxNodes).toBe(20000);
   expect(x.route.mock.calls[0][0].maxNodes).toBeLessThan(20000);
+});
+
+it('reaches a cheap replacement for the last slot instead of spending every single-swap check on early slots', async () => {
+  const x = fixture();
+  x.input.inventory.items.pop();
+  const last = x.input.inventory.items.find(item => item.id === x.preview.selected.at(-1).id);
+  const cheap = { ...last, id: 7000, definitionId: 7000, rating: 73 };
+  const fillers = Array.from({ length: 240 }, (_, index) => ({ ...last, id: 8000 + index,
+    definitionId: 8000 + index, teamId: 900 + index, nationId: 800 + index, leagueId: 700 + index }));
+  x.input.inventory.items.push(cheap, ...fillers);
+  x.prices = new Map(x.input.inventory.items.map(item => [item.definitionId, item.id >= 7000 ? 200 : 1000]));
+  const evaluate = x.input.evaluateSquad;
+  // Isolate traversal fairness: only the final slot's replacement is legal.
+  x.input.evaluateSquad = squad => squad.some((item, slot) => item && item.id >= 7000
+    && (item.id !== cheap.id || slot !== x.preview.selected.at(-1).slot))
+    ? { status: 'observed', chemistry: 0, teamRating: 80 } : evaluate(squad);
+  const result = await refineFc27PuzzleOwnedValue(x.input, x.preview, x.prices, { localOnly: true, localNodeLimit: 1600 });
+  expect(result.materialValue).toBe(10200);
+  expect(result.selected).toContainEqual(expect.objectContaining({ id: cheap.id }));
+  expect(result.nodes).toBeLessThanOrEqual(1600);
 });
 
 it('uses an equal-valued silver card when a minimum-silver incumbent is all gold', async () => {

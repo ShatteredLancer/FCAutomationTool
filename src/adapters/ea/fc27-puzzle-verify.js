@@ -6,6 +6,7 @@ import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27StreamlinedStorageReader } from './fc27-streamlined-storage-read.js';
 import { previewFc27PuzzleSquad } from '../../fc27/puzzle-preview.js';
 import { prepareFc27PuzzleFillPlan, validateFc27PuzzleFillPlan } from '../../fc27/puzzle-fill-plan.js';
+import { DEFAULT_PUZZLE_MAX_RATING } from '../../fc27/puzzle-material-policy.js';
 
 // An independent development check, not a prepare/submit permit. The selected
 // refs stay inside the planning callback; no EA cache or squad is changed.
@@ -25,7 +26,7 @@ export async function inspectFc27VerifiedPuzzlePlan(root, options = {}, onVerifi
       const inputScope = JSON.stringify({ context: inputs.context, policy: inputs.policy });
       const signature = () => {
         const context = readFc27Context(root);
-        const policy = readFc27PuzzlePolicy(root, options.maxRating ?? 74);
+        const policy = readFc27PuzzlePolicy(root, options.maxRating ?? DEFAULT_PUZZLE_MAX_RATING);
         if (inputScope !== JSON.stringify({ context, policy })) throw new Error('FC27_RUNNER_INPUTS_CHANGED');
         const cachedClub = readFc27CachedClub(root);
         const cachedStorage = readFc27CachedPile(root, 'storage');

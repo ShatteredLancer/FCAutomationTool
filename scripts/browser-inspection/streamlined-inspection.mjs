@@ -75,13 +75,15 @@ export async function inspectStreamlined(page, { recover = false } = {}) {
   const receiptCapture = fresh?.status === 'verified' && typeof page.on === 'function'
     ? armStreamlinedReceiptCapture(page, { setId: report.challenge.setId, challengeId: report.challenge.id,
       destination: path.join(root, 'artifacts/fc27-browser/streamlined-native-receipts.json') }) : null;
-  return { ...report, navigation, preview, fresh, receiptCapture, methods: Array.isArray(methods) ? methods.map(row => ({ ...row,
+  const external = recover && preview && typeof page.context === 'function'
+    ? await inspectStreamlinedPreview(page, { external: true, keepOpen: true }) : null;
+  return { ...report, navigation, preview, fresh, receiptCapture, external, methods: Array.isArray(methods) ? methods.map(row => ({ ...row,
     sha256: createHash('sha256').update(row.source).digest('hex') })) : [] };
 }
 
 // Only the installed preview's entry/Solve/Close may be clicked here. No save,
 // selection, purchase or contribution controls, and no injected planner.
-export async function inspectStreamlinedPreview(page, { recover = false, keepOpen = false } = {}) {
+export async function inspectStreamlinedPreview(page, { recover = false, keepOpen = false, external = false } = {}) {
   const installed = JSON.parse(await readFile(path.join(root, 'artifacts/fc27-browser/current-install.json'), 'utf8'));
   const source = await readFile(path.join(root, 'FCAutomationTool.user.js'));
   if (!installed.installed || !installed.exactSource || createHash('sha256').update(source).digest('hex') !== installed.sha256) {
@@ -136,7 +138,7 @@ export async function inspectStreamlinedPreview(page, { recover = false, keepOpe
         contributionDisabled: this.querySelector('[data-contribute]')?.disabled,
         notes: Array.from(this.querySelectorAll('[data-result] small')).map(node => node.textContent.slice(0, 600)).slice(0, 8) };
     });
-    if (!current) await page.locator('#fcat-streamlined-entry').click({ timeout: 5000 });
+    if (!current) await page.locator(external ? '#fcat-streamlined-external-entry' : '#fcat-streamlined-entry').click({ timeout: 5000 });
     for (let n = 0; n < 50; n++) {
       if (await call(function () { return !this.querySelector('[data-solve]').disabled; })) break;
       await page.waitForTimeout(100);
@@ -144,7 +146,7 @@ export async function inspectStreamlinedPreview(page, { recover = false, keepOpe
     // One explicit read-only replan of an earlier failed market preview. Never
     // retry a contribution, purchase or recovery as part of this inspection.
     const retryMarket = current?.notes?.some(text => text.includes('FC27_STREAMLINED_MARKET_TIMEOUT'));
-    if (!current || recover || retryMarket) await click(recover ? '[data-recover]' : '[data-solve]');
+    if (!external && (!current || recover || retryMarket)) await click(recover ? '[data-recover]' : '[data-solve]');
     let snapshot;
     for (let n = 0; n < 240; n++) {
       snapshot = await call(function () { return {
@@ -162,6 +164,11 @@ export async function inspectStreamlinedPreview(page, { recover = false, keepOpe
         batches: this.querySelectorAll('summary input').length,
         contributionDisabled: this.querySelector('[data-contribute]').disabled,
         notes: Array.from(this.querySelectorAll('[data-result] small')).map(node => node.textContent.slice(0, 600)).slice(0, 8),
+        historyNote: this.querySelector('[data-history-note]')?.hidden ? null : this.querySelector('[data-history-note]')?.textContent,
+        archiveVisible: this.querySelector('[data-archive-history]')?.checkVisibility() === true,
+        externalRows: this.querySelectorAll('.external-row').length,
+        externalSelectable: this.querySelectorAll('.external-row input:not([disabled])').length,
+        externalWarnings: [...new Set(Array.from(this.querySelectorAll('.external-row .inventory-warning')).map(node => node.textContent))],
       }; });
       if (!snapshot.busy) break;
       await page.waitForTimeout(250);

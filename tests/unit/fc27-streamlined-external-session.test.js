@@ -8,15 +8,31 @@ function fixture() {
   const state = { inventory: [safeItem({ id: 1, definitionId: 100 }),
     safeItem({ id: 2, definitionId: 100, pile: 'transfer' }), safeItem({ id: 3, definitionId: 100, pile: 'unassigned' })], policy };
   const set = vi.fn(), prices = { load: vi.fn() }, prepare = vi.fn(), execute = vi.fn(async () => ({ status: 'partial' }));
+  const diagnosticLog = { record: vi.fn() };
   const readInputs = vi.fn(() => ({ ...state, context: c.context, challenge: c, eligibility,
     assertCurrent() {}, resolveDisplayItem: ref => state.inventory.find(i => i.id === ref.id) }));
   const createExecution = vi.fn(async () => ({ prepare, transaction: { execute } }));
   const session = createFc27StreamlinedSession({ inspect: () => {
     if (!current) throw Error('FC27_STREAMLINED_CONTEXT_CHANGED');
     return { context: c.context, challenge: c };
-  }, readInputs, createExecution, prices, get: async () => null, set });
-  return { state, session, prices, set, prepare, execute, readInputs, createExecution, changeContext: () => { current = false; } };
+  }, readInputs, createExecution, prices, get: async () => null, set, diagnosticLog });
+  return { state, session, prices, set, prepare, execute, readInputs, createExecution, diagnosticLog, changeContext: () => { current = false; } };
 }
+
+it.each(['read', 'prepare'])('preserves sanitized protection failure from external %s without any writes', async stage => {
+  const f = fixture();
+  if (stage === 'prepare') await f.session.readExternalInventory({ maxRating: 90 });
+  f.readInputs.mockImplementationOnce(() => { throw Object.assign(Error('FC27_STREAMLINED_PROTECTION_UNVERIFIED'),
+    { evidence: { phase: 'protection-cache', cached: false, mismatch: 'binding', itemId: 123, secret: 'private' } }); });
+  const result = stage === 'read' ? await f.session.readExternalInventory({ maxRating: 90 })
+    : await f.session.planExternalSelection(['item:2']);
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_PROTECTION_UNVERIFIED',
+    protectionFailure: { phase: 'protection-cache', cached: false, mismatch: 'binding' } });
+  expect(f.diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ area: 'streamlined',
+    event: stage === 'read' ? 'external-read' : 'external-selection', status: 'blocked', phase: 'protection-cache', cached: false }));
+  expect(JSON.stringify(f.diagnosticLog.record.mock.calls)).not.toContain('private');
+  expect(f.set).not.toHaveBeenCalled(); expect(f.execute).not.toHaveBeenCalled(); expect(f.prepare).not.toHaveBeenCalled();
+});
 
 it('browses both external piles and prepares exact selection without quotes, persistence or mutation', async () => {
   const f = fixture();
@@ -83,4 +99,76 @@ it('recovers frozen external order without selecting or replaying its prerequisi
   expect((await f.session.contribute({ fingerprint: prepared.plan.fingerprint, batchIndices: [1, 2] })).status).toBe('blocked');
   await f.session.contribute({ fingerprint: prepared.plan.fingerprint, batchIndices: [0, 1, 2], allowPartial: true });
   expect(f.execute).toHaveBeenCalledOnce(); expect(f.prices.load).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('keeps contribution retirement availability %s and its reason through recovery', async canArchive => {
+  const f = fixture(), archiveContributionHistory = vi.fn(async () => ({ status: 'archived' }));
+  const recovery = { setId: 71, challengeId: 111, currentScore: 3860, targetScore: 5500,
+    confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 };
+  const historyAction = { kind: 'contribution', canArchive,
+    ...(!canArchive ? { reason: 'FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED' } : {}) };
+  f.createExecution.mockResolvedValueOnce({
+    transaction: { recover: async () => ({ status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery }) },
+    inspectContributionHistory: async () => ({ recovery, historyAction }), archiveContributionHistory,
+  });
+  expect(await f.session.recover()).toMatchObject({ historyAction, recovery });
+  expect(archiveContributionHistory).not.toHaveBeenCalled();
+  if (canArchive) {
+    expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+    expect(archiveContributionHistory).toHaveBeenCalledOnce();
+    expect((await f.session.archiveHistory()).status).toBe('blocked');
+  } else {
+    expect((await f.session.archiveHistory()).status).toBe('blocked');
+    expect(archiveContributionHistory).not.toHaveBeenCalled();
+    expect(f.diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'recovery',
+      localReason: 'FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED' }));
+  }
+  expect(f.execute).not.toHaveBeenCalled(); expect(f.prices.load).not.toHaveBeenCalled();
+});
+
+it.each(['preview', 'contribute'])('offers old contribution retirement directly at %s, with no automatic replay', async stage => {
+  const f = fixture(), recovery = { setId: 71, challengeId: 111, currentScore: 3860, targetScore: 5500,
+    confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 };
+  const historyAction = { kind: 'contribution', canArchive: true };
+  const inspectContributionHistory = vi.fn(async () => ({ recovery, historyAction }));
+  if (stage === 'contribute') inspectContributionHistory.mockResolvedValueOnce(null);
+  const archiveContributionHistory = vi.fn(async () => ({ status: 'archived' }));
+  f.execute.mockResolvedValueOnce({ status: 'blocked', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery });
+  f.createExecution.mockResolvedValue({ prepare: f.prepare, transaction: { execute: f.execute },
+    inspectContributionHistory, archiveContributionHistory });
+  await f.session.readExternalInventory({ maxRating: 90 });
+  let result = await f.session.planExternalSelection(['item:2', 'item:3']);
+  if (stage === 'contribute') result = await f.session.contribute({ fingerprint: result.plan.fingerprint,
+    batchIndices: [0, 1, 2], allowPartial: true });
+  expect(result).toMatchObject({ reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', recovery, historyAction });
+  if (stage === 'preview') expect(result.liveExecutionEnabled).toBe(false);
+  expect(archiveContributionHistory).not.toHaveBeenCalled();
+  expect(await f.session.archiveHistory()).toMatchObject({ status: 'archived' });
+  expect(archiveContributionHistory).toHaveBeenCalledOnce();
+  expect(f.execute).toHaveBeenCalledTimes(stage === 'contribute' ? 1 : 0);
+  expect(f.set).not.toHaveBeenCalled(); expect(f.prices.load).not.toHaveBeenCalled();
+});
+
+it('does not mistake the current contribution target for a foreign blocker', async () => {
+  const f = fixture(), view = await f.session.readExternalInventory({ maxRating: 90 });
+  f.createExecution.mockResolvedValueOnce({ prepare: f.prepare, transaction: { execute: f.execute },
+    inspectContributionHistory: async () => ({ recovery: { setId: view.challenge.setId, challengeId: view.challenge.id,
+      targetScore: view.challenge.targetScore }, historyAction: { canArchive: true, kind: 'contribution' } }) });
+  const result = await f.session.planExternalSelection(['item:2']);
+  expect(result).toMatchObject({ liveExecutionEnabled: true });
+  expect(result.historyAction).toBeUndefined();
+  expect((await f.session.archiveHistory()).status).toBe('blocked');
+  expect(f.execute).not.toHaveBeenCalled();
+});
+
+it('keeps unknown old contribution evidence visible but never enables retirement from preview', async () => {
+  const f = fixture(); await f.session.readExternalInventory({ maxRating: 90 });
+  const archiveContributionHistory = vi.fn();
+  f.createExecution.mockResolvedValueOnce({ prepare: f.prepare, transaction: { execute: f.execute }, archiveContributionHistory,
+    inspectContributionHistory: async () => ({ recovery: { setId: 71, challengeId: 111, targetScore: 5500 },
+      historyAction: { canArchive: false, kind: 'contribution', reason: 'FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING' } }) });
+  expect(await f.session.planExternalSelection(['item:2'])).toMatchObject({ liveExecutionEnabled: false,
+    historyAction: { canArchive: false, reason: 'FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING' } });
+  expect((await f.session.archiveHistory()).status).toBe('blocked');
+  expect(archiveContributionHistory).not.toHaveBeenCalled(); expect(f.execute).not.toHaveBeenCalled();
 });

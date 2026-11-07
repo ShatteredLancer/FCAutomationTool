@@ -18,7 +18,7 @@ export async function inspectEaRatingDifferential(report, { readSource = () => r
       || report.liveExecutionEnabled !== false || plan?.exactValidation?.status !== 'verified'
       || plan.selectedCount !== 11 || plan.exactValidation.presentCount !== 11
       || typeof mode !== 'boolean' || !Array.isArray(ratings) || ratings.length !== 11
-      || Array.from(ratings).some(n => !Number.isSafeInteger(n) || n < 1 || n > 74)
+      || Array.from(ratings).some(n => !Number.isSafeInteger(n) || n < 1 || n > 99)
       || !Array.isArray(plan.slots) || plan.slots.length !== 11 || new Set(plan.slots).size !== 11
       || plan.slots.some(n => !Number.isSafeInteger(n) || n < 0 || n > 10)
       || report.layout?.slotCount !== 11 || report.layout.requiredPlayerCount !== 11

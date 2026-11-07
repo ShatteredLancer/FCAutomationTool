@@ -35,7 +35,8 @@ function fixture({diagnosticLog=null,searchReply=null}={}){
   root.services.Item=new ItemService();root.repositories.Item.getUnassignedItems=()=>unassigned;root.repositories.Item.getTransferItems=()=>transfer;
   root.repositories.Item.getPileSize=()=>100;root.repositories.Item.numItemsInCache=p=>p===5?transfer.length:unassigned.length;
   root.repositories.Item.setDirty=()=>{};root.navigator={locks:{request:async(name,_o,fn)=>fn({name,mode:'exclusive'})}};
-  const digest=root.crypto.subtle.digest,hashes=new Map(FC27_BUY_SERVICE_METHODS.map(([name,hash])=>[String(ItemService.prototype[name]),hash]));
+  // Match the production fingerprint boundary on Windows CRLF checkouts too.
+  const digest=root.crypto.subtle.digest,hashes=new Map(FC27_BUY_SERVICE_METHODS.map(([name,hash])=>[String(ItemService.prototype[name]).replace(/\r\n/g,'\n'),hash]));
   root.crypto.subtle.digest=async(algorithm,bytes)=>{const h=hashes.get(new TextDecoder().decode(bytes));return h?Uint8Array.from(Buffer.from(h,'hex')).buffer:digest(algorithm,bytes);};
   const quote=source=>({source,definitionId:901,season:'27',platform:'console',price:1000,fetchedAt:time,expiresAt:time+300000,sourceUpdatedAt:null,error:null});
   const prices={context:()=>context,readSettings:async()=>({source:'futbin',readSources:'both'}),load:vi.fn(async()=>({references:{901:{quotes:{futbin:quote('futbin'),futgg:quote('futgg')}}}}))};

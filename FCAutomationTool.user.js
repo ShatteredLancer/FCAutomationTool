@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.100
+// @version      27.0.101
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.100", at: Date.now(), status: 'started',
+    state = { version: "27.0.101", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -999,7 +999,7 @@
   }
   function readFc27PuzzlePolicy(root, maxRating = 82, { protectRoster = true } = {}) {
     if (!Number.isSafeInteger(maxRating) || maxRating < 1 || maxRating > 99) throw new Error("FC27_PUZZLE_POLICY_INVALID");
-    const report = inspectFc27RunnerInputs(root);
+    const report = inspectFc27RunnerInputs(root, { includeInventoryDiagnostics: false });
     if (report.status !== "observed") throw new Error(report.reason);
     const leagues = ownData(ownData(ownData(root, "info"), "set"), "shield_league");
     const protection = protectRoster ? readFc27StreamlinedProtection(root) : null;
@@ -1038,7 +1038,7 @@
       return [];
     }
   }
-  function inspectFc27RunnerInputs(root) {
+  function inspectFc27RunnerInputs(root, { includeInventoryDiagnostics = true } = {}) {
     const report = {
       schema: 1,
       status: "blocked",
@@ -1083,9 +1083,11 @@
         excludedLeagueCount: flags2[2] ? new Set(leagues).size : 0
       };
       if (!report.fsu.targetedValidationAvailable) throw new Error("FC27_FSU_VALIDATION_UNAVAILABLE");
-      const club = readFc27CachedClub(root);
-      report.club = { status: club.status, complete: club.complete, cachedEntries: club.cachedEntries, cachedPlayers: club.items.length };
-      report.inProgressChallenges = listFc27InProgressChallenges(root).length;
+      if (includeInventoryDiagnostics) {
+        const club = readFc27CachedClub(root);
+        report.club = { status: club.status, complete: club.complete, cachedEntries: club.cachedEntries, cachedPlayers: club.items.length };
+        report.inProgressChallenges = listFc27InProgressChallenges(root).length;
+      }
       if (JSON.stringify(readFc27Context(root)) !== JSON.stringify(context)) throw new Error("FC27_CONTEXT_CHANGED");
       return {
         ...report,
@@ -3992,7 +3994,7 @@
         group.indices.push(candidateIndex);
       }
     }
-    const suffixCount = (indices, start) => {
+    const suffixCount2 = (indices, start) => {
       let low = 0;
       let high = indices.length;
       while (low < high) {
@@ -4027,7 +4029,7 @@
       });
       for (const item2 of chosen) {
         const fits = compatible.get(item2);
-        const cap = pointsFor(keys2.get(item2), (index, key2) => (selectedGroups[index].get(key2) ?? 0) + Math.min(remaining, suffixCount(groups[index].get(key2).indices, start)));
+        const cap = pointsFor(keys2.get(item2), (index, key2) => (selectedGroups[index].get(key2) ?? 0) + Math.min(remaining, suffixCount2(groups[index].get(key2).indices, start)));
         if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], cap);
         else if (fits?.length > 1) selected += cap;
       }
@@ -4050,12 +4052,12 @@
       return Math.min(selected + future, 3 * (matched + remaining));
     };
   }
-  function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating } = {}) {
+  function boundChemistry({ squad, formation, chemistry, rating }, evaluate2) {
     if (!Array.isArray(squad) || !Array.isArray(formation?.positions) || squad.length !== 11 || formation.positions.length !== 11) return fail9("FC27_PUZZLE_FORMATION_UNAVAILABLE");
-    const actual = evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating });
+    const actual = evaluate2({ squad, formation, chemistry, rating });
     if (actual.status !== "observed") return actual;
     const optimistic = { ...formation, positions: squad.map((item2, index) => item2 === null ? formation.positions[index] : item2.positions[0]) };
-    const result = evaluateFc27PuzzleSquad({ squad, formation: optimistic, chemistry, rating });
+    const result = evaluate2({ squad, formation: optimistic, chemistry, rating });
     if (result.status !== "observed") return result;
     const playable = squad.flatMap((item2, index) => item2 === null ? [] : [index]);
     let scores = /* @__PURE__ */ new Map([[0, 0]]);
@@ -4073,9 +4075,7 @@
     });
     return { status: "observed", maxChemistry: Math.max(...scores.values()) };
   }
-  function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } = {}) {
-    if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some((item2) => item2 === void 0)) return fail9("FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE");
-    if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || Array.from(formation.positions).some((position) => !integer7(position, 0, 27))) return fail9("FC27_PUZZLE_FORMATION_UNAVAILABLE");
+  function prepareChemistry(chemistry) {
     if (typeof chemistry?.profilesEnabled !== "boolean") return fail9("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
     const resolveClub = createFc27ClubResolver(chemistry.links);
     const parameters = parametersOf(chemistry.parameters);
@@ -4084,14 +4084,34 @@
     const identityKeys = ["legendClubId", "legendLeagueId", "heroClubId", "hallOfFutClubId"];
     if (!resolveClub || !parameters || chemistry.maxChemistryPerPlayer !== 3 || !identityKeys.every((key2) => positive4(identities?.[key2])) || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001 || Array.from(chemistry.superChemRarityIds).some((value) => !integer7(value, 0, 1e4))) return fail9("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
     if (!profiles2) return fail9("FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED");
+    const ordinaryRarities = new Set([0, 1].filter((rarity) => !chemistry.profilesEnabled || ordinaryProfile(
+      profiles2.find((value) => value.applicableRarityIds.includes(rarity)) ?? profiles2.find((value) => value.id === 1)
+    )));
+    return { status: "ready", resolveClub, parameters, identities, ordinaryRarities };
+  }
+  function evaluateFc27PuzzleSquad(input = {}) {
+    return evaluatePrepared(input);
+  }
+  function createFc27PuzzleEvaluator({ formation, chemistry, rating } = {}) {
+    const snapshot = structuredClone({ formation, chemistry, rating });
+    const prepared = prepareChemistry(snapshot.chemistry);
+    const evaluate2 = (input) => evaluatePrepared(input, prepared);
+    return Object.freeze({
+      evaluateSquad: (squad) => evaluate2({ ...snapshot, squad }),
+      boundSquad: (squad) => boundChemistry({ ...snapshot, squad }, evaluate2)
+    });
+  }
+  function evaluatePrepared({ squad, formation, chemistry, rating }, prepared) {
+    if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some((item2) => item2 === void 0)) return fail9("FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE");
+    if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || Array.from(formation.positions).some((position) => !integer7(position, 0, 27))) return fail9("FC27_PUZZLE_FORMATION_UNAVAILABLE");
+    const config = prepared ?? prepareChemistry(chemistry);
+    if (config.status !== "ready") return { ...config };
+    const { resolveClub, parameters, identities, ordinaryRarities } = config;
     const players = squad.filter((item2) => item2 !== null);
     for (const item2 of players) {
       if (!item2 || item2.type !== "player" || !integer7(item2.rating, 1, 99) || !positive4(item2.nationId) || !positive4(item2.teamId) || !positive4(item2.leagueId) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.length > 28 || Array.from(item2.positions).some((value) => !integer7(value, 0, 27)) || ![0, 1].includes(item2.rarity) || item2.special !== false || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false) return fail9("FC27_PUZZLE_POSITION_OR_ITEM_FACTS_UNAVAILABLE");
       if ([identities.legendClubId, identities.heroClubId, identities.hallOfFutClubId].includes(item2.teamId) || item2.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item2.rarity)) return fail9("FC27_PUZZLE_SPECIAL_CHEMISTRY_UNSUPPORTED");
-      if (chemistry.profilesEnabled) {
-        const profile = profiles2.find((value) => value.applicableRarityIds.includes(item2.rarity)) ?? profiles2.find((value) => value.id === 1);
-        if (!ordinaryProfile(profile)) return fail9("FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED");
-      }
+      if (!ordinaryRarities.has(item2.rarity)) return fail9("FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED");
     }
     const fields4 = [
       { id: 1, value: (item2) => item2.nationId },
@@ -4169,6 +4189,77 @@
       seen.add(key2);
       return true;
     }).slice(0, 2).map((row) => ({ hint: row.hint, costFirst: true }));
+  }
+
+  // src/fc27/puzzle-group-capacity.js
+  var validId2 = (value) => Number.isSafeInteger(value) && value > 0;
+  var groupOf = (rule, item2, resolveClub) => rule.kind === "same-club" ? resolveClub?.(item2.teamId ?? item2.clubId) : item2[rule.kind === "same-nation" ? "nationId" : "leagueId"];
+  var countsOf = (rule, items, resolveClub) => {
+    const result = /* @__PURE__ */ new Map();
+    for (const item2 of items) {
+      const key2 = groupOf(rule, item2, resolveClub);
+      result.set(key2, (result.get(key2) ?? 0) + 1);
+    }
+    return result;
+  };
+  var suffixCount = (indices, start) => {
+    let low = 0, high = indices.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (indices[middle] < start) low = middle + 1;
+      else high = middle;
+    }
+    return indices.length - low;
+  };
+  function createPuzzleGroupCapacity({ rules, candidates, resolveClub }) {
+    const minima = rules.filter((rule) => rule.kind.startsWith("same-") && rule.mode !== "max" && rule.value >= 2);
+    const caps = rules.filter((rule) => rule.kind.startsWith("same-") && rule.mode !== "min");
+    if (!minima.some((rule) => caps.some((cap) => cap.kind !== rule.kind))) return [];
+    if ([...minima, ...caps].some((rule) => candidates.some((item2) => !validId2(groupOf(rule, item2, resolveClub))))) return [];
+    return minima.filter((rule) => caps.some((cap) => cap.kind !== rule.kind)).map((rule) => {
+      const groups = /* @__PURE__ */ new Map();
+      candidates.forEach((item2, index) => {
+        const key2 = groupOf(rule, item2, resolveClub);
+        if (!groups.has(key2)) groups.set(key2, { indices: [], definitions: /* @__PURE__ */ new Set(), caps: caps.map((cap) => ({ cap, groups: /* @__PURE__ */ new Map() })) });
+        const group = groups.get(key2);
+        group.indices.push(index);
+        group.definitions.add(item2.definitionId);
+        for (const entry of group.caps) {
+          const value = groupOf(entry.cap, item2, resolveClub);
+          if (!entry.groups.has(value)) entry.groups.set(value, []);
+          entry.groups.get(value).push(index);
+        }
+      });
+      const capacity = (group, start, usedCaps) => {
+        let upper = suffixCount(group.indices, start);
+        for (const entry of group.caps) {
+          const used = usedCaps.get(entry.cap);
+          let capped = 0;
+          for (const [key2, indices] of entry.groups) {
+            capped += Math.min(suffixCount(indices, start), Math.max(0, entry.cap.value - (used?.get(key2) ?? 0)));
+          }
+          upper = Math.min(upper, capped);
+        }
+        return upper;
+      };
+      for (const [key2, group] of groups) {
+        if (Math.min(group.definitions.size, capacity(group, 0, /* @__PURE__ */ new Map())) < rule.value) groups.delete(key2);
+      }
+      return {
+        rule,
+        groupIds: [...groups].sort((a, b) => a[1].definitions.size - b[1].definitions.size || a[0] - b[0]).map(([key2]) => key2),
+        matches: candidates.map((item2) => groups.has(groupOf(rule, item2, resolveClub))),
+        canReach(chosen, start, remaining) {
+          const counts = countsOf(rule, chosen, resolveClub);
+          const usedCaps = new Map(caps.map((cap) => [cap, countsOf(cap, chosen, resolveClub)]));
+          for (const [key2, group] of groups) {
+            const used = counts.get(key2) ?? 0;
+            if (used >= rule.value || used + Math.min(remaining, capacity(group, start, usedCaps)) >= rule.value) return true;
+          }
+          return false;
+        }
+      };
+    });
   }
 
   // src/fc27/puzzle-plan-ranking.js
@@ -4687,6 +4778,15 @@
       groupMatcher,
       createFc27ClubResolver(clubLinks)
     );
+    const constrainedStarts = createPuzzleGroupCapacity({
+      rules: rules.rules,
+      candidates: hintCandidates,
+      resolveClub: createFc27ClubResolver(clubLinks)
+    }).filter((entry) => entry.rule.kind === "same-club" && rules.rules.some((cap) => cap.kind === "same-nation" && cap.mode !== "min" && cap.value < entry.rule.value)).flatMap((entry) => entry.groupIds.map((groupId) => ({
+      hint: { strategy: { "same-club": "club", "same-league": "league", "same-nation": "nation" }[entry.rule.kind], groupId },
+      groupFirst: true,
+      costFirst: false
+    }))).slice(0, 2);
     for (const [strategy, field] of [["league", "leagueId"], ["nation", "nationId"]]) {
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of hintCandidates) {
@@ -4706,6 +4806,7 @@
     }) : [];
     const ratingStart = options.ratingFirstStart && options.procurement?.priceAware && rules.rules.some((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind) && rule.value > 0);
     const routes = [
+      ...constrainedStarts,
       ...ratingStart ? [{ hint: null, costFirst: false, ratingFirst: true }] : [],
       ...options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : [],
       ...pricedGroups,
@@ -4732,7 +4833,7 @@
       } catch {
       }
     };
-    for (const [index, { hint, costFirst, ratingFirst = false }] of routes.entries()) {
+    for (const [index, { hint, costFirst, ratingFirst = false, groupFirst = false }] of routes.entries()) {
       const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
       result = yield* iterateFc27PuzzleCandidates({
         ...options,
@@ -4740,6 +4841,7 @@
         searchHint: hint,
         costFirst,
         ratingFirst,
+        groupFirst,
         ...bestResult && objectiveValueOf(bestResult, options.procurement?.objective) > 0 ? { procurement: {
           ...options.procurement,
           budget: Math.min(options.procurement.budget, objectiveValueOf(bestResult, options.procurement?.objective) - 1)
@@ -4820,6 +4922,7 @@
     nativeQualityFallback = false,
     costFirst = false,
     ratingFirst = false,
+    groupFirst = false,
     searchBudget = null
   } = {}) {
     if (!integer8(maxNodes, 1, 25e4) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
@@ -4837,6 +4940,9 @@
       return blocked2("FC27_PUZZLE_STRATEGY_INVALID");
     }
     let candidates = filterUnaryCandidates(pool.candidates, itemRules, required2, groupMatcher, resolveClub);
+    const spine = groupFirst ? candidates.filter((item2) => hintGroup(searchHint, item2, resolveClub) === searchHint.groupId) : [];
+    const spineNations = new Set(spine.map((item2) => item2.nationId)), spineLeagues = new Set(spine.map((item2) => item2.leagueId));
+    const spineAffinity = (item2) => Number(spineNations.has(item2.nationId)) + Number(spineLeagues.has(item2.leagueId));
     let traversalScores = null;
     const chemistryTarget = searchHint?.strategy !== "low-rating" && parsed.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0);
     const openPositions = chemistryTarget && Array.isArray(challenge.formation?.positions) && Array.isArray(challenge.brickIndices) ? challenge.formation.positions.filter((_position, index) => !challenge.brickIndices.includes(index)) : null;
@@ -4871,13 +4977,19 @@
     }
     if (["nation", "league", "club"].includes(searchHint?.strategy)) {
       const group = (item2) => hintGroup(searchHint, item2, resolveClub);
-      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId) || Number(positionFit(b)) - Number(positionFit(a)));
+      candidates = candidates.slice().sort((a, b) => (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId) || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0) || Number(positionFit(b)) - Number(positionFit(a)));
     }
     const scarce = itemRules.filter((rule) => rule.mode !== "max" && rule.count > 0).map((rule) => ({
       minimum: rule.count,
       matching: candidates.filter((item2) => matchFc27SbcItemRule(rule, item2, groupMatcher, resolveClub) === true)
     }));
+    const constrainedGroups = createPuzzleGroupCapacity({ rules: parsed.rules, candidates, resolveClub });
     for (const rule of parsed.rules.filter((rule2) => rule2.kind.startsWith("same-") && rule2.mode !== "max")) {
+      const constrained = constrainedGroups.find((entry) => entry.rule === rule);
+      if (constrained) {
+        scarce.push({ minimum: rule.value, matching: candidates.filter((_item, index) => constrained.matches[index]) });
+        continue;
+      }
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of candidates) {
         const key2 = relationValue(rule, item2, resolveClub);
@@ -4904,7 +5016,7 @@
       if (used === rule.count) candidates = candidates.filter((item2) => forced.has(item2) || matchFc27SbcItemRule(rule, item2, groupMatcher, resolveClub) !== true);
     }
     if ((forced.size || mixedClubRequirements) && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || (["nation", "league", "club"].includes(searchHint?.strategy) ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || (groupFirst ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0) || (["nation", "league", "club"].includes(searchHint?.strategy) ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
     }
     const metrics = {
       safeCandidates: candidates.length,
@@ -4919,7 +5031,7 @@
       const originalOrder = new Map(candidates.map((item2, index) => [item2, index]));
       const quoted = new Map(candidates.map((item2, index) => [item2, costs[index]]));
       const preferredGroup = (item2) => ["nation", "league", "club"].includes(searchHint?.strategy) && hintGroup(searchHint, item2, resolveClub) === searchHint.groupId;
-      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || Number(positionFit(b)) - Number(positionFit(a)) || (ratingFirst ? b.rating - a.rating : 0) || (costFirst ? quoted.get(a) - quoted.get(b) : 0) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
+      candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || (groupFirst ? Number(preferredGroup(b)) - Number(preferredGroup(a)) : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || Number(preferredGroup(b)) - Number(preferredGroup(a)) || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (ratingFirst ? b.rating - a.rating : 0) || (costFirst ? quoted.get(a) - quoted.get(b) : 0) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || quoted.get(a) - quoted.get(b) || originalOrder.get(a) - originalOrder.get(b));
       costs = candidates.map((item2) => quoted.get(item2));
     }
     const uniqueDefinitions = new Set(candidates.map((item2) => item2.definitionId)).size;
@@ -4933,7 +5045,13 @@
       return blocked2("FC27_REQUIREMENT_VALUE_UNAVAILABLE", metrics);
     }
     const groupCaps = new Map(relations.filter((rule) => rule.kind.startsWith("distinct-") && rule.mode !== "min").map((rule) => [rule, groupSuffixIndex(rule, candidates, resolveClub)]));
+    const groupCapacity = createPuzzleGroupCapacity({ rules: parsed.rules, candidates, resolveClub });
     for (const rule of relations.filter((rule2) => rule2.kind.startsWith("same-") && rule2.mode !== "max")) {
+      const constrained = groupCapacity.find((entry) => entry.rule === rule);
+      if (constrained) {
+        counted.push({ rule: { ...rule, count: rule.value, mode: "min" }, matches: constrained.matches });
+        continue;
+      }
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of candidates) {
         const key2 = relationValue(rule, item2, resolveClub);
@@ -5063,6 +5181,7 @@
           if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
         }
       }
+      if (groupCapacity.some((bound) => !bound.canReach(chosen, start, remaining))) return;
       if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
       if (chosen.length === required2) {
         const validate2 = (facts2) => matchFc27SbcRequirements({
@@ -5253,7 +5372,7 @@
       reason: "FC27_EXACT_ITEMS_CHANGED",
       mismatch: typeof mismatch2 === "string" && /^[a-z-]{1,40}$/.test(mismatch2) ? mismatch2 : "shape"
     });
-    const validId13 = (value) => Number.isSafeInteger(value) && value > 0;
+    const validId14 = (value) => Number.isSafeInteger(value) && value > 0;
     if (!Array.isArray(selected) || !Array.isArray(freshItems) || selected.length < 1 || selected.length > 11 || freshItems.length >= 250 || !Array.isArray(plannedItems) || plannedItems.length !== selected.length) return failed2();
     const fields4 = [
       "id",
@@ -5282,13 +5401,13 @@
     ];
     const expected = new Map(plannedItems.map((item2) => [item2?.id, item2]));
     const byId = new Map(freshItems.map((item2) => [item2?.id, item2]));
-    if (byId.size !== freshItems.length || expected.size !== selected.length || freshItems.some((item2) => !validId13(item2?.id) || !validId13(item2?.definitionId) || !selected.some((ref) => ref.definitionId === item2.definitionId))) return failed2();
+    if (byId.size !== freshItems.length || expected.size !== selected.length || freshItems.some((item2) => !validId14(item2?.id) || !validId14(item2?.definitionId) || !selected.some((ref) => ref.definitionId === item2.definitionId))) return failed2();
     const seenIds = /* @__PURE__ */ new Set();
     const seenDefinitions = /* @__PURE__ */ new Set();
     for (const plan of selected) {
       const current2 = byId.get(plan?.id);
       const before = expected.get(plan?.id);
-      if (!validId13(plan?.id) || !validId13(plan?.definitionId) || !["club", "storage"].includes(plan.pile) || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key2) => !Object.hasOwn(current2, key2) || !Object.hasOwn(before, key2) || JSON.stringify(current2[key2]) !== JSON.stringify(before[key2])) || current2.type !== "player" || current2.pile !== plan.pile || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || typeof current2.tradeable !== "boolean") {
+      if (!validId14(plan?.id) || !validId14(plan?.definitionId) || !["club", "storage"].includes(plan.pile) || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields4.some((key2) => !Object.hasOwn(current2, key2) || !Object.hasOwn(before, key2) || JSON.stringify(current2[key2]) !== JSON.stringify(before[key2])) || current2.type !== "player" || current2.pile !== plan.pile || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || typeof current2.tradeable !== "boolean") {
         return failed2("identity");
       }
       seenIds.add(plan.id);
@@ -5478,18 +5597,13 @@
       ].includes(rule.kind));
       const chemistry = needsTeamFacts ? readFc27PuzzleChemistry(root, clubLinks) : null;
       if (needsTeamFacts && !chemistry) return blocked3("FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE");
-      const evaluateSquad = needsTeamFacts ? (squad) => evaluateFc27PuzzleSquad({
-        squad,
+      const evaluator = needsTeamFacts ? createFc27PuzzleEvaluator({
         formation: layout.formation,
         chemistry,
         rating: chemistry.rating
-      }) : void 0;
-      const boundSquad = needsTeamFacts ? (squad) => boundFc27PuzzleChemistry({
-        squad,
-        formation: layout.formation,
-        chemistry,
-        rating: chemistry.rating
-      }) : void 0;
+      }) : null;
+      const evaluateSquad = evaluator?.evaluateSquad;
+      const boundSquad = evaluator?.boundSquad;
       const inputs = {
         context,
         challenge,
@@ -5729,7 +5843,7 @@
         const inputScope = JSON.stringify({ context: inputs.context, policy: inputs.policy });
         const signature3 = () => {
           const context = readFc27Context(root);
-          const policy = readFc27PuzzlePolicy(root, options.maxRating ?? 74);
+          const policy = readFc27PuzzlePolicy(root, options.maxRating ?? DEFAULT_PUZZLE_MAX_RATING);
           if (inputScope !== JSON.stringify({ context, policy })) throw new Error("FC27_RUNNER_INPUTS_CHANGED");
           const cachedClub = readFc27CachedClub(root);
           const cachedStorage = readFc27CachedPile(root, "storage");
@@ -6166,7 +6280,7 @@
   }
 
   // src/fc27/market-query-route.js
-  var validId2 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId3 = (value) => Number.isSafeInteger(value) && value > 0;
   var levels = Object.freeze([
     { level: "bronze", min: 1, max: 64 },
     { level: "silver", min: 65, max: 74 },
@@ -6190,7 +6304,7 @@
     allowed.sort((a, b) => priority(b.level) - priority(a.level) || belowFloor(a) - belowFloor(b) || a.min - b.min);
     const identities = parsed.rules.filter((rule) => rule.mode === "min" && rule.count > 0 && ["from-nations", "from-leagues", "from-clubs"].includes(rule.kind));
     const fields4 = { "from-nations": "nation", "from-leagues": "league", "from-clubs": "team" };
-    const anchors = identities.flatMap((rule) => rule.ids.filter(validId2).slice(0, 2).map((id14) => ({ [fields4[rule.kind]]: id14 })));
+    const anchors = identities.flatMap((rule) => rule.ids.filter(validId3).slice(0, 2).map((id14) => ({ [fields4[rule.kind]]: id14 })));
     const queries = [];
     const add3 = (query) => {
       if (queries.length < 3 && !queries.some((old) => JSON.stringify(old) === JSON.stringify(query))) queries.push(query);
@@ -6506,7 +6620,9 @@
     const singleNodeLimit = Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
     while (improved && nodes < maxNodes) {
       improved = false;
-      for (const ref of current2.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a))) {
+      const singleRefs = current2.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
+      for (const [refIndex, ref] of singleRefs.entries()) {
+        const slotLimit = nodes + Math.ceil((singleNodeLimit - nodes) / (singleRefs.length - refIndex));
         for (const candidate of ordered) {
           const candidatePrice = priceFor(prices, candidate), incumbentPrice = priceFor(
             prices,
@@ -6514,7 +6630,7 @@
           );
           if (candidatePrice > incumbentPrice) continue;
           if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade || qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
-          if (nodes >= singleNodeLimit) break;
+          if (nodes >= slotLimit) break;
           if (current2.selected.some((other) => other.definitionId === candidate.definitionId)) continue;
           nodes++;
           const selected = current2.selected.map((other) => other.slot === ref.slot ? selectedRef(candidate, ref.slot) : other);
@@ -6555,69 +6671,75 @@
       }
       if (!improved && nodes < maxNodes) {
         const refs3 = current2.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
-        pairSearch: for (let left = 0; left < refs3.length - 1 && nodes < maxNodes; left++) {
-          for (let right = left + 1; right < refs3.length && nodes < maxNodes; right++) {
-            const first = refs3[left], second = refs3[right];
-            const currentCost = priceFor(prices, candidates.find((item2) => candidateKey(item2) === candidateKey(first)) ?? first) + priceFor(prices, candidates.find((item2) => candidateKey(item2) === candidateKey(second)) ?? second);
-            const occupied = new Set(current2.selected.filter((ref) => ref.slot !== first.slot && ref.slot !== second.slot).map((ref) => ref.definitionId));
-            const replacements = ordered.filter((candidate) => !occupied.has(candidate.definitionId) && candidate.definitionId !== first.definitionId && candidate.definitionId !== second.definitionId);
-            let accepted = false;
-            for (let a = 0; a < replacements.length && nodes < maxNodes; a++) {
-              const candidateA = replacements[a], priceA = priceFor(prices, candidateA);
-              if (priceA >= currentCost) continue;
-              for (let b = a + 1; b < replacements.length && nodes < maxNodes; b++) {
-                const candidateB = replacements[b], priceB = priceFor(prices, candidateB);
-                if (priceA + priceB > currentCost || !allowEqualPriceQualityDowngrade && priceA + priceB >= currentCost) continue;
-                if (candidateA.definitionId === candidateB.definitionId) continue;
-                for (const assignment of [[candidateA, candidateB], [candidateB, candidateA]]) {
-                  if (nodes >= maxNodes) break;
-                  const selected = current2.selected.map((ref) => ref.slot === first.slot ? selectedRef(assignment[0], first.slot) : ref.slot === second.slot ? selectedRef(assignment[1], second.slot) : ref);
-                  const squad = Array(input.challenge.slotCount).fill(null);
-                  for (const ref of selected) squad[ref.slot] = { ...byId.get(candidateKey(ref)), slot: ref.slot };
-                  nodes++;
-                  let facts2;
-                  try {
-                    facts2 = typeof input.evaluateSquad === "function" ? input.evaluateSquad(structuredClone(squad)) : { status: "observed", chemistry: null, teamRating: null };
-                  } catch {
-                    facts2 = null;
-                  }
-                  const validation = facts2?.status === "observed" ? matchFc27SbcRequirements({
-                    requirements: parsed.rules,
-                    squad: squad.filter(Boolean),
-                    chemistry: facts2.chemistry,
-                    teamRating: facts2.teamRating,
-                    groupMatcher: input.groupMatcher,
-                    clubLinks: input.clubLinks
-                  }) : null;
-                  if (validation?.status === "satisfied") {
-                    const candidatePlan = metrics(selected);
-                    const currentPlan = metrics(current2.selected);
-                    if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade ? "material-value" : "additional-coins") < 0) {
-                      current2 = {
-                        ...current2,
-                        selected,
-                        validation,
-                        teamFacts: { chemistry: facts2.chemistry, teamRating: facts2.teamRating }
-                      };
-                      improved = true;
-                      accepted = true;
-                    }
-                  }
-                  if (nodes % 128 === 0) {
-                    try {
-                      onProgress?.({ phase: "owned-value-search", nodes, maxNodes: totalNodes });
-                    } catch {
-                    }
-                  }
-                  yield;
-                  if (accepted) break;
-                }
-                if (accepted) break;
+        function* assignments(first, second) {
+          const currentCost = priceFor(prices, byId.get(candidateKey(first)) ?? first) + priceFor(prices, byId.get(candidateKey(second)) ?? second);
+          const occupied = new Set(current2.selected.filter((ref) => ref.slot !== first.slot && ref.slot !== second.slot).map((ref) => ref.definitionId));
+          const replacements = ordered.filter((candidate) => !occupied.has(candidate.definitionId) && candidate.definitionId !== first.definitionId && candidate.definitionId !== second.definitionId);
+          for (let a = 0; a < replacements.length; a++) {
+            const candidateA = replacements[a], priceA = priceFor(prices, candidateA);
+            if (priceA >= currentCost) continue;
+            for (let b = a + 1; b < replacements.length; b++) {
+              const candidateB = replacements[b], priceB = priceFor(prices, candidateB);
+              if (priceA + priceB > currentCost || !allowEqualPriceQualityDowngrade && priceA + priceB >= currentCost || candidateA.definitionId === candidateB.definitionId) continue;
+              for (const assignment of [[candidateA, candidateB], [candidateB, candidateA]]) {
+                yield current2.selected.map((ref) => ref.slot === first.slot ? selectedRef(assignment[0], first.slot) : ref.slot === second.slot ? selectedRef(assignment[1], second.slot) : ref);
               }
-              if (accepted) break;
             }
-            if (accepted) break pairSearch;
           }
+        }
+        const pairs = refs3.flatMap((first, index) => refs3.slice(index + 1).map((second) => assignments(first, second)));
+        try {
+          while (pairs.length && nodes < maxNodes && !improved) {
+            const quantum = allowEqualPriceQualityDowngrade ? Math.max(2, Math.floor((maxNodes - nodes) / pairs.length)) : maxNodes - nodes;
+            for (let index = 0; index < pairs.length && nodes < maxNodes && !improved; index++) {
+              const pair = pairs[index], limit = Math.min(maxNodes, nodes + quantum);
+              while (nodes < limit && !improved) {
+                const step = pair.next();
+                if (step.done) {
+                  pairs.splice(index--, 1);
+                  break;
+                }
+                const selected = step.value, squad = Array(input.challenge.slotCount).fill(null);
+                for (const ref of selected) squad[ref.slot] = { ...byId.get(candidateKey(ref)), slot: ref.slot };
+                nodes++;
+                let facts2;
+                try {
+                  facts2 = typeof input.evaluateSquad === "function" ? input.evaluateSquad(structuredClone(squad)) : { status: "observed", chemistry: null, teamRating: null };
+                } catch {
+                  facts2 = null;
+                }
+                const validation = facts2?.status === "observed" ? matchFc27SbcRequirements({
+                  requirements: parsed.rules,
+                  squad: squad.filter(Boolean),
+                  chemistry: facts2.chemistry,
+                  teamRating: facts2.teamRating,
+                  groupMatcher: input.groupMatcher,
+                  clubLinks: input.clubLinks
+                }) : null;
+                if (validation?.status === "satisfied") {
+                  const candidatePlan = metrics(selected), currentPlan = metrics(current2.selected);
+                  if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade ? "material-value" : "additional-coins") < 0) {
+                    current2 = {
+                      ...current2,
+                      selected,
+                      validation,
+                      teamFacts: { chemistry: facts2.chemistry, teamRating: facts2.teamRating }
+                    };
+                    improved = true;
+                  }
+                }
+                if (nodes % 128 === 0) {
+                  try {
+                    onProgress?.({ phase: "owned-value-search", nodes, maxNodes: totalNodes });
+                  } catch {
+                  }
+                }
+                yield;
+              }
+            }
+          }
+        } finally {
+          for (const pair of pairs) pair.return?.();
         }
       }
     }
@@ -7497,7 +7619,7 @@
     throw Error("FC27_BUY_PRICE_APPROVAL_INVALID");
   };
   var integer9 = (value) => Number.isSafeInteger(value) && value >= 0;
-  var validId3 = (value) => integer9(value) && value > 0;
+  var validId4 = (value) => integer9(value) && value > 0;
   var same10 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var sources = ["futgg", "futbin"];
   function copyQuotes(reference, definitionId, season, platform, policy) {
@@ -7535,7 +7657,7 @@
   }
   function createPurchasePriceApproval({ scope: scope2, definitionIds, references, policy, season, platform, overrides = {}, now = Date.now() }) {
     policy = normalizeGalleryPricePolicy(policy);
-    if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3 || season !== "27" || !["pc", "console"].includes(platform) || !integer9(now) || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 256 || definitionIds.some((value) => !validId3(value)) || new Set(definitionIds).size !== definitionIds.length) fail13();
+    if (typeof scope2 !== "string" || !scope2 || scope2.length > 1e3 || season !== "27" || !["pc", "console"].includes(platform) || !integer9(now) || !Array.isArray(definitionIds) || !definitionIds.length || definitionIds.length > 256 || definitionIds.some((value) => !validId4(value)) || new Set(definitionIds).size !== definitionIds.length) fail13();
     if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || Object.keys(overrides).some((key2) => !definitionIds.includes(Number(key2)) || !validPublicPrice(overrides[key2]))) fail13();
     const rows = definitionIds.map((definitionId) => {
       const quotes = copyQuotes(references?.[definitionId], definitionId, season, platform, policy);
@@ -8081,7 +8203,9 @@
               quoteCompleted,
               quoteTotal,
               refinementPasses: diagnostics.refinementPasses,
-              bestEstimatedCost: diagnostics.estimatedCost,
+              elapsedMs: Math.max(0, now() - diagnostics.planningStartedAt),
+              bestEstimatedCost: incumbent?.[0]?.estimatedCost ?? diagnostics.estimatedCost,
+              bestMaterialValue: incumbent?.[0]?.materialValue ?? null,
               ...budget ? { ...budget, nodes: budget.budgetNodes } : {}
             });
           } catch {
@@ -8103,6 +8227,11 @@
         let incumbent = null;
         let totalValueMode = false;
         let finishIncumbent = null;
+        let optimizationDeadline = Infinity;
+        const assertOptimization = () => {
+          assertCurrent();
+          if (now() >= optimizationDeadline) throw Error("FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT");
+        };
         try {
           if (!isPuzzleQuoteCeiling(quoteCeiling)) return finish(stop5("FC27_PURCHASE_PRICE_LIMIT_INVALID"));
           if (materialCeiling !== null && (!id3(materialCeiling) || materialCeiling > 11 * MAX_PUZZLE_QUOTE_PRICE2)) {
@@ -8261,6 +8390,7 @@
               diagnostics.scopeTruncated = !fullCoverage;
               if (valued.approval) {
                 publicPolicy = valued.approval.policy;
+                diagnostics.priceSource = publicPolicy.source;
                 for (const row of valued.approval.rows) references.set(row.definitionId, row);
               }
             } catch (error2) {
@@ -8296,6 +8426,35 @@
               diagnostics.materialValue = inventoryValue;
               diagnostics.inventoryValue = inventoryValue;
             }
+          }
+          let originalOwnedPlan = incumbent?.[0] ? structuredClone(incumbent[0]) : null;
+          if (originalOwnedPlan) {
+            diagnostics.stage = "local-market-search";
+            reportProgress();
+            const local = await measure("searchMs", () => refineFc27PuzzleOwnedValue(input, ownedIncumbent, materialPrices, {
+              localOnly: true,
+              localNodeLimit: Math.min(1600, searchRemaining()),
+              assertCurrent,
+              onProgress: (value) => reportProgress(value)
+            }));
+            assertCurrent();
+            searchSpent += local.nodes ?? 0;
+            diagnostics.localSearchNodes += local.nodes ?? 0;
+            diagnostics.nodes = searchSpent;
+            if (Number.isSafeInteger(local.materialValue)) {
+              const candidate = {
+                selectedOwned: local.selected,
+                purchases: [],
+                purchaseCount: 0,
+                estimatedCost: 0,
+                materialValue: local.materialValue,
+                inventoryValue: local.materialValue,
+                teamFacts: local.teamFacts
+              };
+              if (comparePuzzlePlans(candidate, incumbent[0], "material-value") < 0) incumbent = [candidate];
+            }
+            reportProgress();
+            optimizationDeadline = now() + 3e4;
           }
           let jointSearch = ownedIncumbent?.status === "preview" || seed.status !== "ready";
           diagnostics.incumbentProvided = ownedIncumbent?.status === "preview";
@@ -8356,6 +8515,7 @@
           };
           let coverageChecked = false;
           const refineCoverage = async () => {
+            assertOptimization();
             if (coverageChecked || adaptiveBudget && searchRemaining() === 0 || !loadPublicPrices || !loadCachedPrices || !list2 || !refinementCards(refinementPlan(incumbent[0])).length) return;
             coverageChecked = true;
             diagnostics.stage = "catalog-hints";
@@ -8369,7 +8529,7 @@
               prices: new Map([...quotes].filter(([, quote2]) => id3(quote2.price)).map(([id14, quote2]) => [id14, quote2.price])),
               materialPrices,
               costCeiling: planCost(incumbent[0]),
-              assertCurrent,
+              assertCurrent: assertOptimization,
               scaffold: incumbent[0].purchases.map((card) => entries2.get(card.definitionId)).filter(Boolean),
               incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
               readPrices: (ids2) => loadCachedPrices(ids2, {
@@ -8395,6 +8555,7 @@
             diagnostics.coveragePages = 0;
             const fresh = /* @__PURE__ */ new Map();
             for (const query of directions) {
+              assertOptimization();
               const previousHits = cacheHits, page = await measure("catalogMs", () => cachedRead("catalog", query));
               if (page?.status !== "observed" || page.season !== "27" || page.source !== "ea-defid" || !same12(page.query, query) || !id3(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((item2) => item2?.definitionId)).size !== page.entries.length) throw Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
               for (const card of page.entries) {
@@ -8429,7 +8590,7 @@
                 costCeiling: planCost(incumbent[0]),
                 priceSource: publicPolicy.source,
                 incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
-                assertCurrent,
+                assertCurrent: assertOptimization,
                 yieldControl: yieldPuzzleHintTask,
                 onProgress: (value) => {
                   accountFixedNodes(searchSpent + (value.nodes ?? 0));
@@ -8465,9 +8626,74 @@
             diagnostics.searchComplete = false;
             diagnostics.optimalWithinPool = false;
           };
-          finishIncumbent = async () => {
-            await refineCoverage();
+          finishIncumbent = async (refine = true) => {
+            if (refine) await refineCoverage();
             assertCurrent();
+            if (totalValueMode && originalOwnedPlan) {
+              const selected = [
+                ...originalOwnedPlan.selectedOwned,
+                ...incumbent.flatMap((plan) => [...plan.selectedOwned, ...plan.purchases])
+              ];
+              const ids2 = [...new Set(selected.map((card) => card.definitionId))];
+              const expired = ids2.some((definitionId) => {
+                const quote2 = references.get(definitionId)?.quotes?.[publicPolicy.source];
+                return !quote2 || quote2.fetchedAt > now() || quote2.expiresAt <= now();
+              });
+              if (expired) {
+                diagnostics.stage = "quote-read";
+                reportProgress();
+                const snapshot = await measure("pricingMs", () => loadPublicPrices(ids2, {
+                  purpose: "puzzle",
+                  policy: publicPolicy,
+                  rows: selected,
+                  deadlineAt: now() + 9e4,
+                  isCurrent: () => {
+                    assertCurrent();
+                    return true;
+                  }
+                }));
+                assertCurrent();
+                const platform = /^pc(?::|$)/i.test(input.context.platform) ? "pc" : "console";
+                const approval = createPurchasePriceApproval({
+                  scope: scope2,
+                  season: "27",
+                  platform,
+                  policy: snapshot.policy,
+                  definitionIds: ids2,
+                  references: snapshot.references,
+                  now: now()
+                });
+                if (!same12(publicPolicy, approval.policy)) throw Error("FC27_PUBLIC_PRICE_POLICY_INVALID");
+                if (approval.rows.some((row) => !validPublicValue(row.estimate))) throw Error("FC27_PUZZLE_VALUE_INCOMPLETE");
+                for (const row of approval.rows) {
+                  references.set(row.definitionId, row);
+                  materialPrices.set(row.definitionId, row.estimate);
+                  if (quotes.has(row.definitionId)) quotes.set(row.definitionId, {
+                    price: row.estimate,
+                    observedAt: row.quotes[publicPolicy.source].fetchedAt
+                  });
+                }
+                const revalue = (plan) => {
+                  const inventoryValue = plan.selectedOwned.reduce((sum2, ref) => sum2 + materialPrices.get(ref.definitionId), 0);
+                  const purchases = plan.purchases.map((card) => ({
+                    ...card,
+                    estimatedUnitPrice: materialPrices.get(card.definitionId),
+                    priceReference: references.get(card.definitionId),
+                    priceSource: publicPolicy.source,
+                    quotedAt: references.get(card.definitionId).quotes[publicPolicy.source].fetchedAt
+                  }));
+                  const estimatedCost = purchases.reduce((sum2, card) => sum2 + card.estimatedUnitPrice, 0);
+                  return { ...plan, purchases, inventoryValue, estimatedCost, materialValue: inventoryValue + estimatedCost };
+                };
+                originalOwnedPlan = revalue(originalOwnedPlan);
+                ownedBaseline = {
+                  materialValue: originalOwnedPlan.materialValue,
+                  priceSource: publicPolicy.source,
+                  valueExpiresAt: Math.min(...originalOwnedPlan.selectedOwned.map((card) => references.get(card.definitionId).quotes[publicPolicy.source].expiresAt))
+                };
+                incumbent = sortPuzzlePlans([...incumbent.map(revalue).filter((plan) => plan.purchases.every((card) => quoteCeiling === null || card.estimatedUnitPrice <= quoteCeiling)), originalOwnedPlan], "material-value").slice(0, 1);
+              }
+            }
             if (diagnostics.scopeTruncated) {
               diagnostics.searchComplete = false;
               diagnostics.optimalWithinPool = false;
@@ -8549,6 +8775,7 @@
           })) }, [], [], input) : [];
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
+            assertOptimization();
             if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
               diagnostics.optimizationBudgetExhausted = true;
               diagnostics.searchComplete = false;
@@ -8576,7 +8803,7 @@
               await priceCandidates(candidates);
             }
             for (; ; ) {
-              assertCurrent();
+              assertOptimization();
               diagnostics.stage = "local-market-search";
               const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
               const prices = loadPublicPrices ? new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])) : null;
@@ -8619,12 +8846,12 @@
               reportProgress();
               const suggestion = await measure("searchMs", () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
                 ...searchOptions,
-                assertCurrent,
+                assertCurrent: assertOptimization,
                 prices,
                 onProgress: searchProgress
               }) : suggestFc27PuzzleJointPurchasesCooperatively(input, available, {
                 ...searchOptions,
-                assertCurrent,
+                assertCurrent: assertOptimization,
                 prices,
                 incumbent: hasOwnedIncumbent || !totalValueMode ? incumbent ? {
                   status: "preview",
@@ -8780,6 +9007,15 @@
           return finish({ ...stop5(searchLimited ? "FC27_PUZZLE_SEARCH_LIMIT" : hadPlans ? "FC27_PURCHASE_QUOTES_UNAVAILABLE" : "FC27_PURCHASE_REPAIR_NO_PLAN"), queries: usedQueries });
         } catch (error2) {
           diagnostics.localReason = safeReason3(error2);
+          if (diagnostics.localReason === "FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT" && incumbent && finishIncumbent) {
+            diagnostics.searchComplete = false;
+            diagnostics.optimalWithinPool = false;
+            try {
+              return await finishIncumbent(false);
+            } catch (finalError) {
+              diagnostics.localReason = safeReason3(finalError);
+            }
+          }
           return finish(stop5(diagnostics.localReason));
         } finally {
           busy = false;
@@ -14415,7 +14651,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/prices.js
-  var validId4 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
   function parseGalleryPriceResponse(input) {
     let response = input;
     if (typeof input === "string") {
@@ -14428,7 +14664,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const result = /* @__PURE__ */ Object.create(null);
     for (const entry of Array.isArray(response?.data) ? response.data : []) {
       const id14 = Number(entry?.eaId ?? entry?.definitionId), price3 = Number(entry?.price);
-      if (validId4(id14) && Number.isSafeInteger(price3) && price3 > 0) result[String(id14)] = price3;
+      if (validId5(id14) && Number.isSafeInteger(price3) && price3 > 0) result[String(id14)] = price3;
     }
     return Object.freeze(result);
   }
@@ -14438,7 +14674,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!data || typeof data !== "object") return result;
     for (const rawId of ids2) {
       const id14 = Number(rawId);
-      if (!validId4(id14)) continue;
+      if (!validId5(id14)) continue;
       const entry = data[String(id14)] ?? data[id14];
       const value = Number(entry?.n);
       if (Number.isSafeInteger(value) && value > 0) result[String(id14)] = value;
@@ -16341,7 +16577,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/planner.js
-  var validId5 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId6 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore2 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice2 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
   var asPrice = (prices, id14) => {
@@ -16460,7 +16696,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       }
       return summaries.get(key2);
     };
-    let rows = progress.rows.filter((row) => validId5(row?.eaId));
+    let rows = progress.rows.filter((row) => validId6(row?.eaId));
     if (rows.length !== progress.rows.length) return { status: "unavailable", reason: "input-invalid" };
     if (rows.some((row) => row.collected != null && typeof row.collected !== "boolean")) return { status: "unavailable", reason: "input-invalid" };
     if (new Set(rows.map((row) => row.eaId)).size !== rows.length) return { status: "unavailable", reason: "duplicate-version" };
@@ -16893,7 +17129,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/joint-planner.js
-  var validId6 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId7 = (value) => Number.isSafeInteger(value) && value > 0;
   var validScore3 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e8;
   var validPrice3 = (value) => Number.isSafeInteger(value) && value > 0 && value <= 15e6;
   var score = (row) => validScore3(row.gradingScore) ? row.gradingScore : validScore3(row.galleryScore) ? row.galleryScore : null;
@@ -17015,7 +17251,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (scopes.size > 1 || platforms.size > 1) return fail22("unavailable", "target-context-mismatch");
     for (const target of targets) {
       const { set, catalog, progress } = target;
-      if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId6(set.requiredCards) || set.requiredCards > 256 || !["futgg", "fodder"].includes(catalog?.source) || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== (catalog.source === "fodder" ? set.id : Number(set.id.slice(6)))) return fail22("unavailable", "target-input-invalid");
+      if (!/^(futgg:[1-9]\d*|fodder:[a-z0-9-]+\/[a-z0-9-]+)$/.test(set?.id) || targetIds.has(set.id) || !Array.isArray(set.grades) || !validId7(set.requiredCards) || set.requiredCards > 256 || !["futgg", "fodder"].includes(catalog?.source) || !Array.isArray(progress?.rows) || progress.rows.length > 2e3 || progress.season != null && progress.season !== "27" || progress.setId != null && progress.setId !== (catalog.source === "fodder" ? set.id : Number(set.id.slice(6)))) return fail22("unavailable", "target-input-invalid");
       targetIds.add(set.id);
       const grade = set.grades.find((row) => row.name === target.targetGrade);
       if (!grade || !Number.isSafeInteger(grade.threshold) || grade.threshold < 0) return fail22("unavailable", "target-grade-unknown");
@@ -17027,7 +17263,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       if (unknownRows.length) collectionUnknown.set(set.id, unknownRows.map((row) => row.eaId));
       const seen = /* @__PURE__ */ new Set();
       for (const row of progress.rows) {
-        if (!validId6(row.eaId) || seen.has(row.eaId)) return fail22("unavailable", "duplicate-version");
+        if (!validId7(row.eaId) || seen.has(row.eaId)) return fail22("unavailable", "duplicate-version");
         seen.add(row.eaId);
         const previous = identities.get(row.eaId);
         if (previous && [
@@ -17328,10 +17564,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var sources2 = /* @__PURE__ */ new Set(["futgg", "fodder"]);
   var grades2 = /* @__PURE__ */ new Set(["D", "C", "B", "A", "S"]);
   var validScope2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f]/.test(value);
-  var validId7 = (id14, source) => typeof id14 === "string" && id14.length <= 330 && id14.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id14) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id14));
+  var validId8 = (id14, source) => typeof id14 === "string" && id14.length <= 330 && id14.startsWith(`${source}:`) && (source === "futgg" ? /^futgg:[1-9]\d{0,15}$/.test(id14) : /^fodder:[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(id14));
   var emptyGalleryTargets = () => ({ targets: [], budget: null });
   function normalizeGalleryTargets(value, source) {
-    if (!sources2.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId7(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
+    if (!sources2.has(source) || !Array.isArray(value?.targets) || value.targets.length > 1024 || value.targets.some((row) => !validId8(row?.setId, source) || !grades2.has(row?.grade)) || new Set(value.targets.map((row) => row.setId)).size !== value.targets.length || value.budget !== null && (!Number.isSafeInteger(value.budget) || value.budget < 0)) {
       throw new Error("FC27_GALLERY_TARGETS_INVALID");
     }
     return { targets: value.targets.map(({ setId, grade }) => ({ setId, grade })), budget: value.budget };
@@ -17410,8 +17646,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/selection.js
-  var validId8 = (value) => Number.isSafeInteger(value) && value > 0;
-  var keyOf3 = (row) => validId8(row?.eaId) ? String(row.eaId) : null;
+  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
+  var keyOf3 = (row) => validId9(row?.eaId) ? String(row.eaId) : null;
   var textOf = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase().trim();
   var priceOf3 = (prices, id14) => {
     const value = prices?.[id14] ?? prices?.[Number(id14)];
@@ -17552,7 +17788,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/replan.js
-  var validId9 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
   var validPrice4 = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6;
   var safeFailures = /* @__PURE__ */ new Set([
     "FC27_GALLERY_NO_LISTING",
@@ -17569,7 +17805,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (outcome?.status !== "partial" || outcome?.collection?.status !== "confirmed" || !Array.isArray(outcome.results) || !outcome.failures?.length || !safeFailures.has(outcome.reason)) return false;
     const resultIds = /* @__PURE__ */ new Set();
     for (const result of outcome.results) {
-      if (!validId9(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "unassigned", "acquired", "collected"].includes(result.state)) return false;
+      if (!validId10(result?.definitionId) || resultIds.has(result.definitionId) || !["waiting", "club", "unassigned", "acquired", "collected"].includes(result.state)) return false;
       resultIds.add(result.definitionId);
     }
     return outcome.failures.every((failure) => resultIds.has(failure.definitionId) && safeFailures.has(failure.reason) && outcome.results.some((result) => result.definitionId === failure.definitionId && result.state === "waiting")) && Number.isSafeInteger(outcome.spent) && outcome.spent >= 0;
@@ -17594,7 +17830,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const rows = new Map(targets.flatMap((target) => target.progress.rows).map((row) => [row.eaId, row]));
     const receipts = /* @__PURE__ */ new Map(), exclusions = new Set(ledger.excludedIds ?? []);
     for (const entry of ledger.receipts ?? []) {
-      if (!validId9(entry.definitionId) || !rows.has(entry.definitionId) || receipts.has(entry.definitionId) || entry.price !== 0 && !validPrice4(entry.price)) return blocked10("purchase-ledger-invalid");
+      if (!validId10(entry.definitionId) || !rows.has(entry.definitionId) || receipts.has(entry.definitionId) || entry.price !== 0 && !validPrice4(entry.price)) return blocked10("purchase-ledger-invalid");
       receipts.set(entry.definitionId, { ...entry });
     }
     let attemptSpent = 0;
@@ -17619,7 +17855,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         if (!validPrice4(failure.observedPrice)) return blocked10("purchase-result-mismatch");
       }
     }
-    if ([...exclusions].some((id14) => !validId9(id14))) return blocked10("purchase-ledger-invalid");
+    if ([...exclusions].some((id14) => !validId10(id14))) return blocked10("purchase-ledger-invalid");
     const spent = [...receipts.values()].reduce((sum2, row) => sum2 + row.price, 0);
     if (budget !== null && spent > budget) return blocked10("purchase-ledger-invalid");
     const remainingBudget = budget === null ? null : budget - spent;
@@ -17651,7 +17887,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
 
   // src/gallery/first-owner-history.js
-  var validId10 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId11 = (value) => Number.isSafeInteger(value) && value > 0;
   function galleryFirstOwnerHistoryAction(row) {
     if (row?.firstOwnedSource === "local-history") return "clear";
     return row?.collected === true && row.firstOwned !== true ? "mark" : null;
@@ -17661,7 +17897,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const result = /* @__PURE__ */ new Map();
     for (const row of rows) {
       const definitionId = Number(row?.definitionId);
-      if (!validId10(definitionId) || typeof row?.firstOwned !== "boolean") continue;
+      if (!validId11(definitionId) || typeof row?.firstOwned !== "boolean") continue;
       const updatedAt = Number.isSafeInteger(row.updatedAt) && row.updatedAt >= 0 ? row.updatedAt : 0;
       result.set(definitionId, { definitionId, firstOwned: row.firstOwned, updatedAt });
     }
@@ -17670,7 +17906,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   function toggleGalleryFirstOwnerHistory(history, definitionId, firstOwned, updatedAt = Date.now()) {
     const current2 = normalizeGalleryFirstOwnerHistory(history);
     const id14 = Number(definitionId);
-    if (!validId10(id14) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
+    if (!validId11(id14) || typeof firstOwned !== "boolean" || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return current2;
     const next = current2.filter((row) => row.definitionId !== id14);
     next.push({ definitionId: id14, firstOwned, updatedAt });
     return normalizeGalleryFirstOwnerHistory(next);
@@ -27972,6 +28208,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const procurementPhases = {
       "repair-seed": "\u6B63\u5728\u5BFB\u627E\u8865\u5361\u8D77\u70B9\u2026",
       "query-planning": "\u6B63\u5728\u89C4\u5212\u5361\u6C60\u67E5\u8BE2\u2026",
+      "owned-value-read": "\u6B63\u5728\u4F30\u7B97\u5E93\u5B58\u6750\u6599\u4EF7\u503C\u2026",
+      "owned-value-search": "\u6B63\u5728\u5C1D\u8BD5\u4F4E\u4EF7\u5E93\u5B58\u66FF\u6362\u2026",
       "catalog-hints": "\u6B63\u5728\u6BD4\u8F83\u5176\u4ED6\u4F4E\u4EF7\u5361\u7FA4\uFF0C\u5386\u53F2\u8D44\u6599\u4EC5\u7528\u4E8E\u9009\u62E9\u67E5\u8BE2\u65B9\u5411\u2026",
       "catalog-read": "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u5361\u6C60\u2026",
       "local-market-search": "\u6B63\u5728\u8BA1\u7B97\u8865\u5361\u7EC4\u5408\u2026",
@@ -27996,7 +28234,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     if (Number.isSafeInteger(progress.checks) && !search) lines.push(`\u8BC4\u4F30 ${progressCount(progress.checks)} / ${progressCount(progress.maxNodes)}`);
     if (Number.isSafeInteger(progress.catalogPages)) lines.push(`\u5361\u6C60 ${progressCount(progress.catalogPages)} / ${progressCount(progress.catalogTotal)} \u9875 \xB7 ${progressCount(progress.catalogCandidates)} \u4E2A\u7248\u672C`);
-    if (progress.phase === "quote-read") lines.push(`\u62A5\u4EF7 ${progressCount(progress.quoteCompleted)} / ${progressCount(progress.quoteTotal)}`);
+    if (["quote-read", "owned-value-read"].includes(progress.phase)) lines.push(`\u62A5\u4EF7 ${progressCount(progress.quoteCompleted)} / ${progressCount(progress.quoteTotal)}`);
+    if (Number.isSafeInteger(progress.elapsedMs) && progress.elapsedMs >= 0) lines.push(`\u89C4\u5212\u5DF2\u7528 ${Math.floor(progress.elapsedMs / 1e3)} \u79D2`);
+    if (Number.isSafeInteger(progress.bestMaterialValue) && progress.bestMaterialValue >= 0) {
+      lines.push(`\u5F53\u524D\u6700\u4F73\u6750\u6599\u4F30\u503C ${progressCount(progress.bestMaterialValue)} \xB7 \u5F85\u8D2D ${progressCount(progress.bestEstimatedCost)}`);
+    }
     if (Number.isSafeInteger(progress.requests)) lines.push(`\u8BF7\u6C42 ${progressCount(progress.requests)} \xB7 \u7F13\u5B58 ${progressCount(progress.cacheHits)}`);
     return lines.join("\n");
   };
@@ -28005,14 +28247,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var shortageReasons = ["FC27_PUZZLE_SEARCH_LIMIT", "FC27_PUZZLE_CONSTRAINT_SHORTAGE", "SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND"];
   function materialPolicyText(result) {
     const policy = result.policy;
-    const validId13 = (id14) => Number.isSafeInteger(id14) && id14 > 0;
-    const excluded = Array.isArray(policy?.excludedLeagueIds) ? [...new Set(policy.excludedLeagueIds.filter(validId13))] : [];
+    const validId14 = (id14) => Number.isSafeInteger(id14) && id14 > 0;
+    const excluded = Array.isArray(policy?.excludedLeagueIds) ? [...new Set(policy.excludedLeagueIds.filter(validId14))] : [];
     const restrictions = [
       policy?.onlyUntradeable === true ? "\u4EC5\u4E0D\u53EF\u4EA4\u6613" : "",
       excluded.length ? `\u6392\u9664\u8054\u8D5B ID\uFF1A${excluded.join("\u3001")}` : ""
     ].filter(Boolean);
     if (!restrictions.length) return "";
-    const conflicts = (Array.isArray(result.rules) ? result.rules : []).filter((rule) => rule?.kind === "from-leagues" && ["min", "exact"].includes(rule.mode) && Number.isSafeInteger(rule.count) && rule.count > 0 && rule.count <= 11 && Array.isArray(rule.ids) && rule.ids.length > 0 && rule.ids.every((id14) => validId13(id14) && excluded.includes(id14))).map((rule) => `EA \u8981\u6C42${rule.mode === "exact" ? "\u6070\u597D" : "\u81F3\u5C11"} ${rule.count} \u5F20\u6765\u81EA\u8054\u8D5B ID ${rule.ids.join("\uFF0F")} \u7684\u5361\uFF0C\u4E0E FSU \u6392\u9664\u8054\u8D5B\u8BBE\u7F6E\u51B2\u7A81\uFF1B\u4FDD\u7559\u8BE5\u8BBE\u7F6E\u65F6\uFF0C\u5E93\u5B58\u548C\u8865\u5361\u90FD\u65E0\u6CD5\u6EE1\u8DB3\u6B64\u6761\u4EF6\u3002`);
+    const conflicts = (Array.isArray(result.rules) ? result.rules : []).filter((rule) => rule?.kind === "from-leagues" && ["min", "exact"].includes(rule.mode) && Number.isSafeInteger(rule.count) && rule.count > 0 && rule.count <= 11 && Array.isArray(rule.ids) && rule.ids.length > 0 && rule.ids.every((id14) => validId14(id14) && excluded.includes(id14))).map((rule) => `EA \u8981\u6C42${rule.mode === "exact" ? "\u6070\u597D" : "\u81F3\u5C11"} ${rule.count} \u5F20\u6765\u81EA\u8054\u8D5B ID ${rule.ids.join("\uFF0F")} \u7684\u5361\uFF0C\u4E0E FSU \u6392\u9664\u8054\u8D5B\u8BBE\u7F6E\u51B2\u7A81\uFF1B\u4FDD\u7559\u8BE5\u8BBE\u7F6E\u65F6\uFF0C\u5E93\u5B58\u548C\u8865\u5361\u90FD\u65E0\u6CD5\u6EE1\u8DB3\u6B64\u6761\u4EF6\u3002`);
     return [`\u5F53\u524D FSU \u9009\u6750\u9650\u5236\uFF1A${restrictions.join("\uFF1B")}\u3002`, ...conflicts].join("\n");
   }
   var resultText = (result) => {
@@ -28074,7 +28316,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   };
   function formatFc27PuzzleNativeResult(result) {
     const exhaustedCostSearch = result?.status === "concept-filled" && result.procurementSummary?.diagnostics?.optimizationBudgetExhausted === true;
-    const message = resultText(result) + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
+    const summary3 = result?.procurementSummary;
+    const costReason = summary3?.diagnostics?.localReason ?? summary3?.reason ?? result?.valueReason;
+    const saved = ["filled", "concept-filled"].includes(result?.status);
+    const costNotice = saved && costReason === "FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT" ? "\n\u8FDB\u4E00\u6B65\u964D\u4EF7\u641C\u7D22\u5DF2\u8FBE\u523030\u79D2\uFF0C\u672C\u6B21\u91C7\u7528\u5DF2\u9A8C\u8BC1\u65B9\u6848\uFF0C\u5C1A\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : saved && (summary3?.status === "blocked" || result?.valueReason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") ? `
+\u964D\u4EF7\u4F18\u5316\u672A\u5B8C\u6210\uFF1A${purchaseReasons[costReason] ?? "\u65E0\u6CD5\u5B8C\u6210\u6210\u672C\u6BD4\u8F83"}\u3002\u672C\u6B21\u4FDD\u7559\u539F\u5408\u89C4\u9635\u5BB9\uFF0C\u4E0D\u4EE3\u8868\u6700\u4F4E\u6210\u672C\u3002` : "";
+    const message = resultText(result) + costNotice + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
     const purchase = result?.purchaseSuggestion;
     if (purchase?.status !== "blocked") return message;
     const reason = code(purchase.reason);
@@ -28707,7 +28954,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/progress.js
-  var validId11 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId12 = (value) => Number.isSafeInteger(value) && value > 0;
   var booleanOrUnknown = (value) => typeof value === "boolean" ? value : null;
   var scoreOrUnknown = (value) => Number.isFinite(value) && value >= 0 && value <= 1e8 ? Number(value) : null;
   function accountRow(item2, concept, club, clubKnown, history, held) {
@@ -28750,20 +28997,20 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const allowed = new Set(pool.items.map((item2) => item2.eaId));
     for (const raw of conceptItems) {
       const id14 = raw?.definitionId ?? raw?.resourceId;
-      if (!validId11(id14) || !allowed.has(id14)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
+      if (!validId12(id14) || !allowed.has(id14)) throw new Error("FC27_GALLERY_CONCEPT_ID_UNVERIFIED");
       if (concepts.has(id14)) throw new Error("FC27_GALLERY_PROGRESS_DUPLICATE_CONCEPT");
       concepts.set(id14, raw);
     }
     const club = /* @__PURE__ */ new Map();
     for (const raw of clubItems) {
-      if (!validId11(raw?.definitionId)) continue;
+      if (!validId12(raw?.definitionId)) continue;
       if (!allowed.has(raw.definitionId)) continue;
       if (!club.has(raw.definitionId)) club.set(raw.definitionId, []);
       club.get(raw.definitionId).push(raw);
     }
     const history = /* @__PURE__ */ new Map();
     for (const row of collectionHistory) history.set(row.definitionId, { ...history.get(row.definitionId), ...row });
-    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId11));
+    const held = new Set(heldItems.map((row) => row?.definitionId).filter(validId12));
     const rows = pool.items.map((item2) => accountRow(item2, concepts.get(item2.eaId), club.get(item2.eaId), clubKnown, history.get(item2.eaId), held.has(item2.eaId)));
     const count3 = (key2) => rows.filter((row) => row[key2] === true).length;
     return Object.freeze({
@@ -36635,7 +36882,7 @@ ${version ?? ""}`;
   // src/adapters/ea/fc27-gallery-card.js
   var at8 = (root, path) => path.split(".").reduce((value, key2) => value?.[key2], root);
   var own = (value, key2) => value != null && Object.prototype.hasOwnProperty.call(value, key2) ? value[key2] : void 0;
-  var validId12 = (value) => Number.isSafeInteger(value) && value > 0;
+  var validId13 = (value) => Number.isSafeInteger(value) && value > 0;
   function cloneCardData(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const clone6 = (value, depth = 0) => {
@@ -36660,7 +36907,7 @@ ${version ?? ""}`;
   function validEntity(entity, source, native, ownedDisplay) {
     const definitionId = sourceDefinitionId(source);
     const player = typeof entity?.isPlayer === "function" && entity.isPlayer();
-    return entity && validId12(entity.definitionId) && validId12(definitionId) && entity.definitionId === definitionId && player && (ownedDisplay ? native && entity.concept === false : entity.concept === true && (native || source?.dream === true)) && (own(source, "resourceId") == null || own(source, "resourceId") === definitionId) && (own(source, "definitionId") == null || own(source, "definitionId") === definitionId);
+    return entity && validId13(entity.definitionId) && validId13(definitionId) && entity.definitionId === definitionId && player && (ownedDisplay ? native && entity.concept === false : entity.concept === true && (native || source?.dream === true)) && (own(source, "resourceId") == null || own(source, "resourceId") === definitionId) && (own(source, "definitionId") == null || own(source, "definitionId") === definitionId);
   }
   function createFc27GalleryNativeRenderer(root, { document = root?.document, diagnosticLog: diagnosticLog2 } = {}) {
     const reported = /* @__PURE__ */ new Set();
@@ -38491,7 +38738,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number3(evidence?.count)} / ${number3(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
         "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
         "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002"
+        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5148\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u5237\u65B0\u5217\u8868\uFF1B\u4ECD\u5931\u8D25\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002"
       };
       return `${labels2[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
     }
@@ -38896,7 +39143,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         const snapshot = await session2.readExternalInventory(result.settings);
         if (serial !== opened) return;
         if (snapshot.status !== "observed") {
-          node("status").textContent = streamlinedExecutionMessage(snapshot.reason);
+          node("status").textContent = streamlinedExecutionMessage(snapshot.reason, null, snapshot.protectionFailure);
           return;
         }
         externalList = renderStreamlinedExternalSelection({
@@ -39193,6 +39440,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         node("external-prepare").hidden = true;
         renderResult(result);
         node("status").textContent = result.plan ? "\u8D21\u732E\u9884\u89C8\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u3002\u8BF7\u6838\u5BF9 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\u3002" : streamlinedExecutionMessage(result.reason);
+        if (result.historyAction) showOutcome(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = streamlinedExecutionMessage(safeReason9(error2));
       } finally {
@@ -39229,9 +39477,23 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
     });
     const showOutcome = (result) => {
+      if (result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" && !result.record) resetProgress();
       const canArchive = result.historyAction?.canArchive === true && typeof session2.archiveHistory === "function";
+      const archiveBlocked = result.historyAction?.canArchive === false && result.historyAction.kind === "contribution";
       node("archive-history").hidden = !canArchive;
-      node("history-note").hidden = !canArchive;
+      node("history-note").hidden = !canArchive && !archiveBlocked;
+      if (archiveBlocked) {
+        const labels3 = {
+          FC27_STREAMLINED_HISTORY_NO_CONFIRMED: "\u6CA1\u6709\u8DB3\u591F\u7684\u5DF2\u786E\u8BA4\u8D21\u732E\u8BC1\u636E\u3002",
+          FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING: "\u4ECD\u6709\u8D21\u732E\u8BF7\u6C42\u7ED3\u679C\u672A\u77E5\uFF0C\u9700\u8981\u5148\u6838\u5BF9\u56DE\u6267\u3002",
+          FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL: "\u65E7\u4EFB\u52A1\u5305\u542B\u8D2D\u5165\u6750\u6599\u6216\u672A\u7ED3\u6E05\u7684\u8D2D\u5361\u8BB0\u5F55\uFF0C\u9700\u5148\u6838\u5BF9\u65E7\u91C7\u8D2D\u4EFB\u52A1\u3002",
+          FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED: "\u5DF2\u786E\u8BA4\u6807\u8BB0\u7F3A\u5C11\u5B8C\u6574\u56DE\u6267\uFF0C\u6216\u56DE\u6267\u79EF\u5206\u4E0E\u8BB0\u5F55\u4E0D\u7B26\u3002",
+          FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED: "\u65E7\u4EFB\u52A1\u51FA\u73B0\u8FC7\u79EF\u5206\u53D8\u5316\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u5B9E\u9645\u8D21\u732E\u7ED3\u679C\u3002",
+          FC27_STREAMLINED_HISTORY_NO_REMAINDER: "\u6CA1\u6709\u53EF\u53D6\u6D88\u7684\u672A\u53D1\u9001\u4F59\u6279\u3002",
+          FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED: "\u4F59\u6279\u5E26\u6709\u8BF7\u6C42\u6216\u56DE\u6267\u75D5\u8FF9\uFF0C\u4E0D\u80FD\u5F53\u4F5C\u4ECE\u672A\u53D1\u9001\u3002"
+        };
+        node("history-note").textContent = `\u6682\u4E0D\u80FD\u7ED3\u675F\u65E7\u4EFB\u52A1\uFF1A${labels3[result.historyAction.reason] ?? "\u65E7\u4EFB\u52A1\u72B6\u6001\u672A\u6838\u9A8C\u3002"} \u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\uFF0C\u4E0D\u5FC5\u53CD\u590D\u70B9\u51FB\u6062\u590D\u3002`;
+      }
       if (canArchive) {
         const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
         const name2 = typeof old?.name === "string" ? `\u300C${old.name.slice(0, 160)}\u300D` : "";
@@ -39267,6 +39529,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
       node("status").textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status;
+      if (archiveBlocked && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
+        const old = result.recovery;
+        node("status").textContent = `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5C1A\u672A\u7ED3\u675F\uFF1A\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(old?.pendingWriteCount)} \u6279\u3002\u963B\u65AD\u539F\u56E0\u89C1\u4E0B\u65B9\u3002`;
+      }
+      if (canArchive && result.historyAction.kind === "contribution" && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
+        node("status").textContent = "\u65E7\u8D21\u732E\u4EFB\u52A1\u5C1A\u6709\u672A\u53D1\u9001\u4F59\u6279\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u7ED3\u675F\u65E7\u8D21\u732E\u4F59\u6279\u5E76\u5F52\u6863\u201D\uFF0C\u518D\u5237\u65B0\u5217\u8868\u91CD\u65B0\u9009\u62E9\uFF1B\u672C\u6B21\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u5361\u7247\u3002";
+      }
       if (result.warning?.reason === "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED") {
         node("status").textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
       }
@@ -40341,10 +40610,18 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
 
   // src/streamlined/journal.js
   var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
-  function canRetireStreamlinedContribution(record) {
+  function streamlinedContributionRetirementReason(record) {
     const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
-    return !!record && confirmed.length > 0 && record.plan.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !record.plan.execution?.purchaseScope && !record.plan.route?.groups?.some((group) => group.source === "market") && confirmed.every((batch) => batch.receipt?.status === "accepted" && !batch.progressChanged) && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => !batch.progressChanged && (batch.state === "confirmed" || batch.state === "rejected" || batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0));
+    if (record?.batches?.some((batch) => ["pending", "unknown"].includes(batch.state))) return "FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING";
+    if (!record || !confirmed.length) return "FC27_STREAMLINED_HISTORY_NO_CONFIRMED";
+    if (!record.plan.items.every((item2) => item2.source === "inventory" && ["club", "storage", "transfer", "unassigned"].includes(item2.pile) && !item2.purchaseReceipt) || record.plan.execution?.purchaseScope || record.plan.route?.groups?.some((group) => group.source === "market")) return "FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL";
+    if (!confirmed.every((batch) => batch.receipt?.status === "accepted") || Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) !== record.submittedScore) return "FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED";
+    if (record.batches.some((batch) => batch.progressChanged)) return "FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED";
+    if (!record.batches.some((batch) => batch.state === "waiting")) return "FC27_STREAMLINED_HISTORY_NO_REMAINDER";
+    if (!record.batches.every((batch) => batch.state === "confirmed" || batch.state === "rejected" || batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0)) return "FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED";
+    return null;
   }
+  var canRetireStreamlinedContribution = (record) => streamlinedContributionRetirementReason(record) === null;
   var streamlinedContributionRecovery = (record) => ({
     setId: record.plan.challenge.setId,
     challengeId: record.plan.challenge.id,
@@ -40830,6 +41107,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       } catch {
       }
     };
+    const externalFailure = (error2, event) => {
+      const reason = safeReason10(error2), protectionFailure = reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? normalizeStreamlinedProtectionFailure(error2?.evidence) : null;
+      log({ event, status: "blocked", reason, ...protectionFailure });
+      return { status: "blocked", reason, liveExecutionEnabled: false, ...protectionFailure ? { protectionFailure } : {} };
+    };
     const logRoute = (route, phase = "selected") => {
       if (!route) return;
       log({
@@ -40867,6 +41149,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     const unchanged = (origin) => {
       const current2 = capture();
       if (!same2(current2, origin)) fail4("CONTEXT_CHANGED");
+    };
+    const foreignContributionHistory = async (execution, origin) => {
+      if (typeof execution?.inspectContributionHistory !== "function") return null;
+      const candidate = await execution.inspectContributionHistory(origin.challenge);
+      unchanged(origin);
+      const old = candidate?.recovery;
+      if (!old || old.setId === origin.challenge.setId && old.challengeId === origin.challenge.id && old.targetScore === origin.challenge.targetScore) return null;
+      return { ...candidate, status: "blocked", reason: "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" };
     };
     const confirmedCompletion = (record) => record?.submittedScore >= record?.plan?.challenge.targetScore && Array.isArray(record.batches) && record.batches.length > 0 && record.batches.every((batch) => batch.state === "confirmed" && batch.receipt?.status === "accepted") && record.batches.some((batch) => batch.receipt.challengeCompleted === true && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
     return Object.freeze({
@@ -40926,7 +41216,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (snapshot.status === "observed") externalView = { origin, config, input, snapshot };
           return snapshot;
         } catch (error2) {
-          return { status: "blocked", reason: safeReason10(error2), liveExecutionEnabled: false };
+          return externalFailure(error2, "external-read");
         } finally {
           busy = false;
         }
@@ -40979,10 +41269,15 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
             check();
           }
-          preview = { origin: saved.origin, input, items: result.items, plan, execution, externalSelection: true };
+          const blocked12 = execution ? await foreignContributionHistory(execution, saved.origin) : null;
+          check();
+          if (blocked12?.historyAction?.canArchive) history = { origin: saved.origin, execution, kind: "contribution" };
+          preview = blocked12 ? null : { origin: saved.origin, input, items: result.items, plan, execution, externalSelection: true };
           log({
             phase: "external-selection",
-            status: result.status,
+            status: blocked12?.status ?? result.status,
+            reason: blocked12?.reason,
+            localReason: blocked12?.historyAction?.reason,
             count: result.items.length,
             currentScore: result.score,
             targetScore: input.challenge.targetScore
@@ -40992,12 +41287,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             plan,
             policy: input.policy,
             inventoryStats: input.inventoryStats,
-            executionReason,
-            executionRecovery,
-            liveExecutionEnabled: !!execution
+            ...blocked12,
+            executionReason: blocked12?.reason ?? executionReason,
+            executionRecovery: blocked12?.recovery ?? executionRecovery,
+            liveExecutionEnabled: !!execution && !blocked12
           };
         } catch (error2) {
-          return { status: "blocked", reason: safeReason10(error2), liveExecutionEnabled: false };
+          return externalFailure(error2, "external-selection");
         } finally {
           busy = false;
         }
@@ -41551,6 +41847,17 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             { approved: true, fingerprint, batchIndices, allowPartial },
             callbacks
           );
+          if (result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
+            const blocked12 = await foreignContributionHistory(activeExecution, selected.origin);
+            if (blocked12) {
+              result = { ...result, ...blocked12 };
+              if (!stopRequested && blocked12.historyAction?.canArchive) {
+                history = { origin: selected.origin, execution: activeExecution, kind: "contribution" };
+              }
+            }
+            preview = null;
+            routePreview = null;
+          }
           const oldTarget = result.record?.challenge;
           if (result.reason === "FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED" && oldTarget && (oldTarget.id !== selected.plan.challenge.id || oldTarget.setId !== selected.plan.challenge.setId) && typeof activeExecution.recoverPurchase === "function") {
             unchanged(selected.origin);
@@ -41573,6 +41880,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             event: "contribution",
             status: result.status,
             reason: result.reason,
+            localReason: result.historyAction?.reason,
             mismatch: result.mismatch,
             currentScore: result.confirmation?.submittedScore ?? result.record?.submittedScore,
             targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
@@ -41670,12 +41978,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             origin.context,
             { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
           );
-          if (!history && contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" && typeof activeExecution.inspectContributionHistory === "function") {
+          if (!history && (contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" || ["observed", "recovered"].includes(contribution.status)) && typeof activeExecution.inspectContributionHistory === "function") {
             const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
             unchanged(origin);
-            if (candidate?.historyAction?.canArchive) {
+            if (candidate) {
               contribution = { ...contribution, ...candidate };
-              history = { origin, execution: activeExecution, kind: "contribution" };
+              if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: "contribution" };
             }
           }
           let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
@@ -41700,6 +42008,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             event: "recovery",
             status: result.status,
             reason: result.reason,
+            localReason: result.historyAction?.reason,
             currentScore: result.record?.submittedScore,
             targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
             ...streamlinedPurchaseAudit(result.record),
@@ -45095,13 +45404,17 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return Object.freeze({
       transaction,
       journal: persistence.journal,
-      async inspectContributionHistory(challenge) {
+      async inspectContributionHistory() {
         contributionToArchive = null;
         const record = await persistence.journal.read(context);
-        if (!record || record.plan.challenge.id === challenge.id && record.plan.challenge.setId === challenge.setId && record.plan.challenge.targetScore === challenge.targetScore || !canRetireStreamlinedContribution(record)) return null;
+        if (!record || isUnsentStreamlinedJournal(record) || !record.batches.some((batch) => batch.state === "waiting")) return null;
+        const recovery = streamlinedContributionRecovery(record);
+        const unavailable = (reason2) => ({ recovery, historyAction: { canArchive: false, kind: "contribution", reason: reason2 } });
+        const reason = streamlinedContributionRetirementReason(record);
+        if (reason) return unavailable(reason);
         await materializationJournal.assertSettled();
         const purchase = await marketJournal.read(context);
-        if (purchase && !await marketJournal.isRetired(purchase) && streamlinedPurchaseNeedsRecovery(purchase)) return null;
+        if (purchase && !await marketJournal.isRetired(purchase) && streamlinedPurchaseNeedsRecovery(purchase)) return unavailable("FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL");
         contributionToArchive = record;
         return { recovery: streamlinedContributionRecovery(record), historyAction: { canArchive: true, kind: "contribution" } };
       },
@@ -45113,7 +45426,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         try {
           await assertStreamlinedOtherTransactions(get, context);
           const candidate = await this.inspectContributionHistory(challenge);
-          if (!candidate || !same2(contributionToArchive, expected)) fail4("JOURNAL_CHANGED");
+          if (!candidate?.historyAction?.canArchive || !same2(contributionToArchive, expected)) fail4("JOURNAL_CHANGED");
           await persistence.journal.retire(expected);
           contributionToArchive = null;
           return { status: "archived", reason: "FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED" };
@@ -45309,7 +45622,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.100" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.101" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -45661,8 +45974,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.100"}`,
-    version: "27.0.100",
+    title: `FC Automation Tool ${"27.0.101"}`,
+    version: "27.0.101",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

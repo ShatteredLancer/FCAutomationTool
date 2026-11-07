@@ -4,6 +4,7 @@ export const formatFc27PuzzleProgress = progress => {
   if (typeof progress === 'string') return stageText[progress] ?? '正在处理…';
   if (!progress || typeof progress !== 'object') return '正在处理…';
   const procurementPhases = { 'repair-seed': '正在寻找补卡起点…', 'query-planning': '正在规划卡池查询…',
+    'owned-value-read': '正在估算库存材料价值…', 'owned-value-search': '正在尝试低价库存替换…',
     'catalog-hints': '正在比较其他低价卡群，历史资料仅用于选择查询方向…',
     'catalog-read': '正在读取候选卡池…', 'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
   const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
@@ -26,7 +27,11 @@ export const formatFc27PuzzleProgress = progress => {
   }
   if (Number.isSafeInteger(progress.checks) && !search) lines.push(`评估 ${progressCount(progress.checks)} / ${progressCount(progress.maxNodes)}`);
   if (Number.isSafeInteger(progress.catalogPages)) lines.push(`卡池 ${progressCount(progress.catalogPages)} / ${progressCount(progress.catalogTotal)} 页 · ${progressCount(progress.catalogCandidates)} 个版本`);
-  if (progress.phase === 'quote-read') lines.push(`报价 ${progressCount(progress.quoteCompleted)} / ${progressCount(progress.quoteTotal)}`);
+  if (['quote-read', 'owned-value-read'].includes(progress.phase)) lines.push(`报价 ${progressCount(progress.quoteCompleted)} / ${progressCount(progress.quoteTotal)}`);
+  if (Number.isSafeInteger(progress.elapsedMs) && progress.elapsedMs >= 0) lines.push(`规划已用 ${Math.floor(progress.elapsedMs / 1000)} 秒`);
+  if (Number.isSafeInteger(progress.bestMaterialValue) && progress.bestMaterialValue >= 0) {
+    lines.push(`当前最佳材料估值 ${progressCount(progress.bestMaterialValue)} · 待购 ${progressCount(progress.bestEstimatedCost)}`);
+  }
   if (Number.isSafeInteger(progress.requests)) lines.push(`请求 ${progressCount(progress.requests)} · 缓存 ${progressCount(progress.cacheHits)}`);
   return lines.join('\n');
 };
@@ -114,7 +119,14 @@ const purchaseReasons = {
 export function formatFc27PuzzleNativeResult(result) {
   const exhaustedCostSearch = result?.status === 'concept-filled'
     && result.procurementSummary?.diagnostics?.optimizationBudgetExhausted === true;
-  const message = resultText(result) + (exhaustedCostSearch
+  const summary = result?.procurementSummary;
+  const costReason = summary?.diagnostics?.localReason ?? summary?.reason ?? result?.valueReason;
+  const saved = ['filled', 'concept-filled'].includes(result?.status);
+  const costNotice = saved && costReason === 'FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT'
+    ? '\n进一步降价搜索已达到30秒，本次采用已验证方案，尚未确认最低材料成本。'
+    : saved && (summary?.status === 'blocked' || result?.valueReason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED')
+      ? `\n降价优化未完成：${purchaseReasons[costReason] ?? '无法完成成本比较'}。本次保留原合规阵容，不代表最低成本。` : '';
+  const message = resultText(result) + costNotice + (exhaustedCostSearch
     ? '\n搜索预算已用尽，当前仅为已找到的可行方案，未确认最低材料成本。' : '');
   const purchase = result?.purchaseSuggestion;
   if (purchase?.status !== 'blocked') return message;

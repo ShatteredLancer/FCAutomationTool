@@ -170,14 +170,17 @@ export function createFc27PuzzlePartialChemistryBound({ candidates, slots, forma
 // those weights with an injective matching to actual positions: two players
 // cannot both contribute through the same slot. Unmatched players can be legal
 // off-position fillers and contribute zero. This remains an optimistic bound.
-export function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating } = {}) {
+export function boundFc27PuzzleChemistry(input = {}) {
+  return boundChemistry(input, evaluateFc27PuzzleSquad);
+}
+function boundChemistry({ squad, formation, chemistry, rating }, evaluate) {
   if (!Array.isArray(squad) || !Array.isArray(formation?.positions)
       || squad.length !== 11 || formation.positions.length !== 11) return fail('FC27_PUZZLE_FORMATION_UNAVAILABLE');
-  const actual = evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating });
+  const actual = evaluate({ squad, formation, chemistry, rating });
   if (actual.status !== 'observed') return actual;
   const optimistic = { ...formation, positions: squad.map((item, index) => item === null
     ? formation.positions[index] : item.positions[0]) };
-  const result = evaluateFc27PuzzleSquad({ squad, formation: optimistic, chemistry, rating });
+  const result = evaluate({ squad, formation: optimistic, chemistry, rating });
   if (result.status !== 'observed') return result;
   const playable = squad.flatMap((item, index) => item === null ? [] : [index]);
   let scores = new Map([[0, 0]]);
@@ -196,11 +199,7 @@ export function boundFc27PuzzleChemistry({ squad, formation, chemistry, rating }
   return { status: 'observed', maxChemistry: Math.max(...scores.values()) };
 }
 
-export function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } = {}) {
-  // null denotes a simple brick; custom bricks and managers are unsupported.
-  if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some(item => item === undefined)) return fail('FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE');
-  if (!Array.isArray(formation?.positions) || formation.positions.length !== 11
-      || Array.from(formation.positions).some(position => !integer(position, 0, 27))) return fail('FC27_PUZZLE_FORMATION_UNAVAILABLE');
+function prepareChemistry(chemistry) {
   if (typeof chemistry?.profilesEnabled !== 'boolean') return fail('FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED');
   const resolveClub = createFc27ClubResolver(chemistry.links);
   const parameters = parametersOf(chemistry.parameters);
@@ -212,6 +211,36 @@ export function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } 
       || !Array.isArray(chemistry.superChemRarityIds) || chemistry.superChemRarityIds.length > 10001
       || Array.from(chemistry.superChemRarityIds).some(value => !integer(value, 0, 10000))) return fail('FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE');
   if (!profiles) return fail('FC27_PUZZLE_CHEMISTRY_FEATURE_UNVERIFIED');
+  const ordinaryRarities = new Set([0, 1].filter(rarity => !chemistry.profilesEnabled || ordinaryProfile(
+    profiles.find(value => value.applicableRarityIds.includes(rarity)) ?? profiles.find(value => value.id === 1))));
+  return { status: 'ready', resolveClub, parameters, identities, ordinaryRarities };
+}
+
+export function evaluateFc27PuzzleSquad(input = {}) {
+  return evaluatePrepared(input);
+}
+
+// One detached read owns these immutable configuration facts. Reuse only
+// their compilation, not player facts or validity decisions. The ordinary
+// public evaluator still reparses its input for independent final checks.
+export function createFc27PuzzleEvaluator({ formation, chemistry, rating } = {}) {
+  const snapshot = structuredClone({ formation, chemistry, rating });
+  const prepared = prepareChemistry(snapshot.chemistry);
+  const evaluate = input => evaluatePrepared(input, prepared);
+  return Object.freeze({
+    evaluateSquad: squad => evaluate({ ...snapshot, squad }),
+    boundSquad: squad => boundChemistry({ ...snapshot, squad }, evaluate),
+  });
+}
+
+function evaluatePrepared({ squad, formation, chemistry, rating }, prepared) {
+  // null denotes a simple brick; custom bricks and managers are unsupported.
+  if (!Array.isArray(squad) || squad.length !== 11 || Array.from(squad).some(item => item === undefined)) return fail('FC27_PUZZLE_SQUAD_SIZE_UNAVAILABLE');
+  if (!Array.isArray(formation?.positions) || formation.positions.length !== 11
+      || Array.from(formation.positions).some(position => !integer(position, 0, 27))) return fail('FC27_PUZZLE_FORMATION_UNAVAILABLE');
+  const config = prepared ?? prepareChemistry(chemistry);
+  if (config.status !== 'ready') return { ...config };
+  const { resolveClub, parameters, identities, ordinaryRarities } = config;
   const players = squad.filter(item => item !== null);
   for (const item of players) {
     if (!item || item.type !== 'player' || !integer(item.rating, 1, 99)
@@ -222,11 +251,7 @@ export function evaluateFc27PuzzleSquad({ squad, formation, chemistry, rating } 
         || item.cosmetic !== false || item.concept !== false || item.academyEnrolled !== false) return fail('FC27_PUZZLE_POSITION_OR_ITEM_FACTS_UNAVAILABLE');
     if ([identities.legendClubId, identities.heroClubId, identities.hallOfFutClubId].includes(item.teamId)
         || item.leagueId === identities.legendLeagueId || chemistry.superChemRarityIds.includes(item.rarity)) return fail('FC27_PUZZLE_SPECIAL_CHEMISTRY_UNSUPPORTED');
-    if (chemistry.profilesEnabled) {
-      // Safe snapshots exclude upgrades, so base rarity equals current rarity.
-      const profile = profiles.find(value => value.applicableRarityIds.includes(item.rarity)) ?? profiles.find(value => value.id === 1);
-      if (!ordinaryProfile(profile)) return fail('FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED');
-    }
+    if (!ordinaryRarities.has(item.rarity)) return fail('FC27_PUZZLE_CHEMISTRY_PROFILE_UNSUPPORTED');
   }
   const fields = [{ id: 1, value: item => item.nationId }, { id: 2, value: item => item.leagueId },
     { id: 3, value: item => resolveClub(item.teamId) }];

@@ -21,19 +21,28 @@ export async function exerciseStreamlinedExternal(page) {
     const session = a.createFc27StreamlinedSession({ inspect: () => {
       if (!evidence.current) throw Error('FC27_STREAMLINED_PAGE_UNAVAILABLE');
       return { context: c.context, challenge: c };
-    }, readInputs: () => ({ context: c.context, challenge: c, inventory, policy: a.policy, eligibility: a.eligibility,
-      assertCurrent() {}, resolveDisplayItem: ref => inventory.find(item => item.id === ref.id) }),
+    }, readInputs: () => {
+      if (evidence.protectionFailure) throw Object.assign(Error('FC27_STREAMLINED_PROTECTION_UNVERIFIED'),
+        { evidence: { phase: 'protection-cache', cached: false, mismatch: 'binding' } });
+      return { context: c.context, challenge: c, inventory, policy: a.policy, eligibility: a.eligibility,
+        assertCurrent() {}, resolveDisplayItem: ref => inventory.find(item => item.id === ref.id) };
+    },
     get: async (_key, fallback) => fallback, set: async () => { evidence.writes++; },
     prices: { load: async () => { evidence.quotes++; throw Error('unexpected quote'); } },
     createExecution: async () => ({ prepare(plan) { evidence.plan = plan; },
-      inspectContributionHistory: async () => ({ recovery: { setId: 32, challengeId: 62, currentScore: 3860,
+      inspectContributionHistory: async () => evidence.offerHistory ? ({ recovery: { setId: 32, challengeId: 62, currentScore: 3860,
         targetScore: 5500, confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 },
-        historyAction: { canArchive: true, kind: 'contribution' } }),
+        historyAction: { canArchive: !evidence.blockHistory, kind: 'contribution',
+          ...(evidence.blockHistory ? { reason: 'FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED' } : {}) } }) : null,
       archiveContributionHistory: async () => { evidence.archives = (evidence.archives ?? 0) + 1; evidence.offerHistory = false;
         return { status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' }; }, transaction: {
       recover: async () => evidence.offerHistory
         ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' } : { status: 'absent' },
-      execute: async (plan, approval) => { evidence.executed++; evidence.approval = approval;
+      execute: async (plan, approval) => {
+        if (evidence.lateHistory) return { status: 'blocked', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED',
+          recovery: { setId: 32, challengeId: 62, currentScore: 3860, targetScore: 5500,
+            confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 } };
+        evidence.executed++; evidence.approval = approval;
         return { status: 'partial', record: { context: plan.context, plan, submittedScore: plan.score,
           batches: plan.batches.map((refs, index) => ({ index, refs, state: 'confirmed' })) } };
       } } }) });
@@ -122,6 +131,40 @@ export async function exerciseStreamlinedExternal(page) {
   await page.getByRole('button', { name: '刷新列表', exact: true }).click();
   await page.locator('[data-external-list] .external-row').first().waitFor();
   assert.match(await page.locator('[data-external-summary]').innerText(), /已选外部卡 0 张/);
+  // Both the initial preview and a late cross-tab blocker must offer cleanup
+  // directly, without a second recovery click or a repeated contribution.
+  for (const stage of ['preview', 'contribute']) {
+    await page.evaluate(stage => { globalThis.externalSmoke.offerHistory = stage === 'preview'; }, stage);
+    await page.locator('[data-external-list] input[type=checkbox]').first().check();
+    await page.getByRole('button', { name: '准备贡献预览', exact: true }).click();
+    if (stage === 'contribute') {
+      await page.evaluate(() => { globalThis.externalSmoke.offerHistory = true; globalThis.externalSmoke.lateHistory = true; });
+      await page.getByRole('button', { name: '按顺序贡献', exact: true }).click();
+    }
+    await archive.waitFor();
+    assert.equal(await page.getByRole('button', { name: '按顺序贡献', exact: true }).isDisabled(), true);
+    assert.match(await page.locator('[data-status]').innerText(), /请先点击“结束旧贡献余批并归档”/);
+    assert.equal(await page.locator('progress[aria-label="执行进度"]').isVisible(), false);
+    assert.equal(await page.evaluate(() => globalThis.externalSmoke.executed), 1);
+    await archive.click();
+    await page.evaluate(() => { globalThis.externalSmoke.lateHistory = false; });
+    await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+    await page.locator('[data-external-list] .external-row').first().waitFor();
+  }
+  assert.equal(await page.evaluate(() => globalThis.externalSmoke.archives), 3);
+  await page.evaluate(() => { globalThis.externalSmoke.offerHistory = true; globalThis.externalSmoke.blockHistory = true; });
+  await page.getByRole('button', { name: '核对并恢复', exact: true }).click();
+  assert.equal(await archive.isVisible(), false);
+  assert.match(await page.locator('[data-history-note]').innerText(), /缺少完整回执/);
+  assert.match(await page.locator('[data-history-note]').innerText(), /不必反复点击恢复/);
+  assert.equal(await page.evaluate(() => globalThis.externalSmoke.archives), 3);
+  await page.evaluate(() => { globalThis.externalSmoke.protectionFailure = true; });
+  await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+  assert.match(await page.locator('[data-status]').innerText(), /原生主阵容缓存缺失/);
+  assert.equal(await page.getByRole('button', { name: '准备贡献预览', exact: true }).isDisabled(), true);
+  await page.evaluate(() => { globalThis.externalSmoke.protectionFailure = false; });
+  await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+  await page.locator('[data-external-list] .external-row').first().waitFor();
   await page.evaluate(() => { globalThis.externalSmoke.current = false; });
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-external-entry')?.isConnected);
   await page.waitForFunction(() => globalThis.externalSmoke.rendered === globalThis.externalSmoke.disposed);

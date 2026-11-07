@@ -1,0 +1,961 @@
+{
+  "set": "Al Hilal",
+  "setId": 190,
+  "requiredCards": 15,
+  "sThreshold": 15500,
+  "provenance": {
+    "screenshotDate": "2026-10-31",
+    "publicFetchDate": "2026-11-02",
+    "poolUrl": "https://www.fut.gg/api/fut/gallery/fc27/sets/190/pool/",
+    "limits": "EA visible lineup reconstructed with public metadata. The later FCAT First Owner filter screenshot shows the seven versions listed below. EA actual First Owner flags and historical owner-count provenance are NOT captured; removing Theo is a mathematical comparison, not proof that EA excludes him."
+  },
+  "columns": [
+    "eaId",
+    "playerEaId",
+    "score",
+    "overall",
+    "nationEaId",
+    "clubEaId",
+    "leagueEaId",
+    "rarityEaId",
+    "positions",
+    "weakFoot",
+    "skillMoves",
+    "holographic"
+  ],
+  "rows": [
+    [
+      50555496,
+      223848,
+      2625,
+      85,
+      51,
+      605,
+      350,
+      3,
+      [
+        "CAM",
+        "CDM",
+        "CM",
+        "ST"
+      ],
+      5,
+      4,
+      false
+    ],
+    [
+      224293,
+      224293,
+      2100,
+      85,
+      38,
+      605,
+      350,
+      0,
+      [
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      4,
+      3,
+      false
+    ],
+    [
+      223848,
+      223848,
+      830,
+      84,
+      51,
+      605,
+      350,
+      0,
+      [
+        "CAM",
+        "CDM",
+        "CM",
+        "ST"
+      ],
+      5,
+      4,
+      false
+    ],
+    [
+      84137646,
+      251566,
+      425,
+      82,
+      54,
+      605,
+      350,
+      3,
+      [
+        "LM",
+        "LW",
+        "RM",
+        "RW"
+      ],
+      3,
+      4,
+      false
+    ],
+    [
+      50553345,
+      221697,
+      410,
+      83,
+      14,
+      605,
+      350,
+      0,
+      [
+        "ST"
+      ],
+      4,
+      3,
+      false
+    ],
+    [
+      201024,
+      201024,
+      340,
+      82,
+      136,
+      605,
+      350,
+      0,
+      [
+        "CB"
+      ],
+      4,
+      3,
+      false
+    ],
+    [
+      232656,
+      232656,
+      340,
+      82,
+      18,
+      605,
+      350,
+      0,
+      [
+        "LB",
+        "LM"
+      ],
+      3,
+      4,
+      false
+    ],
+    [
+      50583214,
+      251566,
+      180,
+      80,
+      54,
+      605,
+      350,
+      0,
+      [
+        "LM",
+        "LW"
+      ],
+      3,
+      4,
+      false
+    ],
+    [
+      210602,
+      210602,
+      180,
+      80,
+      183,
+      605,
+      350,
+      0,
+      [
+        "LM",
+        "LW"
+      ],
+      5,
+      4,
+      false
+    ],
+    [
+      82925,
+      82925,
+      20,
+      62,
+      183,
+      605,
+      350,
+      0,
+      [
+        "LM",
+        "LW",
+        "RM",
+        "RW"
+      ],
+      3,
+      3,
+      false
+    ],
+    [
+      73855,
+      73855,
+      20,
+      63,
+      183,
+      605,
+      350,
+      0,
+      [
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      3,
+      2,
+      false
+    ],
+    [
+      83146,
+      83146,
+      20,
+      53,
+      183,
+      605,
+      350,
+      0,
+      [
+        "RB"
+      ],
+      3,
+      2,
+      false
+    ],
+    [
+      245276,
+      245276,
+      20,
+      62,
+      183,
+      605,
+      350,
+      0,
+      [
+        "GK"
+      ],
+      2,
+      1,
+      false
+    ],
+    [
+      246381,
+      246381,
+      20,
+      62,
+      183,
+      605,
+      350,
+      0,
+      [
+        "LM",
+        "LW",
+        "ST"
+      ],
+      4,
+      3,
+      false
+    ],
+    [
+      277279,
+      277279,
+      20,
+      52,
+      183,
+      605,
+      350,
+      0,
+      [
+        "GK"
+      ],
+      3,
+      1,
+      false
+    ]
+  ],
+  "tags": [
+    {
+      "id": 3,
+      "name": "Same Nation",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "NATION"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Different Nation",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "NATION"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Same Club",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "CLUB"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Different Club",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "CLUB"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Same League",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "LEAGUEID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 8,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Different League",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "LEAGUEID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Bronze",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "bronze"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 20,
+          "minItems": 5
+        },
+        {
+          "bonus": 40,
+          "minItems": 10
+        },
+        {
+          "bonus": 80,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Silver",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "silver"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 15,
+          "minItems": 5
+        },
+        {
+          "bonus": 30,
+          "minItems": 10
+        },
+        {
+          "bonus": 60,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Golden",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "gold"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Holographic",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0",
+            "1"
+          ],
+          "attribute": "HYPER_COSMETIC_TYPE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 8,
+          "minItems": 2
+        },
+        {
+          "bonus": 12,
+          "minItems": 4
+        },
+        {
+          "bonus": 20,
+          "minItems": 6
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Iconic",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "12"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 10,
+          "minItems": 2
+        },
+        {
+          "bonus": 15,
+          "minItems": 4
+        },
+        {
+          "bonus": 25,
+          "minItems": 6
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Heroic",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "72"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 8,
+          "minItems": 2
+        },
+        {
+          "bonus": 12,
+          "minItems": 4
+        },
+        {
+          "bonus": 20,
+          "minItems": 6
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "TOTW",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "3"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 4,
+          "minItems": 3
+        },
+        {
+          "bonus": 8,
+          "minItems": 6
+        },
+        {
+          "bonus": 15,
+          "minItems": 10
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "First Owner",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "1"
+          ],
+          "attribute": "FIRST_OWNED"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 150,
+          "minItems": 5
+        },
+        {
+          "bonus": 300,
+          "minItems": 10
+        },
+        {
+          "bonus": 500,
+          "minItems": 20
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Hands Only",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "GK"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 6
+        },
+        {
+          "bonus": 15,
+          "minItems": 10
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Multiples!",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "BASE_DEF_ID",
+          "values": [
+            "0"
+          ],
+          "attribute": "BASE_DEF_ID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 10,
+          "minItems": 2
+        },
+        {
+          "bonus": 15,
+          "minItems": 3
+        },
+        {
+          "bonus": 20,
+          "minItems": 4
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Ambidextrous",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MIN_COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "5"
+          ],
+          "attribute": "WEAK_FOOT"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 5
+        },
+        {
+          "bonus": 12,
+          "minItems": 10
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Skilled",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "MIN_COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "4"
+          ],
+          "attribute": "SKILL_MOVES"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 5
+        },
+        {
+          "bonus": 12,
+          "minItems": 10
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Defensive Wall",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "RB",
+            "CB",
+            "LB"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Midfield Control",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "CDM",
+            "RM",
+            "CM",
+            "LM",
+            "CAM"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "All out Attack",
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "thresholdType": "ITEM_COUNT",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "ST",
+            "LW",
+            "RW"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ]
+    }
+  ],
+  "scenario": {
+    "fcatScreenshotFirstOwnedIds": [224293, 223848, 84137646, 50553345, 232656, 210602, 50583214],
+    "eaTotalCompatibleFirstOwnedIds": [
+      224293,
+      223848,
+      84137646,
+      50553345,
+      50583214,
+      210602
+    ],
+    "extraFirstOwnedId": 232656,
+    "equalScoreAlternativeId": 201024
+  },
+  "expected": {
+    "ea": {
+      "base": 7550,
+      "bonus": 7770,
+      "total": 15320,
+      "firstOwnerMatched": 4125,
+      "firstOwnerBonus": 6187
+    },
+    "fcat": {
+      "base": 7550,
+      "bonus": 8280,
+      "total": 15830,
+      "firstOwnerMatched": 4465,
+      "firstOwnerBonus": 6697
+    },
+    "futggGroupingTotal": 15769,
+    "difference": 510
+  }
+}

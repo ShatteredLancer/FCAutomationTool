@@ -17,7 +17,7 @@ import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streaml
 import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
 import { assertStreamlinedRecoveryIsolation, isStreamlinedStockPlan, streamlinedPurchaseContributionPlan } from '../../streamlined/recovery-isolation.js';
 import { projectStreamlinedPurchaseHandoff } from '../../streamlined/purchase-handoff.js';
-import { isUnsentStreamlinedJournal, canRetireStreamlinedContribution, streamlinedContributionRecovery } from '../../streamlined/journal.js';
+import { isUnsentStreamlinedJournal, streamlinedContributionRetirementReason, streamlinedContributionRecovery } from '../../streamlined/journal.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
   const scope = traditionalJournalScope(context), raw = await get(scope, null);
@@ -116,15 +116,18 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     } });
   };
   return Object.freeze({ transaction, journal: persistence.journal,
-    async inspectContributionHistory(challenge) {
+    async inspectContributionHistory() {
       contributionToArchive = null;
       const record = await persistence.journal.read(context);
-      if (!record || record.plan.challenge.id === challenge.id && record.plan.challenge.setId === challenge.setId
-          && record.plan.challenge.targetScore === challenge.targetScore || !canRetireStreamlinedContribution(record)) return null;
+      if (!record || isUnsentStreamlinedJournal(record) || !record.batches.some(batch => batch.state === 'waiting')) return null;
+      const recovery = streamlinedContributionRecovery(record);
+      const unavailable = reason => ({ recovery, historyAction: { canArchive: false, kind: 'contribution', reason } });
+      const reason = streamlinedContributionRetirementReason(record);
+      if (reason) return unavailable(reason);
       // Pending moves/purchases must be handled by their existing recovery path.
       await materializationJournal.assertSettled();
       const purchase = await marketJournal.read(context);
-      if (purchase && !await marketJournal.isRetired(purchase) && streamlinedPurchaseNeedsRecovery(purchase)) return null;
+      if (purchase && !await marketJournal.isRetired(purchase) && streamlinedPurchaseNeedsRecovery(purchase)) return unavailable('FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL');
       contributionToArchive = record;
       return { recovery: streamlinedContributionRecovery(record), historyAction: { canArchive: true, kind: 'contribution' } };
     },
@@ -136,7 +139,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       try {
         await assertStreamlinedOtherTransactions(get, context);
         const candidate = await this.inspectContributionHistory(challenge);
-        if (!candidate || !same(contributionToArchive, expected)) fail('JOURNAL_CHANGED');
+        if (!candidate?.historyAction?.canArchive || !same(contributionToArchive, expected)) fail('JOURNAL_CHANGED');
         await persistence.journal.retire(expected); contributionToArchive = null;
         return { status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' };
       } finally { await release(); }

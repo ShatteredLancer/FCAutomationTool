@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import path from 'node:path';
 import { exercisePuzzleAdaptiveProgress } from './puzzle-adaptive-progress-smoke.mjs';
+import { exercisePuzzleGroupCapacity } from './puzzle-group-capacity-smoke.mjs';
+import { exercisePuzzleCostCheckpoint } from './puzzle-cost-checkpoint-smoke.mjs';
 
 export async function exercisePuzzleProgress(context) {
+  await exercisePuzzleCostCheckpoint(context);
   const page = await context.newPage();
   try {
     const root = path.resolve(import.meta.dirname, '../..');
@@ -67,4 +70,5 @@ export async function exercisePuzzleProgress(context) {
     console.log('Puzzle browser scheduling passed: default pure solver avoids simulated hidden-tab zero-timer clamping and retains context checks.');
   } finally { await page.close(); }
   await exercisePuzzleAdaptiveProgress(context);
+  await exercisePuzzleGroupCapacity(context);
 }

@@ -6,6 +6,7 @@ import { readFc27Context, readFc27CachedClub, readFc27CachedPile } from '../../s
 import { createFc27StreamlinedStorageReader } from '../../src/adapters/ea/fc27-streamlined-storage-read.js';
 import { readFc27PuzzlePolicy } from '../../src/adapters/ea/fc27-fsu-read.js';
 import { marketFixture } from '../helpers/fc27-market-fixture.js';
+import { DEFAULT_PUZZLE_MAX_RATING } from '../../src/fc27/puzzle-material-policy.js';
 
 vi.mock('../../src/adapters/ea/fc27-puzzle-read.js', async importOriginal => ({ ...await importOriginal(),
   inspectFc27PuzzlePlan: vi.fn(), readFc27PuzzleClubLinks: vi.fn(), readFc27PuzzleChemistry: vi.fn() }));
@@ -33,6 +34,16 @@ beforeEach(() => {
       liveExecutionEnabled: false, plan: { selectedCount: plan.selected.length, exactValidation: plan.exactValidation },
       pending: ['EA_TEAM_FACTS_DIFFERENTIAL', 'EXACT_ITEM_VALIDATION', 'PUZZLE_FILL_TRANSACTION'] };
   });
+});
+
+it.each([undefined, 78])('uses the same rating ceiling for planning and exact rechecking (%s)', async maxRating => {
+  input.policy.maxRating = maxRating ?? DEFAULT_PUZZLE_MAX_RATING;
+  readFc27PuzzlePolicy.mockImplementation((_root, ceiling) => ({ ...input.policy, maxRating: ceiling }));
+  const options = { setId: 19, challengeId: 43, ...(maxRating === undefined ? {} : { maxRating }) };
+  expect(await inspectFc27VerifiedPuzzlePlan({}, options)).toMatchObject({
+    status: 'preview', plan: { exactValidation: { status: 'verified' } },
+  });
+  expect(readPage).toHaveBeenCalledOnce();
 });
 
 it('checks Club and Storage via their fresh transports and retains Storage in the fill preflight', async () => {

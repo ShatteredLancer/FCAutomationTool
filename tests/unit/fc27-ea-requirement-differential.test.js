@@ -62,6 +62,14 @@ it.skipIf(!source).each([
   expect(input).toEqual(before);
 });
 
+it.skipIf(!source)('compares gold quality and rating after exact verification', async () => {
+  const { input, report } = fixture([rule(3, [3]), rule(19, [75])], value => {
+    value.squad.forEach(item => { item.rating = 81; });
+  });
+  expect(await inspectEaRequirementDifferential(report, input, { readSource: async () => source }))
+    .toMatchObject({ status: 'verified', local: [true, true], ea: [true, true], eaOverall: true });
+});
+
 it.skipIf(!source)('compares each rule and the complete AND result together', async () => {
   const { input, report } = fixture([rule(10, [11, 12], 1), rule(9, [1]), rule(17, [2], 3), rule(3, [1]), rule(35, [14])]);
   expect(await inspectEaRequirementDifferential(report, input, { readSource: async () => source }))

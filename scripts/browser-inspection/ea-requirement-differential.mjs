@@ -107,7 +107,7 @@ export async function inspectEaRequirementDifferential(report, transient,
         || report.layout?.simpleBrickIndices?.length !== 0 || report.layout?.customBrickIndices?.length !== 0
         || JSON.stringify(report.layout.formation) !== JSON.stringify(transient?.formation)
         || !Array.isArray(squad) || squad.length !== 11 || squad.some(item => !item || !integer(item.rating)
-          || item.rating < 1 || item.rating > 74 || !integer(item.nationId) || item.nationId <= 0
+          || item.rating < 1 || item.rating > 99 || !integer(item.nationId) || item.nationId <= 0
           || !integer(item.leagueId) || item.leagueId <= 0 || !integer(item.teamId) || item.teamId <= 0
           || ![0, 1].includes(item.rarity) || !Array.isArray(item.groups) || item.groups.length > 256
           || item.groups.some(group => !integer(group) || group < 0))

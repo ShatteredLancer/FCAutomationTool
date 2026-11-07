@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileGalleryScoringRules, evaluateGalleryLineup, summarizeGalleryScore, createGalleryScoreSummarizer } from '../../src/gallery/scoring.js';
 import auxerre from '../fixtures/fc27-gallery-auxerre-score.json';
+import hilal from '../fixtures/fc27-gallery-al-hilal-score.json';
 
 const tag = (id, attribute, type = 'COUNT', values = ['1'], tiers = [{ minItems: 2, bonus: 10 }]) => ({
   id, name: `Tag ${id}`, bonusType: 'ITEM_SCORE_PERCENTAGE', thresholdType: 'ITEM_COUNT',
@@ -48,6 +49,35 @@ it('keeps full lineups, ties, bonuses and unknown fields identical with the over
 });
 
 describe('Gallery scoring from public rules and exact EA base scores', () => {
+  it('reproduces the Al Hilal FCAT First Owner screenshot and an EA-total-compatible comparison without inferring EA ownership', () => {
+    const firstOwned = new Set(hilal.scenario.eaTotalCompatibleFirstOwnedIds);
+    const rows = hilal.rows.map(values => {
+      const raw = Object.fromEntries(hilal.columns.map((key, i) => [key, values[i]]));
+      return { ...raw, gradingScore: raw.score, firstOwned: firstOwned.has(raw.eaId) };
+    });
+    const compiled = rules(hilal.tags), ea = evaluateGalleryLineup(rows, compiled);
+    const observed = new Set(hilal.scenario.fcatScreenshotFirstOwnedIds);
+    expect(observed.size).toBe(7);
+    expect(observed.has(232656)).toBe(true);
+    expect(observed.has(201024)).toBe(false);
+    expect([...observed].filter(id => !firstOwned.has(id))).toEqual([hilal.scenario.extraFirstOwnedId]);
+    const screenshot = evaluateGalleryLineup(rows.map(row => ({ ...row, firstOwned: observed.has(row.eaId) })), compiled);
+    expect(screenshot.total).toBe(hilal.expected.fcat.total);
+    expect(screenshot.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4465, pct: 150, bonus: 6697 });
+    expect({ base: ea.base, bonus: ea.bonus, total: ea.total }).toEqual({ base: 7550, bonus: 7770, total: 15320 });
+    expect(ea.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4125, pct: 150, bonus: 6187 });
+    for (const id of [hilal.scenario.extraFirstOwnedId, hilal.scenario.equalScoreAlternativeId]) {
+      const changed = rows.map(row => row.eaId === id ? { ...row, firstOwned: true } : row);
+      const fcat = evaluateGalleryLineup(changed, compiled);
+      expect({ base: fcat.base, bonus: fcat.bonus, total: fcat.total }).toEqual({ base: 7550, bonus: 8280, total: 15830 });
+      expect(fcat.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4465, pct: 150, bonus: 6697 });
+      expect(fcat.tags.filter(tag => tag.id !== 1)).toEqual(ea.tags.filter(tag => tag.id !== 1));
+      expect(fcat.total - ea.total).toBe(hilal.expected.difference);
+      expect(evaluateGalleryLineup(changed, compiled, { groupMode: 'futgg' }).total).toBe(hilal.expected.futggGroupingTotal);
+    }
+    expect(ea.total).toBeLessThan(hilal.sThreshold);
+    expect(hilal.expected.fcat.total).toBeGreaterThanOrEqual(hilal.sThreshold);
+  });
   it('characterizes the AJ Auxerre EA lineup separately from the public optimized lineup', () => {
     const tags = [
       tag(3, 'NATION', 'MAX_COUNT_ALL_SAME', ['0'], [{ minItems: 5, bonus: 1 }, { minItems: 10, bonus: 2 }, { minItems: 20, bonus: 4 }]),

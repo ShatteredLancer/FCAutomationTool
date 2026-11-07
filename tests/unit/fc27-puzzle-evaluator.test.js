@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { evaluateFc27PuzzleSquad, evaluateFc27PuzzleRating, boundFc27PuzzleChemistry,
-  createFc27PuzzlePartialChemistryBound } from '../../src/fc27/puzzle-evaluator.js';
+  createFc27PuzzlePartialChemistryBound, createFc27PuzzleEvaluator } from '../../src/fc27/puzzle-evaluator.js';
 
 const links = { schema: 1, complete: true, links: [[101, 1], [102, 2]] };
 const parameters = [
@@ -17,6 +17,47 @@ const formation = { id: 16, positions: Array(11).fill(5) };
 const player = (id, ratingValue = 60, extra = {}) => ({ id, definitionId: 1000 + id, type: 'player', rating: ratingValue,
   nationId: 11, teamId: 1, leagueId: 1, rarity: 0, positions: [5], special: false, evolution: false, cosmetic: false,
   concept: false, academyEnrolled: false, activeTrade: false, tradeable: false, limitedUse: false, loans: -1, ...extra });
+
+it('reuses detached configuration without changing ratings, chemistry or matching bounds', () => {
+  for (const floatCalculationEnabled of [false, true]) {
+    const config = { formation, chemistry, rating: { floatCalculationEnabled } };
+    const compiled = createFc27PuzzleEvaluator(config);
+    for (let seed = 0; seed < 80; seed++) {
+      const squad = Array.from({ length: 11 }, (_, i) => (i + seed) % 13 === 0 ? null : player(i + 1,
+        60 + (seed * 7 + i) % 30, { nationId: 1 + (i + seed) % 4, teamId: i % 2 ? 101 : 102,
+          leagueId: 1 + (i * 3 + seed) % 5, positions: (i + seed) % 3 ? [5, 7] : [7] }));
+      expect(compiled.evaluateSquad(squad)).toEqual(evaluateFc27PuzzleSquad({ ...config, squad }));
+      expect(compiled.boundSquad(squad)).toEqual(boundFc27PuzzleChemistry({ ...config, squad }));
+    }
+  }
+});
+
+it('freezes configuration per read but still evaluates changed player facts and returned arrays afresh', () => {
+  const config = structuredClone({ formation, chemistry, rating });
+  const compiled = createFc27PuzzleEvaluator(config);
+  const squad = Array.from({ length: 11 }, (_, i) => player(i + 1));
+  const before = compiled.evaluateSquad(squad);
+  config.formation.positions.fill(7); config.chemistry.parameters[0].thresholds = [];
+  expect(compiled.evaluateSquad(squad)).toEqual(before);
+  before.slotChemistry[0] = 99;
+  expect(compiled.evaluateSquad(squad).slotChemistry[0]).toBe(3);
+  squad[0].positions = [7];
+  expect(compiled.evaluateSquad(squad).chemistry).toBe(30);
+  squad[0].special = true;
+  expect(compiled.evaluateSquad(squad).status).toBe('blocked');
+});
+
+it('retains error precedence for invalid configuration and malformed or sparse players', () => {
+  for (const patch of [{ chemistry: null }, { formation: null }, { chemistry: { ...chemistry, links: null } },
+    { chemistry: { ...chemistry, profilesEnabled: true } }, { rating: {} }]) {
+    const config = { formation, chemistry, rating, ...patch }, compiled = createFc27PuzzleEvaluator(config);
+    const squad = Array.from({ length: 11 }, (_, i) => player(i + 1));
+    for (const items of [squad, [], Array(11), squad.map((p, i) => i ? p : { ...p, nationId: null })]) {
+      expect(compiled.evaluateSquad(items)).toEqual(evaluateFc27PuzzleSquad({ ...config, squad: items }));
+      expect(compiled.boundSquad(items)).toEqual(boundFc27PuzzleChemistry({ ...config, squad: items }));
+    }
+  }
+});
 
 it('replays ordinary-player chemistry with linked clubs, thresholds and three-point cap', () => {
   const squad = Array.from({ length: 11 }, (_, index) => player(index + 1));

@@ -90,10 +90,10 @@ it.each([false, true])('independently confirms Club before each external duplica
   expect(f.move).toHaveBeenCalledTimes(2); expect(f.request).toHaveBeenCalledTimes(3);
 });
 
-it('after explicit old-stock retirement still confirms Club before Transfer and Unassigned, without replaying old work', async () => {
+it.each(['club', 'storage', 'transfer', 'unassigned'])('after explicit old %s retirement still confirms Club before Transfer and Unassigned, without replaying old work', async pile => {
   const f = fixture({ expired: true });
   const challenge = { ...f.plan.challenge, id: 62, setId: 32, targetScore: 5500, remainingScore: 5500 };
-  const items = [safeItem({ id: 501, definitionId: 600, points: 3860 }), safeItem({ id: 502, definitionId: 601, points: 1640 })];
+  const items = [safeItem({ id: 501, definitionId: 600, points: 3860 }), safeItem({ id: 502, definitionId: 601, points: 1640, pile })];
   const plan = createStreamlinedPlan({ context: f.plan.context, challenge, policy: f.plan.policy,
     result: { status: 'ready', items, batches: items.map(item => [item]), score: 5500,
       progress: streamlinedProgress(challenge, 5500), purchaseCost: 0, materialValue: 400, searchComplete: true } });

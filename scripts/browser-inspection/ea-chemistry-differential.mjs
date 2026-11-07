@@ -94,7 +94,7 @@ export async function inspectEaChemistryDifferential(report, transientInput,
         || plan.selectedCount !== 11 || plan.exactValidation.presentCount !== 11
         || typeof report.configuration?.floatCalculationEnabled !== 'boolean'
         || !Array.isArray(transientInput?.squad) || transientInput.squad.length !== 11
-        || transientInput.squad.some(item => !item || !Number.isSafeInteger(item.rating) || item.rating > 74)
+        || transientInput.squad.some(item => !item || !Number.isSafeInteger(item.rating) || item.rating < 1 || item.rating > 99)
         || report.layout?.slotCount !== 11 || report.layout.requiredPlayerCount !== 11
         || report.layout.simpleBrickIndices?.length !== 0 || report.layout.customBrickIndices?.length !== 0
         || JSON.stringify(report.layout.formation) !== JSON.stringify(transientInput.formation)

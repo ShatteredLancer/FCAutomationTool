@@ -210,7 +210,9 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         catalogPages: diagnostics.catalogPages, catalogCandidates: diagnostics.catalogCandidates,
         usableCandidates: diagnostics.usableCandidates, catalogTotal, requests, cacheHits,
         quoteCompleted, quoteTotal, refinementPasses: diagnostics.refinementPasses,
-        bestEstimatedCost: diagnostics.estimatedCost,
+        elapsedMs: Math.max(0, now() - diagnostics.planningStartedAt),
+        bestEstimatedCost: incumbent?.[0]?.estimatedCost ?? diagnostics.estimatedCost,
+        bestMaterialValue: incumbent?.[0]?.materialValue ?? null,
         ...(budget ? { ...budget, nodes: budget.budgetNodes } : {}) }); } catch { /* Presentation cannot affect procurement. */ }
     };
     let ownedBaseline = null;
@@ -223,6 +225,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
     let incumbent = null;
     let totalValueMode = false;
     let finishIncumbent = null;
+    let optimizationDeadline = Infinity;
+    const assertOptimization = () => {
+      assertCurrent();
+      if (now() >= optimizationDeadline) throw Error('FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT');
+    };
     try {
       if (!isPuzzleQuoteCeiling(quoteCeiling)) return finish(stop('FC27_PURCHASE_PRICE_LIMIT_INVALID'));
       if (materialCeiling !== null && (!id(materialCeiling) || materialCeiling > 11 * MAX_PUZZLE_QUOTE_PRICE)) {
@@ -375,6 +382,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.scopeTruncated = !fullCoverage;
           if (valued.approval) {
             publicPolicy = valued.approval.policy;
+            diagnostics.priceSource = publicPolicy.source;
             for (const row of valued.approval.rows) references.set(row.definitionId, row);
           }
         } catch (error) {
@@ -406,6 +414,30 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           diagnostics.materialValue = inventoryValue;
           diagnostics.inventoryValue = inventoryValue;
         }
+      }
+      // Preserve cheap owned exchanges before optional catalogue/global work.
+      // Charge the existing shared node allowance, rather than adding a new
+      // search budget. Later refinement may fail without losing this result.
+      let originalOwnedPlan = incumbent?.[0] ? structuredClone(incumbent[0]) : null;
+      if (originalOwnedPlan) {
+        diagnostics.stage = 'local-market-search'; reportProgress();
+        const local = await measure('searchMs', () => refineFc27PuzzleOwnedValue(input, ownedIncumbent, materialPrices, {
+          localOnly: true, localNodeLimit: Math.min(1600, searchRemaining()), assertCurrent,
+          onProgress: value => reportProgress(value),
+        }));
+        assertCurrent();
+        searchSpent += local.nodes ?? 0;
+        diagnostics.localSearchNodes += local.nodes ?? 0;
+        diagnostics.nodes = searchSpent;
+        if (Number.isSafeInteger(local.materialValue)) {
+          const candidate = { selectedOwned: local.selected, purchases: [], purchaseCount: 0,
+            estimatedCost: 0, materialValue: local.materialValue, inventoryValue: local.materialValue, teamFacts: local.teamFacts };
+          if (comparePuzzlePlans(candidate, incumbent[0], 'material-value') < 0) incumbent = [candidate];
+        }
+        reportProgress();
+        // Only optional cost optimization is time-bounded. Feasibility and
+        // all live transaction pacing retain their existing contracts.
+        optimizationDeadline = now() + 30000;
       }
       // Preserve a fully owned feasible incumbent in total-value mode. If no
       // complete squad exists yet, first turn the chemistry repair seed into
@@ -444,6 +476,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       };
       let coverageChecked = false;
       const refineCoverage = async () => {
+        assertOptimization();
         // Costly cash-only plans need the same bounded discovery pass as
         // material-value plans. A missing owned valuation is not evidence
         // that the sampled market route is already cheap.
@@ -456,7 +489,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         const hint = adaptiveBudget && searchRemaining() < 24000 ? { queries: [], nodes: 0, pairs: 0 }
           : await measure('hintMs', () => readFc27PuzzleCatalogHints({ input, list, get, now, usedQueries,
           prices: new Map([...quotes].filter(([, quote]) => id(quote.price)).map(([id, quote]) => [id, quote.price])),
-          materialPrices, costCeiling: planCost(incumbent[0]), assertCurrent,
+          materialPrices, costCeiling: planCost(incumbent[0]), assertCurrent: assertOptimization,
           scaffold: incumbent[0].purchases.map(card => entries.get(card.definitionId)).filter(Boolean),
           incumbent: { status: 'preview', selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
           readPrices: ids => loadCachedPrices(ids, { policy: publicPolicy,
@@ -476,6 +509,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.coveragePages = 0;
         const fresh = new Map();
         for (const query of directions) {
+          assertOptimization();
           const previousHits = cacheHits, page = await measure('catalogMs', () => cachedRead('catalog', query));
           if (page?.status !== 'observed' || page.season !== '27' || page.source !== 'ea-defid' || !same(page.query, query)
               || !id(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 86400000
@@ -508,7 +542,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             prices: new Map([...quotes].map(([id, quote]) => [id, quote.price])), materialPrices,
             maxNodes: Math.min(20000, adaptiveBudget ? searchRemaining() : 20000), costCeiling: planCost(incumbent[0]), priceSource: publicPolicy.source,
             incumbent: { status: 'preview', selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
-            assertCurrent, yieldControl: yieldPuzzleHintTask,
+            assertCurrent: assertOptimization, yieldControl: yieldPuzzleHintTask,
             onProgress: value => {
               accountFixedNodes(searchSpent + (value.nodes ?? 0));
               reportProgress({ ...value, nodes: searchSpent + (value.nodes ?? 0), maxNodes: searchBudget + 20000 });
@@ -530,9 +564,51 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         // Local exhaustion/completion is never a global minimum proof.
         diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
       };
-      finishIncumbent = async () => {
-        await refineCoverage();
+      finishIncumbent = async (refine = true) => {
+        if (refine) await refineCoverage();
         assertCurrent();
+        // Refresh only the final choices plus the original comparison squad,
+        // at most 44 versions. Never extend old TTLs or repeat the whole pool.
+        // No fallback for auth/context errors: this is final quote validation.
+        if (totalValueMode && originalOwnedPlan) {
+          const selected = [...originalOwnedPlan.selectedOwned,
+            ...incumbent.flatMap(plan => [...plan.selectedOwned, ...plan.purchases])];
+          const ids = [...new Set(selected.map(card => card.definitionId))];
+          const expired = ids.some(definitionId => {
+            const quote = references.get(definitionId)?.quotes?.[publicPolicy.source];
+            return !quote || quote.fetchedAt > now() || quote.expiresAt <= now();
+          });
+          if (expired) {
+            diagnostics.stage = 'quote-read'; reportProgress();
+            const snapshot = await measure('pricingMs', () => loadPublicPrices(ids, { purpose: 'puzzle', policy: publicPolicy,
+              rows: selected, deadlineAt: now() + 90000, isCurrent: () => { assertCurrent(); return true; } }));
+            assertCurrent();
+            const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : 'console';
+            const approval = createPurchasePriceApproval({ scope, season: '27', platform, policy: snapshot.policy,
+              definitionIds: ids, references: snapshot.references, now: now() });
+            if (!same(publicPolicy, approval.policy)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
+            if (approval.rows.some(row => !validPublicValue(row.estimate))) throw Error('FC27_PUZZLE_VALUE_INCOMPLETE');
+            for (const row of approval.rows) {
+              references.set(row.definitionId, row); materialPrices.set(row.definitionId, row.estimate);
+              if (quotes.has(row.definitionId)) quotes.set(row.definitionId, {
+                price: row.estimate, observedAt: row.quotes[publicPolicy.source].fetchedAt });
+            }
+            const revalue = plan => {
+              const inventoryValue = plan.selectedOwned.reduce((sum, ref) => sum + materialPrices.get(ref.definitionId), 0);
+              const purchases = plan.purchases.map(card => ({ ...card,
+                estimatedUnitPrice: materialPrices.get(card.definitionId), priceReference: references.get(card.definitionId),
+                priceSource: publicPolicy.source, quotedAt: references.get(card.definitionId).quotes[publicPolicy.source].fetchedAt }));
+              const estimatedCost = purchases.reduce((sum, card) => sum + card.estimatedUnitPrice, 0);
+              return { ...plan, purchases, inventoryValue, estimatedCost, materialValue: inventoryValue + estimatedCost };
+            };
+            originalOwnedPlan = revalue(originalOwnedPlan);
+            ownedBaseline = { materialValue: originalOwnedPlan.materialValue, priceSource: publicPolicy.source,
+              valueExpiresAt: Math.min(...originalOwnedPlan.selectedOwned.map(card =>
+                references.get(card.definitionId).quotes[publicPolicy.source].expiresAt)) };
+            incumbent = sortPuzzlePlans([...incumbent.map(revalue).filter(plan => plan.purchases.every(card =>
+              quoteCeiling === null || card.estimatedUnitPrice <= quoteCeiling)), originalOwnedPlan], 'material-value').slice(0, 1);
+          }
+        }
         if (diagnostics.scopeTruncated) {
           diagnostics.searchComplete = false;
           diagnostics.optimalWithinPool = false;
@@ -593,6 +669,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           estimatedUnitPrice: materialPrices.get(item.definitionId) })) }, [], [], input) : [];
       let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex(old => same(old, query)) === index);
       while (pendingQueries.length && usedQueries.length < 3) {
+        assertOptimization();
         if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
           diagnostics.optimizationBudgetExhausted = true;
           diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
@@ -622,7 +699,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         // Each unsuccessful pass removes at least one public version from the
         // bounded catalog. Re-solve locally before requesting another page.
         for (;;) {
-          assertCurrent(); diagnostics.stage = 'local-market-search';
+          assertOptimization(); diagnostics.stage = 'local-market-search';
           const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId));
           const prices = loadPublicPrices ? new Map([...quotes].map(([id, quote]) => [id, quote.price])) : null;
           if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
@@ -665,8 +742,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             && incumbent[0].purchases.every(item => validPublicValue(prices?.get(item.definitionId)));
           reportProgress();
           const suggestion = await measure('searchMs', () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
-            ...searchOptions, assertCurrent, prices, onProgress: searchProgress })
-            : suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent, prices,
+            ...searchOptions, assertCurrent: assertOptimization, prices, onProgress: searchProgress })
+            : suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent: assertOptimization, prices,
               incumbent: hasOwnedIncumbent || !totalValueMode ? (incumbent ? { status: 'preview',
                 selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] } : ownedIncumbent) : null,
               // A priced feasible incumbent makes a whole-squad 20k DFS an
@@ -825,7 +902,15 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         || diagnostics.truncated === true && diagnostics.unpricedPlans === 0;
       return finish({ ...stop(searchLimited ? 'FC27_PUZZLE_SEARCH_LIMIT'
         : hadPlans ? 'FC27_PURCHASE_QUOTES_UNAVAILABLE' : 'FC27_PURCHASE_REPAIR_NO_PLAN'), queries: usedQueries });
-    } catch (error) { diagnostics.localReason = safeReason(error); return finish(stop(diagnostics.localReason)); }
+    } catch (error) {
+      diagnostics.localReason = safeReason(error);
+      if (diagnostics.localReason === 'FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT' && incumbent && finishIncumbent) {
+        diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
+        try { return await finishIncumbent(false); }
+        catch (finalError) { diagnostics.localReason = safeReason(finalError); }
+      }
+      return finish(stop(diagnostics.localReason));
+    }
     finally { busy = false; }
   } });
 }

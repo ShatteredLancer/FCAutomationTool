@@ -126,7 +126,11 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
   const singleNodeLimit = Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
   while (improved && nodes < maxNodes) {
     improved = false;
-    for (const ref of current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a))) {
+    const singleRefs = current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
+    for (const [refIndex, ref] of singleRefs.entries()) {
+      // Every slot gets a share before paired search. A wide cheap pool must
+      // not spend the entire single-swap budget on the first few players.
+      const slotLimit = nodes + Math.ceil((singleNodeLimit - nodes) / (singleRefs.length - refIndex));
       for (const candidate of ordered) {
         const candidatePrice = priceFor(prices, candidate), incumbentPrice = priceFor(prices,
           candidates.find(item => candidateKey(item) === candidateKey(ref)) ?? ref);
@@ -137,7 +141,7 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
         if (candidatePrice > incumbentPrice) continue;
         if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade
             || qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
-        if (nodes >= singleNodeLimit) break;
+        if (nodes >= slotLimit) break;
         if (current.selected.some(other => other.definitionId === candidate.definitionId)) continue;
         nodes++;
         const selected = current.selected.map(other => other.slot === ref.slot
@@ -174,65 +178,68 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
     // EA requirement/evaluator contract before it can become the incumbent.
     if (!improved && nodes < maxNodes) {
       const refs = current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
-      pairSearch: for (let left = 0; left < refs.length - 1 && nodes < maxNodes; left++) {
-        for (let right = left + 1; right < refs.length && nodes < maxNodes; right++) {
-          const first = refs[left], second = refs[right];
-          const currentCost = priceFor(prices, candidates.find(item => candidateKey(item) === candidateKey(first)) ?? first)
-            + priceFor(prices, candidates.find(item => candidateKey(item) === candidateKey(second)) ?? second);
-          const occupied = new Set(current.selected.filter(ref => ref.slot !== first.slot && ref.slot !== second.slot)
-            .map(ref => ref.definitionId));
-          const replacements = ordered.filter(candidate => !occupied.has(candidate.definitionId)
-            && candidate.definitionId !== first.definitionId && candidate.definitionId !== second.definitionId);
-          let accepted = false;
-          for (let a = 0; a < replacements.length && nodes < maxNodes; a++) {
-            const candidateA = replacements[a], priceA = priceFor(prices, candidateA);
-            if (priceA >= currentCost) continue;
-            for (let b = a + 1; b < replacements.length && nodes < maxNodes; b++) {
-              const candidateB = replacements[b], priceB = priceFor(prices, candidateB);
-            // Equal total value is a valid material-value improvement when it
-            // replaces a higher-quality card with silver/bronze material.
-            // The final plan comparator decides whether the tie is real; do
-            // not filter it out before the complete EA validation.
-            if (priceA + priceB > currentCost || (!allowEqualPriceQualityDowngrade && priceA + priceB >= currentCost)) continue;
-              if (candidateA.definitionId === candidateB.definitionId) continue;
-              for (const assignment of [[candidateA, candidateB], [candidateB, candidateA]]) {
-                if (nodes >= maxNodes) break;
-                const selected = current.selected.map(ref => ref.slot === first.slot
-                  ? selectedRef(assignment[0], first.slot) : ref.slot === second.slot
-                    ? selectedRef(assignment[1], second.slot) : ref);
-                const squad = Array(input.challenge.slotCount).fill(null);
-                for (const ref of selected) squad[ref.slot] = { ...byId.get(candidateKey(ref)), slot: ref.slot };
-                nodes++;
-                let facts;
-                try { facts = typeof input.evaluateSquad === 'function'
-                  ? input.evaluateSquad(structuredClone(squad))
-                  : { status: 'observed', chemistry: null, teamRating: null }; } catch { facts = null; }
-                const validation = facts?.status === 'observed' ? matchFc27SbcRequirements({ requirements: parsed.rules,
-                  squad: squad.filter(Boolean), chemistry: facts.chemistry, teamRating: facts.teamRating,
-                  groupMatcher: input.groupMatcher, clubLinks: input.clubLinks }) : null;
-                if (validation?.status === 'satisfied') {
-                  const candidatePlan = metrics(selected);
-                  const currentPlan = metrics(current.selected);
-                  if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade
-                    ? 'material-value' : 'additional-coins') < 0) {
-                    current = { ...current, selected, validation,
-                      teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } };
-                    improved = true; accepted = true;
-                  }
-                }
-                if (nodes % 128 === 0) {
-                  try { onProgress?.({ phase: 'owned-value-search', nodes, maxNodes: totalNodes }); } catch { /* Presentation only. */ }
-                }
-                yield;
-                if (accepted) break;
-              }
-              if (accepted) break;
+      function* assignments(first, second) {
+        const currentCost = priceFor(prices, byId.get(candidateKey(first)) ?? first)
+          + priceFor(prices, byId.get(candidateKey(second)) ?? second);
+        const occupied = new Set(current.selected.filter(ref => ref.slot !== first.slot && ref.slot !== second.slot)
+          .map(ref => ref.definitionId));
+        const replacements = ordered.filter(candidate => !occupied.has(candidate.definitionId)
+          && candidate.definitionId !== first.definitionId && candidate.definitionId !== second.definitionId);
+        for (let a = 0; a < replacements.length; a++) {
+          const candidateA = replacements[a], priceA = priceFor(prices, candidateA);
+          if (priceA >= currentCost) continue;
+          for (let b = a + 1; b < replacements.length; b++) {
+            const candidateB = replacements[b], priceB = priceFor(prices, candidateB);
+            if (priceA + priceB > currentCost || (!allowEqualPriceQualityDowngrade && priceA + priceB >= currentCost)
+                || candidateA.definitionId === candidateB.definitionId) continue;
+            for (const assignment of [[candidateA, candidateB], [candidateB, candidateA]]) {
+              yield current.selected.map(ref => ref.slot === first.slot
+                ? selectedRef(assignment[0], first.slot) : ref.slot === second.slot
+                  ? selectedRef(assignment[1], second.slot) : ref);
             }
-            if (accepted) break;
           }
-          if (accepted) break pairSearch;
         }
       }
+      // Material-value refinement gives every slot pair a turn. Unused
+      // capacity returns to exact cursors without repeating a check. Cash-only
+      // search retains its established traversal and known purchase routes.
+      const pairs = refs.flatMap((first, index) => refs.slice(index + 1).map(second => assignments(first, second)));
+      try {
+        while (pairs.length && nodes < maxNodes && !improved) {
+          const quantum = allowEqualPriceQualityDowngrade
+            ? Math.max(2, Math.floor((maxNodes - nodes) / pairs.length)) : maxNodes - nodes;
+          for (let index = 0; index < pairs.length && nodes < maxNodes && !improved; index++) {
+            const pair = pairs[index], limit = Math.min(maxNodes, nodes + quantum);
+            while (nodes < limit && !improved) {
+              const step = pair.next();
+              if (step.done) { pairs.splice(index--, 1); break; }
+              const selected = step.value, squad = Array(input.challenge.slotCount).fill(null);
+              for (const ref of selected) squad[ref.slot] = { ...byId.get(candidateKey(ref)), slot: ref.slot };
+              nodes++;
+              let facts;
+              try { facts = typeof input.evaluateSquad === 'function'
+                ? input.evaluateSquad(structuredClone(squad))
+                : { status: 'observed', chemistry: null, teamRating: null }; } catch { facts = null; }
+              const validation = facts?.status === 'observed' ? matchFc27SbcRequirements({ requirements: parsed.rules,
+                squad: squad.filter(Boolean), chemistry: facts.chemistry, teamRating: facts.teamRating,
+                groupMatcher: input.groupMatcher, clubLinks: input.clubLinks }) : null;
+              if (validation?.status === 'satisfied') {
+                const candidatePlan = metrics(selected), currentPlan = metrics(current.selected);
+                if (comparePuzzlePlans(candidatePlan, currentPlan, allowEqualPriceQualityDowngrade
+                  ? 'material-value' : 'additional-coins') < 0) {
+                  current = { ...current, selected, validation,
+                    teamFacts: { chemistry: facts.chemistry, teamRating: facts.teamRating } };
+                  improved = true;
+                }
+              }
+              if (nodes % 128 === 0) {
+                try { onProgress?.({ phase: 'owned-value-search', nodes, maxNodes: totalNodes }); } catch { /* Presentation only. */ }
+              }
+              yield;
+            }
+          }
+        }
+      } finally { for (const pair of pairs) pair.return?.(); }
     }
   }
   return { preview: current, nodes };

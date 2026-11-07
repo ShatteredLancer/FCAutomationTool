@@ -6,7 +6,7 @@ import { inspectFc27ChallengeCatalog } from './fc27-challenge-catalog.js';
 import { inspectInProgressSquad } from './fc27-sbc-read.js';
 import { parseFc27SbcRequirements } from '../../fc27/sbc-requirements.js';
 import { previewFc27PuzzleSquad } from '../../fc27/puzzle-preview.js';
-import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../fc27/puzzle-evaluator.js';
+import { createFc27PuzzleEvaluator } from '../../fc27/puzzle-evaluator.js';
 
 const blocked = (reason, extra = {}) => ({ status: 'blocked', reason, liveExecutionEnabled: false, ...extra });
 const enumNames = { 3: 'PLAYER_QUALITY', 4: 'SAME_NATION_COUNT', 5: 'SAME_LEAGUE_COUNT', 6: 'SAME_CLUB_COUNT',
@@ -215,10 +215,10 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
       'min-chemistry', 'max-chemistry', 'exact-chemistry'].includes(rule.kind));
     const chemistry = needsTeamFacts ? readFc27PuzzleChemistry(root, clubLinks) : null;
     if (needsTeamFacts && !chemistry) return blocked('FC27_PUZZLE_CHEMISTRY_CONFIG_UNAVAILABLE');
-    const evaluateSquad = needsTeamFacts ? squad => evaluateFc27PuzzleSquad({ squad, formation: layout.formation,
-      chemistry, rating: chemistry.rating }) : undefined;
-    const boundSquad = needsTeamFacts ? squad => boundFc27PuzzleChemistry({ squad, formation: layout.formation,
-      chemistry, rating: chemistry.rating }) : undefined;
+    const evaluator = needsTeamFacts ? createFc27PuzzleEvaluator({ formation: layout.formation,
+      chemistry, rating: chemistry.rating }) : null;
+    const evaluateSquad = evaluator?.evaluateSquad;
+    const boundSquad = evaluator?.boundSquad;
     const inputs = { context, challenge, inventory, policy, clubLinks, chemistry,
       squadEmpty: layout.squadEmpty === true, evaluateSquad, boundSquad };
     // Internal detached planning seam; the default inspection still exports

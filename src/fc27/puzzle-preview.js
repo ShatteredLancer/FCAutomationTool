@@ -3,6 +3,7 @@ import { puzzleMaterialRules, puzzleMaterialRuleVectors, puzzleHasQualityAlterna
 import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
 import { createFc27PuzzlePartialChemistryBound, evaluateFc27PuzzleRating } from './puzzle-evaluator.js';
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
+import { createPuzzleGroupCapacity } from './puzzle-group-capacity.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const PUZZLE_SEARCH_STAGES = Object.freeze([50000, 100000, 200000]);
@@ -456,6 +457,16 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
   const hintCandidates = filterUnaryCandidates(pool.candidates,
     [...rules.rules, ...(options.materialRules ?? [])].filter(rule => itemKinds.has(rule.kind)),
     required, groupMatcher, createFc27ClubResolver(clubLinks));
+  // A shared-group minimum under another identity cap needs a coherent
+  // backbone start, not only popular league/nation starts. Ordering only:
+  // retain every candidate and share the same total node budget.
+  const constrainedStarts = createPuzzleGroupCapacity({ rules: rules.rules, candidates: hintCandidates,
+    resolveClub: createFc27ClubResolver(clubLinks) }).filter(entry => entry.rule.kind === 'same-club'
+      && rules.rules.some(cap => cap.kind === 'same-nation' && cap.mode !== 'min' && cap.value < entry.rule.value))
+    .flatMap(entry => entry.groupIds.map(groupId => ({
+    hint: { strategy: ({ 'same-club': 'club', 'same-league': 'league', 'same-nation': 'nation' })[entry.rule.kind], groupId },
+    groupFirst: true, costFirst: false,
+  }))).slice(0, 2);
   for (const [strategy, field] of [['league', 'leagueId'], ['nation', 'nationId']]) {
     const groups = new Map();
     for (const item of hintCandidates) {
@@ -480,7 +491,7 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
   // it is still fully validated and all results use the same monetary goal.
   const ratingStart = options.ratingFirstStart && options.procurement?.priceAware
     && rules.rules.some(rule => ['min-team-rating', 'exact-team-rating'].includes(rule.kind) && rule.value > 0);
-  const routes = [...(ratingStart ? [{ hint: null, costFirst: false, ratingFirst: true }] : []),
+  const routes = [...constrainedStarts, ...(ratingStart ? [{ hint: null, costFirst: false, ratingFirst: true }] : []),
     ...(options.procurement?.priceAware ? [{ hint: null, costFirst: true }] : []),
     ...pricedGroups,
     ...hints.map(hint => ({ hint, costFirst: false }))];
@@ -493,9 +504,9 @@ function* iteratePuzzleRoutes({ maxNodes = DEFAULT_MAX_NODES, searchHint = null,
       maxNodes, safeCandidates: pool.candidates.length, required, attempt: progress.attempt,
       attempts: routes.length }); } catch { /* Progress presentation cannot affect the search. */ }
   };
-  for (const [index, { hint, costFirst, ratingFirst = false }] of routes.entries()) {
+  for (const [index, { hint, costFirst, ratingFirst = false, groupFirst = false }] of routes.entries()) {
     const budget = Math.floor((maxNodes - nodes) / (routes.length - index));
-    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst, ratingFirst,
+    result = yield* iterateFc27PuzzleCandidates({ ...options, maxNodes: budget, searchHint: hint, costFirst, ratingFirst, groupFirst,
       ...(bestResult && objectiveValueOf(bestResult, options.procurement?.objective) > 0 ? { procurement: { ...options.procurement,
         budget: Math.min(options.procurement.budget, objectiveValueOf(bestResult, options.procurement?.objective) - 1) } } : {}),
       onProgress: progress => reportProgress({ ...progress, attempt: index + 1 }) });
@@ -546,7 +557,7 @@ export const searchFc27PuzzleCandidates = input => finishPuzzleSearch(iterateFc2
 
 export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, pool, procurement = null, onProgress = null,
-  materialRules = [], nativeQualityFallback = false, costFirst = false, ratingFirst = false, searchBudget = null } = {}) {
+  materialRules = [], nativeQualityFallback = false, costFirst = false, ratingFirst = false, groupFirst = false, searchBudget = null } = {}) {
   if (!integer(maxNodes, 1, 250000) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   const required = pool.required;
   // Planning amounts use the same public-price domain as procurement: at
@@ -567,6 +578,9 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     return blocked('FC27_PUZZLE_STRATEGY_INVALID');
   }
   let candidates = filterUnaryCandidates(pool.candidates, itemRules, required, groupMatcher, resolveClub);
+  const spine = groupFirst ? candidates.filter(item => hintGroup(searchHint, item, resolveClub) === searchHint.groupId) : [];
+  const spineNations = new Set(spine.map(item => item.nationId)), spineLeagues = new Set(spine.map(item => item.leagueId));
+  const spineAffinity = item => Number(spineNations.has(item.nationId)) + Number(spineLeagues.has(item.leagueId));
   let traversalScores = null;
   // A high chemistry target needs in-position players. This is only an
   // ordering hint: off-position cards remain eligible and the detached EA
@@ -628,6 +642,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     candidates = candidates.slice().sort((a, b) =>
       (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
       || Number(group(b) === searchHint.groupId) - Number(group(a) === searchHint.groupId)
+      || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0)
       || Number(positionFit(b)) - Number(positionFit(a)));
   }
   // Put scarce compulsory groups first so skipping a required member is
@@ -635,7 +650,13 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   const scarce = itemRules.filter(rule => rule.mode !== 'max' && rule.count > 0).map(rule => ({
     minimum: rule.count, matching: candidates.filter(item => matchFc27SbcItemRule(rule, item, groupMatcher, resolveClub) === true),
   }));
+  const constrainedGroups = createPuzzleGroupCapacity({ rules: parsed.rules, candidates, resolveClub });
   for (const rule of parsed.rules.filter(rule => rule.kind.startsWith('same-') && rule.mode !== 'max')) {
+    const constrained = constrainedGroups.find(entry => entry.rule === rule);
+    if (constrained) {
+      scarce.push({ minimum: rule.value, matching: candidates.filter((_item, index) => constrained.matches[index]) });
+      continue;
+    }
     const groups = new Map();
     for (const item of candidates) {
       const key = relationValue(rule, item, resolveClub);
@@ -673,7 +694,10 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   if ((forced.size || mixedClubRequirements) && parsed.rules.some(rule => rule.kind.endsWith('-chemistry'))) {
     candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || (groupFirst ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId)
+        - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0)
       || compulsoryScores.get(b) - compulsoryScores.get(a)
+      || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0)
       // Mandatory identity/chemistry ordering is only a traversal hint. Keep
       // each chemistry start and its position/connectivity priorities before
       // breaking otherwise equivalent candidates by material quality. Sorting
@@ -703,8 +727,10 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       && hintGroup(searchHint, item, resolveClub) === searchHint.groupId;
     candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a))
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0)
+      || (groupFirst ? Number(preferredGroup(b)) - Number(preferredGroup(a)) : 0)
       || compulsoryScores.get(b) - compulsoryScores.get(a)
       || Number(preferredGroup(b)) - Number(preferredGroup(a))
+      || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0)
       || Number(positionFit(b)) - Number(positionFit(a))
       || (ratingFirst ? b.rating - a.rating : 0)
       || (costFirst ? quoted.get(a) - quoted.get(b) : 0)
@@ -726,10 +752,16 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   }
   const groupCaps = new Map(relations.filter(rule => rule.kind.startsWith('distinct-') && rule.mode !== 'min')
     .map(rule => [rule, groupSuffixIndex(rule, candidates, resolveClub)]));
+  const groupCapacity = createPuzzleGroupCapacity({ rules: parsed.rules, candidates, resolveClub });
   // A same-group minimum can only be met by groups with enough distinct
   // definitions. Their union is a necessary count predicate; with a sole
   // eligible group this propagates all of its required members immediately.
   for (const rule of relations.filter(rule => rule.kind.startsWith('same-') && rule.mode !== 'max')) {
+    const constrained = groupCapacity.find(entry => entry.rule === rule);
+    if (constrained) {
+      counted.push({ rule: { ...rule, count: rule.value, mode: 'min' }, matches: constrained.matches });
+      continue;
+    }
     const groups = new Map();
     for (const item of candidates) {
       const key = relationValue(rule, item, resolveClub);
@@ -835,6 +867,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
         if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
       }
     }
+    if (groupCapacity.some(bound => !bound.canReach(chosen, start, remaining))) return;
     if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
     if (chosen.length === required) {
       const validate = facts => matchFc27SbcRequirements({ requirements: parsed.rules, squad: chosen,

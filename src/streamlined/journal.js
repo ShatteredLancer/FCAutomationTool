@@ -13,18 +13,23 @@ export const isUnsentStreamlinedJournal = record => record?.batches?.length > 0
   && record.batches.every(batch => batch.state === 'waiting' && batch.startingScore === undefined
     && batch.receipt === undefined && batch.progressChanged !== true);
 // Explicitly abandoning a never-sent remainder does not undo confirmed work.
-// External moves and procurement have separate journals and are not retired here.
-export function canRetireStreamlinedContribution(record) {
+// External moves and procurement have separate journals: the execution layer
+// must verify they are settled before offering or committing retirement.
+export function streamlinedContributionRetirementReason(record) {
   const confirmed = record?.batches?.filter(batch => batch.state === 'confirmed') ?? [];
-  return !!record && confirmed.length > 0
-    && record.plan.items.every(item => item.source === 'inventory' && ['club', 'storage'].includes(item.pile) && !item.purchaseReceipt)
-    && !record.plan.execution?.purchaseScope && !record.plan.route?.groups?.some(group => group.source === 'market')
-    && confirmed.every(batch => batch.receipt?.status === 'accepted' && !batch.progressChanged)
-    && Math.max(...confirmed.map(batch => batch.receipt.submittedScore)) === record.submittedScore
-    && record.batches.some(batch => batch.state === 'waiting')
-    && record.batches.every(batch => !batch.progressChanged && (batch.state === 'confirmed' || batch.state === 'rejected'
-      || batch.state === 'waiting' && batch.startingScore === undefined && batch.receipt === undefined));
+  if (record?.batches?.some(batch => ['pending', 'unknown'].includes(batch.state))) return 'FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING';
+  if (!record || !confirmed.length) return 'FC27_STREAMLINED_HISTORY_NO_CONFIRMED';
+  if (!record.plan.items.every(item => item.source === 'inventory' && ['club', 'storage', 'transfer', 'unassigned'].includes(item.pile) && !item.purchaseReceipt)
+      || record.plan.execution?.purchaseScope || record.plan.route?.groups?.some(group => group.source === 'market')) return 'FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL';
+  if (!confirmed.every(batch => batch.receipt?.status === 'accepted')
+      || Math.max(...confirmed.map(batch => batch.receipt.submittedScore)) !== record.submittedScore) return 'FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED';
+  if (record.batches.some(batch => batch.progressChanged)) return 'FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED';
+  if (!record.batches.some(batch => batch.state === 'waiting')) return 'FC27_STREAMLINED_HISTORY_NO_REMAINDER';
+  if (!record.batches.every(batch => batch.state === 'confirmed' || batch.state === 'rejected'
+      || batch.state === 'waiting' && batch.startingScore === undefined && batch.receipt === undefined)) return 'FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED';
+  return null;
 }
+export const canRetireStreamlinedContribution = record => streamlinedContributionRetirementReason(record) === null;
 export const streamlinedContributionRecovery = record => ({
   setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id,
   targetScore: record.plan.challenge.targetScore, currentScore: record.submittedScore,

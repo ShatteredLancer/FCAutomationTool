@@ -38,6 +38,7 @@ function fixture(change = () => {}) {
 
 const scenarios = [
   ['ordinary', 33, () => {}],
+  ['ordinary gold', 33, input => { input.squad.forEach(item => { item.rating = 81; }); }],
   ['out of position', 30, input => { input.squad[0].positions = [7]; }],
   ['no links', 0, input => { input.squad.forEach((item, i) => Object.assign(item,
     { nationId: 100 + i, leagueId: 200 + i, teamId: 300 + i })); }],

@@ -5,6 +5,16 @@ const leagueShortage = (rules, policy = { onlyUntradeable: true, excludedLeagueI
   status: 'blocked', reason: 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', policy, rules,
 });
 
+it('shows bounded cost progress with separate materials and cash without treating unknown prices as zero', () => {
+  const text = formatFc27PuzzleProgress({ stage: 'procurement', phase: 'owned-value-search', elapsedMs: 12345,
+    bestMaterialValue: 9400, bestEstimatedCost: 0 });
+  expect(text).toContain('低价库存替换'); expect(text).toContain('12 秒');
+  expect(text).toContain('9,400'); expect(text).toContain('待购 0');
+  expect(formatFc27PuzzleProgress({ phase: 'owned-value-read', quoteCompleted: 12, quoteTotal: 50,
+    bestMaterialValue: null })).toContain('报价 12 / 50');
+  expect(formatFc27PuzzleProgress({ bestMaterialValue: null })).not.toContain('当前最佳');
+});
+
 it('explains an explicit required league blocked by the current FSU policy without requiring a market failure', () => {
   const text = formatFc27PuzzleNativeResult(leagueShortage([{ kind: 'from-leagues', ids: [13], count: 2, mode: 'min' }]));
   expect(text).toContain('仅不可交易');
@@ -165,6 +175,23 @@ it('explains that partial value coverage only optimized the quoted material subs
   expect(message).toContain('只在已估价候选中优化');
   expect(message).toContain('96 张未估值');
   expect(message).toContain('不代表全局最低');
+});
+
+it('makes an expired optimization fallback explicit after a successful save', () => {
+  const message = formatFc27PuzzleNativeResult({ status: 'filled', saved: true,
+    valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED',
+    procurementSummary: { status: 'blocked', reason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' } });
+  expect(message).toContain('降价优化未完成');
+  expect(message).toContain('本次保留原合规阵容，不代表最低成本');
+  expect(message).toContain('参考报价在规划结束前过期');
+});
+
+it('distinguishes a time-bounded improved result from proof of lowest cost', () => {
+  const message = formatFc27PuzzleNativeResult({ status: 'filled', saved: true, materialValue: 5800,
+    procurementSummary: { status: 'suggested', diagnostics: { localReason: 'FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT' } } });
+  expect(message).toContain('进一步降价搜索已达到30秒');
+  expect(message).toContain('尚未确认最低材料成本');
+  expect(message).not.toContain('保留原合规阵容');
 });
 
 it.each(['cache', 'request'])('explains a %s 401 and the user-triggered recovery without claiming login expired', source => {

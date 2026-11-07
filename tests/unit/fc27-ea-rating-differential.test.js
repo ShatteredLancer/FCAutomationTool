@@ -35,9 +35,17 @@ it('fails closed for an unreviewed runtime fingerprint', async () => {
   });
 });
 
-it('fails closed for an input drift instead of comparing stale facts', async () => {
+it.skipIf(!source)('compares an exact-verified ordinary gold squad', async () => {
+  const gold = structuredClone(report);
+  gold.plan.ratings = Array(11).fill(81);
+  gold.plan.teamFacts.teamRating = 81;
+  expect(await inspectEaRatingDifferential(gold, { readSource: async () => source }))
+    .toMatchObject({ status: 'verified', local: 81, ea: 81, executable: false });
+});
+
+it('fails closed for an invalid rating instead of comparing invalid facts', async () => {
   const changed = structuredClone(report);
-  changed.plan.ratings[0] = 99;
+  changed.plan.ratings[0] = 100;
   await expect(inspectEaRatingDifferential(changed)).resolves.toMatchObject({
     status: 'unverified', reason: 'FC27_EA_RATING_INPUT_UNVERIFIED', executable: false,
   });
