@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
+import { createStreamlinedJournal, streamlinedJournalKey } from '../../src/streamlined/journal.js';
 import { testPlan, safeItem, challenge } from '../helpers/streamlined.js';
 
 describe('Streamlined Journal', () => {
@@ -37,4 +37,59 @@ describe('Streamlined Journal', () => {
     expect(await journal.read(other)).toBeNull();
     await expect(journal.write(other, record)).rejects.toThrow('JOURNAL_INVALID');
   });
+});
+
+async function rejectedWave() {
+  const store = new Map(); let archiveMode = null;
+  const journal = createStreamlinedJournal({ get: async key => store.get(key), now: () => 100,
+    set: async (key, value) => {
+      if (key.includes(':history:')) {
+        if (archiveMode === 'throw') throw Error('synthetic storage error');
+        if (archiveMode === 'drop') return;
+      }
+      store.set(key, structuredClone(value));
+    } });
+  const plan = testPlan({ challenge: challenge({ scoreRequirement: 40, selectionLimit: 30 }) });
+  const first = await journal.begin(plan);
+  Object.assign(first.batches[0], { state: 'rejected', startingScore: 0 });
+  const prior = await journal.write(plan.context, first, first.revision);
+  return { store, journal, plan, prior, setArchiveMode: value => { archiveMode = value; } };
+}
+
+it('archives an exact rejected single wave before beginning its explicit retry', async () => {
+  const f = await rejectedWave();
+  const next = await f.journal.begin(f.plan, { restartRejected: true, expectedRevision: f.prior.revision });
+  expect(next).toMatchObject({ submittedScore: 0, revision: f.prior.revision + 1, batches: [{ state: 'waiting' }] });
+  expect(next.batches[0].startingScore).toBeUndefined();
+  expect(f.store.get(`${streamlinedJournalKey(f.plan.context)}:history:${f.prior.revision}`)).toEqual(f.prior);
+});
+
+it.each(['waiting', 'pending', 'unknown', 'confirmed', 'no-start', 'progress-changed'])('never rearms an inner %s record', async state => {
+  const f = await rejectedWave(), row = structuredClone(f.prior);
+  if (state === 'no-start') delete row.batches[0].startingScore;
+  else if (state === 'progress-changed') row.batches[0].progressChanged = true;
+  else {
+    row.batches[0].state = state;
+    if (state === 'waiting') delete row.batches[0].startingScore;
+    if (state === 'confirmed') row.submittedScore = 40;
+  }
+  const before = await f.journal.write(f.plan.context, row, f.prior.revision);
+  await expect(f.journal.begin(f.plan, { restartRejected: true, expectedRevision: before.revision })).rejects.toThrow('RECOVERY_REQUIRED');
+  expect(await f.journal.read(f.plan.context)).toEqual(before);
+});
+
+it.each(['throw', 'drop', 'conflict'])('leaves the rejection active if archival %s prevents a verified checkpoint', async mode => {
+  const f = await rejectedWave(); f.setArchiveMode(mode);
+  if (mode === 'conflict') f.store.set(`${streamlinedJournalKey(f.plan.context)}:history:${f.prior.revision}`, { unrelated: true });
+  await expect(f.journal.begin(f.plan, { restartRejected: true, expectedRevision: f.prior.revision })).rejects.toThrow('JOURNAL_ARCHIVE_FAILED');
+  expect(await f.journal.read(f.plan.context)).toEqual(f.prior);
+});
+
+it('requires the same frozen plan and journal revision to restart a rejection', async () => {
+  const f = await rejectedWave();
+  const other = testPlan({ challenge: f.plan.challenge, inventory: [safeItem({ id: 99, definitionId: 199, points: 40 })] });
+  for (const [plan, expectedRevision] of [[other, f.prior.revision], [f.plan, f.prior.revision - 1]]) {
+    await expect(f.journal.begin(plan, { restartRejected: true, expectedRevision })).rejects.toThrow('RECOVERY_REQUIRED');
+    expect(await f.journal.read(f.plan.context)).toEqual(f.prior);
+  }
 });

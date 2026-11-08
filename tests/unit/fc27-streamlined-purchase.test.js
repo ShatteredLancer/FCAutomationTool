@@ -6,7 +6,7 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../src/streamli
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
-import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
+import { createStreamlinedJournal, streamlinedJournalKey } from '../../src/streamlined/journal.js';
 import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 
 async function setup(options = {}) {
@@ -18,6 +18,51 @@ async function setup(options = {}) {
     now: () => 1000, createBuyer: async () => buyer, ...options });
   return { f, plan, candidate, buyer, adapter };
 }
+
+it('continues an unchanged purchased wave after a definitive 401 rejection without replaying read-only recovery', async () => {
+  const memory = new Map(), get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);
+  const set = async (key, value) => memory.set(key, structuredClone(value));
+  const journal = createStreamlinedJournal({ get, set, now: () => 1000 });
+  let authenticated = false;
+  const writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async () => true),
+    contribute: vi.fn(async (plan, batch) => normalizeStreamlinedContributionReply(authenticated
+      ? { success: true, status: 200, response: { setId: plan.challenge.setId, challengeId: plan.challenge.id,
+        submittedScore: plan.challenge.submittedScore + plan.score } }
+      : { success: false, status: 401 },
+    { setId: plan.challenge.setId, challengeId: plan.challenge.id, previousScore: plan.challenge.submittedScore,
+      itemIds: batch.refs.map(ref => ref.id) })),
+    reconcile: vi.fn(async (record, batch) => ({ fresh: true, context: record.context, observedAt: 1000,
+      setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id, absent: batch.refs,
+      submittedScore: record.plan.challenge.submittedScore + record.plan.score, operationConfirmed: true })) };
+  const { f, adapter, buyer } = await setup({ contributionAdapter: { adapter: writer, journal } });
+  expect(await adapter.contribute(f.plan)).toMatchObject({ confirmed: false });
+  const rejected = await journal.read(f.plan.context);
+  expect(rejected).toMatchObject({ submittedScore: 0, batches: [{ state: 'rejected', startingScore: 0 }] });
+  authenticated = true;
+  for (let i = 0; i < 2; i++) expect(await adapter.recoverContribution({ batchPlan: f.plan })).toEqual({ notDispatched: true });
+  expect(writer.contribute).toHaveBeenCalledOnce();
+  expect(await journal.read(f.plan.context)).toEqual(rejected);
+  expect(await adapter.contribute(f.plan)).toEqual({ confirmed: true, submittedScore: 100 });
+  expect(writer.verify).toHaveBeenCalledTimes(2); expect(writer.contribute).toHaveBeenCalledTimes(2);
+  expect(await journal.read(f.plan.context)).toMatchObject({ submittedScore: 100, batches: [{ state: 'confirmed' }] });
+  expect(memory.get(`${streamlinedJournalKey(f.plan.context)}:history:${rejected.revision}`)).toEqual(rejected);
+  expect(buyer.find).not.toHaveBeenCalled();
+});
+
+it('still revalidates materials before a rejected purchased wave is attempted again', async () => {
+  const memory = new Map(), journal = createStreamlinedJournal({ get: async key => memory.get(key), now: () => 1000,
+    set: async (key, value) => memory.set(key, structuredClone(value)) });
+  const writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async () => true),
+    contribute: vi.fn(async () => ({ status: 'rejected', code: 401, reason: 'EA_CONTRIBUTION_REJECTED' })) };
+  const { f, adapter } = await setup({ contributionAdapter: { adapter: writer, journal } });
+  await adapter.contribute(f.plan);
+  const rejected = await journal.read(f.plan.context);
+  writer.verify.mockResolvedValue(false);
+  expect(await adapter.contribute(f.plan)).toMatchObject({ confirmed: false, reason: 'FC27_STREAMLINED_MATERIAL_CHANGED' });
+  expect(writer.contribute).toHaveBeenCalledOnce(); expect(writer.verify).toHaveBeenCalledTimes(2);
+  expect(memory.get(`${streamlinedJournalKey(f.plan.context)}:history:${rejected.revision}`)).toEqual(rejected);
+  expect(await journal.read(f.plan.context)).toMatchObject({ submittedScore: 0, batches: [{ state: 'waiting' }] });
+});
 
 it.each(['batch-cooldown', 'progress-backoff', 'post-dispatch'])('propagates purchase STOP at %s without resending or losing a confirmed batch', async phase => {
   const memory = new Map(), get = async (key, fallback) => structuredClone(memory.get(key) ?? fallback);

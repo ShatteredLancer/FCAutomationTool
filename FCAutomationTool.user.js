@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.102
+// @version      27.0.103
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.102", at: Date.now(), status: 'started',
+    state = { version: "27.0.103", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -39366,6 +39366,10 @@ ${version ?? ""}`;
     return !!record && same2(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
   }
   var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
+  function canRestartStreamlinedRejectedWave(record, plan) {
+    const batch = record?.batches?.[0];
+    return record?.retired !== true && record?.plan?.fingerprint === plan?.fingerprint && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
+  }
   var refOf = (item2) => ({
     id: item2.id,
     definitionId: item2.definitionId,
@@ -39465,14 +39469,16 @@ ${version ?? ""}`;
         });
         return task;
       },
-      async begin(plan, { replaceRemainder = false } = {}) {
+      async begin(plan, { replaceRemainder = false, restartRejected = false, expectedRevision = null } = {}) {
         assertStreamlinedPlan(plan);
         if (plan.items.some((item2) => item2.source !== "inventory")) fail4("PURCHASE_PENDING");
         const prior = await read(plan.context);
+        const restart = restartRejected && prior?.revision === expectedRevision && canRestartStreamlinedRejectedWave(prior, plan);
+        if (restartRejected && !restart) fail4("RECOVERY_REQUIRED");
         const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
         if (replaceRemainder && !replacement) fail4("RECOVERY_REQUIRED");
         if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail4("RECOVERY_REQUIRED");
-        if (replacement) {
+        if (replacement || restart) {
           const key2 = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
           try {
             const saved = await get(key2, null);
@@ -44155,7 +44161,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
     });
     const execute = async (plan, approval, { onProgress = () => {
-    }, stopped = () => false } = {}) => {
+    }, stopped = () => false, restartRejected = false } = {}) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
       running = true;
       stopping = false;
@@ -44179,6 +44185,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         release = await lock.acquire(plan.context);
         if (typeof release !== "function") fail4("BUSY");
         record = await journal.read(plan.context);
+        if (restartRejected === true && canRestartStreamlinedRejectedWave(record, plan)) {
+          record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+        }
         const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
         if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)) || replaceRemainder)) {
           record = await journal.begin(plan, { replaceRemainder });
@@ -44491,7 +44500,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }).execute(
         batchPlan,
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
-        callbacks
+        { ...callbacks, restartRejected: true }
       );
       if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
         if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
@@ -45655,7 +45664,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.102" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.103" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -46007,8 +46016,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.102"}`,
-    version: "27.0.102",
+    title: `FC Automation Tool ${"27.0.103"}`,
+    version: "27.0.103",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

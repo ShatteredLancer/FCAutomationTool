@@ -3,16 +3,22 @@ import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-st
 import { createStreamlinedProcurement } from '../../src/streamlined/procurement.js';
 import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase-journal.js';
 import { challenge, safeItem, policy, eligibility } from '../helpers/streamlined.js';
+import { streamlinedRuntime } from '../helpers/fc27-streamlined-runtime.js';
+import { createFc27StreamlinedPurchaseAdapter } from '../../src/adapters/ea/fc27-streamlined-purchase.js';
+import { createStreamlinedJournal, streamlinedJournalKey } from '../../src/streamlined/journal.js';
+import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
 
 // Synthetic identities and materials; replay the observed sequence, not the
 // user's inventory: confirmed work -> rejected wave -> recovered purchases -> Solve.
-async function setup({ targetScore = 160, budget = 1000 } = {}) {
+async function setup({ targetScore = 160, budget = 1000, nativeContribution = false } = {}) {
   const memory = new Map();
   let readHook = async () => {};
   const get = async (key, fallback) => { await readHook(key); return structuredClone(memory.get(key) ?? fallback); };
   const set = async (key, value) => memory.set(key, structuredClone(value));
   const journal = createStreamlinedPurchaseJournal({ get, set });
-  const target = challenge({ scoreRequirement: targetScore, selectionLimit: 6 });
+  const runtime = nativeContribution ? streamlinedRuntime({ targetScore }) : null;
+  if (runtime) runtime.controller.workAreaController.viewModel.getSelectionLimit = () => 6;
+  const target = runtime ? { ...runtime.input.challenge, selectionLimit: 6 } : challenge({ scoreRequirement: targetScore, selectionLimit: 6 });
   let score = 0, serial = 100, reject = true, time = 20, currentTarget = target;
   const owned = new Map(Array.from({ length: 4 }, (_, index) => {
     const row = safeItem({ id: index + 1, definitionId: index + 11 });
@@ -58,6 +64,31 @@ async function setup({ targetScore = 160, budget = 1000 } = {}) {
       [id, { quotes: { futbin: quote(id) } }])) }) }, createExecution: async () => execution });
   const first = session(), planned = await first.plan({ objective: 'inventory-first' });
   expect(planned.status).toBe('ready');
+  let innerJournal, writer;
+  if (nativeContribution) {
+    innerJournal = createStreamlinedJournal({ get, set, now: () => time });
+    writer = { capabilities: { contributionVerified: true }, verify: vi.fn(async () => true),
+      contribute: vi.fn(async (plan, batch) => {
+        const rejected = score > 0 && reject;
+        const reply = normalizeStreamlinedContributionReply(rejected ? { success: false, status: 401 }
+          : { success: true, status: 200, response: { setId: plan.challenge.setId, challengeId: plan.challenge.id,
+            submittedScore: score + plan.score } },
+        { setId: plan.challenge.setId, challengeId: plan.challenge.id, previousScore: score, itemIds: batch.refs.map(ref => ref.id) });
+        if (!rejected) {
+          score += plan.score; runtime.challenge.submittedScore = score;
+          batch.refs.forEach(ref => owned.delete(ref.id));
+        }
+        return reply;
+      }),
+      reconcile: vi.fn(async (record, batch) => ({ fresh: true, context: record.context, observedAt: time,
+        setId: record.plan.challenge.setId, challengeId: record.plan.challenge.id, absent: batch.refs,
+        submittedScore: score, operationConfirmed: true })),
+    };
+    const bridge = await createFc27StreamlinedPurchaseAdapter(runtime.root, { plan: planned.plan,
+      persistence: {}, canWrite: () => false, now: () => time,
+      createBuyer: async () => ({ verifySquad() {} }), contributionAdapter: { adapter: writer, journal: innerJournal } });
+    for (const key of ['prepareContribution', 'contribute', 'recoverContribution']) buyer[key] = vi.fn(bridge[key]);
+  }
   const stopped = await first.contribute({ fingerprint: planned.plan.fingerprint, budget });
   expect(stopped, JSON.stringify(stopped)).toMatchObject({ status: 'recovery-required', record: { submittedScore: 120,
     spent: 800, consumedIds: expect.any(Array) } });
@@ -67,9 +98,24 @@ async function setup({ targetScore = 160, budget = 1000 } = {}) {
   reject = false;
   buyer.buy.mockClear(); buyer.move.mockClear(); buyer.contribute.mockClear();
   readMarketCandidates.mockClear();
-  return { session: session(), execution, buyer, readMarketCandidates, journal, target, before, memory,
+  return { session: session(), execution, buyer, readMarketCandidates, journal, target, before, memory, innerJournal, writer,
     setTime: value => { time = value; }, setTarget: value => { currentTarget = value; }, setReadHook: value => { readHook = value; } };
 }
+
+it('replays Session -> Procurement -> native purchase bridge -> contribution transaction after the rejected wave', async () => {
+  const f = await setup({ nativeContribution: true });
+  const rejected = await f.innerJournal.read(f.target.context);
+  expect(rejected).toMatchObject({ submittedScore: 120, batches: [{ state: 'rejected', startingScore: 120 }] });
+  const result = await f.session.plan({ objective: 'inventory-first' });
+  expect(result.status).toBe('recovered');
+  expect(f.writer.contribute).toHaveBeenCalledTimes(2);
+  const completed = await f.session.contribute({ fingerprint: result.plan.fingerprint, budget: 1000 });
+  expect(completed).toMatchObject({ status: 'completed', record: { spent: 800, submittedScore: 160, confirmedBatches: 2 } });
+  expect(f.buyer.buy).not.toHaveBeenCalled(); expect(f.writer.contribute).toHaveBeenCalledTimes(3);
+  const last = f.writer.contribute.mock.calls.at(-1)[1].refs.map(ref => ref.id).sort();
+  expect(last).toEqual(f.before.entries.filter(entry => entry.state === 'club').map(entry => entry.itemId).sort());
+  expect(f.memory.get(`${streamlinedJournalKey(f.target.context)}:history:${rejected.revision}`)).toEqual(rejected);
+});
 
 it('Solve after reload restores the existing purchased run, then consumes only its two remaining cards', async () => {
   const f = await setup();

@@ -118,7 +118,8 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail('WRITE_CONTRACT_UNVERIFIED');
     const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
       lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).execute(batchPlan,
-      { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true }, callbacks);
+      { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
+      { ...callbacks, restartRejected: true });
     if (result.status === 'stopped' && result.record?.plan.fingerprint === batchPlan.fingerprint) {
       if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
       // A STOP after dispatch is deferred through durable receipt/readback.

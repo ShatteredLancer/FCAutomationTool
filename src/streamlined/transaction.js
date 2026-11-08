@@ -1,7 +1,7 @@
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
-import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery } from './journal.js';
+import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery, canRestartStreamlinedRejectedWave } from './journal.js';
 
 // Adapter-neutral transaction driver. The production composition supplies a
 // separately guarded writer; a read-only preview never grants approval.
@@ -80,7 +80,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     confirmation: { submittedScore: evidence.submittedScore, targetScore: record.plan.challenge.targetScore,
       completed: evidence.submittedScore >= record.plan.challenge.targetScore, finalizationPending: true },
   });
-  const execute = async (plan, approval, { onProgress = () => {}, stopped = () => false } = {}) => {
+  const execute = async (plan, approval, { onProgress = () => {}, stopped = () => false, restartRejected = false } = {}) => {
     if (running) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
     running = true; stopping = false;
     const shouldStop = () => stopping || stopped();
@@ -98,6 +98,12 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       release = await lock.acquire(plan.context);
       if (typeof release !== 'function') fail('BUSY');
       record = await journal.read(plan.context);
+      if (restartRejected === true && canRestartStreamlinedRejectedWave(record, plan)) {
+        // This execute call already owns the mutation lock and a fresh explicit
+        // approval. Archive the rejection before resetting this exact wave;
+        // normal fresh entity/policy/progress validation still precedes send.
+        record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+      }
       const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
       if (!record || record.plan.fingerprint !== plan.fingerprint
           && (isUnsentStreamlinedJournal(record) || record.batches.every(b => ['confirmed', 'rejected'].includes(b.state)) || replaceRemainder)) {

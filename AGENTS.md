@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-08 Streamlined 27.0.103：.102新日志原任务恢复成功后，三次内层preflight REPLAN_REQUIRED，6张/10550分及3500支出不变；.102替身漏掉真实内层rejected Journal。新增生产采购桥接与Session→Procurement→Bridge→Transaction/双Journal失败回归；仅采购桥接显式restartRejected，同FP单拒绝批次、起点=当前分、无receipt/漂移且原revision匹配，锁内先完整归档并回读再begin，随后原fresh验证再发送。只读恢复/普通贡献不改；pending/unknown/confirmed不重启，归档失败原记录不动；不抬预算/cap、不重买已购或重投已确认。详见docs/releases/27.0.103.md。
+
 2026-11-08 Streamlined 27.0.102：.101连续诊断先401、后已恢复，但6张贡献/10550分已确认、2张已购卡未消耗；重新生成改变fingerprint又被旧Journal拦截。真实Session+Procurement+Journal合成回归先红；同账号同Set/Challenge/目标且未结采购的Solve复用完整只读恢复，保留原任务/预算/支出/范围/cap，用户可信点击再继续。未知/缺卡/保护/页面与账号变化仍阻断，不删账本或新计划回退；退役历史读取后复核origin，保留busy/取消。UI明确余卡/已确认分/原预算与继续按钮，旧10分钟文案改为实际30分钟。保留ad .101全部Puzzle/Gallery/归档与交易逻辑；验证与真实验收边界见docs/releases/27.0.102.md。
 
 2026-11-07 用户授权升版提交27.0.101：远程fetch仍为06f5ef2/27.0.100，无新增合并。累计纳入Puzzle容量剪枝、降价检查点/30秒可选优化/最终定向核价、policy诊断去重和本轮配置编译；保留Streamlined旧贡献显式归档与Gallery Al Hilal调查测试（无生产计分变化）。两个.tmp私人诊断留本地。升版前完整6085测试与离线Chrome通过；新版产物及最终检查见docs/releases/27.0.101.md，不将100安全全金池只读预检当原291卡成本验收。

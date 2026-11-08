@@ -58,6 +58,16 @@ export function canReplaceStreamlinedRemainder(record, plan) {
     && stock(record.plan) && stock(plan) && !plan.items.some(item => consumed.has(item.id));
 }
 const states = ['waiting', 'pending', 'confirmed', 'rejected', 'unknown'];
+// Only the purchased single-wave bridge opts into a fresh explicit attempt.
+// Rejected means the response was definitively non-committing; unknown and
+// accepted receipts never qualify, nor does a different plan or score.
+export function canRestartStreamlinedRejectedWave(record, plan) {
+  const batch = record?.batches?.[0];
+  return record?.retired !== true && record?.plan?.fingerprint === plan?.fingerprint
+    && record?.batches?.length === 1 && plan?.batches?.length === 1
+    && batch.state === 'rejected' && batch.receipt === undefined && !batch.progressChanged
+    && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
+}
 const refOf = item => ({ id: item.id, definitionId: item.definitionId, points: item.points, pile: item.pile,
   ...(item.executionPile ? { executionPile: item.executionPile } : {}) });
 export function streamlinedJournalKey(context) { return contextKey(context, 'streamlined-contribution'); }
@@ -131,17 +141,19 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now(), can
         } catch { fail('JOURNAL_WRITE_FAILED'); }
       });
       tail = task.catch(() => {}); return task;
-    }, async begin(plan, { replaceRemainder = false } = {}) {
+    }, async begin(plan, { replaceRemainder = false, restartRejected = false, expectedRevision = null } = {}) {
     assertStreamlinedPlan(plan);
     if (plan.items.some(item => item.source !== 'inventory')) fail('PURCHASE_PENDING');
     const prior = await read(plan.context);
+    const restart = restartRejected && prior?.revision === expectedRevision && canRestartStreamlinedRejectedWave(prior, plan);
+    if (restartRejected && !restart) fail('RECOVERY_REQUIRED');
     const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint
       && canReplaceStreamlinedRemainder(prior, plan);
     if (replaceRemainder && !replacement) fail('RECOVERY_REQUIRED');
     if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior)
         && prior.batches.some(b => ['pending', 'unknown', 'waiting'].includes(b.state)) && !replacement
         && !await canReplaceArchived(prior)) fail('RECOVERY_REQUIRED');
-    if (replacement) {
+    if (replacement || restart) {
       const key = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
       try {
         const saved = await get(key, null);
