@@ -17,7 +17,8 @@ import { createFc27StreamlinedMaterializationRecovery } from '../ea/fc27-streaml
 import { createStreamlinedMaterializationJournal } from '../../streamlined/materialization-journal.js';
 import { assertStreamlinedRecoveryIsolation, isStreamlinedStockPlan, streamlinedPurchaseContributionPlan } from '../../streamlined/recovery-isolation.js';
 import { projectStreamlinedPurchaseHandoff } from '../../streamlined/purchase-handoff.js';
-import { isUnsentStreamlinedJournal, streamlinedContributionRetirementReason, streamlinedContributionRecovery } from '../../streamlined/journal.js';
+import { isUnsentStreamlinedJournal, streamlinedContributionRetirementReason, streamlinedContributionRecovery,
+  canReplaceStreamlinedRejectedWave } from '../../streamlined/journal.js';
 
 export async function assertStreamlinedOtherTransactions(get, context) {
   const scope = traditionalJournalScope(context), raw = await get(scope, null);
@@ -37,9 +38,14 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     readContext: () => readFc27Context(root), now,
     isArchivedContribution: record => marketJournal.isRetiredContribution(record),
     beforeBegin: plan => marketJournal.assertPlanAvailable(plan),
-    beforeReplace: async previous => {
+    beforeReplace: async (previous, next) => {
       const saved = await marketJournal.read(context);
       if (saved && await marketJournal.isRetired(saved)) return;
+      // A known rejection committed no materials. Only the active procurement
+      // marker can approve its replacement by a differently composed wave.
+      // Unknown/confirmed overlaps still use the original handoff guards.
+      if (activeProcurement && streamlinedPurchaseContributionPlan(saved)?.fingerprint === next.fingerprint
+          && canReplaceStreamlinedRejectedWave(previous, next)) return;
       const settled = projectStreamlinedPurchaseHandoff(saved, previous);
       if (settled) await marketJournal.write(settled, saved.revision);
     } });
@@ -67,6 +73,7 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     { id: currentPlan?.challenge?.id ?? 0, setId: currentPlan?.challenge?.setId ?? 0, targetScore: currentPlan?.challenge?.targetScore ?? 0 });
   let marketPurchase = null;
   let activeProcurement = null;
+  let stopEpoch = 0;
   let historyToArchive = null;
   let contributionToArchive = null;
   const adapter = createProvider(root, { journal: persistence.journal, canWrite, now, maintenance,
@@ -227,8 +234,13 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
     async purchase(plan, approval = {}, callbacks = {}) {
       // A purchase adapter owns request cancellation state. Recreate it for
       // every run so a stopped/recovered buyer cannot leak its closed state.
+      const epoch = stopEpoch;
       marketPurchase = await createMarket(plan);
       if (!marketPurchase) fail('PURCHASE_ROUTE_UNVERIFIED');
+      if (epoch !== stopEpoch) {
+        marketPurchase.cancel?.();
+        return { status: 'stopped', reason: 'FC27_STREAMLINED_STOPPED', record: await marketJournal.read(context) };
+      }
       const runPlan = { ...plan, route: plan.route ?? { groups: [] } };
       const driver = createStreamlinedProcurement({ journal: marketJournal, lock: persistence.lock,
         adapter: marketPurchase, operationId: () => root.crypto.randomUUID(), now });
@@ -253,6 +265,6 @@ export async function createFc27StreamlinedExecution(root, { context, plan = nul
       maintenance.prepare(plan.items.filter(item => item.source === 'inventory'));
       return true;
     },
-    stop() { activeProcurement?.stop(); transaction.stop(); },
+    stop() { stopEpoch++; activeProcurement?.stop(); transaction.stop(); },
   });
 }

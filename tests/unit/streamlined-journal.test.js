@@ -93,3 +93,27 @@ it('requires the same frozen plan and journal revision to restart a rejection', 
     expect(await f.journal.read(f.plan.context)).toEqual(f.prior);
   }
 });
+
+it('archives a rejected wave when the same approved target replaces its material composition', async () => {
+  const f = await rejectedWave();
+  const nextPlan = testPlan({ challenge: f.plan.challenge, inventory: [safeItem({ id: 99, definitionId: 199, points: 40 })] });
+  const next = await f.journal.begin(nextPlan, { replaceRejected: true, expectedRevision: f.prior.revision });
+  expect(next.plan.fingerprint).toBe(nextPlan.fingerprint);
+  expect(next.batches[0].state).toBe('waiting');
+  expect(f.store.get(`${streamlinedJournalKey(f.plan.context)}:history:${f.prior.revision}`)).toEqual(f.prior);
+});
+
+it.each(['pending', 'unknown', 'confirmed', 'target', 'policy', 'revision'])(
+  'does not replace a rejected wave across a %s boundary', async kind => {
+    const f = await rejectedWave(), row = structuredClone(f.prior);
+    if (['pending', 'unknown', 'confirmed'].includes(kind)) {
+      row.batches[0].state = kind; if (kind === 'confirmed') row.submittedScore = 40;
+      f.prior = await f.journal.write(f.plan.context, row, f.prior.revision);
+    }
+    const nextPlan = testPlan({ challenge: kind === 'target' ? challenge({ scoreRequirement: 50, selectionLimit: 30 }) : f.plan.challenge,
+      policy: kind === 'policy' ? { ...f.plan.policy, protectFsuLockedPlayers: true } : f.plan.policy,
+      inventory: [safeItem({ id: 99, definitionId: 199, points: kind === 'target' ? 50 : 40 })] });
+    await expect(f.journal.begin(nextPlan, { replaceRejected: true, expectedRevision: f.prior.revision - Number(kind === 'revision') }))
+      .rejects.toThrow('RECOVERY_REQUIRED');
+    expect(await f.journal.read(f.plan.context)).toEqual(f.prior);
+  });

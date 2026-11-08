@@ -158,3 +158,33 @@ it('executes and reconciles two batches with real read adapters while the page a
   expect((await tx.execute(plan, approval)).status).toBe('completed');
   expect(mutations).toEqual([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]]);
 });
+
+// A durable pending intent is not permission to dispatch after Stop.
+it.each(['factory', 'other-transactions', 'journal-read', 'dirty'])('honors Stop across the %s pre-dispatch await', async stage => {
+  const f = streamlinedRuntime(), memory = new Map();
+  let atDispatch = false, stopped = false, mutationRequests = 0, releaseGate, enterGate;
+  const entered = new Promise(resolve => { enterGate = resolve; });
+  const gate = new Promise(resolve => { releaseGate = resolve; });
+  const pause = async current => { if (atDispatch && stage === current) { enterGate(); await gate; } };
+  const journal = createStreamlinedJournal({ now: () => 1000,
+    get: async (key, fallback) => { await pause('journal-read'); return structuredClone(memory.get(key) ?? fallback); },
+    set: async (key, value) => { memory.set(key, structuredClone(value)); } });
+  const provider = createFc27StreamlinedProvider(f.root, { journal, canWrite: () => true, now: () => 1000,
+    createValidator: () => ({ verify: async (_plan, batch) => ({ fresh: true, observedAt: 1000,
+      count: batch.refs.length, points: batch.refs.reduce((sum, ref) => sum + ref.points, 0) }) }),
+    checkOtherTransactions: () => pause('other-transactions'),
+    maintenance: { dirty: () => pause('dirty') },
+    createTransport: async (_root, guards) => {
+      atDispatch = true; await pause('factory');
+      return { request: async (_action, _target, beforeDispatch) => {
+        guards.assertCurrent(); await beforeDispatch(); guards.assertCurrent();
+        if (guards.shouldStop()) throw Error('FC27_STREAMLINED_CANCELLED');
+        mutationRequests++; return { success: false, status: 401 };
+      } };
+    } });
+  const transaction = createStreamlinedTransaction({ adapter: provider, journal, lock: { acquire: async () => () => {} }, now: () => 1000 });
+  const pending = transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [0], allowPartial: true });
+  await entered; stopped = true; transaction.stop(); releaseGate();
+  const result = await pending; expect(stopped).toBe(true); expect(mutationRequests).toBe(0);
+  expect(result.status).toBe('stopped'); expect((await journal.read(f.plan.context)).batches[0]).toMatchObject({ state: 'waiting' });
+});

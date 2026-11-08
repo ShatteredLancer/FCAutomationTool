@@ -91,7 +91,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
         return true;
       } finally { busy = false; }
     },
-    async contribute(plan, batch) {
+    async contribute(plan, batch, { stopped = () => false } = {}) {
       if (busy) fail('BUSY');
       const approved = lease; lease = null;
       if (!approved || approved.fingerprint !== plan.fingerprint || approved.index !== batch.index
@@ -99,12 +99,14 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
       busy = true; let sent = false;
       const assert = () => {
         unchanged(approved.origin, plan);
+        if (!sent && stopped()) fail('CANCELLED');
         if (!sent && (now() < approved.at || now() - approved.at > 15000)) fail('VALIDATION_EXPIRED');
       };
       try {
         assert();
         if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
-        const transport = await createTransport(root, { canWrite, assertCurrent: assert });
+        const transport = await createTransport(root, { canWrite, assertCurrent: assert, shouldStop: stopped });
+        assert();
         const reply = await transport.request('contribute', { challengeId: plan.challenge.id,
           itemIds: batch.refs.map(ref => ref.id) }, async () => {
           assert();
@@ -120,7 +122,7 @@ export function createFc27StreamlinedProvider(root, { journal, canWrite = () => 
       } catch (error) {
         // We know no request was handed to the transport yet. Do not leave a
         // pre-dispatch policy/cache/storage failure as an ambiguous consumption.
-        if (!sent) return { status: 'rejected', reason: /^FC27_[A-Z0-9_]+$/.test(error?.message)
+        if (!sent || error?.message === 'FC27_STREAMLINED_CANCELLED') return { status: 'rejected', reason: /^FC27_[A-Z0-9_]+$/.test(error?.message)
           ? error.message : 'FC27_STREAMLINED_DISPATCH_BLOCKED' };
         throw error;
       } finally { busy = false; }

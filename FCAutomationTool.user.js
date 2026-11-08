@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.103
+// @version      27.0.104
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.103", at: Date.now(), status: 'started',
+    state = { version: "27.0.104", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -11019,16 +11019,19 @@
           return service.bid(item2, entry.price);
         }, true);
         const confirmed = reply?.success === true && Array.isArray(reply.data?.itemIds) && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId;
+        const itemEvidence = reply?.data?.itemIds;
+        const contradictory = itemEvidence != null && (!Array.isArray(itemEvidence) || itemEvidence.length > 0);
+        const rejected = reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 429, 461].includes(reply.status);
         diagnostic("bid", {
           definitionId: entry.definitionId,
           price: entry.price,
           ...responseCodes(reply),
-          status: confirmed ? "bought" : reply?.success === false ? "rejected" : "unknown"
+          status: confirmed ? "bought" : rejected ? "rejected" : "unknown"
         });
         if (confirmed) {
           return { status: "bought", itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
         }
-        if (reply?.success === false) {
+        if (rejected) {
           const reason = reply.error?.code !== void 0 && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED ? "FC27_BUY_LISTING_UNAVAILABLE" : "FC27_BUY_REJECTED";
           if (reason === "FC27_BUY_LISTING_UNAVAILABLE" && ![401, 403, 429].includes(reply.status)) rememberRejected(entry);
           return { status: "rejected", ...responseCodes(reply), reason };
@@ -39367,8 +39370,11 @@ ${version ?? ""}`;
   }
   var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
   function canRestartStreamlinedRejectedWave(record, plan) {
+    return record?.plan?.fingerprint === plan?.fingerprint && canReplaceStreamlinedRejectedWave(record, plan);
+  }
+  function canReplaceStreamlinedRejectedWave(record, plan) {
     const batch = record?.batches?.[0];
-    return record?.retired !== true && record?.plan?.fingerprint === plan?.fingerprint && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
+    return record?.retired !== true && same2(record?.context, plan?.context) && same2(record?.plan?.challenge, plan?.challenge) && same2(record?.plan?.policy, plan?.policy) && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
   }
   var refOf = (item2) => ({
     id: item2.id,
@@ -39469,12 +39475,12 @@ ${version ?? ""}`;
         });
         return task;
       },
-      async begin(plan, { replaceRemainder = false, restartRejected = false, expectedRevision = null } = {}) {
+      async begin(plan, { replaceRemainder = false, restartRejected = false, replaceRejected = false, expectedRevision = null } = {}) {
         assertStreamlinedPlan(plan);
         if (plan.items.some((item2) => item2.source !== "inventory")) fail4("PURCHASE_PENDING");
         const prior = await read(plan.context);
-        const restart = restartRejected && prior?.revision === expectedRevision && canRestartStreamlinedRejectedWave(prior, plan);
-        if (restartRejected && !restart) fail4("RECOVERY_REQUIRED");
+        const restart = prior?.revision === expectedRevision && (restartRejected && canRestartStreamlinedRejectedWave(prior, plan) || replaceRejected && canReplaceStreamlinedRejectedWave(prior, plan));
+        if ((restartRejected || replaceRejected) && !restart) fail4("RECOVERY_REQUIRED");
         const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
         if (replaceRemainder && !replacement) fail4("RECOVERY_REQUIRED");
         if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail4("RECOVERY_REQUIRED");
@@ -43178,7 +43184,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   async function createFc27StreamlinedContributionTransport(root, {
     canWrite = () => false,
     assertCurrent = () => {
-    }
+    },
+    shouldStop = () => false
   } = {}) {
     const context = readFc27Context(root), dao = at10(root, "services.SBC.sbcDAO");
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
@@ -43221,11 +43228,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) fail4("ENDPOINT_UNVERIFIED");
           if (ids2) req.setRequestBody({ playerItemIds: ids2, skipUserSquadValidation: true });
           await beforeDispatch();
+          if (shouldStop()) fail4("CANCELLED");
           assert();
           if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
           last = Date.now();
           return await new Promise((resolve, reject) => {
-            let done = false;
+            let done = false, dispatched = false;
             const owner = {};
             const finish = (error2, value) => {
               if (done) return;
@@ -43262,10 +43270,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               });
               assert();
               if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
+              if (shouldStop()) fail4("CANCELLED");
+              dispatched = true;
               req.send();
-            } catch {
+            } catch (error2) {
               stopped = true;
-              finish(Error("FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED"));
+              finish(!dispatched && error2?.message === "FC27_STREAMLINED_CANCELLED" ? error2 : Error("FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED"));
             }
           });
         } finally {
@@ -43825,7 +43835,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           busy = false;
         }
       },
-      async contribute(plan, batch) {
+      async contribute(plan, batch, { stopped = () => false } = {}) {
         if (busy) fail4("BUSY");
         const approved = lease;
         lease = null;
@@ -43834,12 +43844,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         let sent = false;
         const assert = () => {
           unchanged(approved.origin, plan);
+          if (!sent && stopped()) fail4("CANCELLED");
           if (!sent && (now() < approved.at || now() - approved.at > 15e3)) fail4("VALIDATION_EXPIRED");
         };
         try {
           assert();
           if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
-          const transport = await createTransport(root, { canWrite, assertCurrent: assert });
+          const transport = await createTransport(root, { canWrite, assertCurrent: assert, shouldStop: stopped });
+          assert();
           const reply = await transport.request("contribute", {
             challengeId: plan.challenge.id,
             itemIds: batch.refs.map((ref) => ref.id)
@@ -43862,7 +43874,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             previousTimesCompleted: approved.timesCompleted
           });
         } catch (error2) {
-          if (!sent) return { status: "rejected", reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_DISPATCH_BLOCKED" };
+          if (!sent || error2?.message === "FC27_STREAMLINED_CANCELLED") return { status: "rejected", reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_DISPATCH_BLOCKED" };
           throw error2;
         } finally {
           busy = false;
@@ -44187,6 +44199,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         record = await journal.read(plan.context);
         if (restartRejected === true && canRestartStreamlinedRejectedWave(record, plan)) {
           record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+        } else if (restartRejected === true && canReplaceStreamlinedRejectedWave(record, plan)) {
+          record = await journal.begin(plan, { replaceRejected: true, expectedRevision: record.revision });
         }
         const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
         if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)) || replaceRemainder)) {
@@ -44227,8 +44241,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           let reply;
           report("contribution", index);
           phase = "dispatch";
+          if (shouldStop()) {
+            record.batches[index].state = "waiting";
+            delete record.batches[index].startingScore;
+            record = await journal.write(plan.context, record, record.revision);
+            return { status: "stopped", record };
+          }
           try {
-            reply = await adapter.contribute(plan, batch);
+            reply = await adapter.contribute(plan, batch, { stopped: shouldStop });
           } catch (error2) {
             diagnose("dispatch", "unknown", record, batch, () => failureDetail(error2));
             reply = { status: "unknown" };
@@ -44239,8 +44259,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             ...reply?.reason ? { reason: responseReason(reply.reason) } : {}
           }));
           if (reply?.status === "rejected") {
-            record.batches[index].state = "rejected";
+            const cancelled = shouldStop() && reply.reason === "FC27_STREAMLINED_CANCELLED";
+            record.batches[index].state = cancelled ? "waiting" : "rejected";
+            if (cancelled) delete record.batches[index].startingScore;
             record = await journal.write(plan.context, record, record.revision);
+            if (cancelled) return { status: "stopped", record };
             return { status: "rejected", reason: reply.reason, record };
           }
           phase = "receipt";
@@ -44261,7 +44284,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
             diagnose("receipt", "verified", record, batch, { httpStatus: record.batches[index].receipt.code });
             phase = "checkpoint";
-            record = await journal.write(plan.context, record, record.revision);
+            try {
+              record = await journal.write(plan.context, record, record.revision);
+            } catch (error2) {
+              if (error2?.message !== "FC27_STREAMLINED_JOURNAL_WRITE_FAILED") throw error2;
+              record = await journal.write(plan.context, record, record.revision);
+            }
             batch = record.batches[index];
           }
           phase = "readback";
@@ -45295,9 +45323,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       now,
       isArchivedContribution: (record) => marketJournal.isRetiredContribution(record),
       beforeBegin: (plan2) => marketJournal.assertPlanAvailable(plan2),
-      beforeReplace: async (previous) => {
+      beforeReplace: async (previous, next) => {
         const saved = await marketJournal.read(context);
         if (saved && await marketJournal.isRetired(saved)) return;
+        if (activeProcurement && streamlinedPurchaseContributionPlan(saved)?.fingerprint === next.fingerprint && canReplaceStreamlinedRejectedWave(previous, next)) return;
         const settled2 = projectStreamlinedPurchaseHandoff(saved, previous);
         if (settled2) await marketJournal.write(settled2, saved.revision);
       }
@@ -45333,6 +45362,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     );
     let marketPurchase = null;
     let activeProcurement = null;
+    let stopEpoch = 0;
     let historyToArchive = null;
     let contributionToArchive = null;
     const adapter = createProvider(root, {
@@ -45580,8 +45610,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       },
       async purchase(plan2, approval = {}, callbacks = {}) {
+        const epoch2 = stopEpoch;
         marketPurchase = await createMarket(plan2);
         if (!marketPurchase) fail4("PURCHASE_ROUTE_UNVERIFIED");
+        if (epoch2 !== stopEpoch) {
+          marketPurchase.cancel?.();
+          return { status: "stopped", reason: "FC27_STREAMLINED_STOPPED", record: await marketJournal.read(context) };
+        }
         const runPlan = { ...plan2, route: plan2.route ?? { groups: [] } };
         const driver = createStreamlinedProcurement({
           journal: marketJournal,
@@ -45613,6 +45648,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return true;
       },
       stop() {
+        stopEpoch++;
         activeProcurement?.stop();
         transaction.stop();
       }
@@ -45664,7 +45700,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.103" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.104" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -46016,8 +46052,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.103"}`,
-    version: "27.0.103",
+    title: `FC Automation Tool ${"27.0.104"}`,
+    version: "27.0.104",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

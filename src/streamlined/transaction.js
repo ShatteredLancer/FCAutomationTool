@@ -1,7 +1,8 @@
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
-import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery, canRestartStreamlinedRejectedWave } from './journal.js';
+import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery, canRestartStreamlinedRejectedWave,
+  canReplaceStreamlinedRejectedWave } from './journal.js';
 
 // Adapter-neutral transaction driver. The production composition supplies a
 // separately guarded writer; a read-only preview never grants approval.
@@ -103,6 +104,10 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         // approval. Archive the rejection before resetting this exact wave;
         // normal fresh entity/policy/progress validation still precedes send.
         record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+      } else if (restartRejected === true && canReplaceStreamlinedRejectedWave(record, plan)) {
+        // The approved outer run may add newly bought cards to its rejected
+        // wave. Preserve its failed attempt before revalidating the new batch.
+        record = await journal.begin(plan, { replaceRejected: true, expectedRevision: record.revision });
       }
       const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
       if (!record || record.plan.fingerprint !== plan.fingerprint
@@ -139,7 +144,15 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         let reply;
         report('contribution', index);
         phase = 'dispatch';
-        try { reply = await adapter.contribute(plan, batch); }
+        if (shouldStop()) {
+          // The intent is durable, but the transport has not been invoked.
+          // Restore the exact unsent state before releasing the mutation lock.
+          record.batches[index].state = 'waiting';
+          delete record.batches[index].startingScore;
+          record = await journal.write(plan.context, record, record.revision);
+          return { status: 'stopped', record };
+        }
+        try { reply = await adapter.contribute(plan, batch, { stopped: shouldStop }); }
         catch (error) {
           diagnose('dispatch', 'unknown', record, batch, () => failureDetail(error));
           reply = { status: 'unknown' };
@@ -150,13 +163,17 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           ...(reply?.reason ? { reason: responseReason(reply.reason) } : {}),
         }));
         if (reply?.status === 'rejected') {
-          record.batches[index].state = 'rejected';
+          const cancelled = shouldStop() && reply.reason === 'FC27_STREAMLINED_CANCELLED';
+          record.batches[index].state = cancelled ? 'waiting' : 'rejected';
+          if (cancelled) delete record.batches[index].startingScore;
           record = await journal.write(plan.context, record, record.revision);
+          if (cancelled) return { status: 'stopped', record };
           return { status: 'rejected', reason: reply.reason, record };
         }
         // Save the accepted receipt before any readback which can time out.
         // Restart recovery can then distinguish a completed/reset cycle from
-        // an uncommitted request. Persistence failure leaves pending, never retries.
+        // an uncommitted request. Persistent failure leaves pending; any retry
+        // below is local storage only, never another contribution request.
         phase = 'receipt';
         if (reply?.status === 'accepted' && reply.schema !== undefined) {
           try {
@@ -172,7 +189,14 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           }
           diagnose('receipt', 'verified', record, batch, { httpStatus: record.batches[index].receipt.code });
           phase = 'checkpoint';
-          record = await journal.write(plan.context, record, record.revision);
+          try { record = await journal.write(plan.context, record, record.revision); }
+          catch (error) {
+            if (error?.message !== 'FC27_STREAMLINED_JOURNAL_WRITE_FAILED') throw error;
+            // Retry only this validated local receipt checkpoint, once. The
+            // contribution request is never replayed. Revision guards still
+            // prevent overwriting a checkpoint that actually succeeded.
+            record = await journal.write(plan.context, record, record.revision);
+          }
           batch = record.batches[index];
         }
         // Stop is deferred until this contribution's reconcile/writeback ends.

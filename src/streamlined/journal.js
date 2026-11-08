@@ -60,10 +60,15 @@ export function canReplaceStreamlinedRemainder(record, plan) {
 const states = ['waiting', 'pending', 'confirmed', 'rejected', 'unknown'];
 // Only the purchased single-wave bridge opts into a fresh explicit attempt.
 // Rejected means the response was definitively non-committing; unknown and
-// accepted receipts never qualify, nor does a different plan or score.
+// accepted receipts never qualify. Replacement keeps the exact target,
+// policy and score; a same-fingerprint restart additionally keeps the wave.
 export function canRestartStreamlinedRejectedWave(record, plan) {
+  return record?.plan?.fingerprint === plan?.fingerprint && canReplaceStreamlinedRejectedWave(record, plan);
+}
+export function canReplaceStreamlinedRejectedWave(record, plan) {
   const batch = record?.batches?.[0];
-  return record?.retired !== true && record?.plan?.fingerprint === plan?.fingerprint
+  return record?.retired !== true && same(record?.context, plan?.context)
+    && same(record?.plan?.challenge, plan?.challenge) && same(record?.plan?.policy, plan?.policy)
     && record?.batches?.length === 1 && plan?.batches?.length === 1
     && batch.state === 'rejected' && batch.receipt === undefined && !batch.progressChanged
     && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
@@ -141,12 +146,13 @@ export function createStreamlinedJournal({ get, set, now = () => Date.now(), can
         } catch { fail('JOURNAL_WRITE_FAILED'); }
       });
       tail = task.catch(() => {}); return task;
-    }, async begin(plan, { replaceRemainder = false, restartRejected = false, expectedRevision = null } = {}) {
+    }, async begin(plan, { replaceRemainder = false, restartRejected = false, replaceRejected = false, expectedRevision = null } = {}) {
     assertStreamlinedPlan(plan);
     if (plan.items.some(item => item.source !== 'inventory')) fail('PURCHASE_PENDING');
     const prior = await read(plan.context);
-    const restart = restartRejected && prior?.revision === expectedRevision && canRestartStreamlinedRejectedWave(prior, plan);
-    if (restartRejected && !restart) fail('RECOVERY_REQUIRED');
+    const restart = prior?.revision === expectedRevision && (restartRejected && canRestartStreamlinedRejectedWave(prior, plan)
+      || replaceRejected && canReplaceStreamlinedRejectedWave(prior, plan));
+    if ((restartRejected || replaceRejected) && !restart) fail('RECOVERY_REQUIRED');
     const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint
       && canReplaceStreamlinedRemainder(prior, plan);
     if (replaceRemainder && !replacement) fail('RECOVERY_REQUIRED');

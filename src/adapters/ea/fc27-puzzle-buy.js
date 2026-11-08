@@ -224,12 +224,19 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       const reply = await observe(() => { verifyCurrent(currentRecord); return service.bid(item, entry.price); }, true);
       const confirmed = reply?.success === true && Array.isArray(reply.data?.itemIds)
         && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId;
+      // A failed callback is not proof that EA did not debit the coins.
+      // Only reviewed negative statuses without contradictory item evidence
+      // release the durable intent for another auction attempt.
+      const itemEvidence = reply?.data?.itemIds;
+      const contradictory = itemEvidence != null && (!Array.isArray(itemEvidence) || itemEvidence.length > 0);
+      const rejected = reply?.success === false && !contradictory
+        && [400, 401, 403, 404, 409, 429, 461].includes(reply.status);
       diagnostic('bid', { definitionId: entry.definitionId, price: entry.price, ...responseCodes(reply),
-        status: confirmed ? 'bought' : reply?.success === false ? 'rejected' : 'unknown' });
+        status: confirmed ? 'bought' : rejected ? 'rejected' : 'unknown' });
       if (confirmed) {
         return { status: 'bought', itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
       }
-      if (reply?.success === false) {
+      if (rejected) {
         const reason = reply.error?.code !== undefined && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED
           ? 'FC27_BUY_LISTING_UNAVAILABLE' : 'FC27_BUY_REJECTED';
         if (reason === 'FC27_BUY_LISTING_UNAVAILABLE' && ![401,403,429].includes(reply.status)) rememberRejected(entry);

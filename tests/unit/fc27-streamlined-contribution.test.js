@@ -112,3 +112,19 @@ it('rejects malformed identities without invoking user-provided slice', async ()
   }
   expect(slice).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
 });
+
+it('honors Stop in the microtask after durable preflight and before the native wire boundary', async () => {
+  const f = runtime(); let stop = false;
+  const transport = await createFc27StreamlinedContributionTransport(f.root, { canWrite: () => true, shouldStop: () => stop });
+  await expect(transport.request('contribute', target, async () => { queueMicrotask(() => { stop = true; }); }))
+    .rejects.toThrow('FC27_STREAMLINED_CANCELLED');
+  expect(f.calls.filter(row => row.kind === 'oneclick')).toHaveLength(0);
+});
+it('settles the native receipt when Stop arrives only after dispatch', async () => {
+  const f = runtime(); let stop = false, observed = false;
+  const transport = await createFc27StreamlinedContributionTransport(f.root, { canWrite: () => true,
+    shouldStop: () => { if (f.calls.some(row => row.kind === 'oneclick')) stop = true; return stop; },
+    assertCurrent: () => { if (f.calls.some(row => row.kind === 'oneclick')) { observed = true; stop = true; } } });
+  await expect(transport.request('contribute', target, () => {})).resolves.toMatchObject({ success: true });
+  expect(observed).toBe(true); expect(stop).toBe(true); expect(f.calls.filter(row => row.kind === 'oneclick')).toHaveLength(1);
+});
