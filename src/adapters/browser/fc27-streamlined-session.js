@@ -7,7 +7,7 @@ import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../streamlined/
 import { streamlinedQuoteFailure, streamlinedQuoteCoverage, validStreamlinedQuote, fatalStreamlinedQuoteFailure, STREAMLINED_QUOTE_BUDGET_MS } from '../../streamlined/quotes.js';
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 import { createStreamlinedPurchaseScope } from '../../streamlined/purchase-scope.js';
-import { streamlinedPurchaseAudit, createStreamlinedPurchaseJournal } from '../../streamlined/purchase-journal.js';
+import { streamlinedPurchaseAudit, streamlinedPurchaseNeedsRecovery, createStreamlinedPurchaseJournal } from '../../streamlined/purchase-journal.js';
 import { readStreamlinedExternalRows, planStreamlinedExternalSelection } from '../../streamlined/external-selection.js';
 
 // Execution is optional and only entered through the separate contribution action.
@@ -63,6 +63,131 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     && record.batches.every(batch => batch.state === 'confirmed' && batch.receipt?.status === 'accepted')
     && record.batches.some(batch => batch.receipt.challengeCompleted === true
       && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
+  // Shared read-only recovery. Both entry points hold the session busy guard.
+  const recoverCurrent = async () => {
+    preview = null; routePreview = null; history = null; externalView = null;
+    if (typeof createExecution !== 'function') return { status: 'blocked', reason: 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED' };
+    try {
+      const origin = capture(); activeExecution = await createExecution(origin.context); unchanged(origin);
+      const materialization = typeof activeExecution.recoverMaterialization === 'function'
+        ? await activeExecution.recoverMaterialization(origin.context) : { status: 'absent' };
+      if (['recovery-required', 'blocked', 'replan-required'].includes(materialization.status)) {
+        log({ event: 'recovery', status: materialization.status, reason: materialization.reason });
+        return materialization;
+      }
+      let contribution, warning, purchaseRecovery;
+      let purchase = typeof activeExecution.recoverPurchase === 'function'
+        ? await activeExecution.recoverPurchase(origin.challenge) : { status: 'absent' };
+      if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === 'function') {
+        history = { origin, execution: activeExecution };
+      }
+      if (['recovery-required', 'blocked', 'replan-required'].includes(purchase.status)) {
+        if (purchase.reason === 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED') {
+          // Recover this target independently. A separate exact-identity
+          // proof may isolate stock-only work; it never settles the foreign
+          // purchase or approves its buys/moves/contributions.
+          contribution = await activeExecution.transaction.recover(origin.context,
+            { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
+          const current = capture(), record = contribution.record;
+          if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
+              || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
+          const ownRecord = record && same(record.context, origin.context)
+            && record.plan?.challenge.id === origin.challenge.id && record.plan.challenge.setId === origin.challenge.setId
+            && record.plan.challenge.targetScore === origin.challenge.targetScore;
+          const completedHistory = ownRecord && ['observed', 'recovered'].includes(contribution.status) && confirmedCompletion(record);
+          let isolationReason;
+          if (!completedHistory && ownRecord && ['observed', 'recovered'].includes(contribution.status)
+              && typeof activeExecution.inspectInventoryRecovery === 'function') {
+            try {
+              if (await activeExecution.inspectInventoryRecovery(record) === true) {
+                warning = { reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED', recovery: purchase.recovery };
+              }
+            } catch (error) { isolationReason = safeReason(error); }
+          }
+          const result = { ...purchase, ...(isolationReason ? { reason: isolationReason } : {}),
+            contributionRecovery: contribution, ...(ownRecord ? { record } : {}) };
+          log({ event: 'recovery', status: completedHistory || warning ? 'observed' : result.status, reason: completedHistory
+            ? current.challenge.submittedScore < record.submittedScore ? 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' : 'FC27_STREAMLINED_COMPLETED'
+            : warning?.reason ?? result.reason,
+            setId: purchase.recovery?.setId, challengeId: purchase.recovery?.challengeId,
+            pendingWriteCount: purchase.recovery?.pendingWriteCount,
+            unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
+            contributedCount: purchase.recovery?.contributedCount, purchasesSettled: purchase.recovery?.purchasesSettled,
+            currentScore: ownRecord ? record.submittedScore : undefined,
+            targetScore: ownRecord ? record.plan.challenge.targetScore : undefined });
+          if (!warning && !completedHistory) return result;
+          purchaseRecovery = purchase; purchase = { status: 'absent' };
+          if (warning) log({ event: 'recovery-isolation', status: 'verified', reason: warning.reason,
+            setId: origin.challenge.setId, challengeId: origin.challenge.id, currentScore: record.submittedScore });
+        } else {
+          log({ event: 'recovery', status: purchase.status, reason: purchase.reason });
+          return purchase;
+        }
+      }
+      contribution ??= await activeExecution.transaction.recover(origin.context,
+        { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
+      if (!history && (contribution.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED'
+          || ['observed', 'recovered'].includes(contribution.status))
+          && typeof activeExecution.inspectContributionHistory === 'function') {
+        const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
+        unchanged(origin);
+        if (candidate) {
+          contribution = { ...contribution, ...candidate };
+          if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: 'contribution' };
+        }
+      }
+      let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
+        ? contribution : { ...purchase, contributionRecovery: contribution };
+      if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery,
+        ...(history ? { historyAction: { canArchive: true } } : {}) };
+      if (materialization.status !== 'absent') {
+        result = { ...result, materializationRecovery: materialization };
+        if (result.status === 'absent' && materialization.status === 'recovered') {
+          result = { ...materialization, ...result, status: 'recovered', materializationRecovery: materialization };
+        }
+      }
+      const current = capture();
+      if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
+          || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
+      if (!['recovery-required', 'replan-required', 'blocked'].includes(result.status) && confirmedCompletion(result.record)
+          && result.record.plan.challenge.targetScore === current.challenge.targetScore
+          && current.challenge.submittedScore < result.record.submittedScore) {
+        result = { ...result, status: 'completed', reason: 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' };
+      }
+      log({ event: 'recovery', status: result.status, reason: result.reason, localReason: result.historyAction?.reason, currentScore: result.record?.submittedScore,
+        targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
+        setId: origin.challenge.setId, challengeId: origin.challenge.id,
+        ...(result.recovery ? { setId: result.recovery.setId, challengeId: result.recovery.challengeId,
+          currentScore: result.recovery.currentScore, targetScore: result.recovery.targetScore,
+          confirmedBatches: result.recovery.confirmedBatches, waitingBatches: result.recovery.waitingBatches,
+          pendingWriteCount: result.recovery.pendingWriteCount } : {}) });
+      const record = result.record;
+      if (record && !['recovery-required', 'replan-required', 'blocked'].includes(result.status)) {
+        if (!same(current.context, record.context) || current.challenge.id !== record.plan.challenge.id
+            || current.challenge.setId !== record.plan.challenge.setId) fail('CONTEXT_CHANGED');
+        const completed = record.submittedScore >= record.plan.challenge.targetScore;
+        if (!completed) activeExecution.prepare(record.plan);
+        // Manual external plans use the existing inventory-first objective
+        // without an economic route. Recover the ordering rule from frozen
+        // contents without adding fields to the durable Journal schema.
+        const externalSelection = record.plan.objective === 'inventory-first' && !record.plan.route
+          && record.plan.items.some(item => ['transfer', 'unassigned'].includes(item.pile));
+        const input = readInputs({ maxRating: record.plan.policy.maxRating,
+          marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+          ...(externalSelection ? { sources: ['club', 'transfer', 'unassigned'] } : {}) });
+        preview = completed ? null : { origin: current, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
+        return { ...result, preview: { ...record.plan, plan: record.plan, liveExecutionEnabled: !completed,
+          quoteSource: record.plan.items.find(item => item.quote)?.quote?.source ?? 'unknown', externalSelection, record } };
+      }
+      return result;
+    } catch (error) {
+      preview = null;
+      const result = { status: 'recovery-required', reason: safeReason(error) };
+      log({ event: 'recovery', ...result });
+      return result;
+    }
+    finally { activeExecution = null; }
+  };
   return Object.freeze({
     async readSettings(global = false) { const origin = capture(); const value = await settings.read(origin.context, global ? null : origin.challenge.id); unchanged(origin); return { ...origin, settings: value }; },
     async saveSettings(value, global = false) { const origin = capture(); const result = await settings.save(origin.context, global ? null : origin.challenge.id, value); unchanged(origin); return result; },
@@ -149,6 +274,20 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       const progress = row => { try { onProgress(row); } catch { /* display only */ } };
       try {
         const config = normalizeStreamlinedSettings(value), origin = capture();
+        const saved = await purchaseJournal.read(origin.context);
+        unchanged(origin);
+        const activePurchase = saved && saved.challenge.setId === origin.challenge.setId && saved.challenge.id === origin.challenge.id
+          && saved.challenge.targetScore === origin.challenge.targetScore && streamlinedPurchaseNeedsRecovery(saved);
+        const retired = activePurchase ? await purchaseJournal.isRetired(saved) : false;
+        unchanged(origin);
+        if (stopRequested || run !== planningRun) fail('CANCELLED');
+        if (activePurchase && !retired) {
+          // Solve must not replace an acquired run with a new fingerprint.
+          // Reuse the full read-only recovery path; execution still needs a click.
+          const recovered = await recoverCurrent();
+          if (stopRequested || run !== planningRun) { preview = null; fail('CANCELLED'); }
+          return { ...recovered.preview, ...recovered, recoveryAttempted: true, resumedPurchase: !!recovered.preview };
+        }
         const rawInput = readInputs(config); rawInput.assertCurrent();
         await purchaseJournal.assertAvailable(origin.context, origin.challenge);
         const reserved = new Set(await purchaseJournal.reservedIds(origin.context));
@@ -513,129 +652,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     },
     async recover() {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
-      preview = null; routePreview = null; history = null; externalView = null;
-      if (typeof createExecution !== 'function') return { status: 'blocked', reason: 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED' };
       busy = true;
-      try {
-        const origin = capture(); activeExecution = await createExecution(origin.context); unchanged(origin);
-        const materialization = typeof activeExecution.recoverMaterialization === 'function'
-          ? await activeExecution.recoverMaterialization(origin.context) : { status: 'absent' };
-        if (['recovery-required', 'blocked', 'replan-required'].includes(materialization.status)) {
-          log({ event: 'recovery', status: materialization.status, reason: materialization.reason });
-          return materialization;
-        }
-        let contribution, warning, purchaseRecovery;
-        let purchase = typeof activeExecution.recoverPurchase === 'function'
-          ? await activeExecution.recoverPurchase(origin.challenge) : { status: 'absent' };
-        if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === 'function') {
-          history = { origin, execution: activeExecution };
-        }
-        if (['recovery-required', 'blocked', 'replan-required'].includes(purchase.status)) {
-          if (purchase.reason === 'FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED') {
-            // Recover this target independently. A separate exact-identity
-            // proof may isolate stock-only work; it never settles the foreign
-            // purchase or approves its buys/moves/contributions.
-            contribution = await activeExecution.transaction.recover(origin.context,
-              { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
-            const current = capture(), record = contribution.record;
-            if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
-                || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
-            const ownRecord = record && same(record.context, origin.context)
-              && record.plan?.challenge.id === origin.challenge.id && record.plan.challenge.setId === origin.challenge.setId
-              && record.plan.challenge.targetScore === origin.challenge.targetScore;
-            const completedHistory = ownRecord && ['observed', 'recovered'].includes(contribution.status) && confirmedCompletion(record);
-            let isolationReason;
-            if (!completedHistory && ownRecord && ['observed', 'recovered'].includes(contribution.status)
-                && typeof activeExecution.inspectInventoryRecovery === 'function') {
-              try {
-                if (await activeExecution.inspectInventoryRecovery(record) === true) {
-                  warning = { reason: 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED', recovery: purchase.recovery };
-                }
-              } catch (error) { isolationReason = safeReason(error); }
-            }
-            const result = { ...purchase, ...(isolationReason ? { reason: isolationReason } : {}),
-              contributionRecovery: contribution, ...(ownRecord ? { record } : {}) };
-            log({ event: 'recovery', status: completedHistory || warning ? 'observed' : result.status, reason: completedHistory
-              ? current.challenge.submittedScore < record.submittedScore ? 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' : 'FC27_STREAMLINED_COMPLETED'
-              : warning?.reason ?? result.reason,
-              setId: purchase.recovery?.setId, challengeId: purchase.recovery?.challengeId,
-              pendingWriteCount: purchase.recovery?.pendingWriteCount,
-              unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
-              contributedCount: purchase.recovery?.contributedCount, purchasesSettled: purchase.recovery?.purchasesSettled,
-              currentScore: ownRecord ? record.submittedScore : undefined,
-              targetScore: ownRecord ? record.plan.challenge.targetScore : undefined });
-            if (!warning && !completedHistory) return result;
-            purchaseRecovery = purchase; purchase = { status: 'absent' };
-            if (warning) log({ event: 'recovery-isolation', status: 'verified', reason: warning.reason,
-              setId: origin.challenge.setId, challengeId: origin.challenge.id, currentScore: record.submittedScore });
-          } else {
-            log({ event: 'recovery', status: purchase.status, reason: purchase.reason });
-            return purchase;
-          }
-        }
-        contribution ??= await activeExecution.transaction.recover(origin.context,
-          { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore });
-        if (!history && (contribution.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED'
-            || ['observed', 'recovered'].includes(contribution.status))
-            && typeof activeExecution.inspectContributionHistory === 'function') {
-          const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
-          unchanged(origin);
-          if (candidate) {
-            contribution = { ...contribution, ...candidate };
-            if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: 'contribution' };
-          }
-        }
-        let result = ['recovery-required', 'blocked', 'replan-required'].includes(contribution.status) || purchase.status === 'absent'
-          ? contribution : { ...purchase, contributionRecovery: contribution };
-        if (purchaseRecovery) result = { ...result, ...(warning ? { warning } : {}), purchaseRecovery,
-          ...(history ? { historyAction: { canArchive: true } } : {}) };
-        if (materialization.status !== 'absent') {
-          result = { ...result, materializationRecovery: materialization };
-          if (result.status === 'absent' && materialization.status === 'recovered') {
-            result = { ...materialization, ...result, status: 'recovered', materializationRecovery: materialization };
-          }
-        }
-        const current = capture();
-        if (!same(current.context, origin.context) || current.challenge.id !== origin.challenge.id
-            || current.challenge.setId !== origin.challenge.setId) fail('CONTEXT_CHANGED');
-        if (!['recovery-required', 'replan-required', 'blocked'].includes(result.status) && confirmedCompletion(result.record)
-            && result.record.plan.challenge.targetScore === current.challenge.targetScore
-            && current.challenge.submittedScore < result.record.submittedScore) {
-          result = { ...result, status: 'completed', reason: 'FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED' };
-        }
-        log({ event: 'recovery', status: result.status, reason: result.reason, localReason: result.historyAction?.reason, currentScore: result.record?.submittedScore,
-          targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore, ...streamlinedPurchaseAudit(result.record),
-          setId: origin.challenge.setId, challengeId: origin.challenge.id,
-          ...(result.recovery ? { setId: result.recovery.setId, challengeId: result.recovery.challengeId,
-            currentScore: result.recovery.currentScore, targetScore: result.recovery.targetScore,
-            confirmedBatches: result.recovery.confirmedBatches, waitingBatches: result.recovery.waitingBatches,
-            pendingWriteCount: result.recovery.pendingWriteCount } : {}) });
-        const record = result.record;
-        if (record && !['recovery-required', 'replan-required', 'blocked'].includes(result.status)) {
-          if (!same(current.context, record.context) || current.challenge.id !== record.plan.challenge.id
-              || current.challenge.setId !== record.plan.challenge.setId) fail('CONTEXT_CHANGED');
-          const completed = record.submittedScore >= record.plan.challenge.targetScore;
-          if (!completed) activeExecution.prepare(record.plan);
-          // Manual external plans use the existing inventory-first objective
-          // without an economic route. Recover the ordering rule from frozen
-          // contents without adding fields to the durable Journal schema.
-          const externalSelection = record.plan.objective === 'inventory-first' && !record.plan.route
-            && record.plan.items.some(item => ['transfer', 'unassigned'].includes(item.pile));
-          const input = readInputs({ maxRating: record.plan.policy.maxRating,
-            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
-            ...(externalSelection ? { sources: ['club', 'transfer', 'unassigned'] } : {}) });
-          preview = completed ? null : { origin: current, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
-          return { ...result, preview: { ...record.plan, plan: record.plan, liveExecutionEnabled: !completed,
-            quoteSource: record.plan.items.find(item => item.quote)?.quote?.source ?? 'unknown', externalSelection, record } };
-        }
-        return result;
-      } catch (error) {
-        preview = null;
-        const result = { status: 'recovery-required', reason: safeReason(error) };
-        log({ event: 'recovery', ...result });
-        return result;
-      }
-      finally { activeExecution = null; busy = false; }
+      try { return await recoverCurrent(); } finally { busy = false; }
     },
     async archiveHistory() {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };

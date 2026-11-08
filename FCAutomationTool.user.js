@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.101
+// @version      27.0.102
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.101", at: Date.now(), status: 'started',
+    state = { version: "27.0.102", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -38617,9 +38617,1133 @@ ${version ?? ""}`;
     } };
   }
 
+  // src/streamlined/scoring.js
+  function scoreStreamlinedItems(items = []) {
+    if (!Array.isArray(items) || items.some((item2) => !integer5(item2?.points, 1))) fail4("SCORE_UNKNOWN");
+    const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
+    if (!integer5(total)) fail4("SCORE_UNKNOWN");
+    return { status: "observed", total, count: items.length };
+  }
+  function streamlinedResourceCost(plan) {
+    return unknownValue(plan) > 0 || plan.materialValue == null ? Infinity : plan.purchaseCost + plan.materialValue;
+  }
+  var unknownValue = (plan) => plan.unknownValue ?? plan.unknownValueCount ?? Number(plan.materialValue == null);
+  function compareStreamlinedPlans(a, b, objective = "lowest-value") {
+    if (objective === "fewest-cards" && a.count !== b.count) return a.count - b.count;
+    if (objective === "lowest-value") {
+      const cost = streamlinedResourceCost(a) - streamlinedResourceCost(b);
+      if (cost) return cost;
+    }
+    return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0) || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
+  }
+
+  // src/streamlined/eligibility.js
+  function createStreamlinedEligibility({ matcher = null, rules = null } = {}) {
+    const known = Array.isArray(rules) && (rules.length === 0 || typeof matcher === "function");
+    return Object.freeze({ known, matches(item2) {
+      if (!known) return { status: "unknown", reason: "FC27_STREAMLINED_ELIGIBILITY_UNVERIFIED" };
+      try {
+        const result = rules.length ? matcher(item2, rules) : true;
+        return { status: result === true ? "eligible" : result === false ? "ineligible" : "unknown" };
+      } catch {
+        return { status: "unknown" };
+      }
+    } });
+  }
+  function filterStreamlinedItems(items, { eligibility, policy } = {}) {
+    const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
+    if (!Array.isArray(items) || items.length > 2e4 || !eligibility?.known) return blocked12("ELIGIBILITY_UNVERIFIED");
+    if (!policy || !integer5(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer5(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer5(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer5(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
+    const excluded = {}, excludedRows = [], accepted = [], keys2 = /* @__PURE__ */ new Set(), ids2 = /* @__PURE__ */ new Set();
+    for (const item2 of items) {
+      if (!item2 || !integer5(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer5(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
+      keys2.add(item2.key);
+      if (item2.source === "inventory") ids2.add(item2.id);
+      const checks = [
+        ["points-unknown", integer5(item2.points, 1, 1e9) && item2.scoreVerified === true],
+        // Frozen legacy plans without a separate procurement limit retain their
+        // original ceiling. New settings explicitly supply marketMaxRating.
+        ["rating", integer5(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
+        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer5(item2.rating, ...policy.goldRange)],
+        ["special", item2.special === false],
+        ["evolution", item2.evolution === false],
+        ["cosmetic", item2.cosmetic === false],
+        ["academy", item2.academyEnrolled === false],
+        ["protected", item2.protected === false],
+        ["league", integer5(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
+      ];
+      if (item2.source === "inventory") checks.push(
+        ["pile", ["club", "storage", "unassigned", "transfer"].includes(item2.pile)],
+        ["concept", item2.concept === false],
+        ["trade", item2.activeTrade === false],
+        ["loan", item2.limitedUse === false && item2.loans === -1],
+        ["untradeable", typeof item2.tradeable === "boolean" && (!policy.onlyUntradeable || item2.tradeable === false)],
+        ["locked", !policy.protectFsuLockedPlayers || item2.locked === false],
+        ["active-squad", !policy.protectActiveSquad || item2.activeSquad === false]
+      );
+      let reason = checks.find(([, passed]) => !passed)?.[0];
+      if (!reason) {
+        const result = eligibility.matches(item2);
+        if (result.status !== "eligible") reason = `eligibility-${result.status}`;
+      }
+      if (reason) {
+        excluded[reason] = (excluded[reason] ?? 0) + 1;
+        excludedRows.push({ key: item2.key, reason });
+      } else accepted.push(item2);
+    }
+    return { status: "observed", items: accepted, excluded, excludedRows };
+  }
+
+  // src/streamlined/routes.js
+  var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
+  var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
+  var add2 = (state, group, index, count3) => {
+    const counts = state.counts.slice();
+    counts[index] = (counts[index] ?? 0) + count3;
+    return {
+      score: state.score + group.item.points * count3,
+      count: state.count + count3,
+      counts,
+      purchaseCost: state.purchaseCost + (group.source === "market" ? group.item.price * count3 : 0),
+      materialValue: state.materialValue + (group.source === "inventory" ? (group.item.price ?? 0) * count3 : 0),
+      unknownValue: state.unknownValue + (group.source === "inventory" && group.item.price == null ? count3 : 0)
+    };
+  };
+  function groupStreamlinedCandidates({
+    inventory = [],
+    market = [],
+    mode = "inventory-market",
+    challenge,
+    eligibility,
+    policy,
+    quoteSource = "futgg",
+    quoteAt = Date.now()
+  }) {
+    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer5(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer5(quoteAt)) fail4("ROUTE_INPUT_INVALID");
+    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
+    if (filtered.status !== "observed") throw Error(filtered.reason);
+    const groups = [], byKey = /* @__PURE__ */ new Map(), excluded = { ...filtered.excluded };
+    for (const item2 of filtered.items) {
+      const q = item2.quote;
+      if (item2.source === "market" && (!integer5(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer5(q.fetchedAt) || q.fetchedAt > quoteAt || !integer5(q.expiresAt) || q.expiresAt <= quoteAt)) {
+        excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
+        continue;
+      }
+      const key2 = JSON.stringify([item2.source, item2.points, item2.rating, item2.rarity ?? null, item2.price, item2.pile]);
+      let group = byKey.get(key2);
+      if (!group) {
+        group = { key: key2, source: item2.source, item: item2, items: [], quantity: 0 };
+        byKey.set(key2, group);
+        groups.push(group);
+      }
+      if (group.items.some((row) => row.key === item2.key || item2.source === "market" && row.definitionId === item2.definitionId)) continue;
+      group.items.push(item2);
+      group.quantity = item2.source === "inventory" ? group.items.length : Math.ceil(challenge.remainingScore / item2.points);
+    }
+    return { groups, excluded };
+  }
+  function* planStreamlinedRoutesSteps(input, {
+    maxNodes = 3e5,
+    maxStates = 2e4,
+    maxMs = 4e3,
+    now = () => Date.now(),
+    budget = null
+  } = {}) {
+    const { challenge, objective = "lowest-value" } = input;
+    if (!integer5(maxNodes, 1, 5e6) || !integer5(maxStates, 1, 1e5) || !integer5(maxMs, 1, 6e4) || budget !== null && !integer5(budget) || !integer5(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail4("ROUTE_INPUT_INVALID");
+    const { groups, excluded } = groupStreamlinedCandidates(input);
+    if (objective === "inventory-first") return yield* planInventoryFirstRoutesSteps(
+      input,
+      groups,
+      excluded,
+      { maxNodes, maxStates, maxMs, now, budget }
+    );
+    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
+    const target = challenge.remainingScore, started = now(), frontier2 = [];
+    const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
+    const marketEntries = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
+    const stockByScore = /* @__PURE__ */ new Map();
+    for (const entry of stock) {
+      const rows = stockByScore.get(entry.g.item.points) ?? [];
+      rows.push(entry);
+      stockByScore.set(entry.g.item.points, rows);
+    }
+    for (const rows of stockByScore.values()) rows.sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || Number(b.g.item.pile === "storage" && input.policy.storageFirst) - Number(a.g.item.pile === "storage" && input.policy.storageFirst));
+    let nodes = 0, stopped = null, labels2 = 1;
+    const remember = (state) => {
+      if (state.score < target) return;
+      if (state.purchaseCost && stock.length) for (const { g, i } of marketEntries) {
+        let pending3 = state.counts[i] ?? 0;
+        if (!pending3) continue;
+        for (const entry of stockByScore.get(g.item.points) ?? []) {
+          if (!pending3 || entry.g.item.price == null || entry.g.item.price > g.item.price) break;
+          const count3 = Math.min(pending3, entry.g.quantity - (state.counts[entry.i] ?? 0));
+          if (count3 <= 0) continue;
+          state = add2(add2(state, g, i, -count3), entry.g, entry.i, count3);
+          pending3 -= count3;
+        }
+      }
+      if (budget !== null && state.purchaseCost > budget) return;
+      if (frontier2.some((row) => dominates(row, state, rank3))) return;
+      for (let i = frontier2.length - 1; i >= 0; i--) {
+        if (dominates(state, frontier2[i], rank3)) frontier2.splice(i, 1);
+      }
+      frontier2.push(state);
+    };
+    function* checkpoint(force = false) {
+      if (force || nodes % 128 === 0) {
+        const cancelled = yield {
+          phase: "routes",
+          nodes,
+          maxNodes,
+          candidates: groups.length,
+          elapsedMs: now() - started,
+          routeCount: frontier2.length,
+          bestPurchaseCost: frontier2.length ? Math.min(...frontier2.map((r) => r.purchaseCost)) : null
+        };
+        if (cancelled) stopped = "cancelled";
+        else if (now() - started >= maxMs) stopped = "time";
+      }
+      if (nodes >= maxNodes) stopped ??= "nodes";
+      return !!stopped;
+    }
+    const cheapest = /* @__PURE__ */ new Map();
+    for (const [i, g] of groups.entries()) if (g.source === "market") {
+      const old = cheapest.get(g.item.points);
+      if (!old || g.item.price < old.g.item.price) cheapest.set(g.item.points, { g, i });
+    }
+    const market = [...cheapest.values()].sort((a, b) => a.g.item.price / a.g.item.points - b.g.item.price / b.g.item.points || b.g.item.points - a.g.item.points);
+    const bases = [empty()];
+    for (const order2 of [
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points),
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
+      stock.slice().sort((a, b) => b.g.item.points - a.g.item.points)
+    ]) {
+      let state = empty();
+      for (const { g, i } of order2) {
+        if (state.score >= target) break;
+        state = add2(state, g, i, Math.min(g.quantity, Math.ceil((target - state.score) / g.item.points)));
+      }
+      remember(state);
+      bases.push(state);
+    }
+    for (const base of bases) for (const { g, i } of market) {
+      if (base.score < target) remember(add2(base, g, i, Math.ceil((target - base.score) / g.item.points)));
+    }
+    fast: for (const left of market) {
+      remember(add2(empty(), left.g, left.i, Math.ceil(target / left.g.item.points)));
+      const bulk = add2(empty(), left.g, left.i, Math.floor(target / left.g.item.points));
+      for (const right of market) {
+        remember(bulk.score >= target ? bulk : add2(
+          bulk,
+          right.g,
+          right.i,
+          Math.ceil((target - bulk.score) / right.g.item.points)
+        ));
+        nodes++;
+      }
+      if (yield* checkpoint(true)) break fast;
+    }
+    mixed: for (const order2 of [
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points || b.g.item.points - a.g.item.points),
+      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points)
+    ]) {
+      if (stopped) break;
+      let base = empty();
+      for (const { g, i } of order2) {
+        for (let n = 0; n < g.quantity && base.score < target; n++) {
+          base = add2(base, g, i, 1);
+          if (base.score >= target) {
+            remember(base);
+            break;
+          }
+          for (const version of market) {
+            remember(add2(base, version.g, version.i, Math.ceil((target - base.score) / version.g.item.points)));
+            nodes++;
+            if (yield* checkpoint()) break mixed;
+          }
+        }
+        if (base.score >= target) break;
+      }
+    }
+    seed: for (const base of bases) {
+      if (stopped) break;
+      if (base.score >= target) continue;
+      for (let a = 0; a < market.length; a++) {
+        const left = market[a];
+        remember(add2(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
+        for (let b = a + 1; b < market.length; b++) {
+          const right = market[b], count3 = Math.ceil((target - base.score) / left.g.item.points);
+          const bulk = add2(base, left.g, left.i, Math.floor((target - base.score) / left.g.item.points));
+          remember(bulk.score >= target ? bulk : add2(bulk, right.g, right.i, Math.ceil((target - bulk.score) / right.g.item.points)));
+          for (let n = 0; n <= count3; n++) {
+            let state = add2(base, left.g, left.i, n);
+            if (state.score < target) state = add2(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
+            remember(state);
+            nodes++;
+            if (yield* checkpoint()) break seed;
+          }
+        }
+      }
+    }
+    const states4 = /* @__PURE__ */ new Map([[0, [empty()]]]);
+    search: for (let i = 0; i < groups.length && !stopped; i++) {
+      const group = groups[i];
+      let remaining = group.quantity;
+      for (let chunk = 1; remaining > 0; chunk *= 2) {
+        const count3 = Math.min(chunk, remaining);
+        remaining -= count3;
+        const before = [...states4.values()].flat();
+        for (const state of before) {
+          const candidate = add2(state, group, i, count3);
+          nodes++;
+          if (candidate.score >= target) remember(candidate);
+          else if (budget === null || candidate.purchaseCost <= budget) {
+            const rows = states4.get(candidate.score) ?? [];
+            if (!rows.some((row) => dominates(row, candidate, rank3))) {
+              const retained = rows.filter((row) => !dominates(candidate, row, rank3));
+              labels2 += retained.length + 1 - rows.length;
+              states4.set(candidate.score, [...retained, candidate]);
+            }
+          }
+          if (labels2 > maxStates) stopped = "states";
+          if (yield* checkpoint()) break search;
+        }
+      }
+    }
+    frontier2.sort(rank3);
+    const diversified = [];
+    const familyKey = (g) => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
+    const families = /* @__PURE__ */ new Map();
+    for (const entry of marketEntries) {
+      const key2 = familyKey(entry.g), family = families.get(key2) ?? [];
+      family.push(entry);
+      families.set(key2, family);
+    }
+    for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
+    for (const base of frontier2.slice(0, 8)) {
+      if (!base.purchaseCost || base.unknownValue) continue;
+      const demands = /* @__PURE__ */ new Map();
+      let upper = 1;
+      let owned2 = base;
+      for (const { g, i } of marketEntries) {
+        const count3 = base.counts[i] ?? 0;
+        if (!count3) continue;
+        demands.set(familyKey(g), (demands.get(familyKey(g)) ?? 0) + count3);
+        upper = Math.max(upper, Math.ceil(count3 / g.items.length));
+        owned2 = add2(owned2, g, i, -count3);
+      }
+      if (upper <= 1) continue;
+      let lower = Math.ceil(base.count / challenge.selectionLimit);
+      for (const [key2, count3] of demands) lower = Math.max(
+        lower,
+        Math.ceil(count3 / families.get(key2).reduce((sum2, entry) => sum2 + entry.g.items.length, 0))
+      );
+      const cover = (waves) => {
+        let state = owned2;
+        for (const [key2, count3] of demands) {
+          let remaining = count3;
+          for (const { g, i } of families.get(key2)) {
+            const quantity = Math.min(remaining, waves * g.items.length);
+            if (quantity) state = add2(state, g, i, quantity);
+            remaining -= quantity;
+            if (!remaining) break;
+          }
+          if (remaining) return null;
+        }
+        return state;
+      };
+      const cost = (state) => objective === "lowest-value" ? streamlinedResourceCost(state) : state.purchaseCost;
+      for (const premium of [5, 10, 20, 30]) {
+        const cap = Math.floor(cost(base) * (1 + premium / 100));
+        const within = (state) => state && cost(state) <= cap && (budget === null || state.purchaseCost <= budget);
+        let lo = lower, hi = upper - 1, choice = null;
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2), state = cover(mid);
+          if (within(state)) {
+            choice = state;
+            hi = mid - 1;
+          } else lo = mid + 1;
+        }
+        if (choice && !diversified.some((row) => JSON.stringify(row.counts) === JSON.stringify(choice.counts))) diversified.push(choice);
+      }
+    }
+    const routeStates = [...frontier2, ...diversified].sort(rank3);
+    const routes = routeStates.map((state, index) => {
+      const selectedGroups = state.counts.flatMap((count3, i) => count3 ? [{ ...groups[i], quantity: count3 }] : []);
+      const marketGroups = selectedGroups.filter((g) => g.source === "market");
+      const repeatPurchaseCount = marketGroups.reduce((sum2, g) => sum2 + Math.max(0, g.quantity - g.items.length), 0);
+      return {
+        id: `route:${index}`,
+        score: state.score,
+        excess: state.score - target,
+        count: state.count,
+        purchaseCost: state.purchaseCost,
+        materialValue: state.unknownValue ? null : state.materialValue,
+        totalValue: state.unknownValue ? null : streamlinedResourceCost(state),
+        unknownValueCount: state.unknownValue,
+        inventoryCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "inventory" ? n : 0), 0),
+        marketCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "market" ? n : 0), 0),
+        minBatches: Math.max(
+          Math.ceil(state.count / challenge.selectionLimit),
+          ...marketGroups.map((g) => Math.ceil(g.quantity / g.items.length))
+        ),
+        repeatPurchaseCount,
+        groups: selectedGroups,
+        searchComplete: stopped === null,
+        supplyVerified: false
+      };
+    });
+    const selected = /* @__PURE__ */ new Set();
+    if (routes.length) {
+      selected.add(routes[0]);
+      for (const extra of [5, 10, 20, 30]) {
+        const cost = (r) => objective === "lowest-value" ? streamlinedResourceCost(r) : r.purchaseCost;
+        const cap = Math.floor(cost(routes[0]) * (1 + extra / 100));
+        const choice = routes.filter((r) => cost(r) <= cap).sort((a, b) => a.minBatches - b.minBatches || a.count - b.count || rank3(a, b))[0];
+        if (choice) selected.add(choice);
+      }
+      selected.add(routes.slice().sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0]);
+      selected.add(routes.slice().sort((a, b) => compareStreamlinedPlans(a, b, "lowest-coins"))[0]);
+      const addLane = (predicate2) => {
+        const lane = routes.filter(predicate2).sort(rank3)[0];
+        if (lane) selected.add(lane);
+      };
+      addLane((route) => route.inventoryCount === 0 && route.marketCount > 0);
+      addLane((route) => route.inventoryCount > 0 && route.marketCount === 0);
+      addLane((route) => route.inventoryCount > 0 && route.marketCount > 0);
+      const practicalStates = new Set(diversified);
+      const practical = routes.filter((_route, index) => practicalStates.has(routeStates[index])).sort((a, b) => a.minBatches - b.minBatches || rank3(a, b))[0];
+      if (practical) selected.add(practical);
+    }
+    return deepFreeze({
+      status: stopped === "cancelled" ? "cancelled" : routes.length ? "ready" : "unavailable",
+      reason: stopped ? `FC27_STREAMLINED_SEARCH_${stopped.toUpperCase()}` : "FC27_STREAMLINED_ROUTES",
+      routes: [...selected],
+      excluded,
+      nodes,
+      searchComplete: stopped === null,
+      candidateCount: groups.length,
+      elapsedMs: now() - started,
+      poolComplete: false,
+      liveExecutionEnabled: false
+    });
+  }
+  function* planInventoryFirstRoutesSteps(input, groups, excluded, options) {
+    const { challenge } = input, required2 = [];
+    const cancelled = yield { phase: "search", nodes: 0, maxNodes: options.maxNodes, candidates: groups.length, elapsedMs: 0 };
+    if (cancelled) return {
+      status: "cancelled",
+      reason: "FC27_STREAMLINED_SEARCH_CANCELLED",
+      routes: [],
+      excluded,
+      nodes: 0,
+      searchComplete: false,
+      liveExecutionEnabled: false
+    };
+    let remainingScore = challenge.remainingScore, finalTier = [];
+    for (const pile of ["storage", "club", "unassigned", "transfer"]) {
+      const tier = groups.filter((g) => g.source === "inventory" && g.item.pile === pile);
+      const score2 = tier.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
+      if (score2 >= remainingScore) {
+        finalTier = tier;
+        break;
+      }
+      required2.push(...tier);
+      remainingScore -= score2;
+    }
+    if (!finalTier.length) finalTier = groups.filter((g) => g.source === "market");
+    const prefixScore = required2.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
+    let result = { routes: [], nodes: 0, searchComplete: true, elapsedMs: 0 };
+    if (finalTier.length) {
+      const inventory = finalTier.filter((g) => g.source === "inventory").flatMap((g) => g.items);
+      const market = finalTier.filter((g) => g.source === "market").flatMap((g) => g.items);
+      result = yield* planStreamlinedRoutesSteps({
+        ...input,
+        inventory,
+        market,
+        challenge: { ...challenge, remainingScore },
+        mode: market.length ? "market" : "inventory",
+        objective: market.length ? "lowest-value" : "lowest-coins"
+      }, options);
+    }
+    const tails = result.routes.length ? result.routes : required2.length && result.status !== "cancelled" ? [{
+      groups: [],
+      score: 0,
+      count: 0,
+      purchaseCost: 0,
+      inventoryCount: 0,
+      marketCount: 0,
+      minBatches: 0,
+      repeatPurchaseCount: 0,
+      searchComplete: result.searchComplete
+    }] : [];
+    const routes = tails.map((tail2, index) => {
+      const selected = [...required2, ...tail2.groups], count3 = selected.reduce((sum2, g) => sum2 + g.quantity, 0);
+      const unknown = selected.filter((g) => g.source === "inventory" && g.item.price == null).reduce((sum2, g) => sum2 + g.quantity, 0);
+      const materialValue = unknown ? null : selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity * g.item.price, 0);
+      return {
+        ...tail2,
+        id: `inventory-first:${index}`,
+        groups: selected,
+        score: prefixScore + tail2.score,
+        excess: prefixScore + tail2.score - challenge.remainingScore,
+        count: count3,
+        materialValue,
+        totalValue: unknown ? null : materialValue + tail2.purchaseCost,
+        unknownValueCount: unknown,
+        inventoryCount: selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity, 0),
+        minBatches: Math.max(tail2.minBatches, Math.ceil(count3 / challenge.selectionLimit)),
+        supplyVerified: false
+      };
+    });
+    return deepFreeze({
+      ...result,
+      routes,
+      excluded,
+      candidateCount: groups.length,
+      poolComplete: false,
+      liveExecutionEnabled: false,
+      status: result.status === "cancelled" ? "cancelled" : routes[0]?.score >= challenge.remainingScore ? "ready" : routes.length ? "partial" : "unavailable",
+      reason: result.reason ?? (routes[0]?.score >= challenge.remainingScore ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE")
+    });
+  }
+  async function runStreamlinedRoutes(input, {
+    onProgress = () => {
+    },
+    stopped = () => false,
+    schedule,
+    metricsNow,
+    ...options
+  } = {}) {
+    return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
+  }
+  function expandStreamlinedRoute(route, challenge) {
+    if (!route || !integer5(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail4("ROUTE_INVALID");
+    const items = [], copies = /* @__PURE__ */ new Map();
+    for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(["unassigned", "transfer"].includes(a.item.pile)) - Number(["unassigned", "transfer"].includes(b.item.pile)))) {
+      if (!integer5(group.quantity, 1, 2e4) || !group.items?.length) fail4("ROUTE_INVALID");
+      for (let n = 0; n < group.quantity; n++) {
+        if (group.source === "inventory") {
+          if (!group.items[n]) fail4("ROUTE_INVALID");
+          items.push(group.items[n]);
+        } else {
+          const item2 = group.items[n % group.items.length], copy2 = copies.get(item2.definitionId) ?? 0;
+          copies.set(item2.definitionId, copy2 + 1);
+          items.push({ ...item2, key: `market:${item2.definitionId}:${copy2}` });
+        }
+      }
+    }
+    if (items.length !== route.count) fail4("ROUTE_INVALID");
+    const batches = [], nextByDefinition = /* @__PURE__ */ new Map();
+    let firstOpen = 0;
+    for (const item2 of items) {
+      let index = item2.source === "market" || ["unassigned", "transfer"].includes(item2.pile) ? Math.max(firstOpen, nextByDefinition.get(item2.definitionId) ?? 0) : firstOpen;
+      while (batches[index]?.length >= challenge.selectionLimit) index++;
+      (batches[index] ??= []).push(item2);
+      nextByDefinition.set(item2.definitionId, index + 1);
+      while (batches[firstOpen]?.length >= challenge.selectionLimit) firstOpen++;
+    }
+    return {
+      status: route.score >= challenge.remainingScore ? "ready" : "partial",
+      items: batches.flat(),
+      batches,
+      score: route.score,
+      purchaseCost: route.purchaseCost,
+      materialValue: route.materialValue,
+      progress: streamlinedProgress(challenge, route.score),
+      searchComplete: route.searchComplete,
+      unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
+      poolComplete: false
+    };
+  }
+
+  // src/streamlined/purchase-scope.js
+  function createStreamlinedPurchaseScope(input) {
+    const { groups } = groupStreamlinedCandidates({ ...input, inventory: [], mode: "market" });
+    const scope2 = { schema: 1, quotedAt: input.quoteAt, groups };
+    return validStreamlinedPurchaseScope(scope2) ? deepFreeze(scope2) : null;
+  }
+  function validStreamlinedPurchaseScope(scope2) {
+    if (!scope2 || scope2.schema !== 1 || !integer5(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
+    const ids2 = /* @__PURE__ */ new Set(), keys2 = /* @__PURE__ */ new Set();
+    return scope2.groups.every((group) => group.source === "market" && integer5(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same2(group.item, group.items[0]) && group.items.every((item2) => {
+      const q = item2.quote;
+      if (ids2.has(item2.definitionId) || !integer5(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer5(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer5(item2.price, 150, 15e6) || !integer5(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer5(q.fetchedAt, 0, scope2.quotedAt) || !integer5(q.expiresAt, scope2.quotedAt + 1)) return false;
+      ids2.add(item2.definitionId);
+      return true;
+    })) && ids2.size <= 2e3;
+  }
+  function approvedStreamlinedPurchaseRoute(plan) {
+    const scope2 = plan.execution?.purchaseScope;
+    if (!scope2) return plan.route;
+    if (!validStreamlinedPurchaseScope(scope2)) fail4("PURCHASE_SCOPE_INVALID");
+    const stock = plan.route.groups.filter((group) => group.source === "inventory");
+    for (const group of plan.route.groups.filter((group2) => group2.source === "market")) {
+      if (!group.items.every((item2) => scope2.groups.some((allowed) => allowed.items.some((row) => same2(row, item2))))) fail4("PURCHASE_SCOPE_INVALID");
+    }
+    return { ...plan.route, groups: structuredClone([...stock, ...scope2.groups]) };
+  }
+  function initialStreamlinedPurchaseDemand(plan, route) {
+    return route.groups.map((group) => plan.route.groups.find((selected) => selected.key === group.key)?.quantity ?? 0);
+  }
+  function streamlinedDemandRoute(record) {
+    return record.demand ? { ...record.route, groups: record.route.groups.map((group, index) => ({ ...group, quantity: record.demand[index] })) } : record.route;
+  }
+  async function replanStreamlinedPurchaseDemand(record, { heldDefinitions = [], blockedDefinitions = [], now, stopped } = {}) {
+    const scope2 = record.plan.execution?.purchaseScope;
+    if (!scope2) return null;
+    const blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
+    const ready = record.entries.filter((entry) => ["ready", "club"].includes(entry.state));
+    const credit = ready.reduce((sum2, entry) => sum2 + record.route.groups[entry.groupIndex].item.points, 0);
+    const remainingScore = Math.max(0, record.challenge.targetScore - record.submittedScore - credit);
+    if (!remainingScore) return null;
+    const market = scope2.groups.flatMap((group) => group.items).filter((item2) => !blocked12.has(item2.definitionId));
+    if (!market.length) return null;
+    const allowed = new Set(market.map((item2) => item2.definitionId));
+    const result = await runStreamlinedRoutes(
+      {
+        challenge: { ...record.challenge, remainingScore },
+        policy: record.policy,
+        eligibility: { known: true, matches: (item2) => ({ status: allowed.has(item2.definitionId) ? "eligible" : "ineligible" }) },
+        inventory: [],
+        market,
+        mode: "market",
+        objective: record.plan.objective,
+        // Frozen valuations are not renewed here. find() refreshes the selected
+        // version's actual quote before any search/bid and never raises its cap.
+        quoteSource: market[0].quote.source,
+        quoteAt: scope2.quotedAt
+      },
+      { budget: record.budget - record.spent, now, stopped, maxMs: 1e3 }
+    );
+    const selected = result.routes?.[0];
+    if (!selected || stopped?.()) return null;
+    return record.route.groups.map((group, index) => (record.fulfilled[index] ?? 0) + ready.filter((entry) => entry.groupIndex === index).length + (selected.groups.find((candidate) => candidate.key === group.key)?.quantity ?? 0));
+  }
+
+  // src/streamlined/plan.js
+  function validPlanContents(plan) {
+    const { challenge, items, batches } = plan;
+    if (plan.execution && (!integer5(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer5(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer5(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer5(plan.execution.partialWaitMs, 0, 36e5))) return false;
+    if (!challenge || challenge.mechanism !== "streamlined" || !integer5(challenge.targetScore, 1) || !integer5(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer5(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same2(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
+    if (items.some((i) => !integer5(i?.definitionId, 1) || !integer5(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer5(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer5(i.price, 1, 15e6)))) return false;
+    const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
+    const inventory = items.filter((i) => i.source === "inventory");
+    const value = inventory.some((i) => !integer5(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
+    return plan.score === score2 && same2(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
+  }
+  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
+    if (!same2(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer5(challenge.selectionLimit, 1, 1e3)) fail4("PLAN_UNCONFIRMED");
+    const items = structuredClone(result.items), batches = structuredClone(result.batches);
+    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail4("PLAN_UNCONFIRMED");
+    const route = result.route ? structuredClone(result.route) : null;
+    const fingerprint = streamlinedPlanFingerprint({
+      context,
+      challenge,
+      policy,
+      objective,
+      execution,
+      status: result.status,
+      score: result.score,
+      progress: result.progress,
+      purchaseCost: result.purchaseCost,
+      materialValue: result.materialValue,
+      searchComplete: result.searchComplete === true,
+      items,
+      batches,
+      route
+    });
+    return deepFreeze({
+      schema: 1,
+      context,
+      challenge,
+      policy,
+      objective,
+      status: result.status,
+      score: result.score,
+      progress: result.progress,
+      purchaseCost: result.purchaseCost,
+      materialValue: result.materialValue,
+      items,
+      batches,
+      ...route ? { route } : {},
+      ...execution ? { execution: structuredClone(execution) } : {},
+      fingerprint,
+      searchComplete: result.searchComplete === true,
+      liveExecutionEnabled: false
+    });
+  }
+  function assertStreamlinedPlan(plan) {
+    if (plan?.schema !== 1 || !same2(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail4("PLAN_CHANGED");
+    return plan;
+  }
+
+  // src/streamlined/contribution.js
+  function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
+    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same2(receipt.itemIds, itemIds) || !integer5(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer5(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer5(receipt.challengeAwardCount, 0, 100) || !integer5(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer5(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail4("RECEIPT_INVALID");
+    return deepFreeze({
+      schema: 1,
+      status: "accepted",
+      code: receipt.code,
+      transportWarning: receipt.transportWarning,
+      setId,
+      challengeId,
+      itemIds: [...itemIds],
+      submittedScore: receipt.submittedScore,
+      ...receipt.previousTimesCompleted !== void 0 ? { previousTimesCompleted: receipt.previousTimesCompleted } : {},
+      challengeCompleted: receipt.challengeCompleted,
+      challengeAwardCount: receipt.challengeAwardCount,
+      setAwardCount: receipt.setAwardCount,
+      objectiveUpdatesPresent: receipt.objectiveUpdatesPresent,
+      rewardConfirmed: false
+    });
+  }
+  function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
+    if (!integer5(expected.challengeId, 1) || !integer5(expected.setId, 1) || !integer5(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id14) => !integer5(id14, 1))) fail4("CONTRIBUTION_INPUT_INVALID");
+    const response = reply?.response, code2 = integer5(reply?.status, 100, 599) ? reply.status : null;
+    const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
+    const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
+    const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
+    const hasProgress = integer5(response?.submittedScore, expected.previousScore + 1, 1e9);
+    if (reply?.success === false || conflict) {
+      if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
+      if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
+        return deepFreeze({ status: "rejected", reason: conflict ? "EA_SQUAD_CONFLICT" : "EA_CONTRIBUTION_REJECTED", code: code2 });
+      }
+      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
+    }
+    if (reply?.success !== true || response?.challengeId !== expected.challengeId || response?.setId !== expected.setId || !hasProgress || response.squads !== void 0 || !Array.isArray(challengeAwards) || !Array.isArray(setAwards) || [challengeAwards, setAwards].some((rows) => rows.length > 100 || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row)))) {
+      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
+    }
+    return deepFreeze({
+      schema: 1,
+      status: "accepted",
+      code: code2,
+      transportWarning: code2 !== 200,
+      setId: expected.setId,
+      challengeId: expected.challengeId,
+      itemIds: [...expected.itemIds],
+      submittedScore: response.submittedScore,
+      ...integer5(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
+      challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
+      challengeAwardCount: challengeAwards.length,
+      setAwardCount: setAwards.length,
+      // Raw dynamicObjectivesUpdates and transformed objectiveUpdates stay out of
+      // the Journal. Presence is observational, not proof of reward delivery.
+      objectiveUpdatesPresent: response.dynamicObjectivesUpdates != null || response.objectiveUpdates != null,
+      rewardConfirmed: false
+    });
+  }
+
+  // src/streamlined/journal.js
+  var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
+  function streamlinedContributionRetirementReason(record) {
+    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
+    if (record?.batches?.some((batch) => ["pending", "unknown"].includes(batch.state))) return "FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING";
+    if (!record || !confirmed.length) return "FC27_STREAMLINED_HISTORY_NO_CONFIRMED";
+    if (!record.plan.items.every((item2) => item2.source === "inventory" && ["club", "storage", "transfer", "unassigned"].includes(item2.pile) && !item2.purchaseReceipt) || record.plan.execution?.purchaseScope || record.plan.route?.groups?.some((group) => group.source === "market")) return "FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL";
+    if (!confirmed.every((batch) => batch.receipt?.status === "accepted") || Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) !== record.submittedScore) return "FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED";
+    if (record.batches.some((batch) => batch.progressChanged)) return "FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED";
+    if (!record.batches.some((batch) => batch.state === "waiting")) return "FC27_STREAMLINED_HISTORY_NO_REMAINDER";
+    if (!record.batches.every((batch) => batch.state === "confirmed" || batch.state === "rejected" || batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0)) return "FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED";
+    return null;
+  }
+  var canRetireStreamlinedContribution = (record) => streamlinedContributionRetirementReason(record) === null;
+  var streamlinedContributionRecovery = (record) => ({
+    setId: record.plan.challenge.setId,
+    challengeId: record.plan.challenge.id,
+    targetScore: record.plan.challenge.targetScore,
+    currentScore: record.submittedScore,
+    confirmedBatches: record.batches.filter((batch) => batch.state === "confirmed").length,
+    waitingBatches: record.batches.filter((batch) => batch.state === "waiting").length,
+    pendingWriteCount: record.batches.filter((batch) => ["pending", "unknown"].includes(batch.state)).length
+  });
+  function canReplaceStreamlinedRemainder(record, plan) {
+    const stock = (candidate) => candidate.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some((group) => group.source === "market");
+    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
+    const consumed = new Set(confirmed.flatMap((batch) => batch.refs.map((ref) => ref.id)));
+    return !!record && same2(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
+  }
+  var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
+  var refOf = (item2) => ({
+    id: item2.id,
+    definitionId: item2.definitionId,
+    points: item2.points,
+    pile: item2.pile,
+    ...item2.executionPile ? { executionPile: item2.executionPile } : {}
+  });
+  function streamlinedJournalKey(context) {
+    return contextKey(context, "streamlined-contribution");
+  }
+  function validateStreamlinedJournal(record, context) {
+    if (record?.schema !== 1 || !same2(record.context, createSeasonContext(context)) || !integer5(record.revision, 1) || !integer5(record.updatedAt) || !integer5(record.submittedScore) || !Array.isArray(record.batches) || !integer5(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail4("JOURNAL_INVALID");
+    assertStreamlinedPlan(record.plan);
+    if (record.retired !== void 0 && (record.retired !== true || !canRetireStreamlinedContribution(record))) fail4("JOURNAL_INVALID");
+    if (!same2(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same2(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail4("JOURNAL_INVALID");
+    let previousScore = record.plan.challenge.submittedScore;
+    for (const batch of record.batches) {
+      if (batch.startingScore !== void 0 && (!integer5(
+        batch.startingScore,
+        record.plan.challenge.submittedScore,
+        record.submittedScore
+      ) || batch.state === "waiting")) fail4("JOURNAL_INVALID");
+      const start = batch.startingScore ?? previousScore;
+      const maxScore = start + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
+      if (batch.receipt !== void 0) {
+        const projected2 = projectStreamlinedReceipt(batch.receipt, {
+          challengeId: record.plan.challenge.id,
+          setId: record.plan.challenge.setId,
+          previousScore: start,
+          maxScore,
+          itemIds: batch.refs.map((ref) => ref.id)
+        });
+        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same2(projected2, batch.receipt)) fail4("JOURNAL_INVALID");
+      }
+      if (batch.state === "confirmed") previousScore = batch.receipt?.submittedScore ?? maxScore;
+    }
+    return record;
+  }
+  function createStreamlinedJournal({ get, set, now = () => Date.now(), canReplaceArchived = async () => false } = {}) {
+    ({ get, set } = createCompactStorage({ get, set }));
+    let tail2 = Promise.resolve();
+    const read = async (context) => {
+      let record;
+      try {
+        record = await get(streamlinedJournalKey(context), null);
+      } catch {
+        fail4("JOURNAL_READ_FAILED");
+      }
+      return record == null ? null : structuredClone(validateStreamlinedJournal(record, context));
+    };
+    const write = (context, record, previousRevision = 0) => {
+      const task = tail2.then(async () => {
+        const current2 = await read(context);
+        if ((current2?.revision ?? 0) !== previousRevision) fail4("JOURNAL_CHANGED");
+        const next = validateStreamlinedJournal({ ...structuredClone(record), revision: previousRevision + 1, updatedAt: now() }, context);
+        try {
+          await set(streamlinedJournalKey(context), next);
+          if (!same2(await get(streamlinedJournalKey(context), null), next)) fail4("JOURNAL_READBACK_FAILED");
+        } catch {
+          fail4("JOURNAL_WRITE_FAILED");
+        }
+        return structuredClone(next);
+      });
+      tail2 = task.catch(() => {
+      });
+      return task;
+    };
+    return Object.freeze({
+      read: async (context) => {
+        const record = await read(context);
+        return record?.retired ? null : record;
+      },
+      write,
+      async retire(expected) {
+        const task = tail2.then(async () => {
+          const prior = await read(expected.context);
+          if (!same2(prior, expected)) fail4("JOURNAL_CHANGED");
+          if (!canRetireStreamlinedContribution(prior)) fail4("RECOVERY_REQUIRED");
+          const key2 = `${streamlinedJournalKey(expected.context)}:history:${prior.revision}`;
+          try {
+            const saved = await get(key2, null);
+            if (saved != null && !same2(saved, prior)) fail4("JOURNAL_ARCHIVE_CONFLICT");
+            if (saved == null) await set(key2, structuredClone(prior));
+            if (!same2(await get(key2, null), prior)) fail4("JOURNAL_ARCHIVE_FAILED");
+          } catch {
+            fail4("JOURNAL_ARCHIVE_FAILED");
+          }
+          const retired = validateStreamlinedJournal({ ...prior, retired: true, revision: prior.revision + 1, updatedAt: now() }, expected.context);
+          try {
+            await set(streamlinedJournalKey(expected.context), retired);
+            if (!same2(await get(streamlinedJournalKey(expected.context), null), retired)) fail4("JOURNAL_READBACK_FAILED");
+          } catch {
+            fail4("JOURNAL_WRITE_FAILED");
+          }
+        });
+        tail2 = task.catch(() => {
+        });
+        return task;
+      },
+      async begin(plan, { replaceRemainder = false } = {}) {
+        assertStreamlinedPlan(plan);
+        if (plan.items.some((item2) => item2.source !== "inventory")) fail4("PURCHASE_PENDING");
+        const prior = await read(plan.context);
+        const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
+        if (replaceRemainder && !replacement) fail4("RECOVERY_REQUIRED");
+        if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail4("RECOVERY_REQUIRED");
+        if (replacement) {
+          const key2 = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
+          try {
+            const saved = await get(key2, null);
+            if (saved != null && !same2(saved, prior)) fail4("JOURNAL_ARCHIVE_CONFLICT");
+            if (saved == null) await set(key2, structuredClone(prior));
+            if (!same2(await get(key2, null), prior)) fail4("JOURNAL_ARCHIVE_FAILED");
+          } catch {
+            fail4("JOURNAL_ARCHIVE_FAILED");
+          }
+        }
+        return write(plan.context, {
+          schema: 1,
+          context: plan.context,
+          plan,
+          submittedScore: plan.challenge.submittedScore,
+          rewardState: "unknown",
+          batches: plan.batches.map((batch, index) => ({
+            index,
+            state: "waiting",
+            refs: batch.map(refOf)
+          }))
+        }, prior?.revision ?? 0);
+      }
+    });
+  }
+
+  // src/streamlined/purchase-journal.js
+  var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
+  var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
+  var streamlinedRetiredPurchaseKey = (context) => `${streamlinedPurchaseKey(context)}:retired`;
+  function streamlinedPurchaseReservedIds(record) {
+    validateStreamlinedPurchase(record, record.context);
+    const inventoryEntries = new Map(record.entries.filter((entry) => entry.source === "inventory").map((entry) => [entry.itemId, entry]));
+    for (const [groupIndex, group] of record.route.groups.entries()) {
+      if (group.source !== "inventory") continue;
+      if (group.items.length < group.quantity || group.items.slice(0, group.quantity).some((item2) => {
+        const entry = inventoryEntries.get(item2.id);
+        return !entry || entry.groupIndex !== groupIndex || entry.definitionId !== item2.definitionId;
+      })) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    }
+    const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
+    if (ids2.some((id14) => !integer5(id14, 1))) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+    if (record.contribution) {
+      const { batchPlan, material } = record.contribution;
+      try {
+        assertStreamlinedPlan(batchPlan);
+      } catch {
+        fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      }
+      if (!same2(batchPlan.context, record.context) || batchPlan.challenge.id !== record.challenge.id || batchPlan.challenge.setId !== record.challenge.setId || batchPlan.challenge.targetScore !== record.challenge.targetScore || batchPlan.challenge.submittedScore !== record.submittedScore || !same2(batchPlan.items, material.map((row) => row.item))) {
+        fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
+      }
+      ids2.push(...batchPlan.items.map((item2) => item2.id));
+    }
+    return [...new Set(ids2)];
+  }
+  function canRetireStreamlinedPurchase(record, contribution = null) {
+    streamlinedPurchaseReservedIds(record);
+    if (record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) return false;
+    if (!contribution) return true;
+    validateStreamlinedJournal(contribution, record.context);
+    if (!contribution.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) return true;
+    return contribution.plan.fingerprint === record.contribution?.batchPlan?.fingerprint;
+  }
+  function streamlinedPurchaseAudit(record) {
+    if (!Array.isArray(record?.entries) || !Array.isArray(record.consumedIds) || record.entries.some((entry) => !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry?.state))) return {};
+    const pendingWriteCount = Number(!!record.contribution) + record.entries.filter((entry) => ["buy-pending", "move-pending"].includes(entry.state)).length;
+    const unconsumedPurchaseCount = record.entries.filter((entry) => entry.source === "market" && ["buy-pending", "bought", "move-pending", "club"].includes(entry.state)).length;
+    return {
+      pendingWriteCount,
+      unconsumedPurchaseCount,
+      contributedCount: record.consumedIds.length,
+      confirmedBatches: record.confirmedBatches,
+      purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0
+    };
+  }
+  function validateStreamlinedPurchase(record, context) {
+    if (record?.plan?.schema === 1) {
+      assertStreamlinedPlan(record.plan);
+      if (record.plan.fingerprint !== record.fingerprint || !same2(record.plan.context, context) || !same2(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same2(record.plan.challenge, record.challenge) || !same2(record.plan.policy, record.policy)) fail4("PURCHASE_JOURNAL_INVALID");
+    }
+    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same2(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer5(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer5(record.budget) || !integer5(record.spent) || record.spent > record.budget || !integer5(record.submittedScore) || !integer5(record.challenge?.id, 1) || !integer5(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer5(record.confirmedBatches) || !integer5(record.challenge?.targetScore, 1) || !integer5(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer5(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer5(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id14) => !integer5(id14, 1))) fail4("PURCHASE_JOURNAL_INVALID");
+    for (const group of record.route.groups) {
+      if (!["inventory", "market"].includes(group.source) || !integer5(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer5(group.item?.points, 1) || group.items.some((item2) => !integer5(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer5(item2.price, 150, 15e6) || !integer5(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer5(item2.id, 1))) fail4("PURCHASE_JOURNAL_INVALID");
+    }
+    const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
+    let spent = 0;
+    for (const entry of record.entries) {
+      const group = record.route.groups[entry.groupIndex];
+      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer5(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer5(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail4("PURCHASE_JOURNAL_INVALID");
+      keys2.add(entry.key);
+      if (entry.source === "inventory") {
+        if (!integer5(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail4("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        continue;
+      }
+      if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
+        if (!integer5(entry.itemId, 1) || !integer5(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer5(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail4("PURCHASE_JOURNAL_INVALID");
+        items.add(entry.itemId);
+        if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
+      } else if (entry.cap !== null && !integer5(entry.cap, 150, 15e6)) fail4("PURCHASE_JOURNAL_INVALID");
+      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail4("PURCHASE_JOURNAL_INVALID");
+    }
+    if (spent !== record.spent) fail4("PURCHASE_JOURNAL_INVALID");
+    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail4("PURCHASE_JOURNAL_INVALID");
+    if (record.contribution) {
+      const material = record.contribution.material;
+      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail4("PURCHASE_JOURNAL_INVALID");
+    }
+    return record;
+  }
+  function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
+  } }) {
+    ({ get, set } = createCompactStorage({ get, set }));
+    const readRetired = async (context) => {
+      let rows;
+      try {
+        rows = await get(streamlinedRetiredPurchaseKey(context), []);
+      } catch {
+        fail4("PURCHASE_JOURNAL_READ_FAILED");
+      }
+      rows ??= [];
+      if (!Array.isArray(rows) || rows.length > 50) fail4("PURCHASE_ARCHIVE_INVALID");
+      const operations = /* @__PURE__ */ new Set();
+      for (const row of rows) {
+        if (row?.reason !== "user-abandoned" || !integer5(row.at) || !row.record || operations.has(row.record.operationId)) fail4("PURCHASE_ARCHIVE_INVALID");
+        validateStreamlinedPurchase(row.record, context);
+        streamlinedPurchaseReservedIds(row.record);
+        if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail4("PURCHASE_ARCHIVE_INVALID");
+        if (row.contributionJournal) {
+          validateStreamlinedJournal(row.contributionJournal, context);
+          if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail4("PURCHASE_ARCHIVE_INVALID");
+        }
+        operations.add(row.record.operationId);
+      }
+      return structuredClone(rows);
+    };
+    const isRetired = async (record) => {
+      const row = (await readRetired(record.context)).find((row2) => row2.record.operationId === record.operationId);
+      if (row && !same2(row.record, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
+      return !!row;
+    };
+    const reservedFor = (row) => [
+      ...streamlinedPurchaseReservedIds(row.record),
+      ...row.contributionJournal?.batches.filter((batch) => ["waiting", "pending", "unknown"].includes(batch.state)).flatMap((batch) => batch.refs.map((ref) => ref.id)) ?? []
+    ];
+    const reservedIds = async (context) => [...new Set((await readRetired(context)).flatMap(reservedFor))];
+    const isRetiredContribution = async (record) => {
+      const row = (await readRetired(record.context)).find((row2) => row2.contributionJournal?.plan.fingerprint === record.plan.fingerprint);
+      if (row && !same2(row.contributionJournal, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
+      return !!row;
+    };
+    const assertAvailable = async (context, challenge, refs3 = []) => {
+      for (const row of await readRetired(context)) {
+        const { record } = row;
+        if ((record.contribution || row.contributionJournal?.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail4("HISTORY_TARGET_UNRESOLVED");
+        const reserved = new Set(reservedFor(row));
+        if (refs3.some((ref) => reserved.has(ref.id ?? ref.itemId))) fail4("FOREIGN_PURCHASE_MATERIAL_RESERVED");
+      }
+    };
+    const assertPlanAvailable = async (plan) => {
+      for (const row of await readRetired(plan.context)) {
+        if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint].includes(plan.fingerprint)) fail4("PURCHASE_HISTORY_RETIRED");
+      }
+      await assertAvailable(plan.context, plan.challenge, plan.items);
+    };
+    const read = async (context) => {
+      let record;
+      try {
+        record = await get(streamlinedPurchaseKey(context), null);
+      } catch {
+        fail4("PURCHASE_JOURNAL_READ_FAILED");
+      }
+      return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
+    };
+    const write = async (record, previousRevision = record.revision) => {
+      assertHeld();
+      const old = await read(record.context);
+      if ((old?.revision ?? 0) !== previousRevision) fail4("PURCHASE_JOURNAL_CHANGED");
+      const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
+      if ((await readRetired(record.context)).some((row) => row.record.operationId === next.operationId)) fail4("PURCHASE_HISTORY_RETIRED");
+      await assertAvailable(next.context, next.challenge, next.entries);
+      try {
+        assertHeld();
+        await set(streamlinedPurchaseKey(record.context), next);
+        assertHeld();
+        if (!same2(next, await get(streamlinedPurchaseKey(record.context), null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+      return structuredClone(next);
+    };
+    const archive = async (record) => {
+      assertHeld();
+      validateStreamlinedPurchase(record, record.context);
+      if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail4("PURCHASE_RECOVERY_REQUIRED");
+      if (!same2(record, await read(record.context))) fail4("PURCHASE_JOURNAL_CHANGED");
+      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      try {
+        const prior = await get(key2, null);
+        if (prior !== null && !same2(prior, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
+        assertHeld();
+        await set(key2, structuredClone(record));
+        assertHeld();
+        if (!same2(record, await get(key2, null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+    };
+    const retire = async (record, contributionJournal = null) => {
+      assertHeld();
+      validateStreamlinedPurchase(record, record.context);
+      if (!same2(record, await read(record.context))) fail4("PURCHASE_JOURNAL_CHANGED");
+      const rows = await readRetired(record.context);
+      if (rows.some((row) => row.record.operationId === record.operationId)) {
+        if (!await isRetired(record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
+        return;
+      }
+      if (rows.length >= 50) fail4("PURCHASE_ARCHIVE_FULL");
+      if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail4("PURCHASE_RECOVERY_REQUIRED");
+      if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail4("PURCHASE_ARCHIVE_INVALID");
+      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
+      try {
+        const prior = await get(key2, null);
+        if (prior !== null && !same2(prior, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
+        assertHeld();
+        await set(key2, structuredClone(record));
+        assertHeld();
+        if (!same2(record, await get(key2, null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+        rows.push({
+          reason: "user-abandoned",
+          at: Date.now(),
+          record: structuredClone(record),
+          ...contributionJournal ? { contributionJournal: structuredClone(contributionJournal) } : {}
+        });
+        assertHeld();
+        await set(streamlinedRetiredPurchaseKey(record.context), rows);
+        assertHeld();
+        if (!same2(rows, await readRetired(record.context))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      } catch {
+        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
+      }
+    };
+    return Object.freeze({ read, write, archive, retire, readRetired, isRetired, isRetiredContribution, reservedIds, assertAvailable, assertPlanAvailable });
+  }
+  async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
+    const proof = item2?.purchaseReceipt;
+    if (!proof || proof.itemId !== item2.id || proof.definitionId !== item2.definitionId) return false;
+    const journal = createStreamlinedPurchaseJournal({ get });
+    const record = await journal.read(context);
+    if (!record || record.operationId !== proof.operationId) return false;
+    if (!challenge || record.challenge.id !== challenge.id || record.challenge.setId !== challenge.setId || record.challenge.targetScore !== challenge.targetScore) return false;
+    const entry = record.entries.find((row) => row.itemId === item2.id && row.definitionId === item2.definitionId);
+    return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
+  }
+
   // src/adapters/browser/fc27-streamlined-panel.js
   var number3 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "\u672A\u77E5";
   var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
+  function streamlinedPurchaseResumeMessage(result) {
+    const record = result?.record, audit = streamlinedPurchaseAudit(record);
+    if (result?.status !== "recovered" || record?.completed === true || audit.pendingWriteCount !== 0 || ![
+      record?.budget,
+      record?.spent,
+      record?.submittedScore,
+      record?.challenge?.targetScore,
+      audit.contributedCount,
+      audit.unconsumedPurchaseCount
+    ].every(Number.isSafeInteger) || record.submittedScore >= record.challenge.targetScore) return null;
+    return `\u5DF2\u6062\u590D\u539F\u8D2D\u5361\u4EFB\u52A1\uFF1A\u5DF2\u786E\u8BA4 ${number3(audit.contributedCount)} \u5F20\u3001${number3(record.submittedScore)} / ${number3(record.challenge.targetScore)} \u5206\uFF1B\u5DF2\u8D2D\u5F85\u5904\u7406 ${number3(audit.unconsumedPurchaseCount)} \u5F20\u3002\u5DF2\u82B1 ${number3(record.spent)} \u91D1\u5E01\uFF0C\u539F\u9884\u7B97\u5269\u4F59 ${number3(record.budget - record.spent)}\u3002\u8BF7\u70B9\u51FB\u201C\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E\u201D\uFF1B\u539F\u9884\u7B97\u548C\u5355\u5361\u4E0A\u9650\u4E0D\u53D8\uFF0C\u5DF2\u786E\u8BA4\u6750\u6599\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002`;
+  }
   function streamlinedConfirmedContribution(result) {
     const value = result?.confirmation;
     if (value?.finalizationPending !== true || !Number.isSafeInteger(value.submittedScore) || value.submittedScore <= 0 || !Number.isSafeInteger(value.targetScore) || value.targetScore <= 0) return null;
@@ -39211,7 +40335,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       shown = result;
       const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
       const orderedExternal = result.externalSelection === true;
-      node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : orderedExternal ? "\u6309\u987A\u5E8F\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
+      node("contribute").textContent = marketRun ? result.record ? "\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : orderedExternal ? "\u6309\u987A\u5E8F\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
       const output = node("result"), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add3(output, "section");
@@ -39278,8 +40402,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           budget.dataset.settled = "true";
           budget.disabled = true;
         }
-        add3(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\u3002\u66F4\u6539\u989D\u5EA6\u9700\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u786E\u8BA4\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6539\u5199\u65E7\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
-        add3(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+        add3(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\uFF1B\u5DF2\u82B1 ${number3(result.record.spent)}\uFF0C\u5269\u4F59 ${number3(result.record.budget - result.record.spent)}\u3002\u7EE7\u7EED\u4F7F\u7528\u539F\u4EFB\u52A1\u548C\u539F\u5355\u5361\u4E0A\u9650\uFF0C\u4E0D\u56E0\u91CD\u65B0\u751F\u6210\u800C\u589E\u52A0\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
+        add3(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 30 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
         const scope2 = result.plan.execution?.purchaseScope;
         if (scope2) {
           const pool = add3(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
@@ -39314,7 +40438,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           });
         }
       }
-      add3(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
+      add3(output, "div", marketRun && result.record ? `\u539F\u65B9\u6848\u7EED\u505A \xB7 \u5DF2\u786E\u8BA4 ${number3(result.record.submittedScore)} / ${number3(result.plan.challenge.targetScore)} \u5206 \xB7 \u8FD8\u5DEE ${number3(Math.max(0, result.plan.challenge.targetScore - result.record.submittedScore))} \u5206` : `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
       const inventoryFirst = result.plan.objective === "inventory-first";
       const quoteLabel = inventoryFirst && !marketRun ? "\u5E93\u5B58\u4F18\u5148 \xB7 \u672A\u67E5\u8BE2\u5E02\u573A\u62A5\u4EF7" : String(result.quoteSource).toUpperCase();
@@ -39468,8 +40592,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           node("status").textContent = stage ? `${stage} ${number3(p.completed)} / ${number3(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number3(p.nodes)} / ${number3(p.maxNodes)} \xB7 \u5019\u9009 ${number3(p.candidates)} \xB7 ${number3(p.elapsedMs)} ms`;
         } });
         if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_FSU_NOT_READY" ? "FSU \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u6309\u4E0A\u65B9\u63D0\u793A\u68C0\u67E5\u540E\u91CD\u8BD5\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status;
+        node("status").textContent = streamlinedPurchaseResumeMessage(result) ?? (result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_FSU_NOT_READY" ? "FSU \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u6309\u4E0A\u65B9\u63D0\u793A\u68C0\u67E5\u540E\u91CD\u8BD5\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status);
         renderResult(result);
+        if (result.recoveryAttempted) showOutcome(result);
       } catch (error2) {
         if (serial === opened) node("status").textContent = safeReason9(error2);
       } finally {
@@ -39528,7 +40653,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
         rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
-      node("status").textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status;
+      node("status").textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status);
       if (archiveBlocked && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
         const old = result.recovery;
         node("status").textContent = `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5C1A\u672A\u7ED3\u675F\uFF1A\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(old?.pendingWriteCount)} \u6279\u3002\u963B\u65AD\u539F\u56E0\u89C1\u4E0B\u65B9\u3002`;
@@ -39699,547 +40824,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     } });
   }
 
-  // src/streamlined/eligibility.js
-  function createStreamlinedEligibility({ matcher = null, rules = null } = {}) {
-    const known = Array.isArray(rules) && (rules.length === 0 || typeof matcher === "function");
-    return Object.freeze({ known, matches(item2) {
-      if (!known) return { status: "unknown", reason: "FC27_STREAMLINED_ELIGIBILITY_UNVERIFIED" };
-      try {
-        const result = rules.length ? matcher(item2, rules) : true;
-        return { status: result === true ? "eligible" : result === false ? "ineligible" : "unknown" };
-      } catch {
-        return { status: "unknown" };
-      }
-    } });
-  }
-  function filterStreamlinedItems(items, { eligibility, policy } = {}) {
-    const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, items: [], excluded: {}, excludedRows: [] });
-    if (!Array.isArray(items) || items.length > 2e4 || !eligibility?.known) return blocked12("ELIGIBILITY_UNVERIFIED");
-    if (!policy || !integer5(policy.maxRating, 1, 99) || policy.marketMaxRating !== void 0 && !integer5(policy.marketMaxRating, 1, 99) || !Array.isArray(policy.goldRange) || policy.goldRange.length !== 2 || policy.goldRange.some((v) => !integer5(v, 75, 99)) || policy.goldRange[0] > policy.goldRange[1] || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.some((v) => !integer5(v, 1)) || ["onlyUntradeable", "protectFsuLockedPlayers", "protectActiveSquad", "storageFirst"].some((key2) => typeof policy[key2] !== "boolean")) return blocked12("POLICY_UNVERIFIED");
-    const excluded = {}, excludedRows = [], accepted = [], keys2 = /* @__PURE__ */ new Set(), ids2 = /* @__PURE__ */ new Set();
-    for (const item2 of items) {
-      if (!item2 || !integer5(item2.definitionId, 1) || !["inventory", "market"].includes(item2.source) || typeof item2.key !== "string" || keys2.has(item2.key) || item2.source === "inventory" && (!integer5(item2.id, 1) || ids2.has(item2.id))) return blocked12("IDENTITY_CONFLICT");
-      keys2.add(item2.key);
-      if (item2.source === "inventory") ids2.add(item2.id);
-      const checks = [
-        ["points-unknown", integer5(item2.points, 1, 1e9) && item2.scoreVerified === true],
-        // Frozen legacy plans without a separate procurement limit retain their
-        // original ceiling. New settings explicitly supply marketMaxRating.
-        ["rating", integer5(item2.rating, 1, item2.source === "market" ? policy.marketMaxRating ?? policy.maxRating : policy.maxRating)],
-        ["fsu-gold-range", item2.source === "market" || item2.rating < 75 || integer5(item2.rating, ...policy.goldRange)],
-        ["special", item2.special === false],
-        ["evolution", item2.evolution === false],
-        ["cosmetic", item2.cosmetic === false],
-        ["academy", item2.academyEnrolled === false],
-        ["protected", item2.protected === false],
-        ["league", integer5(item2.leagueId, 1) && !policy.excludedLeagueIds.includes(item2.leagueId)]
-      ];
-      if (item2.source === "inventory") checks.push(
-        ["pile", ["club", "storage", "unassigned", "transfer"].includes(item2.pile)],
-        ["concept", item2.concept === false],
-        ["trade", item2.activeTrade === false],
-        ["loan", item2.limitedUse === false && item2.loans === -1],
-        ["untradeable", typeof item2.tradeable === "boolean" && (!policy.onlyUntradeable || item2.tradeable === false)],
-        ["locked", !policy.protectFsuLockedPlayers || item2.locked === false],
-        ["active-squad", !policy.protectActiveSquad || item2.activeSquad === false]
-      );
-      let reason = checks.find(([, passed]) => !passed)?.[0];
-      if (!reason) {
-        const result = eligibility.matches(item2);
-        if (result.status !== "eligible") reason = `eligibility-${result.status}`;
-      }
-      if (reason) {
-        excluded[reason] = (excluded[reason] ?? 0) + 1;
-        excludedRows.push({ key: item2.key, reason });
-      } else accepted.push(item2);
-    }
-    return { status: "observed", items: accepted, excluded, excludedRows };
-  }
-
-  // src/streamlined/scoring.js
-  function scoreStreamlinedItems(items = []) {
-    if (!Array.isArray(items) || items.some((item2) => !integer5(item2?.points, 1))) fail4("SCORE_UNKNOWN");
-    const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-    if (!integer5(total)) fail4("SCORE_UNKNOWN");
-    return { status: "observed", total, count: items.length };
-  }
-  function streamlinedResourceCost(plan) {
-    return unknownValue(plan) > 0 || plan.materialValue == null ? Infinity : plan.purchaseCost + plan.materialValue;
-  }
-  var unknownValue = (plan) => plan.unknownValue ?? plan.unknownValueCount ?? Number(plan.materialValue == null);
-  function compareStreamlinedPlans(a, b, objective = "lowest-value") {
-    if (objective === "fewest-cards" && a.count !== b.count) return a.count - b.count;
-    if (objective === "lowest-value") {
-      const cost = streamlinedResourceCost(a) - streamlinedResourceCost(b);
-      if (cost) return cost;
-    }
-    return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0) || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
-  }
-
-  // src/streamlined/routes.js
-  var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
-  var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
-  var add2 = (state, group, index, count3) => {
-    const counts = state.counts.slice();
-    counts[index] = (counts[index] ?? 0) + count3;
-    return {
-      score: state.score + group.item.points * count3,
-      count: state.count + count3,
-      counts,
-      purchaseCost: state.purchaseCost + (group.source === "market" ? group.item.price * count3 : 0),
-      materialValue: state.materialValue + (group.source === "inventory" ? (group.item.price ?? 0) * count3 : 0),
-      unknownValue: state.unknownValue + (group.source === "inventory" && group.item.price == null ? count3 : 0)
-    };
-  };
-  function groupStreamlinedCandidates({
-    inventory = [],
-    market = [],
-    mode = "inventory-market",
-    challenge,
-    eligibility,
-    policy,
-    quoteSource = "futgg",
-    quoteAt = Date.now()
-  }) {
-    if (!["inventory", "inventory-market", "market"].includes(mode) || !integer5(challenge?.remainingScore, 1) || !["futgg", "futbin"].includes(quoteSource) || !integer5(quoteAt)) fail4("ROUTE_INPUT_INVALID");
-    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
-    if (filtered.status !== "observed") throw Error(filtered.reason);
-    const groups = [], byKey = /* @__PURE__ */ new Map(), excluded = { ...filtered.excluded };
-    for (const item2 of filtered.items) {
-      const q = item2.quote;
-      if (item2.source === "market" && (!integer5(item2.price, 1, 15e6) || q?.source !== quoteSource || q.definitionId !== item2.definitionId || q.price !== item2.price || !integer5(q.fetchedAt) || q.fetchedAt > quoteAt || !integer5(q.expiresAt) || q.expiresAt <= quoteAt)) {
-        excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
-        continue;
-      }
-      const key2 = JSON.stringify([item2.source, item2.points, item2.rating, item2.rarity ?? null, item2.price, item2.pile]);
-      let group = byKey.get(key2);
-      if (!group) {
-        group = { key: key2, source: item2.source, item: item2, items: [], quantity: 0 };
-        byKey.set(key2, group);
-        groups.push(group);
-      }
-      if (group.items.some((row) => row.key === item2.key || item2.source === "market" && row.definitionId === item2.definitionId)) continue;
-      group.items.push(item2);
-      group.quantity = item2.source === "inventory" ? group.items.length : Math.ceil(challenge.remainingScore / item2.points);
-    }
-    return { groups, excluded };
-  }
-  function* planStreamlinedRoutesSteps(input, {
-    maxNodes = 3e5,
-    maxStates = 2e4,
-    maxMs = 4e3,
-    now = () => Date.now(),
-    budget = null
-  } = {}) {
-    const { challenge, objective = "lowest-value" } = input;
-    if (!integer5(maxNodes, 1, 5e6) || !integer5(maxStates, 1, 1e5) || !integer5(maxMs, 1, 6e4) || budget !== null && !integer5(budget) || !integer5(challenge?.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective)) fail4("ROUTE_INPUT_INVALID");
-    const { groups, excluded } = groupStreamlinedCandidates(input);
-    if (objective === "inventory-first") return yield* planInventoryFirstRoutesSteps(
-      input,
-      groups,
-      excluded,
-      { maxNodes, maxStates, maxMs, now, budget }
-    );
-    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
-    const target = challenge.remainingScore, started = now(), frontier2 = [];
-    const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
-    const marketEntries = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
-    const stockByScore = /* @__PURE__ */ new Map();
-    for (const entry of stock) {
-      const rows = stockByScore.get(entry.g.item.points) ?? [];
-      rows.push(entry);
-      stockByScore.set(entry.g.item.points, rows);
-    }
-    for (const rows of stockByScore.values()) rows.sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || Number(b.g.item.pile === "storage" && input.policy.storageFirst) - Number(a.g.item.pile === "storage" && input.policy.storageFirst));
-    let nodes = 0, stopped = null, labels2 = 1;
-    const remember = (state) => {
-      if (state.score < target) return;
-      if (state.purchaseCost && stock.length) for (const { g, i } of marketEntries) {
-        let pending3 = state.counts[i] ?? 0;
-        if (!pending3) continue;
-        for (const entry of stockByScore.get(g.item.points) ?? []) {
-          if (!pending3 || entry.g.item.price == null || entry.g.item.price > g.item.price) break;
-          const count3 = Math.min(pending3, entry.g.quantity - (state.counts[entry.i] ?? 0));
-          if (count3 <= 0) continue;
-          state = add2(add2(state, g, i, -count3), entry.g, entry.i, count3);
-          pending3 -= count3;
-        }
-      }
-      if (budget !== null && state.purchaseCost > budget) return;
-      if (frontier2.some((row) => dominates(row, state, rank3))) return;
-      for (let i = frontier2.length - 1; i >= 0; i--) {
-        if (dominates(state, frontier2[i], rank3)) frontier2.splice(i, 1);
-      }
-      frontier2.push(state);
-    };
-    function* checkpoint(force = false) {
-      if (force || nodes % 128 === 0) {
-        const cancelled = yield {
-          phase: "routes",
-          nodes,
-          maxNodes,
-          candidates: groups.length,
-          elapsedMs: now() - started,
-          routeCount: frontier2.length,
-          bestPurchaseCost: frontier2.length ? Math.min(...frontier2.map((r) => r.purchaseCost)) : null
-        };
-        if (cancelled) stopped = "cancelled";
-        else if (now() - started >= maxMs) stopped = "time";
-      }
-      if (nodes >= maxNodes) stopped ??= "nodes";
-      return !!stopped;
-    }
-    const cheapest = /* @__PURE__ */ new Map();
-    for (const [i, g] of groups.entries()) if (g.source === "market") {
-      const old = cheapest.get(g.item.points);
-      if (!old || g.item.price < old.g.item.price) cheapest.set(g.item.points, { g, i });
-    }
-    const market = [...cheapest.values()].sort((a, b) => a.g.item.price / a.g.item.points - b.g.item.price / b.g.item.points || b.g.item.points - a.g.item.points);
-    const bases = [empty()];
-    for (const order2 of [
-      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points),
-      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
-      stock.slice().sort((a, b) => b.g.item.points - a.g.item.points)
-    ]) {
-      let state = empty();
-      for (const { g, i } of order2) {
-        if (state.score >= target) break;
-        state = add2(state, g, i, Math.min(g.quantity, Math.ceil((target - state.score) / g.item.points)));
-      }
-      remember(state);
-      bases.push(state);
-    }
-    for (const base of bases) for (const { g, i } of market) {
-      if (base.score < target) remember(add2(base, g, i, Math.ceil((target - base.score) / g.item.points)));
-    }
-    fast: for (const left of market) {
-      remember(add2(empty(), left.g, left.i, Math.ceil(target / left.g.item.points)));
-      const bulk = add2(empty(), left.g, left.i, Math.floor(target / left.g.item.points));
-      for (const right of market) {
-        remember(bulk.score >= target ? bulk : add2(
-          bulk,
-          right.g,
-          right.i,
-          Math.ceil((target - bulk.score) / right.g.item.points)
-        ));
-        nodes++;
-      }
-      if (yield* checkpoint(true)) break fast;
-    }
-    mixed: for (const order2 of [
-      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points || b.g.item.points - a.g.item.points),
-      stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points)
-    ]) {
-      if (stopped) break;
-      let base = empty();
-      for (const { g, i } of order2) {
-        for (let n = 0; n < g.quantity && base.score < target; n++) {
-          base = add2(base, g, i, 1);
-          if (base.score >= target) {
-            remember(base);
-            break;
-          }
-          for (const version of market) {
-            remember(add2(base, version.g, version.i, Math.ceil((target - base.score) / version.g.item.points)));
-            nodes++;
-            if (yield* checkpoint()) break mixed;
-          }
-        }
-        if (base.score >= target) break;
-      }
-    }
-    seed: for (const base of bases) {
-      if (stopped) break;
-      if (base.score >= target) continue;
-      for (let a = 0; a < market.length; a++) {
-        const left = market[a];
-        remember(add2(base, left.g, left.i, Math.ceil((target - base.score) / left.g.item.points)));
-        for (let b = a + 1; b < market.length; b++) {
-          const right = market[b], count3 = Math.ceil((target - base.score) / left.g.item.points);
-          const bulk = add2(base, left.g, left.i, Math.floor((target - base.score) / left.g.item.points));
-          remember(bulk.score >= target ? bulk : add2(bulk, right.g, right.i, Math.ceil((target - bulk.score) / right.g.item.points)));
-          for (let n = 0; n <= count3; n++) {
-            let state = add2(base, left.g, left.i, n);
-            if (state.score < target) state = add2(state, right.g, right.i, Math.ceil((target - state.score) / right.g.item.points));
-            remember(state);
-            nodes++;
-            if (yield* checkpoint()) break seed;
-          }
-        }
-      }
-    }
-    const states4 = /* @__PURE__ */ new Map([[0, [empty()]]]);
-    search: for (let i = 0; i < groups.length && !stopped; i++) {
-      const group = groups[i];
-      let remaining = group.quantity;
-      for (let chunk = 1; remaining > 0; chunk *= 2) {
-        const count3 = Math.min(chunk, remaining);
-        remaining -= count3;
-        const before = [...states4.values()].flat();
-        for (const state of before) {
-          const candidate = add2(state, group, i, count3);
-          nodes++;
-          if (candidate.score >= target) remember(candidate);
-          else if (budget === null || candidate.purchaseCost <= budget) {
-            const rows = states4.get(candidate.score) ?? [];
-            if (!rows.some((row) => dominates(row, candidate, rank3))) {
-              const retained = rows.filter((row) => !dominates(candidate, row, rank3));
-              labels2 += retained.length + 1 - rows.length;
-              states4.set(candidate.score, [...retained, candidate]);
-            }
-          }
-          if (labels2 > maxStates) stopped = "states";
-          if (yield* checkpoint()) break search;
-        }
-      }
-    }
-    frontier2.sort(rank3);
-    const diversified = [];
-    const familyKey = (g) => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
-    const families = /* @__PURE__ */ new Map();
-    for (const entry of marketEntries) {
-      const key2 = familyKey(entry.g), family = families.get(key2) ?? [];
-      family.push(entry);
-      families.set(key2, family);
-    }
-    for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
-    for (const base of frontier2.slice(0, 8)) {
-      if (!base.purchaseCost || base.unknownValue) continue;
-      const demands = /* @__PURE__ */ new Map();
-      let upper = 1;
-      let owned2 = base;
-      for (const { g, i } of marketEntries) {
-        const count3 = base.counts[i] ?? 0;
-        if (!count3) continue;
-        demands.set(familyKey(g), (demands.get(familyKey(g)) ?? 0) + count3);
-        upper = Math.max(upper, Math.ceil(count3 / g.items.length));
-        owned2 = add2(owned2, g, i, -count3);
-      }
-      if (upper <= 1) continue;
-      let lower = Math.ceil(base.count / challenge.selectionLimit);
-      for (const [key2, count3] of demands) lower = Math.max(
-        lower,
-        Math.ceil(count3 / families.get(key2).reduce((sum2, entry) => sum2 + entry.g.items.length, 0))
-      );
-      const cover = (waves) => {
-        let state = owned2;
-        for (const [key2, count3] of demands) {
-          let remaining = count3;
-          for (const { g, i } of families.get(key2)) {
-            const quantity = Math.min(remaining, waves * g.items.length);
-            if (quantity) state = add2(state, g, i, quantity);
-            remaining -= quantity;
-            if (!remaining) break;
-          }
-          if (remaining) return null;
-        }
-        return state;
-      };
-      const cost = (state) => objective === "lowest-value" ? streamlinedResourceCost(state) : state.purchaseCost;
-      for (const premium of [5, 10, 20, 30]) {
-        const cap = Math.floor(cost(base) * (1 + premium / 100));
-        const within = (state) => state && cost(state) <= cap && (budget === null || state.purchaseCost <= budget);
-        let lo = lower, hi = upper - 1, choice = null;
-        while (lo <= hi) {
-          const mid = Math.floor((lo + hi) / 2), state = cover(mid);
-          if (within(state)) {
-            choice = state;
-            hi = mid - 1;
-          } else lo = mid + 1;
-        }
-        if (choice && !diversified.some((row) => JSON.stringify(row.counts) === JSON.stringify(choice.counts))) diversified.push(choice);
-      }
-    }
-    const routeStates = [...frontier2, ...diversified].sort(rank3);
-    const routes = routeStates.map((state, index) => {
-      const selectedGroups = state.counts.flatMap((count3, i) => count3 ? [{ ...groups[i], quantity: count3 }] : []);
-      const marketGroups = selectedGroups.filter((g) => g.source === "market");
-      const repeatPurchaseCount = marketGroups.reduce((sum2, g) => sum2 + Math.max(0, g.quantity - g.items.length), 0);
-      return {
-        id: `route:${index}`,
-        score: state.score,
-        excess: state.score - target,
-        count: state.count,
-        purchaseCost: state.purchaseCost,
-        materialValue: state.unknownValue ? null : state.materialValue,
-        totalValue: state.unknownValue ? null : streamlinedResourceCost(state),
-        unknownValueCount: state.unknownValue,
-        inventoryCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "inventory" ? n : 0), 0),
-        marketCount: state.counts.reduce((sum2, n, i) => sum2 + (groups[i].source === "market" ? n : 0), 0),
-        minBatches: Math.max(
-          Math.ceil(state.count / challenge.selectionLimit),
-          ...marketGroups.map((g) => Math.ceil(g.quantity / g.items.length))
-        ),
-        repeatPurchaseCount,
-        groups: selectedGroups,
-        searchComplete: stopped === null,
-        supplyVerified: false
-      };
-    });
-    const selected = /* @__PURE__ */ new Set();
-    if (routes.length) {
-      selected.add(routes[0]);
-      for (const extra of [5, 10, 20, 30]) {
-        const cost = (r) => objective === "lowest-value" ? streamlinedResourceCost(r) : r.purchaseCost;
-        const cap = Math.floor(cost(routes[0]) * (1 + extra / 100));
-        const choice = routes.filter((r) => cost(r) <= cap).sort((a, b) => a.minBatches - b.minBatches || a.count - b.count || rank3(a, b))[0];
-        if (choice) selected.add(choice);
-      }
-      selected.add(routes.slice().sort((a, b) => a.count - b.count || a.purchaseCost - b.purchaseCost)[0]);
-      selected.add(routes.slice().sort((a, b) => compareStreamlinedPlans(a, b, "lowest-coins"))[0]);
-      const addLane = (predicate2) => {
-        const lane = routes.filter(predicate2).sort(rank3)[0];
-        if (lane) selected.add(lane);
-      };
-      addLane((route) => route.inventoryCount === 0 && route.marketCount > 0);
-      addLane((route) => route.inventoryCount > 0 && route.marketCount === 0);
-      addLane((route) => route.inventoryCount > 0 && route.marketCount > 0);
-      const practicalStates = new Set(diversified);
-      const practical = routes.filter((_route, index) => practicalStates.has(routeStates[index])).sort((a, b) => a.minBatches - b.minBatches || rank3(a, b))[0];
-      if (practical) selected.add(practical);
-    }
-    return deepFreeze({
-      status: stopped === "cancelled" ? "cancelled" : routes.length ? "ready" : "unavailable",
-      reason: stopped ? `FC27_STREAMLINED_SEARCH_${stopped.toUpperCase()}` : "FC27_STREAMLINED_ROUTES",
-      routes: [...selected],
-      excluded,
-      nodes,
-      searchComplete: stopped === null,
-      candidateCount: groups.length,
-      elapsedMs: now() - started,
-      poolComplete: false,
-      liveExecutionEnabled: false
-    });
-  }
-  function* planInventoryFirstRoutesSteps(input, groups, excluded, options) {
-    const { challenge } = input, required2 = [];
-    const cancelled = yield { phase: "search", nodes: 0, maxNodes: options.maxNodes, candidates: groups.length, elapsedMs: 0 };
-    if (cancelled) return {
-      status: "cancelled",
-      reason: "FC27_STREAMLINED_SEARCH_CANCELLED",
-      routes: [],
-      excluded,
-      nodes: 0,
-      searchComplete: false,
-      liveExecutionEnabled: false
-    };
-    let remainingScore = challenge.remainingScore, finalTier = [];
-    for (const pile of ["storage", "club", "unassigned", "transfer"]) {
-      const tier = groups.filter((g) => g.source === "inventory" && g.item.pile === pile);
-      const score2 = tier.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
-      if (score2 >= remainingScore) {
-        finalTier = tier;
-        break;
-      }
-      required2.push(...tier);
-      remainingScore -= score2;
-    }
-    if (!finalTier.length) finalTier = groups.filter((g) => g.source === "market");
-    const prefixScore = required2.reduce((sum2, g) => sum2 + g.quantity * g.item.points, 0);
-    let result = { routes: [], nodes: 0, searchComplete: true, elapsedMs: 0 };
-    if (finalTier.length) {
-      const inventory = finalTier.filter((g) => g.source === "inventory").flatMap((g) => g.items);
-      const market = finalTier.filter((g) => g.source === "market").flatMap((g) => g.items);
-      result = yield* planStreamlinedRoutesSteps({
-        ...input,
-        inventory,
-        market,
-        challenge: { ...challenge, remainingScore },
-        mode: market.length ? "market" : "inventory",
-        objective: market.length ? "lowest-value" : "lowest-coins"
-      }, options);
-    }
-    const tails = result.routes.length ? result.routes : required2.length && result.status !== "cancelled" ? [{
-      groups: [],
-      score: 0,
-      count: 0,
-      purchaseCost: 0,
-      inventoryCount: 0,
-      marketCount: 0,
-      minBatches: 0,
-      repeatPurchaseCount: 0,
-      searchComplete: result.searchComplete
-    }] : [];
-    const routes = tails.map((tail2, index) => {
-      const selected = [...required2, ...tail2.groups], count3 = selected.reduce((sum2, g) => sum2 + g.quantity, 0);
-      const unknown = selected.filter((g) => g.source === "inventory" && g.item.price == null).reduce((sum2, g) => sum2 + g.quantity, 0);
-      const materialValue = unknown ? null : selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity * g.item.price, 0);
-      return {
-        ...tail2,
-        id: `inventory-first:${index}`,
-        groups: selected,
-        score: prefixScore + tail2.score,
-        excess: prefixScore + tail2.score - challenge.remainingScore,
-        count: count3,
-        materialValue,
-        totalValue: unknown ? null : materialValue + tail2.purchaseCost,
-        unknownValueCount: unknown,
-        inventoryCount: selected.filter((g) => g.source === "inventory").reduce((sum2, g) => sum2 + g.quantity, 0),
-        minBatches: Math.max(tail2.minBatches, Math.ceil(count3 / challenge.selectionLimit)),
-        supplyVerified: false
-      };
-    });
-    return deepFreeze({
-      ...result,
-      routes,
-      excluded,
-      candidateCount: groups.length,
-      poolComplete: false,
-      liveExecutionEnabled: false,
-      status: result.status === "cancelled" ? "cancelled" : routes[0]?.score >= challenge.remainingScore ? "ready" : routes.length ? "partial" : "unavailable",
-      reason: result.reason ?? (routes[0]?.score >= challenge.remainingScore ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE")
-    });
-  }
-  async function runStreamlinedRoutes(input, {
-    onProgress = () => {
-    },
-    stopped = () => false,
-    schedule,
-    metricsNow,
-    ...options
-  } = {}) {
-    return runStreamlinedSteps(planStreamlinedRoutesSteps(input, options), { onProgress, stopped, schedule, metricsNow });
-  }
-  function expandStreamlinedRoute(route, challenge) {
-    if (!route || !integer5(route.count, 1, 2e4) || !Array.isArray(route.groups)) fail4("ROUTE_INVALID");
-    const items = [], copies = /* @__PURE__ */ new Map();
-    for (const group of route.groups.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(["unassigned", "transfer"].includes(a.item.pile)) - Number(["unassigned", "transfer"].includes(b.item.pile)))) {
-      if (!integer5(group.quantity, 1, 2e4) || !group.items?.length) fail4("ROUTE_INVALID");
-      for (let n = 0; n < group.quantity; n++) {
-        if (group.source === "inventory") {
-          if (!group.items[n]) fail4("ROUTE_INVALID");
-          items.push(group.items[n]);
-        } else {
-          const item2 = group.items[n % group.items.length], copy2 = copies.get(item2.definitionId) ?? 0;
-          copies.set(item2.definitionId, copy2 + 1);
-          items.push({ ...item2, key: `market:${item2.definitionId}:${copy2}` });
-        }
-      }
-    }
-    if (items.length !== route.count) fail4("ROUTE_INVALID");
-    const batches = [], nextByDefinition = /* @__PURE__ */ new Map();
-    let firstOpen = 0;
-    for (const item2 of items) {
-      let index = item2.source === "market" || ["unassigned", "transfer"].includes(item2.pile) ? Math.max(firstOpen, nextByDefinition.get(item2.definitionId) ?? 0) : firstOpen;
-      while (batches[index]?.length >= challenge.selectionLimit) index++;
-      (batches[index] ??= []).push(item2);
-      nextByDefinition.set(item2.definitionId, index + 1);
-      while (batches[firstOpen]?.length >= challenge.selectionLimit) firstOpen++;
-    }
-    return {
-      status: route.score >= challenge.remainingScore ? "ready" : "partial",
-      items: batches.flat(),
-      batches,
-      score: route.score,
-      purchaseCost: route.purchaseCost,
-      materialValue: route.materialValue,
-      progress: streamlinedProgress(challenge, route.score),
-      searchComplete: route.searchComplete,
-      unknownValueCount: items.filter((i) => i.source === "inventory" && i.price == null).length,
-      poolComplete: false
-    };
-  }
-
   // src/streamlined/planner.js
   function splitStreamlinedBatches(items, limit) {
     if (!integer5(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
@@ -40402,127 +40986,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
   }
 
-  // src/streamlined/purchase-scope.js
-  function createStreamlinedPurchaseScope(input) {
-    const { groups } = groupStreamlinedCandidates({ ...input, inventory: [], mode: "market" });
-    const scope2 = { schema: 1, quotedAt: input.quoteAt, groups };
-    return validStreamlinedPurchaseScope(scope2) ? deepFreeze(scope2) : null;
-  }
-  function validStreamlinedPurchaseScope(scope2) {
-    if (!scope2 || scope2.schema !== 1 || !integer5(scope2.quotedAt) || !Array.isArray(scope2.groups) || !scope2.groups.length || scope2.groups.length > 2e3) return false;
-    const ids2 = /* @__PURE__ */ new Set(), keys2 = /* @__PURE__ */ new Set();
-    return scope2.groups.every((group) => group.source === "market" && integer5(group.quantity, 1, 2e4) && typeof group.key === "string" && !keys2.has(group.key) && !!keys2.add(group.key) && Array.isArray(group.items) && group.items.length > 0 && same2(group.item, group.items[0]) && group.items.every((item2) => {
-      const q = item2.quote;
-      if (ids2.has(item2.definitionId) || !integer5(item2.definitionId, 1) || item2.source !== "market" || item2.id !== null || item2.scoreVerified !== true || !integer5(item2.points, 1) || item2.points !== group.item.points || item2.price !== group.item.price || !integer5(item2.price, 150, 15e6) || !integer5(item2.purchaseMaxBuy, item2.price, 15e6) || !["futgg", "futbin"].includes(q?.source) || q.definitionId !== item2.definitionId || q.price !== item2.price || q.error || !integer5(q.fetchedAt, 0, scope2.quotedAt) || !integer5(q.expiresAt, scope2.quotedAt + 1)) return false;
-      ids2.add(item2.definitionId);
-      return true;
-    })) && ids2.size <= 2e3;
-  }
-  function approvedStreamlinedPurchaseRoute(plan) {
-    const scope2 = plan.execution?.purchaseScope;
-    if (!scope2) return plan.route;
-    if (!validStreamlinedPurchaseScope(scope2)) fail4("PURCHASE_SCOPE_INVALID");
-    const stock = plan.route.groups.filter((group) => group.source === "inventory");
-    for (const group of plan.route.groups.filter((group2) => group2.source === "market")) {
-      if (!group.items.every((item2) => scope2.groups.some((allowed) => allowed.items.some((row) => same2(row, item2))))) fail4("PURCHASE_SCOPE_INVALID");
-    }
-    return { ...plan.route, groups: structuredClone([...stock, ...scope2.groups]) };
-  }
-  function initialStreamlinedPurchaseDemand(plan, route) {
-    return route.groups.map((group) => plan.route.groups.find((selected) => selected.key === group.key)?.quantity ?? 0);
-  }
-  function streamlinedDemandRoute(record) {
-    return record.demand ? { ...record.route, groups: record.route.groups.map((group, index) => ({ ...group, quantity: record.demand[index] })) } : record.route;
-  }
-  async function replanStreamlinedPurchaseDemand(record, { heldDefinitions = [], blockedDefinitions = [], now, stopped } = {}) {
-    const scope2 = record.plan.execution?.purchaseScope;
-    if (!scope2) return null;
-    const blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
-    const ready = record.entries.filter((entry) => ["ready", "club"].includes(entry.state));
-    const credit = ready.reduce((sum2, entry) => sum2 + record.route.groups[entry.groupIndex].item.points, 0);
-    const remainingScore = Math.max(0, record.challenge.targetScore - record.submittedScore - credit);
-    if (!remainingScore) return null;
-    const market = scope2.groups.flatMap((group) => group.items).filter((item2) => !blocked12.has(item2.definitionId));
-    if (!market.length) return null;
-    const allowed = new Set(market.map((item2) => item2.definitionId));
-    const result = await runStreamlinedRoutes(
-      {
-        challenge: { ...record.challenge, remainingScore },
-        policy: record.policy,
-        eligibility: { known: true, matches: (item2) => ({ status: allowed.has(item2.definitionId) ? "eligible" : "ineligible" }) },
-        inventory: [],
-        market,
-        mode: "market",
-        objective: record.plan.objective,
-        // Frozen valuations are not renewed here. find() refreshes the selected
-        // version's actual quote before any search/bid and never raises its cap.
-        quoteSource: market[0].quote.source,
-        quoteAt: scope2.quotedAt
-      },
-      { budget: record.budget - record.spent, now, stopped, maxMs: 1e3 }
-    );
-    const selected = result.routes?.[0];
-    if (!selected || stopped?.()) return null;
-    return record.route.groups.map((group, index) => (record.fulfilled[index] ?? 0) + ready.filter((entry) => entry.groupIndex === index).length + (selected.groups.find((candidate) => candidate.key === group.key)?.quantity ?? 0));
-  }
-
-  // src/streamlined/plan.js
-  function validPlanContents(plan) {
-    const { challenge, items, batches } = plan;
-    if (plan.execution && (!integer5(plan.execution.purchaseAttempts, 1) || plan.execution.purchaseScope !== void 0 && !validStreamlinedPurchaseScope(plan.execution.purchaseScope) || plan.execution.scarcityRetries !== void 0 && !integer5(plan.execution.scarcityRetries, 0, 3) || plan.execution.retryWaitMs !== void 0 && !integer5(plan.execution.retryWaitMs, 1e3, 6e4) || plan.execution.quoteLimited !== void 0 && typeof plan.execution.quoteLimited !== "boolean" || !integer5(plan.execution.partialWaitMs, 0, 36e5))) return false;
-    if (!challenge || challenge.mechanism !== "streamlined" || !integer5(challenge.targetScore, 1) || !integer5(challenge.submittedScore) || challenge.remainingScore !== Math.max(0, challenge.targetScore - challenge.submittedScore) || !integer5(challenge.selectionLimit, 1, 1e3) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(plan.objective) || !["ready", "partial"].includes(plan.status) || !Array.isArray(items) || !items.length || items.length > 2e4 || !Array.isArray(batches) || batches.some((b) => !Array.isArray(b) || !b.length || b.length > challenge.selectionLimit) || !same2(batches.flat(), items) || new Set(items.map((i) => i?.key)).size !== items.length) return false;
-    if (items.some((i) => !integer5(i?.definitionId, 1) || !integer5(i.points, 1) || i.scoreVerified !== true || (i.source === "inventory" ? !integer5(i.id, 1) || i.key !== `item:${i.id}` || !["club", "storage", "unassigned", "transfer"].includes(i.pile) || ["unassigned", "transfer"].includes(i.pile) && i.executionPile !== "club" || ["club", "storage"].includes(i.pile) && i.executionPile !== void 0 : i.source !== "market" || i.id !== null || !new RegExp(`^market:${i.definitionId}:(0|[1-9]\\d*)$`).test(i.key) || !integer5(i.price, 1, 15e6)))) return false;
-    const score2 = scoreStreamlinedItems(items).total, progress = streamlinedProgress(challenge, score2);
-    const inventory = items.filter((i) => i.source === "inventory");
-    const value = inventory.some((i) => !integer5(i.price, 1, 15e6)) ? null : inventory.reduce((sum2, i) => sum2 + i.price, 0);
-    return plan.score === score2 && same2(plan.progress, progress) && plan.status === "ready" === progress.reached && plan.purchaseCost === items.filter((i) => i.source === "market").reduce((sum2, i) => sum2 + i.price, 0) && plan.materialValue === value;
-  }
-  function createStreamlinedPlan({ context, challenge, policy, result, objective = "lowest-value", execution = null } = {}) {
-    if (!same2(context, challenge?.context) || !["ready", "partial"].includes(result?.status) || !Array.isArray(result.items) || !result.items.length || result.items.length > 2e4 || !Array.isArray(result.batches) || !integer5(challenge.selectionLimit, 1, 1e3)) fail4("PLAN_UNCONFIRMED");
-    const items = structuredClone(result.items), batches = structuredClone(result.batches);
-    if (!validPlanContents({ ...result, challenge, objective, items, batches, execution })) fail4("PLAN_UNCONFIRMED");
-    const route = result.route ? structuredClone(result.route) : null;
-    const fingerprint = streamlinedPlanFingerprint({
-      context,
-      challenge,
-      policy,
-      objective,
-      execution,
-      status: result.status,
-      score: result.score,
-      progress: result.progress,
-      purchaseCost: result.purchaseCost,
-      materialValue: result.materialValue,
-      searchComplete: result.searchComplete === true,
-      items,
-      batches,
-      route
-    });
-    return deepFreeze({
-      schema: 1,
-      context,
-      challenge,
-      policy,
-      objective,
-      status: result.status,
-      score: result.score,
-      progress: result.progress,
-      purchaseCost: result.purchaseCost,
-      materialValue: result.materialValue,
-      items,
-      batches,
-      ...route ? { route } : {},
-      ...execution ? { execution: structuredClone(execution) } : {},
-      fingerprint,
-      searchComplete: result.searchComplete === true,
-      liveExecutionEnabled: false
-    });
-  }
-  function assertStreamlinedPlan(plan) {
-    if (plan?.schema !== 1 || !same2(plan.context, plan.challenge?.context) || !validPlanContents(plan) || plan.fingerprint !== streamlinedPlanFingerprint({ ...plan, route: plan.route })) fail4("PLAN_CHANGED");
-    return plan;
-  }
-
   // src/streamlined/quotes.js
   var STREAMLINED_QUOTE_BUDGET_MS = 9e4;
   var fatalStreamlinedQuoteFailure = (reason) => /(?:CONTEXT_CHANGED|CANCELLED|PRICE_POLICY_CHANGED|_DISABLED|INPUT_INVALID)$/.test(reason ?? "");
@@ -40549,456 +41012,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at11 || quote2.expiresAt <= at11)) failure ??= "FC27_STREAMLINED_QUOTES_EXPIRED";
     }
     return failure;
-  }
-
-  // src/streamlined/contribution.js
-  function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
-    if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same2(receipt.itemIds, itemIds) || !integer5(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer5(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer5(receipt.challengeAwardCount, 0, 100) || !integer5(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer5(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail4("RECEIPT_INVALID");
-    return deepFreeze({
-      schema: 1,
-      status: "accepted",
-      code: receipt.code,
-      transportWarning: receipt.transportWarning,
-      setId,
-      challengeId,
-      itemIds: [...itemIds],
-      submittedScore: receipt.submittedScore,
-      ...receipt.previousTimesCompleted !== void 0 ? { previousTimesCompleted: receipt.previousTimesCompleted } : {},
-      challengeCompleted: receipt.challengeCompleted,
-      challengeAwardCount: receipt.challengeAwardCount,
-      setAwardCount: receipt.setAwardCount,
-      objectiveUpdatesPresent: receipt.objectiveUpdatesPresent,
-      rewardConfirmed: false
-    });
-  }
-  function normalizeStreamlinedContributionReply(reply = {}, expected = {}) {
-    if (!integer5(expected.challengeId, 1) || !integer5(expected.setId, 1) || !integer5(expected.previousScore, 0, 1e9) || !Array.isArray(expected.itemIds) || !expected.itemIds.length || new Set(expected.itemIds).size !== expected.itemIds.length || expected.itemIds.some((id14) => !integer5(id14, 1))) fail4("CONTRIBUTION_INPUT_INVALID");
-    const response = reply?.response, code2 = integer5(reply?.status, 100, 599) ? reply.status : null;
-    const challengeAwards = response?.grantedChallengeAwards ?? [], setAwards = response?.grantedSetAwards ?? [];
-    const unknown = (reason) => deepFreeze({ status: "unknown", reason, code: code2 });
-    const conflict = Array.isArray(response?.squads) && response.squads.length > 0;
-    const hasProgress = integer5(response?.submittedScore, expected.previousScore + 1, 1e9);
-    if (reply?.success === false || conflict) {
-      if (hasProgress) return unknown("EA_CONTRIBUTION_RESPONSE_CONFLICT");
-      if (reply?.success === false && [400, 401, 403, 404, 409, 429].includes(code2) || conflict && code2 === 200) {
-        return deepFreeze({ status: "rejected", reason: conflict ? "EA_SQUAD_CONFLICT" : "EA_CONTRIBUTION_REJECTED", code: code2 });
-      }
-      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
-    }
-    if (reply?.success !== true || response?.challengeId !== expected.challengeId || response?.setId !== expected.setId || !hasProgress || response.squads !== void 0 || !Array.isArray(challengeAwards) || !Array.isArray(setAwards) || [challengeAwards, setAwards].some((rows) => rows.length > 100 || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row)))) {
-      return unknown("EA_CONTRIBUTION_RESPONSE_UNVERIFIED");
-    }
-    return deepFreeze({
-      schema: 1,
-      status: "accepted",
-      code: code2,
-      transportWarning: code2 !== 200,
-      setId: expected.setId,
-      challengeId: expected.challengeId,
-      itemIds: [...expected.itemIds],
-      submittedScore: response.submittedScore,
-      ...integer5(expected.previousTimesCompleted) ? { previousTimesCompleted: expected.previousTimesCompleted } : {},
-      challengeCompleted: challengeAwards.length > 0 || setAwards.length > 0,
-      challengeAwardCount: challengeAwards.length,
-      setAwardCount: setAwards.length,
-      // Raw dynamicObjectivesUpdates and transformed objectiveUpdates stay out of
-      // the Journal. Presence is observational, not proof of reward delivery.
-      objectiveUpdatesPresent: response.dynamicObjectivesUpdates != null || response.objectiveUpdates != null,
-      rewardConfirmed: false
-    });
-  }
-
-  // src/streamlined/journal.js
-  var isUnsentStreamlinedJournal = (record) => record?.batches?.length > 0 && record.batches.every((batch) => batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0 && batch.progressChanged !== true);
-  function streamlinedContributionRetirementReason(record) {
-    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
-    if (record?.batches?.some((batch) => ["pending", "unknown"].includes(batch.state))) return "FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING";
-    if (!record || !confirmed.length) return "FC27_STREAMLINED_HISTORY_NO_CONFIRMED";
-    if (!record.plan.items.every((item2) => item2.source === "inventory" && ["club", "storage", "transfer", "unassigned"].includes(item2.pile) && !item2.purchaseReceipt) || record.plan.execution?.purchaseScope || record.plan.route?.groups?.some((group) => group.source === "market")) return "FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL";
-    if (!confirmed.every((batch) => batch.receipt?.status === "accepted") || Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) !== record.submittedScore) return "FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED";
-    if (record.batches.some((batch) => batch.progressChanged)) return "FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED";
-    if (!record.batches.some((batch) => batch.state === "waiting")) return "FC27_STREAMLINED_HISTORY_NO_REMAINDER";
-    if (!record.batches.every((batch) => batch.state === "confirmed" || batch.state === "rejected" || batch.state === "waiting" && batch.startingScore === void 0 && batch.receipt === void 0)) return "FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED";
-    return null;
-  }
-  var canRetireStreamlinedContribution = (record) => streamlinedContributionRetirementReason(record) === null;
-  var streamlinedContributionRecovery = (record) => ({
-    setId: record.plan.challenge.setId,
-    challengeId: record.plan.challenge.id,
-    targetScore: record.plan.challenge.targetScore,
-    currentScore: record.submittedScore,
-    confirmedBatches: record.batches.filter((batch) => batch.state === "confirmed").length,
-    waitingBatches: record.batches.filter((batch) => batch.state === "waiting").length,
-    pendingWriteCount: record.batches.filter((batch) => ["pending", "unknown"].includes(batch.state)).length
-  });
-  function canReplaceStreamlinedRemainder(record, plan) {
-    const stock = (candidate) => candidate.items.every((item2) => item2.source === "inventory" && ["club", "storage"].includes(item2.pile) && !item2.purchaseReceipt) && !candidate.execution?.purchaseScope && !candidate.route?.groups?.some((group) => group.source === "market");
-    const confirmed = record?.batches?.filter((batch) => batch.state === "confirmed") ?? [];
-    const consumed = new Set(confirmed.flatMap((batch) => batch.refs.map((ref) => ref.id)));
-    return !!record && same2(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
-  }
-  var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
-  var refOf = (item2) => ({
-    id: item2.id,
-    definitionId: item2.definitionId,
-    points: item2.points,
-    pile: item2.pile,
-    ...item2.executionPile ? { executionPile: item2.executionPile } : {}
-  });
-  function streamlinedJournalKey(context) {
-    return contextKey(context, "streamlined-contribution");
-  }
-  function validateStreamlinedJournal(record, context) {
-    if (record?.schema !== 1 || !same2(record.context, createSeasonContext(context)) || !integer5(record.revision, 1) || !integer5(record.updatedAt) || !integer5(record.submittedScore) || !Array.isArray(record.batches) || !integer5(record.plan?.challenge?.selectionLimit, 1, 1e3)) fail4("JOURNAL_INVALID");
-    assertStreamlinedPlan(record.plan);
-    if (record.retired !== void 0 && (record.retired !== true || !canRetireStreamlinedContribution(record))) fail4("JOURNAL_INVALID");
-    if (!same2(record.context, record.plan.context) || record.batches.length !== record.plan.batches.length || record.batches.some((batch, i) => !states3.includes(batch.state) || batch.index !== i || !same2(batch.refs, record.plan.batches[i].map(refOf))) || record.batches.filter((b) => ["pending", "unknown"].includes(b.state)).length > 1) fail4("JOURNAL_INVALID");
-    let previousScore = record.plan.challenge.submittedScore;
-    for (const batch of record.batches) {
-      if (batch.startingScore !== void 0 && (!integer5(
-        batch.startingScore,
-        record.plan.challenge.submittedScore,
-        record.submittedScore
-      ) || batch.state === "waiting")) fail4("JOURNAL_INVALID");
-      const start = batch.startingScore ?? previousScore;
-      const maxScore = start + batch.refs.reduce((sum2, ref) => sum2 + ref.points, 0);
-      if (batch.receipt !== void 0) {
-        const projected2 = projectStreamlinedReceipt(batch.receipt, {
-          challengeId: record.plan.challenge.id,
-          setId: record.plan.challenge.setId,
-          previousScore: start,
-          maxScore,
-          itemIds: batch.refs.map((ref) => ref.id)
-        });
-        if (!["pending", "unknown", "confirmed"].includes(batch.state) || !same2(projected2, batch.receipt)) fail4("JOURNAL_INVALID");
-      }
-      if (batch.state === "confirmed") previousScore = batch.receipt?.submittedScore ?? maxScore;
-    }
-    return record;
-  }
-  function createStreamlinedJournal({ get, set, now = () => Date.now(), canReplaceArchived = async () => false } = {}) {
-    ({ get, set } = createCompactStorage({ get, set }));
-    let tail2 = Promise.resolve();
-    const read = async (context) => {
-      let record;
-      try {
-        record = await get(streamlinedJournalKey(context), null);
-      } catch {
-        fail4("JOURNAL_READ_FAILED");
-      }
-      return record == null ? null : structuredClone(validateStreamlinedJournal(record, context));
-    };
-    const write = (context, record, previousRevision = 0) => {
-      const task = tail2.then(async () => {
-        const current2 = await read(context);
-        if ((current2?.revision ?? 0) !== previousRevision) fail4("JOURNAL_CHANGED");
-        const next = validateStreamlinedJournal({ ...structuredClone(record), revision: previousRevision + 1, updatedAt: now() }, context);
-        try {
-          await set(streamlinedJournalKey(context), next);
-          if (!same2(await get(streamlinedJournalKey(context), null), next)) fail4("JOURNAL_READBACK_FAILED");
-        } catch {
-          fail4("JOURNAL_WRITE_FAILED");
-        }
-        return structuredClone(next);
-      });
-      tail2 = task.catch(() => {
-      });
-      return task;
-    };
-    return Object.freeze({
-      read: async (context) => {
-        const record = await read(context);
-        return record?.retired ? null : record;
-      },
-      write,
-      async retire(expected) {
-        const task = tail2.then(async () => {
-          const prior = await read(expected.context);
-          if (!same2(prior, expected)) fail4("JOURNAL_CHANGED");
-          if (!canRetireStreamlinedContribution(prior)) fail4("RECOVERY_REQUIRED");
-          const key2 = `${streamlinedJournalKey(expected.context)}:history:${prior.revision}`;
-          try {
-            const saved = await get(key2, null);
-            if (saved != null && !same2(saved, prior)) fail4("JOURNAL_ARCHIVE_CONFLICT");
-            if (saved == null) await set(key2, structuredClone(prior));
-            if (!same2(await get(key2, null), prior)) fail4("JOURNAL_ARCHIVE_FAILED");
-          } catch {
-            fail4("JOURNAL_ARCHIVE_FAILED");
-          }
-          const retired = validateStreamlinedJournal({ ...prior, retired: true, revision: prior.revision + 1, updatedAt: now() }, expected.context);
-          try {
-            await set(streamlinedJournalKey(expected.context), retired);
-            if (!same2(await get(streamlinedJournalKey(expected.context), null), retired)) fail4("JOURNAL_READBACK_FAILED");
-          } catch {
-            fail4("JOURNAL_WRITE_FAILED");
-          }
-        });
-        tail2 = task.catch(() => {
-        });
-        return task;
-      },
-      async begin(plan, { replaceRemainder = false } = {}) {
-        assertStreamlinedPlan(plan);
-        if (plan.items.some((item2) => item2.source !== "inventory")) fail4("PURCHASE_PENDING");
-        const prior = await read(plan.context);
-        const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
-        if (replaceRemainder && !replacement) fail4("RECOVERY_REQUIRED");
-        if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail4("RECOVERY_REQUIRED");
-        if (replacement) {
-          const key2 = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
-          try {
-            const saved = await get(key2, null);
-            if (saved != null && !same2(saved, prior)) fail4("JOURNAL_ARCHIVE_CONFLICT");
-            if (saved == null) await set(key2, structuredClone(prior));
-            if (!same2(await get(key2, null), prior)) fail4("JOURNAL_ARCHIVE_FAILED");
-          } catch {
-            fail4("JOURNAL_ARCHIVE_FAILED");
-          }
-        }
-        return write(plan.context, {
-          schema: 1,
-          context: plan.context,
-          plan,
-          submittedScore: plan.challenge.submittedScore,
-          rewardState: "unknown",
-          batches: plan.batches.map((batch, index) => ({
-            index,
-            state: "waiting",
-            refs: batch.map(refOf)
-          }))
-        }, prior?.revision ?? 0);
-      }
-    });
-  }
-
-  // src/streamlined/purchase-journal.js
-  var streamlinedPurchaseNeedsRecovery = (record) => !!record?.contribution || record?.entries?.some((entry) => ["buy-pending", "bought", "move-pending", "club"].includes(entry.state));
-  var streamlinedPurchaseKey = (context) => contextKey(context, "streamlined-market-run");
-  var streamlinedRetiredPurchaseKey = (context) => `${streamlinedPurchaseKey(context)}:retired`;
-  function streamlinedPurchaseReservedIds(record) {
-    validateStreamlinedPurchase(record, record.context);
-    const inventoryEntries = new Map(record.entries.filter((entry) => entry.source === "inventory").map((entry) => [entry.itemId, entry]));
-    for (const [groupIndex, group] of record.route.groups.entries()) {
-      if (group.source !== "inventory") continue;
-      if (group.items.length < group.quantity || group.items.slice(0, group.quantity).some((item2) => {
-        const entry = inventoryEntries.get(item2.id);
-        return !entry || entry.groupIndex !== groupIndex || entry.definitionId !== item2.definitionId;
-      })) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
-    }
-    const ids2 = record.entries.filter((entry) => ["ready", "buy-pending", "bought", "move-pending", "club"].includes(entry.state)).map((entry) => entry.itemId);
-    if (ids2.some((id14) => !integer5(id14, 1))) fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
-    if (record.contribution) {
-      const { batchPlan, material } = record.contribution;
-      try {
-        assertStreamlinedPlan(batchPlan);
-      } catch {
-        fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
-      }
-      if (!same2(batchPlan.context, record.context) || batchPlan.challenge.id !== record.challenge.id || batchPlan.challenge.setId !== record.challenge.setId || batchPlan.challenge.targetScore !== record.challenge.targetScore || batchPlan.challenge.submittedScore !== record.submittedScore || !same2(batchPlan.items, material.map((row) => row.item))) {
-        fail4("FOREIGN_PURCHASE_SCOPE_UNVERIFIED");
-      }
-      ids2.push(...batchPlan.items.map((item2) => item2.id));
-    }
-    return [...new Set(ids2)];
-  }
-  function canRetireStreamlinedPurchase(record, contribution = null) {
-    streamlinedPurchaseReservedIds(record);
-    if (record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) return false;
-    if (!contribution) return true;
-    validateStreamlinedJournal(contribution, record.context);
-    if (!contribution.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) return true;
-    return contribution.plan.fingerprint === record.contribution?.batchPlan?.fingerprint;
-  }
-  function streamlinedPurchaseAudit(record) {
-    if (!Array.isArray(record?.entries) || !Array.isArray(record.consumedIds) || record.entries.some((entry) => !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry?.state))) return {};
-    const pendingWriteCount = Number(!!record.contribution) + record.entries.filter((entry) => ["buy-pending", "move-pending"].includes(entry.state)).length;
-    const unconsumedPurchaseCount = record.entries.filter((entry) => entry.source === "market" && ["buy-pending", "bought", "move-pending", "club"].includes(entry.state)).length;
-    return {
-      pendingWriteCount,
-      unconsumedPurchaseCount,
-      contributedCount: record.consumedIds.length,
-      confirmedBatches: record.confirmedBatches,
-      purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0
-    };
-  }
-  function validateStreamlinedPurchase(record, context) {
-    if (record?.plan?.schema === 1) {
-      assertStreamlinedPlan(record.plan);
-      if (record.plan.fingerprint !== record.fingerprint || !same2(record.plan.context, context) || !same2(record.schema === 2 ? approvedStreamlinedPurchaseRoute(record.plan) : record.plan.route, record.route) || !same2(record.plan.challenge, record.challenge) || !same2(record.plan.policy, record.policy)) fail4("PURCHASE_JOURNAL_INVALID");
-    }
-    if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same2(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer5(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer5(record.budget) || !integer5(record.spent) || record.spent > record.budget || !integer5(record.submittedScore) || !integer5(record.challenge?.id, 1) || !integer5(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer5(record.confirmedBatches) || !integer5(record.challenge?.targetScore, 1) || !integer5(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer5(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer5(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id14) => !integer5(id14, 1))) fail4("PURCHASE_JOURNAL_INVALID");
-    for (const group of record.route.groups) {
-      if (!["inventory", "market"].includes(group.source) || !integer5(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer5(group.item?.points, 1) || group.items.some((item2) => !integer5(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer5(item2.price, 150, 15e6) || !integer5(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer5(item2.id, 1))) fail4("PURCHASE_JOURNAL_INVALID");
-    }
-    const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
-    let spent = 0;
-    for (const entry of record.entries) {
-      const group = record.route.groups[entry.groupIndex];
-      if (!group || typeof entry.key !== "string" || keys2.has(entry.key) || !["ready", "waiting", "buy-pending", "bought", "move-pending", "club", "rejected", "consumed"].includes(entry.state) || !integer5(entry.definitionId, 1) || !group.items.some((i) => i.definitionId === entry.definitionId) || !integer5(entry.groupIndex, 0, record.route.groups.length - 1) || entry.source !== group.source) fail4("PURCHASE_JOURNAL_INVALID");
-      keys2.add(entry.key);
-      if (entry.source === "inventory") {
-        if (!integer5(entry.itemId, 1) || entry.price !== null || entry.cap !== null || entry.tradeId !== null || !group.items.slice(0, group.quantity).some((item2) => item2.id === entry.itemId && item2.definitionId === entry.definitionId) || !["ready", "consumed"].includes(entry.state) || items.has(entry.itemId)) fail4("PURCHASE_JOURNAL_INVALID");
-        items.add(entry.itemId);
-        continue;
-      }
-      if (["buy-pending", "bought", "move-pending", "club", "consumed", "rejected"].includes(entry.state)) {
-        if (!integer5(entry.itemId, 1) || !integer5(entry.cap, 150, group.items.find((item2) => item2.definitionId === entry.definitionId).purchaseMaxBuy) || !integer5(entry.price, 150, entry.cap) || typeof entry.tradeId !== "string" || !/^[1-9]\d{0,19}$/.test(entry.tradeId) || items.has(entry.itemId)) fail4("PURCHASE_JOURNAL_INVALID");
-        items.add(entry.itemId);
-        if (["bought", "move-pending", "club", "consumed"].includes(entry.state)) spent += entry.price;
-      } else if (entry.cap !== null && !integer5(entry.cap, 150, 15e6)) fail4("PURCHASE_JOURNAL_INVALID");
-      if (entry.state === "waiting" && (entry.itemId !== null || entry.price !== null || entry.tradeId !== null)) fail4("PURCHASE_JOURNAL_INVALID");
-    }
-    if (spent !== record.spent) fail4("PURCHASE_JOURNAL_INVALID");
-    if (record.consumedIds.length !== record.entries.filter((e) => e.state === "consumed").length || record.entries.some((e) => e.state === "consumed" !== record.consumedIds.includes(e.itemId)) || record.fulfilled.some((n, i) => n !== record.entries.filter((e) => e.groupIndex === i && e.state === "consumed").length)) fail4("PURCHASE_JOURNAL_INVALID");
-    if (record.contribution) {
-      const material = record.contribution.material;
-      if (!Array.isArray(material) || !material.length || material.length > record.challenge.selectionLimit || new Set(material.map((row) => row.item?.id)).size !== material.length || material.some((row) => !record.entries.some((entry) => ["ready", "club"].includes(entry.state) && entry.groupIndex === row.groupIndex && entry.itemId === row.item?.id && entry.definitionId === row.item?.definitionId) || row.item?.points !== record.route.groups[row.groupIndex]?.item.points)) fail4("PURCHASE_JOURNAL_INVALID");
-    }
-    return record;
-  }
-  function createStreamlinedPurchaseJournal({ get, set, assertHeld = () => {
-  } }) {
-    ({ get, set } = createCompactStorage({ get, set }));
-    const readRetired = async (context) => {
-      let rows;
-      try {
-        rows = await get(streamlinedRetiredPurchaseKey(context), []);
-      } catch {
-        fail4("PURCHASE_JOURNAL_READ_FAILED");
-      }
-      rows ??= [];
-      if (!Array.isArray(rows) || rows.length > 50) fail4("PURCHASE_ARCHIVE_INVALID");
-      const operations = /* @__PURE__ */ new Set();
-      for (const row of rows) {
-        if (row?.reason !== "user-abandoned" || !integer5(row.at) || !row.record || operations.has(row.record.operationId)) fail4("PURCHASE_ARCHIVE_INVALID");
-        validateStreamlinedPurchase(row.record, context);
-        streamlinedPurchaseReservedIds(row.record);
-        if (row.record.entries.some((entry) => ["buy-pending", "move-pending"].includes(entry.state))) fail4("PURCHASE_ARCHIVE_INVALID");
-        if (row.contributionJournal) {
-          validateStreamlinedJournal(row.contributionJournal, context);
-          if (row.contributionJournal.plan.challenge.id !== row.record.challenge.id || row.contributionJournal.plan.challenge.setId !== row.record.challenge.setId || !canRetireStreamlinedPurchase(row.record, row.contributionJournal)) fail4("PURCHASE_ARCHIVE_INVALID");
-        }
-        operations.add(row.record.operationId);
-      }
-      return structuredClone(rows);
-    };
-    const isRetired = async (record) => {
-      const row = (await readRetired(record.context)).find((row2) => row2.record.operationId === record.operationId);
-      if (row && !same2(row.record, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
-      return !!row;
-    };
-    const reservedFor = (row) => [
-      ...streamlinedPurchaseReservedIds(row.record),
-      ...row.contributionJournal?.batches.filter((batch) => ["waiting", "pending", "unknown"].includes(batch.state)).flatMap((batch) => batch.refs.map((ref) => ref.id)) ?? []
-    ];
-    const reservedIds = async (context) => [...new Set((await readRetired(context)).flatMap(reservedFor))];
-    const isRetiredContribution = async (record) => {
-      const row = (await readRetired(record.context)).find((row2) => row2.contributionJournal?.plan.fingerprint === record.plan.fingerprint);
-      if (row && !same2(row.contributionJournal, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
-      return !!row;
-    };
-    const assertAvailable = async (context, challenge, refs3 = []) => {
-      for (const row of await readRetired(context)) {
-        const { record } = row;
-        if ((record.contribution || row.contributionJournal?.batches.some((batch) => ["pending", "unknown"].includes(batch.state))) && record.challenge.id === challenge.id && record.challenge.setId === challenge.setId) fail4("HISTORY_TARGET_UNRESOLVED");
-        const reserved = new Set(reservedFor(row));
-        if (refs3.some((ref) => reserved.has(ref.id ?? ref.itemId))) fail4("FOREIGN_PURCHASE_MATERIAL_RESERVED");
-      }
-    };
-    const assertPlanAvailable = async (plan) => {
-      for (const row of await readRetired(plan.context)) {
-        if ([row.record.fingerprint, row.record.contribution?.batchPlan?.fingerprint, row.contributionJournal?.plan.fingerprint].includes(plan.fingerprint)) fail4("PURCHASE_HISTORY_RETIRED");
-      }
-      await assertAvailable(plan.context, plan.challenge, plan.items);
-    };
-    const read = async (context) => {
-      let record;
-      try {
-        record = await get(streamlinedPurchaseKey(context), null);
-      } catch {
-        fail4("PURCHASE_JOURNAL_READ_FAILED");
-      }
-      return record == null ? null : structuredClone(validateStreamlinedPurchase(record, context));
-    };
-    const write = async (record, previousRevision = record.revision) => {
-      assertHeld();
-      const old = await read(record.context);
-      if ((old?.revision ?? 0) !== previousRevision) fail4("PURCHASE_JOURNAL_CHANGED");
-      const next = validateStreamlinedPurchase({ ...structuredClone(record), revision: previousRevision + 1 }, record.context);
-      if ((await readRetired(record.context)).some((row) => row.record.operationId === next.operationId)) fail4("PURCHASE_HISTORY_RETIRED");
-      await assertAvailable(next.context, next.challenge, next.entries);
-      try {
-        assertHeld();
-        await set(streamlinedPurchaseKey(record.context), next);
-        assertHeld();
-        if (!same2(next, await get(streamlinedPurchaseKey(record.context), null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      } catch {
-        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      }
-      return structuredClone(next);
-    };
-    const archive = async (record) => {
-      assertHeld();
-      validateStreamlinedPurchase(record, record.context);
-      if (streamlinedPurchaseNeedsRecovery(record) && !await isRetired(record)) fail4("PURCHASE_RECOVERY_REQUIRED");
-      if (!same2(record, await read(record.context))) fail4("PURCHASE_JOURNAL_CHANGED");
-      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
-      try {
-        const prior = await get(key2, null);
-        if (prior !== null && !same2(prior, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
-        assertHeld();
-        await set(key2, structuredClone(record));
-        assertHeld();
-        if (!same2(record, await get(key2, null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      } catch {
-        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      }
-    };
-    const retire = async (record, contributionJournal = null) => {
-      assertHeld();
-      validateStreamlinedPurchase(record, record.context);
-      if (!same2(record, await read(record.context))) fail4("PURCHASE_JOURNAL_CHANGED");
-      const rows = await readRetired(record.context);
-      if (rows.some((row) => row.record.operationId === record.operationId)) {
-        if (!await isRetired(record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
-        return;
-      }
-      if (rows.length >= 50) fail4("PURCHASE_ARCHIVE_FULL");
-      if (!canRetireStreamlinedPurchase(record, contributionJournal)) fail4("PURCHASE_RECOVERY_REQUIRED");
-      if (contributionJournal && (contributionJournal.plan.challenge.id !== record.challenge.id || contributionJournal.plan.challenge.setId !== record.challenge.setId)) fail4("PURCHASE_ARCHIVE_INVALID");
-      const key2 = `${streamlinedPurchaseKey(record.context)}:history:${encodeURIComponent(record.operationId)}:${record.revision}`;
-      try {
-        const prior = await get(key2, null);
-        if (prior !== null && !same2(prior, record)) fail4("PURCHASE_ARCHIVE_CONFLICT");
-        assertHeld();
-        await set(key2, structuredClone(record));
-        assertHeld();
-        if (!same2(record, await get(key2, null))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-        rows.push({
-          reason: "user-abandoned",
-          at: Date.now(),
-          record: structuredClone(record),
-          ...contributionJournal ? { contributionJournal: structuredClone(contributionJournal) } : {}
-        });
-        assertHeld();
-        await set(streamlinedRetiredPurchaseKey(record.context), rows);
-        assertHeld();
-        if (!same2(rows, await readRetired(record.context))) fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      } catch {
-        fail4("PURCHASE_JOURNAL_WRITE_FAILED");
-      }
-    };
-    return Object.freeze({ read, write, archive, retire, readRetired, isRetired, isRetiredContribution, reservedIds, assertAvailable, assertPlanAvailable });
-  }
-  async function verifyStreamlinedPurchasedItem(get, context, item2, challenge = null) {
-    const proof = item2?.purchaseReceipt;
-    if (!proof || proof.itemId !== item2.id || proof.definitionId !== item2.definitionId) return false;
-    const journal = createStreamlinedPurchaseJournal({ get });
-    const record = await journal.read(context);
-    if (!record || record.operationId !== proof.operationId) return false;
-    if (!challenge || record.challenge.id !== challenge.id || record.challenge.setId !== challenge.setId || record.challenge.targetScore !== challenge.targetScore) return false;
-    const entry = record.entries.find((row) => row.itemId === item2.id && row.definitionId === item2.definitionId);
-    return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
   }
 
   // src/streamlined/external-selection.js
@@ -41159,6 +41172,162 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return { ...candidate, status: "blocked", reason: "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" };
     };
     const confirmedCompletion = (record) => record?.submittedScore >= record?.plan?.challenge.targetScore && Array.isArray(record.batches) && record.batches.length > 0 && record.batches.every((batch) => batch.state === "confirmed" && batch.receipt?.status === "accepted") && record.batches.some((batch) => batch.receipt.challengeCompleted === true && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
+    const recoverCurrent = async () => {
+      preview = null;
+      routePreview = null;
+      history = null;
+      externalView = null;
+      if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
+      try {
+        const origin = capture();
+        activeExecution = await createExecution(origin.context);
+        unchanged(origin);
+        const materialization = typeof activeExecution.recoverMaterialization === "function" ? await activeExecution.recoverMaterialization(origin.context) : { status: "absent" };
+        if (["recovery-required", "blocked", "replan-required"].includes(materialization.status)) {
+          log({ event: "recovery", status: materialization.status, reason: materialization.reason });
+          return materialization;
+        }
+        let contribution, warning, purchaseRecovery;
+        let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
+        if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === "function") {
+          history = { origin, execution: activeExecution };
+        }
+        if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
+          if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
+            contribution = await activeExecution.transaction.recover(
+              origin.context,
+              { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
+            );
+            const current3 = capture(), record2 = contribution.record;
+            if (!same2(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
+            const ownRecord = record2 && same2(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
+            const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
+            let isolationReason;
+            if (!completedHistory && ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
+              try {
+                if (await activeExecution.inspectInventoryRecovery(record2) === true) {
+                  warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
+                }
+              } catch (error2) {
+                isolationReason = safeReason10(error2);
+              }
+            }
+            const result2 = {
+              ...purchase,
+              ...isolationReason ? { reason: isolationReason } : {},
+              contributionRecovery: contribution,
+              ...ownRecord ? { record: record2 } : {}
+            };
+            log({
+              event: "recovery",
+              status: completedHistory || warning ? "observed" : result2.status,
+              reason: completedHistory ? current3.challenge.submittedScore < record2.submittedScore ? "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" : "FC27_STREAMLINED_COMPLETED" : warning?.reason ?? result2.reason,
+              setId: purchase.recovery?.setId,
+              challengeId: purchase.recovery?.challengeId,
+              pendingWriteCount: purchase.recovery?.pendingWriteCount,
+              unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
+              contributedCount: purchase.recovery?.contributedCount,
+              purchasesSettled: purchase.recovery?.purchasesSettled,
+              currentScore: ownRecord ? record2.submittedScore : void 0,
+              targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
+            });
+            if (!warning && !completedHistory) return result2;
+            purchaseRecovery = purchase;
+            purchase = { status: "absent" };
+            if (warning) log({
+              event: "recovery-isolation",
+              status: "verified",
+              reason: warning.reason,
+              setId: origin.challenge.setId,
+              challengeId: origin.challenge.id,
+              currentScore: record2.submittedScore
+            });
+          } else {
+            log({ event: "recovery", status: purchase.status, reason: purchase.reason });
+            return purchase;
+          }
+        }
+        contribution ??= await activeExecution.transaction.recover(
+          origin.context,
+          { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
+        );
+        if (!history && (contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" || ["observed", "recovered"].includes(contribution.status)) && typeof activeExecution.inspectContributionHistory === "function") {
+          const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
+          unchanged(origin);
+          if (candidate) {
+            contribution = { ...contribution, ...candidate };
+            if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: "contribution" };
+          }
+        }
+        let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
+        if (purchaseRecovery) result = {
+          ...result,
+          ...warning ? { warning } : {},
+          purchaseRecovery,
+          ...history ? { historyAction: { canArchive: true } } : {}
+        };
+        if (materialization.status !== "absent") {
+          result = { ...result, materializationRecovery: materialization };
+          if (result.status === "absent" && materialization.status === "recovered") {
+            result = { ...materialization, ...result, status: "recovered", materializationRecovery: materialization };
+          }
+        }
+        const current2 = capture();
+        if (!same2(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
+        if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
+          result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
+        }
+        log({
+          event: "recovery",
+          status: result.status,
+          reason: result.reason,
+          localReason: result.historyAction?.reason,
+          currentScore: result.record?.submittedScore,
+          targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
+          ...streamlinedPurchaseAudit(result.record),
+          setId: origin.challenge.setId,
+          challengeId: origin.challenge.id,
+          ...result.recovery ? {
+            setId: result.recovery.setId,
+            challengeId: result.recovery.challengeId,
+            currentScore: result.recovery.currentScore,
+            targetScore: result.recovery.targetScore,
+            confirmedBatches: result.recovery.confirmedBatches,
+            waitingBatches: result.recovery.waitingBatches,
+            pendingWriteCount: result.recovery.pendingWriteCount
+          } : {}
+        });
+        const record = result.record;
+        if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
+          if (!same2(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail4("CONTEXT_CHANGED");
+          const completed = record.submittedScore >= record.plan.challenge.targetScore;
+          if (!completed) activeExecution.prepare(record.plan);
+          const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
+          const input = readInputs({
+            maxRating: record.plan.policy.maxRating,
+            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+            ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
+          });
+          preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
+          return { ...result, preview: {
+            ...record.plan,
+            plan: record.plan,
+            liveExecutionEnabled: !completed,
+            quoteSource: record.plan.items.find((item2) => item2.quote)?.quote?.source ?? "unknown",
+            externalSelection,
+            record
+          } };
+        }
+        return result;
+      } catch (error2) {
+        preview = null;
+        const result = { status: "recovery-required", reason: safeReason10(error2) };
+        log({ event: "recovery", ...result });
+        return result;
+      } finally {
+        activeExecution = null;
+      }
+    };
     return Object.freeze({
       async readSettings(global = false) {
         const origin = capture();
@@ -41316,6 +41485,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         };
         try {
           const config = normalizeStreamlinedSettings(value), origin = capture();
+          const saved = await purchaseJournal.read(origin.context);
+          unchanged(origin);
+          const activePurchase = saved && saved.challenge.setId === origin.challenge.setId && saved.challenge.id === origin.challenge.id && saved.challenge.targetScore === origin.challenge.targetScore && streamlinedPurchaseNeedsRecovery(saved);
+          const retired = activePurchase ? await purchaseJournal.isRetired(saved) : false;
+          unchanged(origin);
+          if (stopRequested || run !== planningRun) fail4("CANCELLED");
+          if (activePurchase && !retired) {
+            const recovered2 = await recoverCurrent();
+            if (stopRequested || run !== planningRun) {
+              preview = null;
+              fail4("CANCELLED");
+            }
+            return { ...recovered2.preview, ...recovered2, recoveryAttempted: true, resumedPurchase: !!recovered2.preview };
+          }
           const rawInput = readInputs(config);
           rawInput.assertCurrent();
           await purchaseJournal.assertAvailable(origin.context, origin.challenge);
@@ -41899,160 +42082,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       },
       async recover() {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
-        preview = null;
-        routePreview = null;
-        history = null;
-        externalView = null;
-        if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
         busy = true;
         try {
-          const origin = capture();
-          activeExecution = await createExecution(origin.context);
-          unchanged(origin);
-          const materialization = typeof activeExecution.recoverMaterialization === "function" ? await activeExecution.recoverMaterialization(origin.context) : { status: "absent" };
-          if (["recovery-required", "blocked", "replan-required"].includes(materialization.status)) {
-            log({ event: "recovery", status: materialization.status, reason: materialization.reason });
-            return materialization;
-          }
-          let contribution, warning, purchaseRecovery;
-          let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
-          if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === "function") {
-            history = { origin, execution: activeExecution };
-          }
-          if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
-            if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
-              contribution = await activeExecution.transaction.recover(
-                origin.context,
-                { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
-              );
-              const current3 = capture(), record2 = contribution.record;
-              if (!same2(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
-              const ownRecord = record2 && same2(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
-              const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
-              let isolationReason;
-              if (!completedHistory && ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
-                try {
-                  if (await activeExecution.inspectInventoryRecovery(record2) === true) {
-                    warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
-                  }
-                } catch (error2) {
-                  isolationReason = safeReason10(error2);
-                }
-              }
-              const result2 = {
-                ...purchase,
-                ...isolationReason ? { reason: isolationReason } : {},
-                contributionRecovery: contribution,
-                ...ownRecord ? { record: record2 } : {}
-              };
-              log({
-                event: "recovery",
-                status: completedHistory || warning ? "observed" : result2.status,
-                reason: completedHistory ? current3.challenge.submittedScore < record2.submittedScore ? "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" : "FC27_STREAMLINED_COMPLETED" : warning?.reason ?? result2.reason,
-                setId: purchase.recovery?.setId,
-                challengeId: purchase.recovery?.challengeId,
-                pendingWriteCount: purchase.recovery?.pendingWriteCount,
-                unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
-                contributedCount: purchase.recovery?.contributedCount,
-                purchasesSettled: purchase.recovery?.purchasesSettled,
-                currentScore: ownRecord ? record2.submittedScore : void 0,
-                targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
-              });
-              if (!warning && !completedHistory) return result2;
-              purchaseRecovery = purchase;
-              purchase = { status: "absent" };
-              if (warning) log({
-                event: "recovery-isolation",
-                status: "verified",
-                reason: warning.reason,
-                setId: origin.challenge.setId,
-                challengeId: origin.challenge.id,
-                currentScore: record2.submittedScore
-              });
-            } else {
-              log({ event: "recovery", status: purchase.status, reason: purchase.reason });
-              return purchase;
-            }
-          }
-          contribution ??= await activeExecution.transaction.recover(
-            origin.context,
-            { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
-          );
-          if (!history && (contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" || ["observed", "recovered"].includes(contribution.status)) && typeof activeExecution.inspectContributionHistory === "function") {
-            const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
-            unchanged(origin);
-            if (candidate) {
-              contribution = { ...contribution, ...candidate };
-              if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: "contribution" };
-            }
-          }
-          let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
-          if (purchaseRecovery) result = {
-            ...result,
-            ...warning ? { warning } : {},
-            purchaseRecovery,
-            ...history ? { historyAction: { canArchive: true } } : {}
-          };
-          if (materialization.status !== "absent") {
-            result = { ...result, materializationRecovery: materialization };
-            if (result.status === "absent" && materialization.status === "recovered") {
-              result = { ...materialization, ...result, status: "recovered", materializationRecovery: materialization };
-            }
-          }
-          const current2 = capture();
-          if (!same2(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
-          if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
-            result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
-          }
-          log({
-            event: "recovery",
-            status: result.status,
-            reason: result.reason,
-            localReason: result.historyAction?.reason,
-            currentScore: result.record?.submittedScore,
-            targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
-            ...streamlinedPurchaseAudit(result.record),
-            setId: origin.challenge.setId,
-            challengeId: origin.challenge.id,
-            ...result.recovery ? {
-              setId: result.recovery.setId,
-              challengeId: result.recovery.challengeId,
-              currentScore: result.recovery.currentScore,
-              targetScore: result.recovery.targetScore,
-              confirmedBatches: result.recovery.confirmedBatches,
-              waitingBatches: result.recovery.waitingBatches,
-              pendingWriteCount: result.recovery.pendingWriteCount
-            } : {}
-          });
-          const record = result.record;
-          if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
-            if (!same2(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail4("CONTEXT_CHANGED");
-            const completed = record.submittedScore >= record.plan.challenge.targetScore;
-            if (!completed) activeExecution.prepare(record.plan);
-            const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
-            const input = readInputs({
-              maxRating: record.plan.policy.maxRating,
-              marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
-              ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
-            });
-            preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
-            return { ...result, preview: {
-              ...record.plan,
-              plan: record.plan,
-              liveExecutionEnabled: !completed,
-              quoteSource: record.plan.items.find((item2) => item2.quote)?.quote?.source ?? "unknown",
-              externalSelection,
-              record
-            } };
-          }
-          return result;
-        } catch (error2) {
-          preview = null;
-          const result = { status: "recovery-required", reason: safeReason10(error2) };
-          log({ event: "recovery", ...result });
-          return result;
+          return await recoverCurrent();
         } finally {
-          activeExecution = null;
           busy = false;
         }
       },
@@ -45622,7 +45655,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.101" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.102" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -45974,8 +46007,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.101"}`,
-    version: "27.0.101",
+    title: `FC Automation Tool ${"27.0.102"}`,
+    version: "27.0.102",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

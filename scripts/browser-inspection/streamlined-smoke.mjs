@@ -14,6 +14,8 @@ export async function exerciseStreamlined(context) {
       export { createGalleryReferencePrices } from './src/gallery/reference-prices.js';
       export { readFutbinBatchPrices } from './src/fc27/futbin-batch-prices.js';
       export { readFc27Context } from './src/adapters/ea/fc27-local-read.js';
+      export { createStreamlinedPurchaseJournal } from './src/streamlined/purchase-journal.js';
+      export { approvedStreamlinedPurchaseRoute, initialStreamlinedPurchaseDemand } from './src/streamlined/purchase-scope.js';
       export { challenge, safeItem, policy, eligibility } from './tests/helpers/streamlined.js';
     ` }, bundle: true, write: false, format: 'iife', globalName: 'StreamlinedSmoke', target: 'chrome120' });
     await page.setContent('<!doctype html><title>Streamlined offline</title><main id="native"></main>');
@@ -813,6 +815,22 @@ async function exerciseStreamlinedMarket(page) {
         }), purchaseMaxBuy: price })) }),
       createExecution: async () => execution,
     });
+    evidence.seedResume = async () => {
+      const plan = evidence.record.plan, route = a.approvedStreamlinedPurchaseRoute(plan);
+      const groupIndex = route.groups.findIndex(group => group.source === 'market');
+      const item = route.groups[groupIndex].items[0];
+      const journal = a.createStreamlinedPurchaseJournal({
+        get: async (key, fallback) => saved.get(key) ?? fallback,
+        set: async (key, value) => saved.set(key, structuredClone(value)),
+      });
+      evidence.record = await journal.write({ schema: plan.execution.purchaseScope ? 2 : 1,
+        context: c.context, operationId: 'offline-resume', revision: 0, plan, fingerprint: plan.fingerprint,
+        challenge: plan.challenge, policy: plan.policy, route, budget: 1600, spent: 300,
+        submittedScore: 0, fulfilled: route.groups.map(() => 0), consumedIds: [], completed: false,
+        demand: a.initialStreamlinedPurchaseDemand(plan, route), contribution: null,
+        entries: [1, 2].map(id => ({ source: 'market', groupIndex, key: `resume:${id}`, definitionId: item.definitionId,
+          itemId: 9000 + id, tradeId: String(10000 + id), price: 150, cap: item.purchaseMaxBuy, state: 'club' })) });
+    };
     globalThis.streamlinedMount = a.mountFc27StreamlinedPanel({ document: globalThis.document, session, now: () => evidence.now,
       readTarget: () => ({ anchor: globalThis.document.getElementById('native'), setId: c.setId, challengeId: c.id }) });
   });
@@ -854,7 +872,8 @@ async function exerciseStreamlinedMarket(page) {
   await page.locator('[data-purchase-budget]').fill('1600');
   assert.match(await page.locator('[data-result]').innerText(), /授权市场替代池：2 个版本/);
   assert.match(await page.locator('[data-result]').innerText(), /每卡最多尝试 7 次 · 部分批次等待上限 12 秒/);
-  const run = page.getByRole('button', { name: '按方案购买并贡献', exact: true });
+  const run = page.locator('[data-contribute]');
+  assert.equal(await run.innerText(), '按方案购买并贡献');
   assert.equal(await run.isEnabled(), true);
   assert.equal(await page.locator('[data-status]').evaluate(node => !!node.closest('footer')), true,
     'Execution progress stays beside the action buttons, not above a long result list');
@@ -938,5 +957,28 @@ async function exerciseStreamlinedMarket(page) {
   await run.click();
   await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 5);
+  await page.evaluate(() => globalThis.marketSmoke.seedResume());
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  const resume = page.getByRole('button', { name: '继续原方案购买并贡献', exact: true });
+  await resume.waitFor({ state: 'visible' });
+  assert.equal(await resume.isEnabled(), true);
+  assert.equal(await page.locator('[data-purchase-budget]').inputValue(), '1600');
+  assert.equal(await page.locator('[data-purchase-budget]').isDisabled(), true);
+  assert.match(await page.locator('[data-status]').innerText(), /已恢复原购卡任务.*已购待处理 2 张.*原预算剩余 1,300/);
+  assert.match(await page.locator('[data-result]').innerText(), /原方案续做.*还差 100 分/);
+  assert.match(await page.locator('[data-result]').innerText(), /最长 30 分钟/);
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 5, 'Restoring Solve never dispatches a purchase');
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-purchase-resume-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-purchase-resume-mobile.png' });
+  const resumeBounds = await page.getByRole('dialog').evaluate(node => ({ width: node.clientWidth, scroll: node.scrollWidth }));
+  assert.ok(resumeBounds.scroll <= resumeBounds.width + 1, 'Recovery summary fits narrow screens');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await resume.click();
+  await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => globalThis.marketSmoke.calls), 6, 'Only the trusted continuation click executes');
+  assert.equal(await resume.isEnabled(), false);
+  assert.doesNotMatch(await page.locator('[data-result]').innerText(), /请点击“继续原方案购买并贡献”/,
+    'Completed results do not invite another continuation');
   assert.equal(requests, 0, 'The synthetic market UI must never make network requests');
 }

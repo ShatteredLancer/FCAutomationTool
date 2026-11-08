@@ -2,7 +2,24 @@ import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { streamlinedExecutionMessage, streamlinedRouteSummary, streamlinedMarketMessage,
   streamlinedInventoryPreview, streamlinedExecutionProgress, streamlinedExecutionClock,
-  streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+  streamlinedPurchaseBudgetPreview, streamlinedConfirmedContribution, streamlinedPurchaseResumeMessage } from '../../src/adapters/browser/fc27-streamlined-panel.js';
+import recovery from '../fixtures/streamlined-purchase-recovery-2026-11-08.json';
+
+it('explains recovered purchases with confirmed progress, remaining budget and the continuation action', () => {
+  const saved = recovery.recovered;
+  const record = { budget: saved.approvedBudget, spent: saved.spent, submittedScore: saved.currentScore,
+    challenge: { targetScore: saved.targetScore }, confirmedBatches: saved.confirmedBatches,
+    consumedIds: [1, 2, 3, 4, 5, 6], entries: Array.from({ length: 8 }, (_, index) => ({
+      source: 'market', state: index < 6 ? 'consumed' : 'club' })) };
+  const text = streamlinedPurchaseResumeMessage({ status: 'recovered', record });
+  for (const value of ['已确认 6 张', '10,550 / 16,000', '已购待处理 2 张', '3,500', '5,068', '继续原方案购买并贡献', '单卡上限不变'])
+    expect(text).toContain(value);
+  expect(streamlinedPurchaseResumeMessage({ status: 'recovery-required', record })).toBeNull();
+  expect(streamlinedPurchaseResumeMessage({ status: 'completed', record })).toBeNull();
+  expect(streamlinedPurchaseResumeMessage({ status: 'recovered', record: { ...record, completed: true } })).toBeNull();
+  expect(streamlinedPurchaseResumeMessage({ status: 'recovered', record: { ...record, submittedScore: saved.targetScore } })).toBeNull();
+  expect(streamlinedPurchaseResumeMessage({ status: 'recovered', record: { ...record, contribution: {} } })).toBeNull();
+});
 
 it('explains the foreign contribution separately from current Transfer materials', () => {
   const text = streamlinedExecutionMessage('FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED', {
