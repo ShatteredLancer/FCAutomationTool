@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.101
+// @version      27.0.102
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.101", at: Date.now(), status: 'started',
+    state = { version: "27.0.102", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6589,14 +6589,14 @@
       teamFacts: { chemistry: facts2.chemistry, teamRating: facts2.teamRating }
     };
   }
-  function* iterateOwnedReplacements(input, preview, candidates, prices, onProgress, maxNodes = 4e3, totalNodes = 2e4, { allowEqualPriceQualityDowngrade = false } = {}) {
+  function* iterateOwnedReplacements(input, preview, candidates, prices, onProgress, maxNodes = 4e3, totalNodes = 2e4, { allowEqualPriceQualityDowngrade = false, reuseOwnedOnly = false } = {}) {
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
     if (parsed.status !== "observed") return { preview, nodes: 0 };
     let current2 = preview;
     let nodes = 0;
     let improved = true;
     const byId = new Map(candidates.map((item2) => [candidateKey(item2), item2]));
-    const ordered = candidates.slice().sort((a, b) => (allowEqualPriceQualityDowngrade ? qualityRank(a.rating) - qualityRank(b.rating) : 0) || priceFor(prices, a) - priceFor(prices, b) || a.definitionId - b.definitionId);
+    const ordered = candidates.filter((item2) => !reuseOwnedOnly || !item2.catalogRef).sort((a, b) => (allowEqualPriceQualityDowngrade ? qualityRank(a.rating) - qualityRank(b.rating) : 0) || priceFor(prices, a) - priceFor(prices, b) || a.definitionId - b.definitionId);
     const metrics = (selected) => {
       const owned2 = selected.filter((ref) => !ref.catalogRef);
       const purchases = selected.filter((ref) => ref.catalogRef);
@@ -6617,10 +6617,10 @@
         purchaseCount: purchases.length
       };
     };
-    const singleNodeLimit = Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
+    const singleNodeLimit = reuseOwnedOnly ? maxNodes : Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
     while (improved && nodes < maxNodes) {
       improved = false;
-      const singleRefs = current2.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
+      const singleRefs = current2.selected.filter((ref) => !reuseOwnedOnly || ref.catalogRef).sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
       for (const [refIndex, ref] of singleRefs.entries()) {
         const slotLimit = nodes + Math.ceil((singleNodeLimit - nodes) / (singleRefs.length - refIndex));
         for (const candidate of ordered) {
@@ -6629,7 +6629,7 @@
             candidates.find((item2) => candidateKey(item2) === candidateKey(ref)) ?? ref
           );
           if (candidatePrice > incumbentPrice) continue;
-          if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade || qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
+          if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade || !(ref.catalogRef && !candidate.catalogRef) && qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
           if (nodes >= slotLimit) break;
           if (current2.selected.some((other) => other.definitionId === candidate.definitionId)) continue;
           nodes++;
@@ -6669,7 +6669,7 @@
         }
         if (improved || nodes >= singleNodeLimit) break;
       }
-      if (!improved && nodes < maxNodes) {
+      if (!reuseOwnedOnly && !improved && nodes < maxNodes) {
         const refs3 = current2.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
         function* assignments(first, second) {
           const currentCost = priceFor(prices, byId.get(candidateKey(first)) ?? first) + priceFor(prices, byId.get(candidateKey(second)) ?? second);
@@ -7349,7 +7349,8 @@
     localOnly = false,
     localSearchBudget = 4e3,
     onIncumbentCheck = null,
-    searchBudget = null
+    searchBudget = null,
+    reuseOwnedOnly = false
   } = {}) {
     if (!Array.isArray(entries2) || entries2.length > 60) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop4("FC27_MARKET_POLICY_INVALID");
@@ -7422,7 +7423,7 @@
           onProgress ? (value) => onProgress({ ...value, phase: "local-market-search", nodes: value.nodes + 1 }) : null,
           Math.min(localSearchBudget, maxNodes - 1),
           Math.min(localSearchBudget, maxNodes - 1),
-          { allowEqualPriceQualityDowngrade: Boolean(materialPrices) }
+          { allowEqualPriceQualityDowngrade: Boolean(materialPrices), reuseOwnedOnly }
         );
         localNodes += local.nodes;
         localValue = planMetrics(local.preview)[objective === "material-value" ? "materialValue" : "estimatedCost"];
@@ -8626,9 +8627,42 @@
             diagnostics.searchComplete = false;
             diagnostics.optimalWithinPool = false;
           };
+          let ownedReuseChecked = false;
           finishIncumbent = async (refine = true) => {
             if (refine) await refineCoverage();
             assertCurrent();
+            if (!ownedReuseChecked && loadPublicPrices && incumbent[0].purchases.length && searchRemaining() > 1) {
+              ownedReuseChecked = true;
+              const allowance = Math.min(1601, searchRemaining());
+              const selectedMarket = new Set(incumbent[0].purchases.map((card) => card.definitionId));
+              diagnostics.stage = "local-market-search";
+              reportProgress();
+              const local = await measure("searchMs", () => suggestFc27PuzzleJointPurchasesCooperatively(
+                input,
+                [...entries2.values()].filter((card) => selectedMarket.has(card.definitionId) && !unavailable.has(card.definitionId)),
+                {
+                  incumbent: { status: "preview", selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
+                  prices: new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])),
+                  materialPrices,
+                  maxNodes: allowance,
+                  localSearchBudget: allowance - 1,
+                  localOnly: true,
+                  reuseOwnedOnly: true,
+                  assertCurrent,
+                  onProgress: (value) => reportProgress({ ...value, nodes: searchSpent + value.nodes })
+                }
+              ));
+              assertCurrent();
+              accountFixedNodes(searchSpent + (local.nodes ?? 0));
+              searchSpent += local.nodes ?? 0;
+              diagnostics.nodes = searchSpent;
+              diagnostics.localSearchNodes += local.localSearchNodes ?? 0;
+              const better = local.plans?.[0];
+              if (local.status === "suggested" && better && comparePuzzlePlans(better, incumbent[0], objective()) < 0) {
+                const original = new Map(incumbent[0].purchases.map((card) => [card.catalogRef, card]));
+                incumbent = [{ ...better, purchases: better.purchases.map((card) => ({ ...original.get(card.catalogRef), ...card })) }];
+              }
+            }
             if (totalValueMode && originalOwnedPlan) {
               const selected = [
                 ...originalOwnedPlan.selectedOwned,
@@ -45622,7 +45656,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.101" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.102" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -45974,8 +46008,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.101"}`,
-    version: "27.0.101",
+    title: `FC Automation Tool ${"27.0.102"}`,
+    version: "27.0.102",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

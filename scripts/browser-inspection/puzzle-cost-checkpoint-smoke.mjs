@@ -6,6 +6,8 @@ export async function exercisePuzzleCostCheckpoint(context) {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
     export { puzzleFillFixture } from './tests/helpers/fc27-puzzle-fill-fixture.js';
+    export { minimumQualityFixture } from './tests/helpers/fc27-puzzle-minimum-quality-fixture.js';
+    export { suggestFc27PuzzleJointPurchasesCooperatively } from './src/fc27/puzzle-procurement.js';
     export { previewFc27PuzzleSquad } from './src/fc27/puzzle-preview.js';
     export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
     export { formatFc27PuzzleNativeResult } from './src/adapters/browser/fc27-puzzle-native-button.js';
@@ -62,7 +64,34 @@ export async function exercisePuzzleCostCheckpoint(context) {
       }
       assert.deepEqual(result.priceBatches, ['deadline', 'cancel'].includes(result.mode) ? [12] : [12, 12]);
     }
+    const reuse = await page.evaluate(async () => {
+      const api = globalThis.CostCheckpoint, outcomes = [];
+      for (const locked of [false, true]) {
+        const x = api.minimumQualityFixture(1); x.input.inventory.items = x.owned();
+        const baseline = api.previewFc27PuzzleSquad(x.input), ref = baseline.selected.find(item => item.rating === 60);
+        const owned = x.input.inventory.items.find(item => item.id === ref.id);
+        const card = { ...owned, definitionId: 99001 }; delete card.id; delete card.pile;
+        const incumbent = { ...baseline, selected: baseline.selected.map(item => item.slot === ref.slot
+          ? { definitionId: card.definitionId, rating: card.rating, catalogRef: 'fc27:99001', slot: ref.slot } : item) };
+        x.input.policy.protectFsuLockedPlayers = true; owned.locked = locked;
+        const before = JSON.stringify(x.input);
+        const result = await api.suggestFc27PuzzleJointPurchasesCooperatively(x.input, [card], {
+          incumbent, prices: new Map([[99001, 200]]), materialPrices: new Map(x.input.inventory.items.map(item => [item.definitionId, 200])),
+          localOnly: true, reuseOwnedOnly: true, localSearchBudget: 1600, maxNodes: 1601,
+        });
+        outcomes.push({ locked, status: result.status, value: result.plans[0]?.materialValue,
+          cash: result.plans[0]?.estimatedCost, purchases: result.plans[0]?.purchaseCount,
+          nodes: result.nodes, unchanged: before === JSON.stringify(x.input) });
+      }
+      return outcomes;
+    });
+    for (const row of reuse) {
+      assert.equal(row.status, 'suggested'); assert.equal(row.value, 2200);
+      assert.equal(row.cash, row.locked ? 200 : 0); assert.equal(row.purchases, row.locked ? 1 : 0);
+      assert.equal(row.unchanged, true); assert.ok(row.nodes <= 1601);
+    }
     assert.equal(requests, 0);
     console.log('Puzzle cost checkpoint Chrome passed: owned 11000->10200 retained across optional deadline/expiry, targeted 12-card renewal, price reversal/missing/cancel; synthetic, no EA access.');
+    console.log('Puzzle final owned reuse Chrome passed: same-quality 200-coin concept replaced with owned at unchanged 2200 material value; locked counterpart retained, original node bound, no requests/writes.');
   } finally { await page.close(); }
 }

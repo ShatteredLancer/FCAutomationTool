@@ -564,9 +564,38 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         // Local exhaustion/completion is never a global minimum proof.
         diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
       };
+      let ownedReuseChecked = false;
       finishIncumbent = async (refine = true) => {
         if (refine) await refineCoverage();
         assertCurrent();
+        // Check the actual final winner, not just the earlier search seed.
+        // Reuse only safe, already-valued owned cards; no new reads or global
+        // search. This bounded final pass spends the original remaining nodes,
+        // even when optional catalogue exploration reached its time cutoff.
+        if (!ownedReuseChecked && loadPublicPrices && incumbent[0].purchases.length && searchRemaining() > 1) {
+          ownedReuseChecked = true;
+          const allowance = Math.min(1601, searchRemaining());
+          const selectedMarket = new Set(incumbent[0].purchases.map(card => card.definitionId));
+          diagnostics.stage = 'local-market-search'; reportProgress();
+          const local = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input,
+            [...entries.values()].filter(card => selectedMarket.has(card.definitionId) && !unavailable.has(card.definitionId)), {
+              incumbent: { status: 'preview', selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] },
+              prices: new Map([...quotes].map(([id, quote]) => [id, quote.price])), materialPrices,
+              maxNodes: allowance, localSearchBudget: allowance - 1, localOnly: true, reuseOwnedOnly: true,
+              assertCurrent, onProgress: value => reportProgress({ ...value, nodes: searchSpent + value.nodes }),
+            }));
+          assertCurrent();
+          accountFixedNodes(searchSpent + (local.nodes ?? 0));
+          searchSpent += local.nodes ?? 0; diagnostics.nodes = searchSpent;
+          diagnostics.localSearchNodes += local.localSearchNodes ?? 0;
+          const better = local.plans?.[0];
+          if (local.status === 'suggested' && better && comparePuzzlePlans(better, incumbent[0], objective()) < 0) {
+            // Remaining purchases are a strict subset of the approved winner;
+            // retain their original references, timestamps and purchase caps.
+            const original = new Map(incumbent[0].purchases.map(card => [card.catalogRef, card]));
+            incumbent = [{ ...better, purchases: better.purchases.map(card => ({ ...original.get(card.catalogRef), ...card })) }];
+          }
+        }
         // Refresh only the final choices plus the original comparison squad,
         // at most 44 versions. Never extend old TTLs or repeat the whole pool.
         // No fallback for auth/context errors: this is final quote validation.

@@ -10,6 +10,55 @@ import { marketRow } from '../helpers/fc27-market-fixture.js';
 import { minimumQualityFixture } from '../helpers/fc27-puzzle-minimum-quality-fixture.js';
 import * as search from '../../src/fc27/puzzle-preview.js';
 
+it.each(['normal', 'deadline', 'expiry', 'cancel'])('checks final mixed owned reuse with original safeguards: %s', async mode => {
+  const x = fixture(), f = minimumQualityFixture(2);
+  x.input = f.input; x.now = f.input.now;
+  let at = x.now, cancelled = false, searched = false;
+  x.input.inventory.items = f.owned().map(item => ({ ...item, rating: 80 }));
+  const baseline = previewFc27PuzzleSquad(x.input);
+  const cards = baseline.selected.slice(0, 2).map((ref, i) => {
+    const card = { ...x.input.inventory.items.find(item => item.id === ref.id), definitionId: 99001 + i };
+    delete card.id; delete card.pile; return card;
+  });
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', source: 'ea-defid', season: '27',
+    observedAt: x.now, query, entries: cards }));
+  const original = procurement.suggestFc27PuzzleJointPurchasesCooperatively;
+  // Freeze a global-search winner to isolate the production finishing boundary.
+  // Its concept/owned facts are identical; final native validation still runs.
+  const joint = vi.spyOn(procurement, 'suggestFc27PuzzleJointPurchasesCooperatively').mockImplementation(async (input, entries, options) => {
+    if (options.reuseOwnedOnly) return original(input, entries, options);
+    if (!searched) {
+      searched = true;
+      at += mode === 'deadline' ? 30001 : mode === 'expiry' ? 300001 : 0;
+      cancelled = mode === 'cancel';
+    }
+    return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', nodes: 1, localSearchNodes: 0,
+      plans: [{ selectedOwned: baseline.selected.slice(2), purchases: cards.map((card, i) => ({
+        catalogRef: `fc27:${card.definitionId}`, definitionId: card.definitionId, rating: card.rating, slot: baseline.selected[i].slot })),
+      teamFacts: baseline.teamFacts, purchaseCount: 2, estimatedCost: 1200, inventoryValue: 9000, materialValue: 10200 }] };
+  });
+  const loadPublicPrices = vi.fn(ids => publicPrices({ ...x, now: at }, id => id === 99001 ? 200 : 1000)(ids));
+  try {
+    const result = await createFc27PuzzleProcurementSession({ ...x.options, now: () => at, loadPublicPrices })
+      .plan(x.input, { optimizeMaterialValue: true, ownedIncumbent: baseline,
+        assertCurrent: () => { if (cancelled) throw Error('FC27_PUZZLE_FILL_TARGET_CHANGED'); } });
+    if (mode === 'cancel') {
+      expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_FILL_TARGET_CHANGED', plans: [] });
+      expect(joint.mock.calls.some(call => call[2].reuseOwnedOnly)).toBe(false);
+      return;
+    }
+    expect(result.status, JSON.stringify(result)).toBe('suggested');
+    expect(result.plans[0]).toMatchObject({ materialValue: 10200, estimatedCost: 200, purchaseCount: 1 });
+    expect(result.plans[0].selectedOwned).toContainEqual(baseline.selected[1]);
+    expect(result.plans[0].conceptPlan).toMatchObject({ status: 'prepared', purchaseCount: 1, estimatedCost: 200 });
+    expect(joint.mock.calls.filter(call => call[2].reuseOwnedOnly)).toHaveLength(1);
+    expect(loadPublicPrices).toHaveBeenCalledTimes(mode === 'expiry' ? 3 : 2);
+    expect(result.valueExpiresAt).toBeGreaterThan(at);
+    expect(x.transport.readQuotePage).not.toHaveBeenCalled();
+    expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
+  } finally { joint.mockRestore(); }
+});
+
 it('keeps the owned baseline through catalog discovery, prices a silver substitute, and retains it on cached repeat', async () => {
   const x = fixture(), f = minimumQualityFixture(2);
   x.input = f.input; x.now = f.input.now;
@@ -311,7 +360,8 @@ it('prices every owned card in a feasible repair incumbent under the total-value
     const result = await createFc27PuzzleProcurementSession({ ...x.options,
       loadPublicPrices: publicPrices(x, () => 300) }).plan(x.input, { optimizeMaterialValue: true });
     expect(repairSeed).toHaveBeenCalledOnce(); expect(repair).toHaveBeenCalledOnce();
-    expect(joint).not.toHaveBeenCalled();
+    expect(joint).toHaveBeenCalledOnce();
+    expect(joint.mock.calls[0][2]).toMatchObject({ localOnly: true, reuseOwnedOnly: true, maxNodes: 1601 });
     expect(result, JSON.stringify(result)).toMatchObject({ status: 'suggested', plans: [{ purchaseCount: 1, estimatedCost: 300,
       inventoryValue: 3000, materialValue: 3300 }], diagnostics: { objective: 'material-value' } });
   } finally {

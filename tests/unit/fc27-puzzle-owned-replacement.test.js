@@ -6,6 +6,55 @@ import { marketRow } from '../helpers/fc27-market-fixture.js';
 
 afterEach(() => vi.restoreAllMocks());
 
+it.each(['club', 'storage'])('replaces an equal-value same-quality concept with safe %s material', async pile => {
+  const x = fixture(); x.input.inventory.items.pop();
+  const ref = x.preview.selected[2], owned = x.input.inventory.items.find(item => item.id === ref.id);
+  owned.pile = pile;
+  const card = { ...owned, definitionId: 99001 };
+  delete card.id; delete card.pile;
+  const incumbent = { ...x.preview, selected: x.preview.selected.map(item => item.slot === ref.slot
+    ? { ...item, id: undefined, pile: undefined, definitionId: card.definitionId, catalogRef: `fc27:${card.definitionId}` } : item) };
+  const result = await suggestFc27PuzzleJointPurchasesCooperatively(x.input, [card], {
+    incumbent, materialPrices: x.prices, prices: new Map([[card.definitionId, 1000]]),
+    maxNodes: 100, localOnly: true, localSearchBudget: 99,
+  });
+  expect(result.status, JSON.stringify(result)).toBe('suggested');
+  expect(result.plans[0]).toMatchObject({ materialValue: 11000, estimatedCost: 0, purchaseCount: 0 });
+  expect(result.plans[0].selectedOwned).toContainEqual(expect.objectContaining({ id: owned.id, slot: ref.slot }));
+  expect(result.nodes).toBeLessThanOrEqual(100);
+});
+
+it.each(['higher-value', 'missing-price', 'locked', 'active-squad', 'fsu-untradeable', 'chemistry', 'native-club', 'duplicate-version'])(
+  'final owned reuse preserves protection, native rules and the material objective: %s', async mode => {
+    const x = fixture(); x.input.inventory.items.pop();
+    const ref = x.preview.selected[2], owned = x.input.inventory.items.find(item => item.id === ref.id);
+    const card = { ...owned, definitionId: 99001 }; delete card.id; delete card.pile;
+    const incumbent = { ...x.preview, selected: x.preview.selected.map(item => item.slot === ref.slot
+      ? { ...item, id: undefined, pile: undefined, definitionId: card.definitionId, catalogRef: `fc27:${card.definitionId}` } : item) };
+    if (mode === 'higher-value') x.prices.set(owned.definitionId, 1200);
+    if (mode === 'missing-price') x.prices.delete(owned.definitionId);
+    if (mode === 'locked') { x.input.policy.protectFsuLockedPlayers = true; owned.locked = true; }
+    if (mode === 'active-squad') { x.input.policy.protectActiveSquad = true; owned.activeSquad = true; }
+    if (mode === 'fsu-untradeable') { x.input.policy.onlyUntradeable = true; owned.tradeable = true; }
+    if (mode === 'chemistry') {
+      const evaluate = x.input.evaluateSquad;
+      x.input.evaluateSquad = squad => squad.some(item => item?.id === owned.id)
+        ? { status: 'observed', chemistry: 0, teamRating: 80 } : evaluate(squad);
+    }
+    if (mode === 'native-club') {
+      x.input.challenge.rawRequirements.push(marketRow(12, owned.teamId, 1)); owned.teamId = 9999;
+    }
+    if (mode === 'duplicate-version') owned.definitionId = x.preview.selected[0].definitionId;
+    const result = await suggestFc27PuzzleJointPurchasesCooperatively(x.input, [card], {
+      incumbent, materialPrices: x.prices, prices: new Map([[card.definitionId, 1000]]),
+      maxNodes: 100, localOnly: true, localSearchBudget: 99, reuseOwnedOnly: true,
+    });
+    expect(result.status, JSON.stringify(result)).toBe('suggested');
+    expect(result.plans[0]).toMatchObject({ materialValue: 11000, estimatedCost: 1000, purchaseCount: 1 });
+    expect(result.plans[0].purchases[0].definitionId).toBe(99001);
+    expect(result.nodes).toBeLessThanOrEqual(100);
+  });
+
 it('carries the feasible owned arrangement into market refinement instead of rediscovering ten unchanged cards', async () => {
   const x = fixture();
   x.input.inventory.items.pop();

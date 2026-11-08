@@ -97,12 +97,12 @@ function verifiedIncumbent(input, preview, candidates, prices, cashMode = false,
 // Keep the feasible arrangement as an incumbent. Cheap single-slot changes
 // should not depend on rediscovering the other ten cards in a global DFS.
 function* iterateOwnedReplacements(input, preview, candidates, prices, onProgress, maxNodes = 4000, totalNodes = 20000,
-  { allowEqualPriceQualityDowngrade = false } = {}) {
+  { allowEqualPriceQualityDowngrade = false, reuseOwnedOnly = false } = {}) {
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return { preview, nodes: 0 };
   let current = preview; let nodes = 0; let improved = true;
   const byId = new Map(candidates.map(item => [candidateKey(item), item]));
-  const ordered = candidates.slice().sort((a, b) => (allowEqualPriceQualityDowngrade
+  const ordered = candidates.filter(item => !reuseOwnedOnly || !item.catalogRef).sort((a, b) => (allowEqualPriceQualityDowngrade
     ? qualityRank(a.rating) - qualityRank(b.rating) : 0)
     || priceFor(prices, a) - priceFor(prices, b) || a.definitionId - b.definitionId);
   // Compare a replacement against the current incumbent using the same
@@ -123,10 +123,11 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
   // Reserve a portion of the local budget for chemistry-preserving two-card
   // exchanges. A wide pool could otherwise spend all nodes on single swaps,
   // never trying the silver-plus-gold pair that preserves chemistry.
-  const singleNodeLimit = Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
+  const singleNodeLimit = reuseOwnedOnly ? maxNodes : Math.min(maxNodes, Math.max(128, Math.floor(maxNodes * 0.4)));
   while (improved && nodes < maxNodes) {
     improved = false;
-    const singleRefs = current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
+    const singleRefs = current.selected.filter(ref => !reuseOwnedOnly || ref.catalogRef)
+      .sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
     for (const [refIndex, ref] of singleRefs.entries()) {
       // Every slot gets a share before paired search. A wide cheap pool must
       // not spend the entire single-swap budget on the first few players.
@@ -134,13 +135,13 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
       for (const candidate of ordered) {
         const candidatePrice = priceFor(prices, candidate), incumbentPrice = priceFor(prices,
           candidates.find(item => candidateKey(item) === candidateKey(ref)) ?? ref);
-        // Equal-valued lower-quality material is still an improvement for a
-        // minimum-quality requirement: it preserves the same total value while
-        // avoiding an unnecessary gold card.  Higher/equal-quality ties remain
-        // untouched, and the sorted price lane lets us stop once prices rise.
+        // Equal total material value can still reduce cash spend by replacing
+        // a concept with an owned card, even within the same quality tier.
+        // The complete plan comparator below remains the authority for ties.
         if (candidatePrice > incumbentPrice) continue;
         if (candidatePrice === incumbentPrice && (!allowEqualPriceQualityDowngrade
-            || qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
+            || !(ref.catalogRef && !candidate.catalogRef)
+              && qualityRank(candidate.rating) >= qualityRank(ref.rating))) continue;
         if (nodes >= slotLimit) break;
         if (current.selected.some(other => other.definitionId === candidate.definitionId)) continue;
         nodes++;
@@ -176,7 +177,7 @@ function* iterateOwnedReplacements(input, preview, candidates, prices, onProgres
     // exchange invalid on its own. Try bounded paired replacements after the
     // single-card pass; each candidate squad still goes through the complete
     // EA requirement/evaluator contract before it can become the incumbent.
-    if (!improved && nodes < maxNodes) {
+    if (!reuseOwnedOnly && !improved && nodes < maxNodes) {
       const refs = current.selected.slice().sort((a, b) => priceFor(prices, b) - priceFor(prices, a));
       function* assignments(first, second) {
         const currentCost = priceFor(prices, byId.get(candidateKey(first)) ?? first)
@@ -820,7 +821,7 @@ export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, opt
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
   costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null,
-  searchBudget = null } = {}) {
+  searchBudget = null, reuseOwnedOnly = false } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
   if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
@@ -872,7 +873,7 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
         || !materialPrices && !item.catalogRef && priceFor(allPrices, item) === 0),
         allPrices, onProgress ? value => onProgress({ ...value, phase: 'local-market-search', nodes: value.nodes + 1 }) : null,
         Math.min(localSearchBudget, maxNodes - 1), Math.min(localSearchBudget, maxNodes - 1),
-        { allowEqualPriceQualityDowngrade: Boolean(materialPrices) });
+        { allowEqualPriceQualityDowngrade: Boolean(materialPrices), reuseOwnedOnly });
       localNodes += local.nodes;
       localValue = planMetrics(local.preview)[objective === 'material-value' ? 'materialValue' : 'estimatedCost'];
     }
