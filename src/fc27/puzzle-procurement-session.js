@@ -345,6 +345,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const unavailable = new Set(); let hadPlans = false;
       const references = new Map(); let publicPolicy = null;
       const valueRequested = optimizeMaterialValue === true && typeof loadPublicPrices === 'function';
+      diagnostics.requestedObjective = optimizeMaterialValue === true ? 'material-value' : 'additional-coins';
       totalValueMode = valueRequested;
       diagnostics.objective = 'additional-coins';
       diagnostics.ownedValueCandidateCount = 0; diagnostics.ownedValueQuotedCount = 0;

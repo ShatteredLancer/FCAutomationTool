@@ -8,5 +8,5 @@ export const PUZZLE_MARKET_READ_LIMIT = 25;
 export const isPuzzleQuoteCeiling = value => value === null
   || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE;
 
-export const DEFAULT_PUZZLE_OBJECTIVE = 'additional-coins';
+export const DEFAULT_PUZZLE_OBJECTIVE = 'material-value';
 export const isPuzzleObjective = value => ['additional-coins', 'material-value'].includes(value);

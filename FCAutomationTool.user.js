@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.105
+// @version      27.0.106
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.105", at: Date.now(), status: 'started',
+    state = { version: "27.0.106", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -6325,7 +6325,7 @@
   var MAX_PUZZLE_QUOTE_PRICE2 = 15e6;
   var PUZZLE_MARKET_READ_LIMIT = 25;
   var isPuzzleQuoteCeiling = (value) => value === null || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE2;
-  var DEFAULT_PUZZLE_OBJECTIVE = "additional-coins";
+  var DEFAULT_PUZZLE_OBJECTIVE = "material-value";
   var isPuzzleObjective = (value) => ["additional-coins", "material-value"].includes(value);
 
   // src/fc27/puzzle-query-affinity.js
@@ -8406,6 +8406,7 @@
           const references = /* @__PURE__ */ new Map();
           let publicPolicy = null;
           const valueRequested = optimizeMaterialValue === true && typeof loadPublicPrices === "function";
+          diagnostics.requestedObjective = optimizeMaterialValue === true ? "material-value" : "additional-coins";
           totalValueMode = valueRequested;
           diagnostics.objective = "additional-coins";
           diagnostics.ownedValueCandidateCount = 0;
@@ -13046,7 +13047,7 @@
           unchanged();
         } });
         privateData = { inputs, preview };
-        const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview";
+        const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview" && typeof publicPrices2?.load === "function";
         if (inputs.squadEmpty === true && (compareOwnedCost || [
           "SAFE_MATERIAL_SHORTAGE",
           "FC27_PUZZLE_CONSTRAINT_SHORTAGE",
@@ -13873,6 +13874,7 @@
             budgetStages: d?.budgetStages,
             nodeCap: d?.nodeCap,
             objective: d?.objective,
+            requestedObjective: d?.requestedObjective,
             materialValue: d?.materialValue,
             unknownCount: d?.unknownCount,
             scopeTruncated: d?.scopeTruncated,
@@ -14371,15 +14373,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       </section>
       <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>\u8BBE\u7F6E\u4E0E\u8BCA\u65AD</h2></div></div>
-        <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u300CSBC \u89E3\u9898\u300D\u9875\u8BBE\u7F6E\u3002</p></div>
+        <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u672C\u9875\u4E0B\u65B9\u8BBE\u7F6E\u3002</p></div>
         <div id="diagnostic-export-card" class="card"><h3>\u79BB\u7EBF\u8BCA\u65AD</h3><p>\u5BFC\u51FA\u6700\u8FD1\u7684\u8131\u654F\u8FD0\u884C\u4E8B\u4EF6\uFF0C\u7528\u4E8E\u79BB\u7EBF\u8C03\u67E5 Gallery \u56DE\u9000\u3001\u9650\u6D41\u548C\u7F51\u7EDC\u9519\u8BEF\u3002</p><small>\u4E0D\u5305\u542B URL\u3001\u54CD\u5E94\u6B63\u6587\u3001\u51ED\u8BC1\u3001\u8D26\u53F7\u6807\u8BC6\u6216\u5B8C\u6574\u7403\u5458\u6570\u636E\u3002</small><div class="row"><button id="export-diagnostics" class="primary">\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
         ${installationChecks ? '<div class="card"><h3>\u5B89\u88C5\u4E0E\u591A\u6807\u7B7E\u68C0\u67E5</h3><p>\u4EC5\u5728\u9700\u8981\u6392\u67E5\u5B58\u50A8\u6216\u591A\u6807\u7B7E\u5360\u7528\u95EE\u9898\u65F6\u8FD0\u884C\u3002</p><div class="row"><button id="gm">\u68C0\u67E5\u811A\u672C\u5B58\u50A8</button><button id="hold">\u68C0\u67E5\u6807\u7B7E\u9501</button></div></div>' : ""}</div>
         <div id="puzzle-settings" class="card card-block"><h3>\u89E3\u9898\u4E0E\u91C7\u8D2D\u8BBE\u7F6E</h3><div class="settings-grid">
-          <label>\u89E3\u9898\u4F18\u5316\u76EE\u6807<select id="puzzle-objective"><option value="additional-coins">\u6700\u4F4E\u8D2D\u5361\u652F\u51FA</option><option value="material-value">\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C</option></select><small>\u8D2D\u5361\u652F\u51FA\u53EA\u8BA1\u5F85\u8D2D\u5361\uFF1B\u6750\u6599\u603B\u4EF7\u503C\u5305\u542B\u5E93\u5B58\u4F30\u503C\u3002</small></label>
+          <label>\u89E3\u9898\u4F18\u5316\u76EE\u6807<select id="puzzle-objective"><option value="additional-coins" ${DEFAULT_PUZZLE_OBJECTIVE === "additional-coins" ? "selected" : ""}>\u6700\u4F4E\u8D2D\u5361\u652F\u51FA</option><option value="material-value" ${DEFAULT_PUZZLE_OBJECTIVE === "material-value" ? "selected" : ""}>\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF08\u9ED8\u8BA4\uFF09</option></select><small>\u65B0\u9ED8\u8BA4\u5305\u542B\u5E93\u5B58\u4F30\u503C\uFF1B\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u4ECD\u4FDD\u7559\u3002</small></label>
           <label>\u91D1\u5361\u6700\u9AD8\u8BC4\u5206<input id="puzzle-rating" type="number" min="1" max="99" step="1" value="82"><small>\u9ED8\u8BA4 82\uFF1B\u5DF2\u4FDD\u5B58\u7684\u66F4\u4F4E\u4E0A\u9650\u7EE7\u7EED\u6709\u6548\u3002</small></label>
           <label id="puzzle-quote-setting">\u8865\u5361\u5355\u5361\u62A5\u4EF7\u4E0A\u9650\uFF08\u91D1\u5E01\uFF09<input id="puzzle-quote-ceiling" type="number" min="150" max="15000000" step="1" placeholder="\u4E0D\u9650"><small>\u7559\u7A7A\u4E3A\u4E0D\u9650\uFF1B\u6B64\u9879\u7528\u4E8E\u8865\u5361\u89C4\u5212\u3002</small></label>
           <label id="puzzle-queries-setting">\u8D2D\u4E70\u67E5\u4EF7\u6B21\u6570<input id="puzzle-queries" type="number" min="1" step="1" value="5"><small>\u9ED8\u8BA4 5 \u6B21\u3002</small></label>
-        </div><small>\u94DC\u94F6\u5361\u6309\u539F\u751F\u54C1\u8D28\u8981\u6C42\u9009\u6750\uFF1B\u6700\u4F4E\u94F6\u5361\uFF0B\u81F3\u5C11 2 \u91D1\u6309 2 \u91D1\uFF0B\u5176\u4F59\u94F6\u5361\u89E3\u9898\u3002\u91D1\u5361\u4ECD\u53D7 FSU \u8303\u56F4\u9650\u5236\uFF0C\u7F3A\u6599\u4E0D\u81EA\u52A8\u589E\u52A0\u91D1\u5361\u6216\u63D0\u9AD8\u8BC4\u5206\u3002</small><div class="row"><button id="puzzle-policy-save" class="primary">\u4FDD\u5B58\u89E3\u9898\u8BBE\u7F6E</button></div></div>
+        </div><p id="puzzle-objective-note" role="status" aria-live="polite"></p><small>\u94DC\u94F6\u5361\u6309\u539F\u751F\u54C1\u8D28\u8981\u6C42\u9009\u6750\uFF1B\u6700\u4F4E\u94F6\u5361\uFF0B\u81F3\u5C11 2 \u91D1\u6309 2 \u91D1\uFF0B\u5176\u4F59\u94F6\u5361\u89E3\u9898\u3002\u91D1\u5361\u4ECD\u53D7 FSU \u8303\u56F4\u9650\u5236\uFF0C\u7F3A\u6599\u4E0D\u81EA\u52A8\u589E\u52A0\u91D1\u5361\u6216\u63D0\u9AD8\u8BC4\u5206\u3002</small><div class="row"><button id="puzzle-policy-save" class="primary">\u4FDD\u5B58\u89E3\u9898\u8BBE\u7F6E</button></div></div>
         <div id="settings-bottom" class="settings-bottom"></div>
       </section>
     </div><div class="operation-status" aria-live="polite">\u6700\u8FD1\u4E00\u6B21\u5DE5\u4F5C\u53F0\u64CD\u4F5C<output id="status">\u5C1A\u65E0\u64CD\u4F5C</output></div>
@@ -27899,6 +27901,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const node = (id14) => shadow.getElementById(id14);
+    const renderPuzzleObjective = () => {
+      node("puzzle-objective-note").textContent = node("puzzle-objective").value === "additional-coins" ? "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\uFF1A\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8981\u4FDD\u7559\u8D35\u5E93\u5B58\uFF0C\u8BF7\u6539\u9009\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF1A\u540C\u65F6\u6BD4\u8F83\u5E93\u5B58\u4F30\u503C\u4E0E\u5F85\u8D2D\u5361\u4EF7\u683C\uFF0C\u53EF\u80FD\u591A\u4E70\u4FBF\u5B9C\u5361\u4EE5\u4FDD\u7559\u8D35\u5E93\u5B58\uFF1B\u4ECD\u9075\u5B88\u539F\u91C7\u8D2D\u9650\u4EF7\u548C\u4FDD\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002";
+    };
+    node("puzzle-objective").addEventListener("change", renderPuzzleObjective);
+    renderPuzzleObjective();
     node("workbench-version").textContent = version ?? title;
     node("workbench-mode").textContent = liveEnabled === true ? "\u5DF2\u5F00\u653E\u73B0\u6709\u5355\u6B21\u64CD\u4F5C\uFF1B\u63D0\u4EA4\u9700\u5355\u72EC\u786E\u8BA4\u3002" : "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002";
     node("diagnostic-export-card").hidden = typeof exportDiagnostics !== "function";
@@ -28090,7 +28097,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           queriesNumber: Number(node("puzzle-queries").value),
           objective: node("puzzle-objective").value
         }) : await setPuzzleMaxRating(value);
-        return { ...result, reason: result.status === "observed" ? `\u89E3\u9898\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1A\u6700\u9AD8\u8BC4\u5206 ${result.maxRating}\uFF1B\u8865\u5361\u5355\u5361\u62A5\u4EF7${result.quoteCeiling == null ? "\u4E0D\u9650" : `\u4E0A\u9650 ${result.quoteCeiling} \u91D1\u5E01`}` : result.reason };
+        return { ...result, reason: result.status === "observed" ? `\u89E3\u9898\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1A${result.objective ? `\u76EE\u6807 ${result.objective === "material-value" ? "\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C" : "\u6700\u4F4E\u8D2D\u5361\u652F\u51FA"}\uFF1B` : ""}\u6700\u9AD8\u8BC4\u5206 ${result.maxRating}\uFF1B\u8865\u5361\u5355\u5361\u62A5\u4EF7${result.quoteCeiling == null ? "\u4E0D\u9650" : `\u4E0A\u9650 ${result.quoteCeiling} \u91D1\u5E01`}` : result.reason };
       });
     });
     shadow.querySelector("details").addEventListener("toggle", () => {
@@ -28101,7 +28108,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           node("puzzle-rating").value = String(result.maxRating);
           node("puzzle-quote-ceiling").value = result.quoteCeiling == null ? "" : String(result.quoteCeiling);
           node("puzzle-queries").value = String(result.queriesNumber ?? 5);
-          node("puzzle-objective").value = result.objective ?? "additional-coins";
+          node("puzzle-objective").value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+          renderPuzzleObjective();
         }
         return result;
       });
@@ -28216,7 +28224,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             node("puzzle-rating").value = String(result.maxRating);
             node("puzzle-quote-ceiling").value = result.quoteCeiling == null ? "" : String(result.quoteCeiling);
             node("puzzle-queries").value = String(result.queriesNumber ?? 5);
-            node("puzzle-objective").value = result.objective ?? "additional-coins";
+            node("puzzle-objective").value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+            renderPuzzleObjective();
           }
           return result;
         });
@@ -28377,9 +28386,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const summary3 = result?.procurementSummary;
     const costReason = summary3?.diagnostics?.localReason ?? summary3?.reason ?? result?.valueReason;
     const saved = ["filled", "concept-filled"].includes(result?.status);
+    const effectiveObjective = summary3?.diagnostics?.objective ?? result?.objective;
+    const objectiveNotice = !saved ? "" : effectiveObjective === "additional-coins" ? summary3?.diagnostics?.requestedObjective === "material-value" ? "\n\u672C\u8F6E\u672A\u5B8C\u6210\u6750\u6599\u603B\u503C\u6BD4\u8F83\uFF0C\u5F53\u524D\u53EA\u5217\u8D2D\u5361\u652F\u51FA\uFF1B\u4E0D\u662F\u6700\u4F4E\u6750\u6599\u6210\u672C\u7ED3\u8BBA\u3002" : "\n\u5F53\u524D\u6309\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\u8BA1\u7B97\uFF0C\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8BF7\u5230 FCAT \u8BBE\u7F6E \u2192 \u89E3\u9898\u4F18\u5316\u76EE\u6807\uFF0C\u9009\u62E9\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF0C\u518D\u91CD\u65B0\u89E3\u9898\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "";
     const costNotice = saved && costReason === "FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT" ? "\n\u8FDB\u4E00\u6B65\u964D\u4EF7\u641C\u7D22\u5DF2\u8FBE\u523030\u79D2\uFF0C\u672C\u6B21\u91C7\u7528\u5DF2\u9A8C\u8BC1\u65B9\u6848\uFF0C\u5C1A\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : saved && (summary3?.status === "blocked" || result?.valueReason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") ? `
 \u964D\u4EF7\u4F18\u5316\u672A\u5B8C\u6210\uFF1A${purchaseReasons[costReason] ?? "\u65E0\u6CD5\u5B8C\u6210\u6210\u672C\u6BD4\u8F83"}\u3002\u672C\u6B21\u4FDD\u7559\u539F\u5408\u89C4\u9635\u5BB9\uFF0C\u4E0D\u4EE3\u8868\u6700\u4F4E\u6210\u672C\u3002` : "";
-    const message = resultText(result) + costNotice + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
+    const message = resultText(result) + objectiveNotice + costNotice + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
     const purchase = result?.purchaseSuggestion;
     if (purchase?.status !== "blocked") return message;
     const reason = code(purchase.reason);
@@ -37490,7 +37501,7 @@ ${version ?? ""}`;
   var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile", "grade-plan", "grade-overview"].includes(entry.event);
   var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || roadmapEntry(entry) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint", "incumbentRejectReason"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "requestedObjective", "endpoint", "incumbentRejectReason"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "errorCode",
@@ -45755,7 +45766,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.105" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.106" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -46107,8 +46118,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.105"}`,
-    version: "27.0.105",
+    title: `FC Automation Tool ${"27.0.106"}`,
+    version: "27.0.106",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

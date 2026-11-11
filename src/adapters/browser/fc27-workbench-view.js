@@ -1,3 +1,4 @@
+import { DEFAULT_PUZZLE_OBJECTIVE } from '../../fc27/puzzle-procurement-policy.js';
 import { currencyInputStyles } from './fc27-listing-currency.js';
 import { purchaseDialogMarkup, purchaseDialogStyles } from './fc27-purchase-dialog.js';
 // FCAT module layout. Gallery loads its public catalogue lazily when selected.
@@ -113,15 +114,15 @@ export function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
       </section>
       <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>设置与诊断</h2></div></div>
-        <div class="feature-grid"><div class="card"><h3>当前版本</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">解题与采购参数在「SBC 解题」页设置。</p></div>
+        <div class="feature-grid"><div class="card"><h3>当前版本</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">解题与采购参数在本页下方设置。</p></div>
         <div id="diagnostic-export-card" class="card"><h3>离线诊断</h3><p>导出最近的脱敏运行事件，用于离线调查 Gallery 回退、限流和网络错误。</p><small>不包含 URL、响应正文、凭证、账号标识或完整球员数据。</small><div class="row"><button id="export-diagnostics" class="primary">导出诊断日志</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
         ${installationChecks ? '<div class="card"><h3>安装与多标签检查</h3><p>仅在需要排查存储或多标签占用问题时运行。</p><div class="row"><button id="gm">检查脚本存储</button><button id="hold">检查标签锁</button></div></div>' : ''}</div>
         <div id="puzzle-settings" class="card card-block"><h3>解题与采购设置</h3><div class="settings-grid">
-          <label>解题优化目标<select id="puzzle-objective"><option value="additional-coins">最低购卡支出</option><option value="material-value">最低材料总价值</option></select><small>购卡支出只计待购卡；材料总价值包含库存估值。</small></label>
+          <label>解题优化目标<select id="puzzle-objective"><option value="additional-coins" ${DEFAULT_PUZZLE_OBJECTIVE === 'additional-coins' ? 'selected' : ''}>最低购卡支出</option><option value="material-value" ${DEFAULT_PUZZLE_OBJECTIVE === 'material-value' ? 'selected' : ''}>最低材料总价值（默认）</option></select><small>新默认包含库存估值；以前保存的选项仍保留。</small></label>
           <label>金卡最高评分<input id="puzzle-rating" type="number" min="1" max="99" step="1" value="82"><small>默认 82；已保存的更低上限继续有效。</small></label>
           <label id="puzzle-quote-setting">补卡单卡报价上限（金币）<input id="puzzle-quote-ceiling" type="number" min="150" max="15000000" step="1" placeholder="不限"><small>留空为不限；此项用于补卡规划。</small></label>
           <label id="puzzle-queries-setting">购买查价次数<input id="puzzle-queries" type="number" min="1" step="1" value="5"><small>默认 5 次。</small></label>
-        </div><small>铜银卡按原生品质要求选材；最低银卡＋至少 2 金按 2 金＋其余银卡解题。金卡仍受 FSU 范围限制，缺料不自动增加金卡或提高评分。</small><div class="row"><button id="puzzle-policy-save" class="primary">保存解题设置</button></div></div>
+        </div><p id="puzzle-objective-note" role="status" aria-live="polite"></p><small>铜银卡按原生品质要求选材；最低银卡＋至少 2 金按 2 金＋其余银卡解题。金卡仍受 FSU 范围限制，缺料不自动增加金卡或提高评分。</small><div class="row"><button id="puzzle-policy-save" class="primary">保存解题设置</button></div></div>
         <div id="settings-bottom" class="settings-bottom"></div>
       </section>
     </div><div class="operation-status" aria-live="polite">最近一次工作台操作<output id="status">尚无操作</output></div>

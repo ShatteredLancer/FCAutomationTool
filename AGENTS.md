@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-11 Puzzle 27.0.106：用户确认默认最低材料总值并提示已保存现金模式切换。113/173新日志5采购/6自有/新增2800，cash目标且库存估价计数0，不能把截图10300与新增支出当同口径。仅默认/无目标回读与UI选择改material-value；显式cash及评分/cap/次数不改写。设置/原生结果解释库存成本与路径，requestedObjective单独进入原有界诊断，估值回退不冒充目标或最低值；完整自有方案无价格服务时跳过无意义目录比较，未知估值仍明确。合成cash2500/材料7800→value2700/5200保留贵85，85降价150后可入选，非硬禁评分/实价保证。原比较器/报价单源TTL/部分估值、预算/FSU/锁卡/主阵容/预留及防重均不改；见docs/releases/27.0.106.md。
+
 2026-11-11 Puzzle 27.0.105：113/173日志安全10(2银8金)，3页铜/银/国籍铜，57/54版本，CONSTRAINT_SHORTAGE、0节点；非分段上限耗尽。先红同形Session重放，原国家亲和按偏好6铜忽略同国5与league cap3，采样集中不能成阵；仅无显式身份/club总cap的默契路线，原生品质宽页后按版本去重/cap内国籍支持与已见league覆盖提示所需品质国籍页；仍3×20/原5万→10万→20万、无强制身份，原完整校验/FSU/锁卡/主阵容/预留/预算与交易防重不变。8回归及离线Chrome控制，455节点/11人/30chem/合成1000，非现场逐卡/实价验收；详见docs/releases/27.0.105.md。
 
 2026-11-08 Streamlined 27.0.104：全流程审计发现同目标 rejected 单批次增加材料后 FP 变化，被旧 purchase-history-overlap 阻断；仅活动采购 marker 精确匹配、同完整 Challenge/政策/积分及 revision 时先归档回读再 fresh 验证，不放宽 pending/unknown/confirmed。共享买卡服务错误或矛盾物品回包改 unknown，保留精确意图，防替换挂牌双扣款。Stop 覆盖适配器创建、pending持久化、Provider各await与native send前，已送出仍结算；accepted回执只重试一次本地checkpoint，原revision/不重发。新增完整生产组合+合成I/O的恢复到完成及故障矩阵，6历史材料不重投、2已购不重买；预算/cap/锁卡/主阵容/FSU/ad主逻辑不变。见docs/releases/27.0.104.md。
