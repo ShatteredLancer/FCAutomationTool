@@ -9,6 +9,7 @@ export async function exercisePuzzleAffinity(context) {
     const bundle = await build({ absWorkingDir: root, stdin: { resolveDir: root, contents: `
       export { default as replay } from './tests/fixtures/fc27-puzzle-chemistry-affinity-2026-10-26.json';
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
+      export { nationalMinimumFixture } from './tests/helpers/fc27-puzzle-national-minimum-fixture.js';
       export { evaluateFc27PuzzleSquad } from './src/fc27/puzzle-evaluator.js';
     ` }, bundle: true, write: false, format: 'iife', globalName: 'PuzzleAffinitySmoke', target: 'chrome120' });
     await page.setContent('<!doctype html><title>Puzzle affinity offline replay</title>');
@@ -46,5 +47,32 @@ export async function exercisePuzzleAffinity(context) {
     assert.deepEqual(evidence.queries[2], { start: 0, count: 20, level: 'gold', nation: 21 });
     assert.equal(evidence.secondRequests, 0);
     console.log('Puzzle chemistry-affinity offline replay passed: six native open positions, three pages, 50k budget, cached repeat; no EA access.');
+
+    const national = await page.evaluate(async () => {
+      const { nationalMinimumFixture, createFc27PuzzleProcurementSession } = globalThis.PuzzleAffinitySmoke;
+      const f = nationalMinimumFixture(), { input } = f, memory = new Map(), queries = []; let writes = 0;
+      const mutation = () => { writes++; throw Error('Unexpected offline mutation'); };
+      const options = { now: () => input.now,
+        get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+        set: async (key, value) => memory.set(key, structuredClone(value)),
+        createTransport: async () => ({ readCatalogPage: async query => {
+          queries.push(query); return { status: 'observed', source: 'ea-defid', season: '27', query, observedAt: input.now,
+            entries: (query.level==='bronze' ? f.bronze : query.nation===1 ? f.target : f.silver)
+              .filter(row => !query.nation || row.nationId===query.nation).slice(query.start,query.start+query.count) };
+        }, buy: mutation, move: mutation, save: mutation, submit: mutation, readQuotePage: mutation }),
+        loadPublicPrices: async ids => ({ policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+          { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futbin','futgg'].map(source => [source,
+            { schema: 2, source, definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: input.now,
+              expiresAt: input.now+300000, sourceUpdatedAt: null, error: null }])) }])) }) };
+      const run = () => createFc27PuzzleProcurementSession(options).plan(input);
+      const first = await run(), second = await run(), plan = first.plans?.[0];
+      return { status: first.status, repeated: second.status, queries, writes, secondRequests: second.requests,
+        chemistry: plan?.teamFacts.chemistry, count: plan?.purchases.length + plan?.selectedOwned.length, nodes: first.diagnostics.nodes };
+    });
+    assert.equal(national.status, 'suggested'); assert.equal(national.repeated, 'suggested');
+    assert.equal(national.count, 11); assert.ok(national.chemistry >= 16); assert.ok(national.nodes <= 200000);
+    assert.equal(national.queries.length, 3); assert.deepEqual(national.queries[2], { start: 0, count: 20, level: 'silver', nation: 1 });
+    assert.equal(national.writes, 0); assert.equal(national.secondRequests, 0);
+    console.log('Puzzle national-minimum Chrome passed: 5 same nation, 5 silver, league cap 3, 4+ leagues, 11 cards/16+ chemistry, three pages and cached repeat; synthetic, no EA access.');
   } finally { await page.close(); }
 }

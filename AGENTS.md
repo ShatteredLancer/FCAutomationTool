@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-11 Puzzle 27.0.105：113/173日志安全10(2银8金)，3页铜/银/国籍铜，57/54版本，CONSTRAINT_SHORTAGE、0节点；非分段上限耗尽。先红同形Session重放，原国家亲和按偏好6铜忽略同国5与league cap3，采样集中不能成阵；仅无显式身份/club总cap的默契路线，原生品质宽页后按版本去重/cap内国籍支持与已见league覆盖提示所需品质国籍页；仍3×20/原5万→10万→20万、无强制身份，原完整校验/FSU/锁卡/主阵容/预留/预算与交易防重不变。8回归及离线Chrome控制，455节点/11人/30chem/合成1000，非现场逐卡/实价验收；详见docs/releases/27.0.105.md。
+
 2026-11-08 Streamlined 27.0.104：全流程审计发现同目标 rejected 单批次增加材料后 FP 变化，被旧 purchase-history-overlap 阻断；仅活动采购 marker 精确匹配、同完整 Challenge/政策/积分及 revision 时先归档回读再 fresh 验证，不放宽 pending/unknown/confirmed。共享买卡服务错误或矛盾物品回包改 unknown，保留精确意图，防替换挂牌双扣款。Stop 覆盖适配器创建、pending持久化、Provider各await与native send前，已送出仍结算；accepted回执只重试一次本地checkpoint，原revision/不重发。新增完整生产组合+合成I/O的恢复到完成及故障矩阵，6历史材料不重投、2已购不重买；预算/cap/锁卡/主阵容/FSU/ad主逻辑不变。见docs/releases/27.0.104.md。
 
 2026-11-08 Streamlined 27.0.103：.102新日志原任务恢复成功后，三次内层preflight REPLAN_REQUIRED，6张/10550分及3500支出不变；.102替身漏掉真实内层rejected Journal。新增生产采购桥接与Session→Procurement→Bridge→Transaction/双Journal失败回归；仅采购桥接显式restartRejected，同FP单拒绝批次、起点=当前分、无receipt/漂移且原revision匹配，锁内先完整归档并回读再begin，随后原fresh验证再发送。只读恢复/普通贡献不改；pending/unknown/confirmed不重启，归档失败原记录不动；不抬预算/cap、不重买已购或重投已确认。详见docs/releases/27.0.103.md。
