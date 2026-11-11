@@ -26,7 +26,16 @@ const refinementCards = plan => plan.purchases
 const matchesQuery = (card, query) => (!query.team || query.team === card.teamId)
   && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId)
   && query.level === (card.rating < 65 ? 'bronze' : card.rating < 75 ? 'silver' : 'gold');
-function refinementQueries(plan, pages, used, input) {
+function nationalCostDiscovery(input) {
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements,
+    input.challenge.slotCount - input.challenge.brickIndices.length);
+  if (parsed.status !== 'observed') return false;
+  if (parsed.rules.some(rule => ['from-clubs', 'from-leagues', 'from-nations', 'distinct-clubs'].includes(rule.kind))) return false;
+  const nation = parsed.rules.find(rule => rule.kind === 'same-nation' && ['min', 'exact'].includes(rule.mode));
+  const league = parsed.rules.find(rule => rule.kind === 'same-league' && ['max', 'exact'].includes(rule.mode));
+  return Boolean(nation && league && nation.value > league.value);
+}
+function refinementQueries(plan, pages, used, input, { materialValue = false } = {}) {
   const queries = [];
   const add = query => { if (!used.some(old => same(old, query)) && !queries.some(old => same(old, query))) queries.push(query); };
   const cards = refinementCards(plan);
@@ -34,6 +43,23 @@ function refinementQueries(plan, pages, used, input) {
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required);
   const rating = parsed.status === 'observed' ? Math.max(0, ...parsed.rules
     .filter(rule => ['min-team-rating', 'exact-team-rating'].includes(rule.kind)).map(rule => rule.value)) : 0;
+  if (materialValue && parsed.status === 'observed' && rating <= 75) {
+    // High-valued owned golds are not free chemistry anchors. Try a connected
+    // lower tier before paging the same 65/75-rated sample again. This is only
+    // discovery: native quality/count/rating/chemistry and policy still decide.
+    const allowed = allowedFc27MarketTiers(parsed.rules, input.policy);
+    for (const card of cards) {
+      if (!id(card.nationId)) continue;
+      const lower = allowed.filter(tier => tier.max < card.rating
+        && !parsed.rules.some(rule => rule.kind === 'quality-count' && rule.mode !== 'max' && rule.count >= required
+          && !rule.qualities.includes(tier.level === 'bronze' ? 1 : tier.level === 'silver' ? 2 : 3)));
+      for (const tier of lower) {
+        add({ start: 0, count: 20, level: tier.level, nation: card.nationId });
+        if (queries.length === 2) return queries;
+      }
+    }
+    if (queries.length) return queries;
+  }
   if (cards.length && rating > 0 && rating <= 75
       || cards.some(card => card.rating >= 75) && parsed.status === 'observed' && rating <= 75
         && (plan.purchaseCount === 0 || parsed.rules.some(rule => ['from-clubs', 'from-leagues', 'from-nations'].includes(rule.kind)
@@ -333,9 +359,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const pages = []; let searchSpent = 0;
       // Feasibility alone may expand. Existing owned-incumbent optimization
       // and repair stay fixed; one ledger spans every joint route and page.
-      adaptiveBudget = adaptiveSearch === true && seed.status !== 'ready' && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget() : null;
+      adaptiveBudget = adaptiveSearch === true && seed.status !== 'ready' && !hasOwnedIncumbent
+        ? createFc27PuzzleSearchBudget({ refinementReserve: optimizeMaterialValue && loadPublicPrices ? 6000 : 0 }) : null;
       const searchBudget = adaptiveBudget?.cap ?? (seed.status === 'ready' ? 20000 : 50000);
       const searchRemaining = () => adaptiveBudget?.remaining() ?? Math.max(0, searchBudget - searchSpent);
+      const baseSearchRemaining = () => adaptiveBudget?.remainingForSearch() ?? searchRemaining();
       const accountFixedNodes = cumulative => {
         if (adaptiveBudget && Number.isSafeInteger(cumulative)) {
           const delta = cumulative - adaptiveBudget.snapshot().budgetNodes;
@@ -394,6 +422,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.scopeTruncated = diagnostics.unknownCount > 0;
         diagnostics.objective = totalValueMode ? 'material-value' : 'additional-coins';
       }
+      // No search nodes have been spent yet. A failed valuation must retain
+      // the original cash-feasibility allowance, not reserve work for a total
+      // value comparison that this run cannot actually perform.
+      if (adaptiveBudget && !totalValueMode) adaptiveBudget = createFc27PuzzleSearchBudget();
       // Price and retain the already fully validated owned solution as the
       // first candidate. It must survive a capped/failed market search, and it
       // lets the combined search compare real market replacements against the
@@ -446,6 +478,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       let jointSearch = ownedIncumbent?.status === 'preview' || seed.status !== 'ready';
       diagnostics.incumbentProvided = ownedIncumbent?.status === 'preview';
       const objective = () => totalValueMode ? 'material-value' : 'additional-coins';
+      const connectedCostDiscovery = () => Boolean(totalValueMode && adaptiveBudget && nationalCostDiscovery(input));
       const planCost = plan => totalValueMode ? plan.materialValue : plan.estimatedCost;
       const refinementPlan = plan => !totalValueMode ? plan : { ...plan, purchases: [...plan.purchases,
         ...plan.selectedOwned.map(ref => ({ ...puzzleOwnedValueCandidates(input).find(item => item.id === ref.id),
@@ -501,8 +534,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           searchSpent += hint.nodes; diagnostics.nodes = searchSpent;
           if (searchRemaining() === 0) return;
         }
-        const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input)
-          .sort((a, b) => ['team', 'nation', 'league'].filter(key => b[key]).length
+        const direct = refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() });
+        const directions = connectedCostDiscovery() ? [...direct, ...hint.queries].filter((query, index, all) =>
+          all.findIndex(old => same(old, query)) === index).slice(0, 2)
+          : hint.queries.length ? hint.queries : direct.sort((a, b) => ['team', 'nation', 'league'].filter(key => b[key]).length
             - ['team', 'nation', 'league'].filter(key => a[key]).length).slice(0, 2);
         if (!directions.length) return;
         catalogTotal = usedQueries.length + directions.filter(query => !usedQueries.some(used => same(used, query))).length;
@@ -671,7 +706,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex(old => same(old, query)) === index);
       while (pendingQueries.length && usedQueries.length < 3) {
         assertOptimization();
-        if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+        if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
           diagnostics.optimizationBudgetExhausted = true;
           diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
           if (incumbent) return await finishIncumbent();
@@ -703,7 +738,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           assertOptimization(); diagnostics.stage = 'local-market-search';
           const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId));
           const prices = loadPublicPrices ? new Map([...quotes].map(([id, quote]) => [id, quote.price])) : null;
-          if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+          if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
             diagnostics.optimizationBudgetExhausted = true;
             diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
             if (incumbent) return await finishIncumbent();
@@ -717,7 +752,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           const remainingLanes = Math.max(1, 4 - usedQueries.length);
           const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
           const passBudget = Math.max(1, Math.min(adaptiveBudget && !adaptivePass ? 50000 : Infinity,
-            Math.floor(searchRemaining() / remainingLanes)));
+            Math.floor(baseSearchRemaining() / remainingLanes)));
           const searchOptions = loadPublicPrices || adaptiveBudget ? { costCeiling: incumbent ? planCost(incumbent[0]) : totalValueMode ? materialCeiling : null,
             ...(jointSearch ? { maxNodes: passBudget, materialPrices,
               ...(adaptivePass ? { searchBudget: adaptiveBudget } : {}) } : { maxChecks: passBudget }) } : {};
@@ -737,7 +772,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           const hasQuotedLowerTierOwned = totalValueMode && Boolean(incumbent)
             && ownedPool.some(item => !selectedOwnedDefinitions.has(item.definitionId)
               && item.rating < 75 && validPublicValue(materialPrices?.get(item.definitionId)));
-          const localOnlyMaterial = totalValueMode && hasOwnedIncumbent && Boolean(incumbent)
+          const localOnlyMaterial = totalValueMode && (hasOwnedIncumbent || connectedCostDiscovery()) && Boolean(incumbent)
             && !hasQuotedLowerTierOwned
             && incumbent[0].selectedOwned.every(item => validPublicValue(materialPrices?.get(item.definitionId)))
             && incumbent[0].purchases.every(item => validPublicValue(prices?.get(item.definitionId)));
@@ -745,7 +780,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           const suggestion = await measure('searchMs', () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
             ...searchOptions, assertCurrent: assertOptimization, prices, onProgress: searchProgress })
             : suggestFc27PuzzleJointPurchasesCooperatively(input, available, { ...searchOptions, assertCurrent: assertOptimization, prices,
-              incumbent: hasOwnedIncumbent || !totalValueMode ? (incumbent ? { status: 'preview',
+              incumbent: hasOwnedIncumbent || !totalValueMode || connectedCostDiscovery() ? (incumbent ? { status: 'preview',
                 selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases] } : ownedIncumbent) : null,
               // A priced feasible incumbent makes a whole-squad 20k DFS an
               // expensive way to rediscover its ten unchanged cards. In
@@ -855,6 +890,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             .sort((a, b) => comparePuzzlePlans(a, b, objective()));
           if (priced.length) {
             adaptiveBudget?.markFeasible();
+            if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 30000);
             diagnostics.initialEstimatedCost ??= priced[0].estimatedCost;
             if (!incumbent || comparePuzzlePlans(priced[0], incumbent[0], objective()) < 0) incumbent = priced;
             diagnostics.estimatedCost = incumbent[0].estimatedCost;
@@ -882,12 +918,12 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         }
         if (incumbent) {
           if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
-          if (searchRemaining() === 0) {
+          if (baseSearchRemaining() === 0) {
             diagnostics.optimizationBudgetExhausted = true;
             diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
             return await finishIncumbent();
           }
-          pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries]
+          pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() }), ...pendingQueries]
             .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
               && all.findIndex(other => same(other, candidate)) === index);
         } else if (seed.status !== 'ready' && usedQueries.length < 3) {

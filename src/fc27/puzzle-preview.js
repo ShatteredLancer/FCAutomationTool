@@ -11,16 +11,24 @@ const searchBudgets = new WeakSet();
 
 // One planning run owns this ledger. Traversals keep their own DFS stacks and
 // fixed lane ceilings; only actual work advances the cumulative stage.
-export function createFc27PuzzleSearchBudget() {
+export function createFc27PuzzleSearchBudget({ refinementReserve = 0 } = {}) {
+  if (!Number.isSafeInteger(refinementReserve) || refinementReserve < 0 || refinementReserve >= PUZZLE_SEARCH_STAGES[0])
+    throw new Error('FC27_PUZZLE_BUDGET_INVALID');
   let nodes = 0, stage = 0, feasible = false;
+  const searchCeiling = () => feasible ? Math.max(nodes, PUZZLE_SEARCH_STAGES[stage] - refinementReserve) : PUZZLE_SEARCH_STAGES.at(-1);
   const snapshot = () => ({ budgetNodes: nodes, maxNodes: PUZZLE_SEARCH_STAGES[stage],
     budgetStage: stage + 1, budgetStages: PUZZLE_SEARCH_STAGES.length, nodeCap: PUZZLE_SEARCH_STAGES.at(-1) });
   const budget = Object.freeze({
     cap: PUZZLE_SEARCH_STAGES.at(-1),
     snapshot,
     remaining: () => Math.max(0, (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)) - nodes),
+    remainingForSearch: () => Math.max(0, searchCeiling() - nodes),
     markFeasible: () => { feasible = true; },
     takeNode: () => {
+      // A priced solution changes the remaining work from feasibility to
+      // optional cost improvement. Keep part of this SAME stage for connected
+      // replacements; never expand the stage merely to optimize a valid plan.
+      if (feasible && nodes >= searchCeiling()) return false;
       if (nodes === PUZZLE_SEARCH_STAGES[stage]) {
         if (feasible || stage === PUZZLE_SEARCH_STAGES.length - 1) return false;
         stage++;

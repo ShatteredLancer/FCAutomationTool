@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.106
+// @version      27.0.107
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.106", at: Date.now(), status: 'started',
+    state = { version: "27.0.107", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -4308,8 +4308,11 @@
   // src/fc27/puzzle-preview.js
   var PUZZLE_SEARCH_STAGES = Object.freeze([5e4, 1e5, 2e5]);
   var searchBudgets = /* @__PURE__ */ new WeakSet();
-  function createFc27PuzzleSearchBudget() {
+  function createFc27PuzzleSearchBudget({ refinementReserve = 0 } = {}) {
+    if (!Number.isSafeInteger(refinementReserve) || refinementReserve < 0 || refinementReserve >= PUZZLE_SEARCH_STAGES[0])
+      throw new Error("FC27_PUZZLE_BUDGET_INVALID");
     let nodes = 0, stage = 0, feasible = false;
+    const searchCeiling = () => feasible ? Math.max(nodes, PUZZLE_SEARCH_STAGES[stage] - refinementReserve) : PUZZLE_SEARCH_STAGES.at(-1);
     const snapshot = () => ({
       budgetNodes: nodes,
       maxNodes: PUZZLE_SEARCH_STAGES[stage],
@@ -4321,10 +4324,12 @@
       cap: PUZZLE_SEARCH_STAGES.at(-1),
       snapshot,
       remaining: () => Math.max(0, (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)) - nodes),
+      remainingForSearch: () => Math.max(0, searchCeiling() - nodes),
       markFeasible: () => {
         feasible = true;
       },
       takeNode: () => {
+        if (feasible && nodes >= searchCeiling()) return false;
         if (nodes === PUZZLE_SEARCH_STAGES[stage]) {
           if (feasible || stage === PUZZLE_SEARCH_STAGES.length - 1) return false;
           stage++;
@@ -8022,7 +8027,18 @@
   var localReadCancellation = (reason) => ["FC27_PUZZLE_FILL_TARGET_CHANGED", "FC27_PUZZLE_FILL_INPUTS_CHANGED"].includes(reason);
   var refinementCards = (plan) => plan.purchases.filter((card) => card.estimatedUnitPrice > (card.rating < 75 ? 300 : 600)).sort((a, b) => b.estimatedUnitPrice - a.estimatedUnitPrice);
   var matchesQuery = (card, query) => (!query.team || query.team === card.teamId) && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId) && query.level === (card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold");
-  function refinementQueries(plan, pages, used, input) {
+  function nationalCostDiscovery(input) {
+    const parsed = parseFc27SbcRequirements(
+      input.challenge.rawRequirements,
+      input.challenge.slotCount - input.challenge.brickIndices.length
+    );
+    if (parsed.status !== "observed") return false;
+    if (parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations", "distinct-clubs"].includes(rule.kind))) return false;
+    const nation = parsed.rules.find((rule) => rule.kind === "same-nation" && ["min", "exact"].includes(rule.mode));
+    const league = parsed.rules.find((rule) => rule.kind === "same-league" && ["max", "exact"].includes(rule.mode));
+    return Boolean(nation && league && nation.value > league.value);
+  }
+  function refinementQueries(plan, pages, used, input, { materialValue = false } = {}) {
     const queries = [];
     const add3 = (query) => {
       if (!used.some((old) => same12(old, query)) && !queries.some((old) => same12(old, query))) queries.push(query);
@@ -8031,6 +8047,18 @@
     const required2 = input.challenge.slotCount - input.challenge.brickIndices.length;
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required2);
     const rating = parsed.status === "observed" ? Math.max(0, ...parsed.rules.filter((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind)).map((rule) => rule.value)) : 0;
+    if (materialValue && parsed.status === "observed" && rating <= 75) {
+      const allowed = allowedFc27MarketTiers(parsed.rules, input.policy);
+      for (const card of cards) {
+        if (!id3(card.nationId)) continue;
+        const lower = allowed.filter((tier) => tier.max < card.rating && !parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count >= required2 && !rule.qualities.includes(tier.level === "bronze" ? 1 : tier.level === "silver" ? 2 : 3)));
+        for (const tier of lower) {
+          add3({ start: 0, count: 20, level: tier.level, nation: card.nationId });
+          if (queries.length === 2) return queries;
+        }
+      }
+      if (queries.length) return queries;
+    }
     if (cards.length && rating > 0 && rating <= 75 || cards.some((card) => card.rating >= 75) && parsed.status === "observed" && rating <= 75 && (plan.purchaseCount === 0 || parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind) && rule.mode !== "max" && rule.count > 0))) {
       const lower = allowedFc27MarketTiers(parsed.rules, input.policy).find((tier) => tier.max < 75 && !parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count >= required2 && !rule.qualities.includes(tier.level === "bronze" ? 1 : 2)));
       const league = parsed.rules.find((rule) => rule.kind === "from-leagues" && rule.mode === "min" && rule.count > 0)?.ids[0] ?? plan.purchases.map((card) => card.leagueId).sort((a, b) => plan.purchases.filter((card) => card.leagueId === b).length - plan.purchases.filter((card) => card.leagueId === a).length)[0];
@@ -8392,9 +8420,10 @@
           const positionSkipped = /* @__PURE__ */ new Set();
           const pages = [];
           let searchSpent = 0;
-          adaptiveBudget = adaptiveSearch === true && seed.status !== "ready" && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget() : null;
+          adaptiveBudget = adaptiveSearch === true && seed.status !== "ready" && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget({ refinementReserve: optimizeMaterialValue && loadPublicPrices ? 6e3 : 0 }) : null;
           const searchBudget = adaptiveBudget?.cap ?? (seed.status === "ready" ? 2e4 : 5e4);
           const searchRemaining = () => adaptiveBudget?.remaining() ?? Math.max(0, searchBudget - searchSpent);
+          const baseSearchRemaining = () => adaptiveBudget?.remainingForSearch() ?? searchRemaining();
           const accountFixedNodes = (cumulative) => {
             if (adaptiveBudget && Number.isSafeInteger(cumulative)) {
               const delta = cumulative - adaptiveBudget.snapshot().budgetNodes;
@@ -8459,6 +8488,7 @@
             diagnostics.scopeTruncated = diagnostics.unknownCount > 0;
             diagnostics.objective = totalValueMode ? "material-value" : "additional-coins";
           }
+          if (adaptiveBudget && !totalValueMode) adaptiveBudget = createFc27PuzzleSearchBudget();
           if (totalValueMode && ownedIncumbent?.status === "preview") {
             const safe3 = puzzleOwnedValueCandidates(input);
             const selectedOwned = ownedIncumbent.selected.map((ref) => safe3.find((item2) => item2.id === ref.id && item2.definitionId === ref.definitionId && item2.pile === ref.pile && item2.rating === ref.rating));
@@ -8515,6 +8545,7 @@
           let jointSearch = ownedIncumbent?.status === "preview" || seed.status !== "ready";
           diagnostics.incumbentProvided = ownedIncumbent?.status === "preview";
           const objective = () => totalValueMode ? "material-value" : "additional-coins";
+          const connectedCostDiscovery = () => Boolean(totalValueMode && adaptiveBudget && nationalCostDiscovery(input));
           const planCost = (plan) => totalValueMode ? plan.materialValue : plan.estimatedCost;
           const refinementPlan = (plan) => !totalValueMode ? plan : { ...plan, purchases: [
             ...plan.purchases,
@@ -8604,7 +8635,8 @@
               diagnostics.nodes = searchSpent;
               if (searchRemaining() === 0) return;
             }
-            const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input).sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
+            const direct = refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() });
+            const directions = connectedCostDiscovery() ? [...direct, ...hint.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index).slice(0, 2) : hint.queries.length ? hint.queries : direct.sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
             if (!directions.length) return;
             catalogTotal = usedQueries.length + directions.filter((query) => !usedQueries.some((used) => same12(used, query))).length;
             if (totalValueMode) diagnostics.initialMaterialValue = incumbent[0].materialValue;
@@ -8832,7 +8864,7 @@
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
             assertOptimization();
-            if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+            if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
               diagnostics.optimizationBudgetExhausted = true;
               diagnostics.searchComplete = false;
               diagnostics.optimalWithinPool = false;
@@ -8863,7 +8895,7 @@
               diagnostics.stage = "local-market-search";
               const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
               const prices = loadPublicPrices ? new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])) : null;
-              if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+              if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
@@ -8875,7 +8907,7 @@
               const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
               const passBudget = Math.max(1, Math.min(
                 adaptiveBudget && !adaptivePass ? 5e4 : Infinity,
-                Math.floor(searchRemaining() / remainingLanes)
+                Math.floor(baseSearchRemaining() / remainingLanes)
               ));
               const searchOptions = loadPublicPrices || adaptiveBudget ? {
                 costCeiling: incumbent ? planCost(incumbent[0]) : totalValueMode ? materialCeiling : null,
@@ -8898,7 +8930,7 @@
               };
               const selectedOwnedDefinitions = new Set(incumbent?.[0]?.selectedOwned?.map((item2) => item2.definitionId) ?? []);
               const hasQuotedLowerTierOwned = totalValueMode && Boolean(incumbent) && ownedPool.some((item2) => !selectedOwnedDefinitions.has(item2.definitionId) && item2.rating < 75 && validPublicValue(materialPrices?.get(item2.definitionId)));
-              const localOnlyMaterial = totalValueMode && hasOwnedIncumbent && Boolean(incumbent) && !hasQuotedLowerTierOwned && incumbent[0].selectedOwned.every((item2) => validPublicValue(materialPrices?.get(item2.definitionId))) && incumbent[0].purchases.every((item2) => validPublicValue(prices?.get(item2.definitionId)));
+              const localOnlyMaterial = totalValueMode && (hasOwnedIncumbent || connectedCostDiscovery()) && Boolean(incumbent) && !hasQuotedLowerTierOwned && incumbent[0].selectedOwned.every((item2) => validPublicValue(materialPrices?.get(item2.definitionId))) && incumbent[0].purchases.every((item2) => validPublicValue(prices?.get(item2.definitionId)));
               reportProgress();
               const suggestion = await measure("searchMs", () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
                 ...searchOptions,
@@ -8909,7 +8941,7 @@
                 ...searchOptions,
                 assertCurrent: assertOptimization,
                 prices,
-                incumbent: hasOwnedIncumbent || !totalValueMode ? incumbent ? {
+                incumbent: hasOwnedIncumbent || !totalValueMode || connectedCostDiscovery() ? incumbent ? {
                   status: "preview",
                   selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases]
                 } : ownedIncumbent : null,
@@ -9022,6 +9054,7 @@
               }).filter((plan) => !totalValueMode || Number.isSafeInteger(plan.materialValue) && (materialCeiling === null || plan.materialValue < materialCeiling)).sort((a, b) => comparePuzzlePlans(a, b, objective()));
               if (priced3.length) {
                 adaptiveBudget?.markFeasible();
+                if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 3e4);
                 diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
                 if (!incumbent || comparePuzzlePlans(priced3[0], incumbent[0], objective()) < 0) incumbent = priced3;
                 diagnostics.estimatedCost = incumbent[0].estimatedCost;
@@ -9041,13 +9074,13 @@
             }
             if (incumbent) {
               if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
-              if (searchRemaining() === 0) {
+              if (baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
                 return await finishIncumbent();
               }
-              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
+              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() }), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
             } else if (seed.status !== "ready" && usedQueries.length < 3) {
               const nextRoute = planFc27PuzzleShortageQueries(
                 input,
@@ -45766,7 +45799,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.106" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.107" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -46118,8 +46151,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.106"}`,
-    version: "27.0.106",
+    title: `FC Automation Tool ${"27.0.107"}`,
+    version: "27.0.107",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

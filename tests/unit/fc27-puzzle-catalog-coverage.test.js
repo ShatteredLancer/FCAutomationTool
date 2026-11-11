@@ -72,6 +72,21 @@ it('also refines an expensive additional-coins route instead of skipping coverag
   expect(result.globalMinimumProven).toBe(false);
 });
 
+it('preserves cost-discovery work after an adaptive feasibility pass has found an expensive squad', async () => {
+  const x = fixture();
+  const result = await createFc27PuzzleProcurementSession(x.options).plan(x.input,
+    { optimizeMaterialValue: true, adaptiveSearch: true });
+  console.info('ADAPTIVE_COST_EVIDENCE', JSON.stringify({ value: result.plans?.[0]?.materialValue,
+    nodes: result.diagnostics.nodes, passes: result.diagnostics.refinementPasses,
+    queries: result.queries, budget: result.diagnostics.searchBudget }));
+  expect(result.status, JSON.stringify(result)).toBe('suggested');
+  expect(result.plans[0].materialValue).toBeLessThanOrEqual(6000);
+  expect(result.queries).toHaveLength(5);
+  expect(result.diagnostics.refinementPasses).toBeGreaterThan(0);
+  expect(result.diagnostics.nodes).toBeLessThanOrEqual(50000);
+  expect(result.globalMinimumProven).toBe(false);
+});
+
 it('does not quote versions with no usable position when the native chemistry minimum requires all seven in position', async () => {
   const x = fixture();
   const slots = x.input.challenge.formation.positions.filter((_position, index) => !x.input.challenge.brickIndices.includes(index));
